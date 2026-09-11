@@ -44,7 +44,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { TestContext } from 'node:test';
-import { bootDriver, type BootedDriver } from '../test/contract/support/driver.ts';
+import { bootDriver, waitForStartCheck, type BootedDriver } from '../test/contract/support/driver.ts';
 import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { api as himaApi } from '../test/contract/support/hima-api.ts';
 import { requireOpene902Fixture } from '../test/contract/support/opene902-fixtures.ts';
@@ -960,6 +960,7 @@ ok('open the workbench', await first.open('/hima/'));
 for (const [control, value] of Object.entries(form)) {
   formHeld[control] = ok(`fill ${control}`, await first.fill(control, value)).value;
 }
+await waitForStartCheck(first, form);
 // The audits are drained from the click onwards, in the background, every `drainEveryMs`.
 //
 // Not from the ending of the start poll below, as this phase's boundary drain would suggest: the

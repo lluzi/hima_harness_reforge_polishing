@@ -32,7 +32,7 @@
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { TestContext } from 'node:test';
-import { bootDriver, waitForKnobs, type BootedDriver } from '../test/contract/support/driver.ts';
+import { bootDriver, waitForKnobs, waitForStartCheck, type BootedDriver } from '../test/contract/support/driver.ts';
 import { repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { drillDownPackId, forkJoinPackId, forkLooserNs, installDrillDown, installFork, installOverConstraining, packsDirOf } from '../test/contract/support/pack.ts';
 
@@ -225,6 +225,7 @@ async function main(): Promise<void> {
       ok(`fill ${control}`, await light.fill(control, value));
       if (control === 'start-pack') await waitForKnobs(light, value);
     }
+    await waitForStartCheck(light, { ...FORM, 'start-pack': CAMPAIGN.pack });
     ok('click start', await light.click('start'));
     const ended = ok('wait for the campaign to end', await light.wait('run-status', CAMPAIGN.said, CONVERGE_MS));
     if (ended.state.status !== CAMPAIGN.status) {

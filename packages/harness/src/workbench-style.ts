@@ -312,6 +312,7 @@ main{display:block}
 .ledger .said-decision{overflow-wrap:anywhere}
 
 .ledger .verdict-line{white-space:nowrap;line-height:1.5}
+.ledger.fixed .value,.ledger.fixed .verdict-line{white-space:normal}
 .ledger tr.now{background:var(--hima-raise)}
 
 /* A drill-down Loop's generations, nested under the row that opened them (#28). Rows of the same

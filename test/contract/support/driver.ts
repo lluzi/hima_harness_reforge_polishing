@@ -443,7 +443,10 @@ export async function waitForKnobs(d: BootedDriver, pack: string, timeoutMs = 30
  *
  * The pack is filled first where a caller's `form` names it, for the reason `waitForKnobs` exists:
  * choosing another pack replaces the knob fields below it. So the selection is waited on before
- * anything under it is typed into.
+ * anything under it is typed into. Before returning to a caller that will click Start, also wait
+ * for the current Pack/Site check: changing Site starts a request even when the knob identity is
+ * unchanged, and its reply both enables and repositions the button. A received mouse event on a
+ * disabled button is not a submission.
  *
  * @param d - the booted shell.
  * @param form - what every field is filled with, in the order they are filled.
@@ -454,11 +457,34 @@ export async function fillForm(
   form: Readonly<Record<string, string>>,
   changes: Readonly<Record<string, string>> = {},
 ): Promise<void> {
-  for (const [control, value] of Object.entries({ ...form, ...changes })) {
+  const values = { ...form, ...changes };
+  for (const [control, value] of Object.entries(values)) {
     const filled = await d.fill(control, value);
     assert.ok(filled.ok, `fill ${control}: ${JSON.stringify(filled)}`);
     assert.equal(filled.value, value, `the field holds what was typed into it: ${JSON.stringify(filled)}`);
     if (control === 'start-pack') await waitForKnobs(d, value);
+  }
+  await waitForStartCheck(d, values);
+}
+
+/** Wait on the product's current declaration check, including in scripts that retain typed fields
+ * individually for their audit. This observes readiness; it does not validate the Pack or Site. */
+export async function waitForStartCheck(
+  d: BootedDriver,
+  values: Readonly<Record<string, string>>,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const check = await d.read('start-check');
+    const current = check.ok
+      && (values['start-pack'] === undefined || check.state.pack === values['start-pack'])
+      && (values['start-site'] === undefined || check.state.site === values['start-site']);
+    if (current && check.state.status === 'fit') return;
+    if ((current && check.state.status !== 'checking') || Date.now() >= deadline) {
+      throw new Error(`the filled form is not ready for submission: ${JSON.stringify(check)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }
 
