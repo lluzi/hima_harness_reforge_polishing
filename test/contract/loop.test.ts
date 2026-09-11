@@ -42,11 +42,11 @@ test('a Campaign at a reachable goal revisits the synthesis node and ends goal m
     assert.ok(host.ok, JSON.stringify(host));
     const cookie = await d.cookie();
 
-    // 2.07 ns is tighter than the stand-in closes at (2.20), so the first generation misses and the
-    // chooser backs off; the second closes and meets the 2.30 ns goal.
+    // 2.35 ns meets setup but misses the 2.30 ns goal; method 2 steps to 2.30,
+    // where the second generation passes both rules.
     const started = await api(host, cookie, '/hima/api/runs', {
       method: 'POST',
-      body: JSON.stringify({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.07 } }),
+      body: JSON.stringify({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.35 } }),
       headers: { 'content-type': 'application/json' },
     });
     const startedText = await started.text();
@@ -92,9 +92,8 @@ test('a Campaign at an unreachable goal ends converged when the periods stop mov
     assert.ok(host.ok, JSON.stringify(host));
     const cookie = await d.cookie();
 
-    // The pack varied onto `over-constraining-push` (#54): the stand-in reports no margin for a
-    // period it meets, as Design Compiler does, and the reference pack's own chooser reaches no
-    // ending on that (D45, and `honest-standin.test.ts`, where that is the subject). 2.00 ns is
+    // A named copy of the shipped version 2 method. The legacy failure remains a separate
+    // case in honest-standin.test.ts. On this stand-in, 2.00 ns is
     // tighter than this flow closes at and always will be: the first generation misses by 0.20 ns,
     // which states that the design closes at 2.20, so the chooser asks for one step less — 2.15 —
     // and the third generation asks for and measures the same 2.15 the second did, because it read
@@ -268,7 +267,7 @@ test('a pack whose explore node leads nowhere is still one generation, ending go
     ]]);
 
     // 2.07 ns against a flow that closes at 2.20: the generation misses by 0.13, so the goal of
-    // 2.00 is not met and the chooser has a next period to try — 2.07 + 0.13 + 0.05 — which this
+    // 2.00 is not met and the chooser has a next period to try — 2.07 + 0.13 - 0.05 — which this
     // graph gives it nowhere to try.
     const started = await api(host, cookie, '/hima/api/runs', {
       method: 'POST',
@@ -280,10 +279,10 @@ test('a pack whose explore node leads nowhere is still one generation, ending go
     const view = JSON.parse(startedText) as RunView;
     assert.equal(view.run.status, 'ended-goal-not-met', `nothing led out of the explore node: ${startedText}`);
     assert.equal(view.run.generation, 1, 'one generation, because nothing opened a second');
-    assert.deepEqual(view.run.strategy, { periodNs: 2.25 }, 'the row carries the strategy it would have tried next');
+    assert.deepEqual(view.run.strategy, { periodNs: 2.15 }, 'the row carries the strategy it would have tried next');
     assert.equal(view.jobs.filter((j) => j.event === 'launched').length, 1, 'one synthesis and no revisit to ask for another');
     assert.ok(view.decision && 'strategy' in view.decision.chosen, `and the decision that chose it is on record: ${JSON.stringify(view.decision)}`);
-    assert.equal(view.decision.chosen.strategy.periodNs, 2.25);
+    assert.equal(view.decision.chosen.strategy.periodNs, 2.15);
 
     const opened = await d.open(`/hima/?run=${encodeURIComponent(view.run.id)}`);
     assert.ok(opened.ok, JSON.stringify(opened));
@@ -462,7 +461,7 @@ test('/hima status says which generation of how many a Campaign reached, and /hi
     const started = await himaCommand(
       host,
       h.workspace,
-      `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.3 --set periodNs=2.07`,
+      `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.3 --set periodNs=2.35`,
       siteCommandTimeoutMs,
     );
     assert.equal(started.kind, 'success', started.text);
@@ -478,7 +477,7 @@ test('/hima status says which generation of how many a Campaign reached, and /hi
     await writePackVariant(packsDirOf(h), 'converges-on-nothing', [], [['        read: period', '        read: cell_area']]);
     const checked = await himaCommand(host, h.workspace, '/hima pack check converges-on-nothing --site local');
     assert.equal(checked.kind, 'error', checked.text);
-    assert.match(checked.text, /converges on "cell_area", which chooser "timing-push" does not read/, checked.text);
+    assert.match(checked.text, /converges on "cell_area", which chooser "over-constraining-push" does not read/, checked.text);
     assert.match(checked.text, /"period", "slack"/, `and says what it does read: ${checked.text}`);
 
     // A graph that goes back to an act node without saying so: a loop the engine would run and the
@@ -567,7 +566,7 @@ test('the generations table gives a converged Campaign one row per generation, w
     // started with — here the 2.0 ns this start set the knob to — off the run row's `firstStrategy`,
     // which is written once and which the Loop cannot move; the two after it are the periods the
     // decisions before them chose. The falsifiable form of this on the page is the goal-met test
-    // below, whose first generation asked for 2.07.
+    // below, whose first generation asked for 2.35.
     assert.deepEqual(rows.map((r) => r.strategy), [{ periodNs: 2 }, { periodNs: 2.15 }, { periodNs: 2.15 }], `the strategy each generation was opened with: ${JSON.stringify(rows)}`);
     assert.deepEqual(rows.map((r) => r.observedPeriodNs), [2, 2.15, 2.15], 'and the clock period each generation\'s report stated');
     assert.deepEqual(rows.map((r) => r.slackNs), [-0.2, -0.05, -0.05], 'with the setup slack it closed with: how far short of the 2.20 ns this flow reaches, and nothing at all when it does not fall short');
@@ -630,7 +629,7 @@ test('a Campaign that meets its goal shows a row for each generation and says so
 
     const started = await api(host, cookie, '/hima/api/runs', {
       method: 'POST',
-      body: JSON.stringify({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.07 } }),
+      body: JSON.stringify({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.35 } }),
       headers: { 'content-type': 'application/json' },
     });
     const startedText = await started.text();
@@ -640,10 +639,10 @@ test('a Campaign that meets its goal shows a row for each generation and says so
 
     const rows = view.generations;
     assert.equal(rows.length, 2, `two generations, two rows: ${JSON.stringify(rows)}`);
-    assert.deepEqual(rows.map((r) => r.observedPeriodNs), [2.07, 2.25], 'the clock period each generation\'s report stated');
-    assert.deepEqual(rows[0]!.strategy, { periodNs: 2.07 }, 'the first generation asked the flow for the period this campaign was started with');
-    assert.deepEqual(rows[1]!.strategy, { periodNs: 2.25 }, 'the second generation was opened with the period the first decided on');
-    assert.equal(rows[0]!.decision, 'next strategy: clock period 2.25 ns', 'the first generation missed and chose what to try next, in the pack\'s own words');
+    assert.deepEqual(rows.map((r) => r.observedPeriodNs), [2.35, 2.30], 'the clock period each generation\'s report stated');
+    assert.deepEqual(rows[0]!.strategy, { periodNs: 2.35 }, 'the first generation asked the flow for the period this campaign was started with');
+    assert.deepEqual(rows[1]!.strategy, { periodNs: 2.30 }, 'the second generation was opened with the period the first decided on');
+    assert.equal(rows[0]!.decision, 'next strategy: clock period 2.3 ns', 'the first generation missed the goal and chose what to try next, in the pack\'s own words');
     assert.equal(rows[1]!.decision, 'goal met', 'and the second met the goal');
 
     const opened = await d.open(`/hima/?run=${encodeURIComponent(view.run.id)}`);
@@ -656,9 +655,9 @@ test('a Campaign that meets its goal shows a row for each generation and says so
     // Generation one's asked Strategy, on the card, after the Run has ended — the row that showed an
     // em dash while the start's period lived only in the run row's `strategy`, which the Loop had
     // moved on by then. The whole cell and not the number alone: a dash on either side of the arrow
-    // fails, and 2.07 is a spelling nothing else on this page holds. The asked side is the whole
+    // fails, and 2.35 is a spelling nothing else on this page holds. The asked side is the whole
     // Strategy in the pack's own words now (#58), which is what this pack calls its one knob.
-    assert.ok(table.text.includes('clock period 2.07 ns → 2.07'), `generation one asked for 2.07 and its report stated 2.07: ${table.text}`);
+    assert.ok(table.text.includes('clock period 2.35 ns → 2.35'), `generation one asked for 2.35 and its report stated 2.35: ${table.text}`);
     assert.equal(wallTimesIn(table.text).length, 2, `one wall time per row: ${table.text}`);
     assert.deepEqual(d.unexpectedStdout(), []);
   } finally {

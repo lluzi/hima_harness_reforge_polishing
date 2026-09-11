@@ -14,6 +14,8 @@ export const shippedPacksDir = path.join(repoRoot, 'packs');
 
 /** The one pack step 2 runs. */
 export const timingProbePackId = 'opene902-timing-probe';
+/** Method identity of the shipped contract and graphs derived from it. */
+export const timingProbePackVersion = '2';
 
 /**
  * The `words:` block the shipped contract declares (#42), spelled here so a test can vary the pack
@@ -116,12 +118,8 @@ export const drillDownPackId = 'drill-down';
  * (`writePackVariant` copies it), so the tools, the outputs and the licences this runs on are the
  * pack the repository ships.
  *
- * The loop's explore node applies `over-constraining-push` and not the reference pack's
- * `timing-push` (#54). What this variant is *for* is a Loop that drills down and closes on its own
- * convergence, and on a stand-in that reports slack the way Design Compiler does — nothing at all
- * for a period it meets — `timing-push` loosens by its guard band every generation and closes on the
- * generation limit instead (D45). The method is the only thing varied: the same step of 0.05 ns, the
- * same `converge` block, the same everything else.
+ * The loop applies the shipped over-constraining method. Its closure is an exploration
+ * ending, not evidence that the unreachable Goal was met.
  *
  * @param id - the variant's pack id, which its `graph.yml` must declare.
  * @param generationLimit - what the loop's own `converge` allows it.
@@ -129,7 +127,7 @@ export const drillDownPackId = 'drill-down';
 export const drillDownGraph = (id: string, generationLimit: number): string => `# A pack that drills down: the timing push is a loop of its own, opened by the outer graph's one
 # explore node, and the outer graph goes on when that loop has closed.
 id: ${id}
-version: '1'
+version: '${timingProbePackVersion}'
 entry: probe
 
 nodes:
@@ -241,7 +239,7 @@ export const forkLooserNs = 2.2;
  */
 export const forkGraph = (id: string, looserNs: number): string => `# A pack that forks: two syntheses at two periods, run at once, judged together.
 id: ${id}
-version: '1'
+version: '${timingProbePackVersion}'
 entry: start
 
 nodes:
@@ -399,7 +397,7 @@ export const twoKnobWordsBlock = `words:
  * is where the choice knob moves, and the third is where the Run converges. A band of the shipped
  * 0.05 would take six generations to get there and show the same two things.
  */
-export const twoKnobGuardBand: readonly [string, string] = ['guardBandNs: 0.05', 'guardBandNs: 0.25'];
+export const twoKnobGuardBand: readonly [string, string] = ['stepNs: 0.05', 'guardBandNs: 0.25'];
 
 /**
  * Install the two-knob variant into a booted home, and answer its pack id.
@@ -414,56 +412,34 @@ export async function installTwoKnobs(packsDir: string, id: string = twoKnobPack
     packsDir,
     id,
     [[shippedStrategyBlock, twoKnobStrategyBlock], [shippedWordsBlock, twoKnobWordsBlock]],
-    [['chooser: timing-push', 'chooser: test-profile-by-outcome'], twoKnobGuardBand],
+    [['chooser: over-constraining-push', 'chooser: test-profile-by-outcome'], twoKnobGuardBand],
   );
   return id;
 }
 
 // ---------------------------------------------------------------------------------------------
-// The over-constraining variant (#54): the shipped pack on the second shipped chooser
-//
-// The reference pack keeps `timing-push`, which is a stand-in for a method rather than the method
-// itself (D45): it asks a met period how much margin it had, and a tool that reports `0.00` slack
-// for every met period answers nothing, so the push loosens by its guard band every generation and
-// converges on nothing. Since the stand-in flow now reports slack the way Design Compiler does, a
-// test whose subject is a Campaign that *reaches* an ending runs the pack varied onto
-// `over-constraining-push`, which never reads the margin of a met period.
-//
-// Here rather than in one test file because five suites and the screenshot tool need the same
-// variation, and a second spelling of "the shipped pack with the honest chooser" would be a second
-// pack under test.
+// Method variants. The normal shipped Pack is version 2 on over-constraining-push.
+// Legacy timing-push remains an explicitly named counterexample, never a global test default.
 // ---------------------------------------------------------------------------------------------
 
-/** The second chooser the harness ships (#54): over-constrain by a step, read the violation. */
 export const overConstrainingChooserId = 'over-constraining-push';
+export const legacyTimingPushPackId = 'legacy-timing-push-probe';
 
-/**
- * The `chooser:` and `bind:` lines the shipped `graph.yml` states for its explore node, and the ones
- * that put `over-constraining-push` there instead. The reference pack's guard band is 0.05 ns and
- * the variant's step is the same 0.05 ns, so the two differ in method and in nothing else.
- *
- * Spelled as the shipped file spells them and held true by `writePackVariant`, which throws naming
- * what it looked for: the day `graph.yml` re-indents this block is the day this constant is edited,
- * not the day a variant quietly stopped varying anything.
- */
-export const graphForOverConstraining: readonly (readonly [string, string])[] = [[
-  `      chooser: timing-push
-      bind:
-        guardBandNs: 0.05`,
-  `      chooser: ${overConstrainingChooserId}
+/** Explicit legacy method, keeping all other current Pack inputs and tools unchanged. */
+export async function installLegacyTimingPush(packsDir: string, id: string = legacyTimingPushPackId): Promise<string> {
+  await writePackVariant(packsDir, id, [], [[
+    `      chooser: over-constraining-push
       bind:
         stepNs: 0.05`,
-]];
+    `      chooser: timing-push
+      bind:
+        guardBandNs: 0.05`,
+  ]]);
+  return id;
+}
 
-/**
- * Install the shipped pack varied onto `over-constraining-push`, and answer its pack id.
- *
- * @param packsDir - the installed packs directory, from `installPack`.
- * @param id - the variant's pack id, which is also its directory name.
- * @returns the variant's pack id, so a caller reads `await installOverConstraining(...)` as the pack
- *          it is about to run.
- */
+/** An explicitly named alias of the current method for tests with distinct Pack identities. */
 export async function installOverConstraining(packsDir: string, id: string): Promise<string> {
-  await writePackVariant(packsDir, id, [], graphForOverConstraining);
+  await writePackVariant(packsDir, id, []);
   return id;
 }

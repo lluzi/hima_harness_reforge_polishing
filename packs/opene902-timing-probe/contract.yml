@@ -4,7 +4,7 @@
 # input that is not bound, every wrapper the Permit will not run, and every rule or reader that does
 # not exist.
 id: opene902-timing-probe
-version: '1'
+version: '2'
 title: opene902 timing probe
 
 # What a Site binds, in its site file under `bindings:`. The same pack runs on another Site by

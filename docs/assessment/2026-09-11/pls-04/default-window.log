@@ -1,0 +1,20 @@
+$ node scripts/run-contract-tests.mjs desktop --files test/contract/honest-standin-window.test.ts
+desktop: 1 selected; 10 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: the start form opens a converged Run and the window shows its recorded decision
+ok 1 - the start form opens a converged Run and the window shows its recorded decision
+  ---
+  duration_ms: 25711.689
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 25850.264625
+SSH subprocess attempts: 0
+desktop command exit code: 0; elapsed: 25.906 s; pass/fail/skip counts are in the TAP summary above

@@ -19,7 +19,7 @@ import { bootDriver } from './support/driver.ts';
 import { api } from './support/hima-api.ts';
 import { killSessions, localFabric, sessionsOf } from './support/fabric.ts';
 import { himaCommand, siteCommandTimeoutMs } from './support/command.ts';
-import { forkGraph, installFork, packsDirOf, writePackVariant } from './support/pack.ts';
+import { timingProbePackVersion, forkGraph, installFork, packsDirOf, writePackVariant } from './support/pack.ts';
 import { findOnPath, killSession } from './support/tmux.ts';
 import type { BootedDriver } from './support/driver.ts';
 import { branchJobsSaid, branchStateLabel, FORK_RULE, joinSaid } from '@hima/harness';
@@ -768,7 +768,7 @@ test('the served HimaGuide bundle carries the fork\'s branch rows, as the workbe
  *  is nested in the other. Written whole, because a graph with a loop in it is a different shape. */
 const forkInsideALoop = (id: string): string => `# A pack that drills down into a loop that forks: refused when it is loaded.
 id: ${id}
-version: '1'
+version: '${timingProbePackVersion}'
 entry: probe
 
 nodes:

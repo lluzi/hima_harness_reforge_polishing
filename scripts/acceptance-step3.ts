@@ -445,14 +445,10 @@ function ok<T>(what: string, answer: ({ readonly ok: true } & T) | { readonly ok
  * target of `2.47 − 0.2`, which is what step 2's script seeds, is met at the first generation and
  * proves nothing about a Loop.
  *
- * Where those generations now go is the D45 trace (#54): the stand-in reports setup slack the way
- * Design Compiler does — `0.00` for any period it meets — so the reference pack's `timing-push`
- * backs off to 2.25, is told nothing about the margin there, and loosens by its guard band every
- * generation (2.30, 2.35, 2.40, 2.45) until the sixth is spent. Every check of this record passes
- * but `ended-goal-met-or-converged`, which is the check the reference Site failed too, so the local
- * dry run exits non-zero. The pack this script drives is not changed here: the over-constraining
- * method belongs to the step-4 pack, and `packs/opene902-timing-probe/PACK.md` states plainly what
- * the reference pack's chooser is a stand-in for.
+ * With method version 2, starting at 2.00 ns proposes 2.15 after the violation and
+ * repeats 2.15, so the local dry run converges with setup still failing. The recorded
+ * verdicts must remain FAIL; this is not evidence that the unreachable Goal was met.
+ * Real reference-site behavior needs its own current validation.
  */
 const standinLastResultNs = 2.2;
 /** The clock period the pinned opene902 qor fixture states, which the seed above replaces. */
@@ -753,7 +749,7 @@ const flowRoot = bindings.flowRoot ?? '';
 const workspaceRoot = bindings.workspaceRoot ?? '';
 const design = bindings.design ?? '';
 const explore = pack.graph.nodes.find((n): n is Extract<PackNode, { kind: 'explore' }> => n.kind === 'explore');
-const guardBandNs = explore?.parameters.bind.guardBandNs;
+const stepNs = explore?.parameters.bind.stepNs;
 const converge: ExploreConverge | undefined = explore?.parameters.converge;
 const generationLimit = generationsOverride ?? converge?.generationLimit;
 if (generationLimit === undefined) {
@@ -774,7 +770,7 @@ record.site = {
   parallelJobs: site.capacity.parallelJobs,
   lastResultReport: lastResultAt,
 };
-record.pack = { id: pack.id, version: pack.contract.version, guardBandNs, converge };
+record.pack = { id: pack.id, version: pack.contract.version, stepNs, converge };
 record.home = h.home;
 
 if (site.kind === 'ssh' && site.ssh) {
@@ -1264,12 +1260,12 @@ check(
 
 /**
  * The chooser's three clauses and the pack's convergence rule, re-derived here from the two verdicts
- * and the measured numbers, so what is on the ledger is compared with what `timing-push` and the
+ * and the measured numbers, so what is on the ledger is compared with what `over-constraining-push` and the
  * pack declare rather than with a guess.
  *
  * This is the one place in this script that restates in TypeScript something the harness ships as
  * data (D38), and it is deliberate: an independent check is worth nothing if it is the same code
- * evaluating the same file, so the clauses are read off `choosers/timing-push.yml` and the pack's
+ * evaluating the same file, so the clauses are read off `choosers/over-constraining-push.yml` and the pack's
  * `converge:` by a person and written out here by hand. It is a check of the numbers the harness
  * produced, never a second implementation for the harness to use — nothing outside this script
  * imports it. The order is the chooser's own: the goal-met clause first, then convergence, then the
@@ -1283,7 +1279,7 @@ function chooserWouldChoose(
   slackNs: number,
   earlier: readonly number[],
 ): { readonly chosen: unknown; readonly how: string } | undefined {
-  if (guardBandNs === undefined) return undefined;
+  if (stepNs === undefined) return undefined;
   if (constraint === 'PASS' && goal === 'PASS') {
     return { chosen: { goalMet: true }, how: 'the constraint and the goal both passed, so there is no next strategy' };
   }
@@ -1306,12 +1302,12 @@ function chooserWouldChoose(
   }
   return constraint === 'PASS'
     ? {
-        chosen: { strategy: { periodNs: roundNs(periodNs - slackNs + guardBandNs) } },
-        how: `period − slack + guard = ${periodNs} − ${slackNs} + ${guardBandNs}`,
+        chosen: { strategy: { periodNs: roundNs(periodNs - stepNs) } },
+        how: `period − step = ${periodNs} − ${stepNs}`,
       }
     : {
-        chosen: { strategy: { periodNs: roundNs(periodNs + Math.abs(slackNs) + guardBandNs) } },
-        how: `period + |slack| + guard = ${periodNs} + ${Math.abs(slackNs)} + ${guardBandNs}`,
+        chosen: { strategy: { periodNs: roundNs(periodNs + Math.abs(slackNs) - stepNs) } },
+        how: `period + |slack| − step = ${periodNs} + ${Math.abs(slackNs)} − ${stepNs}`,
       };
 }
 
@@ -1419,17 +1415,17 @@ for (const g of generations) {
     : undefined;
   check(
     `${at}-decision-follows-the-chooser`,
-    `Generation ${g.n}'s decision is the one \`timing-push\` and the pack's convergence rule declare for these two verdicts and these measured values, and it cites both verdicts and the observation.`,
-    'One decision, by chooser `timing-push`, taken in the chooser\'s own order: `{goalMet: true}` when the constraint and the goal both passed; else `{converged: {read, band, generations, values}}` when the pack\'s `converge` block has enough generations to compare and each of the last `generations` moves of the measured period is strictly below the band; else `{strategy: {periodNs: period − slack + guard}}` when the constraint passed and the goal did not, and `{strategy: {periodNs: period + |slack| + guard}}` when the constraint failed, each rounded to 3 decimals — with `period` and `slack` read from this generation\'s observation, `guard` the guard band the pack binds, and the earlier generations\' measured periods taken from this same record. Its `rationale` is those numbers, and its `cites` are the setup verdict, the goal verdict and the observation, in that order.',
+    `Generation ${g.n}'s decision is the one \`over-constraining-push\` and the pack's convergence rule declare for these two verdicts and these measured values, and it cites both verdicts and the observation.`,
+    'One decision, by chooser `over-constraining-push`, taken in the chooser\'s own order: `{goalMet: true}` when the constraint and the goal both passed; else `{converged: {read, band, generations, values}}` when the pack\'s `converge` block has enough generations to compare and each of the last `generations` moves of the measured period is strictly below the band; else `{strategy: {periodNs: period − step}}` when the constraint passed and the goal did not, and `{strategy: {periodNs: period + |slack| − step}}` when the constraint failed, each rounded to 3 decimals — with `period` and `slack` read from this generation\'s observation, `step` the exploration step the pack binds, and the earlier generations\' measured periods taken from this same record. Its `rationale` is those numbers, and its `cites` are the setup verdict, the goal verdict and the observation, in that order.',
     g.decision !== undefined
       && g.expected !== undefined
       && citesWanted !== undefined
-      && g.decision.chooser === 'timing-push'
+      && g.decision.chooser === 'over-constraining-push'
       && canonical(g.decision.chosen) === canonical(g.expected.chosen)
       && canonical(g.decision.cites) === canonical(citesWanted)
       && g.decision.rationale.period === g.observedPeriodNs
       && g.decision.rationale.slack === g.observedSlackNs
-      && g.decision.rationale.guardBandNs === guardBandNs,
+      && g.decision.rationale.stepNs === stepNs,
     g.decision === undefined
       ? `generation ${String(g.n)} recorded no decision`
       : `${g.decision.chooser} chose ${JSON.stringify(g.decision.chosen)}; the chooser's and the pack's own clauses give ${
@@ -1822,7 +1818,7 @@ function markdown(): string {
     `- The site's own last result: \`${lastResultAt}\`, read read-only, states **${show(lastPeriodNs)} ns**.`,
     `- The target the Goal was set to, and the first Strategy's period: **${show(targetNs)} ns** — ${targetFrom}.`,
     `- The Budget: a time box of ${timeBoxMinutes} minutes for the whole Campaign, a retry allowance of ${retryAllowance} per node per generation, and at most ${generationLimit} generations${generationsOverride === undefined ? " — the pack's own `converge.generationLimit`" : ' — given by `--generations`'}. The site declares ${site.capacity.parallelJobs} parallel job(s).`,
-    `- The pack's convergence rule: ${converge === undefined ? 'none declared' : `\`${converge.read}\` moving by less than ${String(converge.band)} over ${counted(converge.generations, 'successive generation')}`}, and its guard band is ${show(guardBandNs)} ns.`,
+    `- The pack's convergence rule: ${converge === undefined ? 'none declared' : `\`${converge.read}\` moving by less than ${String(converge.band)} over ${counted(converge.generations, 'successive generation')}`}, and its exploration step is ${show(stepNs)} ns.`,
     '',
     'The window\'s own start form, filled control by control:',
     '',

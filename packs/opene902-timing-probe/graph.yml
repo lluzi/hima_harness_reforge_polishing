@@ -12,7 +12,7 @@
 # the only edge in this graph that goes backwards, and the only kind of edge allowed to: a loop a
 # reader cannot see in this file is a loop the engine would be running behind it.
 id: opene902-timing-probe
-version: '1'
+version: '2'
 entry: synthesize
 
 nodes:
@@ -43,29 +43,17 @@ nodes:
       bind:
         target_period_ns: { from: goal, name: target_period_ns }
 
-  # Explore: choose the next clock period from what was measured, deterministically, and record why.
-  # PASS and FAIL both arrive here: a met constraint means push tighter, a violated one means back
-  # off by what was violated. The chooser is named by identity, like the rules above, and what it
-  # leaves on the table on purpose is bound here because it is the pack author's number, not the
-  # chooser's.
-  # `converge` says when this exploration has stopped learning, in the chooser's own vocabulary: the
-  # period it reads, how far apart two generations' periods have to be to count as movement, and how
-  # many successive generations must have moved by less than that. The band is the guard band bound
-  # just above, 0.05 ns: a generation that moved the measured period by less than the margin this
-  # pack asks a closed design to keep has learned nothing the next generation could act on, so the
-  # campaign ends `ended-converged` rather than asking for much the same number again. One Design
-  # Compiler tick — 0.01 ns, the two decimals the tool prints a period at — is the resolution of the
-  # instrument and not a statement about convergence: a band of one tick asks a flow to repeat a
-  # period exactly, which a design oscillating by a hundredth never does, and such a campaign spends
-  # its whole generation limit instead of ending on what it learned.
-  # `generationLimit` is what this pack thinks a campaign of it should be allowed at most;
-  # `/hima run --generations <n>` overrides it, and it is the Budget that enforces it.
+  # Method version 2: a met constraint is tested one step tighter; a violation proposes
+  # period + |slack| - stepNs. This candidate is a hypothesis, not a measured closed period.
+  # Convergence means the observed periods stopped moving, even if setup still fails.
+  # Only a generation passing both setup and goal can end goal-met.
+  # generationLimit is a budget bound, not a claim that the goal is reachable.
   - id: next-period
     kind: explore
     parameters:
-      chooser: timing-push
+      chooser: over-constraining-push
       bind:
-        guardBandNs: 0.05
+        stepNs: 0.05
       converge:
         read: period
         band: 0.05

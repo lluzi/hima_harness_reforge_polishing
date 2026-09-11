@@ -26,10 +26,10 @@ import assert from 'node:assert/strict';
 import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
 import { localHome } from './support/fabric.ts';
 import { api, openSession } from './support/hima-api.ts';
-import { installOverConstraining, packsDirOf, timingProbePackId } from './support/pack.ts';
+import { installLegacyTimingPush, packsDirOf, timingProbePackId } from './support/pack.ts';
 import type { RunView } from '@hima/harness';
 
-/** One second of synthesis per generation: this test runs thirteen of them and none of its subjects is
+/** One second of synthesis per generation: this test runs fourteen of them and none of its subjects is
  *  what a Job does while it sleeps. */
 const SYNTH_SECONDS = 1;
 
@@ -47,10 +47,10 @@ const REACHABLE_NS = 2.25;
 
 /** Start one Campaign and wait for it, as the window's own start does: the route answers with the
  *  whole run view once the Run has ended. */
-async function campaign(cookie: string, pack: string, host: { readonly url: string }, targetNs = UNREACHABLE_NS): Promise<RunView> {
+async function campaign(cookie: string, pack: string, host: { readonly url: string }, targetNs = UNREACHABLE_NS, generationLimit?: number, startNs = START_NS): Promise<RunView> {
   const started = await api(host, cookie, '/hima/api/runs', {
     method: 'POST',
-    body: JSON.stringify({ pack, site: 'local', goal: { target_period_ns: targetNs }, strategy: { periodNs: START_NS } }),
+    body: JSON.stringify({ pack, site: 'local', goal: { target_period_ns: targetNs }, strategy: { periodNs: startNs }, ...(generationLimit === undefined ? {} : { generations: generationLimit }) }),
     headers: { 'content-type': 'application/json' },
   });
   const text = await started.text();
@@ -67,12 +67,13 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
     host = await bootHimaHost(h);
     const cookie = await openSession(host);
 
-    // The reference pack, unchanged: the D45 trace. Every generation meets the period it was asked
+    // The explicit legacy method: the D45 trace. Every generation meets the period it was asked
     // for, so every generation reads a slack of exactly 0.00 and the push clause computes
     // `period − 0 + 0.05` — one guard band looser than the period that just passed. Nothing ever
     // violates, nothing ever stops moving, and the Campaign runs out the six generations the pack
     // allows it.
-    const pushed = await campaign(cookie, timingProbePackId, host);
+    const legacy = await installLegacyTimingPush(packsDirOf(h));
+    const pushed = await campaign(cookie, legacy, host);
     assert.deepEqual(
       pushed.generations.map((r) => r.observedPeriodNs),
       [2.3, 2.35, 2.4, 2.45, 2.5, 2.55],
@@ -92,7 +93,7 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
     // achievable period by violating. 2.15 misses by 0.05, which says the design closes at 2.20, so
     // it asks for 2.15 again — and two generations asking and measuring the same period is what the
     // pack calls having stopped learning.
-    const honest = await installOverConstraining(packsDirOf(h), 'over-constraining-probe');
+    const honest = timingProbePackId;
     const converged = await campaign(cookie, honest, host);
     assert.deepEqual(
       converged.generations.map((r) => r.observedPeriodNs),
@@ -123,6 +124,9 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
     );
 
     // The real window checks for this decision live in honest-standin-window.test.ts.
+    const valid = converged.generations.filter((row) => row.verdicts.some((v) => v.ruleId === 'setup-wns-all-nonnegative' && v.outcome === 'PASS'));
+    assert.deepEqual(valid.map((row) => row.observedPeriodNs), [2.3, 2.25, 2.2], 'only measured setup-PASS generations are closed results; 2.15 remains a violation');
+
     // The third Campaign, on the same flow and the same chooser, with the one thing changed that the
     // chooser's remaining clause turns on: a Goal this design can actually reach. Generation one asks
     // for 2.30, which the flow meets — constraint PASS — and which misses a 2.25 goal, so the first
@@ -145,6 +149,13 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
     );
     assert.ok(met.decision, 'and the ending is a decision, on record');
     assert.deepEqual(met.decision.chosen, { goalMet: true }, `the clause's own word, and no next Strategy: ${JSON.stringify(met.decision.chosen)}`);
+
+    const limited = await campaign(cookie, timingProbePackId, host, UNREACHABLE_NS, 1, 2.0);
+    assert.equal(limited.run.status, 'ended-budget-exhausted');
+    assert.equal(limited.run.meters?.endedBy, 'generation-limit');
+    assert.deepEqual(limited.generations.map((row) => row.observedPeriodNs), [2.0], 'the proposed next period is not a measured result');
+    assert.deepEqual(limited.decision?.chosen, { strategy: { periodNs: 2.15 } });
+    assert.deepEqual(limited.generations.filter((row) => row.verdicts.some((v) => v.ruleId === 'setup-wns-all-nonnegative' && v.outcome === 'PASS')), [], 'there is no measured closed result in this budget-limited run');
 
   } finally {
     try { if (host) await host.stop(); } finally { await h.dispose(); }

@@ -1,0 +1,49 @@
+[
+  {
+    "stage": "targeted-local",
+    "command": [
+      "pnpm",
+      "run",
+      "test:local",
+      "--files",
+      "test/contract/pack.test.ts",
+      "test/contract/honest-standin.test.ts",
+      "test/contract/view-run.test.ts"
+    ],
+    "exitCode": 1,
+    "seconds": 39.463
+  },
+  {
+    "stage": "variant-check",
+    "command": [
+      "node",
+      "--test",
+      "--test-reporter=tap",
+      ".hima-tmp/pls04/variant-check.ts"
+    ],
+    "exitCode": 0,
+    "seconds": 1.78
+  },
+  {
+    "stage": "default-window",
+    "command": [
+      "pnpm",
+      "run",
+      "test:desktop",
+      "--files",
+      "test/contract/honest-standin-window.test.ts"
+    ],
+    "exitCode": 0,
+    "seconds": 26.427
+  },
+  {
+    "stage": "check-local",
+    "command": [
+      "pnpm",
+      "run",
+      "check:local"
+    ],
+    "exitCode": 0,
+    "seconds": 490.166
+  }
+]

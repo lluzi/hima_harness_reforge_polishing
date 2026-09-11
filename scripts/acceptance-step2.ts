@@ -514,7 +514,7 @@ const flowRoot = bindings.flowRoot ?? '';
 const workspaceRoot = bindings.workspaceRoot ?? '';
 const design = bindings.design ?? '';
 const explore = pack.graph.nodes.find((n): n is Extract<PackNode, { kind: 'explore' }> => n.kind === 'explore');
-const guardBandNs = explore?.parameters.bind.guardBandNs;
+const stepNs = explore?.parameters.bind.stepNs;
 const lastResultAt = lastResultPath(pack, site, flowRoot);
 const paths = pathsOn(site);
 
@@ -529,7 +529,7 @@ record.site = {
   parallelJobs: site.capacity.parallelJobs,
   lastResultReport: lastResultAt,
 };
-record.pack = { id: pack.id, version: pack.contract.version, guardBandNs };
+record.pack = { id: pack.id, version: pack.contract.version, stepNs };
 record.home = h.home;
 
 if (site.kind === 'ssh' && site.ssh) {
@@ -954,28 +954,28 @@ check(
 );
 
 // The chooser's three clauses, re-derived here from the two verdicts and the measured numbers, so
-// the decision on the ledger is compared with what `timing-push` declares rather than with a guess.
+// the decision on the ledger is compared with what `over-constraining-push` declares rather than with a guess.
 //
 // This is the one place in this script that restates in TypeScript something the harness ships as
 // data (D38), and it is deliberate: an independent check is worth nothing if it is the same code
-// evaluating the same file, so the clauses are read off `choosers/timing-push.yml` by a person and
+// evaluating the same file, so the clauses are read off `choosers/over-constraining-push.yml` by a person and
 // written out here by hand. It is a check of the numbers the harness produced, never a second
 // implementation for the harness to use — nothing outside this script imports it, and a pack author
 // who changes the chooser changes the YAML and this comment's neighbours, not a shipped code path.
 // The rounding is the one thing taken from the bundle (`roundNs`): "three decimals" is a convention
 // the two sides must share to be comparable at all, not a clause there is anything to check.
-if (setupVerdict && goalVerdict && observedPeriodNs !== undefined && observedSlackNs !== undefined && guardBandNs !== undefined) {
+if (setupVerdict && goalVerdict && observedPeriodNs !== undefined && observedSlackNs !== undefined && stepNs !== undefined) {
   if (setupVerdict.outcome === 'PASS' && goalVerdict.outcome === 'PASS') {
     expected = { chosen: { goalMet: true }, how: 'the constraint and the goal both passed, so there is no next strategy' };
   } else if (setupVerdict.outcome === 'PASS') {
     expected = {
-      chosen: { strategy: { periodNs: roundNs(observedPeriodNs - observedSlackNs + guardBandNs) } },
-      how: `period − slack + guard = ${observedPeriodNs} − ${observedSlackNs} + ${guardBandNs}`,
+      chosen: { strategy: { periodNs: roundNs(observedPeriodNs - stepNs) } },
+      how: `period − step = ${observedPeriodNs} − ${stepNs}`,
     };
   } else if (setupVerdict.outcome === 'FAIL') {
     expected = {
-      chosen: { strategy: { periodNs: roundNs(observedPeriodNs + Math.abs(observedSlackNs) + guardBandNs) } },
-      how: `period + |slack| + guard = ${observedPeriodNs} + ${Math.abs(observedSlackNs)} + ${guardBandNs}`,
+      chosen: { strategy: { periodNs: roundNs(observedPeriodNs + Math.abs(observedSlackNs) - stepNs) } },
+      how: `period + |slack| − step = ${observedPeriodNs} + ${Math.abs(observedSlackNs)} − ${stepNs}`,
     };
   }
 }
@@ -985,14 +985,14 @@ const citesWanted = setupVerdict && goalVerdict && observation
 
 check(
   'decision-follows-the-chooser',
-  'The decision is the one `timing-push` declares for these two verdicts and these measured values, and it cites both verdicts and the observation.',
-  'One decision, by chooser `timing-push`, whose `chosen` is `{goalMet: true}` when the constraint and the goal both passed, `{strategy: {periodNs: period − slack + guard, rounded to 3 decimals}}` when the constraint passed and the goal did not, and `{strategy: {periodNs: period + |slack| + guard, rounded to 3 decimals}}` when the constraint failed — with `period` and `slack` read from the observation and `guard` the guard band the pack binds. Its `rationale` is those three numbers, and its `cites` are the setup verdict, the goal verdict and the observation, in that order.',
+  'The decision is the one `over-constraining-push` declares for these two verdicts and these measured values, and it cites both verdicts and the observation.',
+  'One decision, by chooser `over-constraining-push`, whose `chosen` is `{goalMet: true}` when the constraint and the goal both passed, `{strategy: {periodNs: period − step, rounded to 3 decimals}}` when the constraint passed and the goal did not, and `{strategy: {periodNs: period + |slack| − step, rounded to 3 decimals}}` when the constraint failed — with `period` and `slack` read from the observation and `step` the exploration step the pack binds. Its `rationale` is those three numbers, and its `cites` are the setup verdict, the goal verdict and the observation, in that order.',
   decision !== undefined
     && expected !== undefined
     && citesWanted !== undefined
-    && decision.chooser === 'timing-push'
+    && decision.chooser === 'over-constraining-push'
     && canonical(decision.chosen) === canonical(expected.chosen)
-    && canonical(decision.rationale) === canonical({ period: observedPeriodNs, slack: observedSlackNs, guardBandNs })
+    && canonical(decision.rationale) === canonical({ period: observedPeriodNs, slack: observedSlackNs, stepNs })
     && canonical(decision.cites) === canonical(citesWanted),
   decision === undefined
     ? 'the run recorded no decision'
@@ -1048,7 +1048,7 @@ record.measured = {
   targetPeriodNs: targetNs,
   observedPeriodNs,
   observedSlackNs,
-  guardBandNs,
+  stepNs,
   expectedChoice: expected?.chosen,
   expectedChoiceHow: expected?.how,
 };

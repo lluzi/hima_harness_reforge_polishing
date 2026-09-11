@@ -123,10 +123,8 @@ const WINDOW = ((raw: string | undefined): { readonly width: number; readonly he
   return { width: Number(found[1]), height: Number(found[2]) };
 })(option('--window'));
 
-/** The pack the default picture is of (#54): the shipped pack varied onto `over-constraining-push`,
- *  which is what the suite's own Loop tests drive. The stand-in reports slack the way Design Compiler
- *  does — nothing at all for a period it meets — and the reference pack's `timing-push` reaches no
- *  ending of its own on that (D45), so a picture of a converged card is a picture of this pack. */
+/** An explicitly named copy of the shipped version 2 over-constraining method, matching
+ *  the Loop tests. The card shows convergence; the recorded verdicts show whether setup passed. */
 const overConstrainingPackId = 'over-constraining-probe';
 
 /** What the form is filled with: the converging Campaign of the contract suite's own Loop tests — a

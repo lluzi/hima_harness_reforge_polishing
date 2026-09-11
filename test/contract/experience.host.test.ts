@@ -99,9 +99,9 @@ test('a Campaign that met its goal leaves both report files on the site, with th
   try {
     const { host, cookie } = d;
 
-    // 2.07 ns is tighter than the stand-in closes at (2.20), so the first generation misses and the
-    // chooser backs off; the second closes and meets the 2.30 ns goal.
-    const view = await startRun(host, cookie, { goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.07 } });
+    // 2.35 ns meets setup but misses the 2.30 ns goal; the shipped method steps to 2.30,
+    // where both setup and goal pass. Two generations still exercise the report rows.
+    const view = await startRun(host, cookie, { goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.35 } });
     assert.equal(view.run.status, 'ended-goal-met', JSON.stringify(view.run));
     const runId = view.run.id;
 
@@ -288,7 +288,7 @@ test('a second host on the same home re-serves the report it finds rather than w
   try {
     const { host, cookie } = first;
 
-    const view = await startRun(host, cookie, { goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.07 } });
+    const view = await startRun(host, cookie, { goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.35 } });
     assert.equal(view.run.status, 'ended-goal-met', JSON.stringify(view.run));
     const runId = view.run.id;
     const experience = view.experience;
@@ -334,7 +334,7 @@ test('the report is served as markdown to a session that has one, refused to a c
   try {
     const { host, cookie } = d;
 
-    const view = await startRun(host, cookie, { goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.07 } });
+    const view = await startRun(host, cookie, { goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.35 } });
     assert.equal(view.run.status, 'ended-goal-met', JSON.stringify(view.run));
     const runId = view.run.id;
     const experience = view.experience;
@@ -405,7 +405,7 @@ test('a run whose ending stood while the site refused the report is finished by 
     // is what the ledger holds afterwards.
     const starting = api(host, cookie, '/hima/api/runs', {
       method: 'POST',
-      body: JSON.stringify({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.07 } }),
+      body: JSON.stringify({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.35 } }),
       headers: { 'content-type': 'application/json' },
     });
     starting.catch(() => undefined);
@@ -478,7 +478,7 @@ test('/hima status names the report\'s two files on a Campaign that has ended', 
     const started = await himaCommand(
       host,
       h.workspace,
-      `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.30 --set periodNs=2.07`,
+      `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.30 --set periodNs=2.35`,
       siteCommandTimeoutMs,
     );
     const runId = started.runId;

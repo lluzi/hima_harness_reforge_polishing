@@ -1,0 +1,20 @@
+TAP version 13
+# Subtest: method-version adaptation keeps existing derived Pack fixtures statically fit
+ok 1 - method-version adaptation keeps existing derived Pack fixtures statically fit
+  ---
+  duration_ms: 1525.121833
+  type: 'test'
+  ...
+# pack method2-drill@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# pack method2-fork@2 on site local: fit — 3 of 3 inputs bound, 2 tools, 2 rules, 2 readers, 0 choosers, 2 licences
+# pack method2-knobs@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# pack legacy-timing-push-probe@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1734.853708

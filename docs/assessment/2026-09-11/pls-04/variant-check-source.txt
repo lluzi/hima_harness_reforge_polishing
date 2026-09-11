@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { localFabric } from '../../test/contract/support/fabric.ts';
+import { installDrillDown, installFork, installTwoKnobs, installLegacyTimingPush, packsDirOf } from '../../test/contract/support/pack.ts';
+import { himaCommand } from '../../test/contract/support/command.ts';
+
+test('method-version adaptation keeps existing derived Pack fixtures statically fit', async (t) => {
+  const local = await localFabric(t, { sleepSeconds: 1 });
+  assert.ok(local);
+  try {
+    const packs = packsDirOf(local.h);
+    const ids = [
+      await installDrillDown(packs, 'method2-drill', 6),
+      await installFork(packs, 'method2-fork', 2.2),
+      await installTwoKnobs(packs, 'method2-knobs'),
+      await installLegacyTimingPush(packs),
+    ];
+    for (const id of ids) {
+      const result = await himaCommand(local.host, local.h.workspace, `/hima pack check ${id} --site local`);
+      assert.equal(result.kind, 'success', result.text);
+      assert.match(result.text, new RegExp(`^pack ${id}@2 on site local: fit`));
+      t.diagnostic(result.text.split('\n')[0]!);
+    }
+  } finally { await local.dispose(); }
+});

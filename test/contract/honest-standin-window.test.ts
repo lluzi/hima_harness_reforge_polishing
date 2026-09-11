@@ -2,15 +2,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { bootDriver, fillForm, theOneRunId } from './support/driver.ts';
-import { installOverConstraining, packsDirOf } from './support/pack.ts';
+import { timingProbePackId } from './support/pack.ts';
 
 test('the start form opens a converged Run and the window shows its recorded decision', async (t) => {
-  const d = await bootDriver(t, { home: 'hima', sleepSeconds: 1 });
+  const d = await bootDriver(t, { home: 'empty', seed: 'local' });
   if (!d) return;
   try {
     const host = await d.host();
     assert.ok(host.ok, JSON.stringify(host));
-    const honest = await installOverConstraining(packsDirOf(d.home), 'over-constraining-probe');
+    const honest = timingProbePackId;
+    assert.match(d.stderr(), /stand-in computes its own qor report/, 'the local seed labels simulated results');
     const opened = await d.open('/hima/');
     assert.ok(opened.ok, JSON.stringify(opened));
     await fillForm(d, {

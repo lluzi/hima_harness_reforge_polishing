@@ -166,13 +166,13 @@ test('a pack whose tool holds a licence the site does not declare is unfit, and 
     const checked = await himaCommand(host, h.workspace, '/hima pack check wants-synopsys --site local');
     for (const line of checked.text.split('\n')) t.diagnostic(line);
     assert.equal(checked.kind, 'error', checked.text);
-    assert.match(checked.text, /^pack wants-synopsys@1 on site local: unfit\b/, checked.text);
+    assert.match(checked.text, /^pack wants-synopsys@2 on site local: unfit\b/, checked.text);
     assert.match(checked.text, /tool "synth" holds 1 of "synopsys": site local does not declare it; add it under capacity\.licences:/, checked.text);
 
     const ran = await himaCommand(host, h.workspace, '/hima run wants-synopsys --site local --goal target_period_ns=2.0 --set periodNs=2.0', siteCommandTimeoutMs);
     for (const line of ran.text.split('\n')) t.diagnostic(line);
     assert.equal(ran.kind, 'error', ran.text);
-    assert.match(ran.text, /^pack wants-synopsys@1 on site local: unfit\b/, ran.text);
+    assert.match(ran.text, /^pack wants-synopsys@2 on site local: unfit\b/, ran.text);
     assert.match(ran.text, /site local does not declare it/, ran.text);
     assert.deepEqual(
       host.ctx.hima.ledger.runs().flatMap((r) => sessionsOf(host, r.id)),
@@ -196,7 +196,7 @@ test('a site that declares none of a licence can never host a tool that holds it
     const checked = await himaCommand(host, h.workspace, '/hima pack check reserves-none --site local');
     for (const line of checked.text.split('\n')) t.diagnostic(line);
     assert.equal(checked.kind, 'error', checked.text);
-    assert.match(checked.text, /^pack reserves-none@1 on site local: unfit\b/, checked.text);
+    assert.match(checked.text, /^pack reserves-none@2 on site local: unfit\b/, checked.text);
     assert.match(
       checked.text,
       /tool "synth" holds 1 of "synopsys": site local declares 0 of it, so a job of this tool could never launch there/,
@@ -218,7 +218,7 @@ test('the shipped pack declares the seat its Design Compiler tool holds, and the
     const checked = await himaCommand(host, h.workspace, `/hima pack check ${timingProbePackId} --site local`);
     for (const line of checked.text.split('\n')) t.diagnostic(line);
     assert.equal(checked.kind, 'success', checked.text);
-    assert.match(checked.text, /^pack opene902-timing-probe@1 on site local: fit\b/, checked.text);
+    assert.match(checked.text, /^pack opene902-timing-probe@2 on site local: fit\b/, checked.text);
     assert.match(checked.text, /^ {2}synth holds 1 of "Design-Compiler": site local declares 1$/m, checked.text);
 
     // And what a person is told about a Run of it: the seats the Site declared, and the licence its

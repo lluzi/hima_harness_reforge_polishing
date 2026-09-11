@@ -2,8 +2,8 @@
 // technical report — one Markdown file people read and one JSON file machines read — under the
 // Campaign workspace on the Site beside the results, with a hash of each on an `experience` record.
 //
-// PLS-07 retains this one report-open path through the desktop shell in driver mode (D42, ADR-0004), which is the one seam every
-// step-3 test boots through: the Campaign is started over the routes with the session the shell
+// PLS-07 retains this one report-open path through the desktop shell in driver mode;
+// the nonvisual report matrices use real Host tests: the Campaign is started over the routes with the session the shell
 // established, the report is read off the Site where the Site actually put it, and the section a
 // person reads is read off the window's own page.
 import { test } from 'node:test';
@@ -67,9 +67,9 @@ test('a Campaign that met its goal leaves both report files on the site, with th
     assert.ok(host.ok, JSON.stringify(host));
     const cookie = await d.cookie();
 
-    // 2.07 ns is tighter than the stand-in closes at (2.20), so the first generation misses and the
-    // chooser backs off; the second closes and meets the 2.30 ns goal.
-    const view = await startRun(host, cookie, { goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.07 } });
+    // 2.35 ns meets setup but misses the 2.30 ns goal; the shipped method steps to 2.30,
+    // where the second generation passes both rules.
+    const view = await startRun(host, cookie, { goal: { target_period_ns: 2.30 }, strategy: { periodNs: 2.35 } });
     assert.equal(view.run.status, 'ended-goal-met', JSON.stringify(view.run));
     const runId = view.run.id;
 

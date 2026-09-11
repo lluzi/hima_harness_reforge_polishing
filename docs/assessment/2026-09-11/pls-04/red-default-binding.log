@@ -1,0 +1,201 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/pack.test.ts
+local: 1 selected; 19 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+not ok 1 - the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+  ---
+  duration_ms: 10.193042
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls04-worktree/test/contract/pack.test.ts:59:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+        bind: {
+    +     guardBandNs: 0.05
+    -     stepNs: 0.05
+        },
+    +   chooser: 'timing-push',
+    -   chooser: 'over-constraining-push',
+        converge: {
+          band: 0.05,
+          generationLimit: 6,
+          generations: 1,
+          read: 'period'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    chooser: 'over-constraining-push'
+    bind:
+      stepNs: 0.05
+    converge:
+      read: 'period'
+      band: 0.05
+      generations: 1
+      generationLimit: 6
+  actual:
+    chooser: 'timing-push'
+    bind:
+      guardBandNs: 0.05
+    converge:
+      read: 'period'
+      band: 0.05
+      generations: 1
+      generationLimit: 6
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls04-worktree/test/contract/pack.test.ts:123:10)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data
+ok 2 - the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data
+  ---
+  duration_ms: 1.208292
+  type: 'test'
+  ...
+# Subtest: the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+ok 3 - the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+  ---
+  duration_ms: 2364.262083
+  type: 'test'
+  ...
+# pack opene902-timing-probe@1 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-bmsPpD/hima-home-fXYwfC/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-bmsPpD/hima-home-fXYwfC/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found
+#   clock-period-at-most@1: found
+# readers:
+#   dc-qor-report@1 reads qorReport: found
+# choosers:
+#   timing-push@1 chooses at next-period: found
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# Subtest: a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+ok 4 - a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+  ---
+  duration_ms: 149.707
+  type: 'test'
+  ...
+# Subtest: a pack whose tool runs a command the site does not allow fails the check, naming the command
+ok 5 - a pack whose tool runs a command the site does not allow fails the check, naming the command
+  ---
+  duration_ms: 124.99975
+  type: 'test'
+  ...
+# Subtest: a pack referencing a rule that does not exist fails the check, naming the rule
+ok 6 - a pack referencing a rule that does not exist fails the check, naming the rule
+  ---
+  duration_ms: 141.645
+  type: 'test'
+  ...
+# Subtest: a pack naming a reader that does not exist fails the check, naming the reader
+ok 7 - a pack naming a reader that does not exist fails the check, naming the reader
+  ---
+  duration_ms: 124.115958
+  type: 'test'
+  ...
+# Subtest: a pack naming a chooser that does not exist fails the check, naming the chooser
+ok 8 - a pack naming a chooser that does not exist fails the check, naming the chooser
+  ---
+  duration_ms: 119.207458
+  type: 'test'
+  ...
+# Subtest: a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+ok 9 - a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 136.861291
+  type: 'test'
+  ...
+# Subtest: a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+ok 10 - a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 119.310791
+  type: 'test'
+  ...
+# Subtest: a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+ok 11 - a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+  ---
+  duration_ms: 132.93325
+  type: 'test'
+  ...
+# Subtest: a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+ok 12 - a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+  ---
+  duration_ms: 112.070417
+  type: 'test'
+  ...
+# Subtest: preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+ok 13 - preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+  ---
+  duration_ms: 171.115167
+  type: 'test'
+  ...
+# Subtest: preparing the same campaign twice copies nothing the second time and says so
+ok 14 - preparing the same campaign twice copies nothing the second time and says so
+  ---
+  duration_ms: 254.767958
+  type: 'test'
+  ...
+# Subtest: a workspace that is there but carries no workspace.json is not prepared over the top of
+ok 15 - a workspace that is there but carries no workspace.json is not prepared over the top of
+  ---
+  duration_ms: 131.74125
+  type: 'test'
+  ...
+# Subtest: a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+ok 16 - a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+  ---
+  duration_ms: 228.760667
+  type: 'test'
+  ...
+# Subtest: a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+ok 17 - a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+  ---
+  duration_ms: 226.558291
+  type: 'test'
+  ...
+# Subtest: a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+ok 18 - a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+  ---
+  duration_ms: 170.512625
+  type: 'test'
+  ...
+# Subtest: a workspace.json that cannot be read as one is an answer, not a crash
+ok 19 - a workspace.json that cannot be read as one is an answer, not a crash
+  ---
+  duration_ms: 163.132583
+  type: 'test'
+  ...
+# Subtest: a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+ok 20 - a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+  ---
+  duration_ms: 166.393792
+  type: 'test'
+  ...
+# Subtest: the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+ok 21 - the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+  ---
+  duration_ms: 0.17075
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 20
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5193.870708
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 5.219 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

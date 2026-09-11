@@ -41,8 +41,8 @@ import type {
  *  this, and nothing at all when there is none (#54), so what a generation measures follows from what
  *  it was told to try. */
 const achievableNs = 2.2;
-/** The guard band `graph.yml` declares for the `timing-push` chooser. */
-const guardBandNs = 0.05;
+/** The step `graph.yml` declares for the `over-constraining-push` chooser. */
+const stepNs = 0.05;
 /** What the stand-in's report states for a generation asked for this period: the period back, and
  *  the setup slack it computed, both to the two decimals Design Compiler prints. */
 const reportedAt = (periodNs: number): { readonly periodNs: number; readonly slackNs: number } => ({
@@ -133,12 +133,12 @@ async function assertOneGeneration(host: InProcessHost, h: HimaHome, runId: stri
   const decided = decisions(host, runId);
   assert.equal(decided.length, 1, 'one decision');
   assert.equal(decided[0]!.nodeId, 'next-period');
-  assert.equal(decided[0]!.chooser, 'timing-push');
+  assert.equal(decided[0]!.chooser, 'over-constraining-push');
   assert.equal(decided[0]!.writer, 'executor');
   assert.deepEqual(decided[0]!.cites, [ruled[0]!.id, ruled[1]!.id, observed[0]!.id], 'the verdicts it weighed and the observation it read');
   assert.deepEqual(
     decided[0]!.rationale,
-    { period: measured.periodNs, slack: measured.slackNs, guardBandNs },
+    { period: measured.periodNs, slack: measured.slackNs, stepNs },
     'the numbers it used, named as the chooser file names them, so the choice can be re-derived from the ledger alone',
   );
 }
@@ -174,8 +174,8 @@ test('a run on the local site executes launch, read, judge, decide in one genera
     assert.equal(run.currentNode, 'next-period', 'the run ended where the decision was made');
     assert.deepEqual(run.goal, { target_period_ns: 2.0 }, 'the goal is what the run was started with');
     assert.deepEqual(run.strategy, { periodNs: 2.0 }, 'the strategy is still the one that ran: the next was never opened');
-    // FAIL: the next period is the period plus what it missed by, plus the guard band.
-    assert.deepEqual(decisions(host, runId)[0]!.chosen, { strategy: { periodNs: 2.25 } }, '2.00 + 0.20 + 0.05');
+    // FAIL: the next period is the period plus what it missed by, minus the exploration step.
+    assert.deepEqual(decisions(host, runId)[0]!.chosen, { strategy: { periodNs: 2.15 } }, '2.00 + 0.20 - 0.05');
     assert.equal(run.meters?.jobsLaunched, 1);
     assert.equal(run.meters?.attempts, 4, 'one attempt at each of the four nodes');
     assert.ok((run.meters?.elapsedMs ?? 0) > 0, 'the time meter moved');
@@ -264,7 +264,7 @@ test('a run of a pack naming a chooser this harness does not ship is refused bef
     // The pack the repository ships, varied in one place: its explore node names a chooser id no
     // `choosers/` file declares. `/hima pack check` catches it, and so does the run that would
     // otherwise copy the flow, burn a licence-minute, judge the report, and only then find out.
-    await writePackVariant(packsDirOf(h), 'unknown-chooser-run', [], [['      chooser: timing-push', '      chooser: no-such-chooser']]);
+    await writePackVariant(packsDirOf(h), 'unknown-chooser-run', [], [['      chooser: over-constraining-push', '      chooser: no-such-chooser']]);
     const started = await himaCommand(host, h.workspace, '/hima run unknown-chooser-run --site local --goal target_period_ns=2.0 --set periodNs=2.0', siteCommandTimeoutMs);
     assert.equal(started.kind, 'error', started.text);
     assert.match(started.text, /unfit/, started.text);
@@ -616,7 +616,7 @@ test('POST /hima/api/runs starts a run behind the session fence, and the run vie
     assert.equal(view.verdicts.length, 2);
     assert.deepEqual(view.refusals, []);
     assert.ok(view.decision, 'the run view carries the decision');
-    assert.deepEqual(view.decision.chosen, { strategy: { periodNs: 2.25 } });
+    assert.deepEqual(view.decision.chosen, { strategy: { periodNs: 2.15 } });
     assert.deepEqual(view.decision.cites, view.verdicts.map((v) => v.recordId).concat(view.observations[0]!.recordId));
 
     // The third face refuses the same numbers in the same words as the other two.
@@ -686,7 +686,7 @@ test('/hima status reports the run\'s status, its current node, every node state
     assert.match(status.text, /^ {4}1 job launched, at most 1 job at a time$/m, status.text);
     assert.match(status.text, /^ {4}next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far$/m, status.text);
     assert.match(status.text, /^ {4}ended by the generation limit$/m, status.text);
-    assert.match(status.text, /^ {2}decision: next-period chose clock period 2\.25 ns by timing-push/m, status.text);
+    assert.match(status.text, /^ {2}decision: next-period chose clock period 2\.15 ns by over-constraining-push/m, status.text);
 
     const unknown = await himaCommand(host, h.workspace, '/hima status run-no-such-run');
     assert.equal(unknown.kind, 'error', unknown.text);

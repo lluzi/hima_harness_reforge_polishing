@@ -79,7 +79,7 @@ describe('preparing a campaign workspace on the reference site', { skip: probeSi
         const checked = await himaCommand(host, h.workspace, `/hima pack check ${timingProbePackId} --site linglong`, siteCommandTimeoutMs);
         for (const line of checked.text.split('\n')) t.diagnostic(line);
         assert.equal(checked.kind, 'success', checked.text);
-        assert.match(checked.text, /^pack opene902-timing-probe@1 on site linglong: fit\b/, checked.text);
+        assert.match(checked.text, /^pack opene902-timing-probe@2 on site linglong: fit\b/, checked.text);
         assert.match(checked.text, /^ {2}flowRoot = \/data\/eda\/project\/design_zoo$/m, checked.text);
         assert.match(checked.text, /^ {2}synth \(tools\/synth\.sh\): "make" is an allowed wrapper of site linglong$/m, checked.text);
 

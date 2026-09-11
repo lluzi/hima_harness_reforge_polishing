@@ -164,10 +164,10 @@ test('the run view carries the whole path of a run started over HTTP: nodes, job
     const decision = view.decision;
     assert.ok(decision, 'the explore node decided');
     assert.equal(decision.nodeId, 'next-period');
-    assert.equal(decision.chooser, 'timing-push');
+    assert.equal(decision.chooser, 'over-constraining-push');
     assert.ok('strategy' in decision.chosen, `this generation missed its goal, so the chooser chose a next strategy: ${JSON.stringify(decision.chosen)}`);
     assert.equal(view.run.strategy?.periodNs, 2.0, 'the row still stands at the strategy it ran: the next generation it would have opened was not allowed');
-    assert.equal(decision.chosen.strategy.periodNs, 2.25, 'and the strategy it would have tried is on the decision');
+    assert.equal(decision.chosen.strategy.periodNs, 2.15, 'and the strategy it would have tried is on the decision');
     assert.ok(Object.keys(decision.rationale).length > 0, 'with the named numbers it chose from');
     const known = new Set([...view.observations.map((o) => o.recordId), ...view.verdicts.map((v) => v.recordId)]);
     assert.deepEqual(decision.cites.filter((id) => !known.has(id)), [], `every id the decision cites is a record this same view carries: ${JSON.stringify(decision.cites)}`);

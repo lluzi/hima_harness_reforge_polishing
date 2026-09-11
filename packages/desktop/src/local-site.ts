@@ -453,7 +453,7 @@ export async function seedLocalSite(req: SeedLocalSiteRequest): Promise<SeededLo
   const localDir = path.join(home, LOCAL_DIR);
   const flow = await writeStandinFlow({ root: path.join(localDir, 'standin-flow') });
   did.push(`local site: generated the stand-in flow at ${flow.root}`);
-  did.push(`local site: the stand-in computes its own qor report per generation, closing at ${flow.achievableNs.toFixed(2)} ns`);
+  did.push(`local site: the stand-in computes its own qor report per generation, closing at ${flow.achievableNs.toFixed(2)} ns; these are simulated values, not measured EDA results`);
 
   const workspaceRoot = path.join(localDir, 'workspace');
   if (existsSync(workspaceRoot)) {

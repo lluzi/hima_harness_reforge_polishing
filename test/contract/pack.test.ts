@@ -121,13 +121,13 @@ test('the shipped pack is a folder of plain files whose graph is act, act, judge
   };
   const explore = graphNodes.nodes.find((n) => n.kind === 'explore');
   assert.deepEqual(explore?.parameters, {
-    chooser: 'timing-push',
-    bind: { guardBandNs: 0.05 },
+    chooser: 'over-constraining-push',
+    bind: { stepNs: 0.05 },
     converge: { read: 'period', band: 0.05, generations: 1, generationLimit: 6 },
   });
 });
 
-test('the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data', async () => {
+test('the legacy timing-push chooser is a YAML file beside the judge rules, and states its rule as data', async () => {
   // D38: a pack author who wants a different push rule edits a file next to `rules/`, not
   // TypeScript. That the file is there and readable as data is the whole point, so it is asserted.
   const at = path.join(repoRoot, 'packages/harness/choosers/timing-push.yml');
@@ -170,7 +170,7 @@ test('the check on a site that binds every input reports the inputs, the tool, t
     // What a person sees, in the suite's own output: this is the demo of the ticket.
     for (const line of checked.text.split('\n')) t.diagnostic(line);
     assert.equal(checked.kind, 'success', checked.text);
-    assert.match(checked.text, /^pack opene902-timing-probe@1 on site local: fit\b/, checked.text);
+    assert.match(checked.text, /^pack opene902-timing-probe@2 on site local: fit\b/, checked.text);
     assert.match(checked.text, new RegExp(`flowRoot = ${flowRoot.replaceAll('/', '\\/')}$`, 'm'), checked.text);
     assert.match(checked.text, /^ {2}design = opene902$/m, checked.text);
     assert.match(checked.text, new RegExp(`workspaceRoot = ${h.workspace.replaceAll('/', '\\/')}$`, 'm'), checked.text);
@@ -194,7 +194,7 @@ test('a site that binds only some of the pack\'s inputs fails the check, naming 
   try {
     const checked = await himaCommand(host, h.workspace, `/hima pack check ${timingProbePackId} --site local`);
     assert.equal(checked.kind, 'error', checked.text);
-    assert.match(checked.text, /^pack opene902-timing-probe@1 on site local: unfit\b/, checked.text);
+    assert.match(checked.text, /^pack opene902-timing-probe@2 on site local: unfit\b/, checked.text);
     assert.match(checked.text, /input "flowRoot" is not bound by site local/, checked.text);
     assert.match(checked.text, /input "workspaceRoot" is not bound by site local/, checked.text);
     assert.doesNotMatch(checked.text, /input "design" is not bound/, `the one input it did bind is not an error: ${checked.text}`);
@@ -217,7 +217,7 @@ test('a pack whose tool runs a command the site does not allow fails the check, 
     assert.match(varied, /- curl/, 'the shipped contract is the one being varied');
     const checked = await himaCommand(host, h.workspace, '/hima pack check reaches-for-curl --site local');
     assert.equal(checked.kind, 'error', checked.text);
-    assert.match(checked.text, /^pack reaches-for-curl@1 on site local: unfit\b/, checked.text);
+    assert.match(checked.text, /^pack reaches-for-curl@2 on site local: unfit\b/, checked.text);
     assert.match(checked.text, /"curl" is not an allowed wrapper of site local/, checked.text);
   } finally {
     await dispose();
@@ -261,7 +261,7 @@ test('a pack naming a chooser that does not exist fails the check, naming the ch
   try {
     // A chooser is data referenced by id, exactly as a rule is (D38), so an id this harness ships no
     // file for is caught by the same check — before a Campaign exists, not after a licence-minute.
-    await writePackVariant(packsDirOf(h), 'unknown-chooser', [], [['      chooser: timing-push', '      chooser: no-such-chooser']]);
+    await writePackVariant(packsDirOf(h), 'unknown-chooser', [], [['      chooser: over-constraining-push', '      chooser: no-such-chooser']]);
     const checked = await himaCommand(host, h.workspace, '/hima pack check unknown-chooser --site local');
     assert.equal(checked.kind, 'error', checked.text);
     assert.match(checked.text, /no-such-chooser/, checked.text);
@@ -276,12 +276,12 @@ test('a pack binding a negative value to the chooser\'s parameter fails the chec
   if (!local) return;
   const { h, host, dispose } = local;
   try {
-    // A negative guard band inverts what the guard band is for: a PASS would push past the edge the
-    // tool just reported instead of leaving margin on the table.
-    await writePackVariant(packsDirOf(h), 'negative-guard-band', [], [['        guardBandNs: 0.05', '        guardBandNs: -0.1']]);
-    const checked = await himaCommand(host, h.workspace, '/hima pack check negative-guard-band --site local');
+    // A negative step reverses the exploration: a PASS would loosen the period instead of
+    // testing one step tighter. The declaration check must reject that parameter.
+    await writePackVariant(packsDirOf(h), 'negative-step', [], [['        stepNs: 0.05', '        stepNs: -0.1']]);
+    const checked = await himaCommand(host, h.workspace, '/hima pack check negative-step --site local');
     assert.equal(checked.kind, 'error', checked.text);
-    assert.match(checked.text, /guardBandNs/, checked.text);
+    assert.match(checked.text, /stepNs/, checked.text);
     assert.match(checked.text, /-0\.1/, checked.text);
   } finally {
     await dispose();
@@ -293,10 +293,10 @@ test('a pack whose explore node binds nothing for the chooser\'s parameter fails
   if (!local) return;
   const { h, host, dispose } = local;
   try {
-    await writePackVariant(packsDirOf(h), 'unbound-guard-band', [], [['      bind:\n        guardBandNs: 0.05', '      bind: {}']]);
-    const checked = await himaCommand(host, h.workspace, '/hima pack check unbound-guard-band --site local');
+    await writePackVariant(packsDirOf(h), 'unbound-step', [], [['      bind:\n        stepNs: 0.05', '      bind: {}']]);
+    const checked = await himaCommand(host, h.workspace, '/hima pack check unbound-step --site local');
     assert.equal(checked.kind, 'error', checked.text);
-    assert.match(checked.text, /guardBandNs/, checked.text);
+    assert.match(checked.text, /stepNs/, checked.text);
     assert.match(checked.text, /binds no value/, checked.text);
   } finally {
     await dispose();
@@ -373,7 +373,7 @@ test('preparing a campaign on the local site creates its workspace, copies the f
     // container name a later cleanup would need.
     const file = JSON.parse(await readFile(path.join(workspace, 'workspace.json'), 'utf8'));
     assert.equal(file.campaign, campaign);
-    assert.deepEqual(file.pack, { id: timingProbePackId, version: '1' });
+    assert.deepEqual(file.pack, { id: timingProbePackId, version: '2' });
     assert.equal(file.site, 'local');
     assert.equal(file.design, 'opene902');
     assert.equal(file.flowRoot, flowRoot);

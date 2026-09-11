@@ -1,0 +1,305 @@
+{
+  "base": "f0a5d4ab40ddb5f06894b13520bbeba6cea1bd96",
+  "baselineAssertions": 27,
+  "currentAssertions": 34,
+  "missing": [],
+  "mapping": [
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 57,
+      "text": "assert.equal(started.status, 200, text)",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 57
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 76,
+      "text": "assert.deepEqual(\n      pushed.generations.map((r) => r.observedPeriodNs),\n      [2.3, 2.35, 2.4, 2.45, 2.5, 2.55],\n      `the asked period walks away from the achievable one by exactly the guard band: ${JSON.stringify(pushed.generations.map((r) => r.observedPeriodNs))}`,\n    )",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 77
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 81,
+      "text": "assert.deepEqual(\n      pushed.generations.map((r) => r.slackNs),\n      [0, 0, 0, 0, 0, 0],\n      'because a met period reports no margin at all, which is the whole of D45',\n    )",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 82
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 86,
+      "text": "assert.equal(pushed.run.status, 'ended-budget-exhausted', `and never ended-converged: ${JSON.stringify(pushed.run)}`)",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 87
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 87,
+      "text": "assert.equal(pushed.run.meters?.endedBy, 'generation-limit', 'the meter that ended it is what it was allowed, not what it learned')",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 88
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 88,
+      "text": "assert.equal(pushed.run.generation, 6, 'all six generations of the pack were spent')",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 89
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 97,
+      "text": "assert.deepEqual(\n      converged.generations.map((r) => r.observedPeriodNs),\n      [2.3, 2.25, 2.2, 2.15, 2.15],\n      `the asked period walks in one step at a time and settles one step below what the tool violated at: ${JSON.stringify(converged.generations.map((r) => r.observedPeriodNs))}`,\n    )",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 98
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 102,
+      "text": "assert.deepEqual(\n      converged.generations.map((r) => r.slackNs),\n      [0, 0, 0, -0.05, -0.05],\n      'three met periods reporting nothing, then the violation that states where the design closes',\n    )",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 103
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 107,
+      "text": "assert.equal(converged.run.status, 'ended-converged', `the exploration reached an ending of its own: ${JSON.stringify(converged.run)}`)",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 108
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 108,
+      "text": "assert.equal(converged.run.generation, 5, 'at the fifth generation, inside the six the pack allows')",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 109
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 109,
+      "text": "assert.ok(converged.decision, 'the ending is a decision, on record')",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 110
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 110,
+      "text": "assert.deepEqual(\n      converged.decision.chosen,\n      { converged: { read: 'period', band: 0.05, generations: 1, values: [2.15, 2.15] } },\n      `the values compared are the two that did not move: ${JSON.stringify(converged.decision.chosen)}`,\n    )",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 111
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 119,
+      "text": "assert.deepEqual(\n      last.verdicts.map((v) => `${v.ruleId}=${v.outcome}`),\n      ['setup-wns-all-nonnegative=FAIL', 'clock-period-at-most=FAIL'],\n      `the generation it converged on is the one that violated: ${JSON.stringify(last.verdicts)}`,\n    )",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 120
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 134,
+      "text": "assert.equal(met.run.status, 'ended-goal-met', `the goal-met clause ended it: ${JSON.stringify(met.run)}`)",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 138
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 135,
+      "text": "assert.equal(met.run.generation, 2, 'at the second generation, one step in from where it started')",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 139
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 136,
+      "text": "assert.deepEqual(\n      met.generations.map((r) => r.observedPeriodNs),\n      [START_NS, REACHABLE_NS],\n      `one step in and no further: ${JSON.stringify(met.generations.map((r) => r.observedPeriodNs))}`,\n    )",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 140
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 141,
+      "text": "assert.deepEqual(\n      met.generations.at(-1)!.verdicts.map((v) => `${v.ruleId}=${v.outcome}`),\n      ['setup-wns-all-nonnegative=PASS', 'clock-period-at-most=PASS'],\n      `both rules passed, which is the pair that clause is about: ${JSON.stringify(met.generations.at(-1)!.verdicts)}`,\n    )",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 145
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 146,
+      "text": "assert.ok(met.decision, 'and the ending is a decision, on record')",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 150
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin.test.ts",
+      "line": 147,
+      "text": "assert.deepEqual(met.decision.chosen, { goalMet: true }, `the clause's own word, and no next Strategy: ${JSON.stringify(met.decision.chosen)}`)",
+      "current": [
+        {
+          "file": "test/contract/honest-standin.test.ts",
+          "line": 151
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin-window.test.ts",
+      "line": 12,
+      "text": "assert.ok(host.ok, JSON.stringify(host))",
+      "current": [
+        {
+          "file": "test/contract/honest-standin-window.test.ts",
+          "line": 12
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin-window.test.ts",
+      "line": 15,
+      "text": "assert.ok(opened.ok, JSON.stringify(opened))",
+      "current": [
+        {
+          "file": "test/contract/honest-standin-window.test.ts",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin-window.test.ts",
+      "line": 22,
+      "text": "assert.ok(clicked.ok, JSON.stringify(clicked))",
+      "current": [
+        {
+          "file": "test/contract/honest-standin-window.test.ts",
+          "line": 23
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin-window.test.ts",
+      "line": 24,
+      "text": "assert.ok(status.ok, `wait run-status: ${JSON.stringify(status)}`)",
+      "current": [
+        {
+          "file": "test/contract/honest-standin-window.test.ts",
+          "line": 25
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin-window.test.ts",
+      "line": 26,
+      "text": "assert.ok(decision.ok, JSON.stringify(decision))",
+      "current": [
+        {
+          "file": "test/contract/honest-standin-window.test.ts",
+          "line": 27
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin-window.test.ts",
+      "line": 27,
+      "text": "assert.ok(\n      decision.text.includes('converged: period moved by less than 0.05 over 1 generation, at 2.15 then 2.15'),\n      `the card says the rule in words, at the period it settled on: ${decision.text}`,\n    )",
+      "current": [
+        {
+          "file": "test/contract/honest-standin-window.test.ts",
+          "line": 28
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin-window.test.ts",
+      "line": 31,
+      "text": "assert.ok((await theOneRunId(d)).startsWith('run-'), 'the form opens the Run it created')",
+      "current": [
+        {
+          "file": "test/contract/honest-standin-window.test.ts",
+          "line": 32
+        }
+      ]
+    },
+    {
+      "file": "test/contract/honest-standin-window.test.ts",
+      "line": 32,
+      "text": "assert.deepEqual(d.unexpectedStdout(), [])",
+      "current": [
+        {
+          "file": "test/contract/honest-standin-window.test.ts",
+          "line": 33
+        }
+      ]
+    }
+  ]
+}

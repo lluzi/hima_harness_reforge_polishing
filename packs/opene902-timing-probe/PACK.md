@@ -1,7 +1,6 @@
 # opene902 timing probe
 
-A HimaPack that answers one question about one design: **how tight a clock period will Design
-Compiler actually close on?** It synthesizes `opene902` at a chosen period in a workspace of its
+A HimaPack that answers one question about one design: **which tested clock periods satisfy setup timing, and what should be tried next?** It synthesizes `opene902` at a chosen period in a workspace of its
 own, reads the qor report the run produced, judges it against the setup constraint and the goal, and
 chooses the next period to try from what it measured — never from what it hoped. Then it goes round
 again with that period, and keeps going until the goal is met, the periods stop moving, or the
@@ -12,6 +11,10 @@ strategy knob, one tool, one report, two rules, one chooser, one loop. Everythin
 need — more knobs, more reports, a drill-down loop inside this one — is the same parts with more in
 each.
 
+Method version **2** changes only the default chooser binding from the legacy `timing-push`
+guard band to the existing `over-constraining-push` step. Graph and contract both declare version 2.
+The reference graph topology, tools, reader and Judge rules remain unchanged.
+
 ## What one generation does
 
 1. **`synthesize`** (act) runs `tools/synth.sh` on the Site: `make … synth` inside the Campaign's own
@@ -21,7 +24,7 @@ each.
    `dc-qor-report@1` reader, which turns it into typed values: setup WNS, setup TNS, the clock
    period the run actually used, hold WNS, and cell area.
 3. **`judge`** (judge) applies two rules to those values and writes a verdict for each.
-4. **`next-period`** (explore) runs the `timing-push` chooser over the verdicts and the values and
+4. **`next-period`** (explore) runs the `over-constraining-push` chooser over the verdicts and the values and
    records the next strategy with its reasoning.
 
 Then, if the decision was a next period, the Run follows the `revisit` edge from `next-period` back
@@ -53,13 +56,10 @@ A Campaign of this pack ends in one of four ways, and the run row says which:
     generationLimit: 6  # this pack's default allowance, which a person may override
   ```
 
-  The band is the guard band this node also binds: one generation moving the *measured* clock period
-  by less than the margin this pack asks a closed design to keep is a flow sitting at about the
-  tightest period it closes at, and asking it for much the same period again would buy nothing. One
-  Design Compiler tick — 0.01 ns, the two decimals the tool prints a period at — is the resolution of
-  the instrument and not a statement about convergence: a band of one tick asks a real flow to repeat
-  a period exactly, and a design that oscillates by a hundredth would spend its whole generation
-  limit rather than end on what it learned.
+  The 0.05 ns band is the exploration step. This ending states only that consecutive
+  measured periods moved by less than that band. It does **not** prove the Goal was met,
+  the last generation met setup, or a global optimum was found. A repeated violation may
+  converge; use the recorded verdicts to distinguish it from a measured closed result.
 
   The decision record carries the whole rule — the read, the band, the generations counted, and the
   periods compared — so a person can re-derive the ending from one record, and `/hima status` and the
@@ -74,14 +74,22 @@ learned, the limit is what the Campaign was allowed to spend learning it. `conve
 above is this pack's default; `/hima run … --generations <n>` (and the same field on the start route)
 overrides it, and what the Run is actually held to is on its Budget from the moment it opens.
 
-Against the local stand-in flow, which closes at 2.20 ns and reports setup slack the way Design
-Compiler does — `0.00` for any period it meets, the shortfall for one it does not — a Campaign at an
-unreachable `target_period_ns=2.0`, started at `--set periodNs=2.0`, reaches neither of the first two
-endings. 2.00 ns misses by 0.20 and the chooser backs off to 2.25; 2.25 is met, so the report states
-no margin at all; the push clause computes `2.25 − 0.00 + 0.05` and asks for 2.30, and the period
-walks away from the achievable one by a guard band a generation until the sixth is spent —
-`ended-budget-exhausted`, by `generation-limit`. That is not the stand-in being unkind. It is what
-this pack's chooser does on the real tool, and the section below says so.
+The local Site generates **stand-in** reports, with `setup_wns = min(0, period − 2.20)` ns.
+These are controlled test numbers, not measured Design Compiler or silicon improvements.
+From 2.30 ns, method 2 gives the following bounded examples:
+
+| Goal | Measured periods (ns) | Ending |
+| --- | --- | --- |
+| 2.25 ns | 2.30, 2.25 | goal met; the last generation passes both rules |
+| 2.00 ns | 2.30, 2.25, 2.20, 2.15, 2.15 | converged; the last two generations violate setup and the Goal remains unmet |
+| 2.00 ns, one generation allowed, starting at 2.00 | 2.00 | generation limit; no measured setup-PASS result exists |
+
+For the converged example, the best **measured setup-PASS** period is 2.20 ns. The 2.15 ns
+requested period is a violation, and `period + |slack|` is a hypothesis about a possible period,
+not a new measurement. An unexecuted next Strategy must never be included among measured results.
+If there is no completed setup-PASS observation, there is no measured closed result to report.
+The report's generation rows, verdicts, observation IDs and raw qor/logs provide the evidence;
+this Pack does not add a second best-result computation to the Harness.
 
 ## The goal template
 
@@ -141,57 +149,34 @@ The period a generation was judged on is read back from the report (`clock_perio
 from the number that was asked for. A tool that silently clamped the period, or a reused netlist from
 an earlier run, would otherwise be judged as if it had honoured the request.
 
-## The chooser and its guard band
+## The chooser and its exploration step
 
-`timing-push`, with a **guard band of 0.05 ns**. Given the setup verdict, the goal verdict, and the
-observed `clock_period` and `setup_wns`:
+`over-constraining-push` uses **stepNs = 0.05 ns**. Given the recorded setup verdict,
+goal verdict, `clock_period` and `setup_wns`:
 
-- **Setup PASS** — the design closed with `setup_wns` to spare. Push: the next period is
-  `clock_period − setup_wns + guardBand`. Taking the whole slack back would land exactly on the edge
-  the tool just reported, which is where estimation error lives; the guard band is what is left on
-  the table on purpose.
-- **Setup FAIL** — the design missed by `|setup_wns|`. Back off: the next period is
-  `clock_period + |setup_wns| + guardBand`.
-- **Both PASS** — the design closed *and* met the goal. There is no next strategy; the decision is
-  that the goal is met.
+- **Both PASS**: end goal-met; do not propose another experiment.
+- **Setup PASS, Goal not met**: try `clock_period − stepNs`. A met constraint does not
+  need to expose positive slack for exploration to continue.
+- **Setup FAIL**: try `clock_period + |setup_wns| − stepNs`. This is a proposed experiment,
+  not evidence that the design closes at the inferred period.
 
-Convergence is weighed between those: the goal-met clause first, then the `converge` block above over
-the periods the earlier generations measured, then the clause's next period. The chooser file says
-nothing about convergence — a clause sees one generation, and "successive generations stopped moving"
-is a statement about several, so the pack declares it and the harness evaluates it.
+Goal-met is checked first, then the Pack's convergence rule, then a next Strategy.
+The chooser remains deterministic YAML in `packages/harness/choosers/over-constraining-push.yml`;
+no model participates in this sample's strategy selection. The Ledger decision records its
+inputs, parameters and cited verdicts/observation. Broader AI research belongs to the later Pack.
 
-The chooser is pack data and deterministic: no model takes part in it, and the same verdicts and
-values always produce the same next period. It is referenced by id, exactly as this pack's judge
-rules are, and the file it names — `choosers/timing-push.yml` beside `rules/` — states the three
-clauses above as data a person can read and change without touching TypeScript. What this pack
-chooses is *which* chooser runs and what guard band it binds, the lines above in `graph.yml`, because
-the guard band is the pack author's judgement and not the chooser's. The decision record cites the
-two verdicts and the observation it read, and carries the numbers it used, so a person can re-derive
-the next period from the ledger alone.
+### Why the default changed
 
-### `timing-push` is a stand-in for a method, not the method
+The historical Step 3 reference-site trace reported zero setup slack at met constraints.
+The old `timing-push` PASS clause therefore increased the requested period by 0.05 ns every
+generation. On the calibrated stand-in, starting at 2.30 ns produces 2.30, 2.35, 2.40,
+2.45, 2.50, 2.55 and stops at the generation limit. That failure remains an explicitly
+named `legacy-timing-push-probe` test variant; the old chooser file is retained unchanged.
 
-Say it plainly: **this pack's chooser does not converge on Design Compiler.**
-
-The Setup PASS clause above asks a met period how much margin it had. Design Compiler does not answer
-that question. It stops optimizing the moment the constraint it was given is satisfied, so every
-period it meets comes back with a setup slack of exactly `0.00` — a statement that the constraint was
-met, and not a measurement of anything. `clock_period − 0.00 + guardBand` is therefore one guard band
-*looser* than the period that just passed, so a Campaign on this clause loosens the period every
-generation and stops learning nothing. The step-3 acceptance on the reference site recorded precisely
-that: six generations walking from 2.28 ns out to 2.53 ns, no convergence and no answer (D45,
-`docs/validation/2026-09-10-step3-acceptance-attempt1-failed.md`).
-
-The method that does work never reads the margin of a met period. It over-constrains on purpose — it
-asks for one step tighter than it believes is possible — and reads the violation, because a violated
-period is the one thing the tool states a number about: `clock_period + |setup_wns|` is the period
-the design actually closes at, so asking for one step less than that brings the next generation back
-to the same violation and the same request, which is convergence with the fact on record. The harness
-ships that method beside this one as the chooser `over-constraining-push`, and the step-4 pack carries
-it.
-
-This pack keeps `timing-push` as it is. It is what the step-3 record was written against, and a
-pack's method is the pack's to state: what is corrected here is the description, not the file.
+Version 2 avoids relying on positive margin in that case. The local examples prove the
+mechanism under their stated arithmetic, not a universal property of Design Compiler, all
+designs or synthesis settings. Real Site efficacy requires a separate measured validation.
+Historical records belong to their original method version and must not be relabeled as v2.
 
 ## What a Site must bind
 
@@ -249,7 +234,7 @@ What the Markdown holds is this pack's own story: the ending and why, the goal t
 the Site it ran on, every Budget meter against its bound, one row per generation with the period it
 asked for, the period and slack it measured, its verdicts and its decision, then a paragraph per
 generation saying the same in sentences — *It asked the flow for 2.25 ns and measured 2.25 ns, with
-0.05 ns of setup slack. HimaJudge found PASS on setup-wns-all-nonnegative, FAIL on
+0.00 ns of setup slack. HimaJudge found PASS on setup-wns-all-nonnegative, FAIL on
 clock-period-at-most. The decision was …* — and finally the path the Run took, any Hard blockers,
 and any cancel. So the file answers, without the ledger, the two questions a pack author is asked
 about a Campaign that has finished: what did it learn, and why did it stop.

@@ -202,7 +202,7 @@ test('a host disposed while the job sleeps is replaced by one that finds the sam
     assert.equal(run.meters?.endedBy, 'generation-limit');
     assert.deepEqual(
       recordsOf(second, runId).findLast((r) => r.type === 'decision')?.chosen,
-      { strategy: { periodNs: 2.25 } },
+      { strategy: { periodNs: 2.15 } },
       'and chose the next strategy, as an unbroken run does',
     );
     assert.equal(run.meters?.jobsLaunched, 1);

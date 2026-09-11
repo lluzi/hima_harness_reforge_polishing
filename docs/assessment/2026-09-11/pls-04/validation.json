@@ -1,0 +1,86 @@
+{
+  "base": "f0a5d4ab40ddb5f06894b13520bbeba6cea1bd96",
+  "counts": {
+    "red-default-binding": {
+      "tests": 21,
+      "pass": 20,
+      "fail": 1,
+      "skipped": 0
+    },
+    "targeted-local": {
+      "tests": 27,
+      "pass": 26,
+      "fail": 1,
+      "skipped": 0
+    },
+    "check-local": {
+      "tests": 156,
+      "pass": 156,
+      "fail": 0,
+      "skipped": 0
+    },
+    "default-window": {
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "skipped": 0
+    },
+    "variant-check": {
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "codeFiles": [
+    "packages/desktop/src/local-site.ts",
+    "packs/opene902-timing-probe/PACK.md",
+    "packs/opene902-timing-probe/contract.yml",
+    "packs/opene902-timing-probe/graph.yml",
+    "scripts/acceptance-step2.ts",
+    "scripts/acceptance-step3.ts",
+    "scripts/workbench-screenshot.ts",
+    "test/contract/experience.test.ts",
+    "test/contract/fabric-licences.test.ts",
+    "test/contract/fabric-restart.test.ts",
+    "test/contract/fabric.test.ts",
+    "test/contract/fork-join.test.ts",
+    "test/contract/honest-standin-window.test.ts",
+    "test/contract/honest-standin.test.ts",
+    "test/contract/loop.test.ts",
+    "test/contract/pack.live.test.ts",
+    "test/contract/pack.test.ts",
+    "test/contract/support/pack.ts",
+    "test/contract/view-run.test.ts"
+  ],
+  "hashes": {
+    "packages/desktop/src/local-site.ts": "41ecfac67562365b13d5d663812a40a2b88d6d10401a9f003e98635e4c991484",
+    "packs/opene902-timing-probe/PACK.md": "f7bc84c29ef1482dfce7b541b4fa280d22fdfd1a844a7cc6ada272f3a0c413e3",
+    "packs/opene902-timing-probe/contract.yml": "185a52de20d8aac484025d9d3e211339df3e868d82ca704f54cf90d08d734418",
+    "packs/opene902-timing-probe/graph.yml": "9d331a5d78327392adb0ffa7afe145ffd934124cc4588d2e32cae8f69dfe5322",
+    "scripts/acceptance-step2.ts": "366361af4fb1573c16ad8436cb7c8e0e7582edbe9ca3bb525af470447ec54377",
+    "scripts/acceptance-step3.ts": "3a9e76e5a221124bfb2e39eb3f28d4f6fe69ed02bb43da5911521285c8c4b583",
+    "scripts/workbench-screenshot.ts": "cae2f5951042ec5886c3dcb12c30cb17be78597034cfbf49a874c7a4748eaff8",
+    "test/contract/experience.test.ts": "d000da7d4a75eaaccb591f50375bf80223ac77266d90202889b3cc27d4a886a8",
+    "test/contract/fabric-licences.test.ts": "bf65d53be80b1f6536dbf32b96e1c5f3060e9668ca3d8cc1eafef92fef2b5cc9",
+    "test/contract/fabric-restart.test.ts": "ea43b654e8870ab308ee3200ab781fd685d130d45fdf0839d199b6e9fa416444",
+    "test/contract/fabric.test.ts": "fa6703793495f4da88512c2d7bac0ec7c1540a6d39abd63287b8f24fb1410b8c",
+    "test/contract/fork-join.test.ts": "a746f41e349f28500a71e728f1c55875863f9ab3dba1e378c2711b5b03b7b41e",
+    "test/contract/honest-standin-window.test.ts": "9737f13c2989e6c6e13e1130cfa1acad10ee308f1c1a8c59789cd2d76be7a659",
+    "test/contract/honest-standin.test.ts": "736fe69bfbbb4fde7e4452ba2a84f63230c1d42b6169529fe1be7e0510e8d05b",
+    "test/contract/loop.test.ts": "7c6833cc5141f5de0bb86f8655b17850b7631ecd1671d67f644e26a0e72603d5",
+    "test/contract/pack.live.test.ts": "86f7088cfa3cf403f9ac473ca53448fa16f0e37484be178098bc9806bed617d1",
+    "test/contract/pack.test.ts": "3e3bf66afc1706572e27b959e6888a1da4ac3159dea3384334c78fc63c791842",
+    "test/contract/support/pack.ts": "f539763954489f9059231c118bdc4b0fc6cfa479c96bd7b0f21a3eec1dc3ce1f",
+    "test/contract/view-run.test.ts": "d76edff166228c176862f6e756c353df61cff69a989a7de31a6cd9305b16bbb3"
+  },
+  "productionEngineOrChooserChanges": false,
+  "realModelCalls": 0,
+  "realEdaJobs": 0,
+  "realSiteTests": "not run",
+  "desktopCasesExecuted": 1,
+  "remainingDesktopFiles": "unrun in this slice; relevant input/fixture adaptations statically checked",
+  "demoProvenancePageAndReportNote": "Root confirms implemented in shared PLS05/07 renderers; final integrated validation belongs to root.",
+  "gitDiffCheck": "pass",
+  "review": "Independent Spec/Standards: no blockers. Stale negative-step comment corrected; no behavioral change or repeated tests."
+}
