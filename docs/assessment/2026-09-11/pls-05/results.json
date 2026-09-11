@@ -1,0 +1,151 @@
+{
+  "baseline": "a9228de32b941f2658491c7ff32cba56c3542598",
+  "scope": "PLS-05 / #6",
+  "finalChecks": [
+    {
+      "command": [
+        "pnpm",
+        "run",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 3.755,
+      "log": "typecheck-complete.log"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/run-contract-tests.mjs",
+        "--check"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.032,
+      "log": "inventory.log"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.015,
+      "log": "diff-check.log"
+    }
+  ],
+  "runs": [
+    {
+      "stage": "red-empty",
+      "tests": 1,
+      "pass": 0,
+      "fail": 1,
+      "skipped": 0,
+      "exitCode": 1,
+      "elapsedSeconds": 3.666,
+      "log": "red-empty.log",
+      "sha256": "2d9359573a89b66537bcd610ce3dd2977cd672b66f251c6e32afe868f023c056"
+    },
+    {
+      "stage": "green-empty",
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "elapsedSeconds": 2.165,
+      "log": "green-empty.log",
+      "sha256": "10849d971d38b9dfbf82c821d9eb1cec873803d01533c0fc3e9b5f2255193fbc"
+    },
+    {
+      "stage": "red-check",
+      "tests": 2,
+      "pass": 1,
+      "fail": 1,
+      "skipped": 0,
+      "exitCode": 1,
+      "elapsedSeconds": 4.21,
+      "log": "red-check.log",
+      "sha256": "32372462952fedd222bfe4dce0fc72b635253c81e2daec42f00cf3b8b2c7016d"
+    },
+    {
+      "stage": "green-check",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "elapsedSeconds": 4.191,
+      "log": "green-check.log",
+      "sha256": "03f799bbabd361717d2942bfbf9105bdaa64b37289c0c57c14c5ab070ed8e894"
+    },
+    {
+      "stage": "local-matrix",
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "elapsedSeconds": 9.427,
+      "log": "local-matrix.log",
+      "sha256": "82401ff00f901fe3b6764be394d906139a02ffa1d453f977feb8831d0f5e34f9"
+    },
+    {
+      "stage": "red-race",
+      "tests": 1,
+      "pass": 0,
+      "fail": 1,
+      "skipped": 0,
+      "exitCode": 1,
+      "elapsedSeconds": 5.471,
+      "log": "red-race.log",
+      "sha256": "e3abe2107a4e454427d2f1a26f3bc0b1d16f0fe1f0fffff1cecaa962d23a188c"
+    },
+    {
+      "stage": "green-race",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "elapsedSeconds": 10.954,
+      "log": "green-race.log",
+      "sha256": "b8ab8d2170c0e3d072c579de852f732e1a2044055ca38d7bfe25e6a6717f41cb"
+    },
+    {
+      "stage": "local-final",
+      "tests": 35,
+      "pass": 35,
+      "fail": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "elapsedSeconds": 37.548,
+      "log": "local-final.log",
+      "sha256": "d6469f664e79e36a7e3bb53184087410e64f8e6aac29dad52c4513e31290bfba"
+    },
+    {
+      "stage": "desktop-final",
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "elapsedSeconds": 12.595,
+      "log": "desktop-final.log",
+      "sha256": "793af336a2742f78d36887534e4367c39f66c29d9f6dd3edd69a082cd3b581ee"
+    }
+  ],
+  "finalUniquePassingCases": 37,
+  "newCases": 5,
+  "desktopBootsIncludingRedAndRepeatedGreen": 5,
+  "realModelCalls": 0,
+  "sshAttempts": 0,
+  "remoteEdaJobs": 0,
+  "fullLocalSuite": "Not run in this isolated task; parent integration gate remains.",
+  "postReviewTypeOnlyCleanup": {
+    "change": "removed unused type-only import from remote.ts",
+    "buildExitCode": 0,
+    "typecheckExitCode": 0,
+    "elapsedSeconds": null,
+    "note": "Repeated build/typecheck after cleanup; typecheck-complete.log is the repeated output. Earlier separately timed check took 3.755 s."
+  }
+}

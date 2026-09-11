@@ -18,6 +18,7 @@
     "test/contract/run-controls.test.ts",
     "test/contract/site-name.test.ts",
     "test/contract/ssh.test.ts",
+    "test/contract/start-form.test.ts",
     "test/contract/test-entry.test.ts",
     "test/contract/view-run.test.ts",
     "test/contract/view.test.ts"
@@ -32,6 +33,7 @@
     "test/contract/honest-standin-window.test.ts",
     "test/contract/ledger-version.test.ts",
     "test/contract/loop.test.ts",
+    "test/contract/start-form-window.test.ts",
     "test/contract/strategy.test.ts",
     "test/contract/window.test.ts"
   ],

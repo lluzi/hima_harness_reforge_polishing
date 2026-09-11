@@ -115,6 +115,8 @@ export interface DriverClient {
 }
 
 export interface BootDriverOptions {
+  /** Test-only Chromium debugging port, used to reorder real HTTP responses at the window boundary. */
+  readonly remoteDebuggingPort?: number;
   /**
    * `empty`: a home with nothing in it, so the shell has to make the profile (the window's own test).
    * `hima`: the profile installed, the shipped pack, the stand-in flow and the local site written by
@@ -221,6 +223,7 @@ export async function bootDriver(t: TestContext, options: BootDriverOptions): Pr
   }
 
   const child = spawn(electron.at, [
+    ...(options.remoteDebuggingPort === undefined ? [] : [`--remote-debugging-port=${options.remoteDebuggingPort}`]),
     mainEntry,
     '--driver',
     ...(options.seed === undefined ? [] : ['--site', options.seed]),

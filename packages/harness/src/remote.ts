@@ -110,7 +110,7 @@ import type { ExperienceJson } from './experience-report.js';
 import type { ReadExperienceResult } from './experience.js';
 import type { ResumeResult, StartRunRequest, StartRunResult } from './fabric.js';
 import type { CancelResult } from './recovery.js';
-import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyDeclaration, type StrategyValue } from './run-arguments.js';
+import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyValue } from './run-arguments.js';
 import { SiteNotFoundError, RuleReferenceError, RunFaultError, RunReferenceError, RunStartError, PackNotFoundError, SiteUnreadableError } from './errors.js';
 import { messagePage, runPage, runsPage, type StartChoices } from './workbench.js';
 import { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
@@ -499,13 +499,9 @@ export interface RemoteOperations {
    * two small files.
    */
   packWords(packId: string | undefined): RunWords | undefined;
-  /**
-   * The knobs a pack declares its Strategy to be made of (#58), or nothing for a pack this host
-   * cannot read. Here for the reason `packWords` is: a pack is a directory, and this namespace opens
-   * none. Asked when the start form is rendered, so a pack whose declaration was corrected while a
-   * window was open offers the corrected fields on the next look.
-   */
-  packStrategy(packId: string): StrategyDeclaration | undefined;
+  /** Read local Pack/Site declarations once. Loading faults identify their preparation owner;
+   * unexpected checking faults still propagate to the Host's internal error boundary. */
+  startPreparation(packId: string, siteName: string | undefined): Pick<StartChoices, 'strategy' | 'words' | 'check' | 'preparation'>;
 }
 
 /** A request the caller got wrong: it reaches them as `hima/bad-request`, with its own message. */
@@ -1239,19 +1235,25 @@ function sendPage(res: ServerResponse, status: number, html: string): void {
  *
  * The pack a form is for is the one asked for by `?pack=`, else the first installed — which is what
  * the `<select>` shows selected either way, so the fields under it always belong to the pack a
- * person is looking at. A name that is not installed is ignored rather than refused: the page is
- * still the workbench, and the form falls back to the first pack exactly as it does on a first load.
+ * person is looking at. An unavailable explicit selection remains visible with a request
+ * diagnostic; it never silently changes the method or Site the person asked for.
  *
  * @param ops - the host, which is what reads a pack off the disk.
- * @param asked - the `?pack=` of the request, or null.
+ * @param askedPack - the `?pack=` of the request, or null.
+ * @param askedSite - the `?site=` of the request, or null.
  */
-function startChoices(ops: RemoteOperations, asked: string | null): StartChoices {
+function startChoices(ops: RemoteOperations, askedPack: string | null, askedSite: string | null): StartChoices {
   const installed = ops.installed();
-  const pack = asked !== null && installed.packs.includes(asked) ? asked : installed.packs[0];
-  if (pack === undefined) return installed;
-  const strategy = ops.packStrategy(pack);
-  const words = ops.packWords(pack);
-  return { ...installed, pack, ...(strategy === undefined ? {} : { strategy }), ...(words === undefined ? {} : { words }) };
+  const pack = askedPack ?? installed.packs[0];
+  const site = askedSite ?? installed.sites[0];
+  const selected = { ...installed, ...(pack === undefined ? {} : { pack }), ...(site === undefined ? {} : { site }) };
+  if (pack !== undefined && !installed.packs.includes(pack)) {
+    return { ...selected, preparation: { kind: 'request', message: 'Select an installed Pack; this selection is no longer installed.' } };
+  }
+  if (site !== undefined && !installed.sites.includes(site)) {
+    return { ...selected, preparation: { kind: 'request', message: 'Select a configured Site; this selection is no longer available.' } };
+  }
+  return pack === undefined ? selected : { ...selected, ...ops.startPreparation(pack, site) };
 }
 
 /**
@@ -1265,7 +1267,7 @@ function workbenchPage(ops: RemoteOperations, req: IncomingMessage, url: URL): {
   const method = req.method ?? 'GET';
   if (method !== 'GET') return { status: 405, html: messagePage(`${method} ${url.pathname}; this page answers GET`) };
   const runId = url.searchParams.get('run');
-  if (runId === null) return { status: 200, html: runsPage(ops.ledger.runs().reverse().map((r) => runHeadView(r)), startChoices(ops, url.searchParams.get('pack'))) };
+  if (runId === null) return { status: 200, html: runsPage(ops.ledger.runs().reverse().map((r) => runHeadView(r)), startChoices(ops, url.searchParams.get('pack'), url.searchParams.get('site'))) };
   const record = ops.ledger.run(runId);
   if (!record) return { status: 404, html: messagePage(`no run ${runId} in the HimaLedger`) };
   return { status: 200, html: runPage(runAnswer(ops, record)) };

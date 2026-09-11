@@ -1,0 +1,32 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/start-form.test.ts
+local: 1 selected; 19 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+ok 1 - an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+  ---
+  duration_ms: 2234.589875
+  type: 'test'
+  ...
+# Subtest: Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+ok 2 - Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+  ---
+  duration_ms: 1786.265417
+  type: 'test'
+  ...
+# Subtest: a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+ok 3 - a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+  ---
+  duration_ms: 5238.784959
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9399.432125
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 9.427 s; pass/fail/skip counts are in the TAP summary above

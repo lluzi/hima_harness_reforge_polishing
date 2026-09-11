@@ -1,0 +1,245 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/start-form.test.ts test/contract/view.test.ts test/contract/view-run.test.ts test/contract/pack.test.ts
+local: 4 selected; 16 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+ok 1 - the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+  ---
+  duration_ms: 9.081583
+  type: 'test'
+  ...
+# Subtest: the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data
+ok 2 - the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data
+  ---
+  duration_ms: 1.7215
+  type: 'test'
+  ...
+# Subtest: the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+ok 3 - the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+  ---
+  duration_ms: 1416.514417
+  type: 'test'
+  ...
+# pack opene902-timing-probe@1 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-6m7RRe/hima-home-9vUb2v/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-6m7RRe/hima-home-9vUb2v/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found
+#   clock-period-at-most@1: found
+# readers:
+#   dc-qor-report@1 reads qorReport: found
+# choosers:
+#   timing-push@1 chooses at next-period: found
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# Subtest: a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+ok 4 - a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+  ---
+  duration_ms: 320.22925
+  type: 'test'
+  ...
+# Subtest: a pack whose tool runs a command the site does not allow fails the check, naming the command
+ok 5 - a pack whose tool runs a command the site does not allow fails the check, naming the command
+  ---
+  duration_ms: 248.021042
+  type: 'test'
+  ...
+# Subtest: a pack referencing a rule that does not exist fails the check, naming the rule
+ok 6 - a pack referencing a rule that does not exist fails the check, naming the rule
+  ---
+  duration_ms: 169.928041
+  type: 'test'
+  ...
+# Subtest: a pack naming a reader that does not exist fails the check, naming the reader
+ok 7 - a pack naming a reader that does not exist fails the check, naming the reader
+  ---
+  duration_ms: 173.943666
+  type: 'test'
+  ...
+# Subtest: a pack naming a chooser that does not exist fails the check, naming the chooser
+ok 8 - a pack naming a chooser that does not exist fails the check, naming the chooser
+  ---
+  duration_ms: 122.272917
+  type: 'test'
+  ...
+# Subtest: a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+ok 9 - a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 119.889
+  type: 'test'
+  ...
+# Subtest: a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+ok 10 - a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 119.093792
+  type: 'test'
+  ...
+# Subtest: a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+ok 11 - a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+  ---
+  duration_ms: 123.371583
+  type: 'test'
+  ...
+# Subtest: a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+ok 12 - a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+  ---
+  duration_ms: 138.086875
+  type: 'test'
+  ...
+# Subtest: preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+ok 13 - preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+  ---
+  duration_ms: 286.797542
+  type: 'test'
+  ...
+# Subtest: preparing the same campaign twice copies nothing the second time and says so
+ok 14 - preparing the same campaign twice copies nothing the second time and says so
+  ---
+  duration_ms: 260.688334
+  type: 'test'
+  ...
+# Subtest: a workspace that is there but carries no workspace.json is not prepared over the top of
+ok 15 - a workspace that is there but carries no workspace.json is not prepared over the top of
+  ---
+  duration_ms: 131.012584
+  type: 'test'
+  ...
+# Subtest: a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+ok 16 - a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+  ---
+  duration_ms: 195.614875
+  type: 'test'
+  ...
+# Subtest: a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+ok 17 - a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+  ---
+  duration_ms: 192.677084
+  type: 'test'
+  ...
+# Subtest: a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+ok 18 - a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+  ---
+  duration_ms: 159.312042
+  type: 'test'
+  ...
+# Subtest: a workspace.json that cannot be read as one is an answer, not a crash
+ok 19 - a workspace.json that cannot be read as one is an answer, not a crash
+  ---
+  duration_ms: 157.749334
+  type: 'test'
+  ...
+# Subtest: a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+ok 20 - a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+  ---
+  duration_ms: 141.774625
+  type: 'test'
+  ...
+# Subtest: the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+ok 21 - the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+  ---
+  duration_ms: 0.145875
+  type: 'test'
+  ...
+# Subtest: an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+ok 22 - an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+  ---
+  duration_ms: 1617.923416
+  type: 'test'
+  ...
+# Subtest: Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+ok 23 - Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+  ---
+  duration_ms: 1676.262
+  type: 'test'
+  ...
+# Subtest: a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+ok 24 - a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+  ---
+  duration_ms: 5199.58175
+  type: 'test'
+  ...
+# Subtest: the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget
+ok 25 - the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget
+  ---
+  duration_ms: 3134.561333
+  type: 'test'
+  ...
+# run run-183d5116-a8e9-4b89-8de1-07cf0b88bd38
+#   synthesize: done
+#   read-qor: done
+#   judge: done
+#   next-period: done
+# Subtest: over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either
+ok 26 - over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either
+  ---
+  duration_ms: 3470.47325
+  type: 'test'
+  ...
+# Subtest: a run HimaFabric never started cannot be cancelled, and says so with 409 hima/run-not-in-state
+ok 27 - a run HimaFabric never started cannot be cancelled, and says so with 409 hima/run-not-in-state
+  ---
+  duration_ms: 1742.174625
+  type: 'test'
+  ...
+# Subtest: every route the workbench uses, and the workbench page itself, sit behind the web app's own session cookie
+ok 28 - every route the workbench uses, and the workbench page itself, sit behind the web app's own session cookie
+  ---
+  duration_ms: 1725.961167
+  type: 'test'
+  ...
+# Subtest: the served HimaGuide bundle claims the tool-view key of both Hima tools and carries the rendering of every run status and node state
+ok 29 - the served HimaGuide bundle claims the tool-view key of both Hima tools and carries the rendering of every run status and node state
+  ---
+  duration_ms: 1759.404417
+  type: 'test'
+  ...
+# Subtest: the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+ok 30 - the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+  ---
+  duration_ms: 1935.97125
+  type: 'test'
+  ...
+# Subtest: a refused read is reported as a refusal in the run view, never as an empty pass
+ok 31 - a refused read is reported as a refusal in the run view, never as an empty pass
+  ---
+  duration_ms: 1761.4275
+  type: 'test'
+  ...
+# Subtest: a remote error reaches the caller as a coded JSON error, never as an empty answer
+ok 32 - a remote error reaches the caller as a coded JSON error, never as an empty answer
+  ---
+  duration_ms: 2233.71675
+  type: 'test'
+  ...
+# Subtest: a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+ok 33 - a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+  ---
+  duration_ms: 2343.062542
+  type: 'test'
+  ...
+# Subtest: every /hima/api route sits behind the web app's own session cookie
+ok 34 - every /hima/api route sits behind the web app's own session cookie
+  ---
+  duration_ms: 1969.085792
+  type: 'test'
+  ...
+# Subtest: the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+ok 35 - the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+  ---
+  duration_ms: 1855.878833
+  type: 'test'
+  ...
+1..35
+# tests 35
+# suites 0
+# pass 35
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 37521.288875
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 37.548 s; pass/fail/skip counts are in the TAP summary above

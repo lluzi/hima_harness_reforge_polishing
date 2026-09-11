@@ -29,8 +29,8 @@ import { handleHimaCommand, himaCommandDescription } from './commands.js';
 import { himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
-import { installedPackStrategy, installedPackWords, installedPacks } from './packs.js';
-import { installedSites } from './sites.js';
+import { checkPack, loadPack, packWords, installedPackWords, installedPacks } from './packs.js';
+import { installedSites, loadSite } from './sites.js';
 // The audit the routes answer with: the module-level pair every channel in this process records into.
 import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from './channel.js';
 
@@ -236,10 +236,22 @@ export default class Hima extends Service {
           // reason: a pack is a directory, the namespace opens none, and words corrected while a
           // window is open are the words the next render says.
           packWords: (packId) => installedPackWords(this.config.packsDir, packId),
-          // And the knobs it declares its Strategy to be made of (#58), read the same way and for
-          // the same reason: the start form renders one field per knob, and a declaration corrected
-          // while a window is open is the one the next look offers.
-          packStrategy: (packId) => installedPackStrategy(this.config.packsDir, packId),
+          startPreparation: (packId, siteName) => {
+            let pack;
+            try { pack = loadPack(this.config.packsDir, packId); }
+            catch (err) {
+              return { preparation: { kind: 'pack', message: `Pack owner: repair Pack ${packId} files: ${err instanceof Error ? err.message : String(err)}` } };
+            }
+            const fields = { strategy: pack.contract.strategy, words: packWords(pack) };
+            if (siteName === undefined) return fields;
+            let site;
+            try { site = loadSite(this.config.sitesDir, siteName); }
+            catch (err) {
+              return { ...fields, preparation: { kind: 'site', message: `Site owner: repair configuration for ${siteName}: ${err instanceof Error ? err.message : String(err)}` } };
+            }
+            // Only local declarations are read. Fabric rechecks them when a Run is actually started.
+            return { ...fields, check: checkPack(pack, site) };
+          },
         }),
         'hima: /hima/api routes',
       );

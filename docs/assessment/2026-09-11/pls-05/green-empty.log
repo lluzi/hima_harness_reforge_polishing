@@ -1,0 +1,20 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/start-form.test.ts
+local: 1 selected; 19 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+ok 1 - an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+  ---
+  duration_ms: 2024.379916
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2141.828792
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 2.165 s; pass/fail/skip counts are in the TAP summary above

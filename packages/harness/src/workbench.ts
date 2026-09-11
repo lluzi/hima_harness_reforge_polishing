@@ -119,7 +119,8 @@
 //   data-hima-control="start-retries"   the Retry allowance
 //   data-hima-control="start-generations" the Budget's generation limit
 //   data-hima-control="start"           submits the form
-import { answeredWithNoCode, bad, bannerLines, branchesIn, branchesState, branchLines, branchPointSaid, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, couldNotReach, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, good, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, askedObservedSaid, startKnobField, NO_FABRIC_STATE, NO_RUNS, NOT_HELD, NOT_RECORDED, NOTHING_JUDGED, NOTHING_TO_DO_ENDED, NOTHING_TO_DO_NO_FABRIC, nodeStateLabel, outcomeColour, pathColumns, plain, plotLabels, plotValue, runColumns, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, START_HEADING, startControl, startForm, tailSaid, warn } from './card-labels.js';
+import { answeredWithNoCode, bad, bannerLines, branchesIn, branchesState, branchLines, branchPointSaid, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, couldNotReach, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, good, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, askedObservedSaid, startKnobField, NO_FABRIC_STATE, NO_RUNS, NOT_HELD, NOT_RECORDED, NOTHING_JUDGED, NOTHING_TO_DO_ENDED, NOTHING_TO_DO_NO_FABRIC, nodeStateLabel, outcomeColour, pathColumns, plain, plotLabels, plotValue, runColumns, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, START_HEADING, START_NO_PACK, START_NO_SITE, START_STATIC_FIT, START_STATIC_UNFIT, START_STATIC_LIMIT, startControl, startForm, tailSaid, warn } from './card-labels.js';
+import type { PackCheck } from './packs.js';
 import type { LedgerBranchRow, LedgerGenerationRow, LedgerJoinRow, LedgerRow, MeterRow, StartField } from './card-labels.js';
 import { experienceReport, reportBlocks } from './experience-report.js';
 import { HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_WORKBENCH_PATH, runCardPath } from './paths.js';
@@ -1163,15 +1164,17 @@ function renderCard(view: RunView): string {
  *
  * `pack` is the selection the form is rendered *for*: the one the page asked for by `?pack=`, else
  * the first installed. `strategy` is that pack's own declaration and `words` its own words (#58),
- * both read by the host when the page is composed, because a pack is a directory and this module
- * opens none. Either is absent for a pack this host can no longer read, and the form then offers no
- * knob fields at all — a Campaign started from it runs at whatever that pack's defaults turn out to
- * be, which is what the start route decides anyway.
+ * both read by the host when the page is composed. The selected Site and static check travel with
+ * those fields. Unreadable declarations carry a preparation diagnostic and cannot be submitted;
+ * the final start operation still reloads and checks the Pack and Site.
  */
 export interface StartChoices {
   readonly packs: readonly string[];
   readonly sites: readonly string[];
   readonly pack?: string;
+  readonly site?: string;
+  readonly check?: PackCheck;
+  readonly preparation?: { readonly kind: 'request' | 'pack' | 'site'; readonly message: string };
   readonly strategy?: StrategyDeclaration;
   readonly words?: RunWords;
 }
@@ -1179,7 +1182,7 @@ export interface StartChoices {
 /** One `<option>` per installed thing; the value is the identity a route takes, which is also the
  *  word a person reads, because a pack id and a Site name are what they are called everywhere else. */
 const options = (values: readonly string[], selected?: string): string =>
-  values.map((v) => `<option value="${escape(v)}"${v === selected ? ' selected' : ''}>${escape(v)}</option>`).join('');
+  (selected !== undefined && !values.includes(selected) ? [selected, ...values] : values).map((v) => `<option value="${escape(v)}"${v === selected ? ' selected' : ''}>${escape(v)}</option>`).join('');
 
 /** One labelled field: the label above the control it wraps, and the sentence under it saying what
  *  may go in it. A wrapping `<label>` needs no `for`, so the control's marker is its only identity. */
@@ -1212,17 +1215,33 @@ function renderStartForm(choices: StartChoices): string {
     + `<form${attributes(marked)}>`
     + '<div class="fields">'
     + choiceField(startForm.pack, choices.packs, choices.pack)
-    + choiceField(startForm.site, choices.sites)
+    + choiceField(startForm.site, choices.sites, choices.site)
     + numberField(startForm.target)
     + renderKnobFields(choices)
     + numberField(startForm.timeBox)
     + numberField(startForm.retries)
     + numberField(startForm.generations)
     + '</div>'
-    + `<button type="submit" class="primary"${attributes({ 'data-hima-control': startControl.control })}>${escape(startControl.said)}</button>`
+    + renderStartCheck(choices)
+    + `<button type="submit" class="primary"${attributes({ 'data-hima-control': startControl.control })}${choices.check?.fit === true ? '' : ' disabled'}>${escape(startControl.said)}</button>`
     + '</form>'
     + `<p class="refusal"${attributes({ 'data-hima-region': 'start-error' })}></p>`
     + '</section>';
+}
+
+/** Static fit is a local declaration check, never a claim that a remote Site is ready. */
+function renderStartCheck(choices: StartChoices): string {
+  const status = choices.preparation?.kind ?? (choices.check === undefined ? 'empty' : choices.check.fit ? 'fit' : 'unfit');
+  const messages = [
+    ...(choices.packs.length === 0 ? [START_NO_PACK] : []),
+    ...(choices.sites.length === 0 ? [START_NO_SITE] : []),
+    ...(choices.preparation === undefined ? [] : [choices.preparation.message]),
+    ...(choices.check === undefined ? [] : [choices.check.fit ? START_STATIC_FIT : START_STATIC_UNFIT]),
+  ];
+  return `<div role="status" aria-live="polite"${attributes({ 'data-hima-region': 'start-check', 'data-hima-state-pack': choices.pack ?? '', 'data-hima-state-site': choices.site ?? '', 'data-hima-state-status': status })}>`
+    + messages.map((message) => `<p>${escape(message)}</p>`).join('')
+    + (choices.check !== undefined && !choices.check.fit ? `<ul>${choices.check.errors.map((error) => `<li>${escape(error)}</li>`).join('')}</ul>` : '')
+    + `<p class="faint">${escape(START_STATIC_LIMIT)}</p></div>`;
 }
 
 const numberField = (f: StartField): string =>
@@ -1251,14 +1270,14 @@ function renderKnobFields(choices: StartChoices): string {
   const marked = { 'data-hima-region': 'start-knobs', 'data-hima-state-pack': choices.pack ?? '' };
   const fields = Object.entries(choices.strategy ?? {}).map(([name, knob]) => {
     const f = startKnobField(name, knob, choices.words?.strategy[name]);
-    return knob.type === 'choice' ? choiceField(f, knob.options, knob.default) : numberFieldAt(f, knob.default);
+    return knob.type === 'choice' ? choiceField(f, knob.options, knob.default) : numberFieldAt(f, knob.default, knob.unit);
   });
   return `<div class="knobs"${attributes(marked)}>${fields.join('')}</div>`;
 }
 
 /** A number field already holding the value a pack declares a Run of it starts at. */
-const numberFieldAt = (f: StartField, value: number): string =>
-  field(f.said, f.hint, `<input type="text" inputmode="decimal" autocomplete="off"${attributes({ 'data-hima-control': f.control, value: String(value) })}>`);
+const numberFieldAt = (f: StartField, value: number, unit: string): string =>
+  field(f.said, f.hint, `<input type="text" inputmode="decimal" autocomplete="off"${attributes({ 'data-hima-control': f.control, 'data-hima-unit': unit, value: String(value) })}>`);
 
 /**
  * The run list: every Run the ledger holds, newest first, each row a link to its own card.
@@ -1372,11 +1391,9 @@ function scriptSaid(said: (part: string) => string, expression: string): string 
 // holding something that is not a number is sent as typed, so the refusal quotes what the person
 // actually wrote.
 //
-// It also re-reads the knob fields when the pack selection changes (#58): the knobs are the selected
-// pack's, so the page asks the host for this very page rendered for that pack and swaps the region
-// in, exactly as the refresh above swaps `<main>`. Only on a real change of selection — the region
-// says which pack it was rendered for — so a person's typing is never thrown away by a selection
-// that did not move.
+// Pack/Site changes re-read this page through its existing fence. Only the latest matching reply
+// is applied, preserving compatible fields as they stand when the reply arrives. Static fit does
+// not replace startRun validation; it only prevents starting with an incomplete selection.
 const START_FORM = `(() => {
   const form = document.querySelector('[data-hima-region="start"]');
   const shown = document.querySelector('[data-hima-region="start-error"]');
@@ -1404,25 +1421,87 @@ const START_FORM = `(() => {
     }
     return set;
   };
-  const knobsFor = async (pack) => {
-    const where = form.querySelector('[data-hima-region="start-knobs"]');
-    if (where === null || where.getAttribute('data-hima-state-pack') === pack) return;
-    const answer = await fetch('${HIMA_WORKBENCH_PATH}?pack=' + encodeURIComponent(pack), { credentials: 'same-origin', headers: { accept: 'text/html' } });
-    if (!answer.ok) return;
-    const fresh = new DOMParser().parseFromString(await answer.text(), 'text/html').querySelector('[data-hima-region="start-knobs"]');
-    if (fresh === null || fresh.getAttribute('data-hima-state-pack') !== pack) return;
-    where.innerHTML = fresh.innerHTML;
-    where.setAttribute('data-hima-state-pack', pack);
+  const button = control('start');
+  let checking = false;
+  let submitting = false;
+  let selection = 0;
+  const currentCheck = () => form.querySelector('[data-hima-region="start-check"]');
+  const fits = () => {
+    const check = currentCheck();
+    return check !== null && check.getAttribute('data-hima-state-status') === 'fit'
+      && check.getAttribute('data-hima-state-pack') === held('start-pack')
+      && check.getAttribute('data-hima-state-site') === held('start-site');
   };
-  const pack = control('start-pack');
-  if (pack !== null) pack.addEventListener('change', () => { knobsFor(String(pack.value)).catch(() => undefined); });
+  const enable = () => { if (button !== null) button.disabled = checking || submitting || !fits(); };
+  const refreshSelection = async () => {
+    const pack = held('start-pack');
+    const site = held('start-site');
+    const own = ++selection;
+    const current = () => own === selection && held('start-pack') === pack && held('start-site') === site;
+    checking = true;
+    shown.textContent = '';
+    enable();
+    const check = currentCheck();
+    if (check !== null) {
+      check.setAttribute('data-hima-state-status', 'checking');
+      check.textContent = 'Checking the selected Pack and Site declarations…';
+    }
+    try {
+      const answer = await fetch('${HIMA_WORKBENCH_PATH}?pack=' + encodeURIComponent(pack) + '&site=' + encodeURIComponent(site), {
+        credentials: 'same-origin', cache: 'no-store', headers: { accept: 'text/html' },
+      });
+      if (!answer.ok) throw new Error('static check request answered HTTP ' + answer.status + '; reload or check the Host log');
+      const page = new DOMParser().parseFromString(await answer.text(), 'text/html');
+      if (!current()) return;
+      const fresh = page.querySelector('[data-hima-region="start-knobs"]');
+      const checked = page.querySelector('[data-hima-region="start-check"]');
+      if (fresh === null || checked === null || checked.getAttribute('data-hima-state-pack') !== pack || checked.getAttribute('data-hima-state-site') !== site) {
+        throw new Error('static check did not describe the selected Pack and Site; reload to retry');
+      }
+      const where = form.querySelector('[data-hima-region="start-knobs"]');
+      if (where !== null) {
+        const focused = where.contains(document.activeElement) ? document.activeElement : null;
+        const focusName = focused?.getAttribute('data-hima-control');
+        const selectionStart = focused?.selectionStart;
+        const selectionEnd = focused?.selectionEnd;
+        // Read values now, including typing while the response was in flight. Keeping a number is
+        // not validating it: the same server validator still reports any changed bound on submit.
+        for (const incoming of fresh.querySelectorAll('[data-hima-control]')) {
+          const previous = control(incoming.getAttribute('data-hima-control'));
+          if (previous === null || previous.tagName !== incoming.tagName) continue;
+          if (incoming.tagName === 'SELECT') {
+            if (Array.from(incoming.options).some((option) => option.value === previous.value)) incoming.value = previous.value;
+          } else if (incoming.getAttribute('data-hima-unit') === previous.getAttribute('data-hima-unit')) incoming.value = previous.value;
+        }
+        // Move actual nodes: innerHTML would discard the values just retained as DOM properties.
+        where.replaceChildren(...fresh.childNodes);
+        where.setAttribute('data-hima-state-pack', pack);
+        const nextFocus = focusName ? control(focusName) : null;
+        if (nextFocus !== null) {
+          nextFocus.focus();
+          if (typeof selectionStart === 'number' && typeof selectionEnd === 'number' && nextFocus.tagName === 'INPUT') nextFocus.setSelectionRange(selectionStart, selectionEnd);
+        }
+      }
+      currentCheck()?.replaceWith(checked);
+    } catch (err) {
+      if (!current()) return;
+      const check = currentCheck();
+      if (check !== null) { check.setAttribute('data-hima-state-status', 'failed'); check.textContent = 'Static check unavailable. Change the selection or reload to retry.'; }
+      shown.textContent = ${scriptSaid(couldNotReach, 'err.message')};
+    } finally {
+      if (current()) { checking = false; enable(); }
+    }
+  };
+  for (const name of ['start-pack', 'start-site']) control(name)?.addEventListener('change', refreshSelection);
   const said = (answer, body) => (body && body.error && body.error.message)
     || (${scriptSaid(answeredWithNoCode, 'answer.status')});
   form.addEventListener('submit', (event) => {
     event.preventDefault();
-    const button = form.querySelector('[data-hima-control="start"]');
+    if (submitting || checking || !fits()) return;
+    submitting = true;
     shown.textContent = '';
-    if (button !== null) button.disabled = true;
+    enable();
+    for (const name of ['start-pack', 'start-site']) { const el = control(name); if (el !== null) el.disabled = true; }
     fetch('${HIMA_RUNS_START_PATH}', {
       method: 'POST',
       credentials: 'same-origin',
@@ -1443,7 +1522,11 @@ const START_FORM = `(() => {
       }
       shown.textContent = said(answer, body);
     })).catch((err) => { shown.textContent = ${scriptSaid(couldNotReach, 'err.message')}; })
-      .finally(() => { if (button !== null) button.disabled = false; });
+      .finally(() => {
+        submitting = false;
+        for (const name of ['start-pack', 'start-site']) { const el = control(name); if (el !== null) el.disabled = false; }
+        enable();
+      });
   });
 })();`;
 
