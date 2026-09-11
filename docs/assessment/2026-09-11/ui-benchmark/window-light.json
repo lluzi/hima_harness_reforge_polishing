@@ -1,0 +1,113 @@
+{
+  "theme": "light",
+  "beforeNotice": {
+    "buttons": [
+      {
+        "tag": "BUTTON",
+        "text": ""
+      },
+      {
+        "tag": "BUTTON",
+        "text": ""
+      },
+      {
+        "tag": "BUTTON",
+        "text": "New Session"
+      },
+      {
+        "tag": "BUTTON",
+        "text": ""
+      },
+      {
+        "tag": "BUTTON",
+        "text": ""
+      },
+      {
+        "tag": "BUTTON",
+        "text": ""
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Settings"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Choose workspace"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Standard mode"
+      },
+      {
+        "tag": "BUTTON",
+        "text": ""
+      },
+      {
+        "tag": "BUTTON",
+        "text": ""
+      },
+      {
+        "tag": "BUTTON",
+        "text": ""
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Continue"
+      }
+    ],
+    "text": "New Session\nWorkspaces\nNo sessions yet\nHima workbench\nSettings\nInto the Unknown\nPreview\nChoose workspace\nStandard mode\nChoose a workspace to start\nInternal Testing Notice\n\nDeepSeek Harness 0.1 remains in testing for Harness developers. Many areas need further improvement, and we welcome feedback from the developer community. DeepSeek Harness's core plugins and foundational APIs will continue to evolve rapidly over the coming months.\n\nWe look forward to exploring the limits of intelligence with developers around the world, building on open-source, open, reusable, and composable infrastructure. We welcome Harness developers everywhere to join the DSH plugin ecosystem.\n\nContinue"
+  },
+  "workbenchClick": {
+    "ok": true,
+    "x": 92,
+    "y": 748,
+    "note": "the click on \"open-workbench\" replaced the document it was armed on, which is a click that was taken and acted on"
+  },
+  "form": {
+    "width": 1280,
+    "scrollWidth": 1280,
+    "groups": [
+      "Method and environment",
+      "Goal and starting strategy",
+      "Exploration budget"
+    ],
+    "links": [
+      {
+        "label": "HimaGuide",
+        "href": "/"
+      },
+      {
+        "label": "Workbench",
+        "href": "/hima/"
+      }
+    ]
+  },
+  "run": "run-a2fbaaa4-b97f-4a65-b707-83a1cccf8cd7",
+  "destinations": [
+    {
+      "href": "#run-overview",
+      "exists": true
+    },
+    {
+      "href": "#run-experiments",
+      "exists": true
+    },
+    {
+      "href": "#run-evidence",
+      "exists": true
+    },
+    {
+      "href": "#run-report",
+      "exists": true
+    }
+  ],
+  "report": {
+    "hash": "#run-report",
+    "top": 128.2109375,
+    "navBottom": 109,
+    "width": 1280,
+    "scrollWidth": 1280,
+    "text": "experience\nwritten at 2026-09-11T11:03:47.596Z, and left on the site beside the campaign's results; the text below is a current preview from recorded facts, not the saved file. Open the saved report to verify its hash; its original wording may differ.\nmarkdown: /private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-r74ykM/workspace/open"
+  },
+  "returnedRunVisible": true
+}

@@ -139,12 +139,28 @@ main{display:block}
   position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:var(--hima-sp-4);
   padding:var(--hima-sp-2) var(--hima-sp-6);margin-bottom:var(--hima-sp-2);
   background:var(--hima-panel);border-bottom:1px solid var(--hima-line);
+  min-height:56px;box-sizing:border-box;
 }
 .chrome h1{margin:0;font-size:var(--hima-fs-body);font-weight:650;letter-spacing:-.01em}
-.chrome nav{display:flex;gap:var(--hima-sp-3)}
+.chrome nav{display:flex;gap:var(--hima-sp-1)}
 .chrome a{color:var(--hima-ink-2);text-decoration:none;font-size:var(--hima-fs-label)}
+.chrome nav a{padding:var(--hima-sp-2) var(--hima-sp-3);border-radius:var(--hima-r-m)}
+.chrome nav a[aria-current]{color:var(--hima-ink);background:var(--hima-raise);font-weight:600}
 .chrome a:hover{color:var(--hima-accent);text-decoration:underline}
-.chrome .crumb{margin-left:auto;color:var(--hima-ink-3);font-size:var(--hima-fs-label)}
+.chrome .crumb{margin-left:auto;color:var(--hima-ink-3);font-size:var(--hima-fs-label);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chrome h1,.chrome nav{flex-shrink:0}
+
+/* Native links keep every section directly addressable; no second view state or tab controller. */
+.page-heading{padding:var(--hima-sp-4) 0}
+.page-heading h2{margin:0 0 var(--hima-sp-2);font-size:var(--hima-fs-title);font-weight:650}
+.page-heading p{margin:0;color:var(--hima-ink-2);font-size:var(--hima-fs-label)}
+.section-nav{position:sticky;top:56px;z-index:1;display:flex;flex-wrap:wrap;gap:var(--hima-sp-1);padding:var(--hima-sp-2) 0;margin-bottom:var(--hima-sp-3);background:var(--hima-page)}
+.section-nav a{padding:var(--hima-sp-2) var(--hima-sp-3);border-radius:var(--hima-r-m);color:var(--hima-ink-2);text-decoration:none;font-size:var(--hima-fs-label)}
+.section-nav a:hover{color:var(--hima-ink);background:var(--hima-panel)}
+[id^="run-"],#workbench-content{scroll-margin-top:128px}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--hima-accent);outline-offset:3px}
+.skip-link{position:fixed;top:var(--hima-sp-2);left:var(--hima-sp-2);z-index:3;transform:translateY(-200%);padding:var(--hima-sp-3);border-radius:var(--hima-r-m);background:var(--hima-panel);color:var(--hima-accent)}
+.skip-link:focus{transform:translateY(0)}
 
 /* -- bands ---------------------------------------------------------------------------------- */
 /* Every section of this page is one band: a panel, a hairline, one radius. A ticket that adds a
@@ -460,6 +476,10 @@ button.primary:hover{opacity:.9}
 
 /* -- the start form ------------------------------------------------------------------------- */
 .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--hima-sp-4);margin-bottom:var(--hima-sp-4)}
+.form-group{min-width:0;margin:0;padding:var(--hima-sp-2) 0 0;border:0;border-bottom:1px solid var(--hima-line)}
+.form-group legend{padding:var(--hima-sp-1) 0 0;color:var(--hima-ink-2);font-size:var(--hima-fs-label);font-weight:600}
+.form-group .fields{margin-bottom:var(--hima-sp-3)}
+.budget-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
 .field{display:flex;flex-direction:column;gap:var(--hima-sp-1);min-width:0}
 .field .said{font-size:var(--hima-fs-label)}
 .field input,.field select{

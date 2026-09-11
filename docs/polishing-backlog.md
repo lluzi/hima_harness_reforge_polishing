@@ -4,6 +4,8 @@
 
 实施任务已细化为 [Polishing v1 规格与 18 个子任务](specs/polishing-v1/README.md)，其中明确模块、验收、分级测试和依赖；本工作单保留原 POL 编号和产品动机。
 
+用户新增的 DeepSeek Harness UI 对标工作见 [UI-01 #20](https://github.com/lluzi/hima_harness_reforge_polishing/issues/20) 与 [对标/验证记录](assessment/2026-09-11/ui-benchmark/README.md)。首轮打磨现有导航、输入和报告阅读层级；后续聊天摘要与证据侧栏继续按现有架构及 Step 4 能力切片。
+
 ## 起点与判断
 
 已从 prototype 的提交 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 导入 159 个文件。运行代码、Pack、Site 示例、依赖锁及测试原样保留；源项目说明移到 `docs/upstream/b4ac9d9/`。导入映射及逐文件 hash 见 [source-import.json](assessment/2026-09-11/source-import.json)。本轮没有产品源码修改。

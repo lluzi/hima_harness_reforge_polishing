@@ -492,16 +492,16 @@ test('the served HimaGuide bundle carries the card\'s cancel and resume controls
     new Function('window', source)({ __ModuleLoader__: { load: (r: unknown) => loaded.push(r as never) } });
     const baseline = createRequire(path.join(harnessPackageDir, 'package.json'));
     const moduleExports = loaded[0]!.factory((spec) => baseline(spec)) as {
-      apply(ctx: { slots: { inject(name: string, cb: () => unknown): unknown; register(d: { name: string; key: string }, c: unknown): unknown } }): void;
+      apply(ctx: { slots: { inject(name: string, cb: () => unknown): unknown; register(d: { name: string; key?: string; id?: string }, c: unknown): unknown } }): void;
     };
-    const registered: { name: string; key: string }[] = [];
+    const registered: { name: string; key?: string; id?: string }[] = [];
     moduleExports.apply({
       slots: {
         inject: (_name, cb) => cb(),
         register: (declaration) => { registered.push(declaration); return () => undefined; },
       },
     });
-    assert.deepEqual(registered.map((r) => r.key).sort(), ['hima_observe', 'hima_run'], 'and claims no key it did not claim before');
+    assert.deepEqual(registered.filter((r) => r.name === 'tool.call.toolview').map((r) => r.key).sort(), ['hima_observe', 'hima_run'], 'and claims no key it did not claim before');
     assert.deepEqual(d.unexpectedStdout(), []);
   } finally {
     await d.dispose();

@@ -1,0 +1,69 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/view.test.ts
+local: 1 selected; 24 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+ok 1 - the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+  ---
+  duration_ms: 3050.759375
+  type: 'test'
+  ...
+# Subtest: a refused read is reported as a refusal in the run view, never as an empty pass
+ok 2 - a refused read is reported as a refusal in the run view, never as an empty pass
+  ---
+  duration_ms: 1630.947666
+  type: 'test'
+  ...
+# Subtest: a remote error reaches the caller as a coded JSON error, never as an empty answer
+ok 3 - a remote error reaches the caller as a coded JSON error, never as an empty answer
+  ---
+  duration_ms: 1647.201209
+  type: 'test'
+  ...
+# Subtest: a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+ok 4 - a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+  ---
+  duration_ms: 1601.807208
+  type: 'test'
+  ...
+# Subtest: every /hima/api route sits behind the web app's own session cookie
+ok 5 - every /hima/api route sits behind the web app's own session cookie
+  ---
+  duration_ms: 1604.801042
+  type: 'test'
+  ...
+# Subtest: the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+not ok 6 - the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+  ---
+  duration_ms: 1606.250667
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/view.test.ts:189:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react-dom/server'
+    Require stack:
+    - /Users/lluzi/code/hima_harness_reforge_polishing/packages/harness/package.json
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Module._resolveFilename (node:internal/modules/cjs/loader:1564:15)
+    wrapResolveFilename (node:internal/modules/cjs/loader:1118:27)
+    defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1142:10)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1169:12)
+    Module._load (node:internal/modules/cjs/loader:1341:5)
+    wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    Module.require (node:internal/modules/cjs/loader:1674:12)
+    require (node:internal/modules/helpers:157:16)
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/view.test.ts:243:38)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 5
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11253.430708
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 11.276 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

@@ -1,0 +1,19 @@
+✖ research navigation in light theme (16352.501125ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16420.860333
+
+✖ failing tests:
+
+test at .hima-tmp/ui-benchmark/verify.test.ts:27:47
+✖ research navigation in light theme (16352.501125ms)
+  Error: Timed out: !!document.getElementById("run-report")
+      at wait (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-benchmark/verify.test.ts:35:144)
+      at async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-benchmark/verify.test.ts:56:3)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)

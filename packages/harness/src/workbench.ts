@@ -443,7 +443,7 @@ function verdictBand(view: RunView): string {
     + (lines.goal === undefined ? '' : `<div>${figured(lines.goal)}</div>`)
     + (lines.strategy === undefined ? '' : `<div>${figured(lines.strategy)}</div>`);
   const spent = meterSection(view);
-  return `<section class="band verdict"${attributes(marked)}>`
+  return `<section id="run-overview" class="band verdict"${attributes(marked)}>`
     + seal(view)
     + '<dl class="facts">'
     + fact(factQuestions.exploring, exploring === '' ? faint(NOT_RECORDED) : exploring)
@@ -1127,10 +1127,9 @@ function renderCard(view: RunView): string {
       `<div class="block block-bad"><div>${pill('refused', warn, 'missed')}</div><div class="mono">${escape(r.path)}</div>${note(r.reason)}</div>`).join('')))
     + (view.observations.length === 0 ? '' : drawer('observed', view.observations.map(observationBlock).join(''), { name: 'run-observation', state: { count: String(view.observations.length) } }))
     + (view.verdicts.length === 0 ? '' : drawer('verdicts', view.verdicts.map(verdictBlock).join('')))
-    + (view.decision === null ? '' : drawer('decision', decisionBlock(view.decision, view), { name: 'run-decision', state: decisionState(view.decision) }))
-    // Last, because it is the whole Campaign said at once and a person reads it after the records it
-    // was composed from — and only on a Run that has one, which is a Run that has ended (#30).
-    + (view.experience === undefined
+    + (view.decision === null ? '' : drawer('decision', decisionBlock(view.decision, view), { name: 'run-decision', state: decisionState(view.decision) }));
+  // A report has its own reading destination, while its original file and evidence remain intact.
+  const report = (view.experience === undefined
       ? (view.experienceUnavailable === undefined ? '' : drawer(EXPERIENCE_HEADING, note(view.experienceUnavailable), { name: 'run-experience', state: { source: 'not-written' } }))
       : drawer(EXPERIENCE_HEADING, experienceBlock(view, view.experience), { name: 'run-experience', state: experienceState(view.experience) }));
   // The band's own head carries the plot's keys beside the section's name: a legend is a line of
@@ -1138,16 +1137,23 @@ function renderCard(view: RunView): string {
   const plot = convergencePlot(view);
   const ledger = view.generations.length === 0 && view.nodes.length === 0
     ? ''
-    : '<section class="band">'
+    : '<section id="run-experiments" class="band">'
       + `<div class="band-head"><h2 class="eyebrow">generations</h2>${plot.keys}</div>`
       + plot.figure
       + (view.generations.length === 0 ? '' : generationLedger(view))
       + (view.nodes.length === 0 ? '' : pathTable(view))
       + '</section>';
   return '<article class="card">'
+    + '<nav class="section-nav" aria-label="In this Run">'
+    + '<a href="#run-overview" data-hima-control="show-overview">Overview</a>'
+    + (ledger === '' ? '' : '<a href="#run-experiments" data-hima-control="show-experiments">Experiments</a>')
+    + (evidence === '' ? '' : '<a href="#run-evidence" data-hima-control="show-evidence">Evidence</a>')
+    + (report === '' ? '' : '<a href="#run-report" data-hima-control="show-report">Technical report</a>')
+    + '</nav>'
     + verdictBand(view)
     + ledger
-    + (evidence === '' ? '' : `<section class="band"><h2 class="eyebrow">evidence</h2>${evidence}</section>`)
+    + (evidence === '' ? '' : `<section id="run-evidence" class="band"><h2 class="eyebrow">evidence</h2>${evidence}</section>`)
+    + (report === '' ? '' : `<section id="run-report" class="band">${report}</section>`)
     + '</article>';
 }
 
@@ -1210,15 +1216,19 @@ function renderStartForm(choices: StartChoices): string {
   return '<section class="band">'
     + `<h2 class="eyebrow">${escape(START_HEADING)}</h2>`
     + `<form${attributes(marked)}>`
-    + '<div class="fields">'
+    + '<fieldset class="form-group"><legend>Method and environment</legend><div class="fields">'
     + choiceField(startForm.pack, choices.packs, choices.pack)
     + choiceField(startForm.site, choices.sites, choices.site)
+    + '</div></fieldset>'
+    + '<fieldset class="form-group"><legend>Goal and starting strategy</legend><div class="fields">'
     + numberField(startForm.target)
     + renderKnobFields(choices)
+    + '</div></fieldset>'
+    + '<fieldset class="form-group"><legend>Exploration budget</legend><div class="fields budget-fields">'
     + numberField(startForm.timeBox)
     + numberField(startForm.retries)
     + numberField(startForm.generations)
-    + '</div>'
+    + '</div></fieldset>'
     + renderStartCheck(choices)
     + `<button type="submit" class="primary"${attributes({ 'data-hima-control': startControl.control })}${choices.check?.fit === true ? '' : ' disabled'}>${escape(startControl.said)}</button>`
     + '</form>'
@@ -1576,19 +1586,20 @@ const RUN_CONTROLS = `(() => {
 function page(title: string, crumb: string, body: string, above = '', script = ''): string {
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
     + `<title>${escape(title)}</title><style>${WORKBENCH_STYLE}</style></head><body>`
-    + `<header class="chrome"><h1>HimaHarness</h1><nav><a href="/">chat</a><a href="${HIMA_WORKBENCH_PATH}">workbench</a></nav>${crumb}</header>`
-    + `<div class="page">${above}<main>${body}</main></div>`
+    + '<a class="skip-link" href="#workbench-content">Skip to workbench content</a>'
+    + `<header class="chrome"><h1>HimaHarness</h1><nav aria-label="Main navigation"><a href="/" data-hima-control="open-chat">HimaGuide</a><a href="${HIMA_WORKBENCH_PATH}" aria-current="${crumb === '' ? 'page' : 'true'}" data-hima-control="open-workbench">Workbench</a></nav>${crumb}</header>`
+    + `<div id="workbench-content" class="page" tabindex="-1">${above}<main>${body}</main></div>`
     + `<script>${REFRESH}</script>${script === '' ? '' : `<script>${script}</script>`}</body></html>`;
 }
 
 /** `GET /hima/`, and `GET /hima/?pack=<id>` for the same page with that pack's knobs on its form
  *  (#58): the start form, and the run list under it. */
 export const runsPage = (runs: readonly RunHeadView[], choices: StartChoices): string =>
-  page('HimaHarness workbench', '', renderRunList(runs), renderStartForm(choices), START_FORM);
+  page('HimaHarness workbench', '', renderRunList(runs), '<div class="page-heading"><h2>Research workbench</h2><p>Choose a method, set a goal and budget, then follow each experiment back to its evidence.</p></div>' + renderStartForm(choices), START_FORM);
 
 /** `GET /hima/?run=<id>`: that Run's card, with the controls a person acts on it through. */
 export const runPage = (view: RunView): string =>
-  page(`HimaHarness workbench — ${view.run.id}`, `<span class="crumb mono">${escape(view.run.id)}</span>`, renderCard(view), '', RUN_CONTROLS);
+  page(`HimaHarness workbench — ${view.run.id}`, `<span class="crumb mono" title="${escape(view.run.id)}">${escape(view.run.id)}</span>`, renderCard(view), '', RUN_CONTROLS);
 
 /** `GET /hima/?run=<id>` for a Run the ledger does not hold, or a request the fence or the method refused: the reason, on the same page. */
 export const messagePage = (message: string): string =>

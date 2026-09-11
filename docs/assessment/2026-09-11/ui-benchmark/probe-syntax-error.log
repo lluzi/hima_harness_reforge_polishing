@@ -1,0 +1,40 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-benchmark/verify.test.ts:37
+  await d.open('/');
+  await wait('!!document.querySelector('[data-hima-control="open-workbench"]')');
+                                                          ^
+  result.beforeNotice=await b.evaluate('({buttons:[...document.querySelectorAll('button,[role="button"]')].map(e=>({tag:e.tagName,text:e.textContent})),text:document.body.innerText})');
+
+SyntaxError [ERR_INVALID_TYPESCRIPT_SYNTAX]: Expected ']', got '='
+    at parseTypeScript (node:internal/modules/typescript:72:36)
+    at processTypeScriptCode (node:internal/modules/typescript:146:42)
+    at stripTypeScriptModuleTypes (node:internal/modules/typescript:215:22)
+    at ModuleLoader.<anonymous> (node:internal/modules/esm/translators:680:29)
+    at #translate (node:internal/modules/esm/loader:438:20)
+    at afterLoad (node:internal/modules/esm/loader:506:29)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:511:12)
+    at #getOrCreateModuleJobAfterResolve (node:internal/modules/esm/loader:564:36)
+    at afterResolve (node:internal/modules/esm/loader:611:52)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:617:12) {
+  code: 'ERR_INVALID_TYPESCRIPT_SYNTAX'
+}
+
+Node.js v24.20.0
+✖ .hima-tmp/ui-benchmark/verify.test.ts (97.386375ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 104.667584
+
+✖ failing tests:
+
+test at .hima-tmp/ui-benchmark/verify.test.ts:1:1
+✖ .hima-tmp/ui-benchmark/verify.test.ts (97.386375ms)
+  'test failed'

@@ -50,6 +50,7 @@ pnpm run desktop --site local
 - [产品定义与验收目标](/Users/lluzi/code/hima_harness_reforge_polishing/docs/product-definition.md)
 - [Pilot 进度方案](/Users/lluzi/code/hima_harness_reforge_polishing/docs/pilot-plan.md)
 - [分级测试方案](/Users/lluzi/code/hima_harness_reforge_polishing/docs/testing-strategy.md)
+- [DeepSeek Harness UI 对标与首轮导航改进](docs/assessment/2026-09-11/ui-benchmark/README.md)
 - [领域术语](/Users/lluzi/code/hima_harness_reforge_polishing/CONTEXT.md)
 - [沿用 prototype 架构的决定](/Users/lluzi/code/hima_harness_reforge_polishing/docs/adr/0001-polish-within-prototype-architecture.md)
 

@@ -217,14 +217,14 @@ test('the Hima browser module is in the served boot graph and its bundle is serv
     const moduleExports = loaded[0]!.factory((spec) => baseline(spec)) as {
       name: string;
       inject: string[];
-      apply(ctx: { slots: { inject(name: string, cb: () => unknown): unknown; register(d: { name: string; key: string }, c: unknown): unknown } }): void;
+      apply(ctx: { slots: { inject(name: string, cb: () => unknown): unknown; register(d: { name: string; key?: string; id?: string }, c: unknown): unknown } }): void;
     };
     assert.deepEqual(moduleExports.inject, ['slots'], 'the module declares the browser service it needs');
-    const registered: { name: string; key: string }[] = [];
+    const registered: { name: string; key?: string; id?: string }[] = [];
     let component: unknown;
     moduleExports.apply({
       slots: {
-        inject: (name, cb) => { assert.equal(name, 'tool.call.toolview', 'it contributes into the keyed tool view slot'); return cb(); },
+        inject: (name, cb) => { assert.ok(['tool.call.toolview', 'sidebar.footer.action'].includes(name), 'only the Run view and existing sidebar footer are extended'); return cb(); },
         register: (declaration, c) => { registered.push(declaration); component = c; return () => undefined; },
       },
     });
@@ -232,8 +232,8 @@ test('the Hima browser module is in the served boot graph and its bundle is serv
     // keys and no others is asserted in `view-run.test.ts`, where the card's own contract lives.
     assert.deepEqual(
       registered,
-      [{ name: 'tool.call.toolview', key: 'hima_observe' }, { name: 'tool.call.toolview', key: 'hima_run' }],
-      'claiming the key of each tool that reports a run, and nothing else',
+      [{ name: 'sidebar.footer.action', id: 'hima-workbench' }, { name: 'tool.call.toolview', key: 'hima_observe' }, { name: 'tool.call.toolview', key: 'hima_run' }],
+      'the workbench link and the two existing tool views use their declared slots',
     );
     assert.equal(typeof component, 'function', 'with a component to render it');
 

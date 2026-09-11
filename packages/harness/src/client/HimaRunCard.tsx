@@ -15,6 +15,7 @@
 // mounts of the card say the same thing. The markers a driver reads and clicks (`data-hima-region`,
 // `data-hima-state-*`, `data-hima-control`) are the same on both, and are listed there.
 import { Fragment, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { runCardPath } from '../paths.js';
 import type { BranchView, GenerationJoinView, GenerationVerdictView, GenerationView, LoopView } from '../generations.js';
 import type { BlockerView, Citation, DecisionView, ExperienceView, NodeView, ObservationView, RunView, RunWords, VerdictView } from '../remote.js';
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
@@ -736,7 +737,7 @@ export function HimaRunCard({ block: toolBlock }: { block: ToolBlock }): ReactEl
   }
   return (
     <div style={card}>
-      <div style={{ ...muted, ...mono }}>{runId}</div>
+      <a href={runCardPath(runId)} style={{ ...mono, color: 'inherit' }} title="Open this Run in the research workbench">{runId} ↗</a>
       {state.error !== undefined ? <FailureRow error={state.error} /> : null}
       {state.view !== undefined ? <RunBody view={state.view} acting={acting} /> : null}
       {state.error === undefined && state.view === undefined ? <div style={muted}>reading the run…</div> : null}

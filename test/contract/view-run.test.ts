@@ -340,17 +340,17 @@ test('the served HimaGuide bundle claims the tool-view key of both Hima tools an
     new Function('window', source)({ __ModuleLoader__: { load: (r: unknown) => loaded.push(r as never) } });
     const baseline = createRequire(path.join(harnessPackageDir, 'package.json'));
     const moduleExports = loaded[0]!.factory((spec) => baseline(spec)) as {
-      apply(ctx: { slots: { inject(name: string, cb: () => unknown): unknown; register(d: { name: string; key: string }, c: unknown): unknown } }): void;
+      apply(ctx: { slots: { inject(name: string, cb: () => unknown): unknown; register(d: { name: string; key?: string; id?: string }, c: unknown): unknown } }): void;
     };
-    const registered: { name: string; key: string }[] = [];
+    const registered: { name: string; key?: string; id?: string }[] = [];
     moduleExports.apply({
       slots: {
-        inject: (name, cb) => { assert.equal(name, 'tool.call.toolview', 'it contributes into the keyed tool view slot'); return cb(); },
+        inject: (name, cb) => { assert.ok(['tool.call.toolview', 'sidebar.footer.action'].includes(name), 'only the Run view and existing sidebar footer are extended'); return cb(); },
         register: (declaration) => { registered.push(declaration); return () => undefined; },
       },
     });
     assert.deepEqual(
-      registered.map((r) => r.key).sort(),
+      registered.filter((r) => r.name === 'tool.call.toolview').map((r) => r.key).sort(),
       ['hima_observe', 'hima_run'],
       'the card renders a run wherever a Hima tool reported one, and claims no other key',
     );

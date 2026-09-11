@@ -1,0 +1,23 @@
+{
+  "baseline": "c7a2a07bace44ef09f8188c83ec983a714080739",
+  "issue": 20,
+  "standinOnly": true,
+  "localDistinctPass": 23,
+  "desktopDistinctPass": 4,
+  "electronBootsIncludingDiagnostics": 10,
+  "liveModelRun": false,
+  "liveSiteRun": false,
+  "coreModulesChanged": false,
+  "screenshots": {
+    "after-run-dark.png": "e29baf4a19f7950e6f32ac78a6ad7e888f41610cb5a9da12f94b211a907a972c",
+    "after-chat-light.png": "a341f590cfb4ff1c4352b42b178768e49c5e4ef4d1bc6e1e7a8a9a176fa48314",
+    "after-run-light.png": "c56e4d74a534f7d1304f1eaa6f2ed2885322f0eedf123d6a92bb3b113aa8fbb9",
+    "after-workbench-dark.png": "0a9c15d04409510c76b43a66354700ccb603139023d77332321bd46cc5c42219",
+    "after-chat-dark.png": "eaeafd0219f8583ff8be53166888f3ba4d2b68f79e658de803de5ce6e3d54c28",
+    "after-report-light.png": "08b25806575f7a95d6f69e6374b4d1c08a705fbdb8028e717c59d5ea23b45dfb",
+    "after-report-dark.png": "dd8d09b170a108b53a7d580e4576656ed4e0f8c83d7c77f95505d028462c5b39",
+    "bundled-deepseek-shell.png": "ce2b2b1f83151bebcc655f5865726ba6a07b028ffbc8a6501fcb85983af10c02",
+    "before-workbench.png": "bbb54db099bb1f2d03daeef8b26bd17d13cb3aa2cd7ba76012f9d8a9493e9d7c",
+    "after-workbench-light.png": "dff0cf77d77a8cbd5364e7769ac8df35d82d6c9f1ac58d9b0470570dfacc54da"
+  }
+}
