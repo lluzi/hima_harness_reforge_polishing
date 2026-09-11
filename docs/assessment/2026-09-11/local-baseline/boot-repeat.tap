@@ -1,0 +1,74 @@
+TAP version 13
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 66, column 11:
+#     root: !!js dshHomePath('sessions')
+#           ^^^^
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 81, column 11:
+#     root: !!js dshHomePath('storages')
+#           ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 95, column 11:
+#     mode: !!js process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'
+#           ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 98, column 12:
+#       url: !!js >-
+#            ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 117, column 11:
+#     mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+#           ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 118, column 20:
+#     workspaceRoot: !!js process.cwd()
+#                    ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 121, column 13:
+#   disabled: !!js process.platform === 'win32'
+#             ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 126, column 13:
+#   disabled: !!js process.platform !== 'win32'
+#             ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 130, column 13:
+#     policy: !!js >-
+#             ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 367, column 11:
+#     mode: !!js process.env.DSH_TOOLS_MODE
+#           ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 432, column 11:
+#     host: !!js ctx.webStartup.host ?? '127.0.0.1'
+#           ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 433, column 11:
+#     port: !!js ctx.webStartup.port ?? 3080
+#           ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 442, column 18:
+#     openBrowser: !!js ctx.webStartup.openBrowser
+#                  ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 445, column 19:
+#     trustedHosts: !!js ctx.webStartup.trustedHosts
+#                   ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 455, column 19:
+#     trustedHosts: !!js ctx.webRuntime.trustedHosts
+#                   ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 551, column 15:
+#     sitesDir: !!js dshHomePath('hima/sites')
+#               ^^^^
+# (node:10865) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 552, column 15:
+#     packsDir: !!js dshHomePath('hima/packs')
+#               ^^^^
+# Subtest: the hima profile composes dsh-base, the Hima bundle, and the privacy overlay
+ok 1 - the hima profile composes dsh-base, the Hima bundle, and the privacy overlay
+  ---
+  duration_ms: 59.397875
+  type: 'test'
+  ...
+# Subtest: the hima profile boots as a real host, serves the web app, and stops cleanly on SIGTERM
+ok 2 - the hima profile boots as a real host, serves the web app, and stops cleanly on SIGTERM
+  ---
+  duration_ms: 1747.598834
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1873.54

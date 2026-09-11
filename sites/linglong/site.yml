@@ -1,0 +1,37 @@
+# The reference Site: linglong, the owner's EDA workstation, reached over the LAN.
+# Template. A customer's CAD copies this file into the harness home's hima/sites/ as <name>.yml,
+# with its permit beside it. Nothing here is a credential: the channel uses the owner's own
+# OpenSSH client, keys, and agent.
+name: linglong
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness
+permit: ./permit.yml
+# What this Site binds for the inputs a HimaPack's run contract names. A pack moves to another Site
+# by editing this map, never the pack. `/hima pack check <pack> --site linglong` holds a pack's
+# inputs against these and names any it does not find.
+bindings:
+  # The Golden Flow: the Site's own Design Zoo. Read to make a Campaign's copy, never written — it is
+  # squarely outside every write root the permit allows, which is what makes that a fact and not a
+  # promise.
+  flowRoot: /data/eda/project/design_zoo
+  design: opene902
+  # The same campaign root the permit allows writes under; one workspace per Campaign is made here.
+  workspaceRoot: /data/eda/project/hima_harness
+ssh:
+  # user@host[:port]. The Tailscale address times out from the harness machine; the LAN address works.
+  destination: luzi@192.168.50.41
+  # Bastions to pass through, in order, as -J does. A single-hop site lists none.
+  jumps: []
+  # How long the warm control connection outlives the last operation.
+  controlPersistSeconds: 60
+capacity:
+  cores: 32
+  memoryGiB: 117
+  # The site owner's guide: one large DC or Innovus physical-design job at a time.
+  parallelJobs: 1
+  licences:
+    Design-Compiler: 99
+    Library-Compiler: 99
+    PrimeTime: 99
+    # Cadence here is uncounted node-locked: there are no seats to budget, so nothing may be reserved.
+    Innovus_Impl_System: 0

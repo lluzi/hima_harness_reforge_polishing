@@ -1,0 +1,1677 @@
+# Transcript of the read-only probe of linglong for #56 (2026-09-10, 19:14–19:28 PDT), phases A–E.
+# Every command is echoed after '$' with its exit code. Licence-file contents and licence variables were filtered out at the source (grep -v) before anything left the Site.
+# The Synopsys lmstat listing (every feature of a full-feature key, 99 seats each, none in use) is cut here to the features a synthesis and library flow takes; the Cadence lmstat answer is cut to its first three lines, which are the whole answer repeated.
+
+==================== phase A ====================
+
+$ hostname
+linglong
+[exit 0]
+
+$ date -Is
+2026-09-10T19:21:18-07:00
+[exit 0]
+
+$ uptime
+ 19:21:18 up 9 days, 12:00,  6 users,  load average: 3.99, 3.67, 3.31
+[exit 0]
+
+$ id
+uid=1000(luzi) gid=1000(luzi) groups=1000(luzi),4(adm),24(cdrom),27(sudo),30(dip),44(video),46(plugdev),100(users),114(lpadmin),983(ollama),984(docker),992(render)
+[exit 0]
+
+$ ls -la --time-style=full-iso /data/eda/project
+total 76
+drwxrwxr-x 20 luzi luzi   4096 2026-08-22 17:42:54.374804496 -0700 .
+drwxrwxr-x 11 luzi luzi   4096 2026-08-31 21:38:07.430111808 -0700 ..
+drwxr-xr-x  7 luzi luzi    182 2026-08-03 08:38:16.000000000 -0700 bool2cmos
+drwxr-xr-x 21 luzi luzi   4096 2026-07-20 08:51:57.739778775 -0700 celluzi
+drwxrwxr-x  2 luzi luzi     53 2026-08-03 19:14:46.664404429 -0700 celluzi_snapshots
+drwxrwxr-x  2 luzi luzi   4096 2026-06-26 23:16:35.860764819 -0700 design_handoff_20260626
+-rw-rw-r--  1 luzi luzi   8066 2026-06-26 23:17:34.173914964 -0700 design_handoff_20260626.tar.gz
+drwxrwxr-x 12 luzi luzi   4096 2026-09-06 03:09:36.602596559 -0700 design_zoo
+drwxrwxr-x  6 luzi luzi   4096 2026-07-29 18:38:26.990502649 -0700 exports
+drwxrwxr-x 14 luzi luzi   4096 2026-08-23 00:54:11.289301415 -0700 fabulous
+drwxrwxr-x 17 luzi luzi   4096 2026-08-17 00:23:20.522658538 -0700 gemmini_fullstack
+drwxrwxr-x 20 luzi luzi   4096 2026-09-10 18:38:30.981757901 -0700 hima_harness
+drwxrwxr-x 10 luzi luzi   4096 2026-06-22 12:22:02.638341856 -0700 ibex_clean
+drwxr-xr-x 12 luzi luzi   4096 2026-07-08 19:14:45.773315196 -0700 ibex_core
+drwxrwxr-x  2 luzi luzi     35 2026-08-02 20:17:23.677557779 -0700 imports
+-rw-r--r--  1 luzi 100000  353 2026-08-01 06:48:03.328314253 -0700 -_-_leakage_power_leakage_power_00xxxx1.mt0
+drwxrwxr-x 13 luzi luzi   4096 2026-07-02 15:17:30.979684909 -0700 mempool
+drwxr-xr-x  5 luzi luzi   4096 2026-06-20 06:37:18.167463652 -0700 swerv_wrapper
+drwxrwxr-x  5 luzi luzi    103 2026-08-22 20:19:54.613690815 -0700 techlib
+drwxrwxr-x  3 luzi luzi     26 2026-08-19 19:12:00.584405679 -0700 touchstone
+drwxrwxr-x  4 luzi luzi     48 2026-08-03 19:27:00.930275476 -0700 tsmc28_prtf
+drwxrwxr-x 44 luzi luzi   8192 2026-08-05 03:16:23.264324367 -0700 tsmc28_work
+[exit 0]
+
+$ ls -la --time-style=full-iso /data/eda/project/hima_harness
+total 16
+drwxrwxr-x 20 luzi luzi 4096 2026-09-10 18:38:30.981757901 -0700 .
+drwxrwxr-x 20 luzi luzi 4096 2026-08-22 17:42:54.374804496 -0700 ..
+drwxrwxr-x  3 luzi luzi  150 2026-09-08 21:01:44.821425975 -0700 archive
+drwxrwxr-x  3 luzi luzi   48 2026-08-05 23:00:16.274753814 -0700 authoring_acceptance
+drwxrwxr-x  3 luzi luzi   45 2026-08-13 11:27:25.741923328 -0700 golden_flows
+drwxrwxr-x  2 luzi luzi   90 2026-09-03 22:12:36.430735182 -0700 hand
+drwx------  7 luzi luzi  133 2026-09-08 02:39:21.683439451 -0700 hima-cell-mining
+drwxrwxr-x  2 luzi luzi   10 2026-09-08 01:25:30.910007152 -0700 .hima-tmp
+drwxrwxr-x  5 luzi luzi  148 2026-07-13 21:09:23.302808091 -0700 observability
+drwxrwxr-x  3 luzi luzi 4096 2026-09-09 12:47:18.395204042 -0700 opene902-timing-probe-20260909-194716-c76d
+drwxrwxr-x  3 luzi luzi  147 2026-09-09 12:52:57.086093731 -0700 opene902-timing-probe-20260909-195006-2dea
+drwxrwxr-x  4 luzi luzi 4096 2026-09-10 15:27:16.731046340 -0700 opene902-timing-probe-20260910-221158-96d7
+drwxrwxr-x  3 luzi luzi   28 2026-09-02 08:06:41.255580273 -0700 runtime
+drwxrwxr-x  4 luzi luzi   79 2026-08-13 11:24:43.937872986 -0700 site_inputs
+drwxrwxr-x  3 luzi luzi   30 2026-09-02 09:07:42.922883841 -0700 smoke-w2t5-2026-09-02
+drwxrwxr-x  3 luzi luzi   38 2026-09-02 07:57:43.349891601 -0700 spikes
+drwxrwxr-x  4 luzi luzi   98 2026-09-03 03:44:21.942360950 -0700 timing-push
+drwxrwxr-x  5 luzi luzi  156 2026-07-25 17:43:20.943215950 -0700 validation
+drwxrwxr-x  3 luzi luzi   26 2026-08-16 19:30:59.737677124 -0700 verification_packages
+drwxrwxr-x  3 luzi luzi   26 2026-07-13 22:49:01.344556403 -0700 workspaces
+[exit 0]
+
+$ ls -la --time-style=full-iso /data/eda/project/hima_harness/archive
+total 1603484
+drwxrwxr-x  3 luzi luzi        150 2026-09-08 21:01:44.821425975 -0700 .
+drwxrwxr-x 20 luzi luzi       4096 2026-09-10 18:38:30.981757901 -0700 ..
+-rw-rw-r--  1 luzi luzi 1641953280 2026-09-08 21:01:43.874446944 -0700 hima-reference-2026-09-08.tar
+-rw-rw-r--  1 luzi luzi         96 2026-09-08 21:01:44.727428056 -0700 hima-reference-2026-09-08.tar.sha256
+drwxrwxr-x  5 luzi luzi       4096 2026-07-13 22:56:55.346259749 -0700 manual_fresh_start_20260713T224719-0700
+[exit 0]
+
+$ stat -c %n %y /data/eda/project/design_zoo /data/eda/project/hima_harness/archive
+/data/eda/project/design_zoo 2026-09-06 03:09:36.602596559 -0700
+/data/eda/project/hima_harness/archive 2026-09-08 21:01:44.821425975 -0700
+[exit 0]
+
+$ ls /data/eda/project/techlib
+ciel
+ihp-sg13g2
+reports
+tsmc28
+TSMC28
+[exit 0]
+
+$ ls -la --time-style=full-iso /data/eda/project/techlib/
+total 8
+drwxrwxr-x  5 luzi luzi  103 2026-08-22 20:19:54.613690815 -0700 .
+drwxrwxr-x 20 luzi luzi 4096 2026-08-22 17:42:54.374804496 -0700 ..
+drwxrwxr-x  3 luzi luzi   32 2026-08-22 20:19:49.958762734 -0700 ciel
+lrwxrwxrwx  1 luzi luzi   76 2026-08-22 20:19:54.613690815 -0700 ihp-sg13g2 -> ciel/ihp-sg13g2/versions/c4b8b4e5e7a05f375cca3815d51b3a37721fbf5c/ihp-sg13g2
+drwxrwxr-x  6 luzi luzi 4096 2026-08-03 03:04:33.785407260 -0700 reports
+drwxr-xr-x  9 luzi luzi  152 2024-12-11 19:50:48.000000000 -0800 tsmc28
+lrwxrwxrwx  1 luzi luzi    6 2026-08-02 21:50:49.482064315 -0700 TSMC28 -> tsmc28
+[exit 0]
+
+$ bash -c ls /data/eda/project/techlib/tsmc28 | head -40
+EFUSE
+General_AppNotes_PR_Constraint_File
+IO
+logic
+Memory
+PDK
+TF
+[exit 0]
+
+$ bash -c find /data/eda/project/hima_harness -maxdepth 3 -type d 2>/dev/null | head -80
+/data/eda/project/hima_harness
+/data/eda/project/hima_harness/workspaces
+/data/eda/project/hima_harness/workspaces/luzi
+/data/eda/project/hima_harness/workspaces/luzi/runs
+/data/eda/project/hima_harness/workspaces/luzi/artifacts
+/data/eda/project/hima_harness/workspaces/luzi/packages
+/data/eda/project/hima_harness/workspaces/luzi/logs
+/data/eda/project/hima_harness/workspaces/luzi/tmp
+/data/eda/project/hima_harness/workspaces/luzi/nvdla_rtl2postroute
+/data/eda/project/hima_harness/workspaces/luzi/m3_site_acceptance
+/data/eda/project/hima_harness/workspaces/luzi/ibex_rtl2postroute
+/data/eda/project/hima_harness/workspaces/luzi/celluzi_strategy
+/data/eda/project/hima_harness/workspaces/luzi/celluzi_package_smoke
+/data/eda/project/hima_harness/workspaces/luzi/phase2-current
+/data/eda/project/hima_harness/observability
+/data/eda/project/hima_harness/observability/linglong-command-audit
+/data/eda/project/hima_harness/observability/__pycache__
+/data/eda/project/hima_harness/observability/portal
+/data/eda/project/hima_harness/archive
+/data/eda/project/hima_harness/archive/manual_fresh_start_20260713T224719-0700
+/data/eda/project/hima_harness/archive/manual_fresh_start_20260713T224719-0700/container_inspect
+/data/eda/project/hima_harness/archive/manual_fresh_start_20260713T224719-0700/container_logs
+/data/eda/project/hima_harness/archive/manual_fresh_start_20260713T224719-0700/workspaces_luzi
+/data/eda/project/hima_harness/validation
+/data/eda/project/hima_harness/validation/site-profile-r4-20260726T001215Z
+/data/eda/project/hima_harness/validation/site-profile-r4-20260726T001215Z/profile
+/data/eda/project/hima_harness/validation/site-profile-r4-20260726T001215Z/run
+/data/eda/project/hima_harness/validation/site-profile-r4-20260726T001215Z/profile-r5
+/data/eda/project/hima_harness/validation/site-profile-r4-20260726T001215Z/minimal-forge
+/data/eda/project/hima_harness/validation/site-profile-r4-20260726T001215Z/minimal-forge-v2
+/data/eda/project/hima_harness/validation/site-profile-r4-20260726T001215Z/__pycache__
+/data/eda/project/hima_harness/validation/site-profile-r4-20260726T001215Z/minimal-forge-nand2
+/data/eda/project/hima_harness/validation/site-profile-r4-20260726T001215Z/librecell_hima_venv-pre-golden-patches
+/data/eda/project/hima_harness/validation/site-profile-r5-narrow-20260726T003500Z
+/data/eda/project/hima_harness/validation/site-profile-r5-narrow-20260726T003500Z/nand2
+/data/eda/project/hima_harness/validation/site-profile-r5-narrow-20260726T004500Z
+/data/eda/project/hima_harness/validation/site-profile-r5-narrow-20260726T004500Z/nand2
+/data/eda/project/hima_harness/validation/site-profile-r5-narrow-20260726T004500Z/fusion
+/data/eda/project/hima_harness/authoring_acceptance
+/data/eda/project/hima_harness/authoring_acceptance/xs28_candidate_20260805_01
+/data/eda/project/hima_harness/authoring_acceptance/xs28_candidate_20260805_01/repo
+/data/eda/project/hima_harness/site_inputs
+/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28
+/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin
+/data/eda/project/hima_harness/site_inputs/cool3d_open_source_3dic
+/data/eda/project/hima_harness/site_inputs/cool3d_open_source_3dic/orfs-adeb389e7
+/data/eda/project/hima_harness/golden_flows
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/orfs_ibex_sky130hd
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/cool3d-exec-x86_64
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/golden-flow
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/paper-compatibility-machsuite-aes-003
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/paper-compatibility-machsuite-aes-004
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/paper-compatibility-machsuite-aes-005
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/cacti-smoke-001
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/cacti-smoke-o2-001
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/cacti-o2-native-build-001
+/data/eda/project/hima_harness/golden_flows/cool3d_open_source_3dic/paper-compatibility-machsuite-aes-006
+/data/eda/project/hima_harness/verification_packages
+/data/eda/project/hima_harness/verification_packages/luzi
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542
+/data/eda/project/hima_harness/spikes
+/data/eda/project/hima_harness/spikes/w2-ssh-transport
+/data/eda/project/hima_harness/spikes/w2-ssh-transport/attempt-1
+/data/eda/project/hima_harness/spikes/w2-ssh-transport/attempt-2
+/data/eda/project/hima_harness/spikes/w2-ssh-transport/attempt-3
+/data/eda/project/hima_harness/runtime
+/data/eda/project/hima_harness/runtime/node24
+/data/eda/project/hima_harness/runtime/node24/share
+/data/eda/project/hima_harness/runtime/node24/bin
+/data/eda/project/hima_harness/runtime/node24/lib
+/data/eda/project/hima_harness/runtime/node24/include
+/data/eda/project/hima_harness/hand
+/data/eda/project/hima_harness/smoke-w2t5-2026-09-02
+/data/eda/project/hima_harness/smoke-w2t5-2026-09-02/attempts
+/data/eda/project/hima_harness/smoke-w2t5-2026-09-02/attempts/hello
+/data/eda/project/hima_harness/timing-push
+/data/eda/project/hima_harness/timing-push/plans
+/data/eda/project/hima_harness/timing-push/bin
+/data/eda/project/hima_harness/.hima-tmp
+[exit 0]
+
+$ bash -c find /data/eda/project/hima_harness -maxdepth 5 -type f \( -name "*.env" -o -name "inputs*" \) 2>/dev/null | head -40
+/data/eda/project/hima_harness/validation/site-profile-r5-narrow-20260726T003500Z/nand2/inputs/celluzi.inputs.env
+/data/eda/project/hima_harness/validation/site-profile-r5-narrow-20260726T004500Z/nand2/inputs/celluzi.inputs.env
+/data/eda/project/hima_harness/validation/site-profile-r5-narrow-20260726T004500Z/fusion/inputs/celluzi.inputs.env
+/data/eda/project/hima_harness/hima-cell-mining/inputs/._xspace_cell_aes_tsmc28.inputs.env
+/data/eda/project/hima_harness/hima-cell-mining/inputs/xspace_cell_aes_tsmc28.inputs.env
+/data/eda/project/hima_harness/hima-cell-mining/flow/inputs/._xspace_cell_aes_tsmc28.inputs.example.env
+/data/eda/project/hima_harness/hima-cell-mining/flow/inputs/xspace_cell_aes_tsmc28.inputs.example.env
+/data/eda/project/hima_harness/hima-cell-mining/binding/inputs/._xspace_cell_aes_tsmc28.inputs.env
+/data/eda/project/hima_harness/hima-cell-mining/binding/inputs/xspace_cell_aes_tsmc28.inputs.env
+[exit 0]
+
+$ bash -c find /data/eda/project/hima_harness -maxdepth 6 -type f -iname "aes_cipher_top*.v" 2>/dev/null | head -20
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/source/rtl/aes_cipher_top.v
+[exit 0]
+
+$ bash -c find /data/eda/project -maxdepth 2 -mindepth 1 -type d 2>/dev/null
+/data/eda/project/swerv_wrapper
+/data/eda/project/swerv_wrapper/innovus
+/data/eda/project/swerv_wrapper/ifp
+/data/eda/project/swerv_wrapper/input
+/data/eda/project/ibex_core
+/data/eda/project/ibex_core/input
+/data/eda/project/ibex_core/innovus
+/data/eda/project/ibex_core/constraints
+/data/eda/project/ibex_core/config
+/data/eda/project/ibex_core/scripts
+/data/eda/project/ibex_core/designs
+/data/eda/project/ibex_core/logs
+/data/eda/project/ibex_core/results
+/data/eda/project/ibex_core/timing_push
+/data/eda/project/ibex_core/helm
+/data/eda/project/design_zoo
+/data/eda/project/design_zoo/flows
+/data/eda/project/design_zoo/manifests
+/data/eda/project/design_zoo/logs
+/data/eda/project/design_zoo/docs
+/data/eda/project/design_zoo/sources
+/data/eda/project/design_zoo/tools
+/data/eda/project/design_zoo/build
+/data/eda/project/design_zoo/results
+/data/eda/project/design_zoo/pr
+/data/eda/project/design_zoo/timing_push
+/data/eda/project/ibex_clean
+/data/eda/project/ibex_clean/config
+/data/eda/project/ibex_clean/constraints
+/data/eda/project/ibex_clean/designs
+/data/eda/project/ibex_clean/helm
+/data/eda/project/ibex_clean/scripts
+/data/eda/project/ibex_clean/logs
+/data/eda/project/ibex_clean/results
+/data/eda/project/ibex_clean/innovus
+/data/eda/project/design_handoff_20260626
+/data/eda/project/mempool
+/data/eda/project/mempool/.git
+/data/eda/project/mempool/.github
+/data/eda/project/mempool/.gitlab
+/data/eda/project/mempool/config
+/data/eda/project/mempool/hardware
+/data/eda/project/mempool/scripts
+/data/eda/project/mempool/software
+/data/eda/project/mempool/toolchain
+/data/eda/project/mempool/install
+/data/eda/project/mempool/.bender
+/data/eda/project/mempool/pd
+/data/eda/project/hima_harness
+/data/eda/project/hima_harness/workspaces
+/data/eda/project/hima_harness/observability
+/data/eda/project/hima_harness/archive
+/data/eda/project/hima_harness/validation
+/data/eda/project/hima_harness/authoring_acceptance
+/data/eda/project/hima_harness/site_inputs
+/data/eda/project/hima_harness/golden_flows
+/data/eda/project/hima_harness/verification_packages
+/data/eda/project/hima_harness/spikes
+/data/eda/project/hima_harness/runtime
+/data/eda/project/hima_harness/hand
+/data/eda/project/hima_harness/smoke-w2t5-2026-09-02
+/data/eda/project/hima_harness/timing-push
+/data/eda/project/hima_harness/.hima-tmp
+/data/eda/project/hima_harness/hima-cell-mining
+/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d
+/data/eda/project/hima_harness/opene902-timing-probe-20260909-195006-2dea
+/data/eda/project/hima_harness/opene902-timing-probe-20260910-221158-96d7
+/data/eda/project/celluzi
+/data/eda/project/celluzi/logs
+/data/eda/project/celluzi/data
+/data/eda/project/celluzi/detect
+/data/eda/project/celluzi/docs
+/data/eda/project/celluzi/env
+/data/eda/project/celluzi/evaluate
+/data/eda/project/celluzi/flow
+/data/eda/project/celluzi/generate
+/data/eda/project/celluzi/integrate
+/data/eda/project/celluzi/lib
+/data/eda/project/celluzi/pdk
+/data/eda/project/celluzi/scripts
+/data/eda/project/celluzi/tests
+/data/eda/project/celluzi/OpenROAD-flow-scripts
+/data/eda/project/celluzi/tmp
+/data/eda/project/celluzi/tools
+/data/eda/project/celluzi/inputs
+/data/eda/project/celluzi/verify_scratch
+/data/eda/project/celluzi/commercial
+/data/eda/project/exports
+/data/eda/project/exports/design_zoo_12nm_handoff_20260729_010328_meta
+/data/eda/project/exports/design_zoo_ibex_syn_rtl_sdc_20260729_173013_meta
+/data/eda/project/exports/design_zoo_ibex_syn_rtl_sdc_20260729_173149_meta
+/data/eda/project/exports/t12_12nm_dc_innovus_lib_20260729_183806_meta
+/data/eda/project/imports
+/data/eda/project/techlib
+/data/eda/project/techlib/tsmc28
+/data/eda/project/techlib/reports
+/data/eda/project/techlib/ciel
+/data/eda/project/tsmc28_work
+/data/eda/project/tsmc28_work/out_nd2
+/data/eda/project/tsmc28_work/run_foundry
+/data/eda/project/tsmc28_work/run_gen
+/data/eda/project/tsmc28_work/out_grid
+/data/eda/project/tsmc28_work/out_sweep
+/data/eda/project/tsmc28_work/out_attr
+/data/eda/project/tsmc28_work/out_p140
+/data/eda/project/tsmc28_work/out_p70
+/data/eda/project/tsmc28_work/out_bis
+/data/eda/project/tsmc28_work/out_final
+/data/eda/project/tsmc28_work/run_final
+/data/eda/project/tsmc28_work/out_final2
+/data/eda/project/tsmc28_work/run_final2
+/data/eda/project/tsmc28_work/out_fix100
+/data/eda/project/tsmc28_work/out_fix80
+/data/eda/project/tsmc28_work/run_fix
+/data/eda/project/tsmc28_work/out_m1
+/data/eda/project/tsmc28_work/out_best
+/data/eda/project/tsmc28_work/run_best
+/data/eda/project/tsmc28_work/cells28
+/data/eda/project/tsmc28_work/xspace_forge
+/data/eda/project/tsmc28_work/xspace
+/data/eda/project/tsmc28_work/charmodel
+/data/eda/project/tsmc28_work/allcells
+/data/eda/project/tsmc28_work/forge_all
+/data/eda/project/tsmc28_work/forge_h900
+/data/eda/project/tsmc28_work/forge_h1800
+/data/eda/project/tsmc28_work/abstract
+/data/eda/project/tsmc28_work/runs
+/data/eda/project/tsmc28_work/ctl
+/data/eda/project/tsmc28_work/evidence
+/data/eda/project/tsmc28_work/evidence2
+/data/eda/project/tsmc28_work/evidence3
+/data/eda/project/tsmc28_work/abstract_v2
+/data/eda/project/tsmc28_work/lefchk
+/data/eda/project/tsmc28_work/adv
+/data/eda/project/tsmc28_work/__pycache__
+/data/eda/project/tsmc28_work/adv2
+/data/eda/project/tsmc28_work/abstract_v3
+/data/eda/project/tsmc28_work/interrogate
+/data/eda/project/tsmc28_work/abstract_v4
+/data/eda/project/tsmc28_work/rebase
+/data/eda/project/celluzi_snapshots
+/data/eda/project/tsmc28_prtf
+/data/eda/project/tsmc28_prtf/N28_PRTF_Cad_v1d5a
+/data/eda/project/tsmc28_prtf/gen_p140
+/data/eda/project/bool2cmos
+/data/eda/project/bool2cmos/.pytest_cache
+/data/eda/project/bool2cmos/bool2cmos
+/data/eda/project/bool2cmos/pipeline
+/data/eda/project/bool2cmos/profiles
+/data/eda/project/bool2cmos/tests
+/data/eda/project/gemmini_fullstack
+/data/eda/project/gemmini_fullstack/handoff
+/data/eda/project/gemmini_fullstack/runs
+/data/eda/project/gemmini_fullstack/evidence
+/data/eda/project/gemmini_fullstack/downloads
+/data/eda/project/gemmini_fullstack/toolchains
+/data/eda/project/gemmini_fullstack/src
+/data/eda/project/gemmini_fullstack/cache
+/data/eda/project/gemmini_fullstack/archive
+/data/eda/project/gemmini_fullstack/scripts
+/data/eda/project/gemmini_fullstack/pdk
+/data/eda/project/gemmini_fullstack/workloads
+/data/eda/project/gemmini_fullstack/physical
+/data/eda/project/gemmini_fullstack/tools
+/data/eda/project/gemmini_fullstack/workload_driven
+/data/eda/project/gemmini_fullstack/open-source
+/data/eda/project/touchstone
+/data/eda/project/touchstone/fp01
+/data/eda/project/fabulous
+/data/eda/project/fabulous/venv
+/data/eda/project/fabulous/FABulous
+/data/eda/project/fabulous/demo01
+/data/eda/project/fabulous/oss-cad-suite
+/data/eda/project/fabulous/syn01
+/data/eda/project/fabulous/dcfix
+/data/eda/project/fabulous/rtl_dc
+/data/eda/project/fabulous/pr01
+/data/eda/project/fabulous/small01
+/data/eda/project/fabulous/rtl_small
+/data/eda/project/fabulous/syn02
+/data/eda/project/fabulous/pr02
+[exit 0]
+
+$ bash -c find /home/luzi -maxdepth 4 -type d \( -iname "*aes*" -o -iname "*bool2cmos*" -o -iname "*celluzi*" -o -iname "*hima*" -o -iname "*xspace*" \) 2>/dev/null | head -40
+[exit 0]
+
+$ bash -c find /data/eda -maxdepth 4 -not -path "*/techlib/*" -not -path "*/design_zoo/*" \( -iname "*bool2cmos*" -o -iname "*celluzi*" \) 2>/dev/null | head -40
+/data/eda/project/celluzi
+/data/eda/project/celluzi_snapshots
+/data/eda/project/bool2cmos
+/data/eda/project/bool2cmos/bool2cmos
+[exit 0]
+
+$ bash -c which bool2cmos celluzi dc_shell lc_shell innovus genus python3; true
+/usr/bin/python3
+[exit 0]
+
+$ podman images --format {{.Repository}}:{{.Tag}} {{.Size}} {{.Created}}
+localhost/iic-osic-celluzi:2026.06 18.8 GB 2 months ago
+docker.io/hpretl/iic-osic-tools:2026.06 18.8 GB 2 months ago
+localhost/edarunner:alma8 1.22 GB 2 months ago
+<none>:<none> 1.11 GB 2 months ago
+<none>:<none> 1.07 GB 2 months ago
+<none>:<none> 1.07 GB 2 months ago
+<none>:<none> 1.07 GB 2 months ago
+quay.io/almalinuxorg/almalinux:8 198 MB 3 months ago
+[exit 0]
+
+$ podman ps -a --format {{.Names}} {{.Image}} {{.Status}}
+eda-runner-swerv-wrapper-luzi localhost/edarunner:alma8 Created
+eda-runner-ibex-core-luzi localhost/edarunner:alma8 Created
+eda-runner-ibex-clean-luzi localhost/edarunner:alma8 Created
+eda-runner-design-zoo-luzi localhost/edarunner:alma8 Up 7 days
+eda-runner-mempool-luzi localhost/edarunner:alma8 Created
+eda-runner-mempool-pr-luzi localhost/edarunner:alma8 Created
+eda-runner-interactive-luzi localhost/edarunner:alma8 Up 47 hours
+goofy_heyrovsky docker.io/hpretl/iic-osic-tools:2026.06 Created
+eda-runner-luzi localhost/edarunner:alma8 Up 8 days
+cool_hoover localhost/iic-osic-celluzi:2026.06 Created
+hima-eda-shared-luzi localhost/edarunner:alma8 Created
+hima-opene902-timing-probe-20260909-195006-2dea localhost/edarunner:alma8 Up 31 hours
+hima-opene902-timing-probe-20260910-221158-96d7 localhost/edarunner:alma8 Up 4 hours
+[exit 0]
+
+$ bash -c podman image inspect localhost/iic-osic-celluzi:2026.06 --format "entrypoint={{.Config.Entrypoint}} cmd={{.Config.Cmd}} workdir={{.Config.WorkingDir}}"
+entrypoint=[/dockerstartup/scripts/ui_startup.sh] cmd=[--wait] workdir=/foss/designs
+[exit 0]
+
+$ bash -c ls /data/eda/software/eda_tools; ls /data/eda/software/eda_tools/synopsys 2>/dev/null; ls /data/eda/software/eda_tools/cadence 2>/dev/null
+agilent
+ansys
+cadence
+mentor
+synopsys
+dsoai
+finesim
+fm
+fusioncompiler
+hspice
+installer_v5.8
+lc
+prime
+primesim
+rtla
+scl
+spyglass
+starrc
+syn
+vcs
+verdi
+wv
+xa
+ASSURA0416
+ASSURA0417
+CONFRML2410
+DDI231_ISR4
+EMX241
+IC231_ISR15
+IC618_ISR36
+installiscape
+LCU430
+license
+PVS241_ISR2
+QUANTUS231_ISR1
+SPECTRE231_ISR15
+XCELIUM2403
+[exit 0]
+
+$ bash -c cat /data/eda/env/eda_tools_2025_env.sh 2>/dev/null | grep -v -i "licen\|LM_\|SNPSLMD" | head -60
+#!/bin/bash
+# Adapted from /home/luzi/Downloads/eda_env.rar:eda_env.sh for linglong.
+# Current default EDA environment loaded by /data/eda/env/edarun-init.sh.
+# Legacy 2022-era environment fragments are isolated under
+# /data/eda/software/_retired_20260831/env_shell_legacy.
+
+# ==========================================
+# EDA 工具环境配置脚本 (补齐修正版)
+# ==========================================
+
+# ==========================================
+# 1. 辅助函数
+# ==========================================
+add_to_path() {
+    local dir="$1"
+    if [[ -d "$dir" && ":$PATH:" != *":$dir:"* ]]; then
+        export PATH="$dir:$PATH"
+    fi
+}
+
+add_to_ld_path() {
+    local dir="$1"
+    if [[ -d "$dir" && ":${LD_LIBRARY_PATH:-}:" != *":$dir:"* ]]; then
+        export LD_LIBRARY_PATH="$dir:${LD_LIBRARY_PATH:-}"
+    fi
+}
+
+# ==========================================
+# ==========================================
+export EDA_ROOT="${EDA_TOOLS_ROOT:-/data/eda/software/eda_tools}" 
+
+export CDS_LIC_FILE="5280@${HOST_NAME}"
+
+# ==========================================
+# 3. Synopsys 工具集补齐
+# ==========================================
+export SNPS_ROOT="$EDA_ROOT/synopsys"
+export SCL_HOME="$SNPS_ROOT/scl/2025.03"
+export VCS_HOME="$SNPS_ROOT/vcs/X-2025.06-SP1"
+export VCS_TARGET_ARCH=amd64
+export VERDI_HOME="$SNPS_ROOT/verdi/X-2025.06-SP1"
+export SYNOPSYS_HOME="$SNPS_ROOT/syn/X-2025.06-SP3"
+export SYNOPSYS="$SYNOPSYS_HOME"
+export RTLA_HOME="$SNPS_ROOT/rtla/V-2023.12-SP5"
+export DSOAI_HOME="$SNPS_ROOT/dsoai/X-2025.06"
+export WV_HOME="$SNPS_ROOT/wv/X-2025.06-SP1"
+export FINESIM_HOME="$SNPS_ROOT/finesim/X-2025.06"
+export PRIMESIM_HOME="$SNPS_ROOT/primesim/X-2025.06"
+export HSPICE_HOME="$SNPS_ROOT/hspice/X-2025.06/hspice"
+# 补齐：后端与 Signoff
+export ICC2_HOME="$SYNOPSYS_HOME/icc2"
+export FC_HOME="$SNPS_ROOT/fusioncompiler/X-2025.06"
+export Prime_HOME="$SNPS_ROOT/prime/X-2025.06"
+export STARRC_HOME="$SNPS_ROOT/starrc/X-2025.06-SP1"
+export FM_HOME="$SNPS_ROOT/fm/X-2025.06"
+export SPYGLASS_HOME="$SNPS_ROOT/spyglass/X-2025.06-SP1/SPYGLASS_HOME"
+
+# 补齐：仿真与前端
+export HSPICE_HOME="$SNPS_ROOT/hspice/X-2025.06/hspice"
+export XA_HOME="$SNPS_ROOT/xa/X-2025.06-SP1"
+[exit 0]
+
+$ systemctl is-active eda-synopsys-2025-lmgrd eda-cadence-lmgrd
+active
+active
+[exit 0]
+
+$ bash -c ls -la --time-style=full-iso /data/eda/logs/license_servers/ 2>/dev/null
+total 1284
+drwxrwxr-x  3 luzi luzi    174 2026-09-01 07:21:10.805712675 -0700 .
+drwxrwxr-x 14 luzi luzi   4096 2026-08-31 22:24:59.370838550 -0700 ..
+-rw-r--r--  1 luzi luzi  94073 2026-09-10 16:28:31.939034053 -0700 ads.lmgrd.log
+-rw-r--r--  1 luzi luzi 111724 2026-09-10 16:28:23.697983227 -0700 ansys.lmgrd.log
+drwxrwxrwx  2 luzi luzi     84 2026-09-10 14:22:58.383173354 -0700 .cadence
+-rw-r--r--  1 luzi luzi 241641 2026-09-10 16:27:57.150091840 -0700 cadence.lmgrd.log
+-rw-r--r--  1 luzi luzi 232701 2026-09-10 16:28:28.680408498 -0700 mentor.lmgrd.log
+-rw-r--r--  1 luzi luzi 620572 2026-09-10 16:28:26.904613022 -0700 synopsys_2025.lmgrd.log
+[exit 0]
+
+$ bash -c grep -h "OUT:" /data/eda/logs/license_servers/synopsys_2025.lmgrd.log 2>/dev/null | awk "{print \$3}" | sort | uniq -c | sort -rn | head -40
+     46 OUT:
+[exit 0]
+
+$ bash -c grep -h "OUT:" /data/eda/logs/license_servers/cadence.lmgrd.log 2>/dev/null | awk "{print \$3}" | sort | uniq -c | sort -rn | head -20
+     59 OUT:
+[exit 0]
+
+==================== phase B ====================
+
+$ bash -c find /data/eda/project/hima_harness/hima-cell-mining -maxdepth 2 2>/dev/null | grep -v "/\._" | head -60
+/data/eda/project/hima_harness/hima-cell-mining
+/data/eda/project/hima_harness/hima-cell-mining/inputs
+/data/eda/project/hima_harness/hima-cell-mining/inputs/xspace_cell_aes_tsmc28.inputs.env
+/data/eda/project/hima_harness/hima-cell-mining/flow
+/data/eda/project/hima_harness/hima-cell-mining/flow/generated
+/data/eda/project/hima_harness/hima-cell-mining/flow/.DS_Store
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin
+/data/eda/project/hima_harness/hima-cell-mining/flow/config
+/data/eda/project/hima_harness/hima-cell-mining/flow/scripts
+/data/eda/project/hima_harness/hima-cell-mining/flow/inputs
+/data/eda/project/hima_harness/hima-cell-mining/pack
+/data/eda/project/hima_harness/hima-cell-mining/pack/no-baked-constants.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/HARVEST.md
+/data/eda/project/hima_harness/hima-cell-mining/pack/tool-cards.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/decision-bounds.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/pack-lock.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/dist
+/data/eda/project/hima_harness/hima-cell-mining/pack/claims-parts.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/parser-equivalence.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/candidate-ids.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/run.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/pack-fit.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/tool-scripts.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/slice-boundary.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/package.json
+/data/eda/project/hima_harness/hima-cell-mining/pack/try.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/PACKAGE.md
+/data/eda/project/hima_harness/hima-cell-mining/pack/parser-purity.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/parts
+/data/eda/project/hima_harness/hima-cell-mining/pack/tsconfig.json
+/data/eda/project/hima_harness/hima-cell-mining/pack/fixtures
+/data/eda/project/hima_harness/hima-cell-mining/pack/binding-parity.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/pack-documents.test.ts
+/data/eda/project/hima_harness/hima-cell-mining/pack/hima.lock
+/data/eda/project/hima_harness/hima-cell-mining/harness
+/data/eda/project/hima_harness/hima-cell-mining/harness/review-package
+/data/eda/project/hima_harness/hima-cell-mining/harness/bind-site-inputs.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/instantiate-mining-routes.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/materialize-package-assets.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/sdd-workspace
+/data/eda/project/hima_harness/hima-cell-mining/harness/harvest-cell-mining.test.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/bind-site-inputs.test.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/instantiate-mining-routes.test.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/gen-cell-mining-bindings.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/task-brief
+/data/eda/project/hima_harness/hima-cell-mining/harness/gen-cell-mining-bindings.test.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/rehearsal-site.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/emit-dsh-patch.test.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/scrub-bundle.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/emit-dsh-patch.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/dsh-profile.test.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/harvest-cell-mining.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/pack-lock.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/rehearse-timing-push.sh
+/data/eda/project/hima_harness/hima-cell-mining/harness/rehearsal-common.sh
+/data/eda/project/hima_harness/hima-cell-mining/harness/scrub-bundle.test.mjs
+/data/eda/project/hima_harness/hima-cell-mining/harness/rehearse-cell-mining.sh
+/data/eda/project/hima_harness/hima-cell-mining/harness/dsh-profile.sh
+/data/eda/project/hima_harness/hima-cell-mining/binding
+/data/eda/project/hima_harness/hima-cell-mining/binding/inputs
+[exit 0]
+
+$ bash -c grep -v -i "licen\|LM_\|SNPSLMD\|CDS_LIC\|passw\|token" /data/eda/project/hima_harness/hima-cell-mining/binding/inputs/xspace_cell_aes_tsmc28.inputs.env
+RUN_TAG='hhw-20260908093918'
+DESIGN_TOP='aes_cipher_top'
+DESIGN_RTL_GLOB='/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v'
+DESIGN_SDC_FILE='/data/eda/project/celluzi/commercial/aes_tsmc28/scripts/constraint_tsmc28.sdc'
+TARGET_CLOCK_NS='0.50'
+FOUNDRY_LIB='/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib'
+FOUNDRY_LEF='/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/lef/tcbn28hpcplusbwp40p140_110a/lef/tcbn28hpcplusbwp40p140.lef'
+FOUNDRY_TECH_LEF='/data/eda/project/tsmc28_prtf/gen_p140/tsmcn28_10lm5X2Y2ZRDL.tlef'
+FOUNDRY_QRC_TECH='/data/eda/project/techlib/tsmc28/TF/qrcTechFile'
+FOUNDRY_CDL='/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/spice/tcbn28hpcplusbwp40p140_110a/tcbn28hpcplusbwp40p140_110a.spi'
+FOUNDRY_DB='/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.db'
+FOUNDRY_GDS='/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/gds/tcbn28hpcplusbwp40p140_110a/tcbn28hpcplusbwp40p140.gds'
+PDK_ROOT='/data/eda/project/techlib/tsmc28'
+LIBERTY_SKELETON='/data/eda/project/tsmc28_work/xspace/tsmc28_skeleton.lib'
+LIBRECELL_TECH_PY='/data/eda/project/tsmc28_work/librecell_tsmc28_tech_900.py'
+BOOL2CMOS_PDK_PROFILE='/data/eda/project/bool2cmos/profiles/tsmc28_lclayout.json'
+CHARMODEL_TIMING_MODEL='/data/eda/project/tsmc28_work/charmodel/model.json'
+CHARMODEL_POWER_MODEL='/data/eda/project/tsmc28_work/charmodel/model_power.json'
+CHARMODEL_AREA_MODEL='/data/eda/project/tsmc28_work/charmodel/area_model.json'
+GEOMETRY_RULE_DECK='/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/geometry_rule_deck.json'
+DC_SHELL='/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin/xs28-dc-shell'
+LC_SHELL='/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin/xs28-lc-shell'
+INNOVUS='/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin/xs28-innovus'
+DISPLAY=':1002'
+XAUTHORITY='/home/luzi/hima_xauth_hima_eda_shared_luzi'
+XS28_POWER_PIN='VDD'
+XS28_GROUND_PIN='VSS'
+XS28_TAP_CELL='TAPCELLBWP40P140'
+XS28_FILLER_CELLS='FILL64BWP40P140 FILL32BWP40P140 FILL16BWP40P140 FILL8BWP40P140 FILL4BWP40P140 FILL3BWP40P140 FILL2BWP40P140'
+XS28_PROCESS_NODE='28'
+XS28_GDS_MAP='/data/eda/project/celluzi/commercial/aes_tsmc28/scripts/streamOut_tsmc28.map'
+XS28_POWER_TEMPLATE_BASE_CELL='ND2D1BWP40P140'
+XS28_CHARMODEL_HELPER_DIR='/data/eda/project/celluzi/scripts:/data/eda/project/tsmc28_work/charmodel'
+BOOL2CMOS_CMD='python3 -m bool2cmos.cli'
+XS28_CONTAINER_RUNTIME='/usr/bin/podman'
+XS28_CONTAINER_IMAGE='localhost/iic-osic-celluzi:2026.06'
+XS28_CONTAINER_HOST_ROOT='/data/eda/project'
+XS28_CONTAINER_MOUNT_POINT='/foss/designs'
+XS28_LCLAYOUT_ACTIVATE='/foss/designs/celluzi/tools/librecell_venv/bin/activate'
+MAX_GENERATED_CELLS='40'
+MINE_TOP_N='40'
+ABSTRACT_TIMEOUT_SEC='180'
+MULTI_CPU='8'
+CLK_NS='0.50'
+BOOL2CMOS_CWD='/data/eda/project/bool2cmos'
+XS28_TAP_INTERVAL='30'
+XS28_MAX_ROUTE_LAYER='7'
+XS28_RC_TEMPERATURE='25'
+XS28_SWITCHING_ACTIVITY='0.2'
+XS28_GENERATED_LIB_CELL_PATTERN='XS_*   # pattern for the get_lib_cells liveness probe'
+XS28_DRC_LIMIT='1000000'
+XS28_VG_ERROR_LIMIT='500000'
+[exit 0]
+
+$ bash -c find /data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28 -maxdepth 2 | head -40
+/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28
+/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin
+/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin/xs28-dc-shell
+/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin/xs28-lc-shell
+/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin/xs28-innovus
+/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/geometry_rule_deck.json
+[exit 0]
+
+$ bash -c find /data/eda/project/hima_harness/verification_packages/luzi -maxdepth 3 | head -40
+/data/eda/project/hima_harness/verification_packages/luzi
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/artifacts
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/artifacts/cells
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/artifacts/abstract
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/artifacts/libraries
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/artifacts/reports
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/artifacts/netlists
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/artifacts/logs
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/source
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/source/LICENSE_BUILD_RUN_SCRIPTS
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/source/rtl
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/evidence
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/evidence/records
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/evidence/original-run-scripts
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/evidence/runtime
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts/dc_syn_tsmc28.tcl
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts/constraint_tsmc28.sdc
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts/dc_base_portable.tcl
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts/dc_custom_portable.tcl
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts/dc_compact_portable.tcl
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts/compile_full_portable.tcl
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts/compile_compact_portable.tcl
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts/rerun_lc.sh
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/scripts/rerun_dc.sh
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/verify_package.py
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/MANIFEST.json
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/README.md
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/SHA256SUMS.txt
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542.tar.gz
+/data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542.tar.gz.sha256
+[exit 0]
+
+$ bash -c ls -la --time-style=full-iso /data/eda/project/hima_harness/timing-push /data/eda/project/hima_harness/timing-push/bin /data/eda/project/hima_harness/hand /data/eda/project/hima_harness/golden_flows
+/data/eda/project/hima_harness/golden_flows:
+total 8
+drwxrwxr-x  3 luzi luzi   45 2026-08-13 11:27:25.741923328 -0700 .
+drwxrwxr-x 20 luzi luzi 4096 2026-09-10 18:38:30.981757901 -0700 ..
+drwxrwxr-x 12 luzi luzi 4096 2026-08-13 12:09:34.954699253 -0700 cool3d_open_source_3dic
+
+/data/eda/project/hima_harness/hand:
+total 44
+drwxrwxr-x  2 luzi luzi    90 2026-09-03 22:12:36.430735182 -0700 .
+drwxrwxr-x 20 luzi luzi  4096 2026-09-10 18:38:30.981757901 -0700 ..
+-rw-rw-r--  1 luzi luzi 19297 2026-09-02 09:07:42.765886517 -0700 wrapper-0c6181716ac63414.mjs
+-rw-rw-r--  1 luzi luzi 20343 2026-09-03 22:12:36.429735204 -0700 wrapper-b05f508b6b3fbee3.mjs
+
+/data/eda/project/hima_harness/timing-push:
+total 20
+drwxrwxr-x  4 luzi luzi   98 2026-09-03 03:44:21.942360950 -0700 .
+drwxrwxr-x 20 luzi luzi 4096 2026-09-10 18:38:30.981757901 -0700 ..
+drwxrwxr-x  2 luzi luzi   39 2026-09-03 03:19:59.799701733 -0700 bin
+-rw-rw-r--  1 luzi luzi 2081 2026-09-06 03:03:04.957429584 -0700 exit-status.mjs
+drwxrwxr-x  2 luzi luzi   55 2026-09-03 04:45:10.679805486 -0700 plans
+-rw-rw-r--  1 luzi luzi 8194 2026-09-03 02:39:04.973452666 -0700 synth-attempt.mjs
+
+/data/eda/project/hima_harness/timing-push/bin:
+total 12
+drwxrwxr-x 2 luzi luzi   39 2026-09-03 03:19:59.799701733 -0700 .
+drwxrwxr-x 4 luzi luzi   98 2026-09-03 03:44:21.942360950 -0700 ..
+-rw-rw-r-- 1 luzi luzi 8194 2026-09-06 03:03:04.346443445 -0700 synth-attempt.mjs
+[exit 0]
+
+$ bash -c ls -la --time-style=full-iso /data/eda/project/bool2cmos; head -60 /data/eda/project/bool2cmos/README* 2>/dev/null; sed -n "1,40p" /data/eda/project/bool2cmos/pyproject.toml 2>/dev/null; ls /data/eda/project/bool2cmos/bool2cmos | head -30
+total 56
+drwxr-xr-x  7 luzi luzi   182 2026-08-03 08:38:16.000000000 -0700 .
+drwxrwxr-x 20 luzi luzi  4096 2026-08-22 17:42:54.374804496 -0700 ..
+drwxr-xr-x  3 luzi luzi  4096 2026-08-04 07:06:09.620524450 -0700 bool2cmos
+-rw-r--r--  1 luzi luzi   185 2026-08-03 05:20:56.000000000 -0700 .gitignore
+drwxr-xr-x  2 luzi luzi    37 2026-08-03 08:38:16.000000000 -0700 pipeline
+drwxr-xr-x  2 luzi luzi   146 2026-08-03 23:23:48.000000000 -0700 profiles
+-rw-r--r--  1 luzi luzi   497 2026-08-03 04:31:48.000000000 -0700 pyproject.toml
+drwxr-xr-x  3 luzi luzi    90 2026-08-03 04:54:03.000000000 -0700 .pytest_cache
+-rw-r--r--  1 luzi luzi 36077 2026-08-03 06:30:16.000000000 -0700 README.md
+drwxr-xr-x  2 luzi luzi  4096 2026-08-03 06:17:58.000000000 -0700 tests
+# bool2cmos
+
+Synthesize a **CMOS transistor network** (SPICE subckt) from a Boolean function.
+
+Implements the method of *"Generation of Series-Parallel Multilevel Transistor
+Networks Based on BDDs"* (Wu / Liu / Zeng, HiSilicon): ROBDD construction,
+ROBDD → pull-up/pull-down mapping, bridge detection and elimination, network
+optimisation, and multilevel decomposition under series-stack constraints.
+
+**Multi-output cells (§7) are an original extension — the paper covers a single
+BDD root only.**
+
+Pure Python 3, no dependencies (the ROBDD package is included). `pytest` is
+needed only to run the test suite.
+
+```bash
+bool2cmos --function "!(A&B)" --inputs A,B --output ZN \
+          --pdk sky130 --cell-name MY_NAND2 --out my_nand2.sp
+
+# one cell, two outputs, sharing logic where it is physically legal
+bool2cmos --function "A^B^CI"              --output S  \
+          --function "(A&B)|(B&CI)|(A&CI)" --output CO \
+          --inputs A,B,CI --pdk tsmc28 --cell-name MY_FA1
+```
+
+```python
+from bool2cmos import synthesize_function, synthesize_multi
+
+r = synthesize_function("!((A1 A2)+B)", ["A1", "A2", "B"], "ZN", pdk="tsmc28")
+print(r.spice)          # SPICE subckt
+print(r.metadata)       # device count, levels, phases, verification verdict
+assert r.verdict.ok     # symbolic proof of correctness
+
+m = synthesize_multi(
+    [("S", "A^B^CI"), ("CO", "(A&B)|(B&CI)|(A&CI)")],
+    ["A", "B", "CI"], pdk="tsmc28", cell_name="MY_FA1",
+)
+assert m.verdict.ok
+print(m.metadata["sharing"]["verdict"])       # SHARED_INTERNAL_LOGIC
+print(m.metadata["sharing"]["devices_saved"]) # 10, vs synthesizing separately
+```
+
+---
+
+## 1. The algorithm
+
+### 1.1 Function → ROBDD
+
+The Liberty-style expression is parsed, evaluated into a truth table, and
+built into a reduced ordered BDD (`bool2cmos/bdd.py`). Variable ordering is
+searched: all `n!` orders for `n ≤ 6`, a seeded random sample above that. The
+cheapest orders by node count are then fully synthesized and scored by *actual
+device count*, not by BDD size.
+
+### 1.2 ROBDD → pull-down / pull-up networks (`synth.bdd_to_networks`)
+
+Exactly as in the paper:
+
+| | pull-down (PDN) | pull-up (PUN) |
+|---|---|---|
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bool2cmos"
+version = "0.1.0"
+description = "Boolean function to bridge-free series-parallel CMOS transistor network (BDD based)"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+bool2cmos = "bool2cmos.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools]
+packages = ["bool2cmos"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+api.py
+bdd.py
+bridge.py
+cellname.py
+cell.py
+cli.py
+compare.py
+expr.py
+__init__.py
+__main__.py
+multilevel.py
+multiout.py
+network.py
+optimize.py
+pdk.py
+__pycache__
+spiceparse.py
+spice.py
+synth.py
+verify.py
+[exit 0]
+
+$ bash -c ls -la --time-style=full-iso /data/eda/project/celluzi | head -40; head -60 /data/eda/project/celluzi/README* 2>/dev/null; ls /data/eda/project/celluzi/env /data/eda/project/celluzi/scripts /data/eda/project/celluzi/flow 2>/dev/null | head -60
+total 752
+drwxr-xr-x 21 luzi luzi   4096 2026-07-20 08:51:57.739778775 -0700 .
+drwxrwxr-x 20 luzi luzi   4096 2026-08-22 17:42:54.374804496 -0700 ..
+drwxrwxr-x  7 luzi luzi    108 2026-08-03 19:28:23.420549125 -0700 commercial
+drwxr-xr-x  5 luzi luzi     59 2026-07-12 03:46:35.566398189 -0700 data
+drwxr-xr-x  4 luzi luzi   4096 2026-07-15 09:29:25.949990992 -0700 detect
+drwxr-xr-x  2 luzi luzi    107 2026-07-19 20:38:27.204924528 -0700 docs
+drwxr-xr-x  3 luzi luzi     66 2026-07-09 03:35:37.000000000 -0700 env
+drwxr-xr-x  2 luzi luzi      6 2026-07-08 22:31:34.000000000 -0700 evaluate
+drwxr-xr-x  2 luzi luzi     22 2026-07-08 22:31:34.000000000 -0700 flow
+drwxr-xr-x 28 luzi luzi   4096 2026-08-03 08:43:28.986617205 -0700 generate
+-rw-r--r--  1 luzi luzi    505 2026-07-09 02:47:00.000000000 -0700 .gitignore
+drwxrwxr-x  8 luzi luzi   4096 2026-07-13 13:25:30.856846249 -0700 inputs
+drwxr-xr-x  2 luzi luzi      6 2026-07-08 22:31:34.000000000 -0700 integrate
+-rw-rw-r--  1 luzi luzi    201 2026-07-20 08:51:58.020050369 -0700 lc_command.log
+-rw-rw-r--  1 luzi luzi 703888 2026-07-20 08:51:58.974050285 -0700 lc_output.txt
+drwxr-xr-x 37 luzi luzi   4096 2026-07-20 20:06:37.278487085 -0700 lib
+drwxrwxr-x  2 luzi luzi   4096 2026-07-20 17:48:35.152216139 -0700 logs
+drwxrwxr-x 11 luzi luzi   4096 2026-07-08 22:40:23.592626497 -0700 OpenROAD-flow-scripts
+drwxr-xr-x  3 luzi luzi    130 2026-07-15 21:51:28.745800160 -0700 pdk
+-rw-r--r--  1 luzi luzi   2030 2026-07-08 23:21:32.000000000 -0700 README.md
+drwxr-xr-x  4 luzi luzi   4096 2026-08-31 22:20:23.639959511 -0700 scripts
+-rw-r--r--  1 luzi luzi   4299 2026-07-09 03:35:26.000000000 -0700 STATUS.md
+drwxr-xr-x  2 luzi luzi     30 2026-07-08 22:31:34.000000000 -0700 tests
+drwxr-xr-x  3 luzi luzi   4096 2026-07-15 08:13:47.890617235 -0700 tmp
+drwxr-xr-x 15 luzi luzi   4096 2026-08-01 08:58:14.022750436 -0700 tools
+drwxrwxr-x  4 luzi luzi    130 2026-07-16 00:39:46.553640928 -0700 verify_scratch
+# celluzi — SKY130 AI-Driven Custom-Cell PPA Optimization
+
+Implements the North Star loop in [docs/sky130_customcell_north_star_plan.md](docs/sky130_customcell_north_star_plan.md):
+**detect** where a design would benefit from bespoke standard cells → **generate + characterize**
+those cells on SKY130 → **integrate** them into the flow → **re-run** → prove a measurable
+**PPA delta** vs. a frozen golden baseline, in a closed, repeatable loop.
+
+## Where things run
+- **Toolchain:** IIC-OSIC-TOOLS (rootless podman) on the `linglong` EDA server — OpenROAD/ORFS,
+  Yosys, Magic, KLayout, Netgen, ngspice, OpenSTA, CharLib + the SKY130 PDK. Pinned image:
+  `docker.io/hpretl/iic-osic-tools:2026.06` (see `env/tool-versions.lock`).
+- This repo is **authored locally** and synced to `/data/eda/project/celluzi` on the server,
+  where the heavy artifacts (ORFS, PDK, run outputs) live and are **not** tracked in git.
+- No git remote / no push — the server's outbound access is gated by its owner.
+
+## Milestones (plan §4)
+| | Goal | State |
+|---|---|---|
+| **M0** | Environment + frozen golden baseline | ✅ **done** — aes DRC-clean, golden frozen |
+| M1 | Detect custom-cell opportunities (CircuitOps + OpenSTA) | **next** |
+| M2 | Generate one cell (known-cell calibration first) | todo |
+| M3 | Close the loop — measured PPA delta | todo |
+| M4 | Scale & automate | todo |
+
+## Layout
+```
+env/            determinism ledger (tool-versions.lock) — every PPA claim references it
+docs/           the North Star plan
+data/golden/    frozen baseline metrics (the reference for every delta)
+data/runs/      per-iteration metrics, candidate lists, reports
+detect/         STEP 1 — pluggable opportunity detector
+generate/       STEP 2 — cell netlist → layout → DRC/LVS → extract → characterize
+integrate/      STEP 3 — merge custom lib + patch flow config + ECO map
+evaluate/       STEP 4 — re-run + PPA compare vs golden
+lib/custom_sc/  generated cells land here
+tests/          regression harness
+```
+/data/eda/project/celluzi/env:
+lclayout-image
+tool-versions.lock
+
+/data/eda/project/celluzi/flow:
+
+/data/eda/project/celluzi/scripts:
+abut_cells.py
+bringup_smoke.sh
+calib_compare.py
+collect_metrics.py
+compile_fleet10.tcl
+compile_fleet.tcl
+compose_netlist.py
+dedup_templates.py
+defuse_netlist.py
+derive_cell.py
+estimate_lib.py
+fix_charlib_lib.py
+fix_lef_obs.py
+fix_lef_sky130hd.py
+freeze_golden.sh
+gen_run10.py
+gen_run11.py
+gen.sh
+gen.sh.bak-retire-old-20260831_222023
+librecell_sky130_tech.py
+lib_revenue.py
+make_derate_sweep.py
+measure_ppa.sh
+merge_lib.py
+mine_pairs.py
+mock_char.py
+model_fused_cell.py
+model_specs
+netlist_area.py
+osic.sh
+patch_charlib_mem.py
+patch_charlib_pool.py
+patch_lclayout_enclosure.py
+patch_lclayout_gate.py
+patch_lclayout_metal3.py
+patch_orfs.py
+patch_tech_metal3.py
+patch_welltap.py
+postprocess_cell.py
+__pycache__
+run10_all.sh
+run10_report.py
+run11_all.sh
+run11_report.sh
+run_orfs.sh
+run_synth_adopt.sh
+scene_cells.py
+skew_lib.py
+swap_pairs.py
+watch_aes.sh
+[exit 0]
+
+$ bash -c ls -la --time-style=full-iso /data/eda/project/celluzi_snapshots /data/eda/project/celluzi/commercial 2>/dev/null | head -30
+/data/eda/project/celluzi/commercial:
+total 24
+drwxrwxr-x  7 luzi luzi  108 2026-08-03 19:28:23.420549125 -0700 .
+drwxr-xr-x 21 luzi luzi 4096 2026-07-20 08:51:57.739778775 -0700 ..
+drwxrwxr-x 14 luzi luzi 4096 2026-07-20 08:29:07.603454782 -0700 aes_flow
+drwxrwxr-x 12 luzi luzi 4096 2026-08-04 23:46:09.952383782 -0700 aes_tsmc28
+drwxrwxr-x 11 luzi luzi 4096 2026-07-20 20:06:51.797485806 -0700 run10
+drwxrwxr-x  6 luzi luzi  129 2026-07-20 20:27:12.685378335 -0700 run11
+drwxr-xr-x 11 luzi luzi 4096 2026-07-16 06:05:05.000000000 -0700 sky130_cds
+
+/data/eda/project/celluzi_snapshots:
+total 355264
+drwxrwxr-x  2 luzi luzi        53 2026-08-03 19:14:46.664404429 -0700 .
+drwxrwxr-x 20 luzi luzi      4096 2026-08-22 17:42:54.374804496 -0700 ..
+-rw-rw-r--  1 luzi luzi 363783220 2026-08-03 19:14:58.861048061 -0700 sky130_aes_flow_20260804.tar.gz
+[exit 0]
+
+$ bash -c grep -rn -h -o -E "(python3?[^|;&]*bool2cmos[^|;&]*|bool2cmos[^|;&]*|celluzi[^|;&]*|podman run[^|;&]*|/usr/local/bin/eda [^|;&]*|dc_shell[^|;&]*|lc_shell[^|;&]*|innovus[^|;&]*|genus[^|;&]*)" /data/eda/project/hima_harness/hima-cell-mining/flow --include="*.py" --include="*.sh" --include="Makefile" --include="*.mk" --include="*.tcl" --include="*.env" 2>/dev/null | sort | uniq -c | sort -rn | head -60
+      1 99:bool2cmos_attempts.json"))
+      1 98:dc_shell, "-f", str(dc_entrypoint)], cwd=root,
+      1 8:lc_shell never started must therefore look like an unobserved run, not a passing one.
+      1 83:lc_shell, "-f", str(lc_script)], cwd=root,
+      1 78:bool2cmos writes `vdd`/`gnd`
+      1 6:dc_shell``.  The command line and the run workspace are reliable, so this
+      1 53:dc_shell = _need_env("DC_SHELL")
+      1 52:lc_shell = _need_env("LC_SHELL")
+      1 4:celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v"
+      1 42:lc_shell` type-checks every cell on the way to .db, and it is what caught an earlier
+      1 403:lc_shell is the gate that catches it
+      1 386:bool2cmos / foundry-dialect .subckt SPICE")
+      1 30:lc_shell pass for the FOUNDRY library -- the generated library still
+      1 23:bool2cmos.py`` since Package @1.
+      1 118:bool2cmos-sized gate that is
+      1 116:bool2cmos writes `* function : ZN = <expr>` (one line per output) into the netlist header."""
+[exit 0]
+
+$ bash -c find /data/eda/project/hima_harness/hima-cell-mining/flow -maxdepth 2 -type f | grep -v "/\._" | head -60
+/data/eda/project/hima_harness/hima-cell-mining/flow/generated/dc_base.tcl
+/data/eda/project/hima_harness/hima-cell-mining/flow/.DS_Store
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_compact_lc_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/run_charmodel.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_arm_scripts.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_baseline_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/_cell_adoption_projection.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_geometry_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/run_mining_strategy.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_strategy_evaluation_libraries.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/verilog_netlist.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/strategy_evaluation_metrics.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_lc_script.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_netlist_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_checker_session.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/mine_patterns.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_strategy_benefit_report.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_adoption_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/mining_strategy_contract.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_abstract_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_lc_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/predict.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/techprofile.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/_compact_confirm_projection.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/features.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/run_strategy_evaluation.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/_xs28.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/abstract_cell.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/prepare_mining_strategy.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_compact_selection.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/charlib_emit.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/run_abstract_layout.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/run_bool2cmos.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_compact_adoption_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_flow_evidence.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_strategy_evaluation_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/mine_timing_route.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_compact_liberty.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/_generation_projection.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/render_dc_entrypoint.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/featurize.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_liberty_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/build_mining_record.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/attribute_violations.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/bin/merge_mining_strategies.py
+/data/eda/project/hima_harness/hima-cell-mining/flow/config/lc_warning_baseline.initial.json
+/data/eda/project/hima_harness/hima-cell-mining/flow/scripts/mmmc_tsmc28.tcl.tmpl
+/data/eda/project/hima_harness/hima-cell-mining/flow/scripts/init_tsmc28.tcl.tmpl
+/data/eda/project/hima_harness/hima-cell-mining/flow/scripts/checker_session.tcl.tmpl
+/data/eda/project/hima_harness/hima-cell-mining/flow/scripts/constraint_tsmc28.sdc
+/data/eda/project/hima_harness/hima-cell-mining/flow/scripts/dc_syn_tsmc28.tcl
+/data/eda/project/hima_harness/hima-cell-mining/flow/scripts/pnr_tsmc28.tcl.tmpl
+/data/eda/project/hima_harness/hima-cell-mining/flow/inputs/xspace_cell_aes_tsmc28.inputs.example.env
+[exit 0]
+
+$ bash -c /usr/local/bin/eda bash -lc "which dc_shell lc_shell pt_shell innovus genus python3 lmutil lmstat 2>&1; python3 --version; echo SYNOPSYS=\$SYNOPSYS; echo CDS=\$CDSHOME; ls /data/eda/software/eda_tools/synopsys/syn /data/eda/software/eda_tools/synopsys/lc"
+Loading EDA init: /data/eda/env/edarun-init.sh
+EDA 完整全集环境已成功加载
+/data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3/amd64/syn/bin/dc_shell
+/data/eda/software/eda_tools/synopsys/lc/X-2025.06/bin/lc_shell
+/data/eda/software/eda_tools/synopsys/prime/X-2025.06/bin/pt_shell
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/bin/innovus
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/GENUS231/bin/genus
+/data/eda/software/eda_tools/mentor/calibre2026/aok_cal_2026.1_17.11/bin/python3
+/data/eda/software/eda_tools/agilent/ads202601/Licensing/2025.4/linux_x86_64/bin/lmutil
+/data/eda/software/eda_tools/mentor/tessent2025/tessent_2025.4/bin/lmstat
+Python 3.8.16
+SYNOPSYS=/data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3
+CDS=/data/eda/software/eda_tools/cadence/IC231_ISR15
+/data/eda/software/eda_tools/synopsys/lc:
+X-2025.06
+
+/data/eda/software/eda_tools/synopsys/syn:
+X-2025.06-SP3
+[exit 0]
+
+$ bash -c D=$(mktemp -d /tmp/hima-probe56-XXXXXX); echo scratch=$D; cd $D; echo "--- dc_shell -V"; /usr/local/bin/eda bash -lc "cd $D && dc_shell -V" 2>&1 | head -8; echo "--- lc_shell -V"; /usr/local/bin/eda bash -lc "cd $D && lc_shell -V" 2>&1 | head -8; echo "--- innovus -version"; /usr/local/bin/eda bash -lc "cd $D && innovus -version" 2>&1 | head -6; echo "--- genus -version"; /usr/local/bin/eda bash -lc "cd $D && genus -version" 2>&1 | head -6; echo "--- files the version prints left in $D:"; ls -la $D
+scratch=/tmp/hima-probe56-Ci5aCp
+--- dc_shell -V
+Loading EDA init: /data/eda/env/edarun-init.sh
+EDA 完整全集环境已成功加载
+Info: [VCS_SAVE_RESTORE_INFO] ASLR (Address Space Layout Randomization) is detected on the machine. To enable $save functionality, ASLR will be switched off and simv re-executed.
+Please use '-no_save' simv switch to avoid this.
+
+dc_shell version    -  X-2025.06-SP3
+dc_shell build date -  Oct 16, 2025
+Site Identification Number: 000
+--- lc_shell -V
+Loading EDA init: /data/eda/env/edarun-init.sh
+EDA 完整全集环境已成功加载
+Error: Unexpected argument '-V'
+Error: Unexpected argument '-V'
+
+Usage:	/data/eda/software/eda_tools/synopsys/lc/X-2025.06/linux64/lc/bin/lc2_shell_exec
+	-r % (synopsys root path)
+	-f % (execute_command file (optional)
+--- innovus -version
+Loading EDA init: /data/eda/env/edarun-init.sh
+EDA 完整全集环境已成功加载
+@(#)CDS: Innovus v23.14-s088_1 (64bit) 02/28/2025 12:25 (Linux 3.10.0-693.el7.x86_64)
+@(#)CDS: NanoRoute 23.14-s088_1 NR250219-0822/23_14-UB (database version 18.20.661) {superthreading v2.20}
+@(#)CDS: AAE 23.14-s018 (64bit) 02/28/2025 (Linux 3.10.0-693.el7.x86_64)
+@(#)CDS: CTE 23.14-s036_1 () Feb 22 2025 01:17:26 ( )
+--- genus -version
+Loading EDA init: /data/eda/env/edarun-init.sh
+EDA 完整全集环境已成功加载
+No DISPLAY environment variable set.
+GUI mode requires a valid DISPLAY.
+Reverting to shell mode.
+
+--- files the version prints left in /tmp/hima-probe56-Ci5aCp:
+total 48
+drwx------   2 luzi luzi  4096 Sep 10 19:22 .
+drwxrwxrwt 100 root root 40960 Sep 10 19:22 ..
+[exit 0]
+
+$ bash -c /usr/local/bin/eda bash -lc "lmutil lmstat -a -c \$SNPSLMD_LICENSE_FILE 2>&1 | grep -E \"^Users of\" | sed -E \"s/\\(Total of ([0-9]+) licenses? issued;  Total of ([0-9]+) licenses? in use\\)/issued=\\1 inuse=\\2/\" | head -80"
+
+[... every other feature omitted: all 99 issued, 0 in use ...]
+[exit 0]
+
+$ bash -c /usr/local/bin/eda bash -lc "lmutil lmstat -a -c \$CDS_LIC_FILE 2>&1 | grep -E \"^Users of\" | sed -E \"s/\\(Total of ([0-9]+) licenses? issued;  Total of ([0-9]+) licenses? in use\\)/issued=\\1 inuse=\\2/\" | head -60"
+Loading EDA init: /data/eda/env/edarun-init.sh
+EDA 完整全集环境已成功加载
+Users of 100: Cannot get users of 100: No socket connection to license server manager. (-7,10015)
+Users of 111: Cannot get users of 111: No socket connection to license server manager. (-7,10015)
+Users of 12141: Cannot get users of 12141: No socket connection to license server manager. (-7,10015)
+[... the same "No socket connection to license server manager" answer for every feature name ...]
+[exit 0]
+
+$ bash -c grep -oh "OUT: \"[^\"]*\"" /data/eda/logs/license_servers/synopsys_2025.lmgrd.log | sort | uniq -c | sort -rn | head -30
+     16 OUT: "Design-Compiler"
+     15 OUT: "HDL-Compiler"
+     15 OUT: "DesignWare"
+[exit 0]
+
+$ bash -c grep -oh "OUT: \"[^\"]*\"" /data/eda/logs/license_servers/cadence.lmgrd.log | sort | uniq -c | sort -rn | head -30
+     21 OUT: "Innovus_Impl_System"
+     10 OUT: "Genus_Synthesis"
+     10 OUT: "genus_synthesis"
+     10 OUT: "genus_low_power_opt"
+      6 OUT: "Genus_Low_Power_Opt"
+      2 OUT: "Innovus_Hier_Opt"
+[exit 0]
+
+$ bash -c ls /data/eda/software/eda_tools/synopsys/syn/*/doc/syn/man 2>/dev/null | head; ls /data/eda/software/eda_tools/synopsys/lc/*/doc/lc/man 2>/dev/null | head; ls -d /data/eda/software/eda_tools/synopsys/syn/* /data/eda/software/eda_tools/synopsys/lc/* /data/eda/software/eda_tools/cadence/DDI231_ISR4 2>/dev/null
+cat1
+cat2
+cat3
+cat4
+catn
+cat1
+cat2
+cat3
+catn
+/data/eda/software/eda_tools/cadence/DDI231_ISR4
+/data/eda/software/eda_tools/synopsys/lc/X-2025.06
+/data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3
+[exit 0]
+
+==================== phase C ====================
+
+$ bash -c find /data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3/doc -maxdepth 5 -type d -name 'cat2' 2>/dev/null | head -5; find /data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc -maxdepth 5 -type d -name 'cat2' 2>/dev/null | head -5; find /data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231 -maxdepth 6 -type d -iname 'man*' 2>/dev/null | head -8
+/data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3/doc/snps_tcl/man/cat2
+/data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3/doc/snps_gui/man/cat2
+/data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3/doc/syn/man/cat2
+/data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/ICC2/man/cat2
+/data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/LC2/man/cat2
+/data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/snps_tcl/man/cat2
+/data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/snps_gui/man/cat2
+/data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/lc/man/cat2
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/tcltools/man
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/tcltools/man/man3
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/tcltools/man/mann
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/syntech/man
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/syntech/man/man1
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/stylus/man
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/stylus/man/man1
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/man
+[exit 0]
+DCMAN=/data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3/doc/snps_tcl/man/cat2 LCMAN=/data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/ICC2/man/cat2 INNMAN=/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/tcltools/man
+
+--- Design Compiler X-2025.06-SP3: legacy commands (from the archived dc_syn_tsmc28.tcl) against /data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3/doc/snps_tcl/man/cat2 ---
+  analyze: NO PAGE
+  elaborate: NO PAGE
+  link: NO PAGE
+  current_design: NO PAGE
+  define_design_lib: NO PAGE
+  set_app_var: present (set_app_var.2)
+  compile_ultra: NO PAGE
+  change_names: NO PAGE
+  write: NO PAGE
+  write_sdc: NO PAGE
+  report_timing: NO PAGE
+  redirect: present (redirect.2)
+  report_qor: NO PAGE
+  report_area: NO PAGE
+  get_lib_cells: NO PAGE
+  set_dont_use: NO PAGE
+  set_max_delay: NO PAGE
+  create_clock: NO PAGE
+  set_clock_uncertainty: NO PAGE
+
+--- Library Compiler X-2025.06: legacy commands against /data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/ICC2/man/cat2 ---
+  read_lib: present (read_lib.2)
+  write_lib: NO PAGE
+  check_library: NO PAGE
+  report_lib: present (report_lib.2)
+  set_app_var: NO PAGE
+  define_design_lib: NO PAGE
+  compile_lib: NO PAGE
+  read_db: present (read_db.2)
+  write_db: NO PAGE
+
+--- Innovus 23.14: legacy commands (from the archived init/pnr/checker/mmmc templates) ---
+  init_design: NO PAGE
+  floorPlan: NO PAGE
+  globalNetConnect: NO PAGE
+  addWellTap: NO PAGE
+  place_opt_design: NO PAGE
+  ccopt_design: NO PAGE
+  optDesign: NO PAGE
+  routeDesign: NO PAGE
+  extractRC: NO PAGE
+  timeDesign: NO PAGE
+  addFiller: NO PAGE
+  verify_drc: NO PAGE
+  verifyConnectivity: NO PAGE
+  summaryReport: NO PAGE
+  reportGateCount: NO PAGE
+  report_power: NO PAGE
+  streamOut: NO PAGE
+  saveDesign: NO PAGE
+  restoreDesign: NO PAGE
+  setDesignMode: NO PAGE
+  setPlaceMode: NO PAGE
+  setOptMode: NO PAGE
+  setNanoRouteMode: NO PAGE
+  setMaxRouteLayer: NO PAGE
+  setExtractRCMode: NO PAGE
+  setAnalysisMode: NO PAGE
+  setMultiCpuUsage: NO PAGE
+  create_library_set: NO PAGE
+  create_rc_corner: NO PAGE
+  create_delay_corner: NO PAGE
+  create_constraint_mode: NO PAGE
+  create_analysis_view: NO PAGE
+  set_analysis_view: NO PAGE
+  set_interactive_constraint_modes: NO PAGE
+  create_ccopt_clock_tree_spec: NO PAGE
+  set_default_switching_activity: NO PAGE
+  verifyGeometry: NO PAGE
+
+--- Innovus 23.14 legacy-vs-common-ui: does the release document the legacy (camelCase) names as legacy? ---
+
+$ bash -c ls /data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/doc 2>/dev/null | head; find /data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share -maxdepth 4 -iname '*legacy*' 2>/dev/null | head -5; find /data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231 -maxdepth 5 -iname 'README*' 2>/dev/null | head -3
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/man/man1/enable_legacy_metric.1
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/doc/check_conf/README
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/doc/cdnsEnvCheck/README
+/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/doc/cdnsLibOpenSSL/README
+[exit 0]
+
+--- the checker's verifyGeometry vs verify_drc in the archived checker template ---
+
+$ bash -c true
+[exit 0]
+
+--- UNTOUCHED CHECK: mtimes after the probe ---
+
+$ stat -c %n %y /data/eda/project/design_zoo /data/eda/project/hima_harness/archive /data/eda/project/hima_harness/archive/hima-reference-2026-09-08.tar /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d /data/eda/project/hima_harness/opene902-timing-probe-20260909-195006-2dea /data/eda/project/hima_harness/opene902-timing-probe-20260910-221158-96d7 /data/eda/project/hima_harness/hima-cell-mining /data/eda/project/hima_harness/verification_packages /data/eda/project/hima_harness/site_inputs /data/eda/project/bool2cmos /data/eda/project/celluzi /data/eda/project/techlib/tsmc28
+/data/eda/project/design_zoo 2026-09-06 03:09:36.602596559 -0700
+/data/eda/project/hima_harness/archive 2026-09-08 21:01:44.821425975 -0700
+/data/eda/project/hima_harness/archive/hima-reference-2026-09-08.tar 2026-09-08 21:01:43.874446944 -0700
+/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d 2026-09-09 12:47:18.395204042 -0700
+/data/eda/project/hima_harness/opene902-timing-probe-20260909-195006-2dea 2026-09-09 12:52:57.086093731 -0700
+/data/eda/project/hima_harness/opene902-timing-probe-20260910-221158-96d7 2026-09-10 15:27:16.731046340 -0700
+/data/eda/project/hima_harness/hima-cell-mining 2026-09-08 02:39:21.683439451 -0700
+/data/eda/project/hima_harness/verification_packages 2026-08-16 19:30:59.737677124 -0700
+/data/eda/project/hima_harness/site_inputs 2026-08-13 11:24:43.937872986 -0700
+/data/eda/project/bool2cmos 2026-08-03 08:38:16.000000000 -0700
+/data/eda/project/celluzi 2026-07-20 08:51:57.739778775 -0700
+/data/eda/project/techlib/tsmc28 2024-12-11 19:50:48.000000000 -0800
+[exit 0]
+
+$ bash -c find /data/eda/project/design_zoo /data/eda/project/hima_harness -newermt "2026-09-10 19:14:00" -not -path "*/hima_harness/.hima-tmp*" 2>/dev/null | head -20; echo "(files under design_zoo or hima_harness modified since the probe began: listed above, none expected)"
+(files under design_zoo or hima_harness modified since the probe began: listed above, none expected)
+[exit 0]
+
+$ bash -c ls -la /tmp/hima-probe56-* 2>/dev/null; echo "(the probe scripts and the empty version-print scratch directory under /tmp are the only things this probe left)"
+-rw-r--r-- 1 luzi luzi 2485 Sep 10 19:21 /tmp/hima-probe56-phaseA.sh
+-rw-r--r-- 1 luzi luzi 3904 Sep 10 19:22 /tmp/hima-probe56-phaseB.sh
+-rw-r--r-- 1 luzi luzi 4122 Sep 10 19:24 /tmp/hima-probe56-phaseC.sh
+
+/tmp/hima-probe56-Ci5aCp:
+total 48
+drwx------   2 luzi luzi  4096 Sep 10 19:22 .
+drwxrwxrwt 100 root root 40960 Sep 10 19:24 ..
+(the probe scripts and the empty version-print scratch directory under /tmp are the only things this probe left)
+[exit 0]
+
+==================== phase C2 ====================
+
+$ bash -c ls /data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3/doc/syn/man/cat2 | wc -l; ls /data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/lc/man/cat2 | wc -l; ls /data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/LC2/man/cat2 | wc -l; ls /data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/man/man1 | wc -l; ls /data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/stylus/man/man1 | wc -l
+1399
+63
+503
+2177
+3778
+[exit 0]
+
+--- Design Compiler X-2025.06-SP3 reference pages (/data/eda/software/eda_tools/synopsys/syn/X-2025.06-SP3/doc/syn/man/cat2) for the legacy dc_syn_tsmc28.tcl commands ---
+  analyze: present
+  elaborate: present
+  link: present
+  current_design: present
+  define_design_lib: present
+  set_app_var: present
+  compile_ultra: present
+  change_names: present
+  write: present
+  write_sdc: present
+  report_timing: present
+  redirect: present
+  report_qor: present
+  report_area: present
+  report_power: present
+  report_reference: present
+  check_design: present
+  check_timing: present
+  get_lib_cells: present
+  set_dont_use: present
+  create_clock: present
+  set_clock_uncertainty: present
+  set_max_delay: present
+  uniquify: present
+
+--- Library Compiler X-2025.06: classic lc pages (/data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/lc/man/cat2) and LC2 pages (/data/eda/software/eda_tools/synopsys/lc/X-2025.06/doc/LC2/man/cat2) for read_lib / write_lib / check_library ---
+  read_lib: lc=present LC2=present
+  write_lib: lc=present LC2=present
+  check_library: lc=present LC2=present
+  report_lib: lc=present LC2=present
+  set_app_var: lc=none LC2=none
+  remove_lib: lc=present LC2=present
+  write_db: lc=none LC2=none
+  read_db: lc=present LC2=present
+
+$ bash -c ls -la /data/eda/software/eda_tools/synopsys/lc/X-2025.06/bin/ | head -12; ls /data/eda/software/eda_tools/synopsys/lc/X-2025.06/linux64/lc/bin/ 2>/dev/null | head
+total 36
+drwxr-xr-x 2 luzi luzi   104 May 24  2025 .
+drwxr-xr-x 9 luzi luzi   169 May 24  2025 ..
+lrwxrwxrwx 1 luzi luzi    10 May 24  2025 lc_shell -> snps_shell
+-rwxr-xr-x 1 luzi luzi  2421 Apr 24  2025 snps_common.sh
+-rwxr-xr-x 1 luzi luzi  9216 Apr 24  2025 snps_container
+-rwxr-xr-x 1 luzi luzi 18784 Apr 24  2025 snps_shell
+lc2_shell_exec
+lc_shell
+lc_shell_exec
+libdb2parquet
+prf2n
+[exit 0]
+
+--- Innovus 23.14 legacy pages (/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/man/man1) and Stylus common-UI pages (/data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/stylus/man/man1) for the archived templates' commands ---
+  init_design: legacy=present stylus=present
+  floorPlan: legacy=present stylus=none
+  globalNetConnect: legacy=present stylus=none
+  addWellTap: legacy=present stylus=none
+  place_opt_design: legacy=present stylus=present
+  ccopt_design: legacy=present stylus=present
+  optDesign: legacy=present stylus=none
+  routeDesign: legacy=present stylus=none
+  extractRC: legacy=present stylus=none
+  timeDesign: legacy=present stylus=none
+  addFiller: legacy=present stylus=none
+  verify_drc: legacy=present stylus=none
+  verifyConnectivity: legacy=present stylus=none
+  verifyGeometry: legacy=none stylus=none
+  summaryReport: legacy=present stylus=none
+  reportGateCount: legacy=present stylus=none
+  report_power: legacy=present stylus=present
+  streamOut: legacy=present stylus=none
+  saveDesign: legacy=present stylus=none
+  restoreDesign: legacy=present stylus=none
+  setDesignMode: legacy=present stylus=none
+  setPlaceMode: legacy=present stylus=none
+  setOptMode: legacy=present stylus=none
+  setNanoRouteMode: legacy=present stylus=none
+  setMaxRouteLayer: legacy=none stylus=none
+  setExtractRCMode: legacy=present stylus=none
+  setAnalysisMode: legacy=present stylus=none
+  setMultiCpuUsage: legacy=present stylus=none
+  create_library_set: legacy=present stylus=present
+  create_rc_corner: legacy=present stylus=present
+  create_delay_corner: legacy=present stylus=present
+  create_constraint_mode: legacy=present stylus=present
+  create_analysis_view: legacy=present stylus=present
+  set_analysis_view: legacy=present stylus=present
+  set_interactive_constraint_modes: legacy=present stylus=present
+  create_ccopt_clock_tree_spec: legacy=present stylus=none
+  set_default_switching_activity: legacy=present stylus=present
+  check_drc: legacy=none stylus=present
+
+--- verifyGeometry's page: is it marked obsolete/superseded in 23.14? ---
+
+$ bash -c f=$(ls /data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/man/man1/verifyGeometry.1* 2>/dev/null | head -1); [ -n "$f" ] && (zcat -f $f 2>/dev/null || cat $f) | grep -i -m5 'obsolete\|superseded\|deprecated\|verify_drc\|check_drc'
+[exit 1]
+
+$ bash -c f=$(ls /data/eda/software/eda_tools/cadence/DDI231_ISR4/INNOVUS231/share/innovus/man/man1/verify_drc.1* 2>/dev/null | head -1); [ -n "$f" ] && (zcat -f $f 2>/dev/null || cat $f) | grep -i -m3 'obsolete\|superseded\|deprecated\|check_drc'
+[exit 1]
+
+--- DC 2025.06: is anything the legacy script used marked obsolete? ---
+  compile_ultra: 2
+  change_names: 0
+  write_sdc: 0
+  report_timing: 0
+  analyze: 0
+  elaborate: 0
+
+==================== phase D ====================
+--- every path the legacy inputs env names: exists? size, mtime (read-only stat) ---
+  present        4096  2026-07-08 22:40:22  /data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes
+  present        1584  2026-08-03 19:31:37  /data/eda/project/celluzi/commercial/aes_tsmc28/scripts/constraint_tsmc28.sdc
+  present    87283165  2018-04-24 05:34:01  /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib
+  present     9201321  2015-04-19 17:45:11  /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/lef/tcbn28hpcplusbwp40p140_110a/lef/tcbn28hpcplusbwp40p140.lef
+  present      166376  2026-08-03 19:27:00  /data/eda/project/tsmc28_prtf/gen_p140/tsmcn28_10lm5X2Y2ZRDL.tlef
+  present    99806168  2015-09-25 17:57:51  /data/eda/project/techlib/tsmc28/TF/qrcTechFile
+  present     1854900  2015-04-18 15:24:30  /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/spice/tcbn28hpcplusbwp40p140_110a/tcbn28hpcplusbwp40p140_110a.spi
+  present    20144128  2018-04-24 05:34:00  /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.db
+  present    14187336  2015-04-19 17:45:09  /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/gds/tcbn28hpcplusbwp40p140_110a/tcbn28hpcplusbwp40p140.gds
+  present      312856  2026-08-03 22:40:08  /data/eda/project/tsmc28_work/xspace/tsmc28_skeleton.lib
+  present       11346  2026-08-04 02:31:38  /data/eda/project/tsmc28_work/librecell_tsmc28_tech_900.py
+  present         778  2026-08-03 17:58:12  /data/eda/project/bool2cmos/profiles/tsmc28_lclayout.json
+  present    17895809  2026-08-04 00:39:43  /data/eda/project/tsmc28_work/charmodel/model.json
+  present     7161052  2026-08-04 23:29:52  /data/eda/project/tsmc28_work/charmodel/model_power.json
+  present         149  2026-08-04 01:11:24  /data/eda/project/tsmc28_work/charmodel/area_model.json
+  present         646  2026-08-05 23:26:33  /data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/geometry_rule_deck.json
+  present          79  2026-08-05 23:26:33  /data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin/xs28-dc-shell
+  present          79  2026-08-05 23:26:33  /data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin/xs28-lc-shell
+  present         190  2026-08-05 23:26:33  /data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/bin/xs28-innovus
+  present        3468  2026-08-03 20:25:19  /data/eda/project/celluzi/commercial/aes_tsmc28/scripts/streamOut_tsmc28.map
+  present        2092  2026-07-09 03:26:53  /data/eda/project/celluzi/tools/librecell_venv/bin/activate
+  present        4096  2026-08-31 22:20:23  /data/eda/project/celluzi/scripts
+  present        4096  2026-08-04 23:22:47  /data/eda/project/tsmc28_work/charmodel
+  present        4096  2026-08-23 23:47:47  /data/eda/project/hima_harness/workspaces/luzi/phase2-current
+  present       10139  2026-07-08 22:40:22  /data/eda/project/hima_harness/verification_packages/luzi/HimaHarness-Xspace-AES-TSMC28-Validation-gr_20260816_060117_938542/source/rtl/aes_cipher_top.v
+
+$ bash -c ls /data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/
+aes_cipher_top.v
+aes_inv_cipher_top.v
+aes_inv_sbox.v
+aes_key_expand_128.v
+aes_rcon.v
+aes_sbox.v
+BUILD
+LICENSE
+README.md
+timescale.v
+[exit 0]
+
+$ bash -c ls /data/eda/project/hima_harness/workspaces/luzi/phase2-current | head; ls /data/eda/project/hima_harness/workspaces/luzi/runs | head -5; ls /data/eda/project/hima_harness/workspaces/luzi/runs | wc -l
+cool3d_open_source_3dic_dse
+phase3_qualification
+xspace_cell_aes_sky130_open_source
+xspace_cell_aes_tsmc28
+xspace_cell_aes_tsmc28_autonomous_fmax
+xspace_cell_aes_tsmc28_phase4_final_campaign_runs
+xspace_cell_aes_tsmc28_phase4_fmax_runs
+0
+[exit 0]
+
+--- the three site launchers the legacy inputs env names (how DC, LC and Innovus were started) ---
+== xs28-dc-shell
+#!/usr/bin/env bash
+set -euo pipefail
+exec /usr/local/bin/edarun dc_shell "$@"
+== xs28-lc-shell
+#!/usr/bin/env bash
+set -euo pipefail
+exec /usr/local/bin/edarun lc_shell "$@"
+== xs28-innovus
+#!/usr/bin/env bash
+set -euo pipefail
+: "${DISPLAY:?DISPLAY is required}" "${XAUTHORITY:?XAUTHORITY is required}"
+exec /usr/local/bin/edarun /data/eda/container/podman/bin/innovus-safe "$@"
+
+$ bash -c python3 --version; /usr/bin/python3 -c "import sys; print(sys.version.split()[0])"
+Python 3.12.3
+3.12.3
+[exit 0]
+
+$ bash -c cd /data/eda/project/bool2cmos && python3 -m bool2cmos.cli --help 2>&1 | head -30
+usage: bool2cmos [-h] --function FUNCTION [--inputs INPUTS] [--output OUTPUT]
+                 [--pdk PDK] [--cell-name CELL_NAME]
+                 [--max-series-n MAX_SERIES_N] [--max-series-p MAX_SERIES_P]
+                 [--order-limit ORDER_LIMIT] [--out OUT] [--meta META]
+                 [--print-meta] [--quiet] [--version]
+
+Synthesize a bridge-free series-parallel CMOS transistor network (SPICE subckt) from a Boolean function, via ROBDD.
+
+options:
+  -h, --help            show this help message and exit
+  --function FUNCTION, -f FUNCTION
+                        Boolean function (Liberty syntax); repeat for a multi-
+                        output cell
+  --inputs INPUTS, -i INPUTS
+                        comma-separated input pin order (default: order of
+                        appearance)
+  --output OUTPUT, -o OUTPUT
+                        output pin name (default: ZN); repeat once per
+                        --function
+  --pdk PDK             PDK profile: sky130, tsmc28, or a path to a JSON
+                        profile
+  --cell-name CELL_NAME, -n CELL_NAME
+                        subckt name (default: B2C_<output>)
+  --max-series-n MAX_SERIES_N
+                        max series NMOS (default: 4)
+  --max-series-p MAX_SERIES_P
+                        max series PMOS (default: 4)
+  --order-limit ORDER_LIMIT
+                        variable orders to fully evaluate per level (default:
+                        8)
+[exit 0]
+
+$ bash -c ls -la /data/eda/project/celluzi/tools/ | head -20
+total 160
+drwxr-xr-x 15 luzi luzi    4096 Aug  1 08:58 .
+drwxr-xr-x 21 luzi luzi    4096 Jul 20 08:51 ..
+drwxr-xr-x  5 luzi luzi     110 Jul  9 19:09 cellforge
+-rwxr-xr-x  1 luzi luzi     163 Jul 30 20:42 ._cell_need_miner
+drwxr-xr-x  3 luzi luzi    4096 Aug  1 08:55 cell_need_miner
+drwxr-xr-x  3 luzi luzi      29 Jul 15 06:36 charlib_patched
+-rw-r--r--  1 luzi luzi   94061 Aug  1 08:56 ibex_demo.py
+-rw-r--r--  1 luzi luzi   30205 Aug  1 08:55 ibex_pattern_search.py
+drwxrwxr-x  9 luzi luzi    4096 Jul 25 17:21 lclayout-repo
+drwxrwxr-x  7 luzi luzi     134 Jul 25 17:21 librecell_hima_venv
+drwxrwxr-x  5 luzi luzi      98 Jul 25 17:19 librecell_hima_venv.failed-dns-20260726T001215Z
+drwxr-xr-x  5 luzi luzi      98 Jul  9 03:26 librecell_venv
+-rw-rw-r--  1 luzi luzi    1931 Aug  1 08:58 make_lib_skeleton.py
+drwxrwxr-x  2 luzi luzi      47 Aug  1 08:56 __pycache__
+drwxrwxr-x 12 luzi luzi    4096 Jul  9 03:56 StdCellLib
+drwxr-xr-x  7 luzi 100000   168 Aug  1 06:41 uvcache
+drwxr-xr-x  4 luzi 100000   109 Aug  1 06:41 uvpy
+drwxr-xr-x  4 luzi 100000   142 Aug  1 06:41 zb_venv
+-rwxr-xr-x  1 luzi luzi     163 Aug  1 06:35 ._ZlibBoost
+[exit 0]
+
+$ bash -c ls /data/eda/project/celluzi/commercial/aes_tsmc28/ /data/eda/project/celluzi/commercial/aes_tsmc28/scripts | head -40
+/data/eda/project/celluzi/commercial/aes_tsmc28/:
+alib-52
+command.log
+config.tcl
+custom
+DBS
+default.svf
+innovus_gui_20260803_195401.strace
+innovus_gui_20260803_195431.strace
+innovus_gui_20260803_195558.strace
+innovus_gui_20260803_202626.strace
+innovus_gui_20260803_230358.strace
+innovus_gui_20260803_230440.strace
+innovus_gui_20260803_231211.strace
+innovus_gui_20260803_231253.strace
+innovus_gui_20260803_232357.strace
+innovus_gui_20260803_232440.strace
+innovus_gui_20260803_233629.strace
+innovus_gui_20260803_233712.strace
+innovus_gui_20260803_235032.strace
+innovus_gui_20260803_235114.strace
+innovus_gui_20260804_000428.strace
+innovus_gui_20260804_000510.strace
+innovus_gui_20260804_002026.strace
+innovus_gui_20260804_002108.strace
+innovus_gui_20260804_064938.strace
+innovus_gui_20260804_065053.strace
+innovus_gui_20260804_065937.strace
+innovus_gui_20260804_070018.strace
+lc_command.log
+lc_output.txt
+logs
+pm.ob
+power.rpt
+rc_model.bin
+reports
+results
+RPT
+scripts
+timingReports
+[exit 0]
+
+==================== phase E ====================
+--- Innovus 23.14: pages for the checker's mode commands and the pnr template's layer command, legacy vs stylus ---
+  set_verify_drc_mode: legacy=present stylus=none
+  setVerifyDrcMode: legacy=none stylus=none
+  verifyGeometry: legacy=none stylus=none
+  setMaxRouteLayer: legacy=none stylus=none
+  setNanoRouteMode: legacy=present stylus=none
+  set_db: legacy=none stylus=present
+  get_db: legacy=none stylus=present
+  check_drc: legacy=none stylus=present
+  verify_drc: legacy=present stylus=none
+  set_verify_drc_mode: legacy=present stylus=none
+--- any file named verifyGeometry* or setMaxRouteLayer* anywhere under the 23.14 install (read-only find) ---
+(end)
+--- the 2022-era Innovus the legacy ran on: still installed? ---
+/data/eda/software/eda_tools/cadence/DDI231_ISR4
+/data/eda/software/_retired_20260831
+cadence
+env_shell_legacy
+license
+mentor
+README.md
+synopsys
+--- date of the probe's end ---
+2026-09-10T19:27:53-07:00
+
+==================== phase F ====================
+--- the licence features a synthesis and a library flow take, asked one feature at a time (lmstat -f, read-only) ---
+$ /usr/local/bin/eda bash -lc "lmutil lmstat -c $SNPSLMD_LICENSE_FILE -f Design-Compiler"   (answer cut to the 'Users of' line)
+Users of Design-Compiler:  (Total of 99 licenses issued;  Total of 0 licenses in use)
+$ /usr/local/bin/eda bash -lc "lmutil lmstat -c $SNPSLMD_LICENSE_FILE -f HDL-Compiler"   (answer cut to the 'Users of' line)
+Users of HDL-Compiler:  (Total of 99 licenses issued;  Total of 0 licenses in use)
+$ /usr/local/bin/eda bash -lc "lmutil lmstat -c $SNPSLMD_LICENSE_FILE -f DesignWare"   (answer cut to the 'Users of' line)
+Users of DesignWare:  (Total of 99 licenses issued;  Total of 0 licenses in use)
+$ /usr/local/bin/eda bash -lc "lmutil lmstat -c $SNPSLMD_LICENSE_FILE -f Library-Compiler"   (answer cut to the 'Users of' line)
+Users of Library-Compiler:  (Total of 99 licenses issued;  Total of 0 licenses in use)
+$ /usr/local/bin/eda bash -lc "lmutil lmstat -c $SNPSLMD_LICENSE_FILE -f DC-Ultra-Opt"   (answer cut to the 'Users of' line)
+Users of DC-Ultra-Opt:  (Total of 99 licenses issued;  Total of 0 licenses in use)
+$ /usr/local/bin/eda bash -lc "lmutil lmstat -c $SNPSLMD_LICENSE_FILE -f PrimeTime"   (answer cut to the 'Users of' line)
+Users of PrimeTime:  (Total of 99 licenses issued;  Total of 0 licenses in use)
+--- Innovus_Impl_System on the Cadence side: the daemon's own log is the only read-only answer (lmstat gets no socket) ---
+17:49:04 (cdslmd) OUT: "Innovus_Impl_System" luzi  
+17:50:34 (cdslmd) OUT: "Innovus_Impl_System" luzi  
+17:54:36 (cdslmd) OUT: "Innovus_Impl_System" luzi  
+2026-09-10T19:29:20-07:00

@@ -1,0 +1,342 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+packages/desktop typecheck$ tsc -p tsconfig.json --noEmit
+packages/harness typecheck$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+packages/desktop typecheck: Done
+packages/harness typecheck: Done
+scripts/acceptance-step1.ts(14,32): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+scripts/acceptance-step1.ts(16,30): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+scripts/acceptance-step1.ts(78,24): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step1.ts(102,32): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step1.ts(103,24): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step1.ts(103,73): error TS7006: Parameter 'r' implicitly has an 'any' type.
+scripts/acceptance-step1.ts(114,52): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step1.ts(114,91): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step1.ts(118,51): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step1.ts(118,90): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step1.ts(141,35): error TS7006: Parameter 'x' implicitly has an 'any' type.
+scripts/acceptance-step1.ts(144,35): error TS7006: Parameter 'c' implicitly has an 'any' type.
+scripts/acceptance-step1.ts(173,38): error TS7006: Parameter 'c' implicitly has an 'any' type.
+scripts/acceptance-step1.ts(199,165): error TS7006: Parameter 'v' implicitly has an 'any' type.
+scripts/acceptance-step1.ts(199,240): error TS7006: Parameter 'c' implicitly has an 'any' type.
+scripts/acceptance-step1.ts(202,76): error TS7006: Parameter 'w' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(62,8): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+scripts/acceptance-step2.ts(328,46): error TS7006: Parameter 'o' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(471,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step2.ts(516,40): error TS7006: Parameter 'n' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(702,56): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step2.ts(707,60): error TS2339: Property 'hima' does not exist on type 'Context'.
+scripts/acceptance-step2.ts(808,37): error TS7006: Parameter 'j' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(810,47): error TS7006: Parameter 'v' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(811,46): error TS7006: Parameter 'v' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(813,82): error TS7006: Parameter 'c' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(814,38): error TS7006: Parameter 'o' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(935,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(938,112): error TS7006: Parameter 'c' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(950,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(953,169): error TS7006: Parameter 'c' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(1100,36): error TS7006: Parameter 'n' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(1101,34): error TS7006: Parameter 'j' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(1105,18): error TS7006: Parameter 'x' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(1108,42): error TS7006: Parameter 'x' implicitly has an 'any' type.
+scripts/acceptance-step2.ts(1108,226): error TS7006: Parameter 'c' implicitly has an 'any' type.
+scripts/acceptance-step3.ts(88,8): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+scripts/acceptance-step3.ts(508,46): error TS7006: Parameter 'o' implicitly has an 'any' type.
+scripts/acceptance-step3.ts(754,40): error TS7006: Parameter 'n' implicitly has an 'any' type.
+scripts/acceptance-step3.ts(1252,47): error TS7006: Parameter 'v' implicitly has an 'any' type.
+scripts/acceptance-step3.ts(1252,50): error TS7006: Parameter 'i' implicitly has an 'any' type.
+scripts/acceptance-step3.ts(1589,8): error TS18048: 'reportOnSite.markdown' is possibly 'undefined'.
+scripts/acceptance-step3.ts(1591,8): error TS18048: 'reportOnSite.json' is possibly 'undefined'.
+scripts/acceptance-step3.ts(1711,44): error TS7006: Parameter 'a' implicitly has an 'any' type.
+scripts/acceptance-step3.ts(1711,47): error TS7006: Parameter 'b' implicitly has an 'any' type.
+scripts/acceptance-step3.ts(1841,36): error TS7006: Parameter 'n' implicitly has an 'any' type.
+scripts/acceptance-step3.ts(1842,34): error TS7006: Parameter 'j' implicitly has an 'any' type.
+scripts/acceptance-step3.ts(1843,77): error TS7006: Parameter 'b' implicitly has an 'any' type.
+test/contract/budget.test.ts(23,29): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/budget.test.ts(24,67): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/budget.test.ts(293,42): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/budget.test.ts(294,89): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/budget.test.ts(305,54): error TS7006: Parameter 'view' implicitly has an 'any' type.
+test/contract/budget.test.ts(306,34): error TS7006: Parameter 'records' implicitly has an 'any' type.
+test/contract/budget.test.ts(306,60): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/budget.test.ts(308,37): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/budget.test.ts(314,26): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/budget.test.ts(314,64): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/dc-reader.test.ts(19,30): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/dc-reader.test.ts(58,19): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(78,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(101,36): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(125,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(135,36): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(161,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(186,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(238,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(297,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(366,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(439,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(495,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(511,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(516,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(534,40): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(546,40): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(600,29): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/dc-reader.test.ts(621,28): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/drill-down.test.ts(19,42): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/drill-down.test.ts(21,67): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/drill-down.test.ts(97,36): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/drill-down.test.ts(134,52): error TS7006: Parameter 'g' implicitly has an 'any' type.
+test/contract/drill-down.test.ts(143,63): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+test/contract/drill-down.test.ts(143,68): error TS7006: Parameter 'g' implicitly has an 'any' type.
+test/contract/drill-down.test.ts(144,111): error TS7006: Parameter 'g' implicitly has an 'any' type.
+test/contract/drill-down.test.ts(230,36): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/driver.test.ts(25,56): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/driver.test.ts(98,42): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/driver.test.ts(123,59): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/driver.test.ts(209,35): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/driver.test.ts(209,145): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/driver.test.ts(210,40): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/driver.test.ts(212,38): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/driver.test.ts(218,43): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/driver.test.ts(218,75): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/driver.test.ts(220,23): error TS7006: Parameter 'p' implicitly has an 'any' type.
+test/contract/experience.test.ts(19,30): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/experience.test.ts(20,104): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/experience.test.ts(559,51): error TS7006: Parameter 'b' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(32,42): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/fabric-licences.test.ts(81,31): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(81,52): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(81,87): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(91,42): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(92,89): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(98,54): error TS7006: Parameter 'view' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(104,39): error TS7006: Parameter 'records' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(104,65): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(106,21): error TS7006: Parameter 'records' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(106,47): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(110,49): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(115,32): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(115,70): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(125,41): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(127,24): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(134,40): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(135,46): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-licences.test.ts(178,16): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-licences.test.ts(178,44): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(52,53): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/fabric-restart.test.ts(53,56): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/fabric-restart.test.ts(126,26): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(177,41): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(179,23): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(237,41): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(238,38): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(280,41): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(281,38): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(349,22): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(354,41): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(355,38): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(437,35): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(466,41): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(480,38): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(565,22): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(653,77): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(653,102): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(739,22): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(755,128): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(796,22): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(815,127): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(897,31): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(898,32): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(903,25): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/fabric-restart.test.ts(1023,39): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(1045,36): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(1059,41): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-restart.test.ts(1060,38): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(50,8): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/fabric-retry.test.ts(64,69): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric-retry.test.ts(383,41): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(383,76): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(402,38): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(406,34): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(406,69): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(463,31): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(463,52): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(463,87): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(469,37): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(473,54): error TS7006: Parameter 'view' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(479,39): error TS7006: Parameter 'records' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(479,65): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(481,21): error TS7006: Parameter 'records' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(481,47): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(486,39): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(489,22): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(489,60): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(506,47): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(509,39): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(511,40): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric-retry.test.ts(512,46): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric.test.ts(29,71): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/fabric.test.ts(38,8): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/fabric.test.ts(64,30): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/fabric.test.ts(306,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/fabric.test.ts(415,44): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/fabric.test.ts(419,30): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/fabric.test.ts(554,22): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/fabric.test.ts(609,23): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/fabric.test.ts(613,37): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/fabric.test.ts(620,62): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/fork-join.test.ts(25,71): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/fork-join.test.ts(26,108): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/fork-join.test.ts(76,41): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/fork-join.test.ts(158,37): error TS7006: Parameter 'b' implicitly has an 'any' type.
+test/contract/fork-join.test.ts(159,37): error TS7006: Parameter 'b' implicitly has an 'any' type.
+test/contract/fork-join.test.ts(161,22): error TS7006: Parameter 'b' implicitly has an 'any' type.
+test/contract/fork-join.test.ts(161,81): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/fork-join.test.ts(271,58): error TS7006: Parameter 'b' implicitly has an 'any' type.
+test/contract/fork-join.test.ts(325,61): error TS7006: Parameter 'b' implicitly has an 'any' type.
+test/contract/fork-join.test.ts(341,58): error TS7006: Parameter 'b' implicitly has an 'any' type.
+test/contract/fork-join.test.ts(689,66): error TS18046: 'b' is of type 'unknown'.
+test/contract/fork-join.test.ts(701,76): error TS18046: 'b' is of type 'unknown'.
+test/contract/fork-join.test.ts(723,58): error TS7006: Parameter 'b' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(31,30): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/honest-standin.test.ts(77,31): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(79,128): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(82,31): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(98,34): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(100,151): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(103,34): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(120,26): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(146,28): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(148,74): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/honest-standin.test.ts(151,45): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/jobs-unreadable.test.ts(60,131): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/jobs-unreadable.test.ts(287,28): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/jobs-unreadable.test.ts(293,61): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/jobs-unreadable.test.ts(305,12): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/jobs-unreadable.test.ts(305,40): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/jobs-unreadable.test.ts(488,41): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/jobs-unreadable.test.ts(490,23): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/jobs-unreadable.test.ts(654,64): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/jobs-unreadable.test.ts(654,89): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/jobs-unreadable.test.ts(655,28): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/jobs-unreadable.test.ts(655,53): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/jobs-unreadable.test.ts(718,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/jobs-unreadable.test.ts(719,69): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/jobs-unreadable.test.ts(778,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/jobs-unreadable.test.ts(779,69): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/jobs.test.ts(22,111): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/jobs.test.ts(23,61): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/jobs.test.ts(71,12): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/jobs.test.ts(71,64): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/jobs.test.ts(73,84): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/jobs.test.ts(287,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/jobs.test.ts(467,36): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/jobs.test.ts(485,26): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/jobs.test.ts(487,95): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/judge.test.ts(18,21): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/judge.test.ts(28,33): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/judge.test.ts(46,19): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/judge.test.ts(210,29): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/judge.test.ts(213,22): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/judge.test.ts(218,28): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/judge.test.ts(252,36): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/judge.test.ts(322,35): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/ledger-version.test.ts(25,30): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/loop.test.ts(18,29): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/loop.test.ts(19,55): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/loop.test.ts(58,36): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/loop.test.ts(170,29): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(284,36): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/loop.test.ts(564,32): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(565,32): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(571,32): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(572,32): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(573,32): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(575,17): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(575,39): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/loop.test.ts(581,108): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(586,27): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(586,109): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/loop.test.ts(643,32): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/observe-ledger.test.ts(12,21): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/observe-ledger.test.ts(26,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-ledger.test.ts(31,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-ledger.test.ts(66,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-ledger.test.ts(74,31): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-ledger.test.ts(87,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-ledger.test.ts(105,24): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-ledger.test.ts(109,25): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-ledger.test.ts(110,32): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-ledger.test.ts(135,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-readers.test.ts(24,21): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/observe-readers.test.ts(69,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-readers.test.ts(109,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-readers.test.ts(150,26): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-readers.test.ts(182,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-readers.test.ts(222,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-readers.test.ts(227,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-readers.test.ts(239,30): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe-readers.test.ts(243,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/observe.test.ts(9,21): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/observe.test.ts(22,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/pack.test.ts(25,108): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/pack.test.ts(26,67): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/pack.test.ts(62,84): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/pack.test.ts(422,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/pack.test.ts(440,41): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/pack.test.ts(446,41): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/pack.test.ts(482,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/pack.test.ts(510,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/pack.test.ts(622,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/pack.test.ts(651,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/site-name.test.ts(15,53): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/site-name.test.ts(17,21): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/site-name.test.ts(39,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/site-name.test.ts(60,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/site-name.test.ts(94,27): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/ssh.test.ts(14,158): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/ssh.test.ts(15,36): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/ssh.test.ts(197,32): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/ssh.test.ts(231,32): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/ssh.test.ts(235,29): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/strategy.test.ts(17,55): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/strategy.test.ts(18,60): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/strategy.test.ts(127,38): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/strategy.test.ts(136,29): error TS7006: Parameter 'g' implicitly has an 'any' type.
+test/contract/strategy.test.ts(343,31): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/support/fabric.ts(21,84): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/support/fabric.ts(41,91): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/support/fabric.ts(51,24): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/support/fabric.ts(175,32): error TS2339: Property 'hima' does not exist on type 'Context'.
+test/contract/support/hima-api.ts(5,51): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/view-run.test.ts(33,58): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/view-run.test.ts(143,23): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/view-run.test.ts(147,41): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/view-run.test.ts(152,37): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/view-run.test.ts(153,38): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/view-run.test.ts(161,36): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/view-run.test.ts(161,57): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/view-run.test.ts(172,54): error TS7006: Parameter 'o' implicitly has an 'any' type.
+test/contract/view-run.test.ts(172,95): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/view-run.test.ts(173,45): error TS7006: Parameter 'id' implicitly has an 'any' type.
+test/contract/view-run.test.ts(181,18): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/view-run.test.ts(196,66): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/view-run.test.ts(218,35): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/view-run.test.ts(232,21): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/view-run.test.ts(233,41): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/view-run.test.ts(241,30): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/view-run.test.ts(245,36): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/view-run.test.ts(246,37): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/view.test.ts(15,70): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/view.test.ts(75,37): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/view.test.ts(85,37): error TS7006: Parameter 'v' implicitly has an 'any' type.
+test/contract/view.test.ts(88,37): error TS7006: Parameter 'c' implicitly has an 'any' type.
+test/contract/view.test.ts(92,41): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/view.test.ts(94,44): error TS7006: Parameter 'r' implicitly has an 'any' type.
+test/contract/window.test.ts(25,64): error TS2307: Cannot find module '@hima/harness' or its corresponding type declarations.
+test/contract/window.test.ts(154,38): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/window.test.ts(264,38): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/window.test.ts(300,42): error TS7006: Parameter 'j' implicitly has an 'any' type.
+test/contract/window.test.ts(330,26): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/window.test.ts(330,64): error TS7006: Parameter 'n' implicitly has an 'any' type.
+test/contract/window.test.ts(366,42): error TS7006: Parameter 'j' implicitly has an 'any' type.
+[ELIFECYCLE] Command failed with exit code 2.

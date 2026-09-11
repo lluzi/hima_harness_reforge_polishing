@@ -1,0 +1,507 @@
+{
+  "date": "2026-09-08",
+  "dshVersion": "0.1.5-alpha.1",
+  "site": "linglong",
+  "steps": [
+    {
+      "name": "setup summary",
+      "command": "/hima observe linglong /data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute.summary.gz --reader innovus-timing-summary --judge setup-wns-all-nonnegative,setup-wns-reg2reg-nonnegative",
+      "runId": "run-568438eb-b618-40d2-8506-097a91af1c23",
+      "observation": {
+        "id": "run-568438eb-b618-40d2-8506-097a91af1c23#000001",
+        "runId": "run-568438eb-b618-40d2-8506-097a91af1c23",
+        "siteId": "linglong",
+        "seq": 1,
+        "at": "2026-09-09T06:31:41.821Z",
+        "writer": "executor",
+        "type": "observation",
+        "path": "/data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute.summary.gz",
+        "contentSha256": "30ad024ede3fd4ca94aec44a408488ac6a499bc100d42739bae49407626e2bb5",
+        "bytes": 583,
+        "reader": {
+          "id": "innovus-timing-summary",
+          "version": "1"
+        },
+        "values": [
+          {
+            "type": "setup_wns",
+            "unit": "ns",
+            "mode": "setup",
+            "scope": "all",
+            "value": -0.073
+          },
+          {
+            "type": "setup_wns",
+            "unit": "ns",
+            "mode": "setup",
+            "scope": "reg2reg",
+            "value": 0.002
+          },
+          {
+            "type": "setup_tns",
+            "unit": "ns",
+            "mode": "setup",
+            "scope": "all",
+            "value": -0.18
+          },
+          {
+            "type": "setup_tns",
+            "unit": "ns",
+            "mode": "setup",
+            "scope": "reg2reg",
+            "value": 0
+          },
+          {
+            "type": "placement_density",
+            "unit": "percent",
+            "value": 44.345
+          },
+          {
+            "type": "clock_period",
+            "unit": "ns",
+            "value": null,
+            "unknownReason": "not stated in an Innovus optDesign summary"
+          }
+        ]
+      },
+      "verdicts": [
+        {
+          "id": "run-568438eb-b618-40d2-8506-097a91af1c23#000002",
+          "runId": "run-568438eb-b618-40d2-8506-097a91af1c23",
+          "siteId": "linglong",
+          "seq": 2,
+          "at": "2026-09-09T06:31:41.840Z",
+          "writer": "judge",
+          "type": "verdict",
+          "outcome": "FAIL",
+          "ruleId": "setup-wns-all-nonnegative",
+          "ruleVersion": "1",
+          "cites": [
+            "run-568438eb-b618-40d2-8506-097a91af1c23#000001"
+          ],
+          "valuesAsRead": [
+            {
+              "type": "setup_wns",
+              "unit": "ns",
+              "mode": "setup",
+              "scope": "all",
+              "value": -0.073
+            }
+          ]
+        },
+        {
+          "id": "run-568438eb-b618-40d2-8506-097a91af1c23#000003",
+          "runId": "run-568438eb-b618-40d2-8506-097a91af1c23",
+          "siteId": "linglong",
+          "seq": 3,
+          "at": "2026-09-09T06:31:41.857Z",
+          "writer": "judge",
+          "type": "verdict",
+          "outcome": "PASS",
+          "ruleId": "setup-wns-reg2reg-nonnegative",
+          "ruleVersion": "1",
+          "cites": [
+            "run-568438eb-b618-40d2-8506-097a91af1c23#000001"
+          ],
+          "valuesAsRead": [
+            {
+              "type": "setup_wns",
+              "unit": "ns",
+              "mode": "setup",
+              "scope": "reg2reg",
+              "value": 0.002
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "hold summary",
+      "command": "/hima observe linglong /data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute_hold.summary.gz --reader innovus-timing-summary --judge hold-wns-all-nonnegative",
+      "runId": "run-d3408e0f-0437-41d0-a3e4-26a37bb8aae7",
+      "observation": {
+        "id": "run-d3408e0f-0437-41d0-a3e4-26a37bb8aae7#000001",
+        "runId": "run-d3408e0f-0437-41d0-a3e4-26a37bb8aae7",
+        "siteId": "linglong",
+        "seq": 1,
+        "at": "2026-09-09T06:31:41.943Z",
+        "writer": "executor",
+        "type": "observation",
+        "path": "/data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute_hold.summary.gz",
+        "contentSha256": "30d0eeed609a723260d9c0f5287a145ee4ad53ec94d575e448c1ac2237361420",
+        "bytes": 574,
+        "reader": {
+          "id": "innovus-timing-summary",
+          "version": "1"
+        },
+        "values": [
+          {
+            "type": "hold_wns",
+            "unit": "ns",
+            "mode": "hold",
+            "scope": "all",
+            "value": 0.034
+          },
+          {
+            "type": "hold_wns",
+            "unit": "ns",
+            "mode": "hold",
+            "scope": "reg2reg",
+            "value": 0.034
+          },
+          {
+            "type": "hold_tns",
+            "unit": "ns",
+            "mode": "hold",
+            "scope": "all",
+            "value": 0
+          },
+          {
+            "type": "hold_tns",
+            "unit": "ns",
+            "mode": "hold",
+            "scope": "reg2reg",
+            "value": 0
+          },
+          {
+            "type": "placement_density",
+            "unit": "percent",
+            "value": 44.345
+          },
+          {
+            "type": "clock_period",
+            "unit": "ns",
+            "value": null,
+            "unknownReason": "not stated in an Innovus optDesign summary"
+          }
+        ]
+      },
+      "verdicts": [
+        {
+          "id": "run-d3408e0f-0437-41d0-a3e4-26a37bb8aae7#000002",
+          "runId": "run-d3408e0f-0437-41d0-a3e4-26a37bb8aae7",
+          "siteId": "linglong",
+          "seq": 2,
+          "at": "2026-09-09T06:31:41.960Z",
+          "writer": "judge",
+          "type": "verdict",
+          "outcome": "PASS",
+          "ruleId": "hold-wns-all-nonnegative",
+          "ruleVersion": "1",
+          "cites": [
+            "run-d3408e0f-0437-41d0-a3e4-26a37bb8aae7#000001"
+          ],
+          "valuesAsRead": [
+            {
+              "type": "hold_wns",
+              "unit": "ns",
+              "mode": "hold",
+              "scope": "all",
+              "value": 0.034
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "DRC report",
+      "command": "/hima observe linglong /data/eda/project/design_zoo/pr/opene902/foundation/RPT/verify_drc.postroute.rpt --reader innovus-verify-drc",
+      "runId": "run-f87c9904-9a37-4278-93b5-d88db878c76d",
+      "observation": {
+        "id": "run-f87c9904-9a37-4278-93b5-d88db878c76d#000001",
+        "runId": "run-f87c9904-9a37-4278-93b5-d88db878c76d",
+        "siteId": "linglong",
+        "seq": 1,
+        "at": "2026-09-09T06:31:42.067Z",
+        "writer": "executor",
+        "type": "observation",
+        "path": "/data/eda/project/design_zoo/pr/opene902/foundation/RPT/verify_drc.postroute.rpt",
+        "contentSha256": "bfebfa55c283265edc811d4b11d190eabd4ae019f893ec9d1ed5e3054d2e06cc",
+        "bytes": 183422,
+        "reader": {
+          "id": "innovus-verify-drc",
+          "version": "1"
+        },
+        "values": [
+          {
+            "type": "drc_violation_count",
+            "unit": "count",
+            "value": 1778
+          }
+        ]
+      },
+      "verdicts": []
+    }
+  ],
+  "workbench": {
+    "steps": [
+      {
+        "name": "setup summary",
+        "runId": "run-02d21a68-722a-43ac-8ced-9c6e19833709",
+        "verdicts": [
+          {
+            "recordId": "run-02d21a68-722a-43ac-8ced-9c6e19833709#000002",
+            "at": "2026-09-09T06:31:43.822Z",
+            "outcome": "FAIL",
+            "ruleId": "setup-wns-all-nonnegative",
+            "ruleVersion": "1",
+            "valuesAsRead": [
+              {
+                "type": "setup_wns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": -0.073
+              }
+            ],
+            "cites": [
+              {
+                "recordId": "run-02d21a68-722a-43ac-8ced-9c6e19833709#000001",
+                "observation": {
+                  "recordId": "run-02d21a68-722a-43ac-8ced-9c6e19833709#000001",
+                  "at": "2026-09-09T06:31:43.801Z",
+                  "path": "/data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute.summary.gz",
+                  "contentSha256": "30ad024ede3fd4ca94aec44a408488ac6a499bc100d42739bae49407626e2bb5",
+                  "bytes": 583,
+                  "reader": {
+                    "id": "innovus-timing-summary",
+                    "version": "1"
+                  },
+                  "values": [
+                    {
+                      "type": "setup_wns",
+                      "unit": "ns",
+                      "mode": "setup",
+                      "scope": "all",
+                      "value": -0.073
+                    },
+                    {
+                      "type": "setup_wns",
+                      "unit": "ns",
+                      "mode": "setup",
+                      "scope": "reg2reg",
+                      "value": 0.002
+                    },
+                    {
+                      "type": "setup_tns",
+                      "unit": "ns",
+                      "mode": "setup",
+                      "scope": "all",
+                      "value": -0.18
+                    },
+                    {
+                      "type": "setup_tns",
+                      "unit": "ns",
+                      "mode": "setup",
+                      "scope": "reg2reg",
+                      "value": 0
+                    },
+                    {
+                      "type": "placement_density",
+                      "unit": "percent",
+                      "value": 44.345
+                    },
+                    {
+                      "type": "clock_period",
+                      "unit": "ns",
+                      "value": null,
+                      "unknownReason": "not stated in an Innovus optDesign summary"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "recordId": "run-02d21a68-722a-43ac-8ced-9c6e19833709#000003",
+            "at": "2026-09-09T06:31:43.837Z",
+            "outcome": "PASS",
+            "ruleId": "setup-wns-reg2reg-nonnegative",
+            "ruleVersion": "1",
+            "valuesAsRead": [
+              {
+                "type": "setup_wns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "reg2reg",
+                "value": 0.002
+              }
+            ],
+            "cites": [
+              {
+                "recordId": "run-02d21a68-722a-43ac-8ced-9c6e19833709#000001",
+                "observation": {
+                  "recordId": "run-02d21a68-722a-43ac-8ced-9c6e19833709#000001",
+                  "at": "2026-09-09T06:31:43.801Z",
+                  "path": "/data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute.summary.gz",
+                  "contentSha256": "30ad024ede3fd4ca94aec44a408488ac6a499bc100d42739bae49407626e2bb5",
+                  "bytes": 583,
+                  "reader": {
+                    "id": "innovus-timing-summary",
+                    "version": "1"
+                  },
+                  "values": [
+                    {
+                      "type": "setup_wns",
+                      "unit": "ns",
+                      "mode": "setup",
+                      "scope": "all",
+                      "value": -0.073
+                    },
+                    {
+                      "type": "setup_wns",
+                      "unit": "ns",
+                      "mode": "setup",
+                      "scope": "reg2reg",
+                      "value": 0.002
+                    },
+                    {
+                      "type": "setup_tns",
+                      "unit": "ns",
+                      "mode": "setup",
+                      "scope": "all",
+                      "value": -0.18
+                    },
+                    {
+                      "type": "setup_tns",
+                      "unit": "ns",
+                      "mode": "setup",
+                      "scope": "reg2reg",
+                      "value": 0
+                    },
+                    {
+                      "type": "placement_density",
+                      "unit": "percent",
+                      "value": 44.345
+                    },
+                    {
+                      "type": "clock_period",
+                      "unit": "ns",
+                      "value": null,
+                      "unknownReason": "not stated in an Innovus optDesign summary"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "observationHash": "30ad024ede3fd4ca94aec44a408488ac6a499bc100d42739bae49407626e2bb5"
+      },
+      {
+        "name": "hold summary",
+        "runId": "run-8cf40a8f-ca44-4cf8-baba-61ca7585c4f5",
+        "verdicts": [
+          {
+            "recordId": "run-8cf40a8f-ca44-4cf8-baba-61ca7585c4f5#000002",
+            "at": "2026-09-09T06:31:43.937Z",
+            "outcome": "PASS",
+            "ruleId": "hold-wns-all-nonnegative",
+            "ruleVersion": "1",
+            "valuesAsRead": [
+              {
+                "type": "hold_wns",
+                "unit": "ns",
+                "mode": "hold",
+                "scope": "all",
+                "value": 0.034
+              }
+            ],
+            "cites": [
+              {
+                "recordId": "run-8cf40a8f-ca44-4cf8-baba-61ca7585c4f5#000001",
+                "observation": {
+                  "recordId": "run-8cf40a8f-ca44-4cf8-baba-61ca7585c4f5#000001",
+                  "at": "2026-09-09T06:31:43.918Z",
+                  "path": "/data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute_hold.summary.gz",
+                  "contentSha256": "30d0eeed609a723260d9c0f5287a145ee4ad53ec94d575e448c1ac2237361420",
+                  "bytes": 574,
+                  "reader": {
+                    "id": "innovus-timing-summary",
+                    "version": "1"
+                  },
+                  "values": [
+                    {
+                      "type": "hold_wns",
+                      "unit": "ns",
+                      "mode": "hold",
+                      "scope": "all",
+                      "value": 0.034
+                    },
+                    {
+                      "type": "hold_wns",
+                      "unit": "ns",
+                      "mode": "hold",
+                      "scope": "reg2reg",
+                      "value": 0.034
+                    },
+                    {
+                      "type": "hold_tns",
+                      "unit": "ns",
+                      "mode": "hold",
+                      "scope": "all",
+                      "value": 0
+                    },
+                    {
+                      "type": "hold_tns",
+                      "unit": "ns",
+                      "mode": "hold",
+                      "scope": "reg2reg",
+                      "value": 0
+                    },
+                    {
+                      "type": "placement_density",
+                      "unit": "percent",
+                      "value": 44.345
+                    },
+                    {
+                      "type": "clock_period",
+                      "unit": "ns",
+                      "value": null,
+                      "unknownReason": "not stated in an Innovus optDesign summary"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "observationHash": "30d0eeed609a723260d9c0f5287a145ee4ad53ec94d575e448c1ac2237361420"
+      },
+      {
+        "name": "DRC report",
+        "runId": "run-b12c503a-191c-4f17-83e3-2ac7a82aefec",
+        "verdicts": [],
+        "observationHash": "bfebfa55c283265edc811d4b11d190eabd4ae019f893ec9d1ed5e3054d2e06cc"
+      }
+    ],
+    "clientBundle": {
+      "url": "/plugins/??@hima/harness/client.js&rev=daca550d6737a57f-51",
+      "status": 200,
+      "envelope": true
+    },
+    "restartReadBackUnchanged": true
+  },
+  "remoteCommands": [
+    "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute.summary.gz'",
+    "'realpath' '-z' '-e' '--' '/data/eda/project'",
+    "'cat' '--' '/data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute.summary.gz'",
+    "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute_hold.summary.gz'",
+    "'realpath' '-z' '-e' '--' '/data/eda/project'",
+    "'cat' '--' '/data/eda/project/design_zoo/pr/opene902/foundation/RPT/postroute_hold.summary.gz'",
+    "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/pr/opene902/foundation/RPT/verify_drc.postroute.rpt'",
+    "'realpath' '-z' '-e' '--' '/data/eda/project'",
+    "'cat' '--' '/data/eda/project/design_zoo/pr/opene902/foundation/RPT/verify_drc.postroute.rpt'"
+  ],
+  "restartReadBackUnchanged": true,
+  "findings": [],
+  "handoffMetrics": {
+    "period_ns": 2.18,
+    "setup_wns_all_ns": -0.073,
+    "setup_wns_r2r_ns": 0.002,
+    "setup_tns_ns": -0.18,
+    "hold_wns_ns": 0.034,
+    "density_pct": 44.345,
+    "drc": 1778
+  }
+}

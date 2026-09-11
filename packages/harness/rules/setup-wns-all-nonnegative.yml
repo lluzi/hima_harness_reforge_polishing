@@ -1,0 +1,16 @@
+# Setup timing closes on every path group: the worst negative slack over all paths is not negative.
+id: setup-wns-all-nonnegative
+version: '1'
+title: Setup WNS over all paths is not negative
+requires:
+  - type: setup_wns
+    mode: setup
+    scope: all
+subject:
+  type: setup_wns
+  mode: setup
+  scope: all
+predicate:
+  op: gte
+  threshold: 0
+  unit: ns

@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: on a stand-in that reports no margin for a met period, timing-push loosens by its guard band every generation and ends at the limit, while over-constraining-push converges below the achievable period and ends goal-met when the goal is reachable
+ok 1 - on a stand-in that reports no margin for a met period, timing-push loosens by its guard band every generation and ends at the limit, while over-constraining-push converges below the achievable period and ends goal-met when the goal is reachable
+  ---
+  duration_ms: 23043.080042
+  type: 'test'
+  ...
+# Subtest: filling the start form and clicking start creates a Run whose Goal and Budget are the form's, and the window opens its card
+ok 2 - filling the start form and clicking start creates a Run whose Goal and Budget are the form's, and the window opens its card
+  ---
+  duration_ms: 13613.89825
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 36886.469

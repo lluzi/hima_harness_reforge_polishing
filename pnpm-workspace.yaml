@@ -1,0 +1,24 @@
+packages:
+  - packages/*
+
+# DeepSeek Harness is tracked at its newest published version (docs/product-decisions.md D22),
+# which is often hours old; pnpm's release-age quarantine stays on for every other scope.
+minimumReleaseAgeExclude:
+  - "@deepseek-ai/*"
+
+# Native and postinstall builds dsh needs (terminal PTY, FFI, subprocess helper).
+allowBuilds:
+  "@deepseek-ai/dsh-subprocess-local": true
+  koffi: true
+  node-pty: true
+  protobufjs: true
+  "@google/genai": true
+  # The client bundler. Its postinstall only re-fetches the platform binary that
+  # its optional dependency already installs, so the script stays declined.
+  esbuild: false
+  # The desktop window's runtime (packages/desktop, a devDependency there and nowhere else). Electron
+  # dropped its own postinstall in 42.0.0 and exposes an `install-electron` bin instead, which
+  # `packages/desktop`'s postinstall runs — a workspace project's scripts are not gated by this list.
+  # The entry stays because it costs nothing and is what an Electron before 42, or one that brought
+  # its postinstall back, would need to end up with a runnable binary rather than an inert package.
+  electron: true

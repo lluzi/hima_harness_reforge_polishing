@@ -1,0 +1,1050 @@
+[
+  {
+    "id": "PLS-01",
+    "title": "本地测试不加载真实 Site 用例",
+    "backlog": [
+      "POL-01"
+    ],
+    "dependsOn": [],
+    "gate": "可立即开始；本任务不连接真实 Site。",
+    "modules": [
+      [
+        "test/contract/pack.test.ts",
+        "probeSite / 真实 Site describe 与本地 Pack 用例"
+      ],
+      [
+        "test/contract/ssh.test.ts",
+        "probeSite / SSH 集成 describe 与静态配置用例"
+      ],
+      [
+        "test/contract/support/site.ts",
+        "保持本地与 reference Site 安装辅助函数职责"
+      ],
+      [
+        "test/contract/support/tmux.ts",
+        "核对测试拥有的 session/socket 清理范围"
+      ]
+    ],
+    "changes": [
+      "逐例清点现有 29 个 contract 文件的资源需求、断言和清理副作用；同一文件混合多种成本时不能仅按文件名分类。",
+      "将两个混合文件中的真实 Site 测试及其专属探测/清理代码移入显式 live Site 文件；保留本地配置、schema、路径与 Pack 检查断言。可以增加测试文件，不新增测试框架。",
+      "明确列出本地、桌面、真实 Site 的文件归属及受支持入口；live 初始化只能在显式选择 live 组后发生。"
+    ],
+    "acceptance": [
+      "在没有 SSH 凭据或不可达 Site 的环境中，本地组仍能加载、完成；使用仅观察子进程的测试期 fail-fast ssh 哨兵验证没有 SSH 启动尝试，不能只证明网络碰巧失败。",
+      "每条原断言记录原位置、新位置和层级；缺少 fixture、未选择 live、真实依赖不可用分别记录，不能计为通过。",
+      "所有清理只作用于测试拥有的临时 home/workspace/session/socket；不得删除共享 SSH 控制连接。",
+      "新增未归类测试文件会被入口校验发现，不能静默失去覆盖。"
+    ],
+    "tests": [
+      "L0：测试文件类型检查及入口清单检查。",
+      "L1/L2：完整运行拆分后的本地用例，核对前后断言及结果；测试期进程哨兵只用于验证边界，不替代生产 Channel。",
+      "L3：无需运行，本任务不改变窗口行为。",
+      "L4 Site：本轮只迁移文件时不自动实跑；对应 live 用例保持未验证，后续执行前先核对 Site 与清理范围。"
+    ],
+    "outOfScope": "不改生产 Pack/Channel/Fabric，不以一次全量桌面运行代替分类，不触发远程作业。",
+    "rollback": "恢复测试拆分及清单；保留迁移前对账。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-02",
+    "title": "提供构建一次且按成本选择的验证命令",
+    "backlog": [
+      "POL-01"
+    ],
+    "dependsOn": [
+      "PLS-01"
+    ],
+    "gate": "PLS-01 完成后实施。",
+    "modules": [
+      [
+        "package.json",
+        "build / typecheck / test:contract / 新增薄验证 scripts"
+      ],
+      [
+        "scripts/run-unit-tests.mjs",
+        "无用例与通过的区分"
+      ],
+      [
+        "scripts/require-node.mjs",
+        "Node 版本前置检查"
+      ],
+      [
+        ".githooks/pre-commit",
+        "开发静态检查入口"
+      ],
+      [
+        ".githooks/pre-push",
+        "取消重复构建及隐式昂贵依赖"
+      ],
+      [
+        "README.md",
+        "首次准备与日常命令"
+      ]
+    ],
+    "changes": [
+      "沿用 Node test runner，提供清楚的 check:local、test:local、test:desktop、test:live:site 入口；未来模型/完整 pilot 入口在对应实现落地时接入，缺失能力不能用空命令假通过。",
+      "check:local 执行版本/seam 检查、一次新构建、类型检查及本地组；各测试叶命令不再内嵌重复 build，并说明其构建前置条件。暂不新增自动缓存判定系统。",
+      "首次没有 lib 时 check:local 可成功准备；pre-push 调用一次完整的本地检查。窗口或真实依赖检查由任务的影响与分级要求触发并留下证据，hook 的通过不等于已完成所有层级。",
+      "默认本地入口不启动 Electron、模型或 SSH；无用例输出明确，显式选择的文件集合为空/丢失时拒绝宣称通过。"
+    ],
+    "acceptance": [
+      "在一次无构建产物的干净副本中 install → check:local 可通过；保留首轮安装与构建耗时。",
+      "同轮跨组执行的 build 次数可核对为一次；源码变化后使用新构建，不能用旧 lib 声明通过。",
+      "缺失显式要求的 Electron、报告 fixture 或真实依赖能明确失败/跳过；输出包含通过、失败、跳过、未跑和命令退出码。",
+      "相关 L0–L2 子集目标 3 分钟、关键 L3 子集目标 5 分钟；这是初始反馈目标，超标须定位成本，不能删覆盖达标。"
+    ],
+    "tests": [
+      "L0：全新副本的初始化顺序和脚本出口验证。",
+      "L2：按新入口执行原有本地集合，保留每组时间和覆盖对账。",
+      "L3：检查一次新 desktop 命令确实运行既有关键 driver 用例；后续纯入口文字修改无需反复开窗口。",
+      "L4/L5：不运行，只验证显式入口不会被默认组间接选择。"
+    ],
+    "outOfScope": "不增加通用测试服务，不改模型或 EDA 环境，不把所有变更都绑定全量 desktop。",
+    "rollback": "还原 scripts/hooks/README 及分组配置，产物不作为源码提交。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-03",
+    "title": "把策略对照与非视觉矩阵放到真实 Host 测试",
+    "backlog": [
+      "POL-01",
+      "POL-02",
+      "POL-04"
+    ],
+    "dependsOn": [
+      "PLS-02"
+    ],
+    "gate": "先使用 PLS-02 的计时结果；首切片限于 honest-standin 方法对照。",
+    "modules": [
+      [
+        "test/contract/honest-standin.test.ts",
+        "三个 Campaign 的策略/结果断言"
+      ],
+      [
+        "test/contract/strategy.test.ts",
+        "参数与声明矩阵，保留典型表单例"
+      ],
+      [
+        "test/contract/budget.test.ts",
+        "状态与计量矩阵，保留窗口计量例"
+      ],
+      [
+        "test/contract/experience.test.ts",
+        "报告/hash/恢复矩阵，保留阅读入口例"
+      ],
+      [
+        "test/contract/support/boot-inprocess.ts",
+        "真实 dsh 插件树"
+      ],
+      [
+        "test/contract/support/boot-host.ts",
+        "真实 HTTP Host"
+      ],
+      [
+        "test/contract/support/fabric.ts",
+        "localFabric 与已有记录读取"
+      ]
+    ],
+    "changes": [
+      "第一步只把 honest-standin 的三个方法对照移至真实 Host/local Job 路径，保留实际文件、Ledger、Judge、Chooser 和 Fabric。与窗口相关的断言由既有表单用例或一个缩小的 driver 用例承接。",
+      "后续仅在计时显示必要或正修改对应行为时迁移 Strategy/Budget/Experience 的重复组合；每次一类行为，逐断言对账。",
+      "纯参数、算术或报告投影通过已有生产函数接口做 L1；持久化、执行和 HTTP 必须保留 L2，不为测试暴露私有字段或复制状态机。"
+    ],
+    "acceptance": [
+      "相同三条策略路径的目标达成、收敛及预算耗尽仍被独立期望值推翻；不能用被测 choose() 计算期望。",
+      "迁移后完整行为断言继续存在；典型表单、会话、页面渲染和控制交互仍有 L3。",
+      "同覆盖范围记录迁移前后运行时间与实际窗口启动次数；只有实测才能声称降低成本。",
+      "in-process Host 的 process.env 改动不在同进程并行；相互隔离后才考虑进程级有限并行。"
+    ],
+    "tests": [
+      "L0 + L2：首切片迁移前后同一受控输入/断言集。",
+      "L1：只在已有可调用纯函数上添加反例。",
+      "L3：保留的一条正常表单/结果连线验一次；不重跑三种方法全部窗口版本。",
+      "L4/L5：无需，语义不变且外部依赖未变。"
+    ],
+    "outOfScope": "不一次性重写整个测试架构，不删掉慢失败，不把假 Host 用作降低成本的手段。",
+    "rollback": "按切片恢复原测试位置和 driver 断言；对账文档保留。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-04",
+    "title": "让默认本地 Pack 使用有依据的 Fmax 探索方法",
+    "backlog": [
+      "POL-02"
+    ],
+    "dependsOn": [
+      "PLS-02",
+      "PLS-03"
+    ],
+    "gate": "本地方法对照已具备；不依赖 Step 4。",
+    "modules": [
+      [
+        "packs/opene902-timing-probe/graph.yml",
+        "next-period 的 chooser/bind/converge"
+      ],
+      [
+        "packs/opene902-timing-probe/contract.yml",
+        "方法版本与 graph 一致"
+      ],
+      [
+        "packs/opene902-timing-probe/PACK.md",
+        "方法、结束含义与适用边界"
+      ],
+      [
+        "packages/harness/choosers/over-constraining-push.yml",
+        "复用已有策略定义"
+      ],
+      [
+        "packages/desktop/src/local-site.ts",
+        "seedLocalSite 的默认样例说明"
+      ],
+      [
+        "test/contract/support/pack.ts",
+        "保留旧 timing-push 的显式反例变体"
+      ]
+    ],
+    "changes": [
+      "把正常 local 样例定位为学习有依据的探索方法：默认参考 Pack 绑定已有 over-constraining-push 及其参数；检查现有方法版本规则并同时更新 graph/contract。",
+      "旧 timing-push 的零 slack 放宽路径保留为明确命名的测试反例；既有 chooser 本身不删除。",
+      "样例、页面/报告入口和说明中标明本地结果来自 stand-in；推测的可达 period 与实际完成且满足约束的测量分别表达。"
+    ],
+    "acceptance": [
+      "从 2.3 ns 出发，在 achievable=2.2 ns 的现有 stand-in 上，目标 2.25 ns 可达时正确 goal-met；目标 2.0 ns 不可达时正确 converged，不能宣称已闭合 2.0 ns。",
+      "旧 timing-push 反例仍按现有规则走到 generation-limit；新默认方法的成功不能靠改 Judge 或伪造正 slack。",
+      "所有所称“最佳有效结果”来自已运行且满足对应约束的观测；无有效测量时明确无数据。",
+      "Pack load/check、命令/工具和桌面启动所用策略一致；方法变更与源快照差异有记录。"
+    ],
+    "tests": [
+      "L0：Pack/schema 与构建。",
+      "L1/L2：可达、不可达、代数预算截断和旧错误方法四类；在同一受控数据上对照。",
+      "L3：一次默认 local 表单启动，核对方法与结束提示；不把四类反例全部走窗口。",
+      "L4 Site：只有要声明真实工具方法效果或工具/格式变化时才运行；本任务不证明真实 PPA 收益。"
+    ],
+    "outOfScope": "不改 Fabric 的通用状态机，不迁入旧 himaharness 架构，不将零 slack 规律外推到所有设计/工具。",
+    "rollback": "恢复 Pack 绑定和版本及相关 fixture；历史方法快照与反例保留。",
+    "category": "bug"
+  },
+  {
+    "id": "PLS-05",
+    "title": "开始前展示 Pack/Site 静态匹配与可行动的输入错误",
+    "backlog": [
+      "POL-03"
+    ],
+    "dependsOn": [
+      "PLS-02"
+    ],
+    "gate": "可在当前基线实施；当前接口的 Goal 仍以已支持的数值语义为限。",
+    "modules": [
+      [
+        "packages/harness/src/packs.ts",
+        "checkPack / PackCheck / installedPacks / goalParametersOf"
+      ],
+      [
+        "packages/harness/src/remote.ts",
+        "startChoices / workbenchPage / startCampaignOperation"
+      ],
+      [
+        "packages/harness/src/workbench.ts",
+        "renderStartForm / START_FORM"
+      ],
+      [
+        "packages/harness/src/card-labels.ts",
+        "startForm / startKnobField"
+      ],
+      [
+        "packages/harness/src/fabric.ts",
+        "startRun 保持最终验证权威"
+      ]
+    ],
+    "changes": [
+      "在现有工作台选择 Pack/Site 后展示已有 checkPack 的静态匹配结果；复用现有 page/HTTP namespace，不创建独立预检组件或第二校验器。",
+      "空 Pack、空 Site、坏 Pack、缺少绑定、wrapper/规则不匹配均有用户可行动提示。失败条目关联输入或准备责任；不将静态 fit 显示成真实 SSH/许可证/EDA 已就绪。",
+      "Pack/Site 变化时仅采用匹配当前选择的响应，保留仍适用的输入；请求过程中阻止同一表单重复提交，失败后可修正。服务端 startRun 仍重新校验，不能依赖 UI 的旧结果。",
+      "暂不抽象通用 Goal 表单：正式 Pack 的实际 Goal 若无法表达，PLS-08 先记录确切字段/语义，再局部扩展已有表单。"
+    ],
+    "acceptance": [
+      "各静态不匹配用例在 L2 不创建 Run、不发 Job；有效选择后能正常启动。",
+      "两个快速切换的 Pack/Site 响应倒序返回时，表单不会显示或提交旧选择的策略。",
+      "表单拒绝保留输入和明确原因；首次空 home 有准备入口说明。",
+      "所有新增 HTTP 读取仍受既有 session/Origin fence；明确请求错误、Site 配置问题与内部错误。"
+    ],
+    "tests": [
+      "L0/L1：已有声明/参数边界。",
+      "L2：真实 HTTP 下空/坏/不匹配/有效/过时选择与拒绝无副作用矩阵。",
+      "L3：一条合法提交与一条修正错误后提交；UI 响应竞争需在真实页面验证一次，数值组合留 L1/L2。",
+      "L4：静态检查不需真实 Site；真实就绪检查另行显式执行。"
+    ],
+    "outOfScope": "不新增通用表单框架，不承诺任意 Site，暂不建立多客户配置平台。",
+    "rollback": "恢复表单与既有 route 投影；保持原 startRun 验证入口。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-06",
+    "title": "核验并打磨运行、阻塞、取消和继续的用户控制",
+    "backlog": [
+      "POL-03"
+    ],
+    "dependsOn": [
+      "PLS-02"
+    ],
+    "gate": "已有取消/恢复测试先按分级执行；没有反例时不修改生产逻辑。",
+    "modules": [
+      [
+        "packages/harness/src/fabric.ts",
+        "resumeRun / drive"
+      ],
+      [
+        "packages/harness/src/recovery.ts",
+        "reconcileRuns / cancelRun"
+      ],
+      [
+        "packages/harness/src/remote.ts",
+        "cancelOperation / resume 路由及 RunView"
+      ],
+      [
+        "packages/harness/src/card-labels.ts",
+        "runControls / cancelAsked / cancelObserved"
+      ],
+      [
+        "packages/harness/src/workbench.ts",
+        "运行状态、错误及控制刷新"
+      ],
+      [
+        "packages/harness/src/client/HimaRunCard.tsx",
+        "聊天卡片的同 Run 控制"
+      ],
+      [
+        "test/contract/window.test.ts",
+        "既有交互用例"
+      ]
+    ],
+    "changes": [
+      "先记录从运行、等资源、阻塞、查看失败日志到继续/取消的有限使用路径；具体缺陷必须附复现和原因，每个原因独立补丁。",
+      "用户看见原因、当前仍在执行的工作、可执行动作和动作后的实际状态；取消请求不等于 Job 已停止。",
+      "继续使用既有 resume/取消记录，不能靠清理历史恢复；失败尝试日志可追溯，对话卡片与工作台指向同一 Run。"
+    ],
+    "acceptance": [
+      "取消与自然完成竞争、取消失败、恢复与重启竞争、分支一项阻塞而另一项仍在执行时，视图与真实 Ledger/Job 一致。",
+      "重复或不适用的操作得到可理解的结果，不能产生第二个不应启动的 Job 或把终态写回 running。",
+      "正常刷新不清空用户正在编辑的输入；拒绝后控件状态和提示允许用户继续纠正。",
+      "若既有实现全部满足，交付验证记录并明确无需代码修改，不能为完成任务制造重构。"
+    ],
+    "tests": [
+      "L0 + L2：复用 fabric-restart/retry、view-run、jobs-unreadable 等真实 Host/local tmux 场景。",
+      "L3：保留取消、阻塞后继续两条关键操作与一个 checkpoint 体验走查；状态组合不逐个走 desktop。",
+      "L4 Site：只有实际修改远程 Job 恢复/kill/连接语义时触发最小真实检查。"
+    ],
+    "outOfScope": "不增加后台常驻服务，不承诺桌面关闭后继续驱动整个 Campaign，不预设所有现有行为都有缺陷。",
+    "rollback": "每个复现单独 diff 回滚；Ledger/schema 若变更必须保留兼容读取证据。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-07",
+    "title": "报告区分执行结束与研究结论并约束证据范围",
+    "backlog": [
+      "POL-04"
+    ],
+    "dependsOn": [
+      "PLS-02"
+    ],
+    "gate": "可在当前基线实施，AI 研究段落留待 PLS-15。",
+    "modules": [
+      [
+        "packages/harness/src/experience-report.ts",
+        "ExperienceJson / experienceReport / endingReason / reasoningOf"
+      ],
+      [
+        "packages/harness/src/experience.ts",
+        "writeExperience / readExperience / owesAnExperience"
+      ],
+      [
+        "packages/harness/src/generations.ts",
+        "generationsOf 对历史与有效结果的投影"
+      ],
+      [
+        "packages/harness/src/remote.ts",
+        "RunView/ExperienceView"
+      ],
+      [
+        "packages/harness/src/card-labels.ts",
+        "共享结果措辞与证据入口"
+      ]
+    ],
+    "changes": [
+      "保留 Run.status 原义，在报告里分别呈现测量结论、覆盖限制、结束原因及缺失证据；converged 不自动等于 Goal 达成或策略普遍无效。",
+      "列出本次已执行策略、满足约束的观测、未执行的下一策略以及造成结论受限的故障；不把 requested period 当作 measured Fmax。",
+      "对缺少环境信息、没有完整试验或无法定位因果，明确未记录/未知；确定性报告不能伪造 AI 深入分析。",
+      "扩展报告数据格式时记录 schema 兼容策略；历史 Markdown/JSON 与 hash 不因新 renderer 被重写。"
+    ],
+    "acceptance": [
+      "目标达成、收敛未达标、预算截断、有效负结果、执行故障、取消及无 workspace 各有明确输出或无法交付原因。",
+      "未完成/失效/失败尝试的残缺报告不能成为有效结果；尚未执行的 next strategy 明确未测。",
+      "报告和 RunView 引用同一批事实，所有改进数字能够追到输入观测与比较条件。",
+      "文件遭修改、丢失或写入中断仍明确失败，不能把现场重算的视图称为已持久化文件。"
+    ],
+    "tests": [
+      "L0：相关 source/schema 类型检查与一次构建，保证测试使用当前产物。",
+      "L1：公开报告投影接口的小型独立期望与状态反例。",
+      "L2：真实 Host/文件验证 hash、缺失/中断、重复读取、重启补写及兼容读取。",
+      "L3：一次报告打开与关键结论渲染，纯内容矩阵无需重复窗口。",
+      "L4/L5：研究因果与质量不在此层认证。"
+    ],
+    "outOfScope": "不凭模板生成因果解释，不新增研究结论数据库，不重写历史报告。",
+    "rollback": "新增字段采用兼容读取；恢复报告投影代码，不删除新旧运行证据。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-08",
+    "title": "接收 Step 4 完整快照并核对模型、Pack 与作者流程",
+    "backlog": [
+      "POL-05",
+      "POL-07",
+      "POL-09"
+    ],
+    "dependsOn": [
+      "PLS-02"
+    ],
+    "gate": "外部前置：prototype 提供包含所需能力的明确已提交快照；未到来时保持依赖未满足，不拼接进行中的工作树。",
+    "modules": [
+      [
+        "packages/harness/src/index.ts",
+        "当前服务/工具/视图的注册，接上游真实实现"
+      ],
+      [
+        "packages/harness/src/tools.ts",
+        "现有模型可调用生产工具入口"
+      ],
+      [
+        "packages/harness/src/packs.ts",
+        "Pack 工具/知识/语义及 release 相关契约"
+      ],
+      [
+        "packages/harness/src/node-turns.ts",
+        "现有 act/explore 执行入口"
+      ],
+      [
+        "profiles/hima/cordis.patch.yml",
+        "profile 能力与隐私配置"
+      ],
+      [
+        "package.json",
+        "依赖和测试入口"
+      ],
+      [
+        "pnpm-lock.yaml",
+        "导入快照锁定依赖"
+      ],
+      [
+        "docs/assessment/2026-09-11/source-import.json",
+        "基线来源与逐文件 diff 的起点"
+      ]
+    ],
+    "changes": [
+      "以只读导出接收整个可验证快照，记录源 SHA、依赖锁、本地修改和重叠修复归属；保持 polishing 文档权威。",
+      "清点模型会话、Workshop、Pack 自带工具/reader/rule/知识、作者流程及正式 DTCO Pack 的实际完成度。缺少哪个环节就记录缺口，不能用临近功能替代。",
+      "把上游实际新增文件/接口写入本任务的交接表，并刷新后续任务模块映射；当前基线没有这些实现，因此不预造 model-moment 文件名。",
+      "核对正式 Pack 的 Goal、运行图与 release 文件身份能否由现有表单和执行入口表达；若有通用缺口，给出最小反例及本模块内修正，不迁入旧架构。"
+    ],
+    "acceptance": [
+      "导入 diff 可重建，产品代码与源只读目录无共享可写依赖/运行状态。",
+      "相关既有本地集合及新增 replay 合同在 polishing 独立通过；机制样本注明手写或真实录制。",
+      "模型可参与会话不被写成已完成 AI 研究；未完成作者/Pack 能力明确未验证并阻断依赖它的任务。",
+      "提供后续任务可使用的能力清单、模块/符号、生产入口、版本与测试证据；冲突修复有根因和归属。",
+      "正式 Pack 至少交接一条可独立运行的挖掘/分析路线、输入输出语义、一份有界小样本及独立校验方法，作为 PLS-09 的真实模型任务；缺失时不得将交接标为完整。"
+    ],
+    "tests": [
+      "L0–L2：受影响依赖、Pack 与模型工具/replay 机制。",
+      "L3：启动/会话/聊天到工作台等受影响连线的有限 smoke，不全套最高层。",
+      "L4 模型：仅当导入改变模型接口/工具协议时做有预算的小依赖检查；研究价值由 PLS-09。",
+      "L4 Site/L5：按真正改变的语义决定，不因每次快照自动跑完整研究。"
+    ],
+    "outOfScope": "不修改 prototype，不主动引入第二模型驱动器，不因工作树存在就认定上游已完成。",
+    "rollback": "保持前一快照与本地补丁清单；回退代码前先核对 Ledger/Pack 存储版本兼容，保留已生成资产。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-09",
+    "title": "证明 AI 在研究节点生成并验证有意义的算法",
+    "backlog": [
+      "POL-05"
+    ],
+    "dependsOn": [
+      "PLS-08"
+    ],
+    "gate": "PLS-08 已交接模型/Workshop 能力；DeepSeek V4 Flash 凭据和小任务预算由运行环境提供。",
+    "modules": [
+      [
+        "packages/harness/src/node-turns.ts",
+        "Workshop 所在现有节点执行与结果交接"
+      ],
+      [
+        "packages/harness/src/tools.ts",
+        "实际研究/代码工具调用入口"
+      ],
+      [
+        "packages/harness/src/ledger.ts",
+        "导入后的模型/代码记录及事实关联"
+      ],
+      [
+        "packages/harness/src/experience-report.ts",
+        "研究贡献的可追溯信息"
+      ],
+      [
+        "packs/",
+        "PLS-08 交接的正式 Pack 方法、知识和 Workshop 声明；先明确具体目录"
+      ]
+    ],
+    "changes": [
+      "使用 PLS-08 交接的正式 Pack 中一条挖掘/分析路线及有界网表或路径样本，给模型输入/输出契约和预算；让模型写候选生成或分析算法、在本地执行，并使用检查结果继续判断。候选必须能追到样本中的实际对象，结果由独立校验方法检查。",
+      "至少覆盖一个初始策略被证据否定后修改算法/代码的路径；模型贡献不能只是选择固定 profile 或转述固定脚本输出。",
+      "模型会话、引用输入、代码内容/hash、工具执行和输出观测关联到相应节点/尝试；模型不能直接写 Judge verdict、改 Goal 或绕过工具范围。"
+    ],
+    "acceptance": [
+      "replay 覆盖合法产物、格式错误、越界文件、工具失败、中断/取消；拒绝不产生可用于判断的伪证据。",
+      "一项真实 DeepSeek V4 Flash 小研究产生可执行算法，测试使用独立 oracle 或已知 holdout 检查结果，而非匹配模型措辞。",
+      "失败时保留代码、错误及已尝试路径，不让没有执行过的脚本支撑技术结论。",
+      "记录模型配置、预算和实际调用/运行次数；本小任务的成功不宣称完整 DTCO 闭环或相对模型优势。"
+    ],
+    "tests": [
+      "L0/L2：生产模型入口加 replay 与本地实际进程，覆盖机制与边界。",
+      "L3：有新的模型/代码状态显示时验证一次入口/展开/追溯。",
+      "L4 模型：本任务必须有小而真实的 V4 Flash 研究；没有凭据或预算时记录阻塞。",
+      "L4 Site/L5：此任务可以本地独立算法数据集完成，真实 EDA 留正式 Pack 验证。"
+    ],
+    "outOfScope": "不新增通用 planner 服务，不把模型自由文本当 verdict，不以更强闭源模型代替指定基线。",
+    "rollback": "恢复 Pack prompt/知识/工具声明和局部实现；已有代码记录、输入与输出保留。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-10",
+    "title": "在声明位置追加研究节点而保持参考图不变",
+    "backlog": [
+      "POL-06"
+    ],
+    "dependsOn": [
+      "PLS-08",
+      "PLS-13"
+    ],
+    "gate": "需要已交接的模型工具与方法文件身份；首切片限一个声明的探索位置。",
+    "modules": [
+      [
+        "packages/harness/src/packs.ts",
+        "packNode / packGraph / positionOf / 图验证"
+      ],
+      [
+        "packages/harness/src/ledger.ts",
+        "追加探索提议、接纳与生命周期记录"
+      ],
+      [
+        "packages/harness/src/fabric.ts",
+        "drive 与既有边/节点调度"
+      ],
+      [
+        "packages/harness/src/node-turns.ts",
+        "exploreNode 与工具结果交接"
+      ],
+      [
+        "packages/harness/src/tools.ts",
+        "通过既有工具系统接收结构化提议"
+      ],
+      [
+        "packages/harness/src/generations.ts",
+        "实际探索分支与参考图的投影"
+      ]
+    ],
+    "changes": [
+      "先用一个最小 Pack 证明预声明 revisit/Loop 不能表达当前需求，再在既有图/记录模块中支持附加节点；新增文件名不等于组件许可，多模块适配要列全。",
+      "提议至少带稳定身份、参考方法身份、父节点/代际、输入记录与内容身份、影响节点、预计策略/代码变化、既有 kind 的新增节点/依赖、必需输出、结束条件、返回位置与可选性。",
+      "Executor 在任何新 Job 启动前验证并记录接纳/拒绝；参考节点和依赖保持不可改，新增图只追加且使用现有 act/judge/explore/wait 语义，合法回边仍受既有规则约束。",
+      "重复提议幂等；必需证据不满足不能回到原流程宣称成功；可选支路失败/取消/放弃保留记录并按声明返回。"
+    ],
+    "acceptance": [
+      "合法追加、引用不存在节点、同名节点、删除/改写参考节点、非法环、缺失返回/输出、越权路径、预算不足均有明确接纳/拒绝证据。",
+      "接纳前后参考图内容 hash 相同；界面/RunView 能区分参考与实际附加工作。",
+      "在接纳记录前后分别中断重启，不丢失已接纳分支、不重复新增或启动。",
+      "已有 fork/Loop 不受影响；首切片未支持的嵌套位置必须在接受前明确拒绝，不能悄悄降级。"
+    ],
+    "tests": [
+      "L0/L1：结构与依赖校验，输入期望独立于生产验证器。",
+      "L2：真实 Host/local Jobs 的追加、拒绝、去重、返回与重启矩阵。",
+      "L3：一个实际分支的显示/展开/返回路径；不把所有坏图放到窗口测。",
+      "L4 模型：提议工具 schema/prompt 落地后一次真实工具协作；L5 在完整业务里验证用途。"
+    ],
+    "outOfScope": "不新建第二图引擎，不删除参考节点，不把动态提议写回 Pack 的默认方法，不扩展成任意可编程图平台。",
+    "rollback": "特性只对显式声明 Pack 开启；保留附加记录，旧版本不支持时明确拒绝该 Run，不能忽略后继续。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-11",
+    "title": "回溯时保留历史并只重跑受影响的下游",
+    "backlog": [
+      "POL-06"
+    ],
+    "dependsOn": [
+      "PLS-10"
+    ],
+    "gate": "PLS-10 接纳与方法身份已明确；运行不支持的图形必须先拒绝。",
+    "modules": [
+      [
+        "packages/harness/src/workspace.ts",
+        "prepareWorkspace 与执行材料版本"
+      ],
+      [
+        "packages/harness/src/ledger.ts",
+        "输入/代码身份、替代关系与有效性记录"
+      ],
+      [
+        "packages/harness/src/fabric.ts",
+        "resumeRun / drive"
+      ],
+      [
+        "packages/harness/src/node-turns.ts",
+        "observeNode / judgeNode / exploreNode 的输入选择"
+      ],
+      [
+        "packages/harness/src/recovery.ts",
+        "reconcileRuns"
+      ],
+      [
+        "packages/harness/src/generations.ts",
+        "generationsOf 的历史与当前有效结果"
+      ]
+    ],
+    "changes": [
+      "对已接纳的策略/算法改动计算受影响依赖闭包，记录原因；内容未变且输入/环境/方法身份仍适用的结果才能复用。",
+      "旧尝试、观测与代码全部保留，通过新的记录表达替代/失效，不删除历史。为需要回退的可变代码/策略保存可重用版本，不能仅移动 currentNode。",
+      "读取、Judge 和 Explore 按当前有效输入依赖选择证据，不能简单用全局 latest 把旧分支结果混进新策略。",
+      "恢复继续跟踪确实还活着的 Job；不重复启动。部分产物/未完成报告不能支持推论，必要时从最近失败且可验证的节点重跑。"
+    ],
+    "acceptance": [
+      "以 A→B→C 和不受影响的 D 反例证明：只改 B 的代码，A/D 可复用，B/C 重跑；再改 A 输入则其全部下游失效。",
+      "两个分支同时生成同名报告、旧报告比新报告时间晚、文件内容被改而路径不变时，仍不会错误复用。",
+      "在代码保存、失效记录、Job 启动、观测追加各边界中断后，可依据真实记录恢复，已运行的重复效应受到防护。",
+      "报告同时可查看历史与本轮有效结果，失效历史不会被删除或作为当前最佳结果。"
+    ],
+    "tests": [
+      "L0/L1：依赖闭包及内容身份比较的独立反例。",
+      "L2：真实 Ledger/文件/local tmux、跨 Host 重启、分支隔离与残缺产物矩阵。",
+      "L3：一次回溯后的历史/当前对照与继续入口。",
+      "L4 Site：实际修改远程文件恢复或 Job 语义时做最小检查；L5 验证完整研究中的再探索。"
+    ],
+    "outOfScope": "不通用快照整个 EDA 环境，不靠文件 mtime 证明有效性，不在旧 himaharness 中借回 Runtime。",
+    "rollback": "保留所有版本与有效性记录；不支持新记录的旧代码不能继续该 Run，历史可只读。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-12",
+    "title": "让扩展研究遵守总预算并留出诚实收尾",
+    "backlog": [
+      "POL-06",
+      "POL-04"
+    ],
+    "dependsOn": [
+      "PLS-07",
+      "PLS-09",
+      "PLS-11"
+    ],
+    "gate": "新研究/回溯入口齐备后，统一沿用现有 Budget，而非各自增加独立额度。",
+    "modules": [
+      [
+        "packages/harness/src/budget.ts",
+        "timeBoxSpentAt / advance / retryStanding / nextGenerationAllowed"
+      ],
+      [
+        "packages/harness/src/fabric.ts",
+        "drive / 终止与 writeExperience 调用"
+      ],
+      [
+        "packages/harness/src/node-turns.ts",
+        "工具/探索调度前预算检查"
+      ],
+      [
+        "packages/harness/src/job-cap.ts",
+        "现有并发/许可证控制"
+      ],
+      [
+        "packages/harness/src/ledger.ts",
+        "RunBudget/RunMeters 及结束原因"
+      ],
+      [
+        "packages/harness/src/experience.ts",
+        "收尾/欠交付的恢复"
+      ]
+    ],
+    "changes": [
+      "回溯、附加支路与模型研究共享 Campaign 的时间、尝试、代数和 Site 额度；新增分支不能重置总体预算。",
+      "为需要模型分析的 Pack 表达总时间盒内部的收尾预留：优先复用已接入的 Pack/运行参数；若必须增加 optional 预算字段，列出所有消费者并保持旧 Pack 默认行为兼容。",
+      "进入收尾后不再开始实验；模型分析也须在总界限内结束。到达硬界限只生成确定性的事实/缺失说明，不绕过 Budget 继续模型或 EDA。",
+      "用户取消保留最高停止意图；文件归档失败独立显示尚未交付，由已有恢复机制补齐，不把 Run 终态伪装成已交付资产。"
+    ],
+    "acceptance": [
+      "在 Job、模型、回溯、附加节点前后命中预算边界时无超额新实验，已有活动工作按既定停止语义结算。",
+      "未执行的新策略、未完成的分析都明确记录；收尾 reserve 不被计算成额外预算。",
+      "取消、budget exhausted、converged 与 execution fault 不互相冒充；必要材料未生成不显示交付完整。",
+      "分支和 Host 重启不能获得新的总额度，保留正确的资源计量与实际停止状态。"
+    ],
+    "tests": [
+      "L0/L1：边界算术和结束优先级，使用已有可控时间入口或短有限预算，不以长 sleep 模拟。",
+      "L2：真实 Host/local Jobs + replay，测试边界、中断与记录；L3 只验一条预算提示/停止入口。",
+      "L4 模型：真实小任务确认工具取消/模型边界；L4 Site 只在远程终止机制有实质变更时做。",
+      "L5：完整 Campaign 的预算与收尾投入对账。"
+    ],
+    "outOfScope": "不新建预算服务，不默认加入 token/货币计费平台，不把任何失败一概解释为策略错误。",
+    "rollback": "旧 Budget 默认兼容；新字段/记录保留，恢复到旧版本前检查语义是否可读取。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-13",
+    "title": "分开方法身份与运行资产并保护 Pack 更新",
+    "backlog": [
+      "POL-07"
+    ],
+    "dependsOn": [
+      "PLS-08"
+    ],
+    "gate": "PLS-08 已核对上游 release/安装身份，若未交接则此任务不可进入实现。",
+    "modules": [
+      [
+        "packages/harness/src/packs.ts",
+        "loadPack / Pack identity 与 release 文件边界"
+      ],
+      [
+        "packages/desktop/src/local-site.ts",
+        "seedLocalSite 中 rm(packDir)/cp 更新"
+      ],
+      [
+        "packages/desktop/src/hima-home.ts",
+        "prepareHimaHome 现有安装职责"
+      ],
+      [
+        "packages/harness/src/workspace.ts",
+        "workspaceFile / PreparationIdentity"
+      ],
+      [
+        "packages/harness/src/ledger.ts",
+        "Run/Workspace 记录的方法身份"
+      ]
+    ],
+    "changes": [
+      "复用上游已实现的 release 身份；明确哪些文件属于不可变参考方法，哪些是客户运行资产。加入新资产不能悄悄改变方法身份。",
+      "本规格将运行资产固定在已安装 Pack 的 run-assets/<runId>/；若快照已有同义且满足要求的位置，由本任务记录唯一兼容映射再更新规格，不能同时维护第二归档树。",
+      "修正 local seeding 和 Pack 更新的覆盖策略：仅替换版本声明中的方法文件，保留客户资产；无法验证归属/半更新目录时拒绝覆盖并说明。",
+      "保护目录穿越和符号链接边界；对外方法发布使用显式方法文件清单，不依赖“整个目录复制后再删敏感文件”。"
+    ],
+    "acceptance": [
+      "在 installed Pack 放置真实归档样本，连续 seed/更新后字节与 hash 不变；原代码 rm/cp 导致该样本丢失的反例先在隔离 home 复现。",
+      "方法内容改变时版本/内容身份改变；仅添加 run-assets 时保持原方法身份。",
+      "中断更新、同版本不同内容、未知文件及越界 symlink 的行为明确，不能误删客户文件。",
+      "旧 Run 仍能定位原方法身份，不能因安装了新版本而用新代码解释旧实验。"
+    ],
+    "tests": [
+      "L0/L1：文件集合与身份边界。",
+      "L2：真实临时目录的 seeding、更新、冲突、中断和越界；不用 EDA 或模型。",
+      "L3：本任务只改安装文件逻辑时不需要全流程；若启动/错误界面改变，保留一次对应 desktop 检查。"
+    ],
+    "outOfScope": "不建知识服务/索引，不静默给旧方法补造不存在的内容身份，不覆盖源码 Pack 或 prototype。",
+    "rollback": "保留原方法与更新前 manifest；回退安装逻辑不得回到会删除新资产的路径，必要时禁用旧 seeding 并明确报错。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-14",
+    "title": "把 Campaign 知识材料可靠归档到 Pack 内",
+    "backlog": [
+      "POL-07"
+    ],
+    "dependsOn": [
+      "PLS-07",
+      "PLS-13"
+    ],
+    "gate": "归档路径及方法身份确定；在既有 Experience 职责内实现。",
+    "modules": [
+      [
+        "packages/harness/src/experience.ts",
+        "writeExperience / readExperience / 欠交付重试"
+      ],
+      [
+        "packages/harness/src/experience-report.ts",
+        "报告 schema 与材料 manifest"
+      ],
+      [
+        "packages/harness/src/ledger.ts",
+        "归档完成/失败和文件内容身份"
+      ],
+      [
+        "packages/harness/src/recovery.ts",
+        "既有重启 reconciliation 补交付"
+      ],
+      [
+        "packages/harness/src/remote.ts",
+        "ExperienceView 和材料读取"
+      ],
+      [
+        "packages/harness/src/packs.ts",
+        "已安装 Pack 资产定位"
+      ]
+    ],
+    "changes": [
+      "保留 Site 原报告，将报告、必要数据/环境声明、算法脚本和支持材料归档至对应 installed Pack 的固定运行目录；不把仓库源码 Pack 当运行写入目录。",
+      "每项材料记录来源、大小、hash、必要性、方法/Run 身份与缺失原因。必需材料不能仅用一个将来可能消失的远程路径替代。",
+      "先写同目录暂存材料并验证，再发布完成 manifest 并追加 Ledger 完成记录；断电/进程中断后可重试，重复同内容幂等，不同内容不能静默覆盖。",
+      "区分 Run 执行结束和资产交付状态；失败保留已有证据，通过已有恢复入口补齐，不引入另一个后台归档服务。"
+    ],
+    "acceptance": [
+      "成功、负结果、预算结束、取消各有资产或明确的缺失/无法交付说明。",
+      "没有 workspace 的早期失败仍可在 Pack 中保留本地已有事实与缺失说明，不伪造不存在的 Site 文件。",
+      "一半文件写完中断、manifest 前后中断、目录只读、文件被篡改、源丢失、重复调用均不出现假的 complete。",
+      "恢复后完整材料 hash 可验证，核心算法可离线阅读；未获授权的 Site 文件不被归档。"
+    ],
+    "tests": [
+      "L0/L1：manifest/schema 与必要材料完整性。",
+      "L2：真实 Host、临时文件和受控传输，注入中断/错误，验证恢复与幂等。",
+      "L3：一个报告与材料可打开的路径；文件故障矩阵不走 desktop。",
+      "L4 Site：若新增远程传输/读取行为，使用一份有预算的真实材料验证；不跑完整 EDA。"
+    ],
+    "outOfScope": "不复制全部 EDA workspace，不自动上传外部知识库，不用“尽力写入”冒充完整资产。",
+    "rollback": "禁用新归档触发仍保留所有 run-assets 和 manifest；历史读取保持兼容。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-15",
+    "title": "把 AI 研究过程、环境和算法纳入技术报告",
+    "backlog": [
+      "POL-04",
+      "POL-05"
+    ],
+    "dependsOn": [
+      "PLS-09",
+      "PLS-14"
+    ],
+    "gate": "已有可追溯模型/代码记录和可靠归档。",
+    "modules": [
+      [
+        "packages/harness/src/experience-report.ts",
+        "ExperienceJson / 技术报告研究段落"
+      ],
+      [
+        "packages/harness/src/experience.ts",
+        "必需材料收集与 hash"
+      ],
+      [
+        "packages/harness/src/ledger.ts",
+        "模型假设/代码/测量的来源关系"
+      ],
+      [
+        "packages/harness/src/generations.ts",
+        "路线、尝试与有效性投影"
+      ],
+      [
+        "packages/harness/src/client/HimaRunCard.tsx",
+        "研究材料下钻入口"
+      ],
+      [
+        "packs/",
+        "正式 Pack 的领域解释与分析要求"
+      ]
+    ],
+    "changes": [
+      "报告覆盖研究问题、假设/策略、算法或脚本、输入/环境、试验与比较条件、观察、取舍、局限和下一次建议。领域内容来自 Pack 与有来源的模型产物，事实由测量/记录支持。",
+      "将环境“声明值”和本次“实际探测值”分别注明；无法取得的工具版本/设计身份保留未知。",
+      "失败分析分别说明执行故障、证据不足和当前覆盖中的负结果；可能原因标为假设，并给出能够区分它们的下一次实验。",
+      "聊天、工作台和最终归档能到达同一代码/报告/数据身份；报告叙述不能改写 Judge 的测量结论。"
+    ],
+    "acceptance": [
+      "任取一个报告结论可定位输入观测、脚本 hash 和适用环境；算法在归档中实际存在。",
+      "没有 Fmax 提升时不暗示提升，但仍可交付证据支持的限制和下一步；预算不足不写成搜索空间已穷尽。",
+      "模型给出不存在的记录 ID、凭空数字或与实际测量矛盾时，标明未验证/拒绝进入确定事实区。",
+      "旧版本报告仍可读，新增研究段落的不足不会被空模板掩盖。"
+    ],
+    "tests": [
+      "L0：相关 source/schema 类型检查与一次构建，保证测试使用当前产物。",
+      "L1/L2：使用明确真/假引用、对照条件差异、残缺输入验证报告与归档。",
+      "L3：一次报告/代码下钻，检查关键段落的真实可读性。",
+      "L4 模型：在真实小研究上审阅解释及下一实验的可执行性；不以固定文本匹配评判质量。",
+      "L5：研究价值由资深工程师复核。"
+    ],
+    "outOfScope": "不把 LLM 输出自动提升为测量事实，不引入第二套结论状态机。",
+    "rollback": "还原新增投影与材料要求；保留已归档研究内容和 schema 身份，允许只读。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-16",
+    "title": "下一次研究主动引用相关且获准的历史资产",
+    "backlog": [
+      "POL-08"
+    ],
+    "dependsOn": [
+      "PLS-09",
+      "PLS-14",
+      "PLS-15"
+    ],
+    "gate": "至少有两份身份完整的历史资产；当前模型/Pack 输入入口已交接。",
+    "modules": [
+      [
+        "packages/harness/src/packs.ts",
+        "Pack 资产枚举和适用范围读取"
+      ],
+      [
+        "packages/harness/src/experience.ts",
+        "经过 hash 验证的材料读取"
+      ],
+      [
+        "packages/harness/src/node-turns.ts",
+        "研究节点输入准备"
+      ],
+      [
+        "packages/harness/src/tools.ts",
+        "既有模型读取材料的范围"
+      ],
+      [
+        "packages/harness/src/ledger.ts",
+        "实际引用的资产/材料身份"
+      ],
+      [
+        "packs/",
+        "正式 Pack 的知识选择与使用说明"
+      ]
+    ],
+    "changes": [
+      "在已有 Pack 读取范围内按问题、设计、工具环境与方法身份筛选有限历史资产；无需向量库或独立索引。",
+      "给模型的是有 provenance、适用条件、证据强度和失效/未知标记的材料；记录实际引用内容及身份，不只记录候选列表。",
+      "历史失败用于提出假设、排除已验证的窄路径或设计下一实验；新的设计结论必须有当前运行证据。",
+      "客户/Pack/Site 授权范围内读取；材料不完整、hash 不符、上下文不适用时明确拒绝或降为受限背景。"
+    ],
+    "acceptance": [
+      "同名不同设计、不同工具版本、失效材料、未经允许的其他客户资产和被篡改文件不会当作当前可靠结论输入。",
+      "新研究使用一份相关负结果时，用户能看到出处及选择下一实验的原因；不存在相关知识时可正常从 Pack 方法起步。",
+      "在历史内容中出现要求扩大权限/改 Goal 的文字，不改变模型工具权限或参考方法。",
+      "声称复用提升质量/成本前，做固定任务、预算和独立评判下的有限有/无资产对照；未测则只声称功能可用。"
+    ],
+    "tests": [
+      "L0/L1：候选筛选与适用条件；L2：真实文件授权/hash、实际注入与引用记录。",
+      "L3：一次引用来源可见的入口。",
+      "L4 模型：一项历史资产支持的新研究，必要的有/无对照；不要求每个筛选反例都调用模型。",
+      "L5：完整 DTCO 的下一次引用与研究价值。"
+    ],
+    "outOfScope": "不新增知识搜索服务，不将历史结论冒充本次结果，不自动跨客户共享。",
+    "rollback": "禁用历史注入后回到 Pack 原有方法输入；历史资产及引用记录保留。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-17",
+    "title": "Pack 升级和分享由 owner 控制并保留客户资产",
+    "backlog": [
+      "POL-07",
+      "POL-08"
+    ],
+    "dependsOn": [
+      "PLS-13",
+      "PLS-14"
+    ],
+    "gate": "PLS-08 的作者/release 入口与 PLS-13 的方法身份已交接。",
+    "modules": [
+      [
+        "packages/harness/src/packs.ts",
+        "release/安装文件边界及方法版本"
+      ],
+      [
+        "packages/desktop/src/local-site.ts",
+        "同客户更新保留路径"
+      ],
+      [
+        "packages/harness/src/experience.ts",
+        "资产迁移与材料 manifest"
+      ],
+      [
+        "packages/harness/src/tools.ts",
+        "上游作者/发布入口的授权动作"
+      ],
+      [
+        "packages/harness/src/remote.ts",
+        "已有用户确认入口及结果投影"
+      ],
+      [
+        "profiles/hima/cordis.patch.yml",
+        "已交接的作者流程配置"
+      ]
+    ],
+    "changes": [
+      "自动归档或模型提出方法改进只形成候选，不改变默认参考方法；Pack owner/授权作者通过已有作者流程确认后生成新方法版本。",
+      "同客户升级保留 run-assets 和旧版本身份；自身迁移可携带资产并验证 hash。",
+      "向其他客户/公共来源交付时，默认只包含声明的方法文件；客户显式选择分享的研究材料形成可审阅 manifest。",
+      "确认基于实际文件清单与差异；分享操作的内容发生变化时重新呈现该内容，不把以前确认当无限授权。"
+    ],
+    "acceptance": [
+      "未确认候选不会变成默认方法；确认升级后旧 Run 的方法、报告与引用仍可解析。",
+      "同客户升级/迁移中断后可恢复，资产不丢失；旧新同名路径冲突不能静默覆盖。",
+      "默认公开交付清单中没有客户输入、结果、专有算法、凭据或临时文件；显式选择材料与实际产物逐 hash 对照。",
+      "单用户 pilot 复用现有 owner 信任范围，不宣称已经实现企业多租户权限系统。"
+    ],
+    "tests": [
+      "L0/L2：真实目录的升级、迁移、默认排除、显式包含、冲突和中断矩阵。",
+      "L3：一次 owner 审阅差异并确认的关键路径；不把文件组合逐个走窗口。",
+      "L4 模型：仅在改变模型作者工具/schema 时做最小检查；共享/迁移本身不需 EDA。"
+    ],
+    "outOfScope": "不建 marketplace、多租户权限服务或自动公共发布，不把 AI 提案视为 owner 批准。",
+    "rollback": "恢复前一默认方法指向，保留所有方法版本及资产；对已导出材料只能记录与修正，不能声称已撤回外部副本。",
+    "category": "enhancement"
+  },
+  {
+    "id": "PLS-18",
+    "title": "完成真实 DTCO 研究 pilot 与第二次知识复用",
+    "backlog": [
+      "POL-09"
+    ],
+    "dependsOn": [
+      "PLS-03",
+      "PLS-04",
+      "PLS-05",
+      "PLS-06",
+      "PLS-12",
+      "PLS-15",
+      "PLS-16",
+      "PLS-17"
+    ],
+    "gate": "所依赖能力已通过对应低层验证；指定 Site、正式 Pack、输入、模型凭据和 Campaign 预算已具备，现场条件缺口必须先解决。",
+    "modules": [
+      [
+        "packs/",
+        "PLS-08 接收并独立验证的正式定制 Cell/Fmax Pack"
+      ],
+      [
+        "sites/",
+        "指定 pilot Site 绑定与 Permit；仅在确有配置差异时修改"
+      ],
+      [
+        "scripts/acceptance-step3.ts",
+        "复用其证据清单/审计/重启结构，新增本地 pilot 验证脚本而非第二运行系统"
+      ],
+      [
+        "packages/desktop/src/main.ts",
+        "仅处理实际 pilot 暴露的部署/操作缺陷"
+      ],
+      [
+        "docs/specs/polishing-v1/",
+        "规格与任务验收对账"
+      ]
+    ],
+    "changes": [
+      "先验证真实模型小任务与一个必要的真实工具作业，再执行完整 Campaign；不在 UI 小改后重复整个 EDA 研究。",
+      "使用匹配的设计、约束、工具/库和测量条件，对照基础路线与定制 Cell 路线；完整记录算法、采用/拒绝、回溯、附加研究与局限。",
+      "在首次 Site 准备后由工程师通过桌面/对话提供输入、启动、查看和干预，不要求每日编译源码或手改内部 YAML。",
+      "交付技术报告和 Pack 内资产，再发起一项引用该资产的有界后续研究；由用户/指定资深工程师判断研究价值。"
+    ],
+    "acceptance": [
+      "真实 V4 Flash 在至少一个关键研究环节提供可核对的算法/策略改变，并完成执行与反馈；不是纯固定脚本演示。",
+      "发生或安排的一次回溯/附加探索有明确影响范围，参考图不变，历史保留，受影响下游按有效性重新运行。",
+      "所有停止原因与资源消耗可对账；无提升时交付证据支持的负结果或未决问题，不承诺固定提升百分比。",
+      "必要报告、算法、数据、环境与 supporting material 可交付且 hash 正确；第二次研究实际引用来源可见。",
+      "独立产品测试清单逐项标注通过/失败/未验证；使用验收意见和剩余风险留档。未完成的客户使用验收不能由 agent 自行认定通过。"
+    ],
+    "tests": [
+      "L0–L3：候选快照上受影响范围与必要的窗口 checkpoint；复用明确适用的历史证据并标版本，不伪装成重跑。",
+      "L4 模型与 Site：分开最小检查，记录预算和真实投入；发现问题回到最低可复现层。",
+      "L5：完整研究及第二次引用，真实用户操作与报告审阅。本任务是昂贵测试的集中入口。"
+    ],
+    "outOfScope": "不扩展多操作系统安装/商业签名/任意 Site，不追求未经授权的无限探索，不迁移旧产品架构。",
+    "rollback": "保留全部 Site workspace、方法版本与资产；代码修复按根因独立切片；终止 pilot 只停止本次拥有的作业。",
+    "category": "enhancement"
+  }
+]

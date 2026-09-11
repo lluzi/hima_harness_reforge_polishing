@@ -1,0 +1,11 @@
+# The HimaHarness bundle patch: rows inserted beside dsh-base.
+# seam: bundle composition (direct, documented-public)
+- insert:
+    - id: hima
+      name: '@hima/harness'
+      config:
+        # Sites and their permits live under the harness home; a customer's CAD maintains them.
+        sitesDir: !!js dshHomePath('hima/sites')
+        # Installed HimaPacks, one directory per pack id. Packs ship in the repository under `packs/`
+        # and are installed here the way a site file is, so the harness reads one place for both.
+        packsDir: !!js dshHomePath('hima/packs')

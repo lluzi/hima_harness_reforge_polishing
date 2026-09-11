@@ -1,0 +1,573 @@
+{
+  "date": "2026-09-09",
+  "issue": 17,
+  "script": "scripts/acceptance-step2.ts",
+  "versions": {
+    "harness": "HimaHarness 0.1.0 on DeepSeek Harness 0.1.5-alpha.1 (Node v24.20.0)",
+    "node": "v24.20.0"
+  },
+  "commit": "30599ba91df9723707ac5517d025c6b74d7d48a0",
+  "commitDirty": false,
+  "site": {
+    "name": "linglong",
+    "kind": "ssh",
+    "file": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-tx9JIc/hima/sites/linglong.yml",
+    "destination": "luzi@192.168.50.41",
+    "workspaceRoot": "/data/eda/project/hima_harness",
+    "flowRoot": "/data/eda/project/design_zoo",
+    "design": "opene902",
+    "parallelJobs": 1,
+    "lastResultReport": "/data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt"
+  },
+  "pack": {
+    "id": "opene902-timing-probe",
+    "version": "1",
+    "guardBandNs": 0.05
+  },
+  "home": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-tx9JIc",
+  "probe": {
+    "lastResult": {
+      "command": "/hima observe linglong /data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt --reader dc-qor-report",
+      "runId": "run-e28c566e-6289-4825-9b37-922bde92113a",
+      "path": "/data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt",
+      "clockPeriodNs": 2.27,
+      "contentSha256": "a8977b90b9f034c247dbec600448404f1cadfa172bf327d573ec886be21af22c",
+      "bytes": 2421
+    },
+    "workspaceRootOnSite": "/data/eda/project/hima_harness",
+    "flowRootOnSite": "/data/eda/project/design_zoo",
+    "quiet": {
+      "asked": true,
+      "sessions": [],
+      "himaSessions": [],
+      "panes": [],
+      "busyPanes": [],
+      "detail": "no server running on /tmp/tmux-1000/default; no tmux panes"
+    }
+  },
+  "request": {
+    "targetPeriodNs": 2.07,
+    "targetFrom": "the site's last result (2.27 ns) minus 0.2 ns",
+    "timeBoxMinutes": 20
+  },
+  "generation": {
+    "command": "/hima run opene902-timing-probe --site linglong --goal target_period_ns=2.07 --period 2.07 --time-box 20",
+    "kind": "error",
+    "answer": "run run-a9d1e342-3e90-4a72-8953-9597321985a5 of campaign opene902-timing-probe-20260909-194716-c76d on site linglong: waiting\n  workspace: /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d\n  goal: target_period_ns=2.07\n  strategy: periodNs=2.07\n  budget: time box 20 min, retry allowance 3, job cap 1\n  current node: blocked\n  meters: 1608 ms elapsed, 3 jobs launched, 4 attempts\n  nodes:\n    synthesize (act): blocked, attempt 3, session hima-a9d1e342-synthesize-a1bf46, job \"synthesize\" in tmux session hima-a9d1e342-synthesize-a1bf46 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3\n    blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it\n  blocker: synthesize after 3 attempts, last exit 2, 5 lines of log on record run-a9d1e342-3e90-4a72-8953-9597321985a5#000013: job \"synthesize\" in tmux session hima-a9d1e342-synthesize-a1bf46 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3",
+    "runId": "run-a9d1e342-3e90-4a72-8953-9597321985a5",
+    "runStatus": "waiting",
+    "statusText": "run run-a9d1e342-3e90-4a72-8953-9597321985a5 of campaign opene902-timing-probe-20260909-194716-c76d on site linglong: waiting\n  workspace: /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d\n  goal: target_period_ns=2.07\n  strategy: periodNs=2.07\n  budget: time box 20 min, retry allowance 3, job cap 1\n  current node: blocked\n  meters: 1608 ms elapsed, 3 jobs launched, 4 attempts\n  nodes:\n    synthesize (act): blocked, attempt 3, session hima-a9d1e342-synthesize-a1bf46, job \"synthesize\" in tmux session hima-a9d1e342-synthesize-a1bf46 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3\n    blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it\n  blocker: synthesize after 3 attempts, last exit 2, 5 lines of log on record run-a9d1e342-3e90-4a72-8953-9597321985a5#000013: job \"synthesize\" in tmux session hima-a9d1e342-synthesize-a1bf46 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3"
+  },
+  "records": [],
+  "restart": {
+    "webHostsBooted": false,
+    "webHostsNotBootedBecause": "the Run is waiting, which is not a final status: booting a host would have it reconcile a still-running Run, sending commands to the site from a process this record's command list cannot see. The run view and the restart were not read.",
+    "runViewUnchanged": false,
+    "recordsUnchanged": false,
+    "error": "the Run is waiting, which is not a final status: booting a host would have it reconcile a still-running Run, sending commands to the site from a process this record's command list cannot see. The run view and the restart were not read."
+  },
+  "measured": {
+    "targetPeriodNs": 2.07,
+    "guardBandNs": 0.05
+  },
+  "workspaceLeftInPlace": {
+    "note": "Left in place as evidence. Nothing in this harness removes a path on a Site; removing this workspace, and the container of that name, is the site owner's call."
+  },
+  "afterProbe": {
+    "command": "/hima observe linglong /data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt --reader dc-qor-report",
+    "runId": "run-31efe01e-56aa-45b9-90c8-818941a08feb",
+    "contentSha256": "a8977b90b9f034c247dbec600448404f1cadfa172bf327d573ec886be21af22c",
+    "bytes": 2421,
+    "clockPeriodNs": 2.27
+  },
+  "checks": [
+    {
+      "id": "last-result-read",
+      "what": "The site's own last result was read, read-only, before anything else was done to the site.",
+      "predicate": "`/hima observe linglong /data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt --reader dc-qor-report` succeeds and its observation states a `clock_period`.",
+      "observed": "2.27 ns, from /data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt, sha256 a8977b90b9f034c247dbec600448404f1cadfa172bf327d573ec886be21af22c (2421 bytes)",
+      "outcome": "pass"
+    },
+    {
+      "id": "target-tighter-than-last",
+      "what": "The generation was asked for a clock period tighter than the site's last result.",
+      "predicate": "target = last − 0.2 ns rounded to 3 decimals, and target < last. The target is also inside the sanity band — 0.5 ns ≤ target ≤ 2 × the site's own last result, and a plain decimal — which is enforced before the launch: a period outside it exits 2 with no record and nothing asked of the site beyond this probe.",
+      "observed": "last 2.27 ns, target 2.07 ns (the site's last result (2.27 ns) minus 0.2 ns)",
+      "outcome": "pass"
+    },
+    {
+      "id": "site-roots-resolved",
+      "what": "Both roots this site names resolved on the site itself before anything was launched: where campaign workspaces go, and where the site's own flow is.",
+      "predicate": "`realpath` of the site's `workspaceRoot` and of its `flowRoot`, asked through HimaChannel, each answered a path. Every later check measures against these two, so a root that does not resolve stops the launch here rather than failing checks after a synthesis has already run.",
+      "observed": "workspaceRoot /data/eda/project/hima_harness → /data/eda/project/hima_harness; flowRoot /data/eda/project/design_zoo → /data/eda/project/design_zoo",
+      "outcome": "pass"
+    },
+    {
+      "id": "one-job-at-a-time",
+      "what": "Every tmux session and every tmux pane on the site was listed and read, and none of them carries a job of this harness or a large EDA job of the site's own.",
+      "predicate": "tmux on the site lists no session whose name begins with `hima-`, and no pane that any of four patterns reads as busy: its session name begins with `hima-`; or its command half — `pane_current_command` and `pane_start_command` together, which is where the tool, the design and the target are — names the site's own resolved flow root, or names one of `dc_shell`, `icc2`, `innovus`, `pt_shell`, `/usr/local/bin/eda`, or holds `make` and `synth` together. Those are the shapes a large job is launched in here: the flow runs Design Compiler through `make` and a container, so `dc_shell` is never the string on the pane, and matching on it alone would clear a site that is busy. A probe that could not be made is a failure, never a quiet site. What this establishes is what tmux can be asked: a pane matching none of these patterns is read as quiet, and a job started outside tmux is outside this probe's reach — the site owner's rule that a large job runs in a tmux session is what makes tmux the place to ask.",
+      "observed": "no server running on /tmp/tmux-1000/default; no tmux panes; hima- sessions: none; panes read as busy: none of 0",
+      "outcome": "pass"
+    },
+    {
+      "id": "one-invocation-ran-the-generation",
+      "what": "One invocation of `/hima run` executed the whole generation, and the Run reached a measured result.",
+      "predicate": "The command answers `success`, names a run, and that Run ends `ended-goal-met` or `ended-goal-not-met` — the two endings that mean the generation ran and something was measured. A spent budget or a cancel is an ending `/hima run` answers as a success, and neither is a generation that completed.",
+      "observed": "error, run run-a9d1e342-3e90-4a72-8953-9597321985a5, status waiting",
+      "outcome": "fail"
+    },
+    {
+      "id": "status-reports-the-run",
+      "what": "`/hima status` reports the Run this generation produced.",
+      "predicate": "`/hima status run-a9d1e342-3e90-4a72-8953-9597321985a5` succeeds and its first line names that run.",
+      "observed": "run run-a9d1e342-3e90-4a72-8953-9597321985a5 of campaign opene902-timing-probe-20260909-194716-c76d on site linglong: waiting",
+      "outcome": "pass"
+    },
+    {
+      "id": "run-view-carries-the-generation",
+      "what": "The run view over the real web profile shows the whole path this generation took.",
+      "predicate": "`GET /hima/api/runs/run-a9d1e342-3e90-4a72-8953-9597321985a5` answers 200 with a non-empty `nodes`, a non-empty `jobs`, a `decision`, `meters` and `goal`; `GET .../records` answers that Run's records.",
+      "observed": "the run view could not be read: the Run is waiting, which is not a final status: booting a host would have it reconcile a still-running Run, sending commands to the site from a process this record's command list cannot see. The run view and the restart were not read.",
+      "outcome": "fail"
+    },
+    {
+      "id": "job-ran-in-the-campaign-workspace",
+      "what": "The synthesis Job ran inside the Campaign workspace, through `make` in tmux.",
+      "predicate": "The Campaign workspace the workspace record names is `<workspaceRoot>/<campaignId>`, with `<workspaceRoot>` as the site itself resolves it; the last Job the Run launched has that path as its own `workspace`; its command line runs `make -C <workspace>/flow` at the clock period requested; and its tmux session was started with `-c <workspace>`.",
+      "observed": "no launched Job or no workspace record: workspace none, job none",
+      "outcome": "fail"
+    },
+    {
+      "id": "container-is-the-campaigns-own",
+      "what": "The generation ran under a container of this Campaign's own, never the site's.",
+      "predicate": "The workspace record's `containerName` is `hima-<campaignId>`, and the Job's command line carries `EDA_CONTAINER_NAME=` that same name.",
+      "observed": "campaign none, container none, on the wire: no",
+      "outcome": "fail"
+    },
+    {
+      "id": "nothing-written-outside-the-workspace",
+      "what": "Every write HimaChannel was asked to make landed inside the Campaign workspace, and every copy source was under the site's own flow root.",
+      "predicate": "Every `mkdir`, `cp` and `tee` the channel was asked to run has its write target — the last word of the command — inside the Campaign workspace; every `cp` reads from inside the site's own flow root, as the site resolves it; every tmux launch names the Campaign workspace as its working directory and writes its log and its exit status inside it; and HimaChannel runs no other verb that writes. This is about the commands this harness sent, which are the ones it is answerable for. What `make` and the tools it starts write once the Job is running is not covered by this check: that is inside the Job, where this harness sees only the log and the exit status, and it is the flow's own doing.",
+      "observed": "10 write commands (mkdir, mkdir, cp, cp, cp, mkdir, cp, mkdir, cp, tee); targets outside none: /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/Makefile, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/flows, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/manifests, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build/opene902, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources/opene902, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/workspace.json; copy sources outside /data/eda/project/design_zoo: none; tmux launches outside the workspace: /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d, /data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d; the job's log and exit file inside it: no",
+      "outcome": "fail"
+    },
+    {
+      "id": "site-flow-root-untouched",
+      "what": "The report the target was derived from is unchanged in content and length.",
+      "predicate": "The same report, `/data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt`, read read-only before and after the generation, has the same sha256, the same byte count and the same stated clock period. That is this one file in the site's own flow root, not the flow root: no other file under it is read, and a rewrite that reproduced these same bytes would not be caught. (HimaChannel's read-only probes are `cat` and `realpath`; there is no `stat` on that list, and adding one would be a verb granted on a customer's site for this script's sake, so content and length are what this is said by.)",
+      "observed": "before sha256 a8977b90b9f034c247dbec600448404f1cadfa172bf327d573ec886be21af22c (2421 bytes, 2.27 ns); after sha256 a8977b90b9f034c247dbec600448404f1cadfa172bf327d573ec886be21af22c (2421 bytes, 2.27 ns)",
+      "outcome": "pass"
+    },
+    {
+      "id": "observed-period-is-the-target",
+      "what": "The generation's own report states the clock period that was asked for.",
+      "predicate": "The observation the Run read out of the Campaign workspace — the one the verdicts cite, or the Run's latest when they cite none — states a `clock_period` equal to the target period requested.",
+      "observed": "the run recorded no observation",
+      "outcome": "fail"
+    },
+    {
+      "id": "setup-verdict-follows-the-measurement",
+      "what": "The setup rule's verdict follows from the measured slack, and cites the observation it was read from.",
+      "predicate": "The `setup-wns-all-nonnegative` verdict is PASS exactly when the observation's `setup_wns` is at least 0, and it cites that observation.",
+      "observed": "no setup verdict",
+      "outcome": "fail"
+    },
+    {
+      "id": "goal-verdict-follows-the-measurement",
+      "what": "The goal rule's verdict follows from the measured period and the Run's own goal, and cites the observation.",
+      "predicate": "The `clock-period-at-most` verdict is bound to the Run's `target_period_ns`, is PASS exactly when the observation's `clock_period` is at most that target, and cites that observation.",
+      "observed": "no goal verdict",
+      "outcome": "fail"
+    },
+    {
+      "id": "decision-follows-the-chooser",
+      "what": "The decision is the one `timing-push` declares for these two verdicts and these measured values, and it cites both verdicts and the observation.",
+      "predicate": "One decision, by chooser `timing-push`, whose `chosen` is `{goalMet: true}` when the constraint and the goal both passed, `{strategy: {periodNs: round3(period − slack + guard)}}` when the constraint passed and the goal did not, and `{strategy: {periodNs: round3(period + |slack| + guard)}}` when the constraint failed — with `period` and `slack` read from the observation and `guard` the guard band the pack binds. Its `rationale` is those three numbers, and its `cites` are the setup verdict, the goal verdict and the observation, in that order.",
+      "observed": "the run recorded no decision",
+      "outcome": "fail"
+    },
+    {
+      "id": "restart-reads-back-unchanged",
+      "what": "After the host was stopped and another booted on the same home, the same Run reads back unchanged.",
+      "predicate": "`GET /hima/api/runs/run-a9d1e342-3e90-4a72-8953-9597321985a5` and `GET .../records` answer, over a second booted host, exactly what the first one answered.",
+      "observed": "the Run is waiting, which is not a final status: booting a host would have it reconcile a still-running Run, sending commands to the site from a process this record's command list cannot see. The run view and the restart were not read.",
+      "outcome": "fail"
+    },
+    {
+      "id": "every-remote-command-recorded",
+      "what": "The record lists every command this harness asked the site to run.",
+      "predicate": "The list is HimaChannel's own audit inside this process, drained into this record every 2 seconds as the generation ran, so nothing was evicted from its 500-entry window; it holds both the workspace preparation and the launch. The audit is per process, so what it covers is the in-process host that drove the generation — which is every command this run sent, because the only other processes this script starts are the two web hosts, and those are booted only for a Run that has already ended, where a booted host reconciles nothing and asks the site for nothing. One command is outside it by design: the reachability probe `ssh … true` sent before anything else, which runs nothing on the site.",
+      "observed": "90 commands recorded; the audit window filled between drains: no",
+      "outcome": "pass"
+    }
+  ],
+  "remoteCommands": [
+    {
+      "phase": "read-only probe",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt'"
+    },
+    {
+      "phase": "read-only probe",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "phase": "read-only probe",
+      "wire": "'cat' '--' '/data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt'"
+    },
+    {
+      "phase": "read-only probe",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "read-only probe",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo'"
+    },
+    {
+      "phase": "read-only probe",
+      "wire": "'tmux' 'list-sessions' '-F' '#{session_name}'"
+    },
+    {
+      "phase": "read-only probe",
+      "wire": "'tmux' 'list-panes' '-a' '-F' '#{session_name}|#{pane_current_command}|#{pane_start_command}'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/workspace.json'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/Makefile'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/Makefile'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/Makefile' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/Makefile'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'cp' '-R' '--' '/data/eda/project/design_zoo/Makefile' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/Makefile'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/flows'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/flows'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/flows' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/flows'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'cp' '-R' '--' '/data/eda/project/design_zoo/flows' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/flows'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/manifests'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/manifests'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/manifests' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/manifests'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'cp' '-R' '--' '/data/eda/project/design_zoo/manifests' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/manifests'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/build/opene902'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build/opene902'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build/opene902' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build/opene902'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'cp' '-R' '--' '/data/eda/project/design_zoo/build/opene902' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/build/opene902'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/sources/opene902'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources/opene902'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources/opene902' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources/opene902'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'cp' '-R' '--' '/data/eda/project/design_zoo/sources/opene902' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow/sources/opene902'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/workspace.json'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/workspace.json' '-a' '!' '-L' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/workspace.json'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'tee' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/workspace.json'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'tmux' 'has-session' '-t' '=hima-a9d1e342-synthesize-b537e7'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'tmux' 'new-session' '-d' '-P' '-F' '#{pane_pid}' '-s' 'hima-a9d1e342-synthesize-b537e7' '-c' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d' '/bin/sh' '-c' ''\\''make'\\'' '\\''-C'\\'' '\\''/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'\\'' '\\''DESIGN=opene902'\\'' '\\''synth'\\'' '\\''CLOCK_PERIOD_NS=2.07'\\'' '\\''FORCE_SYNTH=1'\\'' '\\''EDA_CONTAINER_NAME=hima-opene902-timing-probe-20260909-194716-c76d'\\'' > '\\''/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-b537e7.log'\\'' 2>&1; printf '\\''%s\\n'\\'' \"$?\" > '\\''/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-b537e7.exit'\\'''"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '-f' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-b537e7.exit'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-b537e7.exit'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'tmux' 'has-session' '-t' '=hima-a9d1e342-synthesize-b28d69'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'tmux' 'new-session' '-d' '-P' '-F' '#{pane_pid}' '-s' 'hima-a9d1e342-synthesize-b28d69' '-c' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d' '/bin/sh' '-c' ''\\''make'\\'' '\\''-C'\\'' '\\''/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'\\'' '\\''DESIGN=opene902'\\'' '\\''synth'\\'' '\\''CLOCK_PERIOD_NS=2.07'\\'' '\\''FORCE_SYNTH=1'\\'' '\\''EDA_CONTAINER_NAME=hima-opene902-timing-probe-20260909-194716-c76d'\\'' > '\\''/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-b28d69.log'\\'' 2>&1; printf '\\''%s\\n'\\'' \"$?\" > '\\''/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-b28d69.exit'\\'''"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '-f' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-b28d69.exit'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-b28d69.exit'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'tmux' 'has-session' '-t' '=hima-a9d1e342-synthesize-a1bf46'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'tmux' 'new-session' '-d' '-P' '-F' '#{pane_pid}' '-s' 'hima-a9d1e342-synthesize-a1bf46' '-c' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d' '/bin/sh' '-c' ''\\''make'\\'' '\\''-C'\\'' '\\''/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/flow'\\'' '\\''DESIGN=opene902'\\'' '\\''synth'\\'' '\\''CLOCK_PERIOD_NS=2.07'\\'' '\\''FORCE_SYNTH=1'\\'' '\\''EDA_CONTAINER_NAME=hima-opene902-timing-probe-20260909-194716-c76d'\\'' > '\\''/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-a1bf46.log'\\'' 2>&1; printf '\\''%s\\n'\\'' \"$?\" > '\\''/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-a1bf46.exit'\\'''"
+    },
+    {
+      "phase": "generation",
+      "wire": "'test' '-f' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-a1bf46.exit'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-a1bf46.exit'"
+    },
+    {
+      "phase": "generation",
+      "wire": "'tail' '-n' '40' '--' '/data/eda/project/hima_harness/opene902-timing-probe-20260909-194716-c76d/hima-a9d1e342-synthesize-a1bf46.log'"
+    },
+    {
+      "phase": "read-back",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt'"
+    },
+    {
+      "phase": "read-back",
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "phase": "read-back",
+      "wire": "'cat' '--' '/data/eda/project/design_zoo/results/opene902/syn/report/qor.rpt'"
+    }
+  ],
+  "auditWindowFilled": false,
+  "outcome": "10 of 17 checks failed",
+  "recordFiles": {
+    "markdown": "2026-09-09-step2-acceptance.md",
+    "json": "2026-09-09-step2-acceptance.json",
+    "dateAlreadyHadARecord": false
+  }
+}

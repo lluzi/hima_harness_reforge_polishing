@@ -1,0 +1,16 @@
+# No hold violation anywhere: the worst hold slack over all paths is not negative.
+id: hold-wns-all-nonnegative
+version: '1'
+title: Hold WNS over all paths is not negative
+requires:
+  - type: hold_wns
+    mode: hold
+    scope: all
+subject:
+  type: hold_wns
+  mode: hold
+  scope: all
+predicate:
+  op: gte
+  threshold: 0
+  unit: ns

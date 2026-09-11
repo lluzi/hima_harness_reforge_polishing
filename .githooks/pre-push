@@ -1,0 +1,7 @@
+#!/bin/sh
+# The booted-host contract suite runs before anything leaves this machine.
+set -e
+[ -d "$HOME/.local/node24/bin" ] && PATH="$HOME/.local/node24/bin:$PATH"
+node scripts/require-node.mjs
+pnpm run build
+pnpm run test:contract

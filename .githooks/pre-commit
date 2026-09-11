@@ -1,0 +1,9 @@
+#!/bin/sh
+# Enforce, do not remind: seam markers, typecheck, and the unit tests when any exist, before every
+# commit. There is no lint step: this repository ships no lint tool.
+set -e
+[ -d "$HOME/.local/node24/bin" ] && PATH="$HOME/.local/node24/bin:$PATH"
+node scripts/require-node.mjs
+pnpm run check:seams
+pnpm run typecheck
+pnpm run test:unit

@@ -1,0 +1,34 @@
+{
+  "name": "hima-harness",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "HimaHarness: bounded exploration campaigns for chip design, as a DeepSeek Harness bundle",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck && tsc -p test/tsconfig.json",
+    "test:unit": "node scripts/run-unit-tests.mjs",
+    "desktop": "pnpm --filter @hima/desktop run build && pnpm --filter @hima/desktop run start",
+    "test:contract": "pnpm run build && node --test --test-concurrency=1 'test/contract/**/*.test.ts'",
+    "check:seams": "node scripts/check-seams.mjs",
+    "check:node": "node scripts/require-node.mjs",
+    "hooks:install": "git config core.hooksPath .githooks && echo 'hooks installed'"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-agent": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-app-boot": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-commands": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-llm-replay": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.1.5-alpha.1",
+    "@hima/harness": "workspace:*",
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.3",
+    "yaml": "^2.9.0"
+  }
+}

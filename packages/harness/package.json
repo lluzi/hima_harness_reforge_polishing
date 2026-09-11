@@ -1,0 +1,76 @@
+{
+  "name": "@hima/harness",
+  "version": "0.1.0",
+  "description": "HimaHarness bundle for DeepSeek Harness: campaigns that end in facts",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/types/**/*.d.ts",
+    "rules/**",
+    "choosers/**",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-tool"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-agent": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-commands": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-home-paths": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-host-webserver": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-llm": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-storage-domain": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.1.5-alpha.1",
+    "@deepseek-ai/schemastery": "3.18.2"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-connection": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-host-webserver": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "yaml": "^2.9.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-agent": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-home-paths": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-host-webserver": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-llm": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-storage-domain": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.1.5-alpha.1",
+    "@deepseek-ai/schemastery": "3.18.2",
+    "@types/react": "~18.3.1",
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1"
+  }
+}

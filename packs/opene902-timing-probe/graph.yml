@@ -1,0 +1,91 @@
+# The opene902 timing probe as a HimaFabric graph, and the Loop it explores in: synthesize at the
+# strategy's clock period, read what it produced, judge it, choose the next strategy — and go round
+# again with that strategy, generation after generation, until the goal is met, the periods stop
+# moving, or the campaign's generation limit is spent.
+#
+# Four node kinds and no more (CONTEXT.md): act, judge, explore, wait. An act node has one unlabelled
+# edge out; a judge node's edges carry the outcome they are taken on. A node with no outgoing edge
+# ends the Run.
+#
+# The loop is the last edge below, `next-period` back to `synthesize`, marked `revisit: true` (D43).
+# Following it is what opens the next generation, with the period the explore node just chose. It is
+# the only edge in this graph that goes backwards, and the only kind of edge allowed to: a loop a
+# reader cannot see in this file is a loop the engine would be running behind it.
+id: opene902-timing-probe
+version: '1'
+entry: synthesize
+
+nodes:
+  # Act: run the pack's tool on the Site, in the Campaign workspace, and wait for it.
+  - id: synthesize
+    kind: act
+    parameters:
+      tool: synth
+      # Only the strategy knob is chosen per generation. WORKSPACE, FLOW_ROOT, DESIGN and CAMPAIGN
+      # are the Run's own workspace and the Site's bindings, which the fabric already holds.
+      arguments:
+        PERIOD_NS: { from: strategy, name: periodNs }
+
+  # Act: read the report that generation produced into HimaLedger, through the contract's own reader.
+  - id: read-qor
+    kind: act
+    parameters:
+      observes: qorReport
+
+  # Judge: the setup rule first, then the goal rule whose target the Run's goal binds. The outgoing
+  # edge is chosen by the outcome of the first rule listed.
+  - id: judge
+    kind: judge
+    parameters:
+      rules:
+        - setup-wns-all-nonnegative
+        - clock-period-at-most
+      bind:
+        target_period_ns: { from: goal, name: target_period_ns }
+
+  # Explore: choose the next clock period from what was measured, deterministically, and record why.
+  # PASS and FAIL both arrive here: a met constraint means push tighter, a violated one means back
+  # off by what was violated. The chooser is named by identity, like the rules above, and what it
+  # leaves on the table on purpose is bound here because it is the pack author's number, not the
+  # chooser's.
+  # `converge` says when this exploration has stopped learning, in the chooser's own vocabulary: the
+  # period it reads, how far apart two generations' periods have to be to count as movement, and how
+  # many successive generations must have moved by less than that. The band is the guard band bound
+  # just above, 0.05 ns: a generation that moved the measured period by less than the margin this
+  # pack asks a closed design to keep has learned nothing the next generation could act on, so the
+  # campaign ends `ended-converged` rather than asking for much the same number again. One Design
+  # Compiler tick — 0.01 ns, the two decimals the tool prints a period at — is the resolution of the
+  # instrument and not a statement about convergence: a band of one tick asks a flow to repeat a
+  # period exactly, which a design oscillating by a hundredth never does, and such a campaign spends
+  # its whole generation limit instead of ending on what it learned.
+  # `generationLimit` is what this pack thinks a campaign of it should be allowed at most;
+  # `/hima run --generations <n>` overrides it, and it is the Budget that enforces it.
+  - id: next-period
+    kind: explore
+    parameters:
+      chooser: timing-push
+      bind:
+        guardBandNs: 0.05
+      converge:
+        read: period
+        band: 0.05
+        generations: 1
+        generationLimit: 6
+
+  # Wait: where a Run stops for a person once its Retry allowance is spent. Nothing draws an edge
+  # here, and nothing needs to: a Hard blocker is routed to the graph's wait node by the fabric
+  # itself, exactly as an UNDETERMINED the pack labelled no edge for is. A pack declares where its
+  # Runs wait; it does not have to draw an edge from every node that might fail.
+  - id: blocked
+    kind: wait
+    parameters:
+      blocker: hard-blocker
+
+edges:
+  - { from: synthesize, to: read-qor }
+  - { from: read-qor, to: judge }
+  - { from: judge, to: next-period, outcome: PASS }
+  - { from: judge, to: next-period, outcome: FAIL }
+  # The loop: taken only when the decision chose a next strategy. A decision of goal met or converged
+  # has no edge to take, and the Run ends where it stands.
+  - { from: next-period, to: synthesize, revisit: true }

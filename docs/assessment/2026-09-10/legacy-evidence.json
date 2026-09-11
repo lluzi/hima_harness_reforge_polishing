@@ -1,0 +1,158 @@
+{
+  "observed_at_utc": "2026-09-11T05:53:06.266778+00:00",
+  "source": "/Users/lluzi/code/himaharness",
+  "head": "636475cb30c7d312222b0c492872154f327d9113",
+  "branch": "main",
+  "tracked_changes": [
+    "M .opencode/agents/hima-operator.md",
+    " M configs/current-product.yaml",
+    " M configs/eda-environment-profiles.yaml",
+    " M desktop/package.json",
+    " M desktop/scripts/record-celluzi-desktop-full-campaign.mjs",
+    " M desktop/scripts/support/campaign-demo-subtitles.mjs",
+    " M desktop/scripts/support/campaign-recording-profile.mjs",
+    " M desktop/test/campaign-demo-subtitles.test.mjs",
+    " M desktop/test/campaign-recording-profile.test.mjs",
+    " M desktop/test/opencode-overlay.test.mjs",
+    " M desktop/test/publication-terminal.test.mjs",
+    " M docs/hima-current-product-baseline.md",
+    " M pytest.ini",
+    " M tests/grammar_proofs/execution_grammar_v1_proof.json",
+    " M tests/test_execution_grammar_v1.py",
+    " M tests/test_opencode_mcp_contract.py"
+  ],
+  "scope": "Read-only bounded comparison. Current working tree has pre-existing modifications. Source files and historical recording metadata inspected; no tests, product runtime, EDA jobs or video replay. No credential/state files inspected.",
+  "selected_sources": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "db693a915b5be260c11767055cf1812b355c5dbb49b1fc750d413f68aff9e7a9",
+      "bytes": 11123
+    },
+    {
+      "path": "configs/current-product.yaml",
+      "sha256": "8cbb166173070322321394bb8dda421bae4ca43617f3f1d0757752e0407fc320",
+      "bytes": 5405
+    },
+    {
+      "path": "docs/hima-current-product-baseline.md",
+      "sha256": "3eb643a6aaef411ac5808bb7309147f47c5c5c364947b2233076e5f9cc157dd9",
+      "bytes": 18084
+    },
+    {
+      "path": "docs/hima-harness-product-introduction.md",
+      "sha256": "589912f59229bbf1223120c45b4d3b90893b30d186fb736dc0ac216b801fe564",
+      "bytes": 55909
+    },
+    {
+      "path": "docs/architecture/hima-harness-phase2-architecture-and-celluzi-extension-guide.md",
+      "sha256": "80be50a05b7a773bf3f55f505d24ef95a476d3b28e47499a22a3d095eaf45807",
+      "bytes": 36549
+    },
+    {
+      "path": "docs/architecture/hima-execution-grammar-v1.md",
+      "sha256": "9abe498a61479622f224f163ecd6ef6bac6a58258f76c307f891b0e0a46d2f45",
+      "bytes": 11430
+    },
+    {
+      "path": "docs/hima-extension-package-ai-authoring-feature.md",
+      "sha256": "e5f1d99826a4b62c01412acc8e74d07badcbc0c7e3e2796fba6f7a1908ebc73d",
+      "bytes": 42244
+    },
+    {
+      "path": "docs/phase4/README.md",
+      "sha256": "a560f4dfa5c93eab0649bde4871948ff76e1e5e75e5b6448c3fca9d9746d9748",
+      "bytes": 4542
+    },
+    {
+      "path": "docs/phase4/hima-harness-phase4-m1-evidence-and-disposition-register.md",
+      "sha256": "d7b3c9fa2dd72add00e54370e03d373a584baff8b2690bf0cf98e8e865e28810",
+      "bytes": 3502331
+    },
+    {
+      "path": "desktop/README.md",
+      "sha256": "dc86f12a6c26c632c6dd82b3acb735c17e386dcdd6a5038fd83d33cc7674a126",
+      "bytes": 15573
+    },
+    {
+      "path": "desktop/package.json",
+      "sha256": "7cd1779cbbc4d6850ec88a4f8db9f5621e66fc09b907f71516f461657d4814db",
+      "bytes": 3088
+    },
+    {
+      "path": "desktop/opencode-overlay/src/main/hima-bootstrap.ts",
+      "sha256": "2e1650c739cf746a8797b872abc75e3de58db260026d47552da91f7b7609f1b4",
+      "bytes": 11495
+    },
+    {
+      "path": "hima_runtime/execution_driver.py",
+      "sha256": "c9f669a31a1f96fdd3a0fb56e117ff52b1ddd7c42d993e26d055f107701c8b59",
+      "bytes": 52768
+    },
+    {
+      "path": "hima_runtime/finalization_contract.py",
+      "sha256": "1cb8452e85112f38f925a7467b5a27254e92bf41a8571e322df4b4e47990047a",
+      "bytes": 6784
+    },
+    {
+      "path": "hima_runtime/final_claims.py",
+      "sha256": "c2ecd5ff56c73ac379a62a06de39f6462abfc18d71b9153930bb17fbb2da1224",
+      "bytes": 40305
+    },
+    {
+      "path": "skills/hima-author-extension-package/scripts/author_package.py",
+      "sha256": "f5f5c605a2b15f9488ef67d502e9bde8925e1f5d3e32e617190f51f374384040",
+      "bytes": 108491
+    }
+  ],
+  "historical_recording_summaries": [
+    {
+      "name": "01-tsmc28-design-specific-cell",
+      "record": "outputs/HimaHarness-Four-Representative-Customer-Demos-2026-08-25/01-tsmc28-design-specific-cell/recording-report.json",
+      "sha256": "77f191d1c3476476f264685337ff18c64079bd1b342966f4a418af76fc4991b0",
+      "run_id": "gr_20260816_060117_938542",
+      "status": "SUCCEEDED",
+      "verification_status": "FINALIZED",
+      "publication_state": "PUBLISHED",
+      "desktop_acceptance_pass": true,
+      "frame_drop_count": 0,
+      "model_turn_count": 2
+    },
+    {
+      "name": "02-autonomous-fmax",
+      "record": "outputs/HimaHarness-Four-Representative-Customer-Demos-2026-08-25/02-autonomous-fmax/recording-report.json",
+      "sha256": "9bc738c04958b4281361340806426a77831f036137512c26f0d9e8a189c9f612",
+      "run_id": "gr_20260821_020514_327246",
+      "status": "SUCCEEDED",
+      "verification_status": "FINALIZED",
+      "publication_state": "PUBLISHED",
+      "desktop_acceptance_pass": true,
+      "frame_drop_count": 0,
+      "model_turn_count": 2
+    },
+    {
+      "name": "03-sky130-open-source",
+      "record": "outputs/HimaHarness-Four-Representative-Customer-Demos-2026-08-25/03-sky130-open-source/recording-report.json",
+      "sha256": "5b22631d724d54319c59a7b0d864b4b4cb6b4c02735bb39d450723e0a60e5f9c",
+      "run_id": "gr_20260816_110825_751522",
+      "status": "SUCCEEDED",
+      "verification_status": "FINALIZED",
+      "publication_state": "PUBLISHED",
+      "desktop_acceptance_pass": true,
+      "frame_drop_count": 0,
+      "model_turn_count": 3
+    },
+    {
+      "name": "04-cool3d-open-source-3dic",
+      "record": "outputs/HimaHarness-Four-Representative-Customer-Demos-2026-08-25/04-cool3d-open-source-3dic/recording-report.json",
+      "sha256": "265f1335a0a3ea464032ff207a70e4de8af715f9a510e913aaa4803bd9189d75",
+      "run_id": "gr_20260813_212158_934319",
+      "status": "SUCCEEDED",
+      "verification_status": "FINALIZED",
+      "publication_state": "PUBLISHED",
+      "desktop_acceptance_pass": true,
+      "frame_drop_count": 0,
+      "model_turn_count": 2
+    }
+  ],
+  "prototype_comparison_head": "55e6ba18f5d8fa67c02fe0ac8651a28d7b5ff573"
+}

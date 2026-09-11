@@ -1,0 +1,349 @@
+{
+  "observed_at_utc": "2026-09-11T07:12:45.078835+00:00",
+  "source": "/Users/lluzi/code/hima_harness_reforge_claude",
+  "source_head": "b4ac9d9360ad6da68b5fd2824621ba6edab7408b",
+  "source_status": "",
+  "worktrees": "worktree /Users/lluzi/code/hima_harness_reforge_claude\nHEAD b4ac9d9360ad6da68b5fd2824621ba6edab7408b\nbranch refs/heads/main\n\nworktree /Users/lluzi/code/hima-harness-worktrees/task59\nHEAD 8fede79df62a9ac897baa8d8dc641327af470603\nbranch refs/heads/task/59-model-moment",
+  "counts": {
+    "contract_test_files": 29,
+    "files_importing_desktop_driver": 11,
+    "package_source_unit_test_files": 0
+  },
+  "test_files": [
+    {
+      "path": "test/contract/boot.test.ts",
+      "sha256": "878d891687b8bd6498d7180d4931a16ce0add6c081b8fc79a45a41c3e20d0f1a",
+      "imports_driver_support": false,
+      "imports_http_host_support": true,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 2,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/budget.test.ts",
+      "sha256": "38e8e16bb533a19bdce4282af2841392adc032aaafdf74c7718790a68c4a9c65",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 6,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/command.test.ts",
+      "sha256": "15b45138aca9c54ffef120bd1f3260456161c0c7bb67e3505960af78e75f15b7",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 1,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/dc-reader.test.ts",
+      "sha256": "965cd4075ce13fb2629c2dd1e9dbaf242e276ec3cbd205e2e45b49c09d8b2676",
+      "imports_driver_support": false,
+      "imports_http_host_support": true,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 14,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/desktop.test.ts",
+      "sha256": "b77232af69b76a41ef11b275d16e1a4fb249a8bef6b2ec430cc90eecd88cb086",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 1,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/drill-down.test.ts",
+      "sha256": "cda0f9f32abc26a226b56a423c9b95430a7b905376a7d831a725d02870ed3db3",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 7,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/driver.test.ts",
+      "sha256": "bfd46c1ba96e517bc2f9ead35026bf71415af3a7b0f673369192d7511cd09b09",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 2,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/experience.test.ts",
+      "sha256": "24d81e1f22918b9a2c7acf96e1e09ceedcb81cf88d0925133db1009250a0cc7e",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 9,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/fabric-licences.test.ts",
+      "sha256": "bf86189f5671922cf19e3931bd2f1212767fdd1cc184473ba9cb8250978ca6ad",
+      "imports_driver_support": false,
+      "imports_http_host_support": true,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 4,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/fabric-restart.test.ts",
+      "sha256": "f645c8e0f5d9331b12371277ed9d3e76672724a412e5a79052eb321c8a36641b",
+      "imports_driver_support": false,
+      "imports_http_host_support": true,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 16,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/fabric-retry.test.ts",
+      "sha256": "5fd11a6012aa177ebb6654da2b348c2c1aa8d0c7d6d460d7648f2ea00ebe36a1",
+      "imports_driver_support": false,
+      "imports_http_host_support": true,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 13,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/fabric.test.ts",
+      "sha256": "4434fdb4d96541ae1414f6e59f62a31d0071d3bca35e365446a65d13ed2373ce",
+      "imports_driver_support": false,
+      "imports_http_host_support": true,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 14,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/fork-join.test.ts",
+      "sha256": "002195e0e101bbb9b0d46e06431ffa5782dda15568e34a8fb856ee155bdcd42c",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 10,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/honest-standin.test.ts",
+      "sha256": "ee103c6574ba1b67087306b29437eaabc32928a2275e4b144830df9163c2695e",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 1,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/jobs-unreadable.test.ts",
+      "sha256": "d19e22d4f3c91ee0998ac357001ffd042096e19f31376866206e52dcb1315c00",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 11,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/jobs.test.ts",
+      "sha256": "dc4d335452682e182d2e287eeb3bbf909dc84d84643624638ac0398f4d684cc5",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 10,
+      "calls_real_ssh_probe_during_registration": true
+    },
+    {
+      "path": "test/contract/judge.test.ts",
+      "sha256": "d4595e0f469dcf5030d1a40adadd29ad36fdb4dd2c5ab3600169129fabb1f10a",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 12,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/ledger-version.test.ts",
+      "sha256": "44afab0489a4a3c9baebf3c8738a561c41f3adedbaf72131ed88e5c520be29f2",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 1,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/loop.test.ts",
+      "sha256": "36e98235f1437cdfca992c33adb69aa752917edae252ca1031c544b89f897ed6",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 13,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/observe-ledger.test.ts",
+      "sha256": "694d3be7273e04897504e4ec966dc061d58595f8107ee88ea6f3b2618a1629a5",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 6,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/observe-readers.test.ts",
+      "sha256": "8e597a7324f5b2e4118e711aed49a3f4c5dd584b51b640618c25ada068b65d33",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 7,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/observe.test.ts",
+      "sha256": "47c66c4b0acf9595ef818b7af11ba29f4d5cda45650ee8031073b4b7dc0ede79",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 1,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/pack.test.ts",
+      "sha256": "1d69b98c2df5cf8a6dd3e9c7c8fbecc41fde52c0eb7f7dca5fafc8e186e44c2d",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 21,
+      "calls_real_ssh_probe_during_registration": true
+    },
+    {
+      "path": "test/contract/site-name.test.ts",
+      "sha256": "4e09f637af33763c6977cf6b23f9e75ded8d54c4188e34306e5c01618ae227ce",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 3,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/ssh.test.ts",
+      "sha256": "5cecfacd8512c9bbb022fdc9e7e0fb12be525dfbc7fba2646fb017ac12681a63",
+      "imports_driver_support": false,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": true,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 5,
+      "calls_real_ssh_probe_during_registration": true
+    },
+    {
+      "path": "test/contract/strategy.test.ts",
+      "sha256": "8c00de9eb18e7944ce5a81f9556c7bbeab9be11274c081592b94fcf348c55f28",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": true,
+      "top_level_test_declarations": 5,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/view-run.test.ts",
+      "sha256": "3e5ad75cdc8d02d07b36ad436617dedd96273ecc7e3bfb5f56f32b69a044a173",
+      "imports_driver_support": false,
+      "imports_http_host_support": true,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 5,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/view.test.ts",
+      "sha256": "90cfca4dc81b2935070fdb4a21b5c536eef6ad478d6a007006ce265b74f4a645",
+      "imports_driver_support": false,
+      "imports_http_host_support": true,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 6,
+      "calls_real_ssh_probe_during_registration": false
+    },
+    {
+      "path": "test/contract/window.test.ts",
+      "sha256": "c5c4d2431292cf28ba798360e496565569ab35daeab544a0fcfc1f299c8036fc",
+      "imports_driver_support": true,
+      "imports_http_host_support": false,
+      "imports_in_process_host_support": false,
+      "imports_fabric_helpers": false,
+      "top_level_test_declarations": 9,
+      "calls_real_ssh_probe_during_registration": false
+    }
+  ],
+  "selected_sources": [
+    {
+      "path": "package.json",
+      "sha256": "5353d99e3c72a636f5d8ab11f0497c5a25f179eb552c504cdc967b528a523313"
+    },
+    {
+      "path": "scripts/run-unit-tests.mjs",
+      "sha256": "718f7c5dfc8166c5606a19013c668f89c0a2288ccbb34bdf8d9bfb7add887aed"
+    },
+    {
+      "path": "test/contract/support/boot-inprocess.ts",
+      "sha256": "cd6a62ed4a44eeb62d21660f06389b87a825a0138e146f563b9134ebcf6c07d6"
+    },
+    {
+      "path": "test/contract/support/boot-host.ts",
+      "sha256": "722613bf47a2150247b73362a4209977cf4bc4d0aa530d27ba9e47491dace9a6"
+    },
+    {
+      "path": "test/contract/support/fabric.ts",
+      "sha256": "359732728288d5016ad79e2e075e75436fe6263619412838c33162fe6e5d0403"
+    },
+    {
+      "path": "test/contract/support/driver.ts",
+      "sha256": "ea21c6ab13502baf91fb2b79f9f7df76858c8b3d55b00691defefd021603081e"
+    },
+    {
+      "path": "test/contract/support/opene902-fixtures.ts",
+      "sha256": "594f8433084574bd327536aed1e270d9fee180db55d98f6a660ef245843ab5e1"
+    },
+    {
+      "path": "docs/adr/0004-desktop-driver-as-the-test-seam.md",
+      "sha256": "94299ff0cfb4d969faab3ab6745752c6b3ebf61f5d399791744f04aa022909ed"
+    },
+    {
+      "path": ".githooks/pre-commit",
+      "sha256": "1186db8577d1ecd7781bab365bbb131b3f1cc342a8027e144a9882d23c1edd47"
+    },
+    {
+      "path": ".githooks/pre-push",
+      "sha256": "6cfc154a0ad3343008c2d99e1b7bcb6ceea2023a7ddd6e197dafa1da00e30c10"
+    }
+  ],
+  "execution": "No product tests or benchmarks were run. Import signals are discovery aids, not a definitive layer assignment; mixed files require case-level inspection. Counts are not pass counts or coverage.",
+  "github_status_fetch": "gh issue list failed with TLS handshake timeout; planning state is grounded in local source, not current remote issue labels.",
+  "planning_note": "Step 4 model-moment branch 8fede79 remains a separate local worktree. Scope and limits of later waves use saved issue-55 spec; recheck before integration."
+}

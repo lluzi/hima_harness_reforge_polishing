@@ -1,0 +1,164 @@
+{
+  "method": "GitHub REST readback",
+  "count": 19,
+  "verifiedIssues": [
+    {
+      "id": "parent",
+      "number": 1,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/1",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 0
+    },
+    {
+      "id": "PLS-01",
+      "number": 2,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/2",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 0
+    },
+    {
+      "id": "PLS-02",
+      "number": 3,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/3",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 1
+    },
+    {
+      "id": "PLS-03",
+      "number": 4,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/4",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 1
+    },
+    {
+      "id": "PLS-04",
+      "number": 5,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/5",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 2
+    },
+    {
+      "id": "PLS-05",
+      "number": 6,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/6",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 1
+    },
+    {
+      "id": "PLS-06",
+      "number": 7,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/7",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 1
+    },
+    {
+      "id": "PLS-07",
+      "number": 8,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/8",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 1
+    },
+    {
+      "id": "PLS-08",
+      "number": 9,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/9",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 1
+    },
+    {
+      "id": "PLS-09",
+      "number": 10,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/10",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 1
+    },
+    {
+      "id": "PLS-10",
+      "number": 11,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/11",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 2
+    },
+    {
+      "id": "PLS-11",
+      "number": 12,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/12",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 1
+    },
+    {
+      "id": "PLS-12",
+      "number": 13,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/13",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 3
+    },
+    {
+      "id": "PLS-13",
+      "number": 14,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/14",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 1
+    },
+    {
+      "id": "PLS-14",
+      "number": 15,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/15",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 2
+    },
+    {
+      "id": "PLS-15",
+      "number": 16,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/16",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 2
+    },
+    {
+      "id": "PLS-16",
+      "number": 17,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/17",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 3
+    },
+    {
+      "id": "PLS-17",
+      "number": 18,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/18",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 2
+    },
+    {
+      "id": "PLS-18",
+      "number": 19,
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/19",
+      "bodyMatches": true,
+      "readyForAgent": true,
+      "openBlockers": 8
+    }
+  ],
+  "nativeRelations": {
+    "subIssues": 18,
+    "blockingDependencies": 33,
+    "verifiedBy": "successful per-relation writes, parent sub-issue readback and per-issue dependency counts"
+  },
+  "unresolvedPublicationErrors": 0
+}

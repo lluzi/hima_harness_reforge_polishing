@@ -1,0 +1,14 @@
+{
+  "name": "hima-profile",
+  "private": true,
+  "description": "HimaHarness profile: dsh-base, the web app, and the Hima bundle, under the privacy overlay",
+  "dsh": {
+    "profile": {
+      "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@hima/harness"],
+      "patchReload": "startup"
+    }
+  },
+  "dependencies": {
+    "@hima/harness": "*"
+  }
+}

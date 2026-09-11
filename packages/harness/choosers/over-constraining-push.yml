@@ -1,0 +1,62 @@
+# The chooser of a timing push that knows its business: it over-constrains on purpose and reads the
+# violation the tool answers with. Data, never code (D38), beside `timing-push.yml`, for a pack whose
+# knob is a clock period judged against a setup constraint.
+#
+# Why a second push rule exists at all (D45). `timing-push` asks a met period how much margin it had
+# and pushes by the answer. A tool that reports no margin for a met period does not answer that
+# question: it states a setup slack of exactly 0.00 whenever the period it was given is met, because
+# it stops optimizing the moment the constraint is satisfied. So on such a tool that clause reads
+# `period − 0 + guardBand` and loosens the period by the guard band every generation, which is the
+# trace the step-3 acceptance on the reference site recorded (D45) — six generations walking from
+# 2.28 ns out to 2.53 ns, converging on nothing.
+#
+# The method here never asks a met period what it had to spare. It asks for less than it believes is
+# possible and lets the tool say by how much it was wrong:
+#
+# - The constraint PASSED — the tool said nothing about the margin, because a met period is all it
+#   says. Take one step tighter and ask again; that is the over-constraining, and `stepNs` is how
+#   coarse the walk in is.
+# - The constraint FAILED — now the tool has stated something: the design missed by `|slack|`, so
+#   `period + |slack|` is the period it can actually close at. Ask for one step less than that. The
+#   next generation misses by that same step, states the same achievable period, and asks for the
+#   same number again — two successive generations asking and measuring the same period, which is
+#   what a pack's `converge:` calls having stopped learning. The violation is on record, which is
+#   the fact the Campaign was run to find.
+# - Both the constraint and the goal PASSED — the design closed and reached what the Run was for.
+#   There is no next strategy; the decision is that the Goal is met.
+#
+# So a Campaign on this chooser ends `ended-goal-met` when the goal is reachable and
+# `ended-converged` one step below the achievable period when it is not, on a tool that reports zero
+# slack for a met period and on one that reports a real margin alike: the PASS clause never reads the
+# margin, so it cannot be misled by a tool that has none to give.
+id: over-constraining-push
+version: '1'
+title: Over-constrain the clock period by one step and read the violation
+
+# The one number a pack binds, in its explore node's `bind:`: how far the walk in moves each
+# generation while nothing is violated, and how far above the violated period the exploration settles.
+parameter:
+  name: stepNs
+  unit: ns
+
+# What is read out of the Run's latest observation, exactly as `timing-push` reads it: the period is
+# the one the report stated and never the one the Run asked for, so a tool that clamped the period is
+# not pushed against as if it had honoured the request.
+reads:
+  period: { type: clock_period, unit: ns }
+  slack: { type: setup_wns, unit: ns }
+
+# First matching `when` wins. `constraint` is the verdict of the judge node's first rule — the one
+# the outgoing edge was chosen by — and `goal` the verdict of its goal rule.
+# `next` sets the pack's own strategy knobs by name, and a knob it does not name carries over. This
+# chooser is for a pack whose knob is a clock period; the name below is the one such a contract
+# declares it under, and `/hima pack check` holds the two against each other before a campaign runs.
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: PASS }
+    next:
+      periodNs: { sum: [period, { neg: stepNs }] }
+  - when: { constraint: FAIL }
+    next:
+      periodNs: { sum: [period, { abs: slack }, { neg: stepNs }] }

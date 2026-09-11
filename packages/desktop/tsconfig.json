@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib",
+    "declarationDir": "lib/types",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    // Both files here are loaded as TypeScript by the contract suite, through Node's type stripping,
+    // which erases types and emits nothing: an `enum`, a `namespace`, an `import =` or a constructor
+    // parameter property makes Node refuse the file, and every test that boots a host fails to load.
+    // That is invisible to a build and to a single-file test run, so the compiler is told to reject
+    // the whole class here rather than leaving it to a comment and a full-suite run to find.
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src/**/*.ts"]
+}

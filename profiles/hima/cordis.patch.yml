@@ -1,0 +1,8 @@
+# HimaHarness privacy overlay: the profile's own patch layer, applied after every bundle.
+# Plugin names and versions are not reported to the DeepSeek API, and session telemetry is off.
+# An anonymous user id and a user-agent still accompany every model request; see docs/product-idea.md §6.
+- id: plugin-package-inventory-deepseek
+  config:
+    enabled: false
+- id: session-telemetry-otel
+  disabled: true

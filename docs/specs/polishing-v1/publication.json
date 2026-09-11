@@ -1,0 +1,590 @@
+{
+  "repo": "lluzi/hima_harness_reforge_polishing",
+  "parent": {
+    "title": "[Spec] HimaHarness Polishing v1 - research, knowledge assets and tiered verification",
+    "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/1",
+    "number": 1,
+    "databaseId": 5421985089,
+    "bodySha256": "7c42eb7ce7759029c6de2e924976798bf66c2810e297f6d150b4ab1000f7dc87"
+  },
+  "tasks": {
+    "PLS-01": {
+      "title": "[PLS-01] 本地测试不加载真实 Site 用例",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/2",
+      "number": 2,
+      "databaseId": 5421985612,
+      "bodySha256": "0316313c6a6af2ed035eda5d03b7b146c75a9b3849eb6353413cfbd981f5a6bd"
+    },
+    "PLS-02": {
+      "title": "[PLS-02] 提供构建一次且按成本选择的验证命令",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/3",
+      "number": 3,
+      "databaseId": 5421986159,
+      "bodySha256": "e87b7c65f92f85fabca1be17002dbd8a96e6f9f5c403bd0c15aacd1d8915d60e"
+    },
+    "PLS-03": {
+      "title": "[PLS-03] 把策略对照与非视觉矩阵放到真实 Host 测试",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/4",
+      "number": 4,
+      "databaseId": 5421986649,
+      "bodySha256": "25847e42bc300f3685a0017d049b7f9f8701c23d3e9306df3147f58a30daece0"
+    },
+    "PLS-04": {
+      "title": "[PLS-04] 让默认本地 Pack 使用有依据的 Fmax 探索方法",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/5",
+      "number": 5,
+      "databaseId": 5421987253,
+      "bodySha256": "761bee184f5962f24e5b7903715b9ce61fffeee10edaac5f3cace68fcdbb955b"
+    },
+    "PLS-05": {
+      "title": "[PLS-05] 开始前展示 Pack/Site 静态匹配与可行动的输入错误",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/6",
+      "number": 6,
+      "databaseId": 5421987734,
+      "bodySha256": "701c59af3a70919d36ba5fd2d7c5f65aab48432ecc313c42f4a26b5bde98453b"
+    },
+    "PLS-06": {
+      "title": "[PLS-06] 核验并打磨运行、阻塞、取消和继续的用户控制",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/7",
+      "number": 7,
+      "databaseId": 5421988221,
+      "bodySha256": "434d10e8643693ca5256430ec91a304bb569bfaf6322ce273b088e92a8b0e844"
+    },
+    "PLS-07": {
+      "title": "[PLS-07] 报告区分执行结束与研究结论并约束证据范围",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/8",
+      "number": 8,
+      "databaseId": 5421988781,
+      "bodySha256": "b91a736e244357d33bc49867ba3889fe114efcee12ade52c3926433276422e29"
+    },
+    "PLS-08": {
+      "title": "[PLS-08] 接收 Step 4 完整快照并核对模型、Pack 与作者流程",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/9",
+      "number": 9,
+      "databaseId": 5421989331,
+      "bodySha256": "4193ddac79d22119dc57f96a7e72a505de018e0efa553db827bb8424404694dd"
+    },
+    "PLS-09": {
+      "title": "[PLS-09] 证明 AI 在研究节点生成并验证有意义的算法",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/10",
+      "number": 10,
+      "databaseId": 5421989835,
+      "bodySha256": "d02d1bd18a98ba3487d3d7718ff6c5e85bd1c8cbdb38d5edb5cb09772fa03eb4"
+    },
+    "PLS-10": {
+      "title": "[PLS-10] 在声明位置追加研究节点而保持参考图不变",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/11",
+      "number": 11,
+      "databaseId": 5421990318,
+      "bodySha256": "76c115a4d9edd9663e376503522676ef9121415cde4a919ee8b255b92ea4b476"
+    },
+    "PLS-11": {
+      "title": "[PLS-11] 回溯时保留历史并只重跑受影响的下游",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/12",
+      "number": 12,
+      "databaseId": 5421990819,
+      "bodySha256": "4582d8f386674cb3380c529c6a182179f12ba4e4ab669572bcd4d05f82fff6f3"
+    },
+    "PLS-12": {
+      "title": "[PLS-12] 让扩展研究遵守总预算并留出诚实收尾",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/13",
+      "number": 13,
+      "databaseId": 5421991257,
+      "bodySha256": "ea3b9afd482b0b3547aa1fb8750684f208a922855f94652c2fa8cc187c11f7e0"
+    },
+    "PLS-13": {
+      "title": "[PLS-13] 分开方法身份与运行资产并保护 Pack 更新",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/14",
+      "number": 14,
+      "databaseId": 5421991784,
+      "bodySha256": "8332ba28e405d0d737390fc5f654df4802c583af1e09f27e4238fe32e35782e6"
+    },
+    "PLS-14": {
+      "title": "[PLS-14] 把 Campaign 知识材料可靠归档到 Pack 内",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/15",
+      "number": 15,
+      "databaseId": 5421992307,
+      "bodySha256": "005b83f211b684ff735a6a32cba31d53f14e20daaa2e508b2a7bb905f2ede92b"
+    },
+    "PLS-15": {
+      "title": "[PLS-15] 把 AI 研究过程、环境和算法纳入技术报告",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/16",
+      "number": 16,
+      "databaseId": 5421992971,
+      "bodySha256": "5bf0d5a0d197d368712ccd228a6357c18ab3f8535db3c611ddd7bd9b5ead7991"
+    },
+    "PLS-16": {
+      "title": "[PLS-16] 下一次研究主动引用相关且获准的历史资产",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/17",
+      "number": 17,
+      "databaseId": 5421993535,
+      "bodySha256": "03785b4cdaddacc875b7d015014f81ea3a2a3f46a129c6ffdcaf89f4b43776f1"
+    },
+    "PLS-17": {
+      "title": "[PLS-17] Pack 升级和分享由 owner 控制并保留客户资产",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/18",
+      "number": 18,
+      "databaseId": 5421994066,
+      "bodySha256": "b8a1423a51aee3d8ee0411959b83509716f3da0b40625cbf2f3e38e94bb5411d"
+    },
+    "PLS-18": {
+      "title": "[PLS-18] 完成真实 DTCO 研究 pilot 与第二次知识复用",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/19",
+      "number": 19,
+      "databaseId": 5421994490,
+      "bodySha256": "39a2a992f65f29896cc5fa4ca5dc6d9db191fd21d195490b10b8b7c3f48aa0c8"
+    }
+  },
+  "relations": [
+    {
+      "key": [
+        "sub-issue",
+        "PLS-01",
+        null
+      ],
+      "native": false,
+      "error": "gh: Invalid request.\n\nInvalid input: object is missing required key: sub_issue_id. (HTTP 422)\n"
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-02",
+        "PLS-01"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-03",
+        "PLS-02"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-04",
+        "PLS-02"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-04",
+        "PLS-03"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-05",
+        "PLS-02"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-06",
+        "PLS-02"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-07",
+        "PLS-02"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-08",
+        "PLS-02"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-09",
+        "PLS-08"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-10",
+        "PLS-08"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-10",
+        "PLS-13"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-11",
+        "PLS-10"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-12",
+        "PLS-07"
+      ],
+      "native": false,
+      "error": "Post \"https://api.github.com/repos/lluzi/hima_harness_reforge_polishing/issues/13/dependencies/blocked_by\": net/http: TLS handshake timeout\n"
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-01",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-02",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-03",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-04",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-05",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-06",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-07",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-08",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-09",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-10",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-11",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-12",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-13",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-14",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-15",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-16",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-17",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-18",
+        null
+      ],
+      "native": false,
+      "error": "Post \"https://api.github.com/repos/lluzi/hima_harness_reforge_polishing/issues/1/sub_issues\": net/http: TLS handshake timeout\n"
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-12",
+        "PLS-07"
+      ],
+      "native": false,
+      "error": "Post \"https://api.github.com/repos/lluzi/hima_harness_reforge_polishing/issues/13/dependencies/blocked_by\": net/http: TLS handshake timeout\n"
+    },
+    {
+      "key": [
+        "sub-issue",
+        "PLS-18",
+        null
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-12",
+        "PLS-07"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-12",
+        "PLS-09"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-12",
+        "PLS-11"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-13",
+        "PLS-08"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-14",
+        "PLS-07"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-14",
+        "PLS-13"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-15",
+        "PLS-09"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-15",
+        "PLS-14"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-16",
+        "PLS-09"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-16",
+        "PLS-14"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-16",
+        "PLS-15"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-17",
+        "PLS-13"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-17",
+        "PLS-14"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-18",
+        "PLS-03"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-18",
+        "PLS-04"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-18",
+        "PLS-05"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-18",
+        "PLS-06"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-18",
+        "PLS-12"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-18",
+        "PLS-15"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-18",
+        "PLS-16"
+      ],
+      "native": true
+    },
+    {
+      "key": [
+        "blocked-by",
+        "PLS-18",
+        "PLS-17"
+      ],
+      "native": true
+    }
+  ],
+  "status": "published-and-verified",
+  "nativeSummary": {
+    "subIssues": 18,
+    "blockingDependencies": 33,
+    "verifiedBy": "successful per-relation writes, parent sub-issue readback and per-issue dependency counts"
+  }
+}

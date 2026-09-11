@@ -1,0 +1,12 @@
+{
+  "checkedLocalLinks": 37,
+  "brokenLocalLinks": [],
+  "trailingWhitespace": [],
+  "importedFilesVerified": 159,
+  "modifiedImportedFiles": [],
+  "evidenceLogMismatches": [],
+  "sourceHeadAtFinalCheck": "b4ac9d9360ad6da68b5fd2824621ba6edab7408b",
+  "sourceWorktreeAtFinalCheck": "clean",
+  "origin": "https://github.com/lluzi/hima_harness_reforge_polishing.git",
+  "hooksInstalled": null
+}

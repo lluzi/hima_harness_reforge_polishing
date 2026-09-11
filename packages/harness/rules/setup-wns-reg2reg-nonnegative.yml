@@ -1,0 +1,16 @@
+# Register-to-register setup timing closes, whatever the interface paths do.
+id: setup-wns-reg2reg-nonnegative
+version: '1'
+title: Setup WNS on register-to-register paths is not negative
+requires:
+  - type: setup_wns
+    mode: setup
+    scope: reg2reg
+subject:
+  type: setup_wns
+  mode: setup
+  scope: reg2reg
+predicate:
+  op: gte
+  threshold: 0
+  unit: ns

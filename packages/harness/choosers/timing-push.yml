@@ -1,0 +1,43 @@
+# The chooser of the opene902 timing probe, and of any pack whose knob is a clock period judged
+# against a setup constraint. Data, never code (D38): a person adjusts the push rule here, beside
+# the judge rules, without reading TypeScript.
+#
+# - The constraint PASSED — the design closed with slack to spare. Push: the next period is the
+#   period the report stated, minus that slack, plus the guard band. Taking the whole slack back
+#   would land exactly on the edge the tool just reported, which is where estimation error lives.
+# - The constraint FAILED — the design missed by the slack it reported. Back off by exactly that
+#   much, plus the guard band.
+# - Both the constraint and the goal PASSED — the design closed and reached what the Run was for.
+#   There is no next strategy; the decision is that the Goal is met.
+id: timing-push
+version: '1'
+title: Push the clock period against the measured setup margin
+
+# The one number a pack binds, in its explore node's `bind:`. What the chooser leaves on the table on
+# purpose is the pack author's judgement, not this file's.
+parameter:
+  name: guardBandNs
+  unit: ns
+
+# What is read out of the Run's latest observation. The period is read from the report, never from
+# the number the Run asked for: a tool that clamped the period, or a netlist reused from an earlier
+# generation, would otherwise be pushed against as if it had honoured the request.
+reads:
+  period: { type: clock_period, unit: ns }
+  slack: { type: setup_wns, unit: ns }
+
+# First matching `when` wins. `constraint` is the verdict of the judge node's first rule — the one
+# the outgoing edge was chosen by — and `goal` the verdict of its goal rule. A generation no clause
+# matches is answered with a reason, never with a period computed from a substituted zero.
+# `next` sets the pack's own strategy knobs by name, and a knob it does not name carries over. This
+# chooser is for a pack whose knob is a clock period; the name below is the one such a contract
+# declares it under, and `/hima pack check` holds the two against each other before a campaign runs.
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: PASS }
+    next:
+      periodNs: { sum: [period, { neg: slack }, guardBandNs] }
+  - when: { constraint: FAIL }
+    next:
+      periodNs: { sum: [period, { abs: slack }, guardBandNs] }

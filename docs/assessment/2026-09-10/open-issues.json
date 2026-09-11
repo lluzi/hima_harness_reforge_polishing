@@ -1,0 +1,233 @@
+[
+  {
+    "number": 69,
+    "state": "OPEN",
+    "title": "Step 4 proof: the second person runs the released pack from the window (owner-run)",
+    "updatedAt": "2026-09-11T01:59:51Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/69"
+  },
+  {
+    "number": 68,
+    "state": "OPEN",
+    "title": "Step 4 acceptance: the full Campaign on the reference site from the window with the real key, and the step-4 done record",
+    "updatedAt": "2026-09-11T01:59:50Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/68"
+  },
+  {
+    "number": 67,
+    "state": "OPEN",
+    "title": "AES pack 0.2: the mining Loop with the workshop, six routes, the library gate and the zero-adoption ending (owner-run)",
+    "updatedAt": "2026-09-11T01:59:48Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/67"
+  },
+  {
+    "number": 66,
+    "state": "OPEN",
+    "title": "Window and report: code records with a drawer, the pack's ending words, and the report's sections for code and knowledge",
+    "updatedAt": "2026-09-11T01:59:46Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/66"
+  },
+  {
+    "number": 65,
+    "state": "OPEN",
+    "title": "AES pack 0.1: the Fmax probe Loop authored through the pipeline and converging on the reference site (owner-run)",
+    "updatedAt": "2026-09-11T01:59:45Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/65"
+  },
+  {
+    "number": 64,
+    "state": "OPEN",
+    "title": "Pipeline: fabric compiles the spec, test writes the test record from a real run, release versions the pack with hashes",
+    "updatedAt": "2026-09-11T01:59:43Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/64"
+  },
+  {
+    "number": 63,
+    "state": "OPEN",
+    "title": "Pipeline: five skills registered from the bundle; grill writes the pack intent record and spec writes the pack spec",
+    "updatedAt": "2026-09-11T01:59:42Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/63"
+  },
+  {
+    "number": 62,
+    "state": "OPEN",
+    "title": "Fabric: the workshop — an act node where the AI writes a script inside its declared directory and the fabric runs it as a Job",
+    "updatedAt": "2026-09-11T01:59:40Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/62"
+  },
+  {
+    "number": 61,
+    "state": "OPEN",
+    "title": "Packs: readers are pack tools whose output is validated against the pack's declared semantics",
+    "updatedAt": "2026-09-11T01:59:36Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/61"
+  },
+  {
+    "number": 60,
+    "state": "OPEN",
+    "title": "Stand-in: the local flow learns the Golden Flow's stages, from mining to the verification session",
+    "updatedAt": "2026-09-11T01:58:29Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/60"
+  },
+  {
+    "number": 59,
+    "state": "OPEN",
+    "title": "Fabric: the model-moment mechanism — an isolated session over the wrapped agent seam, the keyless replay stand-in, the live check, and no key in the home",
+    "updatedAt": "2026-09-11T01:58:27Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/59"
+  },
+  {
+    "number": 58,
+    "state": "OPEN",
+    "title": "Packs: the Strategy is the pack's — typed knobs declared in the contract, shown in the pack's words",
+    "updatedAt": "2026-09-11T01:58:25Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/58"
+  },
+  {
+    "number": 57,
+    "state": "OPEN",
+    "title": "Packs: a pack folder carries its own rules, choosers, readers and knowledge, and an over-constraining probe chooser converges on the honest stand-in",
+    "updatedAt": "2026-09-11T01:58:23Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/57"
+  },
+  {
+    "number": 55,
+    "state": "OPEN",
+    "title": "Step 4: the pack — HimaGuide authors the AES on TSMC28 cell-mining and Fmax-push HimaPack with the tools and knowledge it needs, and HimaFabric runs it as a real Campaign with in-situ code, on the owner's DeepSeek key, from the desktop window",
+    "updatedAt": "2026-09-11T01:45:50Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/55"
+  },
+  {
+    "number": 53,
+    "state": "OPEN",
+    "title": "Ledger: RunProgress becomes a RunMove union and branch ids a type, so a row write says what kind of move it is",
+    "updatedAt": "2026-09-10T20:46:47Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/53"
+  },
+  {
+    "number": 52,
+    "state": "OPEN",
+    "title": "Scripts: the acceptance scripts share their helpers from scripts/support, and the harness exports they redefine come from the bundle",
+    "updatedAt": "2026-09-10T20:46:45Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/52"
+  },
+  {
+    "number": 51,
+    "state": "OPEN",
+    "title": "Experience: the report is composed once as blocks and rendered from them, not round-tripped through Markdown on every render",
+    "updatedAt": "2026-09-10T20:46:43Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/51"
+  },
+  {
+    "number": 50,
+    "state": "OPEN",
+    "title": "Card words: the folds leave card-labels.ts for the view modules, so the words table is words only",
+    "updatedAt": "2026-09-10T20:46:41Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/50"
+  },
+  {
+    "number": 49,
+    "state": "OPEN",
+    "title": "Workbench: workbench.ts is split by band, so the page, the form, the verdict band, the plot, the ledger, the evidence and the Markdown renderer each change for one reason",
+    "updatedAt": "2026-09-10T20:46:39Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/49"
+  },
+  {
+    "number": 48,
+    "state": "OPEN",
+    "title": "Fabric: the convergence band is overridable at start (--band), as the generation limit is",
+    "updatedAt": "2026-09-10T20:46:37Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/48"
+  },
+  {
+    "number": 47,
+    "state": "OPEN",
+    "title": "Tests: the cancel and resume window tests fail under two concurrent lanes (measured 3 in 50 and 2 in 20), independently of the start-form cause",
+    "updatedAt": "2026-09-10T20:30:42Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/47"
+  },
+  {
+    "number": 46,
+    "state": "OPEN",
+    "title": "Card words: the decision column and the experience report say the Strategy in the pack's words, as the banner does",
+    "updatedAt": "2026-09-10T18:34:32Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/46"
+  },
+  {
+    "number": 45,
+    "state": "OPEN",
+    "title": "Run view: the outer generation of a drill-down says which observation it shows, so asked → observed on that row is not the start's period beside a post-loop reading",
+    "updatedAt": "2026-09-10T13:24:43Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/45"
+  },
+  {
+    "number": 44,
+    "state": "OPEN",
+    "title": "Budget: a pack that both revisits its outer graph and drills down proves generationMs buckets by the outer generation",
+    "updatedAt": "2026-09-10T12:23:13Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/44"
+  },
+  {
+    "number": 40,
+    "state": "OPEN",
+    "title": "Tests: the step-1 and step-2 suites assert nothing inside finally",
+    "updatedAt": "2026-09-10T05:35:19Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/40"
+  },
+  {
+    "number": 39,
+    "state": "OPEN",
+    "title": "Packs: a contract names the design's clock group, so multi-clock reports and user-defined DC path groups read the right period",
+    "updatedAt": "2026-09-10T05:06:15Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/39"
+  },
+  {
+    "number": 38,
+    "state": "OPEN",
+    "title": "Budget: one type for licence seats instead of Record<string, number> in six places",
+    "updatedAt": "2026-09-10T05:05:57Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/38"
+  },
+  {
+    "number": 37,
+    "state": "OPEN",
+    "title": "Driver support: bootDriver refuses home:'hima' with seed:'local', or says which binding wins",
+    "updatedAt": "2026-09-10T05:05:55Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/37"
+  },
+  {
+    "number": 36,
+    "state": "OPEN",
+    "title": "DC qor reader: one fold for the worst group by slack and by hold, and no group named on a tie",
+    "updatedAt": "2026-09-10T05:05:53Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/36"
+  },
+  {
+    "number": 35,
+    "state": "OPEN",
+    "title": "Sites: a face lists a Site's declared licences, so one no pack refers to is visible somewhere",
+    "updatedAt": "2026-09-10T05:05:51Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/35"
+  },
+  {
+    "number": 34,
+    "state": "OPEN",
+    "title": "Faces: /hima observe and /hima job launch answer an unknown Site as a result, not a rejection",
+    "updatedAt": "2026-09-10T05:05:49Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/34"
+  },
+  {
+    "number": 33,
+    "state": "OPEN",
+    "title": "Cards: the marker list is stated once and both mounts are held to it by a test",
+    "updatedAt": "2026-09-10T05:05:47Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/33"
+  },
+  {
+    "number": 32,
+    "state": "OPEN",
+    "title": "Remote: the wire shapes leave remote.ts for a leaf views.ts, the two fenced handlers share one wrapper, and the remote ↔ workbench ↔ card-labels cycle goes",
+    "updatedAt": "2026-09-10T05:04:57Z",
+    "url": "https://github.com/lluzi/hima_harness_reforge_claude/issues/32"
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "design": "opene902",
+  "site": "linglong",
+  "source": "/data/eda/project/design_zoo/pr/opene902/foundation/RPT and /data/eda/project/design_handoff_20260626/metrics.tsv, fetched read-only 2026-09-08",
+  "localCopyDir": "/Users/lluzi/code/hima-fixtures/opene902",
+  "note": "The copies live outside this repository so vendor content never enters it; the pre-push suite verifies these hashes before it runs.",
+  "files": {
+    "postroute.summary.gz": "30ad024ede3fd4ca94aec44a408488ac6a499bc100d42739bae49407626e2bb5",
+    "postroute_hold.summary.gz": "30d0eeed609a723260d9c0f5287a145ee4ad53ec94d575e448c1ac2237361420",
+    "verify_drc.postroute.rpt": "bfebfa55c283265edc811d4b11d190eabd4ae019f893ec9d1ed5e3054d2e06cc",
+    "metrics.tsv": "022fc2e2fbd58bdeaaab71b8e640e0605f9fccdae250132f3ce12d1b62bc6ccc",
+    "syn/qor.rpt": "a8977b90b9f034c247dbec600448404f1cadfa172bf327d573ec886be21af22c",
+    "syn/timing.rpt": "d681cca2846fb9add06e12942e8ae8d2b6de4a55369ebf019d74bd3deb0df6be"
+  },
+  "handoffMetrics": {
+    "period_ns": 2.18,
+    "setup_wns_all_ns": -0.073,
+    "setup_wns_r2r_ns": 0.002,
+    "setup_tns_ns": -0.18,
+    "hold_wns_ns": 0.034,
+    "density_pct": 44.345,
+    "drc": 1778
+  },
+  "synthesisReports": {
+    "source": "/data/eda/project/design_zoo/results/opene902/syn/report, DC X-2025.06-SP3, generated 2026-09-06, fetched read-only 2026-09-09",
+    "qorSummary": {
+      "path_group": "core_clk",
+      "critical_path_slack_ns": 0.0,
+      "critical_path_clk_period_ns": 2.27,
+      "total_negative_slack_ns": 0.0,
+      "worst_hold_violation_ns": 0.0,
+      "cell_area": 10475.516309
+    }
+  }
+}

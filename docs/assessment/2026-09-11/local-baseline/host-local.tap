@@ -1,0 +1,338 @@
+TAP version 13
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 66, column 11:
+#     root: !!js dshHomePath('sessions')
+#           ^^^^
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 81, column 11:
+#     root: !!js dshHomePath('storages')
+#           ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 95, column 11:
+#     mode: !!js process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'
+#           ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 98, column 12:
+#       url: !!js >-
+#            ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 117, column 11:
+#     mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+#           ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 118, column 20:
+#     workspaceRoot: !!js process.cwd()
+#                    ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 121, column 13:
+#   disabled: !!js process.platform === 'win32'
+#             ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 126, column 13:
+#   disabled: !!js process.platform !== 'win32'
+#             ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 130, column 13:
+#     policy: !!js >-
+#             ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 367, column 11:
+#     mode: !!js process.env.DSH_TOOLS_MODE
+#           ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 432, column 11:
+#     host: !!js ctx.webStartup.host ?? '127.0.0.1'
+#           ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 433, column 11:
+#     port: !!js ctx.webStartup.port ?? 3080
+#           ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 442, column 18:
+#     openBrowser: !!js ctx.webStartup.openBrowser
+#                  ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 445, column 19:
+#     trustedHosts: !!js ctx.webStartup.trustedHosts
+#                   ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 455, column 19:
+#     trustedHosts: !!js ctx.webRuntime.trustedHosts
+#                   ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 551, column 15:
+#     sitesDir: !!js dshHomePath('hima/sites')
+#               ^^^^
+# (node:7606) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 552, column 15:
+#     packsDir: !!js dshHomePath('hima/packs')
+#               ^^^^
+# Subtest: the hima profile composes dsh-base, the Hima bundle, and the privacy overlay
+ok 1 - the hima profile composes dsh-base, the Hima bundle, and the privacy overlay
+  ---
+  duration_ms: 72.133292
+  type: 'test'
+  ...
+# Subtest: the hima profile boots as a real host, serves the web app, and stops cleanly on SIGTERM
+ok 2 - the hima profile boots as a real host, serves the web app, and stops cleanly on SIGTERM
+  ---
+  duration_ms: 3540.879834
+  type: 'test'
+  ...
+# Subtest: /hima version answers with the bundle and host versions, without a model turn
+ok 3 - /hima version answers with the bundle and host versions, without a model turn
+  ---
+  duration_ms: 765.499959
+  type: 'test'
+  ...
+# Subtest: the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and cell area from the real opene902 qor report, with its declaration recorded
+ok 4 - the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and cell area from the real opene902 qor report, with its declaration recorded
+  ---
+  duration_ms: 409.313541
+  type: 'test'
+  ...
+# Subtest: the same real report with a hold violation in it reads as a negative hold slack and FAILs the very rule the unviolated one passes
+ok 5 - the same real report with a hold violation in it reads as a negative hold slack and FAILs the very rule the unviolated one passes
+  ---
+  duration_ms: 183.016042
+  type: 'test'
+  ...
+# Subtest: a qor report truncated before its first path group yields unknown values with a stated reason for each, never a default
+ok 6 - a qor report truncated before its first path group yields unknown values with a stated reason for each, never a default
+  ---
+  duration_ms: 158.911875
+  type: 'test'
+  ...
+# Subtest: a qor report missing one line inside its one path group leaves only that value unknown; the rest still read
+ok 7 - a qor report missing one line inside its one path group leaves only that value unknown; the rest still read
+  ---
+  duration_ms: 153.539959
+  type: 'test'
+  ...
+# Subtest: the real report with a Design Compiler built-in group added that has the worse slack: the clock period is still the clock group's, the setup WNS is the built-in's, and each names the group it came from
+ok 8 - the real report with a Design Compiler built-in group added that has the worse slack: the clock period is still the clock group's, the setup WNS is the built-in's, and each names the group it came from
+  ---
+  duration_ms: 140.293834
+  type: 'test'
+  ...
+# Subtest: a qor report whose only path groups are Design Compiler built-ins: the clock period is unknown with a reason naming the groups found, and setup WNS is still the worst of them
+ok 9 - a qor report whose only path groups are Design Compiler built-ins: the clock period is unknown with a reason naming the groups found, and setup WNS is still the worst of them
+  ---
+  duration_ms: 145.683333
+  type: 'test'
+  ...
+# Subtest: two clock path groups: setup WNS is the minimum slack naming its group, setup TNS sums every group, hold WNS is the worst violation as a slack, and the clock period is unknown because two clocks are stated
+ok 10 - two clock path groups: setup WNS is the minimum slack naming its group, setup TNS sums every group, hold WNS is the worst violation as a slack, and the clock period is unknown because two clocks are stated
+  ---
+  duration_ms: 146.135541
+  type: 'test'
+  ...
+# Subtest: multiple path groups, one missing its Critical Path Slack line: setup WNS goes unknown naming that group, while TNS and hold WNS (whose lines are complete) still read
+ok 11 - multiple path groups, one missing its Critical Path Slack line: setup WNS goes unknown naming that group, while TNS and hold WNS (whose lines are complete) still read
+  ---
+  duration_ms: 147.91025
+  type: 'test'
+  ...
+# Subtest: the dc-qor-report reader accepts a gzip-compressed report transparently, as the Innovus readers do
+ok 12 - the dc-qor-report reader accepts a gzip-compressed report transparently, as the Innovus readers do
+  ---
+  duration_ms: 156.097333
+  type: 'test'
+  ...
+# Subtest: a report of the wrong kind is refused by the dc-qor-report reader, with no observation recorded
+ok 13 - a report of the wrong kind is refused by the dc-qor-report reader, with no observation recorded
+  ---
+  duration_ms: 156.746875
+  type: 'test'
+  ...
+# Subtest: the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one
+ok 14 - the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one
+  ---
+  duration_ms: 314.333167
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome
+ok 15 - the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome
+  ---
+  duration_ms: 174.071791
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool rejects a non-numeric params value with an error result naming the parameter, writing no observation and no verdict
+ok 16 - the hima_observe tool rejects a non-numeric params value with an error result naming the parameter, writing no observation and no verdict
+  ---
+  duration_ms: 160.376333
+  type: 'test'
+  ...
+# Subtest: POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give
+ok 17 - POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give
+  ---
+  duration_ms: 1776.242958
+  type: 'test'
+  ...
+# Subtest: the judge rules the real opene902 setup summary by declared rules: all-paths WNS fails, reg2reg passes, each citing the observation it read
+ok 18 - the judge rules the real opene902 setup summary by declared rules: all-paths WNS fails, reg2reg passes, each citing the observation it read
+  ---
+  duration_ms: 553.056708
+  type: 'test'
+  ...
+# Subtest: the judge rules hold WNS on the real opene902 hold summary as PASS, citing that observation
+ok 19 - the judge rules hold WNS on the real opene902 hold summary as PASS, citing that observation
+  ---
+  duration_ms: 190.822667
+  type: 'test'
+  ...
+# Subtest: verdicts survive a host restart and read back unchanged, PASS and UNDETERMINED alike
+ok 20 - verdicts survive a host restart and read back unchanged, PASS and UNDETERMINED alike
+  ---
+  duration_ms: 259.57775
+  type: 'test'
+  ...
+# Subtest: a rule requiring a value the run never observed is UNDETERMINED naming the requirement, never PASS
+ok 21 - a rule requiring a value the run never observed is UNDETERMINED naming the requirement, never PASS
+  ---
+  duration_ms: 202.932583
+  type: 'test'
+  ...
+# Subtest: a summary truncated inside its timing table is UNDETERMINED with the reader's own reason, never PASS
+ok 22 - a summary truncated inside its timing table is UNDETERMINED with the reader's own reason, never PASS
+  ---
+  duration_ms: 180.161209
+  type: 'test'
+  ...
+# Subtest: an unknown rule id is an error, never a silent pass, and writes no verdict
+ok 23 - an unknown rule id is an error, never a silent pass, and writes no verdict
+  ---
+  duration_ms: 172.285416
+  type: 'test'
+  ...
+# Subtest: only the judge can append a verdict: the ledger hands its capability out once and the tool face never reaches it
+ok 24 - only the judge can append a verdict: the ledger hands its capability out once and the tool face never reaches it
+  ---
+  duration_ms: 142.86825
+  type: 'test'
+  ...
+# Subtest: one invocation of /hima observe --judge runs read, ledger, and judge, and returns the verdict with its cited record
+ok 25 - one invocation of /hima observe --judge runs read, ledger, and judge, and returns the verdict with its cited record
+  ---
+  duration_ms: 186.969167
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool judges the rules it is given, in the same invocation, through the same service
+ok 26 - the hima_observe tool judges the rules it is given, in the same invocation, through the same service
+  ---
+  duration_ms: 162.849
+  type: 'test'
+  ...
+# Subtest: --judge with no value is a usage error, not a silent pass: it never reads, never runs, and writes nothing
+ok 27 - --judge with no value is a usage error, not a silent pass: it never reads, never runs, and writes nothing
+  ---
+  duration_ms: 154.469
+  type: 'test'
+  ...
+# Subtest: a malformed --param is a usage error on both /hima judge and /hima observe --judge: nothing is read, nothing is written
+ok 28 - a malformed --param is a usage error on both /hima judge and /hima observe --judge: nothing is read, nothing is written
+  ---
+  duration_ms: 196.529583
+  type: 'test'
+  ...
+# Subtest: a rule that declares no parameter ignores an unrelated --param entirely: same outcome, and boundParameters stays absent
+ok 29 - a rule that declares no parameter ignores an unrelated --param entirely: same outcome, and boundParameters stays absent
+  ---
+  duration_ms: 200.722542
+  type: 'test'
+  ...
+# Subtest: a read outside the permitted roots is refused before any read, and the refusal is recorded
+ok 30 - a read outside the permitted roots is refused before any read, and the refusal is recorded
+  ---
+  duration_ms: 405.03725
+  type: 'test'
+  ...
+# Subtest: a symlink that escapes the permitted roots is refused
+ok 31 - a symlink that escapes the permitted roots is refused
+  ---
+  duration_ms: 150.745667
+  type: 'test'
+  ...
+# Subtest: observing the same file twice into one run appends a second record with a higher sequence and leaves the first unchanged
+ok 32 - observing the same file twice into one run appends a second record with a higher sequence and leaves the first unchanged
+  ---
+  duration_ms: 181.605708
+  type: 'test'
+  ...
+# Subtest: an observe naming a run that does not exist is refused as the caller's mistake, and writes nothing
+ok 33 - an observe naming a run that does not exist is refused as the caller's mistake, and writes nothing
+  ---
+  duration_ms: 128.235292
+  type: 'test'
+  ...
+# Subtest: records survive a host restart and read back unchanged
+ok 34 - records survive a host restart and read back unchanged
+  ---
+  duration_ms: 204.536167
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool is listed for the agent and returns the same observation through the tool runtime
+ok 35 - the hima_observe tool is listed for the agent and returns the same observation through the tool runtime
+  ---
+  duration_ms: 142.930958
+  type: 'test'
+  ...
+# Subtest: the innovus-timing-summary reader emits setup WNS/TNS, density, and an unknown clock period from the real opene902 post-route summary
+ok 36 - the innovus-timing-summary reader emits setup WNS/TNS, density, and an unknown clock period from the real opene902 post-route summary
+  ---
+  duration_ms: 409.3975
+  type: 'test'
+  ...
+# Subtest: the innovus-timing-summary reader emits hold WNS for both scopes from the real opene902 post-route hold summary
+ok 37 - the innovus-timing-summary reader emits hold WNS for both scopes from the real opene902 post-route hold summary
+  ---
+  duration_ms: 161.215625
+  type: 'test'
+  ...
+# Subtest: the innovus-verify-drc reader emits the total violation count from the real opene902 DRC report, via the hima_observe tool
+ok 38 - the innovus-verify-drc reader emits the total violation count from the real opene902 DRC report, via the hima_observe tool
+  ---
+  duration_ms: 152.981625
+  type: 'test'
+  ...
+# Subtest: a truncated Innovus summary, cut before the timing table, yields unknown values with a stated reason, never zero and never a default
+ok 39 - a truncated Innovus summary, cut before the timing table, yields unknown values with a stated reason, never zero and never a default
+  ---
+  duration_ms: 149.975542
+  type: 'test'
+  ...
+# Subtest: a report of the wrong kind is refused by the innovus-timing-summary reader, with no observation recorded
+ok 40 - a report of the wrong kind is refused by the innovus-timing-summary reader, with no observation recorded
+  ---
+  duration_ms: 154.278333
+  type: 'test'
+  ...
+# Subtest: a report of the wrong kind is refused by the innovus-verify-drc reader, with no observation recorded
+ok 41 - a report of the wrong kind is refused by the innovus-verify-drc reader, with no observation recorded
+  ---
+  duration_ms: 142.71725
+  type: 'test'
+  ...
+# Subtest: the two Innovus readers refuse each other's report kind: a real summary is not a DRC report and vice versa
+ok 42 - the two Innovus readers refuse each other's report kind: a real summary is not a DRC report and vice versa
+  ---
+  duration_ms: 199.513458
+  type: 'test'
+  ...
+# Subtest: /hima observe records one observation with provenance in a durable ledger
+ok 43 - /hima observe records one observation with provenance in a durable ledger
+  ---
+  duration_ms: 410.808583
+  type: 'test'
+  ...
+# Subtest: /hima observe refuses a site file whose name is not the name asked for, naming both, and opens no run
+ok 44 - /hima observe refuses a site file whose name is not the name asked for, naming both, and opens no run
+  ---
+  duration_ms: 360.361375
+  type: 'test'
+  ...
+# Subtest: /hima job launch refuses a site file whose name is not the name asked for, naming both, and sends nothing to the Site
+ok 45 - /hima job launch refuses a site file whose name is not the name asked for, naming both, and sends nothing to the Site
+  ---
+  duration_ms: 136.457041
+  type: 'test'
+  ...
+# Subtest: /hima observe LOCAL is refused: the mismatch wording when the file resolved on a case-insensitive filesystem, the plain unknown-site wording when it did not
+ok 46 - /hima observe LOCAL is refused: the mismatch wording when the file resolved on a case-insensitive filesystem, the plain unknown-site wording when it did not
+  ---
+  duration_ms: 135.651625
+  type: 'test'
+  ...
+1..46
+# tests 46
+# suites 0
+# pass 46
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15783.699917

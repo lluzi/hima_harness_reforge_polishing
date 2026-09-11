@@ -1,0 +1,18 @@
+# The goal rule: the run's clock period may be at most the caller's bound target. `parameter`
+# declares the one value a caller binds at judge time (`--param target_period_ns=<ns>`); the
+# predicate's `threshold: { parameter: ... }` takes its place instead of a number fixed in this file.
+id: clock-period-at-most
+version: '1'
+title: Clock period is at most the bound target period
+parameter:
+  name: target_period_ns
+  unit: ns
+requires:
+  - type: clock_period
+subject:
+  type: clock_period
+predicate:
+  op: lte
+  threshold:
+    parameter: target_period_ns
+  unit: ns

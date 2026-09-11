@@ -1,0 +1,32 @@
+# The Permit for linglong: what the agent may do on this Site. The site owner edits this file; it
+# encodes the operating rules of EDA_SERVER_AND_DESIGN_ZOO_AGENT_GUIDE.md. HimaShell fails closed.
+allowedReadRoots:
+  - /data/eda/project
+allowedWriteRoots:
+  # The campaign workspace root, and nothing else. A Job runs in a workspace under this tree and
+  # writes only there, so cleanup and quotas stay the site owner's to manage and the site's own
+  # results — the Design Zoo's above all — can never be overwritten by a campaign (D19).
+  - /data/eda/project/hima_harness
+# What a Job's own command may be. Not HimaChannel's own verbs: `tmux` and the plumbing commands that
+# put a Job in a session, ask what became of it, and prepare a campaign workspace (`mkdir`, `cp`,
+# `tee`) belong to the channel, are audited at the wire, and each of their targets is decided against
+# the write roots above before it is sent. They are deliberately not listed here, so this file stays a
+# statement about the site owner's tools rather than about Hima's internals — and because a wrapper
+# here runs with whatever arguments a Job names, so listing `cp` would hand a Job an unconstrained
+# copy to anywhere this login can reach, which is not what agreeing to workspace preparation means.
+allowedWrappers:
+  # The site's own EDA wrapper, by full path: `eda` alone would be satisfied by any `eda` earlier on
+  # the PATH, and this is the one the site owner means.
+  - /usr/local/bin/eda
+  # The Design Zoo flow is driven by GNU make; a pack's tool runs it inside the campaign workspace.
+  - make
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads

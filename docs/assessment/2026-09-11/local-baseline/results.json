@@ -1,0 +1,249 @@
+{
+  "schema": "hima-polishing-local-baseline/1",
+  "sourceCommit": "b4ac9d9360ad6da68b5fd2824621ba6edab7408b",
+  "sourceImportManifest": "docs/assessment/2026-09-11/source-import.json",
+  "productSourceModifications": [],
+  "allImportedHashesStillMatch": true,
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "node": "v24.20.0",
+  "pnpm": "11.25.0",
+  "dependencyStore": ".hima-tmp/pnpm-store",
+  "installIsolation": "fresh local node_modules and dedicated store; no writable links into prototype",
+  "measurements": [
+    {
+      "command": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile",
+        "--store-dir",
+        "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pnpm-store"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 73.639,
+      "log": "docs/assessment/2026-09-11/local-baseline/install.log",
+      "stage": "install",
+      "logSha256": "bb847b027f22ccea01b08010ae0221f80a0a6c7e9a2bfd27c2a2b82dabd2ebe1"
+    },
+    {
+      "command": [
+        "pnpm",
+        "run",
+        "check:node"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 0.235,
+      "log": "docs/assessment/2026-09-11/local-baseline/node-check.log",
+      "stage": "node-check",
+      "logSha256": "806184a0a6beb11e9f20011c4f5c213c221ec5ea4464d5d411070ade86742503"
+    },
+    {
+      "command": [
+        "pnpm",
+        "run",
+        "check:seams"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 0.223,
+      "log": "docs/assessment/2026-09-11/local-baseline/seams.log",
+      "stage": "seams",
+      "logSha256": "66335f28f5ba9f65fcf1006dc1f6a168ce6768c711801a2d2fc1bc4e9ed1f5ad"
+    },
+    {
+      "command": [
+        "pnpm",
+        "run",
+        "typecheck"
+      ],
+      "exitCode": 2,
+      "durationSeconds": 3.701,
+      "log": "docs/assessment/2026-09-11/local-baseline/typecheck.log",
+      "stage": "typecheck",
+      "logSha256": "99936792aa798d1f1837182685efadccebe8f4ce4970e33c4426c12174d99a43"
+    },
+    {
+      "command": [
+        "pnpm",
+        "run",
+        "build"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 2.153,
+      "log": "docs/assessment/2026-09-11/local-baseline/build.log",
+      "stage": "build",
+      "logSha256": "35854e7799bce7201e00a66298f9dd8f19001ff3b129cb2217c9ed1666bbcd93"
+    },
+    {
+      "command": [
+        "pnpm",
+        "run",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 3.089,
+      "log": "docs/assessment/2026-09-11/local-baseline/typecheck-after-build.log",
+      "stage": "typecheck-after-build",
+      "logSha256": "3807f79197e9263a5f58f9cd4d95af834e5c8efff23716cc9d71eafbe12cbc84"
+    },
+    {
+      "command": [
+        "/Users/lluzi/.local/node24/bin/node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "test/contract/boot.test.ts",
+        "test/contract/command.test.ts",
+        "test/contract/dc-reader.test.ts",
+        "test/contract/judge.test.ts",
+        "test/contract/observe.test.ts",
+        "test/contract/observe-readers.test.ts",
+        "test/contract/observe-ledger.test.ts",
+        "test/contract/site-name.test.ts"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 15.812,
+      "counts": {
+        "tests": 46,
+        "suites": 0,
+        "pass": 46,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "docs/assessment/2026-09-11/local-baseline/host-local.tap",
+      "isolation": "fresh temporary homes and tmux socket directory; credentials absent; local Site and static report fixtures only",
+      "stage": "host-local",
+      "logSha256": "2dd7321babb344e07b29e809eb085692dfb57c0484f83cb5ec05b92b4b818bfd"
+    },
+    {
+      "command": [
+        "/Users/lluzi/.local/node24/bin/node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "--test-name-pattern=filling the start form|on a stand-in that reports",
+        "test/contract/window.test.ts",
+        "test/contract/honest-standin.test.ts"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 36.919,
+      "counts": {
+        "tests": 2,
+        "suites": 0,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "docs/assessment/2026-09-11/local-baseline/desktop-selected.tap",
+      "isolation": "fresh temporary homes and tmux socket directory; credentials absent; local Site and static report fixtures only",
+      "stage": "desktop-selected",
+      "logSha256": "0d7d3c4f34d4362da6876f4fcf04ca9683197509742996fcd78580a8d5ef2d8b"
+    },
+    {
+      "command": [
+        "/Users/lluzi/.local/node24/bin/node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "test/contract/boot.test.ts"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 1.905,
+      "counts": {
+        "tests": 2,
+        "suites": 0,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "docs/assessment/2026-09-11/local-baseline/boot-repeat.tap",
+      "isolation": "fresh temporary homes and tmux socket directory; credentials absent; local Site and static report fixtures only",
+      "stage": "boot-repeat",
+      "logSha256": "502425418111f004d781c3464d1ed5c1c4f107869f9e75b0021f8869796ce435"
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "postroute.summary.gz",
+      "sha256": "30ad024ede3fd4ca94aec44a408488ac6a499bc100d42739bae49407626e2bb5",
+      "matched": true
+    },
+    {
+      "name": "postroute_hold.summary.gz",
+      "sha256": "30d0eeed609a723260d9c0f5287a145ee4ad53ec94d575e448c1ac2237361420",
+      "matched": true
+    },
+    {
+      "name": "verify_drc.postroute.rpt",
+      "sha256": "bfebfa55c283265edc811d4b11d190eabd4ae019f893ec9d1ed5e3054d2e06cc",
+      "matched": true
+    },
+    {
+      "name": "metrics.tsv",
+      "sha256": "022fc2e2fbd58bdeaaab71b8e640e0605f9fccdae250132f3ce12d1b62bc6ccc",
+      "matched": true
+    },
+    {
+      "name": "syn/qor.rpt",
+      "sha256": "a8977b90b9f034c247dbec600448404f1cadfa172bf327d573ec886be21af22c",
+      "matched": true
+    },
+    {
+      "name": "syn/timing.rpt",
+      "sha256": "d681cca2846fb9add06e12942e8ae8d2b6de4a55369ebf019d74bd3deb0df6be",
+      "matched": true
+    }
+  ],
+  "coverage": {
+    "uniquePassingTests": 48,
+    "repeatPassingExecutions": 2,
+    "fullyExecutedTestFiles": [
+      "boot",
+      "command",
+      "dc-reader",
+      "judge",
+      "observe",
+      "observe-readers",
+      "observe-ledger",
+      "site-name",
+      "honest-standin"
+    ],
+    "partiallyExecutedTestFiles": {
+      "window": "one test: filling the start form and clicking start"
+    },
+    "notExecutedTestFiles": [
+      "budget",
+      "desktop",
+      "drill-down",
+      "driver",
+      "experience",
+      "fabric-licences",
+      "fabric-restart",
+      "fabric-retry",
+      "fabric",
+      "fork-join",
+      "jobs-unreadable",
+      "jobs",
+      "ledger-version",
+      "loop",
+      "pack",
+      "ssh",
+      "strategy",
+      "view-run",
+      "view"
+    ],
+    "unitFiles": 0,
+    "fullSuitePassed": false
+  },
+  "realDependencies": {
+    "modelRequests": 0,
+    "remoteSiteJobs": 0,
+    "liveSshTestsExecuted": false,
+    "desktopDriverTests": 2
+  },
+  "countingLimits": "Tests are TAP-reported; 48 unique cases plus 2 repeat executions. Host/process counts were not instrumented. Timing is one observation per group, not p95 or an isolated cold-machine measurement. The desktop group includes only two named tests; other window tests are unexecuted, not counted as skips."
+}

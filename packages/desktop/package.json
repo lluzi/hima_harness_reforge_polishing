@@ -1,0 +1,19 @@
+{
+  "name": "@hima/desktop",
+  "productName": "HimaHarness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The HimaHarness desktop window: one native window around the dsh hima profile",
+  "type": "module",
+  "main": "lib/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "postinstall": "install-electron",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "electron lib/main.js"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh": "0.1.5-alpha.1",
+    "electron": "^44.2.0"
+  }
+}

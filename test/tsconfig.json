@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "rootDir": "..",
+    "types": ["node"],
+    // Every file in this project is run by Node's type stripping, which erases types and emits
+    // nothing. Syntax that would have to be emitted — `enum`, `namespace`, `import =`, a constructor
+    // parameter property — is a load failure at run time and invisible to a build, so it is a
+    // typecheck error here instead, which the pre-commit hook already runs.
+    "erasableSyntaxOnly": true
+  },
+  "include": ["**/*.ts", "../scripts/**/*.ts"]
+}

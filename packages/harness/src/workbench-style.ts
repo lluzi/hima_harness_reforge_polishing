@@ -1,0 +1,500 @@
+// The workbench page's one stylesheet, and the token sheet it opens with.
+//
+// One reason to change: how the page looks. `workbench.ts` is the page's structure — which sections
+// there are, in which order, marked for which driver — and this is its material. They are two files
+// because a palette re-cut and a new section are two different edits, and because the property this
+// design is built on is that the first of those is *only* token edits: every colour the page paints
+// is named once, between the two delimiters below, and nothing outside them states a colour by
+// value. A contract test reads the stylesheet the host actually served and holds that shut
+// (`window.test.ts`), because a page whose palette a refactor dropped is a page printing dark text
+// on a dark ground — which is what the first screenshot of this page showed.
+//
+// The palette follows the window through `prefers-color-scheme` and not a class. Electron routes a
+// forced theme through `nativeTheme.themeSource`, which is what the media query reflects and what
+// `--dark` sets for the screenshot tool, so the media query is the authority here.
+//
+// The values are dsh's own, read out of `@deepseek-ai/dsh-client-ui-theme` and copied in as numbers:
+// the page is served by our route under the host's origin and loads no asset of dsh's (the window's
+// fence permits none), so the only way to look like the window it lives in is to hold the same
+// numbers. The card's shared words carry dsh's token *names* with a hard-coded fallback
+// (`card-labels.ts`), and this page is not dsh — so the `--dsw-alias-*` names those words are
+// coloured through are defined below out of this page's own tokens. One set of words, one palette,
+// wherever the card is mounted.
+//
+// Type goes up, not down: 16 px body, a 14 px floor, one 28 px display size spent on the Campaign's
+// verdict and nowhere else. The prior product's design mandated a 13 px body and shipped 9.6 px; the
+// floor here is a token a test can read — and the test reads *every* size the sheet states, not only
+// the scale, because a step of the scale shrunk by a factor inside some rule is text under the floor
+// by another route (#41: nothing a person reads on this page is set smaller than 14 px).
+
+/**
+ * The page's whole stylesheet: the token sheet, then the rules.
+ *
+ * Inlined into every page by `workbench.ts`. No external asset is fetched and none may be: the
+ * window's fence permits one origin and the page must render with nothing but itself.
+ */
+export const WORKBENCH_STYLE = `
+/* HIMA WORKBENCH TOKENS BEGIN */
+:root{
+  color-scheme: light dark;
+
+  /* Type. dsh's own two stacks, by value. Tabular figures everywhere a number is read against
+     another number, which on this page is everywhere a number is. */
+  --hima-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --hima-font-mono: "SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --hima-fs-display: 28px;   /* the Campaign's verdict, and nothing else */
+  --hima-fs-title: 20px;     /* section titles */
+  --hima-fs-lead: 18px;      /* the blocker's sentence, the seal's note */
+  --hima-fs-body: 16px;      /* the reading size */
+  --hima-fs-label: 14px;     /* keys, column heads, pills, the two quiet inks — and the floor:
+                                nothing on this page is set smaller than this, by a step or by a
+                                factor off one, which is why five steps is the whole scale */
+  --hima-lh-tight: 1.25;
+  --hima-lh-body: 1.5;
+
+  /* Space, on a 4 px rhythm, plus the two half-steps a table's rows and a pill's insides need —
+     stated here rather than sprinkled through the rules as raw pixels. */
+  --hima-sp-05: 2px; --hima-sp-1: 4px; --hima-sp-15: 6px; --hima-sp-2: 8px; --hima-sp-3: 12px;
+  --hima-sp-4: 16px; --hima-sp-6: 24px; --hima-sp-8: 32px;
+
+  /* Radii and the one shadow. Depth comes from surface value and hairlines, not from stacking
+     shadows: there is exactly one. */
+  --hima-r-s: 4px; --hima-r-m: 8px; --hima-r-l: 12px;
+  --hima-shadow: 0 1px 2px rgba(15,17,21,.04), 0 10px 28px rgba(15,17,21,.06);
+
+  /* Surfaces: the page behind, the panel on it, the face raised inside a panel. */
+  --hima-page: #f3f4f6;
+  --hima-panel: #ffffff;
+  --hima-raise: #f9fafb;
+  --hima-line: #0000001a;
+  --hima-line-strong: #00000029;
+  --hima-track: #e1e5ee;
+
+  /* The log well keeps dark glass in both themes: a terminal's output is read as a terminal's. */
+  --hima-glass: #131417;
+  --hima-glass-line: #ffffff1f;
+  --hima-glass-ink: #e1e3e8;
+
+  /* Ink: primary, secondary, tertiary — and the mark inside a filled glyph. */
+  --hima-ink: #0f1115;
+  --hima-ink-2: #61666b;
+  --hima-ink-3: #81858c;
+  --hima-on-solid: #ffffff;
+
+  /* State. Four colours the card's words already use, one accent, and one red — spent on the
+     ended-badly and blocked moments and nowhere else on the page. */
+  --hima-ok: #1a7f37;
+  --hima-warn: #a15c07;
+  --hima-red: #b42318;
+  --hima-plain: #4b5563;
+  --hima-accent: #2563eb;
+
+  /* The --dsw-alias-* names card-labels.ts colours the shared words through, defined here from
+     this page's own tokens so a re-cut moves both mounts' words at once. */
+  --dsw-alias-state-success-primary: var(--hima-ok);
+  --dsw-alias-state-error-primary: var(--hima-red);
+  --dsw-alias-state-warn-primary: var(--hima-warn);
+  --dsw-alias-label-secondary: var(--hima-plain);
+  --dsw-alias-label-tertiary: var(--hima-ink-3);
+  --dsw-alias-border-l2: var(--hima-line);
+  --dsw-alias-fill-secondary: var(--hima-raise);
+  --ds-font-family-code: var(--hima-font-mono);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --hima-page: #151517;
+    --hima-panel: #1b1b1c;
+    --hima-raise: #232324;
+    --hima-line: #ffffff1f;
+    --hima-line-strong: #ffffff29;
+    --hima-track: #353638;
+    --hima-ink: #f9fafb;
+    --hima-ink-2: #cfd3d6;
+    --hima-ink-3: #adb2b8;
+    --hima-on-solid: #151517;
+    --hima-ok: #4ed17e;
+    --hima-warn: #f7ad31;
+    --hima-red: #f25a5a;
+    --hima-plain: #cfd3d6;
+    --hima-accent: #679efe;
+    --hima-shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+  }
+}
+/* HIMA WORKBENCH TOKENS END */
+
+/* -- the page ------------------------------------------------------------------------------- */
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--hima-page);color:var(--hima-ink);
+  font:var(--hima-fs-body)/var(--hima-lh-body) var(--hima-font-ui);
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased;
+}
+main{display:block}
+.page{max-width:1040px;margin:0 auto;padding:0 var(--hima-sp-6) var(--hima-sp-8)}
+
+/* The chrome: the way back to the chat, and which Run this is. Sticky, because the ledger below it
+   is long and a person scrolling it must never lose the way out. */
+.chrome{
+  position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:var(--hima-sp-4);
+  padding:var(--hima-sp-2) var(--hima-sp-6);margin-bottom:var(--hima-sp-2);
+  background:var(--hima-panel);border-bottom:1px solid var(--hima-line);
+}
+.chrome h1{margin:0;font-size:var(--hima-fs-body);font-weight:650;letter-spacing:-.01em}
+.chrome nav{display:flex;gap:var(--hima-sp-3)}
+.chrome a{color:var(--hima-ink-2);text-decoration:none;font-size:var(--hima-fs-label)}
+.chrome a:hover{color:var(--hima-accent);text-decoration:underline}
+.chrome .crumb{margin-left:auto;color:var(--hima-ink-3);font-size:var(--hima-fs-label)}
+
+/* -- bands ---------------------------------------------------------------------------------- */
+/* Every section of this page is one band: a panel, a hairline, one radius. A ticket that adds a
+   section adds a band, and inherits the whole look. */
+.band{
+  background:var(--hima-panel);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);
+  box-shadow:var(--hima-shadow);padding:var(--hima-sp-2) var(--hima-sp-6);
+  margin:0 0 var(--hima-sp-2);
+}
+.band-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--hima-sp-05) var(--hima-sp-6);margin-bottom:var(--hima-sp-1)}
+.band-head .eyebrow{margin:0}
+.eyebrow{
+  margin:0 0 var(--hima-sp-1);color:var(--hima-ink-3);
+  font-size:var(--hima-fs-label);font-weight:600;font-variant-caps:all-small-caps;letter-spacing:.06em;
+}
+.note{color:var(--hima-ink-2);font-size:var(--hima-fs-label);line-height:1.35}
+.faint{color:var(--hima-ink-3);font-size:var(--hima-fs-label);line-height:1.35}
+.mono,.fig{font-family:var(--hima-font-mono);font-variant-numeric:tabular-nums}
+/* The mono face at the size it sits in, and not a fraction of it: .94 em off the 14 px step is
+   13.2 px, which is text under the floor by the back door. Tabular figures come from the rule
+   above, so a column of numbers lines up in either face. */
+.mono{overflow-wrap:anywhere}
+.said{font-weight:600}
+
+/* A band may hold more than one part — the ledger holds the generations and the path, the evidence
+   holds every record kind — and each part is a section under its own eyebrow, ruled off from the one
+   above it. A ticket that adds a part adds a section and inherits the spacing. */
+.band > section + section{margin-top:var(--hima-sp-2);padding-top:var(--hima-sp-1);border-top:1px solid var(--hima-line)}
+.band > section > .eyebrow{margin-top:0}
+
+/* -- the verdict band ----------------------------------------------------------------------- */
+/* One anatomy, three moments: an open mark that breathes while the Run runs, a plate when it has
+   ended, and the boundary-held moment while it waits for a person. */
+/* The seal lies across the top of the band and the board sits under it, rather than the two side by
+   side: a seal in a column of its own leaves the rest of that column empty, which is the flaw this
+   design was written to beat. */
+.verdict{display:flex;flex-direction:column;gap:var(--hima-sp-3)}
+.seal{
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--hima-sp-2) var(--hima-sp-6);
+  padding:var(--hima-sp-2) var(--hima-sp-4);border-radius:var(--hima-r-m);
+  border:1px solid var(--hima-line-strong);background:var(--hima-raise);
+}
+.seal-head{display:flex;align-items:center;gap:var(--hima-sp-3)}
+.seal-said{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:var(--hima-sp-1)}
+.seal[data-seal="ended"]{outline:1px solid var(--hima-line);outline-offset:3px}
+.seal[data-seal="waiting"]{border-color:var(--hima-red)}
+.seal-verdict{
+  margin:0;font-size:var(--hima-fs-display);line-height:var(--hima-lh-tight);font-weight:650;
+  letter-spacing:-.015em;
+}
+.seal-note{margin:0;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.seal-blocked{margin:0;font-size:var(--hima-fs-lead);line-height:var(--hima-lh-tight);color:var(--hima-ink)}
+/* The mark above the verdict: the one moving thing on this page, and only while the Run moves. */
+.mark{display:block;width:14px;height:14px;border-radius:50%;border:2px solid currentColor;flex:none}
+.seal[data-seal="running"] .mark{animation:hima-breathe 1.8s ease-in-out infinite}
+@keyframes hima-breathe{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.82)}}
+@media (prefers-reduced-motion:reduce){.seal[data-seal="running"] .mark{animation:none}}
+
+/* The four questions a person asks first, in a fixed order. Never a feed. */
+/* Two questions to a row, four to the board, always in this order. */
+.facts{
+  display:grid;grid-template-columns:minmax(120px,max-content) minmax(0,1fr) minmax(120px,max-content) minmax(0,1fr);
+  gap:var(--hima-sp-1) var(--hima-sp-4);margin:0;align-items:start;
+}
+.facts dt{
+  color:var(--hima-ink-3);font-size:var(--hima-fs-label);font-weight:600;
+  font-variant-caps:all-small-caps;letter-spacing:.05em;padding-top:var(--hima-sp-05);
+}
+.facts dd{margin:0;min-width:0;display:flex;flex-direction:column;gap:var(--hima-sp-05)}
+.facts dd.wide{grid-column:2 / -1}
+.facts dd > div{min-width:0;overflow-wrap:anywhere}
+
+/* -- meters --------------------------------------------------------------------------------- */
+/* The Budget's own section, in the three columns this band's meters have had since #41: what the
+   meter is called, the meter drawn against its bound, and the rest of the sentence that says it.
+   The name column is max-content, so it is as wide as the longest name and no wider; the bar column
+   is fixed, so every bar is drawn to one scale and read against the bar above it; the sentences run
+   past them to the right. A meter no bar can honestly draw — jobs launched against a cap on how many
+   may run at once, a licence's seats beside what it has cost — leaves the bar column empty rather
+   than drawing an overrun of a bound nothing overran.
+   The bars are the middle column and not the last so that each sits beside the name of the meter it
+   draws, a hand's width from it whatever the sentences are doing; the sentence column's floor of 0
+   is what lets a narrow window wrap the sentences instead of overflowing the band. */
+.meters{display:grid;grid-template-columns:max-content 148px minmax(0,max-content);gap:var(--hima-sp-1) var(--hima-sp-3);align-items:center;width:100%;max-width:820px}
+.meters .k{color:var(--hima-ink-3);font-size:var(--hima-fs-label);white-space:nowrap}
+.meter{position:relative;height:8px;border-radius:var(--hima-r-s);background:var(--hima-track);overflow:hidden}
+.meter-fill{position:absolute;left:0;top:0;bottom:0;border-radius:var(--hima-r-s);background:currentColor}
+.meter-tick{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--hima-ink-3);opacity:.85}
+/* The ledger's own bars: the same anatomy at row height, with a tick where the target falls and a
+   zero line where the sign changes. */
+.bar{position:relative;height:6px;border-radius:var(--hima-r-s);background:var(--hima-track);margin-top:var(--hima-sp-05);min-width:64px}
+.bar-fill{position:absolute;top:0;bottom:0;border-radius:var(--hima-r-s);background:currentColor}
+.bar-tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--hima-ink-2)}
+.delta{font-size:var(--hima-fs-label);color:var(--hima-ink-3);white-space:nowrap;padding-left:var(--hima-sp-05)}
+
+/* -- glyph grammar -------------------------------------------------------------------------- */
+/* Shape first, colour second: every state is a shape *and* a word, so the page reads without hue.
+   The glyph is drawn as pseudo-elements, which keeps a region's rendered text exactly the word —
+   a driver reading "FAIL clock-period-at-most" reads what a person reads.
+   The colour is card-labels.ts's, set inline on the element; the shapes are here. */
+.pill{
+  position:relative;display:inline-block;padding:0 var(--hima-sp-2) 0 23px;border-radius:999px;
+  font-size:var(--hima-fs-label);font-weight:600;line-height:1.4;white-space:nowrap;
+  border:1px solid currentColor;
+}
+.pill::before,.pill::after{content:"";position:absolute;box-sizing:border-box}
+.pill::before{left:8px;top:50%;width:10px;height:10px;margin-top:-5px}
+/* done: a filled disc carrying a check */
+.g-done::before{border-radius:50%;background:currentColor}
+.g-done::after{left:11px;top:50%;margin-top:-3.5px;width:4px;height:7px;border:1.5px solid var(--hima-on-solid);border-top:0;border-left:0;transform:rotate(42deg)}
+/* running: a ringed dot */
+.g-running::before{border-radius:50%;border:1.5px solid currentColor}
+.g-running::after{left:11px;top:50%;margin-top:-2px;width:4px;height:4px;border-radius:50%;background:currentColor}
+/* waiting: a hollow diamond */
+.g-waiting::before{border:1.5px solid currentColor;transform:rotate(45deg) scale(.86)}
+/* did not complete: a crossed square */
+.g-missed::before{border:1.5px solid currentColor;border-radius:1px}
+.g-missed::after{left:10px;top:50%;margin-top:-3px;width:6px;height:6px;background:
+  linear-gradient(45deg,transparent 42%,currentColor 42%,currentColor 58%,transparent 58%),
+  linear-gradient(-45deg,transparent 42%,currentColor 42%,currentColor 58%,transparent 58%)}
+/* pending: a dashed hollow ring */
+.g-pending::before{border-radius:50%;border:1.5px dashed currentColor}
+/* blocked: an octagon with a bar across it — the boundary held */
+.g-blocked::before{background:currentColor;clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}
+.g-blocked::after{left:9px;top:50%;margin-top:-1px;width:8px;height:2px;background:var(--hima-on-solid)}
+/* The seal wears the same grammar at display size. */
+.seal .pill{border:0;padding:0 0 0 26px;font-size:var(--hima-fs-display);font-weight:650;letter-spacing:-.015em;white-space:normal;line-height:var(--hima-lh-tight)}
+.seal .pill::before{left:0;top:.62em;width:16px;height:16px;margin-top:-8px}
+.seal .g-done::after{left:4.5px;top:.62em;margin-top:-5px;width:6px;height:10px;border-width:2px}
+.seal .g-running::after{left:5px;top:.62em;margin-top:-3px;width:6px;height:6px}
+.seal .g-blocked::after{left:1px;top:.62em;margin-top:-1.5px;width:14px;height:3px}
+.seal .g-missed::after{left:2.5px;top:.62em;margin-top:-5.5px;width:11px;height:11px}
+/* A Run HimaFabric never started has no verdict to seal: it says so at reading size, because a
+   sentence about what is *not* known has no business at the size a verdict is set in. */
+.seal[data-seal="none"] .pill{font-size:var(--hima-fs-lead);font-weight:600;padding-left:22px}
+.seal[data-seal="none"] .pill::before{top:.7em;width:12px;height:12px;margin-top:-6px}
+
+/* -- tables --------------------------------------------------------------------------------- */
+/* Wide content scrolls inside its own band. The page never scrolls sideways under everything else. */
+.scroller{overflow-x:auto;margin:0 calc(var(--hima-sp-6) * -1);padding:0 var(--hima-sp-6)}
+.ledger{border-collapse:collapse;width:100%;font-size:var(--hima-fs-label)}
+.ledger th{
+  text-align:left;vertical-align:bottom;font-weight:600;color:var(--hima-ink-3);
+  font-size:var(--hima-fs-label);font-variant-caps:all-small-caps;letter-spacing:.05em;
+  padding:0 var(--hima-sp-3) var(--hima-sp-15) 0;white-space:nowrap;
+  border-bottom:1px solid var(--hima-line-strong);
+}
+.ledger td{
+  text-align:left;vertical-align:top;padding:var(--hima-sp-1) var(--hima-sp-3) var(--hima-sp-1) 0;
+  border-bottom:1px solid var(--hima-line);
+}
+.ledger.fixed{table-layout:fixed}
+/* A cell may hold an identifier no space breaks, so a cell breaks anywhere; a head is words, and a
+   head broken mid-word ("GENERATIO/N") is worse than one leaning a few pixels into the gutter beside
+   it. .nobr keeps a head's parenthetical whole, so the break falls before the "(". */
+.ledger.fixed th{white-space:normal}
+.ledger.fixed td{overflow-wrap:anywhere}
+.nobr{white-space:nowrap}
+.ledger tr:last-child td{border-bottom:0}
+.ledger td:last-child,.ledger th:last-child{padding-right:0}
+.ledger .num{text-align:right;white-space:nowrap}
+.ledger .folio{font-size:var(--hima-fs-title);font-weight:650;color:var(--hima-ink);line-height:1}
+.ledger .cell{display:flex;flex-direction:column;gap:var(--hima-sp-05);min-width:0}
+.ledger .value{font-size:var(--hima-fs-body);line-height:1.35;white-space:nowrap}
+.ledger .said-decision{overflow-wrap:anywhere}
+
+.ledger .verdict-line{white-space:nowrap;line-height:1.5}
+.ledger tr.now{background:var(--hima-raise)}
+
+/* A drill-down Loop's generations, nested under the row that opened them (#28). Rows of the same
+   table and not a table of their own, so a nested period is read straight up the column against the
+   outer one's; what says they are one level down is the rule running down their left edge and the
+   step in from it, which the head and the foot of the group carry too. The head is bracketed off
+   from the row above by its own hairline: a group that started without one would read as a caption
+   belonging to the generation over it rather than as the drill-down it opened. */
+.ledger tr.loop-head > td{border-top:1px solid var(--hima-line-strong);padding-top:var(--hima-sp-15)}
+.ledger tr.loop-head > td,.ledger tr.loop-foot > td,.ledger tr.in-loop > td:first-child{
+  border-left:2px solid var(--hima-line-strong);padding-left:var(--hima-sp-3);
+}
+.ledger tr.loop-foot > td{border-bottom:1px solid var(--hima-line-strong)}
+
+/* A fork's branches, under the row of the generation that forked them (#29). The same bracket the
+   drill-down's group is drawn with, one level down and with no head of its own: a branch's row *is*
+   the head of what it says, and the join's line closes the group under them all. */
+.ledger tr.fork-join > td,.ledger tr.in-fork > td:first-child{
+  border-left:2px solid var(--hima-line-strong);padding-left:var(--hima-sp-3);
+}
+.ledger tr.fork-join > td{border-bottom:1px solid var(--hima-line-strong)}
+/* A branch says its whole self in the generation column — its id, its state and its jobs — and that
+   is more words than a folio numeral and a pill, so it wraps inside its own cell rather than running
+   under the period beside it. The column's width is the table's and stays what it was: it is the
+   proportion every other row is read by.
+   Wrapping, it drops the pill's outline and keeps the shape and the colour, exactly as the seal does
+   at display size: a two-line pill is a balloon, and the grammar that has to survive is shape and
+   word and never the ring around them. */
+.ledger tr.in-fork > td:first-child{padding-right:0}
+.ledger tr.in-fork > td:first-child .pill{white-space:normal;border:0;border-radius:0;padding:0 0 0 15px}
+/* Dropping the outline moves the left edge of the shape from the pill's border to the glyph itself,
+   so the glyph's own inset of 8 px goes with it: left where it was, the state hung 8 px right of the
+   id written directly above it, which is the one thing this two-line head exists to line up. The
+   whole glyph moves — both pseudo-elements by the same 8 px, so every shape keeps the geometry it
+   is drawn with — and the word keeps the gap it has everywhere else. The seal resets the same pair
+   at its own size for the same reason. */
+.ledger tr.in-fork > td:first-child .pill::before,
+.ledger tr.in-fork > td:first-child .pill::after{margin-left:-8px}
+
+/* -- the plot ------------------------------------------------------------------------------- */
+/* One picture, drawn on the host: no script, no external asset, no canvas a person has to drive.
+   Every word of it lives in the HTML around and over it, so the drawing scales with the band
+   without a single letter scaling with it. */
+.plot{position:relative;margin:0 0 var(--hima-sp-1)}
+/* The two numbers a person reads off the picture — the target the dashed line is drawn at, and the
+   period the last generation measured — written in the drawing's own margins, as HTML and not as
+   SVG text: the drawing scales with the band, and a value that scaled with it would be under the
+   floor at the narrow end. The margins are PLOT.gutter wide (workbench.ts), which is why the line
+   and the dots stop short of both edges. */
+.plot-value{
+  position:absolute;transform:translateY(-50%);white-space:nowrap;line-height:1;
+  font-size:var(--hima-fs-label);color:var(--hima-ink-2);
+}
+.plot-value-bound{padding-right:var(--hima-sp-1)}
+.plot-value-last{padding-left:var(--hima-sp-1);color:var(--hima-accent);font-weight:600}
+.plot-svg{display:block;width:100%;height:auto}
+.plot-lane{fill:var(--hima-raise)}
+.plot-axis{stroke:var(--hima-line-strong);stroke-width:1;fill:none}
+.plot-bound{stroke:var(--hima-ink-3);stroke-width:1.5;stroke-dasharray:5 4;fill:none}
+.plot-line{stroke:var(--hima-accent);stroke-width:2;fill:none;stroke-linejoin:round}
+.plot-dot{fill:var(--hima-accent)}
+.plot-bar{fill:var(--hima-ok)}
+.plot-bar-neg{fill:var(--hima-red)}
+.plot-endmark{stroke:var(--hima-ink-3);stroke-width:1;stroke-dasharray:2 3}
+/* The stretch of the axis a drill-down Loop's own generations occupy (#28): the span behind them,
+   and their line drawn dashed with hollow dots, because they are the same quantity measured while a
+   different question was being asked. */
+.plot-span{fill:var(--hima-track);opacity:.6}
+.plot-line-in{stroke:var(--hima-accent);stroke-width:2;stroke-dasharray:5 3;fill:none;stroke-linejoin:round}
+.plot-dot-in{fill:var(--hima-panel);stroke:var(--hima-accent);stroke-width:2}
+/* A fork's branches (#29): points and no line, because they ran at once rather than one after the
+   other. The ring of a reading nobody has folded into the Campaign's own line, in the quiet ink so
+   the accent stays the Campaign's own series, with each point's branch named beside it. */
+.plot-dot-branch{fill:var(--hima-panel);stroke:var(--hima-ink-3);stroke-width:2}
+/* A branch's label is knocked out of whatever it is written over, in the same panel the branch's own
+   ring is filled with: a label lands at the height of its own reading, and a branch that measured
+   what the Campaign was aiming for lands exactly on the dashed target line — which then ran straight
+   through the words, and a struck-through label is the one thing a picture must not do to the number
+   it is naming. The line is interrupted behind the label instead, which is how every map draws a
+   place name over a road. */
+.plot-branch{
+  color:var(--hima-ink-2);padding:var(--hima-sp-05) var(--hima-sp-2);
+  background:var(--hima-panel);background-clip:content-box;border-radius:var(--hima-r-s);
+}
+.plot-keys{display:flex;flex-wrap:wrap;gap:var(--hima-sp-05) var(--hima-sp-4);margin:0;line-height:1.4}
+.key{position:relative;display:inline-block;padding-left:22px;color:var(--hima-ink-2);font-size:var(--hima-fs-label)}
+.key::before{content:"";position:absolute;left:0;top:50%;width:14px;height:0;border-top:2px solid currentColor}
+.key-line{color:var(--hima-accent)}
+.key-bound{color:var(--hima-ink-3)}
+.key-bound::before{border-top-style:dashed}
+.key-bar{color:var(--hima-ok)}
+.key-bar::before{height:8px;margin-top:-4px;border:0;background:currentColor;border-radius:1px}
+.key-bar-neg{color:var(--hima-red)}
+.key-bar-neg::before{height:8px;margin-top:-4px;border:0;background:currentColor;border-radius:1px}
+/* The drill-down span's own key: the swatch is the span itself — the same fill at the same strength
+   — at the height and radius of the two bar keys beside it, because a legend whose swatch is not the
+   mark it names is a second drawing. */
+.key-span{color:var(--hima-ink-2)}
+.key-span::before{height:8px;margin-top:-4px;border:0;background:var(--hima-track);opacity:.6;border-radius:1px}
+/* A fork's key: the swatch is the point itself — the same ring at the same weight — because a legend
+   whose swatch is not the mark it names is a second drawing. */
+.key-branch{color:var(--hima-ink-3)}
+.key-branch::before{
+  left:3px;width:8px;height:8px;margin-top:-4px;border:2px solid currentColor;border-radius:50%;
+  background:var(--hima-panel);
+}
+/* What the picture's left-to-right is, under the picture: one line on a Campaign that drilled down,
+   in the quiet ink and at the label size the keys above it are set in. Outside the figure, because
+   the two values over the drawing are placed at a percentage of the figure's own height. */
+.plot-order{margin:0 0 var(--hima-sp-2)}
+
+/* -- blocks, wells and the evidence drawer ---------------------------------------------------- */
+.block{
+  display:flex;flex-direction:column;gap:var(--hima-sp-1);
+  padding:var(--hima-sp-2) 0 var(--hima-sp-2) var(--hima-sp-4);
+  border-left:2px solid var(--hima-line-strong);
+}
+.block + .block{border-top:1px solid var(--hima-line)}
+.block-bad{border-left-color:var(--hima-red)}
+.lead{font-size:var(--hima-fs-lead);line-height:var(--hima-lh-tight);margin:0}
+.well{
+  white-space:pre-wrap;max-height:260px;overflow:auto;margin:0;
+  padding:var(--hima-sp-3);border-radius:var(--hima-r-m);
+  background:var(--hima-glass);color:var(--hima-glass-ink);border:1px solid var(--hima-glass-line);
+  font-family:var(--hima-font-mono);font-size:var(--hima-fs-label);line-height:1.45;
+}
+.values{display:grid;grid-template-columns:auto auto 1fr;gap:var(--hima-sp-05) var(--hima-sp-3);align-items:baseline}
+.values .n{color:var(--hima-ink-2)}
+.values .q{text-align:right;font-weight:600;white-space:nowrap}
+.values .wide{grid-column:2 / -1}
+
+/* -- controls ------------------------------------------------------------------------------- */
+.controls{display:flex;flex-wrap:wrap;gap:var(--hima-sp-2);align-items:center}
+button{
+  font:inherit;font-size:var(--hima-fs-label);font-weight:600;
+  padding:var(--hima-sp-15) var(--hima-sp-4);border:1px solid var(--hima-line-strong);border-radius:var(--hima-r-m);
+  background:var(--hima-raise);color:var(--hima-ink);cursor:pointer;
+}
+button:hover{border-color:var(--hima-ink-3)}
+button:disabled{opacity:.5;cursor:progress}
+button.primary{background:var(--hima-accent);border-color:var(--hima-accent);color:var(--hima-on-solid)}
+button.primary:hover{opacity:.9}
+.refusal{color:var(--hima-red);font-size:var(--hima-fs-label);font-weight:600;display:block;margin:0}
+.refusal:empty{display:none}
+
+/* -- the start form ------------------------------------------------------------------------- */
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--hima-sp-4);margin-bottom:var(--hima-sp-4)}
+.field{display:flex;flex-direction:column;gap:var(--hima-sp-1);min-width:0}
+.field .said{font-size:var(--hima-fs-label)}
+.field input,.field select{
+  font:inherit;font-size:var(--hima-fs-body);padding:var(--hima-sp-15) var(--hima-sp-3);
+  border:1px solid var(--hima-line-strong);border-radius:var(--hima-r-m);
+  background:var(--hima-panel);color:var(--hima-ink);width:100%;
+}
+.field input:focus,.field select:focus{outline:2px solid var(--hima-accent);outline-offset:-1px}
+.field .faint{line-height:var(--hima-lh-body)}
+/* The selected pack's own strategy knobs (#58). Their wrapper exists so the page can swap them whole
+   when the selection changes, and it lays out as though it were not there: the fields are the grid's
+   own cells, beside the goal and the budget, and never a box inside one. */
+.knobs{display:contents}
+
+/* -- the campaign's technical report (#30) ---------------------------------------------------- */
+/* The report is a document inside the evidence drawer, so it is set as a document: its headings
+   step down from the drawer's own eyebrow, its paragraphs are at the label size the rest of the
+   drawer's prose is, and its tables are the page's ledger tables, so a row of the report reads like
+   every other row on this page. Nothing here is a colour or a face of its own. */
+.report{display:flex;flex-direction:column;gap:var(--hima-sp-2);margin-top:var(--hima-sp-2)}
+.report h4{margin:var(--hima-sp-2) 0 0;font-size:var(--hima-fs-lead);font-weight:650;letter-spacing:-.01em;line-height:var(--hima-lh-tight)}
+.report h5{margin:var(--hima-sp-2) 0 0;font-size:var(--hima-fs-body);font-weight:650}
+.report h6{margin:var(--hima-sp-1) 0 0;font-size:var(--hima-fs-label);font-weight:650;color:var(--hima-ink-2)}
+.report p{margin:0;font-size:var(--hima-fs-label);line-height:var(--hima-lh-body);color:var(--hima-ink-2)}
+.report .ledger td{vertical-align:top}
+
+/* -- the run list --------------------------------------------------------------------------- */
+.ledger a{color:var(--hima-accent);text-decoration:none}
+.ledger a:hover{text-decoration:underline}
+
+/* A window at 900 px is the narrowest this page is asked to work at: the verdict band stacks, the
+   fields go to one column, and the tables keep scrolling inside their own bands. */
+@media (max-width:900px){
+  .facts{grid-template-columns:minmax(110px,max-content) minmax(0,1fr)}
+  .fields{grid-template-columns:1fr}
+  .page{padding:0 var(--hima-sp-4) var(--hima-sp-6)}
+  .chrome{padding:var(--hima-sp-3) var(--hima-sp-4)}
+}
+`;

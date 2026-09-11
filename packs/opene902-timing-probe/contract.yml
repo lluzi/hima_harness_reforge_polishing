@@ -1,0 +1,108 @@
+# The run contract of the opene902 timing probe: what a Site must bind before this pack can run,
+# what a generation produces inside the Campaign workspace, and what the pack runs on the Site.
+# `/hima pack check <pack> --site <site>` reads this file against a Site's own and reports every
+# input that is not bound, every wrapper the Permit will not run, and every rule or reader that does
+# not exist.
+id: opene902-timing-probe
+version: '1'
+title: opene902 timing probe
+
+# What a Site binds, in its site file under `bindings:`. The same pack runs on another Site by
+# editing that file, never this one.
+inputs:
+  - name: flowRoot
+    description: >-
+      The Golden Flow's root on the Site: the directory holding the makefile the flow is driven by.
+      Read-only to a Campaign — a generation runs in its own copy of it, never here.
+  - name: design
+    description: The design the flow builds, spelled as the flow's own manifests spell it.
+  - name: workspaceRoot
+    description: >-
+      Where Campaign workspaces are created. The Site's Permit must allow writes under it; nothing
+      the pack does writes anywhere else.
+
+# What a generation leaves in its Campaign workspace. Paths are relative to the workspace, with
+# `${design}` bound from the Site's binding of that input.
+outputs:
+  - name: qorReport
+    path: flow/results/${design}/syn/report/qor.rpt
+    reader: dc-qor-report
+    description: The Design Compiler qor report of the generation just synthesized. The judged report.
+  - name: synthesisLog
+    path: flow/logs/${design}/dc_shell.log
+    description: What dc_shell said while it ran. Read by a person after a failure, not by a reader.
+
+# What the Site must let this pack run: the first word of every tool's command line. The Permit's
+# `allowedWrappers` decides each one, so a pack cannot introduce a command a Site owner never allowed.
+environment:
+  wrappers:
+    - make
+
+# How a Campaign workspace is prepared from the bound flow root, once per Campaign. The copy lands in
+# `<workspace>/flow/`, which is the pack anatomy's fixed place for it (see README, "Pack anatomy").
+workspace:
+  copy:
+    - Makefile
+    - flows
+    - manifests
+    - tools
+    - build/${design}
+    - sources/${design}
+
+# The pack's tools. Each names the file a person reads and runs by hand, and the command line the
+# fabric launches on the Site. `${NAME}` in `argv` is one of the tool's declared `inputs`, which are
+# the environment variables the tool's own script reads.
+tools:
+  - id: synth
+    file: tools/synth.sh
+    description: >-
+      One synthesis generation at a chosen clock period, inside the Campaign's own copy of the flow.
+      `FORCE_SYNTH=1` so no generation ever reuses another's netlist, and `EDA_CONTAINER_NAME` so the
+      copy is bound into a container of this Campaign's own — running it under the Site's container
+      name would write the Site's own results.
+    inputs: [WORKSPACE, FLOW_ROOT, DESIGN, PERIOD_NS, CAMPAIGN]
+    # What a Job of this tool holds on the Site for as long as it runs: one Design Compiler seat.
+    # The Site declares how many it has under `capacity.licences`, and the count is held across every
+    # Run of that Site — a licence is the Site's, not a Campaign's. A Site declaring fewer than this
+    # cannot host the pack, and `/hima pack check` says so before a Campaign exists.
+    licences:
+      Design-Compiler: 1
+    argv:
+      - make
+      - -C
+      - ${WORKSPACE}/flow
+      - DESIGN=${DESIGN}
+      - synth
+      - CLOCK_PERIOD_NS=${PERIOD_NS}
+      - FORCE_SYNTH=1
+      - EDA_CONTAINER_NAME=hima-${CAMPAIGN}
+
+# Every rule this pack's judge nodes may apply, by reference. `/hima pack check` resolves each one
+# against the shipped rules; an unknown id is an error, never a silent pass.
+rules:
+  - setup-wns-all-nonnegative
+  - clock-period-at-most
+
+# What a run of this pack is set to for one generation, and what it may be set to. The strategy is
+# the pack's, not the harness's: this block is the whole of what a strategy is here, the start form
+# renders one field per knob, and every value — the form's, `--set`'s, a request body's — is held
+# against what is declared here before a run starts.
+#
+# One knob: the clock period handed to `CLOCK_PERIOD_NS`. Its bounds are wide on purpose — a bound is
+# what a person could plausibly ask this flow for, not what this design closes at — and they hold
+# every period this pack has ever been run at, on the stand-in flow and on the reference site.
+# 0.5 ns is the floor the step-3 acceptance script already refuses below; 10 ns is far above twice
+# the site's own last result, which is that script's ceiling. A mistyped 0, or a 100, is neither.
+strategy:
+  periodNs: { type: number, unit: ns, min: 0.5, max: 10, default: 2.30 }
+
+# What this pack's numbers are called, for the faces a person reads: one entry per goal parameter the
+# graph binds and one per knob a run's strategy is made of, each with the label it is read under and
+# the unit it is measured in — a knob declared as a choice states no unit, because a choice is
+# measured in nothing. The harness carries the names on the wire whatever is written here — a route
+# still answers `target_period_ns` and `periodNs` — and the card, the chat's card and `/hima status`
+# say the words. A goal parameter this block says nothing about is shown under its own name; a knob
+# it says nothing about is a pack `/hima pack check` refuses.
+words:
+  target_period_ns: { label: clock period at most, unit: ns }
+  periodNs: { label: clock period, unit: ns }
