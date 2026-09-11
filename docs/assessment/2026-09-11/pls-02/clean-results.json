@@ -1,0 +1,26 @@
+[
+  {
+    "stage": "install",
+    "command": [
+      "pnpm",
+      "install",
+      "--frozen-lockfile",
+      "--store-dir",
+      "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pnpm-store"
+    ],
+    "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean",
+    "exitCode": 0,
+    "seconds": 4.629
+  },
+  {
+    "stage": "check-local",
+    "command": [
+      "pnpm",
+      "run",
+      "check:local"
+    ],
+    "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean",
+    "exitCode": 0,
+    "seconds": 443.676
+  }
+]

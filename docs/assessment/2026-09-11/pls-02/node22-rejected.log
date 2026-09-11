@@ -1,0 +1,1 @@
+HimaHarness needs Node 24 or newer for DeepSeek Harness; found v22.14.0. On this machine: export PATH="$HOME/.local/node24/bin:$PATH"

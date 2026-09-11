@@ -5,18 +5,21 @@
 ```sh
 node scripts/run-contract-tests.mjs --check
 node scripts/run-contract-tests.mjs local --list
-node scripts/run-contract-tests.mjs local
+pnpm run check:local
+pnpm run test:local --files test/contract/test-entry.test.ts test/contract/boot.test.ts
 ```
 
-`pnpm run test:contract` 现在构建后只运行 `local`。构建一次、类型检查、hooks 与短反馈命令的统一编排留给 PLS-02。`test:unit` 目前没有用例，不能作为额外覆盖。
+`check:local` 检查 Node/seams，构建一次，检查类型并运行完整 `local`。下列叶命令使用当前构建，不再内部 build；源码变化后先构建，再跨组复用该产物。`test:contract` 兼容转发到 `test:local`。`test:unit` 目前明确报告 0 文件、未运行，退出 0 不能作为额外覆盖。
 
 | 组 | 内容与前置条件 | 显式入口 |
 | --- | --- | --- |
-| local | L1/L2；真实 Host、HTTP、本地文件、独立 tmux 作业及 stand-in。需要 tmux、make 和相关本地报告副本；无需 SSH 凭据、Electron、模型或 EDA | `node scripts/run-contract-tests.mjs local` |
-| desktop | 含真实 Electron driver 的文件，暂时连同这些文件中的较低成本用例保留。需要桌面环境和 Electron | `node scripts/run-contract-tests.mjs desktop` |
-| live-site | `ssh.live.test.ts`、`jobs.live.test.ts`、`pack.live.test.ts`；真实 SSH、远端 `make -v`/tmux、约 56 MB 的流程复制与测试目录清理 | `node scripts/run-contract-tests.mjs live-site` |
+| local | L1/L2；真实 Host、HTTP、本地文件、独立 tmux 作业及 stand-in。需要 tmux、make 和相关本地报告副本；无需 SSH 凭据、Electron、模型或 EDA | `pnpm run test:local` |
+| desktop | 含真实 Electron driver 的文件，暂时连同这些文件中的较低成本用例保留。需要桌面环境和 Electron | `pnpm run test:desktop` |
+| live-site | `ssh.live.test.ts`、`jobs.live.test.ts`、`pack.live.test.ts`；真实 SSH、远端 `make -v`/tmux、约 56 MB 的流程复制与测试目录清理 | `pnpm run test:live:site` |
 
 后两组按分级政策单独选择。不要使用 `test/contract/**/*.test.ts` 全量 glob，也不要用 `--test-name-pattern` 当作外部依赖隔离手段：模块注册发生在名称过滤之前。live 文件另有显式选择检查，误用直接 glob 会在探测前失败。
+
+使用 `--files <path>...` 选择相关子集，例如 `pnpm run test:desktop --files test/contract/honest-standin.test.ts`。名称必须精确属于该组，空选择、路径丢失、重复或跨组选取都会在执行前失败。`--list --files ...` 只预览子集。入口输出选中/未选中文件数、TAP 的 pass/fail/skip、耗时及命令退出码；未选中的组和文件是未跑。尚无真实模型或完整 pilot 命令，不提供假通过的空入口。
 
 入口在任何导入/执行前对所有 `.test.ts/.test.mjs` 等测试文件核对清单。新增文件未归类、清单路径丢失或重复归类都会失败，不能靠文件名约定静默漏测。`--check` 与 `--list` 均不执行测试。
 

@@ -1,0 +1,28 @@
+{
+  "purpose": "Separate clean source copy to time first build without repeating the full local suite. Its source files match clean-source-manifest.json.",
+  "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/build-timing",
+  "results": [
+    {
+      "stage": "timed-copy-install",
+      "command": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile",
+        "--store-dir",
+        "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pnpm-store"
+      ],
+      "exitCode": 0,
+      "seconds": 4.167
+    },
+    {
+      "stage": "timed-copy-first-build",
+      "command": [
+        "pnpm",
+        "run",
+        "build"
+      ],
+      "exitCode": 0,
+      "seconds": 2.581
+    }
+  ]
+}

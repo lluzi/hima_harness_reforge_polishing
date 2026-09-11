@@ -1,0 +1,3 @@
+test/contract/jobs.live.test.ts
+test/contract/pack.live.test.ts
+test/contract/ssh.live.test.ts

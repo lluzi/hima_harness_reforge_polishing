@@ -1,0 +1,198 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/dc-reader.test.ts
+local: 1 selected; 18 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and cell area from the real opene902 qor report, with its declaration recorded
+not ok 1 - the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and cell area from the real opene902 qor report, with its declaration recorded
+  ---
+  duration_ms: 2.016916
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:68:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json
+    Set HIMA_FIXTURES_OPTIONAL=1 to skip the tests that need it instead.
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    requireOpene902Fixture (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/support/opene902-fixtures.ts:51:9)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:69:19)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: the same real report with a hold violation in it reads as a negative hold slack and FAILs the very rule the unviolated one passes
+not ok 2 - the same real report with a hold violation in it reads as a negative hold slack and FAILs the very rule the unviolated one passes
+  ---
+  duration_ms: 0.742666
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:108:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json
+    Set HIMA_FIXTURES_OPTIONAL=1 to skip the tests that need it instead.
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    requireOpene902Fixture (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/support/opene902-fixtures.ts:51:9)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:113:19)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a qor report truncated before its first path group yields unknown values with a stated reason for each, never a default
+not ok 3 - a qor report truncated before its first path group yields unknown values with a stated reason for each, never a default
+  ---
+  duration_ms: 0.842208
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:146:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json
+    Set HIMA_FIXTURES_OPTIONAL=1 to skip the tests that need it instead.
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    requireOpene902Fixture (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/support/opene902-fixtures.ts:51:9)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:147:19)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a qor report missing one line inside its one path group leaves only that value unknown; the rest still read
+not ok 4 - a qor report missing one line inside its one path group leaves only that value unknown; the rest still read
+  ---
+  duration_ms: 0.513875
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:173:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json
+    Set HIMA_FIXTURES_OPTIONAL=1 to skip the tests that need it instead.
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    requireOpene902Fixture (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/support/opene902-fixtures.ts:51:9)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:174:19)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: the real report with a Design Compiler built-in group added that has the worse slack: the clock period is still the clock group's, the setup WNS is the built-in's, and each names the group it came from
+not ok 5 - the real report with a Design Compiler built-in group added that has the worse slack: the clock period is still the clock group's, the setup WNS is the built-in's, and each names the group it came from
+  ---
+  duration_ms: 0.417875
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:203:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json
+    Set HIMA_FIXTURES_OPTIONAL=1 to skip the tests that need it instead.
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    requireOpene902Fixture (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/support/opene902-fixtures.ts:51:9)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:210:19)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a qor report whose only path groups are Design Compiler built-ins: the clock period is unknown with a reason naming the groups found, and setup WNS is still the worst of them
+ok 6 - a qor report whose only path groups are Design Compiler built-ins: the clock period is unknown with a reason naming the groups found, and setup WNS is still the worst of them
+  ---
+  duration_ms: 959.590083
+  type: 'test'
+  ...
+# Subtest: two clock path groups: setup WNS is the minimum slack naming its group, setup TNS sums every group, hold WNS is the worst violation as a slack, and the clock period is unknown because two clocks are stated
+ok 7 - two clock path groups: setup WNS is the minimum slack naming its group, setup TNS sums every group, hold WNS is the worst violation as a slack, and the clock period is unknown because two clocks are stated
+  ---
+  duration_ms: 159.283417
+  type: 'test'
+  ...
+# Subtest: multiple path groups, one missing its Critical Path Slack line: setup WNS goes unknown naming that group, while TNS and hold WNS (whose lines are complete) still read
+ok 8 - multiple path groups, one missing its Critical Path Slack line: setup WNS goes unknown naming that group, while TNS and hold WNS (whose lines are complete) still read
+  ---
+  duration_ms: 160.114917
+  type: 'test'
+  ...
+# Subtest: the dc-qor-report reader accepts a gzip-compressed report transparently, as the Innovus readers do
+ok 9 - the dc-qor-report reader accepts a gzip-compressed report transparently, as the Innovus readers do
+  ---
+  duration_ms: 154.824708
+  type: 'test'
+  ...
+# Subtest: a report of the wrong kind is refused by the dc-qor-report reader, with no observation recorded
+ok 10 - a report of the wrong kind is refused by the dc-qor-report reader, with no observation recorded
+  ---
+  duration_ms: 159.5195
+  type: 'test'
+  ...
+# Subtest: the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one
+not ok 11 - the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one
+  ---
+  duration_ms: 0.672292
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:520:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json
+    Set HIMA_FIXTURES_OPTIONAL=1 to skip the tests that need it instead.
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    requireOpene902Fixture (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/support/opene902-fixtures.ts:51:9)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:521:19)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome
+not ok 12 - the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome
+  ---
+  duration_ms: 0.4815
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:565:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json
+    Set HIMA_FIXTURES_OPTIONAL=1 to skip the tests that need it instead.
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    requireOpene902Fixture (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/support/opene902-fixtures.ts:51:9)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:566:19)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: the hima_observe tool rejects a non-numeric params value with an error result naming the parameter, writing no observation and no verdict
+not ok 13 - the hima_observe tool rejects a non-numeric params value with an error result naming the parameter, writing no observation and no verdict
+  ---
+  duration_ms: 0.337209
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:588:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json
+    Set HIMA_FIXTURES_OPTIONAL=1 to skip the tests that need it instead.
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    requireOpene902Fixture (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/support/opene902-fixtures.ts:51:9)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:589:19)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give
+not ok 14 - POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give
+  ---
+  duration_ms: 0.295792
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:626:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json
+    Set HIMA_FIXTURES_OPTIONAL=1 to skip the tests that need it instead.
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    requireOpene902Fixture (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/support/opene902-fixtures.ts:51:9)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/contract/dc-reader.test.ts:627:19)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 5
+# fail 9
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1727.200917
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 1.752 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

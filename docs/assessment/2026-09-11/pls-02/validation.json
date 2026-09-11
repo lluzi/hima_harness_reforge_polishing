@@ -1,0 +1,59 @@
+{
+  "baseline": "d923fb3621d8f3de0f9ff860951d51fc72ab6f2c",
+  "allOriginalLocalCasesPreserved": 154,
+  "addedCliCases": 1,
+  "counts": {
+    "check-local": {
+      "tests": 155,
+      "pass": 155,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "short-local": {
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "desktop-before-migration": {
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "missing-electron": {
+      "tests": 1,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 1,
+      "cancelled": 0
+    },
+    "missing-fixture-fails": {
+      "tests": 14,
+      "pass": 5,
+      "fail": 9,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "optional-fixture-skips": {
+      "tests": 14,
+      "pass": 5,
+      "fail": 0,
+      "skipped": 9,
+      "cancelled": 0
+    }
+  },
+  "cleanCheckLocalBuildInvocations": 1,
+  "buildInvocationsAcrossMainCheckAndLeafGroups": 1,
+  "desktopMainBoots": 1,
+  "realModelCalls": 0,
+  "realEdaJobs": 0,
+  "remoteSiteTests": "not run; list-only inventory check",
+  "sourceRestoredAfterDependencyNegativeProbes": true,
+  "sourceMismatchPaths": [],
+  "coverageRemoved": 0,
+  "review": "Independent root-coordinated spec and standards reviews: no code blockers; root will update two stale testing-strategy descriptions."
+}

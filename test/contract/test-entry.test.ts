@@ -86,3 +86,23 @@ test('a swallowed SSH start attempt still fails the local entry without starting
     assert.match(result.stderr, /"api":"spawnSync","command":"ssh"/);
   } finally { await f.dispose(); }
 });
+
+test('an explicit subset runs only named files in its group and rejects empty or foreign selections', async () => {
+  const f = await entryFixture();
+  try {
+    const other = 'test/contract/other.test.mjs';
+    await writeFile(path.join(f.root, other), "throw new Error('unselected local file must not load');");
+    f.groups.local.push(other);
+    await f.save();
+    for (const files of [[], [f.groups.desktop[0]!], ['test/contract/absent.test.mjs']]) {
+      const rejected = f.run('local', '--files', ...files);
+      assert.equal(rejected.status, 1, rejected.stderr);
+      assert.equal(await f.loaded(), '', 'invalid subsets fail before module evaluation');
+    }
+    const selected = f.run('local', '--files', f.groups.local[0]!);
+    assert.equal(selected.status, 0, selected.stderr);
+    assert.equal(await f.loaded(), 'local\n');
+    assert.match(selected.stderr, /1 selected; 1 unselected in local/);
+    assert.match(selected.stderr, /command exit code: 0/);
+  } finally { await f.dispose(); }
+});

@@ -1,0 +1,98 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/dc-reader.test.ts
+local: 1 selected; 18 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and cell area from the real opene902 qor report, with its declaration recorded
+ok 1 - the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and cell area from the real opene902 qor report, with its declaration recorded # SKIP opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json (HIMA_FIXTURES_OPTIONAL=1)
+  ---
+  duration_ms: 1.816791
+  type: 'test'
+  ...
+# Subtest: the same real report with a hold violation in it reads as a negative hold slack and FAILs the very rule the unviolated one passes
+ok 2 - the same real report with a hold violation in it reads as a negative hold slack and FAILs the very rule the unviolated one passes # SKIP opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json (HIMA_FIXTURES_OPTIONAL=1)
+  ---
+  duration_ms: 0.349625
+  type: 'test'
+  ...
+# Subtest: a qor report truncated before its first path group yields unknown values with a stated reason for each, never a default
+ok 3 - a qor report truncated before its first path group yields unknown values with a stated reason for each, never a default # SKIP opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json (HIMA_FIXTURES_OPTIONAL=1)
+  ---
+  duration_ms: 0.31575
+  type: 'test'
+  ...
+# Subtest: a qor report missing one line inside its one path group leaves only that value unknown; the rest still read
+ok 4 - a qor report missing one line inside its one path group leaves only that value unknown; the rest still read # SKIP opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json (HIMA_FIXTURES_OPTIONAL=1)
+  ---
+  duration_ms: 0.408875
+  type: 'test'
+  ...
+# Subtest: the real report with a Design Compiler built-in group added that has the worse slack: the clock period is still the clock group's, the setup WNS is the built-in's, and each names the group it came from
+ok 5 - the real report with a Design Compiler built-in group added that has the worse slack: the clock period is still the clock group's, the setup WNS is the built-in's, and each names the group it came from # SKIP opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json (HIMA_FIXTURES_OPTIONAL=1)
+  ---
+  duration_ms: 0.310958
+  type: 'test'
+  ...
+# Subtest: a qor report whose only path groups are Design Compiler built-ins: the clock period is unknown with a reason naming the groups found, and setup WNS is still the worst of them
+ok 6 - a qor report whose only path groups are Design Compiler built-ins: the clock period is unknown with a reason naming the groups found, and setup WNS is still the worst of them
+  ---
+  duration_ms: 770.91325
+  type: 'test'
+  ...
+# Subtest: two clock path groups: setup WNS is the minimum slack naming its group, setup TNS sums every group, hold WNS is the worst violation as a slack, and the clock period is unknown because two clocks are stated
+ok 7 - two clock path groups: setup WNS is the minimum slack naming its group, setup TNS sums every group, hold WNS is the worst violation as a slack, and the clock period is unknown because two clocks are stated
+  ---
+  duration_ms: 156.865666
+  type: 'test'
+  ...
+# Subtest: multiple path groups, one missing its Critical Path Slack line: setup WNS goes unknown naming that group, while TNS and hold WNS (whose lines are complete) still read
+ok 8 - multiple path groups, one missing its Critical Path Slack line: setup WNS goes unknown naming that group, while TNS and hold WNS (whose lines are complete) still read
+  ---
+  duration_ms: 146.754667
+  type: 'test'
+  ...
+# Subtest: the dc-qor-report reader accepts a gzip-compressed report transparently, as the Innovus readers do
+ok 9 - the dc-qor-report reader accepts a gzip-compressed report transparently, as the Innovus readers do
+  ---
+  duration_ms: 149.50575
+  type: 'test'
+  ...
+# Subtest: a report of the wrong kind is refused by the dc-qor-report reader, with no observation recorded
+ok 10 - a report of the wrong kind is refused by the dc-qor-report reader, with no observation recorded
+  ---
+  duration_ms: 152.487291
+  type: 'test'
+  ...
+# Subtest: the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one
+ok 11 - the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one # SKIP opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json (HIMA_FIXTURES_OPTIONAL=1)
+  ---
+  duration_ms: 0.456083
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome
+ok 12 - the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome # SKIP opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json (HIMA_FIXTURES_OPTIONAL=1)
+  ---
+  duration_ms: 0.3045
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool rejects a non-numeric params value with an error result naming the parameter, writing no observation and no verdict
+ok 13 - the hima_observe tool rejects a non-numeric params value with an error result naming the parameter, writing no observation and no verdict # SKIP opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json (HIMA_FIXTURES_OPTIONAL=1)
+  ---
+  duration_ms: 0.257458
+  type: 'test'
+  ...
+# Subtest: POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give
+ok 14 - POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give # SKIP opene902 fixture copy missing at /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt (ENOENT: no such file or directory, open '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/.hima-tmp/deliberately-missing-fixtures/syn/qor.rpt'); see /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean/test/fixtures/opene902.manifest.json (HIMA_FIXTURES_OPTIONAL=1)
+  ---
+  duration_ms: 0.432667
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 9
+# todo 0
+# duration_ms 1499.086584
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 1.522 s; pass/fail/skip counts are in the TAP summary above

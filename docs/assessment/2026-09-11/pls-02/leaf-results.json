@@ -1,0 +1,63 @@
+[
+  {
+    "stage": "short-local",
+    "command": [
+      "pnpm",
+      "run",
+      "test:local",
+      "--files",
+      "test/contract/test-entry.test.ts",
+      "test/contract/boot.test.ts"
+    ],
+    "exitCode": 0,
+    "seconds": 3.298
+  },
+  {
+    "stage": "desktop-before-migration",
+    "command": [
+      "pnpm",
+      "run",
+      "test:desktop",
+      "--files",
+      "test/contract/honest-standin.test.ts"
+    ],
+    "exitCode": 0,
+    "seconds": 23.504
+  },
+  {
+    "stage": "missing-electron",
+    "command": [
+      "pnpm",
+      "run",
+      "test:desktop",
+      "--files",
+      "test/contract/honest-standin.test.ts"
+    ],
+    "exitCode": 0,
+    "seconds": 0.384
+  },
+  {
+    "stage": "missing-fixture-fails",
+    "command": [
+      "pnpm",
+      "run",
+      "test:local",
+      "--files",
+      "test/contract/dc-reader.test.ts"
+    ],
+    "exitCode": 1,
+    "seconds": 2.042
+  },
+  {
+    "stage": "optional-fixture-skips",
+    "command": [
+      "pnpm",
+      "run",
+      "test:local",
+      "--files",
+      "test/contract/dc-reader.test.ts"
+    ],
+    "exitCode": 0,
+    "seconds": 1.742
+  }
+]

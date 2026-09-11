@@ -17,12 +17,20 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 ```sh
 export PATH="/Users/lluzi/.local/node24/bin:$PATH"
 pnpm install --frozen-lockfile --store-dir "$PWD/.hima-tmp/pnpm-store"
-pnpm run build
-pnpm run typecheck
-pnpm run check:seams
+pnpm run check:local
 ```
 
-首次必须先 build：测试的类型声明来自 Harness 的构建输出。源码变化后，运行依赖 `lib/` 的测试前也须构建。依赖和构建产物仅用于本工作区，不与 prototype 共享可写目录。
+`check:local` 依次检查 Node/seams、构建一次、检查类型、执行完整本地组；全新副本没有 `lib/` 也适用。测试的类型声明来自 Harness 的构建输出，因此源码变化后，执行叶测试命令前必须先 `pnpm run build`。依赖和构建产物仅用于本工作区，不与 prototype 共享可写目录。
+
+日常修改先构建一次，再选择相关文件获得短反馈；提交前按影响补足对应验证。以下两组共用同一份新构建：
+
+```sh
+pnpm run build
+pnpm run test:local --files test/contract/test-entry.test.ts test/contract/boot.test.ts
+pnpm run test:desktop --files test/contract/honest-standin.test.ts
+```
+
+`test:local`、`test:desktop` 和 `test:live:site` 只运行选定组，不隐式构建。`test:contract` 是 `test:local` 的兼容入口。`--files` 必须明确列出属于该组的现有文件；不传时执行整组，空选择或跨组选取会失败。完整 local 与相关短子集分别计时，不能把子集通过当成全组通过。
 
 隔离的本地桌面入口如下；`local` 使用受控 stand-in，不是真实 EDA：
 
@@ -34,7 +42,7 @@ DSH_TELEMETRY_DISABLED=1 \
 pnpm run desktop --site local
 ```
 
-当前 `--site local` 每次启动会刷新样例 Pack 和生成的 flow；Campaign workspace 保留。Pack 内资产保留尚未实现，见 POL-07。`pnpm run test:contract` 现在只构建并运行本地组，不加载真实 Site 或桌面用例。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)，PLS-01 的迁移与本次结果见 [验证记录](docs/assessment/2026-09-11/pls-01/README.md)。暂未安装 Git hooks。
+当前 `--site local` 每次启动会刷新样例 Pack 和生成的 flow；Campaign workspace 保留。Pack 内资产保留尚未实现，见 POL-07。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)，入口验证见 [PLS-02 记录](docs/assessment/2026-09-11/pls-02/README.md)。Git hooks 仍须显式 `pnpm run hooks:install` 安装；pre-commit 构建并检查静态类型，pre-push 执行一次 `check:local`。Hook 通过只认证所跑的本地范围，窗口、模型或 Site 检查由实际改动决定。
 
 ## 产品依据
 

@@ -1,0 +1,102 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/test-entry.test.ts test/contract/boot.test.ts
+local: 2 selected; 17 unselected in local; other groups not run (not passes)
+TAP version 13
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 66, column 11:
+#     root: !!js dshHomePath('sessions')
+#           ^^^^
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 81, column 11:
+#     root: !!js dshHomePath('storages')
+#           ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 95, column 11:
+#     mode: !!js process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'
+#           ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 98, column 12:
+#       url: !!js >-
+#            ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 117, column 11:
+#     mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+#           ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 118, column 20:
+#     workspaceRoot: !!js process.cwd()
+#                    ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 121, column 13:
+#   disabled: !!js process.platform === 'win32'
+#             ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 126, column 13:
+#   disabled: !!js process.platform !== 'win32'
+#             ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 130, column 13:
+#     policy: !!js >-
+#             ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 367, column 11:
+#     mode: !!js process.env.DSH_TOOLS_MODE
+#           ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 432, column 11:
+#     host: !!js ctx.webStartup.host ?? '127.0.0.1'
+#           ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 433, column 11:
+#     port: !!js ctx.webStartup.port ?? 3080
+#           ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 442, column 18:
+#     openBrowser: !!js ctx.webStartup.openBrowser
+#                  ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 445, column 19:
+#     trustedHosts: !!js ctx.webStartup.trustedHosts
+#                   ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 455, column 19:
+#     trustedHosts: !!js ctx.webRuntime.trustedHosts
+#                   ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 551, column 15:
+#     sitesDir: !!js dshHomePath('hima/sites')
+#               ^^^^
+# (node:13207) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 552, column 15:
+#     packsDir: !!js dshHomePath('hima/packs')
+#               ^^^^
+# Subtest: the hima profile composes dsh-base, the Hima bundle, and the privacy overlay
+ok 1 - the hima profile composes dsh-base, the Hima bundle, and the privacy overlay
+  ---
+  duration_ms: 61.570167
+  type: 'test'
+  ...
+# Subtest: the hima profile boots as a real host, serves the web app, and stops cleanly on SIGTERM
+ok 2 - the hima profile boots as a real host, serves the web app, and stops cleanly on SIGTERM
+  ---
+  duration_ms: 2344.2375
+  type: 'test'
+  ...
+# Subtest: local selection loads only local files; listing and inventory checking load none
+ok 3 - local selection loads only local files; listing and inventory checking load none
+  ---
+  duration_ms: 227.659792
+  type: 'test'
+  ...
+# Subtest: unclassified, missing and duplicate files stop the entry before any test loads
+ok 4 - unclassified, missing and duplicate files stop the entry before any test loads
+  ---
+  duration_ms: 71.693334
+  type: 'test'
+  ...
+# Subtest: a swallowed SSH start attempt still fails the local entry without starting SSH
+ok 5 - a swallowed SSH start attempt still fails the local entry without starting SSH
+  ---
+  duration_ms: 81.028875
+  type: 'test'
+  ...
+# Subtest: an explicit subset runs only named files in its group and rejects empty or foreign selections
+ok 6 - an explicit subset runs only named files in its group and rejects empty or foreign selections
+  ---
+  duration_ms: 148.956625
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3043.70075
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 3.068 s; pass/fail/skip counts are in the TAP summary above

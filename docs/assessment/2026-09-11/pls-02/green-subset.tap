@@ -1,0 +1,12 @@
+✔ local selection loads only local files; listing and inventory checking load none (231.270375ms)
+✔ unclassified, missing and duplicate files stop the entry before any test loads (69.117667ms)
+✔ a swallowed SSH start attempt still fails the local entry without starting SSH (80.890583ms)
+✔ an explicit subset runs only named files in its group and rejects empty or foreign selections (146.553458ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 583.889709

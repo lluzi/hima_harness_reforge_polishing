@@ -1,0 +1,241 @@
+diff --git a/.githooks/pre-commit b/.githooks/pre-commit
+index 72d6eb4..60af1b0 100755
+--- a/.githooks/pre-commit
++++ b/.githooks/pre-commit
+@@ -1,9 +1,10 @@
+ #!/bin/sh
+-# Enforce, do not remind: seam markers, typecheck, and the unit tests when any exist, before every
+-# commit. There is no lint step: this repository ships no lint tool.
++# Static checks use fresh exported types, including on a checkout without lib/.
++# There is no lint step: this repository ships no lint tool.
+ set -e
+ [ -d "$HOME/.local/node24/bin" ] && PATH="$HOME/.local/node24/bin:$PATH"
+ node scripts/require-node.mjs
+ pnpm run check:seams
++pnpm run build
+ pnpm run typecheck
+ pnpm run test:unit
+diff --git a/.githooks/pre-push b/.githooks/pre-push
+index 38ca9dd..26b7fc1 100755
+--- a/.githooks/pre-push
++++ b/.githooks/pre-push
+@@ -1,7 +1,5 @@
+ #!/bin/sh
+-# The booted-host contract suite runs before anything leaves this machine.
++# One fresh build and the full local group. Desktop/live checks remain task-specific gates.
+ set -e
+ [ -d "$HOME/.local/node24/bin" ] && PATH="$HOME/.local/node24/bin:$PATH"
+-node scripts/require-node.mjs
+-pnpm run build
+-pnpm run test:contract
++pnpm run check:local
+diff --git a/README.md b/README.md
+index 200b538..2968198 100644
+--- a/README.md
++++ b/README.md
+@@ -17,12 +17,20 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
+ ```sh
+ export PATH="/Users/lluzi/.local/node24/bin:$PATH"
+ pnpm install --frozen-lockfile --store-dir "$PWD/.hima-tmp/pnpm-store"
++pnpm run check:local
++```
++
++`check:local` 依次检查 Node/seams、构建一次、检查类型、执行完整本地组；全新副本没有 `lib/` 也适用。测试的类型声明来自 Harness 的构建输出，因此源码变化后，执行叶测试命令前必须先 `pnpm run build`。依赖和构建产物仅用于本工作区，不与 prototype 共享可写目录。
++
++日常修改先构建一次，再选择相关文件获得短反馈；提交前按影响补足对应验证。以下两组共用同一份新构建：
++
++```sh
+ pnpm run build
+-pnpm run typecheck
+-pnpm run check:seams
++pnpm run test:local --files test/contract/test-entry.test.ts test/contract/boot.test.ts
++pnpm run test:desktop --files test/contract/honest-standin.test.ts
+ ```
+ 
+-首次必须先 build：测试的类型声明来自 Harness 的构建输出。源码变化后，运行依赖 `lib/` 的测试前也须构建。依赖和构建产物仅用于本工作区，不与 prototype 共享可写目录。
++`test:local`、`test:desktop` 和 `test:live:site` 只运行选定组，不隐式构建。`test:contract` 是 `test:local` 的兼容入口。`--files` 必须明确列出属于该组的现有文件；不传时执行整组，空选择或跨组选取会失败。完整 local 与相关短子集分别计时，不能把子集通过当成全组通过。
+ 
+ 隔离的本地桌面入口如下；`local` 使用受控 stand-in，不是真实 EDA：
+ 
+@@ -34,7 +42,7 @@ DSH_TELEMETRY_DISABLED=1 \
+ pnpm run desktop --site local
+ ```
+ 
+-当前 `--site local` 每次启动会刷新样例 Pack 和生成的 flow；Campaign workspace 保留。Pack 内资产保留尚未实现，见 POL-07。`pnpm run test:contract` 现在只构建并运行本地组，不加载真实 Site 或桌面用例。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)，PLS-01 的迁移与本次结果见 [验证记录](docs/assessment/2026-09-11/pls-01/README.md)。暂未安装 Git hooks。
++当前 `--site local` 每次启动会刷新样例 Pack 和生成的 flow；Campaign workspace 保留。Pack 内资产保留尚未实现，见 POL-07。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)，入口验证见 [PLS-02 记录](docs/assessment/2026-09-11/pls-02/README.md)。Git hooks 仍须显式 `pnpm run hooks:install` 安装；pre-commit 构建并检查静态类型，pre-push 执行一次 `check:local`。Hook 通过只认证所跑的本地范围，窗口、模型或 Site 检查由实际改动决定。
+ 
+ ## 产品依据
+ 
+diff --git a/package.json b/package.json
+index cbede33..db2fc66 100644
+--- a/package.json
++++ b/package.json
+@@ -13,7 +13,11 @@
+     "typecheck": "pnpm -r run typecheck && tsc -p test/tsconfig.json",
+     "test:unit": "node scripts/run-unit-tests.mjs",
+     "desktop": "pnpm --filter @hima/desktop run build && pnpm --filter @hima/desktop run start",
+-    "test:contract": "pnpm run build && node scripts/run-contract-tests.mjs local",
++    "check:local": "pnpm run check:node && pnpm run check:seams && pnpm run build && pnpm run typecheck && pnpm run test:local",
++    "test:local": "node scripts/run-contract-tests.mjs local",
++    "test:desktop": "node scripts/run-contract-tests.mjs desktop",
++    "test:live:site": "node scripts/run-contract-tests.mjs live-site",
++    "test:contract": "pnpm run test:local",
+     "check:seams": "node scripts/check-seams.mjs",
+     "check:node": "node scripts/require-node.mjs",
+     "hooks:install": "git config core.hooksPath .githooks && echo 'hooks installed'"
+diff --git a/scripts/run-contract-tests.mjs b/scripts/run-contract-tests.mjs
+index b0630a8..a042761 100644
+--- a/scripts/run-contract-tests.mjs
++++ b/scripts/run-contract-tests.mjs
+@@ -1,5 +1,5 @@
+ // Explicit file selection: never import a test merely to find out its resource requirements.
+-// This command uses the current build. PLS-02 owns build-once package/hook composition.
++// Leaf commands use the current build; check:local prepares it once before checking and testing.
+ import { spawnSync } from 'node:child_process';
+ import { lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+ import path from 'node:path';
+@@ -8,7 +8,7 @@ import './require-node.mjs';
+ 
+ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+ const groups = JSON.parse(readFileSync(path.join(root, 'test/contract-groups.json'), 'utf8'));
+-const [group, option, ...extra] = process.argv.slice(2);
++const [group, ...options] = process.argv.slice(2);
+ 
+ function testFiles(dir) {
+   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+@@ -27,16 +27,22 @@ try {
+   if (unclassified.length || missing.length || duplicates.length) {
+     throw new Error(JSON.stringify({ unclassified, missing, duplicates }));
+   }
+-  if (extra.length || (option && option !== '--list') || (group === '--check' && option)) {
+-    throw new Error('usage: node scripts/run-contract-tests.mjs local|desktop|live-site [--list], or --check');
++  const list = options[0] === '--list';
++  const selection = list ? options.slice(1) : options;
++  const explicit = selection[0] === '--files';
++  if ((selection.length && !explicit) || (group === '--check' && options.length)) {
++    throw new Error('usage: node scripts/run-contract-tests.mjs local|desktop|live-site [--list] [--files <path>...], or --check');
+   }
+   if (group === '--check') {
+     console.log(`contract inventory: ${found.length} files, each assigned exactly once`);
+   } else {
+     if (!Object.hasOwn(groups, group)) throw new Error('choose a group: local, desktop, live-site');
+-    const files = groups[group];
++    const files = explicit ? selection.slice(1) : groups[group];
+     if (!files.length) throw new Error(`no tests in ${group}`);
+-    if (option === '--list') {
++    if (files.some((file) => !groups[group].includes(file)) || new Set(files).size !== files.length) {
++      throw new Error(`select distinct files declared in ${group}: ${files.join(', ')}`);
++    }
++    if (list) {
+       console.log(files.join('\n'));
+     } else {
+       // Short, private paths also isolate tmux/SSH sockets; a macOS Unix socket has little room.
+@@ -56,7 +62,8 @@ try {
+         const guard = path.join(root, 'test/contract/support/no-ssh.mjs');
+         env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ''} --import=${JSON.stringify(guard)}`;
+       }
+-      console.error(`${group}: ${files.length} files; other groups not selected (not passes)`);
++      console.error(`${group}: ${files.length} selected; ${groups[group].length - files.length} unselected in ${group}; other groups not run (not passes)`);
++      const started = performance.now();
+       try {
+         const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', '--test-concurrency=1', ...files], {
+           cwd: root, env, stdio: 'inherit',
+@@ -68,6 +75,7 @@ try {
+           console.error(`SSH subprocess attempts: ${attempts.trim() ? attempts.trim().split('\n').length : 0}`);
+           if (attempts) { console.error(attempts); process.exitCode = 1; }
+         }
++        console.error(`${group} command exit code: ${process.exitCode}; elapsed: ${((performance.now() - started) / 1000).toFixed(3)} s; pass/fail/skip counts are in the TAP summary above`);
+       } finally {
+         // Only this invocation's socket directory. Never the user's default tmux server.
+         const tmuxSocket = path.join(temporary, `tmux-${process.getuid()}`, 'default');
+diff --git a/scripts/run-unit-tests.mjs b/scripts/run-unit-tests.mjs
+index 65a4bd7..a1d4f2b 100644
+--- a/scripts/run-unit-tests.mjs
++++ b/scripts/run-unit-tests.mjs
+@@ -1,11 +1,8 @@
+-// The unit-test half of the pre-commit hook, said honestly. HimaHarness's one agreed test seam is
+-// the booted Host (`test/contract`, ADR-0001), so today there are no unit tests at all — but "none
+-// to run" and "they all passed" must never look the same from the outside, and a shell one-liner
+-// that swallows node --test's exit code makes them identical. This script says which of the two
+-// happened and, when unit tests do exist, lets their failure stop the commit.
++// An empty unit suite is not coverage. Propagate actual failures when unit files exist.
+ import { readdirSync, statSync } from 'node:fs';
+ import { spawnSync } from 'node:child_process';
+ import path from 'node:path';
++import './require-node.mjs';
+ 
+ /** Every `*.test.ts` under a package's `src/`: where a unit test would live if one existed. */
+ function unitTestFiles(dir) {
+@@ -21,10 +18,11 @@ function unitTestFiles(dir) {
+ 
+ const files = unitTestFiles('packages').sort();
+ if (files.length === 0) {
+-  console.log('no unit tests: the one test seam is the booted Host (test/contract)');
++  console.log('unit tests: 0 files; not run (no coverage claimed); command exit code: 0. Current L1/L2 checks are in test/contract.');
+   process.exit(0);
+ }
+ console.log(`unit tests: ${String(files.length)} file(s)`);
+ const run = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit' });
+ if (run.error) throw run.error;
++console.log(`unit command exit code: ${run.status ?? 1}`);
+ process.exit(run.status ?? 1);
+diff --git a/test/README.md b/test/README.md
+index 9d1a508..5734221 100644
+--- a/test/README.md
++++ b/test/README.md
+@@ -5,19 +5,22 @@
+ ```sh
+ node scripts/run-contract-tests.mjs --check
+ node scripts/run-contract-tests.mjs local --list
+-node scripts/run-contract-tests.mjs local
++pnpm run check:local
++pnpm run test:local --files test/contract/test-entry.test.ts test/contract/boot.test.ts
+ ```
+ 
+-`pnpm run test:contract` 现在构建后只运行 `local`。构建一次、类型检查、hooks 与短反馈命令的统一编排留给 PLS-02。`test:unit` 目前没有用例，不能作为额外覆盖。
++`check:local` 检查 Node/seams，构建一次，检查类型并运行完整 `local`。下列叶命令使用当前构建，不再内部 build；源码变化后先构建，再跨组复用该产物。`test:contract` 兼容转发到 `test:local`。`test:unit` 目前明确报告 0 文件、未运行，退出 0 不能作为额外覆盖。
+ 
+ | 组 | 内容与前置条件 | 显式入口 |
+ | --- | --- | --- |
+-| local | L1/L2；真实 Host、HTTP、本地文件、独立 tmux 作业及 stand-in。需要 tmux、make 和相关本地报告副本；无需 SSH 凭据、Electron、模型或 EDA | `node scripts/run-contract-tests.mjs local` |
+-| desktop | 含真实 Electron driver 的文件，暂时连同这些文件中的较低成本用例保留。需要桌面环境和 Electron | `node scripts/run-contract-tests.mjs desktop` |
+-| live-site | `ssh.live.test.ts`、`jobs.live.test.ts`、`pack.live.test.ts`；真实 SSH、远端 `make -v`/tmux、约 56 MB 的流程复制与测试目录清理 | `node scripts/run-contract-tests.mjs live-site` |
++| local | L1/L2；真实 Host、HTTP、本地文件、独立 tmux 作业及 stand-in。需要 tmux、make 和相关本地报告副本；无需 SSH 凭据、Electron、模型或 EDA | `pnpm run test:local` |
++| desktop | 含真实 Electron driver 的文件，暂时连同这些文件中的较低成本用例保留。需要桌面环境和 Electron | `pnpm run test:desktop` |
++| live-site | `ssh.live.test.ts`、`jobs.live.test.ts`、`pack.live.test.ts`；真实 SSH、远端 `make -v`/tmux、约 56 MB 的流程复制与测试目录清理 | `pnpm run test:live:site` |
+ 
+ 后两组按分级政策单独选择。不要使用 `test/contract/**/*.test.ts` 全量 glob，也不要用 `--test-name-pattern` 当作外部依赖隔离手段：模块注册发生在名称过滤之前。live 文件另有显式选择检查，误用直接 glob 会在探测前失败。
+ 
++使用 `--files <path>...` 选择相关子集，例如 `pnpm run test:desktop --files test/contract/honest-standin.test.ts`。名称必须精确属于该组，空选择、路径丢失、重复或跨组选取都会在执行前失败。`--list --files ...` 只预览子集。入口输出选中/未选中文件数、TAP 的 pass/fail/skip、耗时及命令退出码；未选中的组和文件是未跑。尚无真实模型或完整 pilot 命令，不提供假通过的空入口。
++
+ 入口在任何导入/执行前对所有 `.test.ts/.test.mjs` 等测试文件核对清单。新增文件未归类、清单路径丢失或重复归类都会失败，不能靠文件名约定静默漏测。`--check` 与 `--list` 均不执行测试。
+ 
+ ## 资源与结果含义
+diff --git a/test/contract/test-entry.test.ts b/test/contract/test-entry.test.ts
+index 2027e4d..5c7bfb9 100644
+--- a/test/contract/test-entry.test.ts
++++ b/test/contract/test-entry.test.ts
+@@ -86,3 +86,23 @@ test('a swallowed SSH start attempt still fails the local entry without starting
+     assert.match(result.stderr, /"api":"spawnSync","command":"ssh"/);
+   } finally { await f.dispose(); }
+ });
++
++test('an explicit subset runs only named files in its group and rejects empty or foreign selections', async () => {
++  const f = await entryFixture();
++  try {
++    const other = 'test/contract/other.test.mjs';
++    await writeFile(path.join(f.root, other), "throw new Error('unselected local file must not load');");
++    f.groups.local.push(other);
++    await f.save();
++    for (const files of [[], [f.groups.desktop[0]!], ['test/contract/absent.test.mjs']]) {
++      const rejected = f.run('local', '--files', ...files);
++      assert.equal(rejected.status, 1, rejected.stderr);
++      assert.equal(await f.loaded(), '', 'invalid subsets fail before module evaluation');
++    }
++    const selected = f.run('local', '--files', f.groups.local[0]!);
++    assert.equal(selected.status, 0, selected.stderr);
++    assert.equal(await f.loaded(), 'local\n');
++    assert.match(selected.stderr, /1 selected; 1 unselected in local/);
++    assert.match(selected.stderr, /command exit code: 0/);
++  } finally { await f.dispose(); }
++});

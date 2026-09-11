@@ -1,0 +1,32 @@
+✔ local selection loads only local files; listing and inventory checking load none (255.519167ms)
+✔ unclassified, missing and duplicate files stop the entry before any test loads (68.741833ms)
+✔ a swallowed SSH start attempt still fails the local entry without starting SSH (84.183167ms)
+✖ an explicit subset runs only named files in its group and rejects empty or foreign selections (90.58875ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 562.07575
+
+✖ failing tests:
+
+test at test/contract/test-entry.test.ts:90:1
+✖ an explicit subset runs only named files in its group and rejects empty or foreign selections (90.58875ms)
+  AssertionError [ERR_ASSERTION]: usage: node scripts/run-contract-tests.mjs local|desktop|live-site [--list], or --check
+  
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/test-entry.test.ts:103:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

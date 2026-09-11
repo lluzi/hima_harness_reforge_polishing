@@ -1,0 +1,54 @@
+[
+  {
+    "stage": "node22-rejected",
+    "command": [
+      "/Users/lluzi/.local/node/bin/node",
+      "scripts/require-node.mjs"
+    ],
+    "exitCode": 1,
+    "seconds": 0.023
+  },
+  {
+    "stage": "unit-none",
+    "command": [
+      "/Users/lluzi/.local/node24/bin/node",
+      "scripts/run-unit-tests.mjs"
+    ],
+    "exitCode": 0,
+    "seconds": 0.025
+  },
+  {
+    "stage": "inventory",
+    "command": [
+      "/Users/lluzi/.local/node24/bin/node",
+      "scripts/run-contract-tests.mjs",
+      "--check"
+    ],
+    "exitCode": 0,
+    "seconds": 0.025
+  },
+  {
+    "stage": "desktop-list",
+    "command": [
+      "/Users/lluzi/.local/node24/bin/node",
+      "scripts/run-contract-tests.mjs",
+      "desktop",
+      "--list",
+      "--files",
+      "test/contract/honest-standin.test.ts"
+    ],
+    "exitCode": 0,
+    "seconds": 0.023
+  },
+  {
+    "stage": "live-list",
+    "command": [
+      "/Users/lluzi/.local/node24/bin/node",
+      "scripts/run-contract-tests.mjs",
+      "live-site",
+      "--list"
+    ],
+    "exitCode": 0,
+    "seconds": 0.024
+  }
+]

@@ -1,5 +1,5 @@
 // Explicit file selection: never import a test merely to find out its resource requirements.
-// This command uses the current build. PLS-02 owns build-once package/hook composition.
+// Leaf commands use the current build; check:local prepares it once before checking and testing.
 import { spawnSync } from 'node:child_process';
 import { lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import './require-node.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const groups = JSON.parse(readFileSync(path.join(root, 'test/contract-groups.json'), 'utf8'));
-const [group, option, ...extra] = process.argv.slice(2);
+const [group, ...options] = process.argv.slice(2);
 
 function testFiles(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -27,16 +27,22 @@ try {
   if (unclassified.length || missing.length || duplicates.length) {
     throw new Error(JSON.stringify({ unclassified, missing, duplicates }));
   }
-  if (extra.length || (option && option !== '--list') || (group === '--check' && option)) {
-    throw new Error('usage: node scripts/run-contract-tests.mjs local|desktop|live-site [--list], or --check');
+  const list = options[0] === '--list';
+  const selection = list ? options.slice(1) : options;
+  const explicit = selection[0] === '--files';
+  if ((selection.length && !explicit) || (group === '--check' && options.length)) {
+    throw new Error('usage: node scripts/run-contract-tests.mjs local|desktop|live-site [--list] [--files <path>...], or --check');
   }
   if (group === '--check') {
     console.log(`contract inventory: ${found.length} files, each assigned exactly once`);
   } else {
     if (!Object.hasOwn(groups, group)) throw new Error('choose a group: local, desktop, live-site');
-    const files = groups[group];
+    const files = explicit ? selection.slice(1) : groups[group];
     if (!files.length) throw new Error(`no tests in ${group}`);
-    if (option === '--list') {
+    if (files.some((file) => !groups[group].includes(file)) || new Set(files).size !== files.length) {
+      throw new Error(`select distinct files declared in ${group}: ${files.join(', ')}`);
+    }
+    if (list) {
       console.log(files.join('\n'));
     } else {
       // Short, private paths also isolate tmux/SSH sockets; a macOS Unix socket has little room.
@@ -56,7 +62,8 @@ try {
         const guard = path.join(root, 'test/contract/support/no-ssh.mjs');
         env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ''} --import=${JSON.stringify(guard)}`;
       }
-      console.error(`${group}: ${files.length} files; other groups not selected (not passes)`);
+      console.error(`${group}: ${files.length} selected; ${groups[group].length - files.length} unselected in ${group}; other groups not run (not passes)`);
+      const started = performance.now();
       try {
         const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', '--test-concurrency=1', ...files], {
           cwd: root, env, stdio: 'inherit',
@@ -68,6 +75,7 @@ try {
           console.error(`SSH subprocess attempts: ${attempts.trim() ? attempts.trim().split('\n').length : 0}`);
           if (attempts) { console.error(attempts); process.exitCode = 1; }
         }
+        console.error(`${group} command exit code: ${process.exitCode}; elapsed: ${((performance.now() - started) / 1000).toFixed(3)} s; pass/fail/skip counts are in the TAP summary above`);
       } finally {
         // Only this invocation's socket directory. Never the user's default tmux server.
         const tmuxSocket = path.join(temporary, `tmux-${process.getuid()}`, 'default');
