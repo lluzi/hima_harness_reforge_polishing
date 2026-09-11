@@ -1,0 +1,13 @@
+{
+  "command": [
+    "pnpm",
+    "run",
+    "test:local",
+    "--files",
+    "test/contract/run-controls.test.ts"
+  ],
+  "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+  "exitCode": 0,
+  "seconds": 5.802,
+  "electronBoots": 0
+}

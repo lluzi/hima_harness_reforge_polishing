@@ -1,0 +1,38 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/run-controls.test.ts
+local: 1 selected; 20 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: simultaneous resumes clear one blocker once and launch only one replacement Job
+not ok 1 - simultaneous resumes clear one blocker once and launch only one replacement Job
+  ---
+  duration_ms: 2191.754792
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/run-controls.test.ts:8:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    one action clears this blocker, even when two faces resume together
+    
+    2 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 2
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/run-controls.test.ts:26:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# [{"kind":"resumed","status":"ended-budget-exhausted"},{"kind":"resumed","status":"ended-budget-exhausted"}]
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2284.447625
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 2.311 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

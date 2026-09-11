@@ -42,6 +42,7 @@ import type {
   BlockerRecord,
   DecisionRecord,
   JobRecord,
+  Ledger,
   LoopOutcome,
   ResumedRecord,
   RunLoop,
@@ -329,6 +330,28 @@ export type ResumeResult =
  *         Run was started with is no longer installed; RunFaultError when a node's turn threw.
  */
 export async function resumeRun(deps: FabricDeps, req: { readonly runId: string; readonly who: string }): Promise<ResumeResult> {
+  // Serialize only admission, never the potentially long-running Job. The next caller then reads
+  // the ledger state the admitted caller wrote and receives the existing not-waiting answer.
+  const chains = resumesPerRun.get(deps.ledger) ?? new Map<string, Promise<unknown>>();
+  resumesPerRun.set(deps.ledger, chains);
+  const pending = (chains.get(req.runId) ?? Promise.resolve()).then(() => admitResume(deps, req));
+  const settled = pending.then(() => undefined, () => undefined);
+  chains.set(req.runId, settled);
+  void settled.then(() => { if (chains.get(req.runId) === settled) chains.delete(req.runId); });
+  const admission = await pending;
+  if (admission.kind !== 'admitted') return admission;
+  await drive(admission.driving);
+  return { kind: 'resumed', run: existingRun(deps.ledger, req.runId), record: admission.record, nodeId: admission.nodeId };
+}
+
+// Like the existing per-Ledger Job/record-write chains: only pending callers live here. Run state,
+// the person's action and the cleared blocker remain in the ledger and survive a Host restart.
+const resumesPerRun = new WeakMap<Ledger, Map<string, Promise<unknown>>>();
+type ResumeAdmission = Exclude<ResumeResult, { kind: 'resumed' }> | {
+  readonly kind: 'admitted'; readonly driving: Driving; readonly record: ResumedRecord; readonly nodeId: string;
+};
+
+async function admitResume(deps: FabricDeps, req: { readonly runId: string; readonly who: string }): Promise<ResumeAdmission> {
   const run = existingRun(deps.ledger, req.runId);
   if (run.status !== 'waiting') return { kind: 'not-waiting', run };
 
@@ -388,7 +411,7 @@ export async function resumeRun(deps: FabricDeps, req: { readonly runId: string;
     ? { branch: { id: blocker.branchId, currentNode: nodeId, state: 'running' as const } }
     : { currentNode: nodeId };
   await deps.ledger.advanceRun(run.id, { status: 'running', ...branch });
-  await drive({
+  return { kind: 'admitted', record, nodeId, driving: {
     deps,
     runId: run.id,
     site,
@@ -399,8 +422,7 @@ export async function resumeRun(deps: FabricDeps, req: { readonly runId: string;
     // Read after the resume is on record, so the wait this resume just closed is part of it: that is
     // the whole of what the box is widened by, and it is what the drive below is bounded against.
     waitedMs: waitedMsOf(deps.ledger, run.id),
-  });
-  return { kind: 'resumed', run: existingRun(deps.ledger, run.id), record, nodeId };
+  } };
 }
 
 /**

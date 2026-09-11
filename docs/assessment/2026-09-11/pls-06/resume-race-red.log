@@ -1,0 +1,52 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/run-controls.test.ts
+local: 1 selected; 20 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: simultaneous resumes clear one blocker once and launch only one replacement Job
+not ok 1 - simultaneous resumes clear one blocker once and launch only one replacement Job
+  ---
+  duration_ms: 1699.263542
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/run-controls.test.ts:8:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    run run-1c59472e-40e4-4a81-9a9e-79eed6f8a1fd of campaign opene902-timing-probe-20260911-092017-1094 on site local: waiting, generation 1 of at most 1
+      workspace: /private/tmp/hima-tests-cTyEbP/hima-home-agPinG/workspace/opene902-timing-probe-20260911-092017-1094
+      goal: clock period at most 2 ns
+      strategy: clock period 2 ns
+      budget: time box 0.5 min, retry allowance 1, at most 1 generation, job cap 1, licences Design-Compiler 1
+      current node: blocked
+      meters:
+        elapsed 348 ms of a time box of 30.0 s
+        generation 1 of at most 1, 208 ms
+        1 job launched, at most 1 job at a time
+        synthesize: attempt 1 of a retry allowance of 1, and 2 attempts in the campaign so far
+        Design-Compiler 0 seats of 1 declared, held for 71 ms
+      nodes:
+        synthesize (act): blocked, attempt 1, session hima-1c59472e-synthesize-1f2f24 holding Design-Compiler 1, job "synthesize" in tmux session hima-1c59472e-synthesize-1f2f24 exited 2; node synthesize has now failed 1 time and spent its retry allowance of 1
+        blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+      blocker: synthesize after 1 attempt, last exit 2, 3 lines of log on record run-1c59472e-40e4-4a81-9a9e-79eed6f8a1fd#000005: job "synthesize" in tmux session hima-1c59472e-synthesize-1f2f24 exited 2; node synthesize has now failed 1 time and spent its retry allowance of 1
+    
+    'error' !== 'success'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'success'
+  actual: 'error'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/run-controls.test.ts:15:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1772.994667
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 1.796 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

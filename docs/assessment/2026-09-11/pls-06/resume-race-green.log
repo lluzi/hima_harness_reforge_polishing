@@ -1,0 +1,21 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/run-controls.test.ts
+local: 1 selected; 20 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: simultaneous resumes clear one blocker once and launch only one replacement Job
+ok 1 - simultaneous resumes clear one blocker once and launch only one replacement Job
+  ---
+  duration_ms: 1908.652875
+  type: 'test'
+  ...
+# [{"kind":"resumed","status":"ended-budget-exhausted"},{"kind":"not-waiting","status":"running"}]
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1991.240292
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 2.020 s; pass/fail/skip counts are in the TAP summary above

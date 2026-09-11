@@ -1,0 +1,11 @@
+{
+  "command": [
+    "pnpm",
+    "run",
+    "typecheck"
+  ],
+  "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+  "exitCode": 0,
+  "seconds": 6.795,
+  "electronBoots": 0
+}
