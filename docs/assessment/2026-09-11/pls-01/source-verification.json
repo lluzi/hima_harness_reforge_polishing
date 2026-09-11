@@ -1,0 +1,17 @@
+{
+  "sourceCommit": "b4ac9d9360ad6da68b5fd2824621ba6edab7408b",
+  "polishingBaselineCommit": "d6cadfbe820594d543655ff32d27e8ba270c423a",
+  "reviewedImplementationCommit": "618fee42c23388aa85f382c347d3935adb506724",
+  "importedFiles": 159,
+  "unchangedImportedFiles": 155,
+  "changedImportedFiles": [
+    "package.json",
+    "test/contract/jobs.test.ts",
+    "test/contract/pack.test.ts",
+    "test/contract/ssh.test.ts"
+  ],
+  "productSourceChanges": 0,
+  "lockfileChanges": 0,
+  "prototypeWrites": 0,
+  "legacyWrites": 0
+}

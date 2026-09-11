@@ -1,0 +1,10 @@
+{
+  "command": [
+    "node",
+    "scripts/run-contract-tests.mjs",
+    "local"
+  ],
+  "exitCode": 0,
+  "seconds": 437.77,
+  "sshAttempts": 0
+}

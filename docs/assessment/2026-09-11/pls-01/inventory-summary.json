@@ -1,0 +1,34 @@
+{
+  "originalFiles": 29,
+  "originalTestDeclarations": 230,
+  "originalAssertionExpressions": 2640,
+  "originalAssertionsPreserved": 2640,
+  "groups": {
+    "local": {
+      "files": 19,
+      "originalDeclarations": 151
+    },
+    "desktop": {
+      "files": 11,
+      "originalDeclarations": 64
+    },
+    "live-site": {
+      "files": 3,
+      "originalDeclarations": 15
+    }
+  },
+  "newCases": [
+    {
+      "file": "test/contract/test-entry.test.ts",
+      "title": "'local selection loads only local files; listing and inventory checking load none'"
+    },
+    {
+      "file": "test/contract/test-entry.test.ts",
+      "title": "'unclassified, missing and duplicate files stop the entry before any test loads'"
+    },
+    {
+      "file": "test/contract/test-entry.test.ts",
+      "title": "'a swallowed SSH start attempt still fails the local entry without starting SSH'"
+    }
+  ]
+}

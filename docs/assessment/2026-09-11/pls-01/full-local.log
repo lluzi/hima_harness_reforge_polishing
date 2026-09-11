@@ -1,0 +1,2001 @@
+local: 19 files; other groups not selected (not passes)
+TAP version 13
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 66, column 11:
+#     root: !!js dshHomePath('sessions')
+#           ^^^^
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 81, column 11:
+#     root: !!js dshHomePath('storages')
+#           ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 95, column 11:
+#     mode: !!js process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'
+#           ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 98, column 12:
+#       url: !!js >-
+#            ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 117, column 11:
+#     mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+#           ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 118, column 20:
+#     workspaceRoot: !!js process.cwd()
+#                    ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 121, column 13:
+#   disabled: !!js process.platform === 'win32'
+#             ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 126, column 13:
+#   disabled: !!js process.platform !== 'win32'
+#             ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 130, column 13:
+#     policy: !!js >-
+#             ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 367, column 11:
+#     mode: !!js process.env.DSH_TOOLS_MODE
+#           ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 432, column 11:
+#     host: !!js ctx.webStartup.host ?? '127.0.0.1'
+#           ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 433, column 11:
+#     port: !!js ctx.webStartup.port ?? 3080
+#           ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 442, column 18:
+#     openBrowser: !!js ctx.webStartup.openBrowser
+#                  ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 445, column 19:
+#     trustedHosts: !!js ctx.webStartup.trustedHosts
+#                   ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 455, column 19:
+#     trustedHosts: !!js ctx.webRuntime.trustedHosts
+#                   ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 551, column 15:
+#     sitesDir: !!js dshHomePath('hima/sites')
+#               ^^^^
+# (node:24453) [TAG_RESOLVE_FAILED] YAMLWarning: Unresolved tag: tag:yaml.org,2002:js at line 552, column 15:
+#     packsDir: !!js dshHomePath('hima/packs')
+#               ^^^^
+# Subtest: the hima profile composes dsh-base, the Hima bundle, and the privacy overlay
+ok 1 - the hima profile composes dsh-base, the Hima bundle, and the privacy overlay
+  ---
+  duration_ms: 70.568833
+  type: 'test'
+  ...
+# Subtest: the hima profile boots as a real host, serves the web app, and stops cleanly on SIGTERM
+ok 2 - the hima profile boots as a real host, serves the web app, and stops cleanly on SIGTERM
+  ---
+  duration_ms: 2435.590584
+  type: 'test'
+  ...
+# Subtest: /hima version answers with the bundle and host versions, without a model turn
+ok 3 - /hima version answers with the bundle and host versions, without a model turn
+  ---
+  duration_ms: 420.707459
+  type: 'test'
+  ...
+# Subtest: the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and cell area from the real opene902 qor report, with its declaration recorded
+ok 4 - the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and cell area from the real opene902 qor report, with its declaration recorded
+  ---
+  duration_ms: 428.061916
+  type: 'test'
+  ...
+# Subtest: the same real report with a hold violation in it reads as a negative hold slack and FAILs the very rule the unviolated one passes
+ok 5 - the same real report with a hold violation in it reads as a negative hold slack and FAILs the very rule the unviolated one passes
+  ---
+  duration_ms: 181.941833
+  type: 'test'
+  ...
+# Subtest: a qor report truncated before its first path group yields unknown values with a stated reason for each, never a default
+ok 6 - a qor report truncated before its first path group yields unknown values with a stated reason for each, never a default
+  ---
+  duration_ms: 149.406833
+  type: 'test'
+  ...
+# Subtest: a qor report missing one line inside its one path group leaves only that value unknown; the rest still read
+ok 7 - a qor report missing one line inside its one path group leaves only that value unknown; the rest still read
+  ---
+  duration_ms: 144.949375
+  type: 'test'
+  ...
+# Subtest: the real report with a Design Compiler built-in group added that has the worse slack: the clock period is still the clock group's, the setup WNS is the built-in's, and each names the group it came from
+ok 8 - the real report with a Design Compiler built-in group added that has the worse slack: the clock period is still the clock group's, the setup WNS is the built-in's, and each names the group it came from
+  ---
+  duration_ms: 143.1505
+  type: 'test'
+  ...
+# Subtest: a qor report whose only path groups are Design Compiler built-ins: the clock period is unknown with a reason naming the groups found, and setup WNS is still the worst of them
+ok 9 - a qor report whose only path groups are Design Compiler built-ins: the clock period is unknown with a reason naming the groups found, and setup WNS is still the worst of them
+  ---
+  duration_ms: 146.43575
+  type: 'test'
+  ...
+# Subtest: two clock path groups: setup WNS is the minimum slack naming its group, setup TNS sums every group, hold WNS is the worst violation as a slack, and the clock period is unknown because two clocks are stated
+ok 10 - two clock path groups: setup WNS is the minimum slack naming its group, setup TNS sums every group, hold WNS is the worst violation as a slack, and the clock period is unknown because two clocks are stated
+  ---
+  duration_ms: 156.360208
+  type: 'test'
+  ...
+# Subtest: multiple path groups, one missing its Critical Path Slack line: setup WNS goes unknown naming that group, while TNS and hold WNS (whose lines are complete) still read
+ok 11 - multiple path groups, one missing its Critical Path Slack line: setup WNS goes unknown naming that group, while TNS and hold WNS (whose lines are complete) still read
+  ---
+  duration_ms: 224.434208
+  type: 'test'
+  ...
+# Subtest: the dc-qor-report reader accepts a gzip-compressed report transparently, as the Innovus readers do
+ok 12 - the dc-qor-report reader accepts a gzip-compressed report transparently, as the Innovus readers do
+  ---
+  duration_ms: 152.139334
+  type: 'test'
+  ...
+# Subtest: a report of the wrong kind is refused by the dc-qor-report reader, with no observation recorded
+ok 13 - a report of the wrong kind is refused by the dc-qor-report reader, with no observation recorded
+  ---
+  duration_ms: 148.151875
+  type: 'test'
+  ...
+# Subtest: the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one
+ok 14 - the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one
+  ---
+  duration_ms: 323.729625
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome
+ok 15 - the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome
+  ---
+  duration_ms: 167.002834
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool rejects a non-numeric params value with an error result naming the parameter, writing no observation and no verdict
+ok 16 - the hima_observe tool rejects a non-numeric params value with an error result naming the parameter, writing no observation and no verdict
+  ---
+  duration_ms: 160.818833
+  type: 'test'
+  ...
+# Subtest: POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give
+ok 17 - POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give
+  ---
+  duration_ms: 1675.625417
+  type: 'test'
+  ...
+# Subtest: a licence bounds a launch the way the job cap does: a second run waits for the one seat the site declares, on a site with a free job slot
+ok 18 - a licence bounds a launch the way the job cap does: a second run waits for the one seat the site declares, on a site with a free job slot
+  ---
+  duration_ms: 16488.051625
+  type: 'test'
+  ...
+# the queued run waited: site local declares 1 licence of "synopsys" and is holding 1, and this launch needs 1; this node waits for a slot
+# the seat was released at 2026-09-11T08:39:10.036Z and the queued run launched at 2026-09-11T08:39:10.080Z
+# run run-0343b908-6c7e-4d0b-859f-7e60ff3e986d held synopsys for 6156 ms of 8538 ms elapsed
+# run run-25ee8de1-3205-4247-b942-0b360abd04b2 held synopsys for 8210 ms of 12768 ms elapsed
+# Subtest: a pack whose tool holds a licence the site does not declare is unfit, and the run is refused before anything is launched
+ok 19 - a pack whose tool holds a licence the site does not declare is unfit, and the run is refused before anything is launched
+  ---
+  duration_ms: 526.009333
+  type: 'test'
+  ...
+# pack wants-synopsys@1 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-Q6kwA6/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-Q6kwA6/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found
+#   clock-period-at-most@1: found
+# readers:
+#   dc-qor-report@1 reads qorReport: found
+# choosers:
+#   timing-push@1 chooses at next-period: found
+# licences:
+#   synth holds 1 of "synopsys": site local does not declare it; add it under capacity.licences: in /private/tmp/hima-tests-OTJ0NH/hima-home-Q6kwA6/hima/sites/local.yml
+# errors:
+#   - tool "synth" holds 1 of "synopsys": site local does not declare it; add it under capacity.licences: in /private/tmp/hima-tests-OTJ0NH/hima-home-Q6kwA6/hima/sites/local.yml
+# pack wants-synopsys@1 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-Q6kwA6/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-Q6kwA6/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found
+#   clock-period-at-most@1: found
+# readers:
+#   dc-qor-report@1 reads qorReport: found
+# choosers:
+#   timing-push@1 chooses at next-period: found
+# licences:
+#   synth holds 1 of "synopsys": site local does not declare it; add it under capacity.licences: in /private/tmp/hima-tests-OTJ0NH/hima-home-Q6kwA6/hima/sites/local.yml
+# errors:
+#   - tool "synth" holds 1 of "synopsys": site local does not declare it; add it under capacity.licences: in /private/tmp/hima-tests-OTJ0NH/hima-home-Q6kwA6/hima/sites/local.yml
+# Subtest: a site that declares none of a licence can never host a tool that holds it, and says so rather than letting a run wait for ever
+ok 20 - a site that declares none of a licence can never host a tool that holds it, and says so rather than letting a run wait for ever
+  ---
+  duration_ms: 128.993875
+  type: 'test'
+  ...
+# pack reserves-none@1 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-4itMHF/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-4itMHF/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found
+#   clock-period-at-most@1: found
+# readers:
+#   dc-qor-report@1 reads qorReport: found
+# choosers:
+#   timing-push@1 chooses at next-period: found
+# licences:
+#   synth holds 1 of "synopsys": site local declares 0 of it, so a job of this tool could never launch there
+# errors:
+#   - tool "synth" holds 1 of "synopsys": site local declares 0 of it, so a job of this tool could never launch there
+# Subtest: the shipped pack declares the seat its Design Compiler tool holds, and the local site declares one to give it
+ok 21 - the shipped pack declares the seat its Design Compiler tool holds, and the local site declares one to give it
+  ---
+  duration_ms: 3734.049208
+  type: 'test'
+  ...
+# pack opene902-timing-probe@1 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-wmE0Ov/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-wmE0Ov/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found
+#   clock-period-at-most@1: found
+# readers:
+#   dc-qor-report@1 reads qorReport: found
+# choosers:
+#   timing-push@1 chooses at next-period: found
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# run run-33cffbf5-a94e-4853-abbb-e1dc3d940c00 of campaign opene902-timing-probe-20260911-083919-fd57 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-wmE0Ov/workspace/opene902-timing-probe-20260911-083919-fd57
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 3.6 s of a time box of 60.0 min
+#     generation 1 of at most 1, 3.4 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.1 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-33cffbf5-synthesize-484a93 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-33cffbf5-a94e-4853-abbb-e1dc3d940c00\#000010, run-33cffbf5-a94e-4853-abbb-e1dc3d940c00\#000011, run-33cffbf5-a94e-4853-abbb-e1dc3d940c00\#000007, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:39:23.126Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-wmE0Ov/workspace/opene902-timing-probe-20260911-083919-fd57/hima-experience/run-33cffbf5-a94e-4853-abbb-e1dc3d940c00.md · sha256 b1cbb0745def5f2966dff935d43ac36f82cb7114bf91f03d6e1ee0135b685a5d · 1661 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-wmE0Ov/workspace/opene902-timing-probe-20260911-083919-fd57/hima-experience/run-33cffbf5-a94e-4853-abbb-e1dc3d940c00.json · sha256 a2b927004f1506054ba033137e1cda872ffa1777a663d56970f9d70b82906b88 · 2319 bytes
+# Subtest: a host disposed while the job sleeps is replaced by one that finds the same job still running and carries the run to its end, launching nothing twice
+ok 22 - a host disposed while the job sleeps is replaced by one that finds the same job still running and carries the run to its end, launching nothing twice
+  ---
+  duration_ms: 21710.152542
+  type: 'test'
+  ...
+# run run-260c675a-d917-48ae-92d9-dfe014cf6228 of campaign opene902-timing-probe-20260911-083923-f51b on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-KaFaWz/workspace/opene902-timing-probe-20260911-083923-f51b
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 21.3 s of a time box of 60.0 min
+#     generation 1 of at most 1, 21.2 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 20.9 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-260c675a-synthesize-0136f9 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-260c675a-d917-48ae-92d9-dfe014cf6228\#000011, run-260c675a-d917-48ae-92d9-dfe014cf6228\#000012, run-260c675a-d917-48ae-92d9-dfe014cf6228\#000008, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:39:44.960Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-KaFaWz/workspace/opene902-timing-probe-20260911-083923-f51b/hima-experience/run-260c675a-d917-48ae-92d9-dfe014cf6228.md · sha256 27e753c198b0a808ee20ac7811d6482c0dfcd14c415171562569d4b18aceed15 · 1666 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-KaFaWz/workspace/opene902-timing-probe-20260911-083923-f51b/hima-experience/run-260c675a-d917-48ae-92d9-dfe014cf6228.json · sha256 6b244ad9f50909f385f58ea1230e4a29c8f6c96bfd0616de012f6c70c9727957 · 2323 bytes
+# Subtest: a job that finished while the host was down is picked up from its exit file, and the run continues from there
+ok 23 - a job that finished while the host was down is picked up from its exit file, and the run continues from there
+  ---
+  duration_ms: 6678.370583
+  type: 'test'
+  ...
+# Subtest: a job gone without an exit file is a failed attempt: the node is recorded as gone and the run waits, naming it
+ok 24 - a job gone without an exit file is a failed attempt: the node is recorded as gone and the run waits, naming it
+  ---
+  duration_ms: 992.858
+  type: 'test'
+  ...
+# run run-05ec4a32-f9fe-4b5d-8088-c148bba0cd11 of campaign opene902-timing-probe-20260911-083951-668f on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-PfIU7C/workspace/opene902-timing-probe-20260911-083951-668f
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 1, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 838 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 765 ms
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 1, and 2 attempts in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 693 ms
+#   nodes:
+#     synthesize (act): blocked, attempt 1, session hima-05ec4a32-synthesize-ef5ee9 holding Design-Compiler 1, job "synthesize" is gone: tmux session hima-05ec4a32-synthesize-ef5ee9 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   blocker: synthesize after 1 attempt, 1 line of log on record run-05ec4a32-f9fe-4b5d-8088-c148bba0cd11\#000005: job "synthesize" is gone: tmux session hima-05ec4a32-synthesize-ef5ee9 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+# Subtest: a host booting onto a job that vanished retries it under the default allowance: a second attempt, and never two jobs on the site at once
+ok 25 - a host booting onto a job that vanished retries it under the default allowance: a second attempt, and never two jobs on the site at once
+  ---
+  duration_ms: 21563.161917
+  type: 'test'
+  ...
+# run run-c4143d94-5eb7-40d4-a98e-3515166563ed of campaign opene902-timing-probe-20260911-083952-a0cf on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-y9UrLM/workspace/opene902-timing-probe-20260911-083952-a0cf
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 3 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 21.4 s of a time box of 3.0 min
+#     generation 1 of at most 1, 21.3 s
+#     2 jobs launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 5 attempts in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 21.0 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 2, session hima-c4143d94-synthesize-9e328d holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-c4143d94-5eb7-40d4-a98e-3515166563ed\#000014, run-c4143d94-5eb7-40d4-a98e-3515166563ed\#000015, run-c4143d94-5eb7-40d4-a98e-3515166563ed\#000011, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:40:14.198Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-y9UrLM/workspace/opene902-timing-probe-20260911-083952-a0cf/hima-experience/run-c4143d94-5eb7-40d4-a98e-3515166563ed.md · sha256 f87bfd43322e1fb12e0f2e0b19ef95d1f571358cd5960be977f2ee5965e8cf4c · 1665 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-y9UrLM/workspace/opene902-timing-probe-20260911-083952-a0cf/hima-experience/run-c4143d94-5eb7-40d4-a98e-3515166563ed.json · sha256 373b098e2e6bf3830ed7c15651dc9049e7cd0e1e8600d2b0190ce893295b27d0 · 2322 bytes
+# Subtest: a run cancelled while the reconciliation is carrying an earlier one on keeps the ending a person gave it
+ok 26 - a run cancelled while the reconciliation is carrying an earlier one on keeps the ending a person gave it
+  ---
+  duration_ms: 22069.261959
+  type: 'test'
+  ...
+# cancelled run run-7b1e5f32-3085-452a-9e5d-9d15133042f7: stopped its job "synthesize" in tmux session hima-7b1e5f32-synthesize-b79d42, recorded as run-7b1e5f32-3085-452a-9e5d-9d15133042f7\#000005
+# run run-7b1e5f32-3085-452a-9e5d-9d15133042f7 of campaign opene902-timing-probe-20260911-084015-617d on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-lhfRmy/workspace/opene902-timing-probe-20260911-084015-617d
+#   goal: clock period at most 2.1 ns
+#   strategy: clock period 2.1 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 2, licences Design-Compiler 2
+#   current node: synthesize
+#   meters:
+#     elapsed 948 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 867 ms
+#     1 job launched, at most 2 jobs at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 1 attempt in the campaign so far
+#     Design-Compiler 0 seats of 2 declared, held for 799 ms
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): cancelled, attempt 1, session hima-7b1e5f32-synthesize-b79d42 holding Design-Compiler 1
+#   cancel: asked at 2026-09-11T08:40:15.889Z, node synthesize, session hima-7b1e5f32-synthesize-b79d42; hima-7b1e5f32-synthesize-b79d42 stopped, recorded as run-7b1e5f32-3085-452a-9e5d-9d15133042f7\#000005
+#   experience: written at 2026-09-11T08:40:15.969Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-lhfRmy/workspace/opene902-timing-probe-20260911-084015-617d/hima-experience/run-7b1e5f32-3085-452a-9e5d-9d15133042f7.md · sha256 6354c58dcd5326821275be145af8c207eef3d95c5ba5e7e0d9596450fe714907 · 1576 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-lhfRmy/workspace/opene902-timing-probe-20260911-084015-617d/hima-experience/run-7b1e5f32-3085-452a-9e5d-9d15133042f7.json · sha256 588df51ac5208fa9d1343c2a3fe827fd43c29c69fc5ecd874d2599fcc298dbe4 · 1644 bytes
+# run-f9f2614b-b0e7-4637-8e04-2425ddf19ca6: running — job "synthesize" in tmux session hima-f9f2614b-synthesize-776fca is still running; this run waits for it again
+# run-7b1e5f32-3085-452a-9e5d-9d15133042f7: stopped-elsewhere — this run no longer says it is running; the run was stopped from another face while it was being picked up, so nothing was written
+# Subtest: /hima cancel stops the sleeping job on the site, records the request and the observed stop, and ends the run cancelled
+ok 27 - /hima cancel stops the sleeping job on the site, records the request and the observed stop, and ends the run cancelled
+  ---
+  duration_ms: 818.281375
+  type: 'test'
+  ...
+# cancelled run run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe: stopped its job "synthesize" in tmux session hima-b37d95b4-synthesize-5ec394, recorded as run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe\#000005
+# run run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe of campaign opene902-timing-probe-20260911-084036-dfef on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-QN8EzI/workspace/opene902-timing-probe-20260911-084036-dfef
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 278 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 208 ms
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 1 attempt in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 150 ms
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): cancelled, attempt 1, session hima-b37d95b4-synthesize-5ec394 holding Design-Compiler 1
+#   cancel: asked at 2026-09-11T08:40:36.682Z, node synthesize, session hima-b37d95b4-synthesize-5ec394; hima-b37d95b4-synthesize-5ec394 stopped, recorded as run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe\#000005
+#   experience: written at 2026-09-11T08:40:36.758Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-QN8EzI/workspace/opene902-timing-probe-20260911-084036-dfef/hima-experience/run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe.md · sha256 cd2664a1e7ce1985f2e739f174da16ea6254f290eb46c20566a7c2fb01aa169f · 1569 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-QN8EzI/workspace/opene902-timing-probe-20260911-084036-dfef/hima-experience/run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe.json · sha256 fdf0e70d491d7e59ac129560a000a0c16c6dc54d241adc6424cfd9bcb3307e05 · 1640 bytes
+# run run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe of campaign opene902-timing-probe-20260911-084036-dfef on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-QN8EzI/workspace/opene902-timing-probe-20260911-084036-dfef
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 278 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 208 ms
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 1 attempt in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 150 ms
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): cancelled, attempt 1, session hima-b37d95b4-synthesize-5ec394 holding Design-Compiler 1
+#   cancel: asked at 2026-09-11T08:40:36.682Z, node synthesize, session hima-b37d95b4-synthesize-5ec394; hima-b37d95b4-synthesize-5ec394 stopped, recorded as run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe\#000005
+#   experience: written at 2026-09-11T08:40:36.758Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-QN8EzI/workspace/opene902-timing-probe-20260911-084036-dfef/hima-experience/run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe.md · sha256 cd2664a1e7ce1985f2e739f174da16ea6254f290eb46c20566a7c2fb01aa169f · 1569 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-QN8EzI/workspace/opene902-timing-probe-20260911-084036-dfef/hima-experience/run-b37d95b4-cd8e-4241-8d6b-aeb411fcbbbe.json · sha256 fdf0e70d491d7e59ac129560a000a0c16c6dc54d241adc6424cfd9bcb3307e05 · 1640 bytes
+# Subtest: a run cancelled while /hima resume is still waiting on the job it launched is that command's success, not its error
+ok 28 - a run cancelled while /hima resume is still waiting on the job it launched is that command's success, not its error
+  ---
+  duration_ms: 1652.316791
+  type: 'test'
+  ...
+# cancelled run run-aa1acd69-1eff-4108-996c-0e248e9b9c9b: stopped its job "synthesize" in tmux session hima-aa1acd69-synthesize-366623, recorded as run-aa1acd69-1eff-4108-996c-0e248e9b9c9b\#000012
+# run run-aa1acd69-1eff-4108-996c-0e248e9b9c9b of campaign opene902-timing-probe-20260911-084037-2f56 on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-5aWglt/workspace/opene902-timing-probe-20260911-084037-2f56
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 1, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 1.2 s of a time box of 60.0 min, 85 ms of it waiting on a person, which widens the box by as much
+#     generation 1 of at most 1, 1.1 s
+#     2 jobs launched, at most 1 job at a time
+#     synthesize: attempt 2 of a retry allowance of 1, and 3 attempts in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 907 ms
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): cancelled, attempt 2, session hima-aa1acd69-synthesize-366623 holding Design-Compiler 1
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   blocker: synthesize after 1 attempt, 1 line of log on record run-aa1acd69-1eff-4108-996c-0e248e9b9c9b\#000005: job "synthesize" is gone: tmux session hima-aa1acd69-synthesize-bd8bf8 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+#   resumed: synthesize by session-c19a4d87-a85a-4137-afb1-2f5113244f27 at 2026-09-11T08:40:38.182Z
+#   cancel: asked at 2026-09-11T08:40:38.390Z, node synthesize, session hima-aa1acd69-synthesize-366623; hima-aa1acd69-synthesize-366623 stopped, recorded as run-aa1acd69-1eff-4108-996c-0e248e9b9c9b\#000012
+#   experience: written at 2026-09-11T08:40:38.465Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-5aWglt/workspace/opene902-timing-probe-20260911-084037-2f56/hima-experience/run-aa1acd69-1eff-4108-996c-0e248e9b9c9b.md · sha256 9ee9277a37fa44e31e44e0c21bdb0083004952ee28da973b3e2c0271d368b83d · 2073 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-5aWglt/workspace/opene902-timing-probe-20260911-084037-2f56/hima-experience/run-aa1acd69-1eff-4108-996c-0e248e9b9c9b.json · sha256 7ac9c4f870cb0e022a298b7af3b1a41d5ad7b5e35a022bbf0eaf5f53b1238ede · 2403 bytes
+# resumed run-aa1acd69-1eff-4108-996c-0e248e9b9c9b at node synthesize; recorded as run-aa1acd69-1eff-4108-996c-0e248e9b9c9b\#000008
+# run run-aa1acd69-1eff-4108-996c-0e248e9b9c9b of campaign opene902-timing-probe-20260911-084037-2f56 on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-5aWglt/workspace/opene902-timing-probe-20260911-084037-2f56
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 1, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 1.2 s of a time box of 60.0 min, 85 ms of it waiting on a person, which widens the box by as much
+#     generation 1 of at most 1, 1.1 s
+#     2 jobs launched, at most 1 job at a time
+#     synthesize: attempt 2 of a retry allowance of 1, and 3 attempts in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 907 ms
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): cancelled, attempt 2, session hima-aa1acd69-synthesize-366623 holding Design-Compiler 1
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   blocker: synthesize after 1 attempt, 1 line of log on record run-aa1acd69-1eff-4108-996c-0e248e9b9c9b\#000005: job "synthesize" is gone: tmux session hima-aa1acd69-synthesize-bd8bf8 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+#   resumed: synthesize by session-c19a4d87-a85a-4137-afb1-2f5113244f27 at 2026-09-11T08:40:38.182Z
+#   cancel: asked at 2026-09-11T08:40:38.390Z, node synthesize, session hima-aa1acd69-synthesize-366623; hima-aa1acd69-synthesize-366623 stopped, recorded as run-aa1acd69-1eff-4108-996c-0e248e9b9c9b\#000012
+#   experience: written at 2026-09-11T08:40:38.465Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-5aWglt/workspace/opene902-timing-probe-20260911-084037-2f56/hima-experience/run-aa1acd69-1eff-4108-996c-0e248e9b9c9b.md · sha256 9ee9277a37fa44e31e44e0c21bdb0083004952ee28da973b3e2c0271d368b83d · 2073 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-5aWglt/workspace/opene902-timing-probe-20260911-084037-2f56/hima-experience/run-aa1acd69-1eff-4108-996c-0e248e9b9c9b.json · sha256 7ac9c4f870cb0e022a298b7af3b1a41d5ad7b5e35a022bbf0eaf5f53b1238ede · 2403 bytes
+# Subtest: the hima_cancel tool stops the same job the command face does, and answers with what it stopped
+ok 29 - the hima_cancel tool stops the same job the command face does, and answers with what it stopped
+  ---
+  duration_ms: 789.414208
+  type: 'test'
+  ...
+# Subtest: a cancel that arrives while the job is still being launched leaves nothing of the run running on the site
+ok 30 - a cancel that arrives while the job is still being launched leaves nothing of the run running on the site
+  ---
+  duration_ms: 489.198333
+  type: 'test'
+  ...
+# the cancel was asked 966 time(s) before the run had a fabric state to cancel
+# cancelled run run-29f02696-2e71-466a-a067-f9550f827c9b: no job of this run was open when the request was read
+# run run-29f02696-2e71-466a-a067-f9550f827c9b of campaign opene902-timing-probe-20260911-084039-28a3 on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-pfQDA5/workspace/opene902-timing-probe-20260911-084039-28a3
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 218 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 86 ms
+#     0 jobs launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+#     Design-Compiler 1 seat of 1 declared
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): running, attempt 1, session hima-29f02696-synthesize-613045 holding Design-Compiler 1
+#   cancel: asked at 2026-09-11T08:40:39.869Z, node synthesize; no job of this run was open when the request was read
+#   experience: written at 2026-09-11T08:40:39.981Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-pfQDA5/workspace/opene902-timing-probe-20260911-084039-28a3/hima-experience/run-29f02696-2e71-466a-a067-f9550f827c9b.md · sha256 412fa28edf2f2b011e63a6af1edd76b5b8aa609277bb13eb5580c67333ce0cc5 · 1533 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-pfQDA5/workspace/opene902-timing-probe-20260911-084039-28a3/hima-experience/run-29f02696-2e71-466a-a067-f9550f827c9b.json · sha256 615c05f4d8dc3f97c91c201fde2d1b91243cdfb7341a43ed3cb7435f690a215f · 1410 bytes
+# run run-29f02696-2e71-466a-a067-f9550f827c9b of campaign opene902-timing-probe-20260911-084039-28a3 on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-pfQDA5/workspace/opene902-timing-probe-20260911-084039-28a3
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 267 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 135 ms
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 1 attempt in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): cancelled, attempt 1, session hima-29f02696-synthesize-613045 holding Design-Compiler 1
+#   cancel: asked at 2026-09-11T08:40:39.869Z, node synthesize; no job of this run was open when the request was read
+#   experience: written at 2026-09-11T08:40:39.981Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-pfQDA5/workspace/opene902-timing-probe-20260911-084039-28a3/hima-experience/run-29f02696-2e71-466a-a067-f9550f827c9b.md · sha256 412fa28edf2f2b011e63a6af1edd76b5b8aa609277bb13eb5580c67333ce0cc5 · 1533 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-pfQDA5/workspace/opene902-timing-probe-20260911-084039-28a3/hima-experience/run-29f02696-2e71-466a-a067-f9550f827c9b.json · sha256 615c05f4d8dc3f97c91c201fde2d1b91243cdfb7341a43ed3cb7435f690a215f · 1410 bytes
+# Subtest: cancelling a run whose job the ledger has already settled writes one blocker, not a second, and the node ends cancelled
+ok 31 - cancelling a run whose job the ledger has already settled writes one blocker, not a second, and the node ends cancelled
+  ---
+  duration_ms: 1040.7645
+  type: 'test'
+  ...
+# cancelled run run-a08815d3-a257-4e4c-8060-4d440f2b3fd9: no job of this run was open when the request was read
+# run run-a08815d3-a257-4e4c-8060-4d440f2b3fd9 of campaign opene902-timing-probe-20260911-084040-96dd on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-GdSX6Z/workspace/opene902-timing-probe-20260911-084040-96dd
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 1, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 894 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 823 ms
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 1, and 2 attempts in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 682 ms
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): blocked, attempt 1, session hima-a08815d3-synthesize-89d972 holding Design-Compiler 1, job "synthesize" is gone: tmux session hima-a08815d3-synthesize-89d972 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+#     blocked (wait): cancelled, attempt 1
+#   blocker: synthesize after 1 attempt, 1 line of log on record run-a08815d3-a257-4e4c-8060-4d440f2b3fd9\#000005: job "synthesize" is gone: tmux session hima-a08815d3-synthesize-89d972 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+#   cancel: asked at 2026-09-11T08:40:41.058Z, node blocked; no job of this run was open when the request was read
+#   experience: written at 2026-09-11T08:40:41.111Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-GdSX6Z/workspace/opene902-timing-probe-20260911-084040-96dd/hima-experience/run-a08815d3-a257-4e4c-8060-4d440f2b3fd9.md · sha256 7628abc61605d84d6e91fa80c8d12ebf251429bb8d478b774e0acffaffbb3b13 · 2140 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-GdSX6Z/workspace/opene902-timing-probe-20260911-084040-96dd/hima-experience/run-a08815d3-a257-4e4c-8060-4d440f2b3fd9.json · sha256 9eec8ab3e58cc9af4e7609ea50c37180ada4cffca674378db76f4718327964bd · 2367 bytes
+# Subtest: a launch the run has accounted for but the site still has is stopped by the cancel, not written off
+ok 32 - a launch the run has accounted for but the site still has is stopped by the cancel, not written off
+  ---
+  duration_ms: 1110.234958
+  type: 'test'
+  ...
+# cancelled run run-a958d553-990e-4db5-a655-e092717482cc: stopped its job "synthesize" in tmux session hima-a958d553-synthesize-1a69e6, recorded as run-a958d553-990e-4db5-a655-e092717482cc\#000009
+# run run-a958d553-990e-4db5-a655-e092717482cc of campaign opene902-timing-probe-20260911-084041-edc8 on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-X15XJo/workspace/opene902-timing-probe-20260911-084041-edc8
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 1, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 953 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 883 ms
+#     1 job launched, at most 1 job at a time
+#     blocked: attempt 1 of a retry allowance of 1, and 2 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 705 ms
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): cancelled, attempt 1, session hima-a958d553-synthesize-1a69e6 holding Design-Compiler 1
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   blocker: synthesize after 1 attempt, 1 line of log on record run-a958d553-990e-4db5-a655-e092717482cc\#000005: job "synthesize" is gone: tmux session hima-a958d553-synthesize-1a69e6 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+#   cancel: asked at 2026-09-11T08:40:42.143Z, node blocked, session hima-a958d553-synthesize-1a69e6; hima-a958d553-synthesize-1a69e6 stopped, recorded as run-a958d553-990e-4db5-a655-e092717482cc\#000009
+#   experience: written at 2026-09-11T08:40:42.216Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-X15XJo/workspace/opene902-timing-probe-20260911-084041-edc8/hima-experience/run-a958d553-990e-4db5-a655-e092717482cc.md · sha256 9eee7b03c87971e83a431472d457eb5e2348e50624624e5bc87e87e755b19278 · 2008 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-X15XJo/workspace/opene902-timing-probe-20260911-084041-edc8/hima-experience/run-a958d553-990e-4db5-a655-e092717482cc.json · sha256 7c54b8cda8178fdb7b7eb082241042cfbe043d55dbc8121327e3931304417f73 · 2377 bytes
+# Subtest: cancelling a run that already ended answers with its status and writes nothing
+ok 33 - cancelling a run that already ended answers with its status and writes nothing
+  ---
+  duration_ms: 3676.032375
+  type: 'test'
+  ...
+# run run-5ff48aad-e793-4d50-9cb3-48144337113b already ended as ended-budget-exhausted; nothing was stopped and nothing was recorded
+# run run-5ff48aad-e793-4d50-9cb3-48144337113b of campaign opene902-timing-probe-20260911-084042-69f9 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-bkG5cB/workspace/opene902-timing-probe-20260911-084042-69f9
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 3.5 s of a time box of 60.0 min
+#     generation 1 of at most 1, 3.4 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.1 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-5ff48aad-synthesize-66679e holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-5ff48aad-e793-4d50-9cb3-48144337113b\#000010, run-5ff48aad-e793-4d50-9cb3-48144337113b\#000011, run-5ff48aad-e793-4d50-9cb3-48144337113b\#000007, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:40:45.849Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-bkG5cB/workspace/opene902-timing-probe-20260911-084042-69f9/hima-experience/run-5ff48aad-e793-4d50-9cb3-48144337113b.md · sha256 7c828e193242567a5eaf8e8e5bf79045cdd1c79f6253891cbc845d7cb0c27583 · 1661 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-bkG5cB/workspace/opene902-timing-probe-20260911-084042-69f9/hima-experience/run-5ff48aad-e793-4d50-9cb3-48144337113b.json · sha256 775c17b202f32ffa6915ab65699ad10823639f0ab17dcc4e3a429809bd3365a5 · 2319 bytes
+# Subtest: POST /hima/api/runs/<id>/cancel stops a job a new host picked up, behind the session fence, and answers with the cancelled run
+ok 34 - POST /hima/api/runs/<id>/cancel stops a job a new host picked up, behind the session fence, and answers with the cancelled run
+  ---
+  duration_ms: 2670.634417
+  type: 'test'
+  ...
+# Subtest: a fault while the campaign workspace is being prepared is recorded against the run, not lost with the run left saying nothing happened
+ok 35 - a fault while the campaign workspace is being prepared is recorded against the run, not lost with the run left saying nothing happened
+  ---
+  duration_ms: 185.9295
+  type: 'test'
+  ...
+# run run-978393b2-db27-4bd5-981e-99d089a85c58 stopped before its first node: cannot copy build/opene902 into /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/workspace/opene902-timing-probe-20260911-084048-6e06/flow: cp exited 1: cp: /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/standin-flow/build/opene902: unable to copy extended attributes to /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/workspace/opene902-timing-probe-20260911-084048-6e06/flow/build/opene902/: Permission denied
+# cp: /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/standin-flow/build/opene902: Permission denied
+# run run-978393b2-db27-4bd5-981e-99d089a85c58 of campaign opene902-timing-probe-20260911-084048-6e06 on site local: waiting, generation 1 of at most 1
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 59 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 0 ms
+#     0 jobs launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#   nodes:
+#     synthesize (act): blocked, attempt 1, the campaign workspace could not be prepared: cannot copy build/opene902 into /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/workspace/opene902-timing-probe-20260911-084048-6e06/flow: cp exited 1: cp: /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/standin-flow/build/opene902: unable to copy extended attributes to /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/workspace/opene902-timing-probe-20260911-084048-6e06/flow/build/opene902/: Permission denied
+# cp: /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/standin-flow/build/opene902: Permission denied
+# run run-978393b2-db27-4bd5-981e-99d089a85c58 of campaign opene902-timing-probe-20260911-084048-6e06 on site local: waiting, generation 1 of at most 1
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 59 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 0 ms
+#     0 jobs launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#   nodes:
+#     synthesize (act): blocked, attempt 1, the campaign workspace could not be prepared: cannot copy build/opene902 into /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/workspace/opene902-timing-probe-20260911-084048-6e06/flow: cp exited 1: cp: /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/standin-flow/build/opene902: unable to copy extended attributes to /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/workspace/opene902-timing-probe-20260911-084048-6e06/flow/build/opene902/: Permission denied
+# cp: /private/tmp/hima-tests-OTJ0NH/hima-home-FmGtih/standin-flow/build/opene902: Permission denied
+# Subtest: a campaign the site gives no workspace is blocked at once, in the words the refusal recorded, and the next host leaves it alone
+ok 36 - a campaign the site gives no workspace is blocked at once, in the words the refusal recorded, and the next host leaves it alone
+  ---
+  duration_ms: 270.448667
+  type: 'test'
+  ...
+# refused to prepare /private/tmp/hima-tests-OTJ0NH/hima-home-76l3p3/workspace/opene902-timing-probe-20260911-084048-0e96 on local: path outside the permitted write roots of site local: /private/tmp/hima-tests-OTJ0NH/hima-home-76l3p3/workspace/opene902-timing-probe-20260911-084048-0e96; recorded as run-dd64cf5b-899e-4393-b4eb-028270dfabd4\#000001 in run-dd64cf5b-899e-4393-b4eb-028270dfabd4
+# run run-dd64cf5b-899e-4393-b4eb-028270dfabd4 of campaign opene902-timing-probe-20260911-084048-0e96 on site local: waiting, generation 1 of at most 1
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 65 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 33 ms
+#     0 jobs launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#   nodes:
+#     synthesize (act): blocked, attempt 1, the campaign workspace could not be prepared: the site's permit refused /private/tmp/hima-tests-OTJ0NH/hima-home-76l3p3/workspace/opene902-timing-probe-20260911-084048-0e96: path outside the permitted write roots of site local: /private/tmp/hima-tests-OTJ0NH/hima-home-76l3p3/workspace/opene902-timing-probe-20260911-084048-0e96
+# run run-dd64cf5b-899e-4393-b4eb-028270dfabd4 of campaign opene902-timing-probe-20260911-084048-0e96 on site local: waiting, generation 1 of at most 1
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 65 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 33 ms
+#     0 jobs launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#   nodes:
+#     synthesize (act): blocked, attempt 1, the campaign workspace could not be prepared: the site's permit refused /private/tmp/hima-tests-OTJ0NH/hima-home-76l3p3/workspace/opene902-timing-probe-20260911-084048-0e96: path outside the permitted write roots of site local: /private/tmp/hima-tests-OTJ0NH/hima-home-76l3p3/workspace/opene902-timing-probe-20260911-084048-0e96
+# cannot resume run-dd64cf5b-899e-4393-b4eb-028270dfabd4: run run-dd64cf5b-899e-4393-b4eb-028270dfabd4 has no workspace record: HimaFabric never prepared it, so there is no campaign workspace to re-enter; nothing was written
+# Subtest: a run left with no fabric state at all is still picked up by the next host, not left looking like a run no fabric ever touched
+ok 37 - a run left with no fabric state at all is still picked up by the next host, not left looking like a run no fabric ever touched
+  ---
+  duration_ms: 200.305875
+  type: 'test'
+  ...
+# run run-c9678138-3fff-4532-b525-dba7056ffda1 of campaign opene902-timing-probe-interrupted on site local: waiting
+#   goal: clock period at most 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 6 generations, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 75 ms of a time box of 60.0 min
+#     0 jobs launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#   nodes:
+#     synthesize (act): blocked, attempt 1, HimaFabric opened this run and never started it: campaign opene902-timing-probe-interrupted got no workspace to run in, so nothing was launched anywhere. The host that was preparing it went away before it could finish or say why; start the campaign again once a person has looked at it
+# Subtest: a job told to fail twice is retried as two fresh attempts and the third succeeds, and the run completes with no blocker
+ok 38 - a job told to fail twice is retried as two fresh attempts and the third succeeds, and the run completes with no blocker
+  ---
+  duration_ms: 4148.524959
+  type: 'test'
+  ...
+# run run-0e8cb957-ee7f-46de-b618-9a7efc0b7442 of campaign opene902-timing-probe-20260911-084049-8ca5 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-6zKeDJ/workspace/opene902-timing-probe-20260911-084049-8ca5
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 3.7 s of a time box of 60.0 min
+#     generation 1 of at most 1, 3.7 s
+#     3 jobs launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 6 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.2 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 3, session hima-0e8cb957-synthesize-1fb207 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-0e8cb957-ee7f-46de-b618-9a7efc0b7442\#000018, run-0e8cb957-ee7f-46de-b618-9a7efc0b7442\#000019, run-0e8cb957-ee7f-46de-b618-9a7efc0b7442\#000015, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:40:53.657Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-6zKeDJ/workspace/opene902-timing-probe-20260911-084049-8ca5/hima-experience/run-0e8cb957-ee7f-46de-b618-9a7efc0b7442.md · sha256 7d109c9c23532aeb371edd7e4c29a740737f3ab1084f25b1bb9888e1fd1689cd · 1662 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-6zKeDJ/workspace/opene902-timing-probe-20260911-084049-8ca5/hima-experience/run-0e8cb957-ee7f-46de-b618-9a7efc0b7442.json · sha256 d550f69579f099a8f9fdcdb4e0fd728d4a17834c5179ccd868b8987c8c1d09b5 · 2319 bytes
+# Subtest: a job told to fail four times against an allowance of three blocks with a blocker record carrying the last exit and the log tail, and resume re-enters the node with a fresh allowance and completes the run
+ok 39 - a job told to fail four times against an allowance of three blocks with a blocker record carrying the last exit and the log tail, and resume re-enters the node with a fresh allowance and completes the run
+  ---
+  duration_ms: 6271.835167
+  type: 'test'
+  ...
+# run run-51b8df13-3df2-442e-b262-bfeb60ec5abd of campaign opene902-timing-probe-20260911-084053-26d0 on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-DJz0Kd/workspace/opene902-timing-probe-20260911-084053-26d0
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 3.5 s of a time box of 60.0 min
+#     generation 1 of at most 1, 3.4 s
+#     3 jobs launched, at most 1 job at a time
+#     synthesize: attempt 3 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.2 s
+#   nodes:
+#     synthesize (act): blocked, attempt 3, session hima-51b8df13-synthesize-97e7f6 holding Design-Compiler 1, job "synthesize" in tmux session hima-51b8df13-synthesize-97e7f6 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   blocker: synthesize after 3 attempts, last exit 2, 3 lines of log on record run-51b8df13-3df2-442e-b262-bfeb60ec5abd\#000013: job "synthesize" in tmux session hima-51b8df13-synthesize-97e7f6 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3
+# blocker: job "synthesize" in tmux session hima-51b8df13-synthesize-97e7f6 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3
+# log tail: "[stand-in] Error: synthesis was told to fail this attempt\\n\\n\\n[stand-in] 2 attempt(s) were left to fail; nothing was written to /private/tmp/hima-tests-OTJ0NH/hima-home-DJz0Kd/workspace/opene902-timing-probe-20260911-084053-26d0/flow/results/opene902/syn/report\\nmake: *** [synth] Error 3\\n"
+# run run-51b8df13-3df2-442e-b262-bfeb60ec5abd of campaign opene902-timing-probe-20260911-084053-26d0 on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-DJz0Kd/workspace/opene902-timing-probe-20260911-084053-26d0
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 3.5 s of a time box of 60.0 min
+#     generation 1 of at most 1, 3.4 s
+#     3 jobs launched, at most 1 job at a time
+#     synthesize: attempt 3 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.2 s
+#   nodes:
+#     synthesize (act): blocked, attempt 3, session hima-51b8df13-synthesize-97e7f6 holding Design-Compiler 1, job "synthesize" in tmux session hima-51b8df13-synthesize-97e7f6 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   blocker: synthesize after 3 attempts, last exit 2, 3 lines of log on record run-51b8df13-3df2-442e-b262-bfeb60ec5abd\#000013: job "synthesize" in tmux session hima-51b8df13-synthesize-97e7f6 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3
+# resumed run-51b8df13-3df2-442e-b262-bfeb60ec5abd at node synthesize; recorded as run-51b8df13-3df2-442e-b262-bfeb60ec5abd\#000016
+# run run-51b8df13-3df2-442e-b262-bfeb60ec5abd of campaign opene902-timing-probe-20260911-084053-26d0 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-DJz0Kd/workspace/opene902-timing-probe-20260911-084053-26d0
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 6.1 s of a time box of 60.0 min, 97 ms of it waiting on a person, which widens the box by as much
+#     generation 1 of at most 1, 6.0 s
+#     5 jobs launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 9 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 5.4 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 5, session hima-51b8df13-synthesize-06e556 holding Design-Compiler 1
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   blocker: synthesize after 3 attempts, last exit 2, 3 lines of log on record run-51b8df13-3df2-442e-b262-bfeb60ec5abd\#000013: job "synthesize" in tmux session hima-51b8df13-synthesize-97e7f6 exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3
+#   resumed: synthesize by session-149ff7b6-9e07-406b-ad02-1bee7536a975 at 2026-09-11T08:40:57.367Z
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-51b8df13-3df2-442e-b262-bfeb60ec5abd\#000029, run-51b8df13-3df2-442e-b262-bfeb60ec5abd\#000030, run-51b8df13-3df2-442e-b262-bfeb60ec5abd\#000026, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:40:59.909Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-DJz0Kd/workspace/opene902-timing-probe-20260911-084053-26d0/hima-experience/run-51b8df13-3df2-442e-b262-bfeb60ec5abd.md · sha256 cadf5b70ac45bee0e86dc5b38076b849c5a6c6f7433e1b97fae7851b076af49f · 2407 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-DJz0Kd/workspace/opene902-timing-probe-20260911-084053-26d0/hima-experience/run-51b8df13-3df2-442e-b262-bfeb60ec5abd.json · sha256 3e0dfaae41d72e9494979c6b1bf9d97b66b5c4088810202381d2b749e70768fb · 3332 bytes
+# Subtest: resume answers clearly and writes nothing on a run that has ended and on one that is still running
+ok 40 - resume answers clearly and writes nothing on a run that has ended and on one that is still running
+  ---
+  duration_ms: 34098.070542
+  type: 'test'
+  ...
+# cannot resume run-eb393906-b9b5-4ef7-9fc4-20288d9b4cee: this run is ended-budget-exhausted, and only a waiting run can be resumed; nothing was written
+# cannot resume run-6a80549d-d23e-4f0c-870f-f62b7d69a6d3: this run is running, and only a waiting run can be resumed; nothing was written
+# Subtest: the hima_resume tool clears the same blocker the command does, and answers with the run it carried on
+ok 41 - the hima_resume tool clears the same blocker the command does, and answers with the run it carried on
+  ---
+  duration_ms: 2871.157292
+  type: 'test'
+  ...
+# {"kind":"resumed","runId":"run-190bcadc-0d12-4187-bd58-0f67668123c9","status":"ended-budget-exhausted","currentNode":"next-period","nodeId":"synthesize","recordId":"run-190bcadc-0d12-4187-bd58-0f67668123c9\#000008"}
+# Subtest: POST /hima/api/runs/<id>/resume clears a blocker behind the session fence, the run view carries the blocker, and a run that is not waiting is a coded refusal
+ok 42 - POST /hima/api/runs/<id>/resume clears a blocker behind the session fence, the run view carries the blocker, and a run that is not waiting is a coded refusal
+  ---
+  duration_ms: 4461.108417
+  type: 'test'
+  ...
+# Subtest: the site's job cap holds across runs: a second run records waiting-for-slot, launches only once the first job has finished, and both complete
+ok 43 - the site's job cap holds across runs: a second run records waiting-for-slot, launches only once the first job has finished, and both complete
+  ---
+  duration_ms: 23916.532833
+  type: 'test'
+  ...
+# the queued run waited: site local is running 1 job against a cap of 1; this node waits for a slot
+# the slot was released at 2026-09-11T08:41:53.543Z and the queued run launched at 2026-09-11T08:41:53.592Z
+# Subtest: attempts survive a host restart: a run blocked after two attempts is resumed on a freshly booted host and its next attempt is the third
+ok 44 - attempts survive a host restart: a run blocked after two attempts is resumed on a freshly booted host and its next attempt is the third
+  ---
+  duration_ms: 4114.685
+  type: 'test'
+  ...
+# run run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99 of campaign opene902-timing-probe-20260911-084205-9bf2 on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-o8ddSb/workspace/opene902-timing-probe-20260911-084205-9bf2
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 2, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 2.4 s of a time box of 60.0 min
+#     generation 1 of at most 1, 2.3 s
+#     2 jobs launched, at most 1 job at a time
+#     synthesize: attempt 2 of a retry allowance of 2, and 3 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 2.1 s
+#   nodes:
+#     synthesize (act): blocked, attempt 2, session hima-04bb1b02-synthesize-31b0b0 holding Design-Compiler 1, job "synthesize" in tmux session hima-04bb1b02-synthesize-31b0b0 exited 2; node synthesize has now failed 2 times and spent its retry allowance of 2
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   blocker: synthesize after 2 attempts, last exit 2, 3 lines of log on record run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99\#000009: job "synthesize" in tmux session hima-04bb1b02-synthesize-31b0b0 exited 2; node synthesize has now failed 2 times and spent its retry allowance of 2
+# resumed run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99 at node synthesize; recorded as run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99\#000012
+# run run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99 of campaign opene902-timing-probe-20260911-084205-9bf2 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-o8ddSb/workspace/opene902-timing-probe-20260911-084205-9bf2
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 2, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 3.9 s of a time box of 60.0 min, 177 ms of it waiting on a person, which widens the box by as much
+#     generation 1 of at most 1, 3.8 s
+#     3 jobs launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 2, and 7 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.2 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 3, session hima-04bb1b02-synthesize-cb0476 holding Design-Compiler 1
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   blocker: synthesize after 2 attempts, last exit 2, 3 lines of log on record run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99\#000009: job "synthesize" in tmux session hima-04bb1b02-synthesize-31b0b0 exited 2; node synthesize has now failed 2 times and spent its retry allowance of 2
+#   resumed: synthesize by session-a68b94d2-9455-4a6f-8b2e-24dcaada138a at 2026-09-11T08:42:07.993Z
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99\#000021, run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99\#000022, run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99\#000018, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:42:09.387Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-o8ddSb/workspace/opene902-timing-probe-20260911-084205-9bf2/hima-experience/run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99.md · sha256 adf656d6daeabe5927f40b9ec66fe156de6313f21e22a386f87dafcb4680bd6a · 2408 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-o8ddSb/workspace/opene902-timing-probe-20260911-084205-9bf2/hima-experience/run-04bb1b02-a9f3-45eb-9ccf-8e92da83df99.json · sha256 b89a09e4b4fa00a377f008bce6d605871fdbb213812b1c0634a3fde8eb0cc889 · 3333 bytes
+# Subtest: a job whose tmux session vanishes is retried at once: the slot its own corpse holds is not counted against it
+ok 45 - a job whose tmux session vanishes is retried at once: the slot its own corpse holds is not counted against it
+  ---
+  duration_ms: 9404.738417
+  type: 'test'
+  ...
+# ending the session of run-64ff4af2-57d9-47ce-9ca5-f9c395777985's first job: hima-64ff4af2-synthesize-4321b2
+# run run-64ff4af2-57d9-47ce-9ca5-f9c395777985 of campaign opene902-timing-probe-20260911-084209-7ed6 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-beGEUH/workspace/opene902-timing-probe-20260911-084209-7ed6
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 0.5 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 9.2 s of a time box of 30.0 s
+#     generation 1 of at most 1, 9.1 s
+#     2 jobs launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 5 attempts in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 8.8 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 2, session hima-64ff4af2-synthesize-8c12f4 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-64ff4af2-57d9-47ce-9ca5-f9c395777985\#000013, run-64ff4af2-57d9-47ce-9ca5-f9c395777985\#000014, run-64ff4af2-57d9-47ce-9ca5-f9c395777985\#000010, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:42:18.781Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-beGEUH/workspace/opene902-timing-probe-20260911-084209-7ed6/hima-experience/run-64ff4af2-57d9-47ce-9ca5-f9c395777985.md · sha256 e2b6287036bc15da667dbedb47f6e92acee9a9fd80f0d155371450c12c3e59af · 1659 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-beGEUH/workspace/opene902-timing-probe-20260911-084209-7ed6/hima-experience/run-64ff4af2-57d9-47ce-9ca5-f9c395777985.json · sha256 06e97a3b2fb26825bd5fc5e78576c048d0804066f149b6170b65a409614f02d8 · 2317 bytes
+# Subtest: two runs started in the same instant do not both launch past a cap of one: the check and the launch are one step per site
+ok 46 - two runs started in the same instant do not both launch past a cap of one: the check and the launch are one step per site
+  ---
+  duration_ms: 17143.6225
+  type: 'test'
+  ...
+# run run-bff17ea9-ff2c-4974-92ee-220f30431612 of campaign opene902-timing-probe-20260911-084218-c00b on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-wXsOdG/workspace/opene902-timing-probe-20260911-084218-c00b
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 0.7 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 8.7 s of a time box of 42.0 s
+#     generation 1 of at most 1, 8.6 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 8.2 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-bff17ea9-synthesize-e37e31 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-bff17ea9-ff2c-4974-92ee-220f30431612\#000011, run-bff17ea9-ff2c-4974-92ee-220f30431612\#000012, run-bff17ea9-ff2c-4974-92ee-220f30431612\#000008, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:42:27.671Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-wXsOdG/workspace/opene902-timing-probe-20260911-084218-c00b/hima-experience/run-bff17ea9-ff2c-4974-92ee-220f30431612.md · sha256 e02bfd3e4cb8a2b24b366847e4f91234f374b0430a7d1ae12ede2f84269d24bc · 1659 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-wXsOdG/workspace/opene902-timing-probe-20260911-084218-c00b/hima-experience/run-bff17ea9-ff2c-4974-92ee-220f30431612.json · sha256 616256c85a1d98a06cfac5ad8cc60f9df7db324adb068201e2fd51cbbbb393cf · 2317 bytes
+# run run-ee5fab26-c03e-45c1-8c01-29e98aba9e00 of campaign opene902-timing-probe-20260911-084218-4445 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-wXsOdG/workspace/opene902-timing-probe-20260911-084218-4445
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 0.7 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 17.0 s of a time box of 42.0 s
+#     generation 1 of at most 1, 16.9 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 8.3 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-ee5fab26-synthesize-9e7f62 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-ee5fab26-c03e-45c1-8c01-29e98aba9e00\#000011, run-ee5fab26-c03e-45c1-8c01-29e98aba9e00\#000012, run-ee5fab26-c03e-45c1-8c01-29e98aba9e00\#000008, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:42:35.943Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-wXsOdG/workspace/opene902-timing-probe-20260911-084218-4445/hima-experience/run-ee5fab26-c03e-45c1-8c01-29e98aba9e00.md · sha256 81e3bf1218815e04c963658a0c933d20eda3357c620452ad6985db4510af5029 · 1663 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-wXsOdG/workspace/opene902-timing-probe-20260911-084218-4445/hima-experience/run-ee5fab26-c03e-45c1-8c01-29e98aba9e00.json · sha256 1f567b4d1655a7992cfa0b1521a51216e992c23d7317e904d8d2f15817b8acbf · 2349 bytes
+# the slot was released at 2026-09-11T08:42:27.351Z and the queued run launched at 2026-09-11T08:42:27.409Z
+# Subtest: a run resumed after its time box would have run out still gets its generation: the box meters the design, not the person
+ok 47 - a run resumed after its time box would have run out still gets its generation: the box meters the design, not the person
+  ---
+  duration_ms: 8712.198416
+  type: 'test'
+  ...
+# run run-5cd596df-747f-4120-b6ca-b968223c47f6 of campaign opene902-timing-probe-20260911-084236-177c on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-1bEqhI/workspace/opene902-timing-probe-20260911-084236-177c
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 0.1 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 412 ms of a time box of 6.0 s
+#     generation 1 of at most 1, 344 ms
+#     3 jobs launched, at most 1 job at a time
+#     synthesize: attempt 3 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 136 ms
+#   nodes:
+#     synthesize (act): blocked, attempt 3, session hima-5cd596df-synthesize-6048de holding Design-Compiler 1, job "synthesize" in tmux session hima-5cd596df-synthesize-6048de exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   blocker: synthesize after 3 attempts, last exit 2, 3 lines of log on record run-5cd596df-747f-4120-b6ca-b968223c47f6\#000013: job "synthesize" in tmux session hima-5cd596df-synthesize-6048de exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3
+# the run blocked 423 ms into a 6000 ms box
+# resumed run-5cd596df-747f-4120-b6ca-b968223c47f6 at node synthesize; recorded as run-5cd596df-747f-4120-b6ca-b968223c47f6\#000016
+# run run-5cd596df-747f-4120-b6ca-b968223c47f6 of campaign opene902-timing-probe-20260911-084236-177c on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-1bEqhI/workspace/opene902-timing-probe-20260911-084236-177c
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 0.1 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 8.5 s of a time box of 6.0 s, 7.7 s of it waiting on a person, which widens the box by as much
+#     generation 1 of at most 1, 8.4 s
+#     5 jobs launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 9 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 231 ms
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 5, session hima-5cd596df-synthesize-600dc3 holding Design-Compiler 1
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   blocker: synthesize after 3 attempts, last exit 2, 3 lines of log on record run-5cd596df-747f-4120-b6ca-b968223c47f6\#000013: job "synthesize" in tmux session hima-5cd596df-synthesize-6048de exited 2; node synthesize has now failed 3 times and spent its retry allowance of 3
+#   resumed: synthesize by session-267281c0-b7ce-4a33-b24d-cf2364f44bdd at 2026-09-11T08:42:44.171Z
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-5cd596df-747f-4120-b6ca-b968223c47f6\#000029, run-5cd596df-747f-4120-b6ca-b968223c47f6\#000030, run-5cd596df-747f-4120-b6ca-b968223c47f6\#000026, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:42:44.644Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-1bEqhI/workspace/opene902-timing-probe-20260911-084236-177c/hima-experience/run-5cd596df-747f-4120-b6ca-b968223c47f6.md · sha256 9f61afab8bdef7ac1299033229dfc334d7d8fb5a7691516733f6f8f0720cc597 · 2405 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-1bEqhI/workspace/opene902-timing-probe-20260911-084236-177c/hima-experience/run-5cd596df-747f-4120-b6ca-b968223c47f6.json · sha256 0c1def08ae6a5f7317226ba5da896c6dee819fdb82336846a6d694213c8ece97 · 3330 bytes
+# Subtest: a job launched by hand holds the site's only slot, is refused a second one, and releases it without anyone asking its status
+ok 48 - a job launched by hand holds the site's only slot, is refused a second one, and releases it without anyone asking its status
+  ---
+  duration_ms: 8868.6145
+  type: 'test'
+  ...
+# launched "hold-slot" on local as tmux session hima-6679bfb8-hold-slot-c9c603 (pid 46159) in /private/tmp/hima-tests-OTJ0NH/hima-home-aWpiGU/workspace: 'sh' '/private/tmp/hima-tests-OTJ0NH/hima-home-aWpiGU/workspace/hold-slot.sh' > '/private/tmp/hima-tests-OTJ0NH/hima-home-aWpiGU/workspace/hima-6679bfb8-hold-slot-c9c603.log' 2>&1; printf '%s\\n' "$?" > '/private/tmp/hima-tests-OTJ0NH/hima-home-aWpiGU/workspace/hima-6679bfb8-hold-slot-c9c603.exit'; recorded as run-6679bfb8-b13a-4d88-bdbc-4e645f00fe5a\#000001 in run-6679bfb8-b13a-4d88-bdbc-4e645f00fe5a
+# refused to launch on local: the site is running 1 job against a cap of 1, held by "hold-slot" in tmux session hima-6679bfb8-hold-slot-c9c603 of run-6679bfb8-b13a-4d88-bdbc-4e645f00fe5a; wait for one to end, or stop one with /hima job kill
+# run run-b8481455-1fac-40cc-8bd2-cd369f0a10bf of campaign opene902-timing-probe-20260911-084244-ec64 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-aWpiGU/workspace/opene902-timing-probe-20260911-084244-ec64
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 0.7 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 8.6 s of a time box of 42.0 s
+#     generation 1 of at most 1, 8.6 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 45 ms
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-b8481455-synthesize-e4c92a holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-b8481455-1fac-40cc-8bd2-cd369f0a10bf\#000011, run-b8481455-1fac-40cc-8bd2-cd369f0a10bf\#000012, run-b8481455-1fac-40cc-8bd2-cd369f0a10bf\#000008, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:42:53.519Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-aWpiGU/workspace/opene902-timing-probe-20260911-084244-ec64/hima-experience/run-b8481455-1fac-40cc-8bd2-cd369f0a10bf.md · sha256 e7120ea00ee0be41a8d4b718778323d7b3d062afd8189db1d8d609e599dea75d · 1659 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-aWpiGU/workspace/opene902-timing-probe-20260911-084244-ec64/hima-experience/run-b8481455-1fac-40cc-8bd2-cd369f0a10bf.json · sha256 64ac6491a92880671d7e7cc4c4a014a76efd8b51ceb50c76c1b373e366f0b24e · 2344 bytes
+# the hand-launched job released the slot at 2026-09-11T08:42:53.172Z and the run launched at 2026-09-11T08:42:53.220Z
+# Subtest: a case variant of the site name is refused as an unknown site before the cap it would have collided with is ever asked: `/hima job launch LOCAL` is not a second slot on `local`
+ok 49 - a case variant of the site name is refused as an unknown site before the cap it would have collided with is ever asked: `/hima job launch LOCAL` is not a second slot on `local`
+  ---
+  duration_ms: 189.653708
+  type: 'test'
+  ...
+# launched "one" on local as tmux session hima-ca00a944-one-500384 (pid 46829) in /private/tmp/hima-tests-OTJ0NH/hima-home-xQ8xBa/workspace: 'sh' '/private/tmp/hima-tests-OTJ0NH/hima-home-xQ8xBa/workspace/hold-slot.sh' > '/private/tmp/hima-tests-OTJ0NH/hima-home-xQ8xBa/workspace/hima-ca00a944-one-500384.log' 2>&1; printf '%s\\n' "$?" > '/private/tmp/hima-tests-OTJ0NH/hima-home-xQ8xBa/workspace/hima-ca00a944-one-500384.exit'; recorded as run-ca00a944-d28e-4acf-956a-c30881ad1b38\#000001 in run-ca00a944-d28e-4acf-956a-c30881ad1b38
+# Subtest: a waiting run whose box was spent when it stopped is refused a resume in the same words by the command and the route, and nothing is written
+ok 50 - a waiting run whose box was spent when it stopped is refused a resume in the same words by the command and the route, and nothing is written
+  ---
+  duration_ms: 10028.363667
+  type: 'test'
+  ...
+# run run-64cd53d5-f3b9-4800-a479-036a468d1225 stopped at node read-qor: EISDIR: illegal operation on a directory, read
+# run run-64cd53d5-f3b9-4800-a479-036a468d1225 of campaign reads-a-directory-20260911-084253-6bfe on site local: waiting, generation 1 of at most 6
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-9M5gq7/workspace/reads-a-directory-20260911-084253-6bfe
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 0.1 min, retry allowance 3, at most 6 generations, job cap 1, licences Design-Compiler 1
+#   current node: read-qor
+#   meters:
+#     elapsed 220 ms of a time box of 6.0 s
+#     generation 1 of at most 6, 148 ms
+#     1 job launched, at most 1 job at a time
+#     read-qor: attempt 1 of a retry allowance of 3, and 2 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 43 ms
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-64cd53d5-synthesize-061416 holding Design-Compiler 1
+#     read-qor (act): blocked, attempt 1, EISDIR: illegal operation on a directory, read
+# cannot resume run-64cd53d5-f3b9-4800-a479-036a468d1225: run run-64cd53d5-f3b9-4800-a479-036a468d1225 had already spent its time box of 6000 ms when it stopped, so resuming it could only end it as ended-budget-exhausted; start a fresh run instead; nothing was written
+# {"kind":"unresumable","runId":"run-64cd53d5-f3b9-4800-a479-036a468d1225","reason":"run run-64cd53d5-f3b9-4800-a479-036a468d1225 had already spent its time box of 6000 ms when it stopped, so resuming it could only end it as ended-budget-exhausted; start a fresh run instead; nothing was written"}
+# Subtest: a run on the local site executes launch, read, judge, decide in one generation, and ends at the generation it was allowed with the next strategy recorded
+ok 51 - a run on the local site executes launch, read, judge, decide in one generation, and ends at the generation it was allowed with the next strategy recorded
+  ---
+  duration_ms: 3963.552834
+  type: 'test'
+  ...
+# run run-a96b689f-77e5-4dc3-ae79-3b13e511f9ec of campaign opene902-timing-probe-20260911-084304-83c1 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-7EO6WV/workspace/opene902-timing-probe-20260911-084304-83c1
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 3.5 s of a time box of 60.0 min
+#     generation 1 of at most 1, 3.4 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.1 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-a96b689f-synthesize-56be82 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-a96b689f-77e5-4dc3-ae79-3b13e511f9ec\#000010, run-a96b689f-77e5-4dc3-ae79-3b13e511f9ec\#000011, run-a96b689f-77e5-4dc3-ae79-3b13e511f9ec\#000007, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:43:07.846Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-7EO6WV/workspace/opene902-timing-probe-20260911-084304-83c1/hima-experience/run-a96b689f-77e5-4dc3-ae79-3b13e511f9ec.md · sha256 7e28f3fd5434d74051ec447bc2398ee1c6378d3b38267d4c693ed1b104af12a2 · 1661 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-7EO6WV/workspace/opene902-timing-probe-20260911-084304-83c1/hima-experience/run-a96b689f-77e5-4dc3-ae79-3b13e511f9ec.json · sha256 2d3876ff26b6aba2f1d195348c6859fdaab6299aa199b6e95ee846a02e6036d4 · 2319 bytes
+# Subtest: a run whose generation already meets the goal ends goal-met, with no next strategy chosen
+ok 52 - a run whose generation already meets the goal ends goal-met, with no next strategy chosen
+  ---
+  duration_ms: 3631.95775
+  type: 'test'
+  ...
+# Subtest: a spent time box kills the running job, leaves no tmux session, and ends the run budget-exhausted naming the meter
+ok 53 - a spent time box kills the running job, leaves no tmux session, and ends the run budget-exhausted naming the meter
+  ---
+  duration_ms: 5547.223375
+  type: 'test'
+  ...
+# run run-6a63ff84-4628-42ba-8861-71d2c98fac41 of campaign opene902-timing-probe-20260911-084311-2645 on site local: ended-budget-exhausted, generation 1 of at most 6
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-xntZx3/workspace/opene902-timing-probe-20260911-084311-2645
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 0.0833 min, retry allowance 3, at most 6 generations, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 5.4 s of a time box of 5.0 s
+#     generation 1 of at most 6, 5.3 s
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 1 attempt in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 5.2 s
+#     ended by the time box
+#   nodes:
+#     synthesize (act): cancelled, attempt 1, session hima-6a63ff84-synthesize-a5102b holding Design-Compiler 1
+#   experience: written at 2026-09-11T08:43:17.030Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-xntZx3/workspace/opene902-timing-probe-20260911-084311-2645/hima-experience/run-6a63ff84-4628-42ba-8861-71d2c98fac41.md · sha256 2967aced1d60672ae49de33c120f1da1dfacdb654ff0dd26d45c8a7a72717857 · 1347 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-xntZx3/workspace/opene902-timing-probe-20260911-084311-2645/hima-experience/run-6a63ff84-4628-42ba-8861-71d2c98fac41.json · sha256 4a2d0d20e3b0c712a71ee07d609300daff4307cb8b47aa49701d8a14de2b825b · 1321 bytes
+# Subtest: a run of a pack naming a chooser this harness does not ship is refused before a campaign exists
+ok 54 - a run of a pack naming a chooser this harness does not ship is refused before a campaign exists
+  ---
+  duration_ms: 129.382333
+  type: 'test'
+  ...
+# Subtest: an act node naming an argument the Run cannot bind blocks with a reason naming it, and launches nothing
+ok 55 - an act node naming an argument the Run cannot bind blocks with a reason naming it, and launches nothing
+  ---
+  duration_ms: 219.590833
+  type: 'test'
+  ...
+# run run-4aac0f01-aeb3-4635-9fbe-89a915b8fd56 of campaign unbindable-argument-20260911-084317-2156 on site local: waiting, generation 1 of at most 6
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-M5dxpP/workspace/unbindable-argument-20260911-084317-2156
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 6 generations, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 90 ms of a time box of 60.0 min
+#     generation 1 of at most 6, 24 ms
+#     0 jobs launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#   nodes:
+#     synthesize (act): blocked, attempt 1, node synthesize names argument PERIOD_NS that neither the Run's strategy nor its Goal binds: goal "no_such_knob"
+# Subtest: a fault thrown mid-drive is a blocked node with the message on it, not a stack trace and a run still claiming to be running
+ok 56 - a fault thrown mid-drive is a blocked node with the message on it, not a stack trace and a run still claiming to be running
+  ---
+  duration_ms: 3491.683417
+  type: 'test'
+  ...
+# run run-6edd529f-df63-4d20-90bb-db85aedadc03 stopped at node read-qor: EISDIR: illegal operation on a directory, read
+# run run-6edd529f-df63-4d20-90bb-db85aedadc03 of campaign reads-a-directory-20260911-084317-0efe on site local: waiting, generation 1 of at most 6
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-ma3kRx/workspace/reads-a-directory-20260911-084317-0efe
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 6 generations, job cap 1, licences Design-Compiler 1
+#   current node: read-qor
+#   meters:
+#     elapsed 3.3 s of a time box of 60.0 min
+#     generation 1 of at most 6, 3.2 s
+#     1 job launched, at most 1 job at a time
+#     read-qor: attempt 1 of a retry allowance of 3, and 2 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.1 s
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-6edd529f-synthesize-952326 holding Design-Compiler 1
+#     read-qor (act): blocked, attempt 1, EISDIR: illegal operation on a directory, read
+# Subtest: POST /hima/api/runs answers a mid-drive fault as hima/internal carrying the run id and the message
+ok 57 - POST /hima/api/runs answers a mid-drive fault as hima/internal carrying the run id and the message
+  ---
+  duration_ms: 5000.534125
+  type: 'test'
+  ...
+# Subtest: waiting for a long job backs off, so the launch is still in the channel's audit when the run ends
+ok 58 - waiting for a long job backs off, so the launch is still in the channel's audit when the run ends
+  ---
+  duration_ms: 14768.1525
+  type: 'test'
+  ...
+# 14 looks at the job over twelve seconds of synthesis
+# Subtest: the hima_run tool starts the same run as the command, and answers with the run it started
+ok 59 - the hima_run tool starts the same run as the command, and answers with the run it started
+  ---
+  duration_ms: 3662.854583
+  type: 'test'
+  ...
+# Subtest: the command face and the tool face refuse a number the same way, in the same words, and start nothing
+ok 60 - the command face and the tool face refuse a number the same way, in the same words, and start nothing
+  ---
+  duration_ms: 152.967292
+  type: 'test'
+  ...
+# Subtest: a --time-box the shared validator accepts but that converts to a millisecond value the ledger schema would refuse is caught before it ever reaches the ledger, on every face, and the ledger reopens cleanly after
+ok 61 - a --time-box the shared validator accepts but that converts to a millisecond value the ledger schema would refuse is caught before it ever reaches the ledger, on every face, and the ledger reopens cleanly after
+  ---
+  duration_ms: 186.750125
+  type: 'test'
+  ...
+# Subtest: POST /hima/api/runs starts a run behind the session fence, and the run view carries its status, goal, strategy, budget, meters, nodes, jobs and decision
+ok 62 - POST /hima/api/runs starts a run behind the session fence, and the run view carries its status, goal, strategy, budget, meters, nodes, jobs and decision
+  ---
+  duration_ms: 5187.890541
+  type: 'test'
+  ...
+# Subtest: /hima status reports the run's status, its current node, every node state, the meters and the decision
+ok 63 - /hima status reports the run's status, its current node, every node state, the meters and the decision
+  ---
+  duration_ms: 3718.577459
+  type: 'test'
+  ...
+# run run-32f3d500-92a3-4ccf-bb79-43f9286a4c78 of campaign opene902-timing-probe-20260911-084349-caf3 on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-1CoeWA/workspace/opene902-timing-probe-20260911-084349-caf3
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 3.5 s of a time box of 60.0 min
+#     generation 1 of at most 1, 3.5 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.1 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-32f3d500-synthesize-9d98a8 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-32f3d500-92a3-4ccf-bb79-43f9286a4c78\#000010, run-32f3d500-92a3-4ccf-bb79-43f9286a4c78\#000011, run-32f3d500-92a3-4ccf-bb79-43f9286a4c78\#000007, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:43:53.510Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-1CoeWA/workspace/opene902-timing-probe-20260911-084349-caf3/hima-experience/run-32f3d500-92a3-4ccf-bb79-43f9286a4c78.md · sha256 7b25e52434d0e7e83638393574b53062002c56370b9ef253bde06ac5b85b1331 · 1661 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-1CoeWA/workspace/opene902-timing-probe-20260911-084349-caf3/hima-experience/run-32f3d500-92a3-4ccf-bb79-43f9286a4c78.json · sha256 7ddf300923b422a786d09e2741de1367511695919132ba4859ff07c4d26a0e9d · 2319 bytes
+# Subtest: a fabric run's records and its run state read back unchanged after a host restart
+ok 64 - a fabric run's records and its run state read back unchanged after a host restart
+  ---
+  duration_ms: 3753.258208
+  type: 'test'
+  ...
+# Subtest: a poll that cannot ask the site writes nothing and keeps asking, and the run finishes when the socket comes back
+ok 65 - a poll that cannot ask the site writes nothing and keeps asking, and the run finishes when the socket comes back
+  ---
+  duration_ms: 21038.621375
+  type: 'test'
+  ...
+# /hima job status: cannot tell whether tmux session hima-849ff178-synthesize-b99777 is there on site local: error connecting to /private/tmp/hima-e7061961/tmux-502/default (No such file or directory). The job may still be running under a tmux server nothing can reach, so nothing is claimed about it
+# run run-849ff178-c750-46f0-8bb9-99ab237c42d6 of campaign opene902-timing-probe-20260911-084357-412c on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-19GvVZ/workspace/opene902-timing-probe-20260911-084357-412c
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 20.6 s of a time box of 60.0 min
+#     generation 1 of at most 1, 20.6 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 20.3 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-849ff178-synthesize-b99777 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-849ff178-c750-46f0-8bb9-99ab237c42d6\#000010, run-849ff178-c750-46f0-8bb9-99ab237c42d6\#000011, run-849ff178-c750-46f0-8bb9-99ab237c42d6\#000007, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:44:18.638Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-19GvVZ/workspace/opene902-timing-probe-20260911-084357-412c/hima-experience/run-849ff178-c750-46f0-8bb9-99ab237c42d6.md · sha256 7fb6ae61afaa2f225bf51d66741d46bd7d8007a7a17fe6fe46437fd285e1afe6 · 1666 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-19GvVZ/workspace/opene902-timing-probe-20260911-084357-412c/hima-experience/run-849ff178-c750-46f0-8bb9-99ab237c42d6.json · sha256 521741dfc2ebc8e701386bb38c589668638f5a11b199db651ab419797d773ad4 · 2323 bytes
+# Subtest: a socket directory that cannot be entered is a cannot-tell too, and the job is found again when it opens
+ok 66 - a socket directory that cannot be entered is a cannot-tell too, and the job is found again when it opens
+  ---
+  duration_ms: 243.300958
+  type: 'test'
+  ...
+# Subtest: a probe the site could never run — the command would not start, the command never answered — is a cannot-tell too
+ok 67 - a probe the site could never run — the command would not start, the command never answered — is a cannot-tell too
+  ---
+  duration_ms: 776.321375
+  type: 'test'
+  ...
+# Subtest: a run whose site cannot be asked is reported site-unreadable at a restart and left exactly as it was
+ok 68 - a run whose site cannot be asked is reported site-unreadable at a restart and left exactly as it was
+  ---
+  duration_ms: 885.986542
+  type: 'test'
+  ...
+# running hima-fc712033-synthesize-0f5d05 in run-fc712033-9e51-4d6e-81a9-260905abadbf
+# Subtest: a time box that runs out while the site cannot be asked writes the one blocker this rule adds: the kill did not take, and the run waits
+ok 69 - a time box that runs out while the site cannot be asked writes the one blocker this rule adds: the kill did not take, and the run waits
+  ---
+  duration_ms: 11513.080791
+  type: 'test'
+  ...
+# run run-b5dd0c7c-081b-425c-973c-a7325362ca2e of campaign opene902-timing-probe-20260911-084420-b5c6 on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-D6N7N3/workspace/opene902-timing-probe-20260911-084420-b5c6
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 0.15 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 11.4 s of a time box of 9.0 s
+#     generation 1 of at most 1, 11.3 s
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 1 attempt in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 11.3 s
+#   nodes:
+#     synthesize (act): blocked, attempt 1, session hima-b5dd0c7c-synthesize-86406e holding Design-Compiler 1, asked to stop at the time box but the site could not be asked about its tmux session hima-b5dd0c7c-synthesize-86406e: the kill did not take, and the job may still be running on the site — cannot tell whether tmux session hima-b5dd0c7c-synthesize-86406e is there on site local: error connecting to /private/tmp/hima-82d966f3/tmux-502/default (No such file or directory). The job may still be running under a tmux server nothing can reach, so nothing is claimed about it
+# Subtest: a run resumed while the site cannot be asked keeps asking instead of being stranded, and carries on when the site answers
+ok 70 - a run resumed while the site cannot be asked keeps asking instead of being stranded, and carries on when the site answers
+  ---
+  duration_ms: 20687.887042
+  type: 'test'
+  ...
+# run run-fe5027db-161b-4a67-b9cf-65dff7c64b6e of campaign opene902-timing-probe-20260911-084432-5c6c on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-vll0A0/workspace/opene902-timing-probe-20260911-084432-5c6c
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 5 min, retry allowance 1, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 736 ms of a time box of 5.0 min
+#     generation 1 of at most 1, 667 ms
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 1, and 2 attempts in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 593 ms
+#   nodes:
+#     synthesize (act): blocked, attempt 1, session hima-fe5027db-synthesize-62c882 holding Design-Compiler 1, job "synthesize" is gone: tmux session hima-fe5027db-synthesize-62c882 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   blocker: synthesize after 1 attempt, 1 line of log on record run-fe5027db-161b-4a67-b9cf-65dff7c64b6e\#000004: job "synthesize" is gone: tmux session hima-fe5027db-synthesize-62c882 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+# resumed run-fe5027db-161b-4a67-b9cf-65dff7c64b6e at node synthesize; recorded as run-fe5027db-161b-4a67-b9cf-65dff7c64b6e\#000007
+# run run-fe5027db-161b-4a67-b9cf-65dff7c64b6e of campaign opene902-timing-probe-20260911-084432-5c6c on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-vll0A0/workspace/opene902-timing-probe-20260911-084432-5c6c
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 5 min, retry allowance 1, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 20.5 s of a time box of 5.0 min, 93 ms of it waiting on a person, which widens the box by as much
+#     generation 1 of at most 1, 20.4 s
+#     2 jobs launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 1, and 6 attempts in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 11.8 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 2, session hima-fe5027db-synthesize-add325 holding Design-Compiler 1
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   blocker: synthesize after 1 attempt, 1 line of log on record run-fe5027db-161b-4a67-b9cf-65dff7c64b6e\#000004: job "synthesize" is gone: tmux session hima-fe5027db-synthesize-62c882 has ended and it wrote no exit status; node synthesize has now failed 1 time and spent its retry allowance of 1
+#   resumed: synthesize by session-0e32527a-8161-4cef-8c4f-80279de7553b at 2026-09-11T08:44:32.977Z
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-fe5027db-161b-4a67-b9cf-65dff7c64b6e\#000016, run-fe5027db-161b-4a67-b9cf-65dff7c64b6e\#000017, run-fe5027db-161b-4a67-b9cf-65dff7c64b6e\#000013, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:44:52.731Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-vll0A0/workspace/opene902-timing-probe-20260911-084432-5c6c/hima-experience/run-fe5027db-161b-4a67-b9cf-65dff7c64b6e.md · sha256 07f4084042ff4ccd82fd6eb149667f103a7491845af92fdad4880617322cd288 · 2172 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-vll0A0/workspace/opene902-timing-probe-20260911-084432-5c6c/hima-experience/run-fe5027db-161b-4a67-b9cf-65dff7c64b6e.json · sha256 50be0aa19a7c27da8bf96da1f0a608979b75fb0e32fdbb976f232227d6f5c806 · 3082 bytes
+# Subtest: a first launch onto a site whose slots cannot be counted is asked again, not blocked: nothing of that run is written until it launches
+ok 71 - a first launch onto a site whose slots cannot be counted is asked again, not blocked: nothing of that run is written until it launches
+  ---
+  duration_ms: 20985.11825
+  type: 'test'
+  ...
+# run run-bf238f1b-0e05-48d2-ad71-eb9b512535c8 of campaign opene902-timing-probe-20260911-084452-f65e on site local: ended-budget-exhausted, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-UwrCg3/workspace/opene902-timing-probe-20260911-084452-f65e
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: next-period
+#   meters:
+#     elapsed 20.8 s of a time box of 60.0 min
+#     generation 1 of at most 1, 20.7 s
+#     1 job launched, at most 1 job at a time
+#     next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 3.1 s
+#     ended by the generation limit
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-bf238f1b-synthesize-472c62 holding Design-Compiler 1
+#     read-qor (act): done, attempt 1
+#     judge (judge): done, attempt 1, FAIL
+#     next-period (explore): done, attempt 1
+#   decision: next-period chose clock period 2.25 ns by timing-push, citing run-bf238f1b-0e05-48d2-ad71-eb9b512535c8\#000011, run-bf238f1b-0e05-48d2-ad71-eb9b512535c8\#000012, run-bf238f1b-0e05-48d2-ad71-eb9b512535c8\#000008, from period 2, slack -0.2, guardBandNs 0.05
+#   experience: written at 2026-09-11T08:45:13.731Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-UwrCg3/workspace/opene902-timing-probe-20260911-084452-f65e/hima-experience/run-bf238f1b-0e05-48d2-ad71-eb9b512535c8.md · sha256 e82fa27a537f22643458acd77926b809dfb17be6663e11fab86ed01899ab9c7a · 1665 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-UwrCg3/workspace/opene902-timing-probe-20260911-084452-f65e/hima-experience/run-bf238f1b-0e05-48d2-ad71-eb9b512535c8.json · sha256 6ff486e4c2365985ad75faad45f98f02f0d24fa64382af258b21c332b36802db · 2351 bytes
+# Subtest: a launch that was sent and never answered is not sent again: the node blocks and the run waits for a person
+ok 72 - a launch that was sent and never answered is not sent again: the node blocks and the run waits for a person
+  ---
+  duration_ms: 9916.772791
+  type: 'test'
+  ...
+# run run-b7664d68-f659-45c5-993a-088b71fee6b8 stopped at node synthesize: cannot run tmux on site local: it was killed by SIGKILL
+# run run-b7664d68-f659-45c5-993a-088b71fee6b8 of campaign opene902-timing-probe-20260911-084513-4f1a on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-CjBmcL/workspace/opene902-timing-probe-20260911-084513-4f1a
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 3.2 s of a time box of 60.0 min
+#     generation 1 of at most 1, 3.2 s
+#     0 jobs launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#   nodes:
+#     synthesize (act): blocked, attempt 1, cannot run tmux on site local: it was killed by SIGKILL
+# Subtest: a launch that crossed a cancel and cannot be asked to stop blocks its node and leaves the run waiting, so the next cancel asks again
+ok 73 - a launch that crossed a cancel and cannot be asked to stop blocks its node and leaves the run waiting, so the next cancel asks again
+  ---
+  duration_ms: 5649.034042
+  type: 'test'
+  ...
+# cancelled run run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51: no job of this run was open when the request was read
+# run run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51 of campaign opene902-timing-probe-20260911-084523-93c4 on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-rV53uJ/workspace/opene902-timing-probe-20260911-084523-93c4
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 367 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 290 ms
+#     0 jobs launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): cancelled, attempt 1
+#   cancel: asked at 2026-09-11T08:45:24.210Z, node synthesize; no job of this run was open when the request was read
+#   experience: written at 2026-09-11T08:45:24.272Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-rV53uJ/workspace/opene902-timing-probe-20260911-084523-93c4/hima-experience/run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51.md · sha256 372795c8439c8f22ef2f496f0f8e9b54da2ed95a7d72009cdc6d4e7e667adefa · 1537 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-rV53uJ/workspace/opene902-timing-probe-20260911-084523-93c4/hima-experience/run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51.json · sha256 7235b9ad249c55d1dcc883616205399e40142a2c4b5672bb5693cd2ac7785795 · 1412 bytes
+# run run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51 of campaign opene902-timing-probe-20260911-084523-93c4 on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-rV53uJ/workspace/opene902-timing-probe-20260911-084523-93c4
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 5.3 s of a time box of 60.0 min
+#     generation 1 of at most 1, 5.2 s
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 1 attempt in the campaign so far
+#     Design-Compiler 1 seat of 1 declared, held for 58 ms
+#   nodes:
+#     synthesize (act): blocked, attempt 1, session hima-3fa86c46-synthesize-ecc89a holding Design-Compiler 1, asked to stop by a cancel but the site could not be asked about its tmux session hima-3fa86c46-synthesize-ecc89a: the kill did not take, and the job may still be running on the site — cannot run tmux on site local: it was killed by SIGKILL
+#   cancel: asked at 2026-09-11T08:45:24.210Z, node synthesize; no job of this run was open when the request was read
+#   experience: written at 2026-09-11T08:45:24.272Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-rV53uJ/workspace/opene902-timing-probe-20260911-084523-93c4/hima-experience/run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51.md · sha256 372795c8439c8f22ef2f496f0f8e9b54da2ed95a7d72009cdc6d4e7e667adefa · 1537 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-rV53uJ/workspace/opene902-timing-probe-20260911-084523-93c4/hima-experience/run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51.json · sha256 7235b9ad249c55d1dcc883616205399e40142a2c4b5672bb5693cd2ac7785795 · 1412 bytes
+# cancelled run run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51: stopped its job "synthesize" in tmux session hima-3fa86c46-synthesize-ecc89a, recorded as run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51\#000009
+# run run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51 of campaign opene902-timing-probe-20260911-084523-93c4 on site local: cancelled, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-OTJ0NH/hima-home-rV53uJ/workspace/opene902-timing-probe-20260911-084523-93c4
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 5.4 s of a time box of 60.0 min
+#     generation 1 of at most 1, 5.4 s
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 3, and 1 attempt in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 58 ms
+#     ended by a person's cancel
+#   nodes:
+#     synthesize (act): cancelled, attempt 1, session hima-3fa86c46-synthesize-ecc89a holding Design-Compiler 1
+#   cancel: asked at 2026-09-11T08:45:24.210Z, node synthesize; no job of this run was open when the request was read
+#   cancel: asked at 2026-09-11T08:45:29.247Z, node synthesize, session hima-3fa86c46-synthesize-ecc89a; hima-3fa86c46-synthesize-ecc89a stopped, recorded as run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51\#000009
+#   experience: written at 2026-09-11T08:45:24.272Z
+#     markdown: /private/tmp/hima-tests-OTJ0NH/hima-home-rV53uJ/workspace/opene902-timing-probe-20260911-084523-93c4/hima-experience/run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51.md · sha256 372795c8439c8f22ef2f496f0f8e9b54da2ed95a7d72009cdc6d4e7e667adefa · 1537 bytes
+#     json: /private/tmp/hima-tests-OTJ0NH/hima-home-rV53uJ/workspace/opene902-timing-probe-20260911-084523-93c4/hima-experience/run-3fa86c46-9bf9-411a-ad60-fbc3b2b8bc51.json · sha256 7235b9ad249c55d1dcc883616205399e40142a2c4b5672bb5693cd2ac7785795 · 1412 bytes
+# Subtest: a job that wrote its exit file settles from it even when the socket is gone for good
+ok 74 - a job that wrote its exit file settles from it even when the socket is gone for good
+  ---
+  duration_ms: 256.976083
+  type: 'test'
+  ...
+# Subtest: a socket directory where tmux has never run is a free session name, and the launch starts the server it will talk to
+ok 75 - a socket directory where tmux has never run is a free session name, and the launch starts the server it will talk to
+  ---
+  duration_ms: 169.552583
+  type: 'test'
+  ...
+# Subtest: a local job is launched detached, runs, and its exit code comes back from the exit file it wrote
+ok 76 - a local job is launched detached, runs, and its exit code comes back from the exit file it wrote
+  ---
+  duration_ms: 4660.849
+  type: 'test'
+  ...
+# Subtest: a job that exits three records exit code three, not a failure of its own
+ok 77 - a job that exits three records exit code three, not a failure of its own
+  ---
+  duration_ms: 226.078334
+  type: 'test'
+  ...
+# Subtest: two launches of one job name in one workspace keep their own log and their own exit code
+ok 78 - two launches of one job name in one workspace keep their own log and their own exit code
+  ---
+  duration_ms: 4374.409917
+  type: 'test'
+  ...
+# Subtest: killing a running job leaves no session behind and records the stop that was observed
+ok 79 - killing a running job leaves no session behind and records the stop that was observed
+  ---
+  duration_ms: 261.962875
+  type: 'test'
+  ...
+# Subtest: a launch into a workspace outside the permit's write roots is refused before any command is run
+ok 80 - a launch into a workspace outside the permit's write roots is refused before any command is run
+  ---
+  duration_ms: 148.8615
+  type: 'test'
+  ...
+# Subtest: a launch whose first word is not an allowed wrapper is refused, and nothing is run at all
+ok 81 - a launch whose first word is not an allowed wrapper is refused, and nothing is run at all
+  ---
+  duration_ms: 155.402
+  type: 'test'
+  ...
+# Subtest: a job name that would climb out of the workspace is made safe before it names anything
+ok 82 - a job name that would climb out of the workspace is made safe before it names anything
+  ---
+  duration_ms: 191.506375
+  type: 'test'
+  ...
+# Subtest: status on a session the run never launched answers gone rather than inventing a job
+ok 83 - status on a session the run never launched answers gone rather than inventing a job
+  ---
+  duration_ms: 174.546125
+  type: 'test'
+  ...
+# Subtest: the job plumbing the channel admits is exactly the plumbing the job operations run
+ok 84 - the job plumbing the channel admits is exactly the plumbing the job operations run
+  ---
+  duration_ms: 0.162375
+  type: 'test'
+  ...
+# Subtest: the channel runs its own verbs and refuses everything else, on a local site as on a remote one
+ok 85 - the channel runs its own verbs and refuses everything else, on a local site as on a remote one
+  ---
+  duration_ms: 2.911625
+  type: 'test'
+  ...
+# Subtest: the judge rules the real opene902 setup summary by declared rules: all-paths WNS fails, reg2reg passes, each citing the observation it read
+ok 86 - the judge rules the real opene902 setup summary by declared rules: all-paths WNS fails, reg2reg passes, each citing the observation it read
+  ---
+  duration_ms: 562.137417
+  type: 'test'
+  ...
+# Subtest: the judge rules hold WNS on the real opene902 hold summary as PASS, citing that observation
+ok 87 - the judge rules hold WNS on the real opene902 hold summary as PASS, citing that observation
+  ---
+  duration_ms: 188.77275
+  type: 'test'
+  ...
+# Subtest: verdicts survive a host restart and read back unchanged, PASS and UNDETERMINED alike
+ok 88 - verdicts survive a host restart and read back unchanged, PASS and UNDETERMINED alike
+  ---
+  duration_ms: 279.6945
+  type: 'test'
+  ...
+# Subtest: a rule requiring a value the run never observed is UNDETERMINED naming the requirement, never PASS
+ok 89 - a rule requiring a value the run never observed is UNDETERMINED naming the requirement, never PASS
+  ---
+  duration_ms: 185.461708
+  type: 'test'
+  ...
+# Subtest: a summary truncated inside its timing table is UNDETERMINED with the reader's own reason, never PASS
+ok 90 - a summary truncated inside its timing table is UNDETERMINED with the reader's own reason, never PASS
+  ---
+  duration_ms: 190.745166
+  type: 'test'
+  ...
+# Subtest: an unknown rule id is an error, never a silent pass, and writes no verdict
+ok 91 - an unknown rule id is an error, never a silent pass, and writes no verdict
+  ---
+  duration_ms: 185.869
+  type: 'test'
+  ...
+# Subtest: only the judge can append a verdict: the ledger hands its capability out once and the tool face never reaches it
+ok 92 - only the judge can append a verdict: the ledger hands its capability out once and the tool face never reaches it
+  ---
+  duration_ms: 148.861042
+  type: 'test'
+  ...
+# Subtest: one invocation of /hima observe --judge runs read, ledger, and judge, and returns the verdict with its cited record
+ok 93 - one invocation of /hima observe --judge runs read, ledger, and judge, and returns the verdict with its cited record
+  ---
+  duration_ms: 182.932333
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool judges the rules it is given, in the same invocation, through the same service
+ok 94 - the hima_observe tool judges the rules it is given, in the same invocation, through the same service
+  ---
+  duration_ms: 159.851
+  type: 'test'
+  ...
+# Subtest: --judge with no value is a usage error, not a silent pass: it never reads, never runs, and writes nothing
+ok 95 - --judge with no value is a usage error, not a silent pass: it never reads, never runs, and writes nothing
+  ---
+  duration_ms: 157.376333
+  type: 'test'
+  ...
+# Subtest: a malformed --param is a usage error on both /hima judge and /hima observe --judge: nothing is read, nothing is written
+ok 96 - a malformed --param is a usage error on both /hima judge and /hima observe --judge: nothing is read, nothing is written
+  ---
+  duration_ms: 199.671333
+  type: 'test'
+  ...
+# Subtest: a rule that declares no parameter ignores an unrelated --param entirely: same outcome, and boundParameters stays absent
+ok 97 - a rule that declares no parameter ignores an unrelated --param entirely: same outcome, and boundParameters stays absent
+  ---
+  duration_ms: 182.497334
+  type: 'test'
+  ...
+# Subtest: a read outside the permitted roots is refused before any read, and the refusal is recorded
+ok 98 - a read outside the permitted roots is refused before any read, and the refusal is recorded
+  ---
+  duration_ms: 427.75275
+  type: 'test'
+  ...
+# Subtest: a symlink that escapes the permitted roots is refused
+ok 99 - a symlink that escapes the permitted roots is refused
+  ---
+  duration_ms: 153.279541
+  type: 'test'
+  ...
+# Subtest: observing the same file twice into one run appends a second record with a higher sequence and leaves the first unchanged
+ok 100 - observing the same file twice into one run appends a second record with a higher sequence and leaves the first unchanged
+  ---
+  duration_ms: 191.282666
+  type: 'test'
+  ...
+# Subtest: an observe naming a run that does not exist is refused as the caller's mistake, and writes nothing
+ok 101 - an observe naming a run that does not exist is refused as the caller's mistake, and writes nothing
+  ---
+  duration_ms: 131.264458
+  type: 'test'
+  ...
+# Subtest: records survive a host restart and read back unchanged
+ok 102 - records survive a host restart and read back unchanged
+  ---
+  duration_ms: 197.109708
+  type: 'test'
+  ...
+# Subtest: the hima_observe tool is listed for the agent and returns the same observation through the tool runtime
+ok 103 - the hima_observe tool is listed for the agent and returns the same observation through the tool runtime
+  ---
+  duration_ms: 143.999208
+  type: 'test'
+  ...
+# Subtest: the innovus-timing-summary reader emits setup WNS/TNS, density, and an unknown clock period from the real opene902 post-route summary
+ok 104 - the innovus-timing-summary reader emits setup WNS/TNS, density, and an unknown clock period from the real opene902 post-route summary
+  ---
+  duration_ms: 414.433834
+  type: 'test'
+  ...
+# Subtest: the innovus-timing-summary reader emits hold WNS for both scopes from the real opene902 post-route hold summary
+ok 105 - the innovus-timing-summary reader emits hold WNS for both scopes from the real opene902 post-route hold summary
+  ---
+  duration_ms: 161.208417
+  type: 'test'
+  ...
+# Subtest: the innovus-verify-drc reader emits the total violation count from the real opene902 DRC report, via the hima_observe tool
+ok 106 - the innovus-verify-drc reader emits the total violation count from the real opene902 DRC report, via the hima_observe tool
+  ---
+  duration_ms: 146.201834
+  type: 'test'
+  ...
+# Subtest: a truncated Innovus summary, cut before the timing table, yields unknown values with a stated reason, never zero and never a default
+ok 107 - a truncated Innovus summary, cut before the timing table, yields unknown values with a stated reason, never zero and never a default
+  ---
+  duration_ms: 146.526625
+  type: 'test'
+  ...
+# Subtest: a report of the wrong kind is refused by the innovus-timing-summary reader, with no observation recorded
+ok 108 - a report of the wrong kind is refused by the innovus-timing-summary reader, with no observation recorded
+  ---
+  duration_ms: 147.295125
+  type: 'test'
+  ...
+# Subtest: a report of the wrong kind is refused by the innovus-verify-drc reader, with no observation recorded
+ok 109 - a report of the wrong kind is refused by the innovus-verify-drc reader, with no observation recorded
+  ---
+  duration_ms: 153.490208
+  type: 'test'
+  ...
+# Subtest: the two Innovus readers refuse each other's report kind: a real summary is not a DRC report and vice versa
+ok 110 - the two Innovus readers refuse each other's report kind: a real summary is not a DRC report and vice versa
+  ---
+  duration_ms: 198.876625
+  type: 'test'
+  ...
+# Subtest: /hima observe records one observation with provenance in a durable ledger
+ok 111 - /hima observe records one observation with provenance in a durable ledger
+  ---
+  duration_ms: 429.361292
+  type: 'test'
+  ...
+# Subtest: the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+ok 112 - the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+  ---
+  duration_ms: 10.046417
+  type: 'test'
+  ...
+# Subtest: the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data
+ok 113 - the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data
+  ---
+  duration_ms: 0.871542
+  type: 'test'
+  ...
+# Subtest: the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+ok 114 - the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+  ---
+  duration_ms: 343.301917
+  type: 'test'
+  ...
+# pack opene902-timing-probe@1 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-28hgg3/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-OTJ0NH/hima-home-28hgg3/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found
+#   clock-period-at-most@1: found
+# readers:
+#   dc-qor-report@1 reads qorReport: found
+# choosers:
+#   timing-push@1 chooses at next-period: found
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# Subtest: a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+ok 115 - a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+  ---
+  duration_ms: 133.702375
+  type: 'test'
+  ...
+# Subtest: a pack whose tool runs a command the site does not allow fails the check, naming the command
+ok 116 - a pack whose tool runs a command the site does not allow fails the check, naming the command
+  ---
+  duration_ms: 126.975417
+  type: 'test'
+  ...
+# Subtest: a pack referencing a rule that does not exist fails the check, naming the rule
+ok 117 - a pack referencing a rule that does not exist fails the check, naming the rule
+  ---
+  duration_ms: 115.197125
+  type: 'test'
+  ...
+# Subtest: a pack naming a reader that does not exist fails the check, naming the reader
+ok 118 - a pack naming a reader that does not exist fails the check, naming the reader
+  ---
+  duration_ms: 118.16575
+  type: 'test'
+  ...
+# Subtest: a pack naming a chooser that does not exist fails the check, naming the chooser
+ok 119 - a pack naming a chooser that does not exist fails the check, naming the chooser
+  ---
+  duration_ms: 116.119292
+  type: 'test'
+  ...
+# Subtest: a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+ok 120 - a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 119.787417
+  type: 'test'
+  ...
+# Subtest: a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+ok 121 - a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 124.036667
+  type: 'test'
+  ...
+# Subtest: a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+ok 122 - a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+  ---
+  duration_ms: 123.533833
+  type: 'test'
+  ...
+# Subtest: a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+ok 123 - a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+  ---
+  duration_ms: 112.71775
+  type: 'test'
+  ...
+# Subtest: preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+ok 124 - preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+  ---
+  duration_ms: 167.055209
+  type: 'test'
+  ...
+# Subtest: preparing the same campaign twice copies nothing the second time and says so
+ok 125 - preparing the same campaign twice copies nothing the second time and says so
+  ---
+  duration_ms: 220.029875
+  type: 'test'
+  ...
+# Subtest: a workspace that is there but carries no workspace.json is not prepared over the top of
+ok 126 - a workspace that is there but carries no workspace.json is not prepared over the top of
+  ---
+  duration_ms: 124.908791
+  type: 'test'
+  ...
+# Subtest: a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+ok 127 - a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+  ---
+  duration_ms: 193.262042
+  type: 'test'
+  ...
+# Subtest: a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+ok 128 - a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+  ---
+  duration_ms: 197.164208
+  type: 'test'
+  ...
+# Subtest: a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+ok 129 - a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+  ---
+  duration_ms: 149.427167
+  type: 'test'
+  ...
+# Subtest: a workspace.json that cannot be read as one is an answer, not a crash
+ok 130 - a workspace.json that cannot be read as one is an answer, not a crash
+  ---
+  duration_ms: 158.133
+  type: 'test'
+  ...
+# Subtest: a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+ok 131 - a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+  ---
+  duration_ms: 163.885542
+  type: 'test'
+  ...
+# Subtest: the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+ok 132 - the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+  ---
+  duration_ms: 0.153375
+  type: 'test'
+  ...
+# Subtest: /hima observe refuses a site file whose name is not the name asked for, naming both, and opens no run
+ok 133 - /hima observe refuses a site file whose name is not the name asked for, naming both, and opens no run
+  ---
+  duration_ms: 342.550666
+  type: 'test'
+  ...
+# Subtest: /hima job launch refuses a site file whose name is not the name asked for, naming both, and sends nothing to the Site
+ok 134 - /hima job launch refuses a site file whose name is not the name asked for, naming both, and sends nothing to the Site
+  ---
+  duration_ms: 110.818875
+  type: 'test'
+  ...
+# Subtest: /hima observe LOCAL is refused: the mismatch wording when the file resolved on a case-insensitive filesystem, the plain unknown-site wording when it did not
+ok 135 - /hima observe LOCAL is refused: the mismatch wording when the file resolved on a case-insensitive filesystem, the plain unknown-site wording when it did not
+  ---
+  duration_ms: 110.533291
+  type: 'test'
+  ...
+# Subtest: the committed reference site and permit record what the site owner agreed to
+ok 136 - the committed reference site and permit record what the site owner agreed to
+  ---
+  duration_ms: 12.774916
+  type: 'test'
+  ...
+# Subtest: a site file with a destination shaped like an ssh option is refused before any connection is attempted
+ok 137 - a site file with a destination shaped like an ssh option is refused before any connection is attempted
+  ---
+  duration_ms: 3.953625
+  type: 'test'
+  ...
+# Subtest: a jumps entry containing a comma is refused: it would smuggle an extra hop into -J
+ok 138 - a jumps entry containing a comma is refused: it would smuggle an extra hop into -J
+  ---
+  duration_ms: 3.487166
+  type: 'test'
+  ...
+# Subtest: HimaChannel admits exactly the read-only probes it runs, and nothing more
+ok 139 - HimaChannel admits exactly the read-only probes it runs, and nothing more
+  ---
+  duration_ms: 0.298666
+  type: 'test'
+  ...
+# Subtest: two sites that differ only in how long the connection is kept warm get their own control socket
+ok 140 - two sites that differ only in how long the connection is kept warm get their own control socket
+  ---
+  duration_ms: 4.180792
+  type: 'test'
+  ...
+# Subtest: local selection loads only local files; listing and inventory checking load none
+ok 141 - local selection loads only local files; listing and inventory checking load none
+  ---
+  duration_ms: 226.840333
+  type: 'test'
+  ...
+# Subtest: unclassified, missing and duplicate files stop the entry before any test loads
+ok 142 - unclassified, missing and duplicate files stop the entry before any test loads
+  ---
+  duration_ms: 71.260375
+  type: 'test'
+  ...
+# Subtest: a swallowed SSH start attempt still fails the local entry without starting SSH
+ok 143 - a swallowed SSH start attempt still fails the local entry without starting SSH
+  ---
+  duration_ms: 82.501875
+  type: 'test'
+  ...
+# Subtest: the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget
+ok 144 - the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget
+  ---
+  duration_ms: 3125.239542
+  type: 'test'
+  ...
+# run run-3145ac3b-5c37-477b-98c4-c091221d6159
+#   synthesize: done
+#   read-qor: done
+#   judge: done
+#   next-period: done
+# Subtest: over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either
+ok 145 - over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either
+  ---
+  duration_ms: 3412.174708
+  type: 'test'
+  ...
+# Subtest: a run HimaFabric never started cannot be cancelled, and says so with 409 hima/run-not-in-state
+ok 146 - a run HimaFabric never started cannot be cancelled, and says so with 409 hima/run-not-in-state
+  ---
+  duration_ms: 1642.269959
+  type: 'test'
+  ...
+# Subtest: every route the workbench uses, and the workbench page itself, sit behind the web app's own session cookie
+ok 147 - every route the workbench uses, and the workbench page itself, sit behind the web app's own session cookie
+  ---
+  duration_ms: 1513.558042
+  type: 'test'
+  ...
+# Subtest: the served HimaGuide bundle claims the tool-view key of both Hima tools and carries the rendering of every run status and node state
+ok 148 - the served HimaGuide bundle claims the tool-view key of both Hima tools and carries the rendering of every run status and node state
+  ---
+  duration_ms: 1605.547834
+  type: 'test'
+  ...
+# Subtest: the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+ok 149 - the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+  ---
+  duration_ms: 1702.785167
+  type: 'test'
+  ...
+# Subtest: a refused read is reported as a refusal in the run view, never as an empty pass
+ok 150 - a refused read is reported as a refusal in the run view, never as an empty pass
+  ---
+  duration_ms: 1529.477667
+  type: 'test'
+  ...
+# Subtest: a remote error reaches the caller as a coded JSON error, never as an empty answer
+ok 151 - a remote error reaches the caller as a coded JSON error, never as an empty answer
+  ---
+  duration_ms: 1676.086958
+  type: 'test'
+  ...
+# Subtest: a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+ok 152 - a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+  ---
+  duration_ms: 1611.009208
+  type: 'test'
+  ...
+# Subtest: every /hima/api route sits behind the web app's own session cookie
+ok 153 - every /hima/api route sits behind the web app's own session cookie
+  ---
+  duration_ms: 1614.192333
+  type: 'test'
+  ...
+# Subtest: the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+ok 154 - the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+  ---
+  duration_ms: 1607.689459
+  type: 'test'
+  ...
+1..154
+# tests 154
+# suites 0
+# pass 154
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 437705.118875
+SSH subprocess attempts: 0

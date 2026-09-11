@@ -1,0 +1,15 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+packages/desktop typecheck$ tsc -p tsconfig.json --noEmit
+packages/harness typecheck$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+packages/desktop typecheck: Done
+packages/harness typecheck: Done
+test/contract/pack.test.ts(356,33): error TS2304: Cannot find name 'randomUUID'.
+test/contract/pack.test.ts(401,35): error TS2304: Cannot find name 'quote'.
+test/contract/pack.test.ts(422,33): error TS2304: Cannot find name 'randomUUID'.
+test/contract/pack.test.ts(465,33): error TS2304: Cannot find name 'randomUUID'.
+test/contract/pack.test.ts(491,33): error TS2304: Cannot find name 'randomUUID'.
+test/contract/pack.test.ts(533,33): error TS2304: Cannot find name 'randomUUID'.
+test/contract/pack.test.ts(571,33): error TS2304: Cannot find name 'randomUUID'.
+test/contract/pack.test.ts(604,45): error TS2304: Cannot find name 'randomUUID'.
+[ELIFECYCLE] Command failed with exit code 2.

@@ -1,0 +1,27 @@
+{
+  "tests": 154,
+  "pass": 154,
+  "fail": 0,
+  "skipped": 0,
+  "cancelled": 0,
+  "todo": 0,
+  "seconds": 437.77,
+  "sshSubprocessAttempts": 0,
+  "modelCalls": 0,
+  "edaJobs": 0,
+  "desktopLaunches": 0,
+  "remoteJobs": 0,
+  "unselected": {
+    "desktop": {
+      "files": 11,
+      "originalTestDeclarations": 64
+    },
+    "live-site": {
+      "files": 3,
+      "originalTestDeclarations": 15
+    }
+  },
+  "privateInvocationDirectoriesRemoved": [
+    "/private/tmp/hima-tests-OTJ0NH"
+  ]
+}

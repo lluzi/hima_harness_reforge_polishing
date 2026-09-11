@@ -1,0 +1,10 @@
+{
+  "command": [
+    "pnpm",
+    "run",
+    "typecheck"
+  ],
+  "exitCode": 0,
+  "seconds": 3.124,
+  "sshAttempts": 0
+}

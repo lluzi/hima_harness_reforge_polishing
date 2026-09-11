@@ -1,0 +1,13 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-name-pattern=__no_test_should_match__",
+    "test/contract/pack.live.test.ts",
+    "test/contract/ssh.live.test.ts",
+    "test/contract/jobs.live.test.ts"
+  ],
+  "exitCode": 1,
+  "seconds": 0.209,
+  "sshAttempts": 0
+}

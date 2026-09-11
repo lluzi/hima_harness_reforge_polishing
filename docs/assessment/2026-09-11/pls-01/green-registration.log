@@ -1,0 +1,11 @@
+✔ test/contract/jobs.test.ts (136.6805ms)
+✔ test/contract/pack.test.ts (136.231292ms)
+✔ test/contract/ssh.test.ts (131.961333ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 141.245875

@@ -1,0 +1,305 @@
+TAP version 13
+# Subtest: a local job is launched detached, runs, and its exit code comes back from the exit file it wrote
+ok 1 - a local job is launched detached, runs, and its exit code comes back from the exit file it wrote
+  ---
+  duration_ms: 5342.61725
+  type: 'test'
+  ...
+# Subtest: a job that exits three records exit code three, not a failure of its own
+ok 2 - a job that exits three records exit code three, not a failure of its own
+  ---
+  duration_ms: 210.694083
+  type: 'test'
+  ...
+# Subtest: two launches of one job name in one workspace keep their own log and their own exit code
+ok 3 - two launches of one job name in one workspace keep their own log and their own exit code
+  ---
+  duration_ms: 4361.601041
+  type: 'test'
+  ...
+# Subtest: killing a running job leaves no session behind and records the stop that was observed
+ok 4 - killing a running job leaves no session behind and records the stop that was observed
+  ---
+  duration_ms: 266.498083
+  type: 'test'
+  ...
+# Subtest: a launch into a workspace outside the permit's write roots is refused before any command is run
+ok 5 - a launch into a workspace outside the permit's write roots is refused before any command is run
+  ---
+  duration_ms: 156.638875
+  type: 'test'
+  ...
+# Subtest: a launch whose first word is not an allowed wrapper is refused, and nothing is run at all
+ok 6 - a launch whose first word is not an allowed wrapper is refused, and nothing is run at all
+  ---
+  duration_ms: 167.494125
+  type: 'test'
+  ...
+# Subtest: a job name that would climb out of the workspace is made safe before it names anything
+ok 7 - a job name that would climb out of the workspace is made safe before it names anything
+  ---
+  duration_ms: 208.92625
+  type: 'test'
+  ...
+# Subtest: status on a session the run never launched answers gone rather than inventing a job
+ok 8 - status on a session the run never launched answers gone rather than inventing a job
+  ---
+  duration_ms: 181.974667
+  type: 'test'
+  ...
+# Subtest: the job plumbing the channel admits is exactly the plumbing the job operations run
+ok 9 - the job plumbing the channel admits is exactly the plumbing the job operations run
+  ---
+  duration_ms: 0.155792
+  type: 'test'
+  ...
+# Subtest: the channel runs its own verbs and refuses everything else, on a local site as on a remote one
+ok 10 - the channel runs its own verbs and refuses everything else, on a local site as on a remote one
+  ---
+  duration_ms: 2.77675
+  type: 'test'
+  ...
+# Subtest: the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+ok 11 - the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+  ---
+  duration_ms: 18.973208
+  type: 'test'
+  ...
+# Subtest: the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data
+ok 12 - the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data
+  ---
+  duration_ms: 1.686042
+  type: 'test'
+  ...
+# Subtest: the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+ok 13 - the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+  ---
+  duration_ms: 482.490292
+  type: 'test'
+  ...
+# pack opene902-timing-probe@1 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# inputs:
+#   flowRoot = /tmp/hpls-mt_49jxa/hima-home-8sf0RJ/standin-flow
+#   design = opene902
+#   workspaceRoot = /tmp/hpls-mt_49jxa/hima-home-8sf0RJ/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found
+#   clock-period-at-most@1: found
+# readers:
+#   dc-qor-report@1 reads qorReport: found
+# choosers:
+#   timing-push@1 chooses at next-period: found
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# Subtest: a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+ok 14 - a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+  ---
+  duration_ms: 119.906
+  type: 'test'
+  ...
+# Subtest: a pack whose tool runs a command the site does not allow fails the check, naming the command
+ok 15 - a pack whose tool runs a command the site does not allow fails the check, naming the command
+  ---
+  duration_ms: 118.110417
+  type: 'test'
+  ...
+# Subtest: a pack referencing a rule that does not exist fails the check, naming the rule
+ok 16 - a pack referencing a rule that does not exist fails the check, naming the rule
+  ---
+  duration_ms: 117.535167
+  type: 'test'
+  ...
+# Subtest: a pack naming a reader that does not exist fails the check, naming the reader
+ok 17 - a pack naming a reader that does not exist fails the check, naming the reader
+  ---
+  duration_ms: 119.806291
+  type: 'test'
+  ...
+# Subtest: a pack naming a chooser that does not exist fails the check, naming the chooser
+ok 18 - a pack naming a chooser that does not exist fails the check, naming the chooser
+  ---
+  duration_ms: 117.381208
+  type: 'test'
+  ...
+# Subtest: a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+ok 19 - a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 122.299708
+  type: 'test'
+  ...
+# Subtest: a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+ok 20 - a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 118.719625
+  type: 'test'
+  ...
+# Subtest: a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+ok 21 - a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+  ---
+  duration_ms: 141.853833
+  type: 'test'
+  ...
+# Subtest: a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+ok 22 - a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+  ---
+  duration_ms: 130.544458
+  type: 'test'
+  ...
+# Subtest: preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+not ok 23 - preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+  ---
+  duration_ms: 88.032792
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:352:1'
+  failureType: 'testCodeFailure'
+  error: 'randomUUID is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:356:20)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: preparing the same campaign twice copies nothing the second time and says so
+not ok 24 - preparing the same campaign twice copies nothing the second time and says so
+  ---
+  duration_ms: 85.884375
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:418:1'
+  failureType: 'testCodeFailure'
+  error: 'randomUUID is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:422:20)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a workspace that is there but carries no workspace.json is not prepared over the top of
+not ok 25 - a workspace that is there but carries no workspace.json is not prepared over the top of
+  ---
+  duration_ms: 83.588208
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:458:1'
+  failureType: 'testCodeFailure'
+  error: 'randomUUID is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:465:20)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+not ok 26 - a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+  ---
+  duration_ms: 87.60475
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:483:1'
+  failureType: 'testCodeFailure'
+  error: 'randomUUID is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:491:20)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+not ok 27 - a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+  ---
+  duration_ms: 80.164916
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:524:1'
+  failureType: 'testCodeFailure'
+  error: 'randomUUID is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:533:20)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+not ok 28 - a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+  ---
+  duration_ms: 87.1645
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:564:1'
+  failureType: 'testCodeFailure'
+  error: 'randomUUID is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:571:20)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a workspace.json that cannot be read as one is an answer, not a crash
+not ok 29 - a workspace.json that cannot be read as one is an answer, not a crash
+  ---
+  duration_ms: 106.66775
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:595:1'
+  failureType: 'testCodeFailure'
+  error: 'randomUUID is not defined'
+  code: 'ERR_TEST_FAILURE'
+  name: 'ReferenceError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:604:37)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+ok 30 - a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+  ---
+  duration_ms: 178.03425
+  type: 'test'
+  ...
+# Subtest: the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+ok 31 - the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+  ---
+  duration_ms: 0.222792
+  type: 'test'
+  ...
+# Subtest: the committed reference site and permit record what the site owner agreed to
+ok 32 - the committed reference site and permit record what the site owner agreed to
+  ---
+  duration_ms: 14.862708
+  type: 'test'
+  ...
+# Subtest: a site file with a destination shaped like an ssh option is refused before any connection is attempted
+ok 33 - a site file with a destination shaped like an ssh option is refused before any connection is attempted
+  ---
+  duration_ms: 5.351542
+  type: 'test'
+  ...
+# Subtest: a jumps entry containing a comma is refused: it would smuggle an extra hop into -J
+ok 34 - a jumps entry containing a comma is refused: it would smuggle an extra hop into -J
+  ---
+  duration_ms: 3.918416
+  type: 'test'
+  ...
+# Subtest: HimaChannel admits exactly the read-only probes it runs, and nothing more
+ok 35 - HimaChannel admits exactly the read-only probes it runs, and nothing more
+  ---
+  duration_ms: 0.250667
+  type: 'test'
+  ...
+# Subtest: two sites that differ only in how long the connection is kept warm get their own control socket
+ok 36 - two sites that differ only in how long the connection is kept warm get their own control socket
+  ---
+  duration_ms: 4.228833
+  type: 'test'
+  ...
+1..36
+# tests 36
+# suites 0
+# pass 29
+# fail 7
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 161991.454333

@@ -1,0 +1,6561 @@
+{
+  "baseline": "d6cadfbe820594d543655ff32d27e8ba270c423a",
+  "notes": "Static test declarations; parameterized declarations can register multiple runtime cases. Dependencies and cleanup include transitively called file-local helpers; imported support and resource ownership are reviewed in README.md. Levels describe assertions; group selection can conservatively include lower-cost checks.",
+  "files": [
+    {
+      "original": "test/contract/boot.test.ts",
+      "destinations": [
+        "test/contract/boot.test.ts"
+      ],
+      "testDeclarations": 2,
+      "assertionExpressions": 10
+    },
+    {
+      "original": "test/contract/budget.test.ts",
+      "destinations": [
+        "test/contract/budget.test.ts"
+      ],
+      "testDeclarations": 6,
+      "assertionExpressions": 123
+    },
+    {
+      "original": "test/contract/command.test.ts",
+      "destinations": [
+        "test/contract/command.test.ts"
+      ],
+      "testDeclarations": 1,
+      "assertionExpressions": 5
+    },
+    {
+      "original": "test/contract/dc-reader.test.ts",
+      "destinations": [
+        "test/contract/dc-reader.test.ts"
+      ],
+      "testDeclarations": 14,
+      "assertionExpressions": 118
+    },
+    {
+      "original": "test/contract/desktop.test.ts",
+      "destinations": [
+        "test/contract/desktop.test.ts"
+      ],
+      "testDeclarations": 1,
+      "assertionExpressions": 42
+    },
+    {
+      "original": "test/contract/drill-down.test.ts",
+      "destinations": [
+        "test/contract/drill-down.test.ts"
+      ],
+      "testDeclarations": 7,
+      "assertionExpressions": 117
+    },
+    {
+      "original": "test/contract/driver.test.ts",
+      "destinations": [
+        "test/contract/driver.test.ts"
+      ],
+      "testDeclarations": 2,
+      "assertionExpressions": 75
+    },
+    {
+      "original": "test/contract/experience.test.ts",
+      "destinations": [
+        "test/contract/experience.test.ts"
+      ],
+      "testDeclarations": 9,
+      "assertionExpressions": 134
+    },
+    {
+      "original": "test/contract/fabric-licences.test.ts",
+      "destinations": [
+        "test/contract/fabric-licences.test.ts"
+      ],
+      "testDeclarations": 4,
+      "assertionExpressions": 41
+    },
+    {
+      "original": "test/contract/fabric-restart.test.ts",
+      "destinations": [
+        "test/contract/fabric-restart.test.ts"
+      ],
+      "testDeclarations": 16,
+      "assertionExpressions": 182
+    },
+    {
+      "original": "test/contract/fabric-retry.test.ts",
+      "destinations": [
+        "test/contract/fabric-retry.test.ts"
+      ],
+      "testDeclarations": 13,
+      "assertionExpressions": 177
+    },
+    {
+      "original": "test/contract/fabric.test.ts",
+      "destinations": [
+        "test/contract/fabric.test.ts"
+      ],
+      "testDeclarations": 14,
+      "assertionExpressions": 162
+    },
+    {
+      "original": "test/contract/fork-join.test.ts",
+      "destinations": [
+        "test/contract/fork-join.test.ts"
+      ],
+      "testDeclarations": 10,
+      "assertionExpressions": 148
+    },
+    {
+      "original": "test/contract/honest-standin.test.ts",
+      "destinations": [
+        "test/contract/honest-standin.test.ts"
+      ],
+      "testDeclarations": 1,
+      "assertionExpressions": 25
+    },
+    {
+      "original": "test/contract/jobs-unreadable.test.ts",
+      "destinations": [
+        "test/contract/jobs-unreadable.test.ts"
+      ],
+      "testDeclarations": 11,
+      "assertionExpressions": 115
+    },
+    {
+      "original": "test/contract/jobs.test.ts",
+      "destinations": [
+        "test/contract/jobs.test.ts",
+        "test/contract/jobs.live.test.ts"
+      ],
+      "testDeclarations": 14,
+      "assertionExpressions": 128
+    },
+    {
+      "original": "test/contract/judge.test.ts",
+      "destinations": [
+        "test/contract/judge.test.ts"
+      ],
+      "testDeclarations": 12,
+      "assertionExpressions": 100
+    },
+    {
+      "original": "test/contract/ledger-version.test.ts",
+      "destinations": [
+        "test/contract/ledger-version.test.ts"
+      ],
+      "testDeclarations": 1,
+      "assertionExpressions": 15
+    },
+    {
+      "original": "test/contract/loop.test.ts",
+      "destinations": [
+        "test/contract/loop.test.ts"
+      ],
+      "testDeclarations": 13,
+      "assertionExpressions": 178
+    },
+    {
+      "original": "test/contract/observe-ledger.test.ts",
+      "destinations": [
+        "test/contract/observe-ledger.test.ts"
+      ],
+      "testDeclarations": 6,
+      "assertionExpressions": 38
+    },
+    {
+      "original": "test/contract/observe-readers.test.ts",
+      "destinations": [
+        "test/contract/observe-readers.test.ts"
+      ],
+      "testDeclarations": 7,
+      "assertionExpressions": 54
+    },
+    {
+      "original": "test/contract/observe.test.ts",
+      "destinations": [
+        "test/contract/observe.test.ts"
+      ],
+      "testDeclarations": 1,
+      "assertionExpressions": 17
+    },
+    {
+      "original": "test/contract/pack.test.ts",
+      "destinations": [
+        "test/contract/pack.test.ts",
+        "test/contract/pack.live.test.ts"
+      ],
+      "testDeclarations": 24,
+      "assertionExpressions": 188
+    },
+    {
+      "original": "test/contract/site-name.test.ts",
+      "destinations": [
+        "test/contract/site-name.test.ts"
+      ],
+      "testDeclarations": 3,
+      "assertionExpressions": 20
+    },
+    {
+      "original": "test/contract/ssh.test.ts",
+      "destinations": [
+        "test/contract/ssh.test.ts",
+        "test/contract/ssh.live.test.ts"
+      ],
+      "testDeclarations": 13,
+      "assertionExpressions": 66
+    },
+    {
+      "original": "test/contract/strategy.test.ts",
+      "destinations": [
+        "test/contract/strategy.test.ts"
+      ],
+      "testDeclarations": 5,
+      "assertionExpressions": 72
+    },
+    {
+      "original": "test/contract/view-run.test.ts",
+      "destinations": [
+        "test/contract/view-run.test.ts"
+      ],
+      "testDeclarations": 5,
+      "assertionExpressions": 84
+    },
+    {
+      "original": "test/contract/view.test.ts",
+      "destinations": [
+        "test/contract/view.test.ts"
+      ],
+      "testDeclarations": 6,
+      "assertionExpressions": 61
+    },
+    {
+      "original": "test/contract/window.test.ts",
+      "destinations": [
+        "test/contract/window.test.ts"
+      ],
+      "testDeclarations": 9,
+      "assertionExpressions": 145
+    }
+  ],
+  "cases": [
+    {
+      "original": {
+        "path": "test/contract/boot.test.ts",
+        "line": 10
+      },
+      "current": {
+        "path": "test/contract/boot.test.ts",
+        "line": 10
+      },
+      "title": "'the hima profile composes dsh-base, the Hima bundle, and the privacy overlay'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "createHimaHome"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/boot.test.ts",
+        "line": 24
+      },
+      "current": {
+        "path": "test/contract/boot.test.ts",
+        "line": 24
+      },
+      "title": "'the hima profile boots as a real host, serves the web app, and stops cleanly on SIGTERM'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootHimaHost",
+        "createHimaHome"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/budget.test.ts",
+        "line": 97
+      },
+      "current": {
+        "path": "test/contract/budget.test.ts",
+        "line": 97
+      },
+      "title": "'a time box spent inside generation two kills that generation\\'s job and ends the Campaign naming the box'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "killSessions",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "sessionsIn",
+        "startRun"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/budget.test.ts",
+        "line": 182
+      },
+      "current": {
+        "path": "test/contract/budget.test.ts",
+        "line": 182
+      },
+      "title": "'a retry allowance spent on generation two blocks that generation, and a resume gives it a fresh one'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "sessionsIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/budget.test.ts",
+        "line": 268
+      },
+      "current": {
+        "path": "test/contract/budget.test.ts",
+        "line": 268
+      },
+      "title": "'a licence bounds a launch the way the job cap does: the second Campaign waits for the one seat the site declares'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "sessionsIn",
+        "startRun"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/budget.test.ts",
+        "line": 344
+      },
+      "current": {
+        "path": "test/contract/budget.test.ts",
+        "line": 344
+      },
+      "title": "'the card\\'s meters region shows a running Campaign every meter against its bound, in the numbers the run row holds'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "regionMarkup",
+        "runOverTheRoute",
+        "sessionsIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/budget.test.ts",
+        "line": 453
+      },
+      "current": {
+        "path": "test/contract/budget.test.ts",
+        "line": 453
+      },
+      "title": "'the served HimaGuide bundle carries the meters section, as the workbench page does'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/budget.test.ts",
+        "line": 492
+      },
+      "current": {
+        "path": "test/contract/budget.test.ts",
+        "line": 492
+      },
+      "title": "'/hima status prints every meter of a running Campaign against its bound, in the numbers the run row holds'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/command.test.ts",
+        "line": 15
+      },
+      "current": {
+        "path": "test/contract/command.test.ts",
+        "line": 15
+      },
+      "title": "'/hima version answers with the bundle and host versions, without a model turn'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 68
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 68
+      },
+      "title": "'the dc-qor-report reader emits setup WNS, TNS, clock period, hold WNS, and cell area from the real opene902 qor report, with its declaration recorded'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "assertUnitsBound",
+        "find"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 108
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 108
+      },
+      "title": "'the same real report with a hold violation in it reads as a negative hold slack and FAILs the very rule the unviolated one passes'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "find",
+        "writeWorkspaceFile"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 146
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 146
+      },
+      "title": "'a qor report truncated before its first path group yields unknown values with a stated reason for each, never a default'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "writeWorkspaceFile"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 173
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 173
+      },
+      "title": "'a qor report missing one line inside its one path group leaves only that value unknown; the rest still read'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "find",
+        "writeWorkspaceFile"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 203
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 203
+      },
+      "title": "'the real report with a Design Compiler built-in group added that has the worse slack: the clock period is still the clock group\\'s, the setup WNS is the built-in\\'s, and each names the group it came from'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "assertUnitsBound",
+        "find",
+        "writeWorkspaceFile"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 257
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 257
+      },
+      "title": "'a qor report whose only path groups are Design Compiler built-ins: the clock period is unknown with a reason naming the groups found, and setup WNS is still the worst of them'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "find",
+        "writeWorkspaceFile"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 315
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 315
+      },
+      "title": "'two clock path groups: setup WNS is the minimum slack naming its group, setup TNS sums every group, hold WNS is the worst violation as a slack, and the clock period is unknown because two clocks are stated'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "find",
+        "writeWorkspaceFile"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 387
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 387
+      },
+      "title": "'multiple path groups, one missing its Critical Path Slack line: setup WNS goes unknown naming that group, while TNS and hold WNS (whose lines are complete) still read'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "find",
+        "writeWorkspaceFile"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 464
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 464
+      },
+      "title": "'the dc-qor-report reader accepts a gzip-compressed report transparently, as the Innovus readers do'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "find",
+        "writeWorkspaceFile"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 502
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 502
+      },
+      "title": "'a report of the wrong kind is refused by the dc-qor-report reader, with no observation recorded'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 520
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 520
+      },
+      "title": "'the acceptance command: /hima observe --reader dc-qor-report --judge clock-period-at-most --param target_period_ns=<ns>, FAIL at a tighter target, PASS at a looser one'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 565
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 565
+      },
+      "title": "'the hima_observe tool binds --param the same way: judging clock-period-at-most with params target_period_ns yields the same outcome'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 588
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 588
+      },
+      "title": "'the hima_observe tool rejects a non-numeric params value with an error result naming the parameter, writing no observation and no verdict'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 626
+      },
+      "current": {
+        "path": "test/contract/dc-reader.test.ts",
+        "line": 626
+      },
+      "title": "'POST /hima/api/observe binds params the same way: the run view shows the same outcome the command and the tool give'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootHimaHost",
+        "createHimaHome",
+        "openSession",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": [
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/desktop.test.ts",
+        "line": 28
+      },
+      "current": {
+        "path": "test/contract/desktop.test.ts",
+        "line": 28
+      },
+      "title": "'pnpm run desktop --site local on a machine that has never run it: the shell makes the hima home, seeds the local site, boots its own host, answers the driver, refuses the fence, and stops the host'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 72
+      },
+      "current": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 72
+      },
+      "title": "'an explore node opens its own loop, which converges on its own condition, and the outer graph continues on the edge that outcome labels'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installDrillDown"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "ledgerRowsOn",
+        "loopRecordsIn",
+        "recordsOf"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 207
+      },
+      "current": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 207
+      },
+      "title": "'a loop that runs out of its own generation limit closes on that outcome, and the outer graph takes the edge that one labels'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installDrillDown"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "loopRecordsIn",
+        "recordsOf"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 301
+      },
+      "current": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 301
+      },
+      "title": "'a cancel inside the inner loop ends the whole Run, leaving that loop opened on record with what it had done intact'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installDrillDown",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "launchedInLoop",
+        "loopRecordsIn",
+        "recordsOf",
+        "runIdOnTheList",
+        "sessionsIn",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 392
+      },
+      "current": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 392
+      },
+      "title": "'a host taken away inside the inner loop is replaced by one that carries that loop on, launching nothing twice'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installDrillDown",
+        "killSessions"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "killSessions",
+        "second.dispose"
+      ],
+      "localHelpers": [
+        "launchedInLoop",
+        "loopRecordsIn",
+        "recordsOf",
+        "runIdOnTheList",
+        "runViewOf",
+        "sessionsIn",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 458
+      },
+      "current": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 458
+      },
+      "title": "'the served HimaGuide bundle carries the nested loop\\'s rows, as the workbench page does'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 494
+      },
+      "current": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 494
+      },
+      "title": "'/hima status says which loop a Run is inside and how far into it, and /hima pack check refuses a drill-down that cannot be executed'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "installDrillDown",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 552
+      },
+      "current": {
+        "path": "test/contract/drill-down.test.ts",
+        "line": 552
+      },
+      "title": "'/hima pack check refuses a drill-down whose edges the engine could never take, and a graph that says twice where its runs wait'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose"
+      ],
+      "localHelpers": [
+        "variant"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/driver.test.ts",
+        "line": 30
+      },
+      "current": {
+        "path": "test/contract/driver.test.ts",
+        "line": 30
+      },
+      "title": "'through the shell in driver mode: a Run started with the shell\\'s session, its card read region by region off the workbench page, and the same Run read over the route agree'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/driver.test.ts",
+        "line": 167
+      },
+      "current": {
+        "path": "test/contract/driver.test.ts",
+        "line": 167
+      },
+      "title": "'the audit routes say what the host asked the Site to run: the campaign\\'s own command lines, a drain that empties what it read, and the fence over both'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "audit"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/experience.test.ts",
+        "line": 75
+      },
+      "current": {
+        "path": "test/contract/experience.test.ts",
+        "line": 75
+      },
+      "title": "'a Campaign that met its goal leaves both report files on the site, with their hashes on the ledger and every number the card showed in the json'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "reportOf",
+        "sha256",
+        "startRun"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/experience.test.ts",
+        "line": 154
+      },
+      "current": {
+        "path": "test/contract/experience.test.ts",
+        "line": 154
+      },
+      "title": "'a Campaign that stopped learning writes the convergence rule into both files as the reason it ended'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "reportOf",
+        "sha256",
+        "startRun"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/experience.test.ts",
+        "line": 187
+      },
+      "current": {
+        "path": "test/contract/experience.test.ts",
+        "line": 187
+      },
+      "title": "'a Campaign a Budget meter ended names that meter in its report, whichever meter it was'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "reportOf",
+        "sha256",
+        "startRun"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/experience.test.ts",
+        "line": 230
+      },
+      "current": {
+        "path": "test/contract/experience.test.ts",
+        "line": 230
+      },
+      "title": "'a Campaign a person stopped writes its report at the cancel, with what was observed to stop as the reason'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "reportOf",
+        "sha256",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/experience.test.ts",
+        "line": 279
+      },
+      "current": {
+        "path": "test/contract/experience.test.ts",
+        "line": 279
+      },
+      "title": "'a second host on the same home re-serves the report it finds rather than writing a second one'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "second.dispose"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "sha256",
+        "startRun"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/experience.test.ts",
+        "line": 332
+      },
+      "current": {
+        "path": "test/contract/experience.test.ts",
+        "line": 332
+      },
+      "title": "'the report is served as markdown to a session that has one, refused to a caller with none, refused outright once the file has changed under it, and answered as a site fault once the file is gone'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "rm"
+      ],
+      "localHelpers": [
+        "sha256",
+        "startRun"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/experience.test.ts",
+        "line": 406
+      },
+      "current": {
+        "path": "test/contract/experience.test.ts",
+        "line": 406
+      },
+      "title": "'a run whose ending stood while the site refused the report is finished by the next host, which writes it from records that have not moved'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "rm",
+        "second.dispose"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "reportOf",
+        "sha256",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/experience.test.ts",
+        "line": 486
+      },
+      "current": {
+        "path": "test/contract/experience.test.ts",
+        "line": 486
+      },
+      "title": "'/hima status names the report\\'s two files on a Campaign that has ended'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "sha256"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/experience.test.ts",
+        "line": 524
+      },
+      "current": {
+        "path": "test/contract/experience.test.ts",
+        "line": 524
+      },
+      "title": "'a Campaign stopped while it waited on a person carries its Hard blocker into the report, log tail and all'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "reportOf",
+        "sha256",
+        "startRun"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-licences.test.ts",
+        "line": 46
+      },
+      "current": {
+        "path": "test/contract/fabric-licences.test.ts",
+        "line": 46
+      },
+      "title": "'a licence bounds a launch the way the job cap does: a second run waits for the one seat the site declares, on a site with a free job slot'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "killSessions",
+        "localHome",
+        "openSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "start",
+        "writeSynopsysPack"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-licences.test.ts",
+        "line": 157
+      },
+      "current": {
+        "path": "test/contract/fabric-licences.test.ts",
+        "line": 157
+      },
+      "title": "'a pack whose tool holds a licence the site does not declare is unfit, and the run is refused before anything is launched'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose"
+      ],
+      "localHelpers": [
+        "writeSynopsysPack"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-licences.test.ts",
+        "line": 187
+      },
+      "current": {
+        "path": "test/contract/fabric-licences.test.ts",
+        "line": 187
+      },
+      "title": "'a site that declares none of a licence can never host a tool that holds it, and says so rather than letting a run wait for ever'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose"
+      ],
+      "localHelpers": [
+        "writeSynopsysPack"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-licences.test.ts",
+        "line": 210
+      },
+      "current": {
+        "path": "test/contract/fabric-licences.test.ts",
+        "line": 210
+      },
+      "title": "'the shipped pack declares the seat its Design Compiler tool holds, and the local site declares one to give it'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 157
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 157
+      },
+      "title": "'a host disposed while the job sleeps is replaced by one that finds the same job still running and carries the run to its end, launching nothing twice'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine",
+        "wholeGeneration"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 219
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 219
+      },
+      "title": "'a job that finished while the host was down is picked up from its exit file, and the run continues from there'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine",
+        "wholeGeneration"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 257
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 257
+      },
+      "title": "'a job gone without an exit file is a failed attempt: the node is recorded as gone and the run waits, naming it'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession",
+        "rm"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 303
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 303
+      },
+      "title": "'a host booting onto a job that vanished retries it under the default allowance: a second attempt, and never two jobs on the site at once'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession",
+        "rm"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 412
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 412
+      },
+      "title": "'a run cancelled while the reconciliation is carrying an earlier one on keeps the ending a person gave it'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cancelRecords",
+        "cleanup",
+        "nextWallClockSecond",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 487
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 487
+      },
+      "title": "'/hima cancel stops the sleeping job on the site, records the request and the observed stop, and ends the run cancelled'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cancelRecords",
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 540
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 540
+      },
+      "title": "'a run cancelled while /hima resume is still waiting on the job it launched is that command\\'s success, not its error'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession",
+        "rm"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 594
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 594
+      },
+      "title": "'the hima_cancel tool stops the same job the command face does, and answers with what it stopped'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 633
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 633
+      },
+      "title": "'a cancel that arrives while the job is still being launched leaves nothing of the run running on the site'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "raceUntil",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 717
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 717
+      },
+      "title": "'cancelling a run whose job the ledger has already settled writes one blocker, not a second, and the node ends cancelled'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "askedAboutSession",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession",
+        "rm"
+      ],
+      "localHelpers": [
+        "askedAboutSession",
+        "blockersOn",
+        "cancelRecords",
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 772
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 772
+      },
+      "title": "'a launch the run has accounted for but the site still has is stopped by the cancel, not written off'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "askedAboutSession",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "startSession",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession",
+        "rm"
+      ],
+      "localHelpers": [
+        "askedAboutSession",
+        "cancelRecords",
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 835
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 835
+      },
+      "title": "'cancelling a run that already ended answers with its status and writes nothing'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 866
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 866
+      },
+      "title": "'POST /hima/api/runs/<id>/cancel stops a job a new host picked up, behind the session fence, and answers with the cancelled run'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "after.bootWeb",
+        "api",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "killSession",
+        "localHome",
+        "openSession",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 919
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 919
+      },
+      "title": "'a fault while the campaign workspace is being prepared is recorded against the run, not lost with the run left saying nothing happened'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 964
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 964
+      },
+      "title": "'a campaign the site gives no workspace is blocked at once, in the words the refusal recorded, and the next host leaves it alone'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cleanup",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 1031
+      },
+      "current": {
+        "path": "test/contract/fabric-restart.test.ts",
+        "line": 1031
+      },
+      "title": "'a run left with no fabric state at all is still picked up by the next host, not left looking like a run no fabric ever touched'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "after.boot",
+        "boot",
+        "bootHimaHost",
+        "bootInProcess",
+        "bootWeb",
+        "himaCommand",
+        "killSession",
+        "localHome"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "cleanup"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 97
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 97
+      },
+      "title": "'a job told to fail twice is retried as two fresh attempts and the third succeeds, and the run completes with no blocker'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootedLocalFabric",
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "attemptsAt",
+        "blockerRecords",
+        "localFabric"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 156
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 156
+      },
+      "title": "'a job told to fail four times against an allowance of three blocks with a blocker record carrying the last exit and the log tail, and resume re-enters the node with a fresh allowance and completes the run'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootedLocalFabric",
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "attemptsAt",
+        "blockerRecords",
+        "localFabric"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 244
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 244
+      },
+      "title": "'resume answers clearly and writes nothing on a run that has ended and on one that is still running'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootedLocalFabric",
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "localFabric",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 309
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 309
+      },
+      "title": "'the hima_resume tool clears the same blocker the command does, and answers with the run it carried on'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootedLocalFabric",
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "localFabric"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 366
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 366
+      },
+      "title": "'POST /hima/api/runs/<id>/resume clears a blocker behind the session fence, the run view carries the blocker, and a run that is not waiting is a coded refusal'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "killSessions",
+        "localHome",
+        "openSession",
+        "sharedLocalHome"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "localHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 434
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 434
+      },
+      "title": "'the site\\'s job cap holds across runs: a second run records waiting-for-slot, launches only once the first job has finished, and both complete'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "killSessions",
+        "localHome",
+        "openSession",
+        "sharedLocalHome"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "localHome",
+        "start"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 528
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 528
+      },
+      "title": "'attempts survive a host restart: a run blocked after two attempts is resumed on a freshly booted host and its next attempt is the third'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "himaCommand",
+        "killSessions",
+        "localHome",
+        "sharedLocalHome"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "h.dispose",
+        "killSessions",
+        "second.dispose"
+      ],
+      "localHelpers": [
+        "attemptsAt",
+        "localHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 583
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 583
+      },
+      "title": "'a job whose tmux session vanishes is retried at once: the slot its own corpse holds is not counted against it'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootedLocalFabric",
+        "himaCommand",
+        "killSessions",
+        "localFabric",
+        "openSessionsHere"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "attemptsAt",
+        "localFabric",
+        "openJobsHere",
+        "openSessionsHere",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 644
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 644
+      },
+      "title": "'two runs started in the same instant do not both launch past a cap of one: the check and the launch are one step per site'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootedLocalFabric",
+        "himaCommand",
+        "killSessions",
+        "localFabric",
+        "openSessionsHere"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "localFabric",
+        "openJobsHere",
+        "openSessionsHere",
+        "start",
+        "until",
+        "workspaceRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 706
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 706
+      },
+      "title": "'a run resumed after its time box would have run out still gets its generation: the box meters the design, not the person'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootedLocalFabric",
+        "himaCommand",
+        "killSessions",
+        "localFabric",
+        "openSessionsHere"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "attemptsAt",
+        "blockerRecords",
+        "localFabric",
+        "openJobsHere",
+        "openSessionsHere",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 767
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 767
+      },
+      "title": "'a job launched by hand holds the site\\'s only slot, is refused a second one, and releases it without anyone asking its status'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootedLocalFabric",
+        "himaCommand",
+        "killSessions",
+        "localFabric",
+        "openSessionsHere"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "localFabric",
+        "openJobsHere",
+        "openSessionsHere",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 827
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 827
+      },
+      "title": "'a case variant of the site name is refused as an unknown site before the cap it would have collided with is ever asked: `/hima job launch LOCAL` is not a second slot on `local`'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootedLocalFabric",
+        "himaCommand",
+        "killSessions",
+        "localFabric",
+        "openSessionsHere"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "localFabric",
+        "openJobsHere",
+        "openSessionsHere"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 874
+      },
+      "current": {
+        "path": "test/contract/fabric-retry.test.ts",
+        "line": 874
+      },
+      "title": "'a waiting run whose box was spent when it stopped is refused a resume in the same words by the command and the route, and nothing is written'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "bootInProcess",
+        "himaCommand",
+        "killSessions",
+        "localHome",
+        "openSession",
+        "sharedLocalHome"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "h.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "blockerRecords",
+        "localHome",
+        "start",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 146
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 146
+      },
+      "title": "'a run on the local site executes launch, read, judge, decide in one generation, and ends at the generation it was allowed with the next strategy recorded'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "assertOneGeneration",
+        "decisions",
+        "observations",
+        "reportedAt",
+        "valueOf",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 192
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 192
+      },
+      "title": "'a run whose generation already meets the goal ends goal-met, with no next strategy chosen'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "assertOneGeneration",
+        "decisions",
+        "observations",
+        "reportedAt",
+        "valueOf",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 221
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 221
+      },
+      "title": "'a spent time box kills the running job, leaves no tmux session, and ends the run budget-exhausted naming the meter'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "decisions",
+        "observations"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 259
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 259
+      },
+      "title": "'a run of a pack naming a chooser this harness does not ship is refused before a campaign exists'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 278
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 278
+      },
+      "title": "'an act node naming an argument the Run cannot bind blocks with a reason naming it, and launches nothing'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 315
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 315
+      },
+      "title": "'a fault thrown mid-drive is a blocked node with the message on it, not a stack trace and a run still claiming to be running'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 358
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 358
+      },
+      "title": "'POST /hima/api/runs answers a mid-drive fault as hima/internal carrying the run id and the message'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "createHimaHome",
+        "installPack",
+        "openSession",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 401
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 401
+      },
+      "title": "'waiting for a long job backs off, so the launch is still in the channel\\'s audit when the run ends'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 428
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 428
+      },
+      "title": "'the hima_run tool starts the same run as the command, and answers with the run it started'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "assertOneGeneration",
+        "decisions",
+        "observations",
+        "reportedAt",
+        "valueOf",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 458
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 458
+      },
+      "title": "'the command face and the tool face refuse a number the same way, in the same words, and start nothing'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 510
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 510
+      },
+      "title": "'a --time-box the shared validator accepts but that converts to a millisecond value the ledger schema would refuse is caught before it ever reaches the ledger, on every face, and the ledger reopens cleanly after'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "himaCommand",
+        "localFabric",
+        "rebooted.ctx.hima.ledger.runs",
+        "rebooted.dispose"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "rebooted.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 567
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 567
+      },
+      "title": "'POST /hima/api/runs starts a run behind the session fence, and the run view carries its status, goal, strategy, budget, meters, nodes, jobs and decision'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "createHimaHome",
+        "installPack",
+        "openSession",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": [
+        "observations",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 653
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 653
+      },
+      "title": "'/hima status reports the run\\'s status, its current node, every node state, the meters and the decision'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 700
+      },
+      "current": {
+        "path": "test/contract/fabric.test.ts",
+        "line": 700
+      },
+      "title": "'a fabric run\\'s records and its run state read back unchanged after a host restart'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "killSessions",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "h.dispose",
+        "killSessions",
+        "second.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 78
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 78
+      },
+      "title": "'a fork under a job cap of two runs both branches at once, and the join judges each branch\\'s own reading'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installFork",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "jobsIn",
+        "ledgerRowsOn",
+        "nodesIn",
+        "readOf",
+        "recordsOf",
+        "sessionsIn",
+        "verdictsIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 230
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 230
+      },
+      "title": "'the same fork under a job cap of one runs its branches one after the other, and says which one was waiting for a slot'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installFork",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "jobsIn",
+        "ledgerRowsOn",
+        "nodesIn",
+        "recordsOf",
+        "sessionsIn",
+        "verdictsIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 290
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 290
+      },
+      "title": "'a branch that spends its allowance blocks only itself, and a resume re-enters that branch alone'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installFork",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "jobsIn",
+        "recordsOf",
+        "sessionsIn",
+        "verdictsIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 392
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 392
+      },
+      "title": "'a cancel while both branches hold a job stops both of them, and records each stop'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installFork",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions",
+        "killed.map"
+      ],
+      "localHelpers": [
+        "jobsIn",
+        "recordsOf",
+        "runIdOnTheList",
+        "sessionsIn",
+        "until",
+        "verdictsIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 473
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 473
+      },
+      "title": "'a host taken away while both branches hold a job is replaced by one that picks both up, launching nothing twice'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installFork",
+        "killSessions"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "killSessions",
+        "second.dispose"
+      ],
+      "localHelpers": [
+        "jobsIn",
+        "nodesIn",
+        "recordsOf",
+        "runIdOnTheList",
+        "runViewOf",
+        "sessionsIn",
+        "until",
+        "verdictsIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 594
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 594
+      },
+      "title": "'a site that could not be asked inside a fork leaves the run exactly as it was, rather than blocking the join over a live job'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installFork",
+        "killSession",
+        "killSessions"
+      ],
+      "cleanup": [
+        "chmod",
+        "d.dispose",
+        "killSession",
+        "killSessions",
+        "restore",
+        "rm",
+        "shadow.restore"
+      ],
+      "localHelpers": [
+        "jobsIn",
+        "nodesIn",
+        "recordsOf",
+        "runIdOnTheList",
+        "runViewOf",
+        "sessionsIn",
+        "sleep",
+        "tmuxThatCannotLaunchBranchB",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 666
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 666
+      },
+      "title": "'two blocked branches take two resumes: one person\\'s action clears one branch, and the other waits for its own'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installFork",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "jobsIn",
+        "recordsOf",
+        "sessionsIn",
+        "verdictsIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 731
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 731
+      },
+      "title": "'the served HimaGuide bundle carries the fork\\'s branch rows, as the workbench page does'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 861
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 861
+      },
+      "title": "'/hima status says which fork a Run is inside and lists its branches with what each one is doing'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "installFork",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 896
+      },
+      "current": {
+        "path": "test/contract/fork-join.test.ts",
+        "line": 896
+      },
+      "title": "'/hima pack check refuses a fork the engine could never drive: a judge node inside a branch, two joins, an explore node after the join, and a fork inside a loop'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "installFork",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose"
+      ],
+      "localHelpers": [
+        "forkInsideALoop",
+        "variant"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/honest-standin.test.ts",
+        "line": 62
+      },
+      "current": {
+        "path": "test/contract/honest-standin.test.ts",
+        "line": 62
+      },
+      "title": "'on a stand-in that reports no margin for a met period, timing-push loosens by its guard band every generation and ends at the limit, while over-constraining-push converges below the achievable period and ends goal-met when the goal is reachable'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "campaign"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 307
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 307
+      },
+      "title": "'a poll that cannot ask the site writes nothing and keeps asking, and the run finishes when the socket comes back'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "moveSocketAway",
+        "tmuxHasSession",
+        "tmuxSocketUnder",
+        "tmuxTmp.moveSocketAway"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm",
+        "tmuxTmp.heal"
+      ],
+      "localHelpers": [
+        "asksAbout",
+        "ledgerShape",
+        "ownTmuxTmpdir",
+        "runLine",
+        "sleep"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 365
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 365
+      },
+      "title": "'a socket directory that cannot be entered is a cannot-tell too, and the job is found again when it opens'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "createHimaHome",
+        "himaCommand",
+        "killSession",
+        "launchedSession",
+        "localJobHome",
+        "moveSocketAway",
+        "tmuxHasSession",
+        "tmuxSocketUnder",
+        "tmuxTmp.closeSocketDir"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm",
+        "tmuxTmp.heal"
+      ],
+      "localHelpers": [
+        "launchedSession",
+        "ledgerShape",
+        "localJobHome",
+        "ownTmuxTmpdir",
+        "sleep"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 404
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 404
+      },
+      "title": "'a probe the site could never run — the command would not start, the command never answered — is a cannot-tell too'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "createHimaHome",
+        "himaCommand",
+        "killSession",
+        "launchedSession",
+        "localJobHome",
+        "moveSocketAway",
+        "tmuxSocketUnder"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm",
+        "shadow.restore"
+      ],
+      "localHelpers": [
+        "launchedSession",
+        "ledgerShape",
+        "localJobHome",
+        "ownTmuxTmpdir",
+        "shadowedTmux",
+        "shim",
+        "sleep"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 459
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 459
+      },
+      "title": "'a run whose site cannot be asked is reported site-unreadable at a restart and left exactly as it was'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "himaCommand",
+        "killSession",
+        "localHome",
+        "moveSocketAway",
+        "tmuxHasSession",
+        "tmuxSocketUnder",
+        "tmuxTmp.moveSocketAway"
+      ],
+      "cleanup": [
+        "chmod",
+        "first.dispose",
+        "h.dispose",
+        "heal",
+        "killSession",
+        "rename",
+        "restore",
+        "rm",
+        "second.dispose",
+        "tmuxTmp.heal"
+      ],
+      "localHelpers": [
+        "ledgerShape",
+        "ownTmuxTmpdir",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 515
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 515
+      },
+      "title": "'a time box that runs out while the site cannot be asked writes the one blocker this rule adds: the kill did not take, and the run waits'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "killSession",
+        "localHome",
+        "moveSocketAway",
+        "tmuxHasSession",
+        "tmuxSocketUnder",
+        "tmuxTmp.moveSocketAway"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm",
+        "tmuxTmp.heal"
+      ],
+      "localHelpers": [
+        "ownTmuxTmpdir",
+        "runLine"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 564
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 564
+      },
+      "title": "'a run resumed while the site cannot be asked keeps asking instead of being stranded, and carries on when the site answers'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "killSession",
+        "localHome",
+        "moveSocketAway",
+        "tmuxSocketUnder",
+        "tmuxTmp.moveSocketAway"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm",
+        "tmuxTmp.heal"
+      ],
+      "localHelpers": [
+        "asksAbout",
+        "ledgerShape",
+        "ownTmuxTmpdir",
+        "runLine",
+        "sessionsHere",
+        "sleep"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 625
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 625
+      },
+      "title": "'a first launch onto a site whose slots cannot be counted is asked again, not blocked: nothing of that run is written until it launches'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "himaCommand",
+        "killSession",
+        "launchedSession",
+        "localHome",
+        "moveSocketAway",
+        "tmuxHasSession",
+        "tmuxSocketUnder",
+        "tmuxTmp.moveSocketAway"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm",
+        "tmuxTmp.heal"
+      ],
+      "localHelpers": [
+        "asksAbout",
+        "launchedSession",
+        "ledgerShape",
+        "ownTmuxTmpdir",
+        "runLine",
+        "sessionsHere",
+        "sleep",
+        "writeJobScript"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 684
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 684
+      },
+      "title": "'a launch that was sent and never answered is not sent again: the node blocks and the run waits for a person'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "killSession",
+        "localHome",
+        "moveSocketAway",
+        "tmuxSocketUnder"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm"
+      ],
+      "localHelpers": [
+        "launchesSent",
+        "ownTmuxTmpdir",
+        "runLine",
+        "sessionsHere",
+        "shadowedTmux",
+        "shim",
+        "sleep"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 746
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 746
+      },
+      "title": "'a launch that crossed a cancel and cannot be asked to stop blocks its node and leaves the run waiting, so the next cancel asks again'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "himaCommand",
+        "killSession",
+        "launchedSession",
+        "localHome",
+        "moveSocketAway",
+        "tmuxHasSession",
+        "tmuxSocketUnder"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm",
+        "shadow.restore"
+      ],
+      "localHelpers": [
+        "launchedSession",
+        "launchesSent",
+        "ownTmuxTmpdir",
+        "runLine",
+        "sessionsHere",
+        "shadowedTmux",
+        "shim",
+        "sleep"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 834
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 834
+      },
+      "title": "'a job that wrote its exit file settles from it even when the socket is gone for good'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "createHimaHome",
+        "himaCommand",
+        "killSession",
+        "launchedSession",
+        "localJobHome",
+        "moveSocketAway",
+        "tmuxSocketUnder"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm"
+      ],
+      "localHelpers": [
+        "launchedSession",
+        "localJobHome",
+        "ownTmuxTmpdir"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 871
+      },
+      "current": {
+        "path": "test/contract/jobs-unreadable.test.ts",
+        "line": 871
+      },
+      "title": "'a socket directory where tmux has never run is a free session name, and the launch starts the server it will talk to'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "closeSocketDir",
+        "createHimaHome",
+        "himaCommand",
+        "killSession",
+        "launchedSession",
+        "localJobHome",
+        "moveSocketAway",
+        "tmuxHasSession",
+        "tmuxSocketUnder"
+      ],
+      "cleanup": [
+        "chmod",
+        "h.dispose",
+        "heal",
+        "host.dispose",
+        "killSession",
+        "rename",
+        "restore",
+        "rm"
+      ],
+      "localHelpers": [
+        "launchedSession",
+        "localJobHome",
+        "ownTmuxTmpdir",
+        "sleep"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 104
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 58
+      },
+      "title": "'a local job is launched detached, runs, and its exit code comes back from the exit file it wrote'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "launchedSession",
+        "localJobHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "jobRecords",
+        "launchedSession",
+        "localJobHome",
+        "posixQuote",
+        "statusUntilSettled"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 155
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 109
+      },
+      "title": "'a job that exits three records exit code three, not a failure of its own'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "launchedSession",
+        "localJobHome"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "jobRecords",
+        "launchedSession",
+        "localJobHome",
+        "statusUntilSettled"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 175
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 129
+      },
+      "title": "'two launches of one job name in one workspace keep their own log and their own exit code'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "localJobHome"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "jobRecords",
+        "localJobHome",
+        "posixQuote",
+        "statusUntilSettled"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 238
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 192
+      },
+      "title": "'killing a running job leaves no session behind and records the stop that was observed'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "launchedSession",
+        "localJobHome",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "jobRecords",
+        "launchedSession",
+        "localJobHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 272
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 226
+      },
+      "title": "'a launch into a workspace outside the permit\\'s write roots is refused before any command is run'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "localJobHome"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "jobRecords",
+        "localJobHome",
+        "recordsOf"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 296
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 250
+      },
+      "title": "'a launch whose first word is not an allowed wrapper is refused, and nothing is run at all'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "localJobHome"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "jobRecords",
+        "localJobHome",
+        "recordsOf"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 314
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 268
+      },
+      "title": "'a job name that would climb out of the workspace is made safe before it names anything'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "launchedSession",
+        "localJobHome"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "jobRecords",
+        "launchedSession",
+        "localJobHome",
+        "posixQuote",
+        "statusUntilSettled"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 340
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 294
+      },
+      "title": "'status on a session the run never launched answers gone rather than inventing a job'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "launchedSession",
+        "localJobHome"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "jobRecords",
+        "launchedSession",
+        "localJobHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 358
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 312
+      },
+      "title": "'the job plumbing the channel admits is exactly the plumbing the job operations run'",
+      "executionGroup": "local",
+      "level": "L1",
+      "dependencies": [],
+      "cleanup": [],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 368
+      },
+      "current": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 322
+      },
+      "title": "'the channel runs its own verbs and refuses everything else, on a local site as on a remote one'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "createHimaHome"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 393
+      },
+      "current": {
+        "path": "test/contract/jobs.live.test.ts",
+        "line": 96
+      },
+      "title": "'a job runs in a workspace the test creates under the campaign root, and its exit code comes back'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installReferenceSite",
+        "launchedSession",
+        "onTheSite"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "jobRecords",
+        "launchedSession",
+        "onTheSite",
+        "posixQuote",
+        "statusUntilSettled"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 450
+      },
+      "current": {
+        "path": "test/contract/jobs.live.test.ts",
+        "line": 153
+      },
+      "title": "'a stale control socket is cleared without the job plumbing being sent a second time'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installReferenceSite",
+        "isSocket",
+        "launchedSession",
+        "onTheSite",
+        "plantStaleControlSocket"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "plantStaleControlSocket",
+        "rm"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "jobRecords",
+        "launchedSession",
+        "onTheSite",
+        "plantStaleControlSocket",
+        "posixQuote",
+        "statusUntilSettled"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 501
+      },
+      "current": {
+        "path": "test/contract/jobs.live.test.ts",
+        "line": 204
+      },
+      "title": "'a launch into the site\\'s Design Zoo is refused on the real permit before any job command is sent'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installReferenceSite"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "jobRecords",
+        "recordsOf"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/jobs.test.ts",
+        "line": 527
+      },
+      "current": {
+        "path": "test/contract/jobs.live.test.ts",
+        "line": 230
+      },
+      "title": "'every command the site was asked to run was job plumbing, sent on the wire it decided on, and inside the campaign root'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [],
+      "cleanup": [],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 49
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 49
+      },
+      "title": "'the judge rules the real opene902 setup summary by declared rules: all-paths WNS fails, reg2reg passes, each citing the observation it read'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "observeSummary",
+        "shape",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 88
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 88
+      },
+      "title": "'the judge rules hold WNS on the real opene902 hold summary as PASS, citing that observation'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "observeSummary",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 107
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 107
+      },
+      "title": "'verdicts survive a host restart and read back unchanged, PASS and UNDETERMINED alike'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "h.dispose",
+        "second.dispose"
+      ],
+      "localHelpers": [
+        "observeSummary",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 128
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 128
+      },
+      "title": "'a rule requiring a value the run never observed is UNDETERMINED naming the requirement, never PASS'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "observeSummary",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 151
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 151
+      },
+      "title": "'a summary truncated inside its timing table is UNDETERMINED with the reader\\'s own reason, never PASS'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "observeSummary",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 183
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 183
+      },
+      "title": "'an unknown rule id is an error, never a silent pass, and writes no verdict'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "observeSummary",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 203
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 203
+      },
+      "title": "'only the judge can append a verdict: the ledger hands its capability out once and the tool face never reaches it'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 238
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 238
+      },
+      "title": "'one invocation of /hima observe --judge runs read, ledger, and judge, and returns the verdict with its cited record'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 266
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 266
+      },
+      "title": "'the hima_observe tool judges the rules it is given, in the same invocation, through the same service'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 295
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 295
+      },
+      "title": "'--judge with no value is a usage error, not a silent pass: it never reads, never runs, and writes nothing'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 327
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 327
+      },
+      "title": "'a malformed --param is a usage error on both /hima judge and /hima observe --judge: nothing is read, nothing is written'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "observeSummary",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/judge.test.ts",
+        "line": 355
+      },
+      "current": {
+        "path": "test/contract/judge.test.ts",
+        "line": 355
+      },
+      "title": "'a rule that declares no parameter ignores an unrelated --param entirely: same outcome, and boundParameters stays absent'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "observeSummary",
+        "verdicts"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/ledger-version.test.ts",
+        "line": 40
+      },
+      "current": {
+        "path": "test/contract/ledger-version.test.ts",
+        "line": 40
+      },
+      "title": "'a HimaLedger stored under an older domain version is refused when the next shell opens it, and that shell says so instead of coming up'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "second.dispose"
+      ],
+      "localHelpers": [
+        "storedLedgerAt"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 37
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 37
+      },
+      "title": "'a Campaign at a reachable goal revisits the synthesis node and ends goal met at the second generation, every record carrying its generation'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "recordsOf"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 87
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 87
+      },
+      "title": "'a Campaign at an unreachable goal ends converged when the periods stop moving, naming the rule that ended it'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 142
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 142
+      },
+      "title": "'a generation that moved the period by exactly the band goes on exploring, so no converged record contradicts the move it states'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 200
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 200
+      },
+      "title": "'a Campaign whose generation limit runs out ends budget exhausted naming that meter, with the strategy it was not allowed to try still on record'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 250
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 250
+      },
+      "title": "'a pack whose explore node leads nowhere is still one generation, ending goal not met with the strategy it would have tried next'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 323
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 323
+      },
+      "title": "'a host taken away in the middle of generation three is replaced by one that carries that generation on, launching nothing twice'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining",
+        "killSessions"
+      ],
+      "cleanup": [
+        "first.dispose",
+        "killSessions",
+        "second.dispose"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "runViewOf",
+        "sessionsIn",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 393
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 393
+      },
+      "title": "'a cancel in the middle of generation three stops that generation\\'s job and ends the Run with all three generations on record'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "killSessions"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSessions"
+      ],
+      "localHelpers": [
+        "recordsOf",
+        "sessionsIn",
+        "until"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 456
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 456
+      },
+      "title": "'/hima status says which generation of how many a Campaign reached, and /hima pack check refuses a Loop that cannot be executed'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 542
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 542
+      },
+      "title": "'the generations table gives a converged Campaign one row per generation, with the numbers the ledger holds'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "wallTimesIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 623
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 623
+      },
+      "title": "'a Campaign that meets its goal shows a row for each generation and says so on the last one'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "wallTimesIn"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 669
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 669
+      },
+      "title": "'the served HimaGuide bundle carries the generations table, as the workbench page does'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 714
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 714
+      },
+      "title": "'the banner says the goal and the strategy in the pack\\'s own words with their units, and a pack declaring none says the names'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/loop.test.ts",
+        "line": 784
+      },
+      "current": {
+        "path": "test/contract/loop.test.ts",
+        "line": 784
+      },
+      "title": "'/hima status says the goal and the strategy in the pack\\'s words, and /hima pack check refuses a word for a name the pack does not use'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 15
+      },
+      "current": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 15
+      },
+      "title": "'a read outside the permitted roots is refused before any read, and the refusal is recorded'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 35
+      },
+      "current": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 35
+      },
+      "title": "'a symlink that escapes the permitted roots is refused'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 51
+      },
+      "current": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 51
+      },
+      "title": "'observing the same file twice into one run appends a second record with a higher sequence and leaves the first unchanged'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 78
+      },
+      "current": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 78
+      },
+      "title": "'an observe naming a run that does not exist is refused as the caller\\'s mistake, and writes nothing'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 97
+      },
+      "current": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 97
+      },
+      "title": "'records survive a host restart and read back unchanged'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host1.dispose",
+        "host2.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 114
+      },
+      "current": {
+        "path": "test/contract/observe-ledger.test.ts",
+        "line": 114
+      },
+      "title": "'the hima_observe tool is listed for the agent and returns the same observation through the tool runtime'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 59
+      },
+      "current": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 59
+      },
+      "title": "'the innovus-timing-summary reader emits setup WNS/TNS, density, and an unknown clock period from the real opene902 post-route summary'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "assertUnitsBound",
+        "find"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 100
+      },
+      "current": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 100
+      },
+      "title": "'the innovus-timing-summary reader emits hold WNS for both scopes from the real opene902 post-route hold summary'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "assertUnitsBound",
+        "find"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 131
+      },
+      "current": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 131
+      },
+      "title": "'the innovus-verify-drc reader emits the total violation count from the real opene902 DRC report, via the hima_observe tool'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "assertUnitsBound"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 163
+      },
+      "current": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 163
+      },
+      "title": "'a truncated Innovus summary, cut before the timing table, yields unknown values with a stated reason, never zero and never a default'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "find"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 213
+      },
+      "current": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 213
+      },
+      "title": "'a report of the wrong kind is refused by the innovus-timing-summary reader, with no observation recorded'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 231
+      },
+      "current": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 231
+      },
+      "title": "'a report of the wrong kind is refused by the innovus-verify-drc reader, with no observation recorded'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 247
+      },
+      "current": {
+        "path": "test/contract/observe-readers.test.ts",
+        "line": 247
+      },
+      "title": "'the two Innovus readers refuse each other\\'s report kind: a real summary is not a DRC report and vice versa'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/observe.test.ts",
+        "line": 11
+      },
+      "current": {
+        "path": "test/contract/observe.test.ts",
+        "line": 11
+      },
+      "title": "'/hima observe records one observation with provenance in a durable ledger'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 95
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 59
+      },
+      "title": "'the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back'",
+      "executionGroup": "local",
+      "level": "L1",
+      "dependencies": [],
+      "cleanup": [],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 166
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 130
+      },
+      "title": "'the chooser the shipped pack names is a YAML file beside the judge rules, and states its rule as data'",
+      "executionGroup": "local",
+      "level": "L1",
+      "dependencies": [],
+      "cleanup": [],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 200
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 164
+      },
+      "title": "'the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 226
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 190
+      },
+      "title": "'a site that binds only some of the pack\\'s inputs fails the check, naming the input it did not bind'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 242
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 206
+      },
+      "title": "'a pack whose tool runs a command the site does not allow fails the check, naming the command'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 263
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 227
+      },
+      "title": "'a pack referencing a rule that does not exist fails the check, naming the rule'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 278
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 242
+      },
+      "title": "'a pack naming a reader that does not exist fails the check, naming the reader'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 293
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 257
+      },
+      "title": "'a pack naming a chooser that does not exist fails the check, naming the chooser'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 310
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 274
+      },
+      "title": "'a pack binding a negative value to the chooser\\'s parameter fails the check, naming the parameter'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 327
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 291
+      },
+      "title": "'a pack whose explore node binds nothing for the chooser\\'s parameter fails the check, naming the parameter'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 342
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 306
+      },
+      "title": "'a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 372
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 336
+      },
+      "title": "'a pack the packs directory does not hold is an error naming what was looked for, not an empty answer'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 389
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 353
+      },
+      "title": "'preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "isThere",
+        "localPackHome",
+        "recordsOf",
+        "workspaceRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 455
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 419
+      },
+      "title": "'preparing the same campaign twice copies nothing the second time and says so'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome",
+        "recordsOf",
+        "workspaceRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 495
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 459
+      },
+      "title": "'a workspace that is there but carries no workspace.json is not prepared over the top of'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "isThere",
+        "localPackHome"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 520
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 484
+      },
+      "title": "'a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome",
+        "recordsOf",
+        "workspaceRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 561
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 525
+      },
+      "title": "'a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "isThere",
+        "localPackHome",
+        "recordsOf",
+        "workspaceRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 601
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 565
+      },
+      "title": "'a dangling symlink where the workspace goes is refused: a write would follow it wherever it points'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "isThere",
+        "localPackHome",
+        "recordsOf",
+        "workspaceRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 632
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 596
+      },
+      "title": "'a workspace.json that cannot be read as one is an answer, not a crash'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome",
+        "recordsOf",
+        "workspaceRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 661
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 625
+      },
+      "title": "'a campaign whose workspace root is outside the permit\\'s write roots is refused before anything is created'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "localPackHome",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "dispose",
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "localPackHome",
+        "recordsOf",
+        "workspaceRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 695
+      },
+      "current": {
+        "path": "test/contract/pack.live.test.ts",
+        "line": 65
+      },
+      "title": "'the site\\'s own flow is copied into a workspace under the campaign root, and the site\\'s baseline results are not touched'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "installReferenceSite",
+        "onTheSite"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "onTheSite",
+        "posixQuote",
+        "recordsOf",
+        "workspaceRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 781
+      },
+      "current": {
+        "path": "test/contract/pack.live.test.ts",
+        "line": 151
+      },
+      "title": "'a campaign workspace outside the permit\\'s write roots is refused before anything is created on the site'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installPack",
+        "installReferenceSite"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "recordsOf"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 820
+      },
+      "current": {
+        "path": "test/contract/pack.live.test.ts",
+        "line": 190
+      },
+      "title": "'every command the site was asked to run was a read or a write inside the campaign workspace, on the wire it decided on'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [],
+      "cleanup": [],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/pack.test.ts",
+        "line": 859
+      },
+      "current": {
+        "path": "test/contract/pack.test.ts",
+        "line": 650
+      },
+      "title": "'the channel admits exactly the verbs workspace preparation runs, and they are nobody else\\'s'",
+      "executionGroup": "local",
+      "level": "L1",
+      "dependencies": [],
+      "cleanup": [],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/site-name.test.ts",
+        "line": 28
+      },
+      "current": {
+        "path": "test/contract/site-name.test.ts",
+        "line": 28
+      },
+      "title": "'/hima observe refuses a site file whose name is not the name asked for, naming both, and opens no run'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "assertNamesBoth"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/site-name.test.ts",
+        "line": 48
+      },
+      "current": {
+        "path": "test/contract/site-name.test.ts",
+        "line": 48
+      },
+      "title": "'/hima job launch refuses a site file whose name is not the name asked for, naming both, and sends nothing to the Site'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "assertNamesBoth"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/site-name.test.ts",
+        "line": 71
+      },
+      "current": {
+        "path": "test/contract/site-name.test.ts",
+        "line": 71
+      },
+      "title": "'/hima observe LOCAL is refused: the mismatch wording when the file resolved on a case-insensitive filesystem, the plain unknown-site wording when it did not'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 73
+      },
+      "current": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 18
+      },
+      "title": "'the committed reference site and permit record what the site owner agreed to'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "createHimaHome",
+        "installReferenceSite"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 119
+      },
+      "current": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 64
+      },
+      "title": "'a site file with a destination shaped like an ssh option is refused before any connection is attempted'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "createHimaHome",
+        "installReferenceSite"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 138
+      },
+      "current": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 83
+      },
+      "title": "'a jumps entry containing a comma is refused: it would smuggle an extra hop into -J'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "createHimaHome",
+        "installReferenceSite"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 156
+      },
+      "current": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 101
+      },
+      "title": "'HimaChannel admits exactly the read-only probes it runs, and nothing more'",
+      "executionGroup": "local",
+      "level": "L1",
+      "dependencies": [],
+      "cleanup": [],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 168
+      },
+      "current": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 113
+      },
+      "title": "'two sites that differ only in how long the connection is kept warm get their own control socket'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "createHimaHome",
+        "installReferenceSite"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 188
+      },
+      "current": {
+        "path": "test/contract/ssh.live.test.ts",
+        "line": 76
+      },
+      "title": "'observing the real post-route summary over SSH records the same content hash as the local copy'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installReferenceSite",
+        "observeOverSsh"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "observeOverSsh",
+        "remoteSize"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 221
+      },
+      "current": {
+        "path": "test/contract/ssh.live.test.ts",
+        "line": 109
+      },
+      "title": "'a read outside the permit is refused before any read, and the refusal is recorded'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installReferenceSite",
+        "observeOverSsh"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "observeOverSsh"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 250
+      },
+      "current": {
+        "path": "test/contract/ssh.live.test.ts",
+        "line": 138
+      },
+      "title": "'a path with a space and a quote reaches the site as one literal argument, not split by a shell'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "installReferenceSite"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "posixQuote"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 333
+      },
+      "current": {
+        "path": "test/contract/ssh.live.test.ts",
+        "line": 221
+      },
+      "title": "'the control connection is reused, and after it drops the next observation re-establishes it'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installReferenceSite",
+        "observeOverSsh"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "rm"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "observeOverSsh",
+        "socketOf"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 363
+      },
+      "current": {
+        "path": "test/contract/ssh.live.test.ts",
+        "line": 251
+      },
+      "title": "'a stale control socket left behind by a killed master is removed and the connection re-established'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installReferenceSite",
+        "isSocket",
+        "observeOverSsh"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose",
+        "rm"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands",
+        "observeOverSsh",
+        "socketOf"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 386
+      },
+      "current": {
+        "path": "test/contract/ssh.live.test.ts",
+        "line": 274
+      },
+      "title": "'the channel refuses to run anything that is not a read-only probe'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "createHimaHome",
+        "installReferenceSite"
+      ],
+      "cleanup": [
+        "h.dispose"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 402
+      },
+      "current": {
+        "path": "test/contract/ssh.live.test.ts",
+        "line": 290
+      },
+      "title": "'a site behind a bastion is reached through it, not around it'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [
+        "bootInProcess",
+        "createHimaHome",
+        "himaCommand",
+        "installReferenceSite"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "host.dispose"
+      ],
+      "localHelpers": [
+        "collectRemoteCommands"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/ssh.test.ts",
+        "line": 426
+      },
+      "current": {
+        "path": "test/contract/ssh.live.test.ts",
+        "line": 314
+      },
+      "title": "'every command the channel asked the site to run was a read-only probe, sent on the wire it decided on'",
+      "executionGroup": "live-site",
+      "level": "L4 Site",
+      "dependencies": [],
+      "cleanup": [],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 82
+      },
+      "current": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 82
+      },
+      "title": "'a pack declaring two knobs shows both on the start form in its own words, and the Run it starts carries both by name through the row, the decision, the card and the report'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installTwoKnobs"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "choosePack",
+        "fillForm",
+        "recordsOf",
+        "runOverTheRoute"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 174
+      },
+      "current": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 174
+      },
+      "title": "'a knob value outside its bounds or outside its list is refused in the window in the validator\\'s own words, and no Run is started'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installTwoKnobs"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "choosePack",
+        "fillForm"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 226
+      },
+      "current": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 226
+      },
+      "title": "'/hima run sets a knob by name with --set, refuses a value the declaration does not allow, and /hima status says every knob in the pack\\'s words'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "installTwoKnobs",
+        "killSessions",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose",
+        "killSessions"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 278
+      },
+      "current": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 278
+      },
+      "title": "'a contract declaring no strategy knob at all is refused when the pack is loaded, in the contract schema\\'s own words'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 307
+      },
+      "current": {
+        "path": "test/contract/strategy.test.ts",
+        "line": 307
+      },
+      "title": "'/hima pack check holds a chooser\\'s knobs and a pack\\'s words against the contract\\'s own declaration, before a Campaign exists'",
+      "executionGroup": "desktop",
+      "level": "L2",
+      "dependencies": [
+        "himaCommand",
+        "installTwoKnobs",
+        "localFabric"
+      ],
+      "cleanup": [
+        "dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 120
+      },
+      "current": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 120
+      },
+      "title": "'the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "installPack",
+        "openSession",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench",
+        "readRecords",
+        "remember",
+        "startRun"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 200
+      },
+      "current": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 200
+      },
+      "title": "'over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "installPack",
+        "openSession",
+        "tmuxHasSession",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench",
+        "readRecords",
+        "readRun",
+        "remember",
+        "startRun",
+        "untilView"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 272
+      },
+      "current": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 272
+      },
+      "title": "'a run HimaFabric never started cannot be cancelled, and says so with 409 hima/run-not-in-state'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "installPack",
+        "openSession",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench",
+        "readRecords"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 297
+      },
+      "current": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 297
+      },
+      "title": "'every route the workbench uses, and the workbench page itself, sit behind the web app\\'s own session cookie'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "installPack",
+        "openSession",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 325
+      },
+      "current": {
+        "path": "test/contract/view-run.test.ts",
+        "line": 325
+      },
+      "title": "'the served HimaGuide bundle claims the tool-view key of both Hima tools and carries the rendering of every run status and node state'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "installPack",
+        "openSession",
+        "writeStandinFlow"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "bootedWorkbench"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view.test.ts",
+        "line": 43
+      },
+      "current": {
+        "path": "test/contract/view.test.ts",
+        "line": 43
+      },
+      "title": "'the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "openSession",
+        "requireOpene902Fixture"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view.test.ts",
+        "line": 105
+      },
+      "current": {
+        "path": "test/contract/view.test.ts",
+        "line": 105
+      },
+      "title": "'a refused read is reported as a refusal in the run view, never as an empty pass'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "openSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view.test.ts",
+        "line": 116
+      },
+      "current": {
+        "path": "test/contract/view.test.ts",
+        "line": 116
+      },
+      "title": "'a remote error reaches the caller as a coded JSON error, never as an empty answer'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "openSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view.test.ts",
+        "line": 154
+      },
+      "current": {
+        "path": "test/contract/view.test.ts",
+        "line": 154
+      },
+      "title": "'a fault that is not the caller\\'s doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "openSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view.test.ts",
+        "line": 175
+      },
+      "current": {
+        "path": "test/contract/view.test.ts",
+        "line": 175
+      },
+      "title": "\"every /hima/api route sits behind the web app's own session cookie\"",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "openSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/view.test.ts",
+        "line": 189
+      },
+      "current": {
+        "path": "test/contract/view.test.ts",
+        "line": 189
+      },
+      "title": "'the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope'",
+      "executionGroup": "local",
+      "level": "L2",
+      "dependencies": [
+        "api",
+        "bootHimaHost",
+        "bootedWorkbench",
+        "createHimaHome",
+        "openSession"
+      ],
+      "cleanup": [
+        "h.dispose",
+        "wb.dispose"
+      ],
+      "localHelpers": [
+        "answer",
+        "bootedWorkbench"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/window.test.ts",
+        "line": 109
+      },
+      "current": {
+        "path": "test/contract/window.test.ts",
+        "line": 109
+      },
+      "title": "'filling the start form and clicking start creates a Run whose Goal and Budget are the form\\'s, and the window opens its card'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "fillForm",
+        "runOverTheRoute",
+        "whatTheWindowSaw"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/window.test.ts",
+        "line": 163
+      },
+      "current": {
+        "path": "test/contract/window.test.ts",
+        "line": 163
+      },
+      "title": "'a strategy knob or a time box the shared validator refuses is refused in the window, in the validator\\'s own words, and no Run is started'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "fillForm"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/window.test.ts",
+        "line": 213
+      },
+      "current": {
+        "path": "test/contract/window.test.ts",
+        "line": 213
+      },
+      "title": "'clicking cancel while the Job sleeps ends the Run cancelled, the card shows the observed stop, and the tmux session is gone'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "collectSessions",
+        "killSession",
+        "tmuxHasSession"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "collectSessions",
+        "fillForm",
+        "pageOverTheRoute",
+        "runOverTheRoute"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/window.test.ts",
+        "line": 274
+      },
+      "current": {
+        "path": "test/contract/window.test.ts",
+        "line": 274
+      },
+      "title": "'a hard-blocked Run shows its blocker and the failed job\\'s log tail, and clicking resume carries it on to its end'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "collectSessions",
+        "installOverConstraining",
+        "killSession"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSession"
+      ],
+      "localHelpers": [
+        "collectSessions",
+        "fillForm",
+        "runOverTheRoute"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/window.test.ts",
+        "line": 341
+      },
+      "current": {
+        "path": "test/contract/window.test.ts",
+        "line": 341
+      },
+      "title": "'a refusal that changes nothing leaves its words on the card and the control still clickable'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "collectSessions",
+        "installOverConstraining",
+        "killSession"
+      ],
+      "cleanup": [
+        "d.dispose",
+        "killSession",
+        "rename"
+      ],
+      "localHelpers": [
+        "collectSessions",
+        "fillForm",
+        "runOverTheRoute"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/window.test.ts",
+        "line": 411
+      },
+      "current": {
+        "path": "test/contract/window.test.ts",
+        "line": 411
+      },
+      "title": "'the start route answers 401 without the session cookie, like every route behind the fence'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/window.test.ts",
+        "line": 452
+      },
+      "current": {
+        "path": "test/contract/window.test.ts",
+        "line": 452
+      },
+      "title": "'the served HimaGuide bundle carries the card\\'s cancel and resume controls, as the page does'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": []
+    },
+    {
+      "original": {
+        "path": "test/contract/window.test.ts",
+        "line": 526
+      },
+      "current": {
+        "path": "test/contract/window.test.ts",
+        "line": 526
+      },
+      "title": "'the workbench page carries one token sheet with a dark palette and the alias names the card\\'s words are coloured through, paints no colour outside it, and lists each Run with the state it stands in'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "api",
+        "bootDriver",
+        "installOverConstraining"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "fillForm",
+        "pageOverTheRoute",
+        "runOverTheRoute"
+      ]
+    },
+    {
+      "original": {
+        "path": "test/contract/window.test.ts",
+        "line": 652
+      },
+      "current": {
+        "path": "test/contract/window.test.ts",
+        "line": 652
+      },
+      "title": "'at a 900 px window nothing on the page is wider than the window, on the run list and on a whole card'",
+      "executionGroup": "desktop",
+      "level": "L3",
+      "dependencies": [
+        "bootDriver",
+        "installOverConstraining"
+      ],
+      "cleanup": [
+        "d.dispose"
+      ],
+      "localHelpers": [
+        "fillForm",
+        "widthsOf"
+      ]
+    }
+  ]
+}

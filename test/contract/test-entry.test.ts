@@ -60,7 +60,9 @@ test('unclassified, missing and duplicate files stop the entry before any test l
     await rm(extra);
     f.groups.local.push('test/contract/missing.test.ts');
     await f.save();
-    assert.match(f.run('--check').stderr, /missing.*missing\.test\.ts/);
+    const missing = f.run('--check');
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /missing.*missing\.test\.ts/);
     f.groups.local.pop();
     f.groups.desktop.push(f.groups.local[0]!);
     await f.save();

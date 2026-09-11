@@ -334,4 +334,3 @@ test('the channel runs its own verbs and refuses everything else, on a local sit
     await h.dispose();
   }
 });
-

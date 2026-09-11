@@ -1,0 +1,10 @@
+{
+  "command": [
+    "pnpm",
+    "run",
+    "check:seams"
+  ],
+  "exitCode": 0,
+  "seconds": 0.296,
+  "sshAttempts": 0
+}

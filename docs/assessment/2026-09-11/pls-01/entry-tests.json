@@ -1,0 +1,11 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "test/contract/test-entry.test.ts"
+  ],
+  "exitCode": 1,
+  "seconds": 0.36,
+  "sshAttempts": 0
+}

@@ -225,4 +225,3 @@ describe('preparing a campaign workspace on the reference site', { skip: probeSi
     assert.deepEqual(verbs, ['cat', 'cp', 'mkdir', 'realpath', 'tee', 'test'], 'the whole command set this ticket runs on a Site');
   });
 });
-

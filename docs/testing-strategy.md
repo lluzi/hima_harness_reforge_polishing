@@ -1,6 +1,6 @@
 # 分级测试方案
 
-日期：2026-09-11。状态：方案已由用户明确接受，测试分组尚未正式实现，已在导入快照上测量一个本地子集和两个桌面用例，见 [本地基线](assessment/2026-09-11/local-baseline/README.md)。原则是用能够推翻该行为的最低成本测试覆盖组合，再保留必要的真实集成验证；桌面自动化、真实模型、EDA 和人工研究验收各自证明不同的事。
+日期：2026-09-11。状态：方案已由用户明确接受，PLS-01 已实现 local/desktop/live-site 显式文件分组与隔离，见 [测试入口](../test/README.md) 和 [本次验证](assessment/2026-09-11/pls-01/README.md)。导入快照上的历史子集结果见 [本地基线](assessment/2026-09-11/local-baseline/README.md)。原则是用能够推翻该行为的最低成本测试覆盖组合，再保留必要的真实集成验证；桌面自动化、真实模型、EDA 和人工研究验收各自证明不同的事。
 
 ## 当前可复用的入口
 
@@ -69,7 +69,7 @@ L0 的静态检查与构建可以分别计费/运行；构建不应在同一轮�
 1. **先分组和计时，再迁移。** 原套件暂保留，第一次导入后按资源需求对账。只在有明显成本原因或正在修改的行为上，将重复的规则/状态矩阵放到便宜入口；保留相应集成与窗口检查。不能先删除大量慢测试，再以剩余套件更快宣称改善。
 2. **测试通过生产使用的接口。** 不为测试复制 Fabric/Ledger/dsh 语义，不新建通用测试运行服务，不大量增加 mock 接口，不暴露私有状态只为断言。现有 Node test runner、Host support、driver 与 stand-in 是起点。
 3. **只替代昂贵外部依赖。** 逻辑与状态仍用真实实现。本地临时文件、真实进程和本地 tmux 的成本通常值得保留；外部 EDA/模型的替身必须有来源及限制。期望值来自独立的规则推导、真实报告或明确反例，不能由被测实现自己生成答案。
-4. **构建一次，选择相关组。** 建议未来用薄的 package scripts/显式文件列表组织 logic、host、desktop、live:model、live:site、pilot 入口；这些命令本轮尚未创建。名称过滤不保证文件初始化无副作用。
+4. **构建一次，选择相关组。** PLS-01 已提供薄的 local/desktop/live-site 文件入口，`test:contract` 构建后只跑 local。构建一次、短反馈选择与 hook 编排属于 PLS-02；live:model、pilot 入口在实际能力具备后提供。名称过滤不保证文件初始化无副作用。
 5. **正确隔离后再并行。** 纯逻辑及独立 Host 进程可验证隔离后有限并行；in-process support 会修改 `process.env`，同进程不同 home 不可盲目并行。Electron 窗口测试串行；真实 Site 遵循自身 Job/许可证额度。
 6. **减少无关启动与等待。** 只读参数矩阵可在合适的夹具生命周期复用 Host，写入场景、冷启动和恢复测试维持自己的 home/进程。使用可观察状态/受控就绪信号，避免固定长 sleep；不能把所有测试共享一个可变 Run/Store。
 7. **失败后缩小复现。** 保留首个失败，转到最便宜的可复现层诊断；不自动重复整套桌面/真实 EDA 直到变绿。真正 flaky 与真实产品故障分别处理，不用重试掩盖失败。
@@ -77,7 +77,7 @@ L0 的静态检查与构建可以分别计费/运行；构建不应在同一轮�
 
 ## 当前必须在 P0 注意的资源边界
 
-[ssh.test.ts:187](/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/ssh.test.ts:187) 和 [pack.test.ts:694](/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:694) 在注册测试组时调用真实 Site 探测，套件目录名 `contract` 不代表完全离线。首次本地验证排除了这两个文件；后续将真实 Site 用例从高频本地组中明确分离。SSH 连接恢复测试还会处理控制 socket，真实执行前要核对是否只影响测试拥有的连接。
+原快照的 `ssh.test.ts`、`pack.test.ts` 与本次逐例核查发现的 `jobs.test.ts` 都在注册测试时调用真实 Site 探测。PLS-01 将它们的 live 部分移入 [ssh.live.test.ts](../test/contract/ssh.live.test.ts)、[pack.live.test.ts](../test/contract/pack.live.test.ts)、[jobs.live.test.ts](../test/contract/jobs.live.test.ts)。本地入口不加载这些文件，并用测试期 SSH 哨兵验证边界。live 恢复用例的控制 socket 现有私有目录及归属检查；真实执行前仍须核对 Site 与许可。
 
 [boot-inprocess.ts:28](/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/support/boot-inprocess.ts:28) 的环境变量变化，以及 driver 的真实窗口/焦点需求，决定了不同组不能共用一个粗暴的并发开关。每次测试只清理自身 home、workspace、窗口、进程和 Job，不干预 Claude 或用户现有运行。
 
