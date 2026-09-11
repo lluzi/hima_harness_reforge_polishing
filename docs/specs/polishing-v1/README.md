@@ -1,8 +1,10 @@
 # Polishing v1 规格与任务索引
 
-状态：父规格与 18 个任务已发布 GitHub，正文、标签、18 条父子关系与 33 条阻塞依赖均已核验。源快照：`b4ac9d9360ad6da68b5fd2824621ba6edab7408b`。
+首轮发布：父规格与 18 个任务已发布 GitHub，正文、标签、18 条父子关系与 33 条阻塞依赖均已核验。源快照：`b4ac9d9360ad6da68b5fd2824621ba6edab7408b`。后续新增事项见下文。
 
 [GitHub 父规格 #1](https://github.com/lluzi/hima_harness_reforge_polishing/issues/1) · [完整本地规格](spec.md)包含 50 条用户故事、模块修改目标与 L0–L5 标准。任务正文逐项给出代码、修改内容、验收、测试和回滚；这些文档是本次发布副本，实时状态以发布后的 GitHub Issue 为准。
+
+后续新增：[节点级运行介入补充规格](node-intervention.md) 与 [PLS-19](tasks/PLS-19.md)（[GitHub #22](https://github.com/lluzi/hima_harness_reforge_polishing/issues/22)）。它补齐从对话 Agent 到指定节点的持续控制接口；暂停默认语义尚待确认，当前不计为已实现能力。以下 18 项表格及 publication/remote-verification 文件保留原发布快照，新增事项以补充任务为准。
 
 ## 任务与依赖
 
