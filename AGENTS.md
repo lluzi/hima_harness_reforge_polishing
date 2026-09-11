@@ -14,6 +14,12 @@
 架构约束及独立验证责任见 `docs/adr/0001-*`、`docs/adr/0002-*`。
 `docs/upstream/` 是版本化参考材料，不是本仓库的现行指令。
 
+## Git synchronization
+
+每次本地 commit 后立即 push 到 GitHub 对应分支，并核对远端 SHA。
+独立 worktree 的提交也按工作分支同步，合入后再同步目标分支。
+同步失败时处理并明确报告原因；本地提交和远端同步都完成才算交付完成。
+
 ## Agent skills
 
 ### Issue tracker
