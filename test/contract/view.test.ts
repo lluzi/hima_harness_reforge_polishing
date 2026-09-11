@@ -217,22 +217,32 @@ test('the Hima browser module is in the served boot graph and its bundle is serv
     const moduleExports = loaded[0]!.factory((spec) => baseline(spec)) as {
       name: string;
       inject: string[];
-      apply(ctx: { slots: { inject(name: string, cb: () => unknown): unknown; register(d: { name: string; key?: string; id?: string }, c: unknown): unknown } }): void;
+      apply(ctx: {
+        effect(callback: () => (() => void)): unknown;
+        sidebarRight: { openTab(kind: string): void };
+        sidebarRightTabs: { register(definition: unknown): () => void };
+        layout: { toggleSidebar(): void };
+        slots: { inject(name: string, callback: () => unknown): unknown; register(declaration: { name: string; key?: string; id?: string }, component: unknown): unknown };
+      }): void;
     };
-    assert.deepEqual(moduleExports.inject, ['slots'], 'the module declares the browser service it needs');
+    assert.deepEqual(moduleExports.inject, ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout'], 'the module declares its existing native UI services');
     const registered: { name: string; key?: string; id?: string }[] = [];
     let component: unknown;
     moduleExports.apply({
+      effect: (callback) => callback(),
+      sidebarRight: { openTab: () => undefined },
+      sidebarRightTabs: { register: () => () => undefined },
+      layout: { toggleSidebar: () => undefined },
       slots: {
-        inject: (name, cb) => { assert.ok(['tool.call.toolview', 'sidebar.footer.action'].includes(name), 'only the Run view and existing sidebar footer are extended'); return cb(); },
-        register: (declaration, c) => { registered.push(declaration); component = c; return () => undefined; },
+        inject: (name, cb) => { assert.ok(['tool.call.toolview', 'sidebar.footer.action', 'sidebar.right.pane.tab', 'sidebar.brand.mark', 'sidebar.brand.name', 'conversation.hero.brand.mark'].includes(name), 'only existing native presentation slots are extended'); return cb(); },
+        register: (declaration, c) => { registered.push({ name: declaration.name, ...('key' in declaration ? { key: declaration.key } : {}), ...('id' in declaration ? { id: declaration.id } : {}) }); component = c; return () => undefined; },
       },
     });
     // Both keys, because both Hima tools answer with a Run and one card renders a Run (#16); which
     // keys and no others is asserted in `view-run.test.ts`, where the card's own contract lives.
     assert.deepEqual(
       registered,
-      [{ name: 'sidebar.footer.action', id: 'hima-workbench' }, { name: 'tool.call.toolview', key: 'hima_observe' }, { name: 'tool.call.toolview', key: 'hima_run' }],
+      [{ name: 'sidebar.right.pane.tab', key: '@hima/harness/workbench' }, { name: 'sidebar.footer.action', id: 'hima-workbench' }, { name: 'sidebar.brand.mark' }, { name: 'conversation.hero.brand.mark' }, { name: 'sidebar.brand.name' }, { name: 'tool.call.toolview', key: 'hima_observe' }, { name: 'tool.call.toolview', key: 'hima_run' }],
       'the workbench link and the two existing tool views use their declared slots',
     );
     assert.equal(typeof component, 'function', 'with a component to render it');

@@ -27,6 +27,9 @@ export const HIMA_RUNS_PATH = `${HIMA_API_PREFIX}/runs`;
  *  the page's own form uses. */
 export const HIMA_RUNS_START_PATH = `${HIMA_RUNS_PATH}/start`;
 
+/** The same local Pack/Site preparation used by both workbench presentations. */
+export const HIMA_START_OPTIONS_PATH = `${HIMA_API_PREFIX}/start-options`;
+
 /** One Run's own route, which is what the card reads itself from. */
 export const runPath = (runId: string): string => `${HIMA_RUNS_PATH}/${encodeURIComponent(runId)}`;
 

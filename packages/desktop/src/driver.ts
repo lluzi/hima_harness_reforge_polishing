@@ -498,7 +498,10 @@ function fillScript(control: string, value: string): string {
   }
   if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) return { kind: 'not-fillable', what: el.tagName.toLowerCase() };
   el.focus();
-  el.value = want;
+  // Use the native setter: a controlled input's instance setter can update its framework value
+  // tracker before the input event, making that event look unchanged and leaving the draft stale.
+  const prototype = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, 'value').set.call(el, want);
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return { kind: 'filled', value: el.value };

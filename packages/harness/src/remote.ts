@@ -1148,7 +1148,8 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   }
 
   if (rest === '/runs') {
-    if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
+    if (method === 'GET') return ok({ runs: ops.ledger.runs().reverse().map((run) => runHeadView(run)) });
+    if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or POST`);
     return startRunOperation(ops, req);
   }
 
@@ -1169,6 +1170,11 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   // Before the run read below, which would otherwise claim `/runs/start` as a run id — a Run's id is
   // `run-<uuid>`, so `start` can never be one, but the read is matched by shape and would answer 405
   // for a POST to this path rather than starting anything.
+  if (rest === '/start-options') {
+    if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
+    return ok(startChoices(ops, url.searchParams.get('pack'), url.searchParams.get('site')));
+  }
+
   if (rest === '/runs/start') {
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
     return startCampaignOperation(ops, req);

@@ -22,6 +22,17 @@ test('an empty home explains Pack and Site preparation without creating a Run or
     assert.match(html, /No Site is configured/);
     assert.match(html, /data-hima-state-count="0"/);
     assert.match(html, /data-hima-control="start"[^>]*disabled/);
+    const choices = await api(host, cookie, '/hima/api/start-options');
+    assert.equal(choices.status, 200);
+    assert.deepEqual(await choices.json(), { packs: [], sites: [] });
+    const runs = await api(host, cookie, '/hima/api/runs');
+    assert.equal(runs.status, 200);
+    assert.deepEqual(await runs.json(), { runs: [] });
+    for (const route of ['/hima/api/start-options', '/hima/api/runs']) {
+      assert.equal((await fetch(new URL(route, host.url))).status, 401);
+      assert.equal((await api(host, cookie, route, { headers: { origin: 'https://foreign.invalid' } })).status, 403);
+      assert.equal((await api(host, cookie, route, { method: 'DELETE' })).status, 405);
+    }
     const audit = await api(host, cookie, '/hima/api/audit');
     assert.deepEqual((await audit.json() as { commands: unknown[] }).commands, []);
   } finally {
@@ -58,9 +69,18 @@ test('Pack/Site declarations are checked before start; mismatch and configuratio
     const fit = await (await api(host, cookie, target)).text();
     assert.match(fit, /data-hima-state-status="fit"/);
     assert.match(fit, /Static declarations match/);
+    const prepared = await (await api(host, cookie, `/hima/api/start-options?pack=${timingProbePackId}&site=local`)).json() as { pack: string; site: string; check: { fit: boolean }; strategy: object };
+    assert.equal(prepared.pack, timingProbePackId);
+    assert.equal(prepared.site, 'local');
+    assert.equal(prepared.check.fit, true);
+    assert.ok('periodNs' in prepared.strategy);
     const unknown = await (await api(host, cookie, '/hima/?pack=missing&site=local')).text();
     assert.match(unknown, /data-hima-state-status="request"/);
     assert.match(unknown, /Select an installed Pack/);
+    const unknownPrepared = await (await api(host, cookie, '/hima/api/start-options?pack=missing&site=local')).json() as { preparation: { kind: string; message: string }; check?: object };
+    assert.equal(unknownPrepared.preparation.kind, 'request');
+    assert.match(unknownPrepared.preparation.message, /Select an installed Pack/);
+    assert.equal(unknownPrepared.check, undefined);
     const badSite = await writeSiteWithDirPermit(home);
     const badConfig = await (await api(host, cookie, `/hima/?pack=${timingProbePackId}&site=${badSite.name}`)).text();
     assert.match(badConfig, /data-hima-state-status="site"/);

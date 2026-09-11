@@ -1,0 +1,26 @@
+$ node scripts/run-contract-tests.mjs desktop --files test/contract/unified-workbench.test.ts
+desktop: 1 selected; 12 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: conversation draft, native files and verified reports share one workspace with a real Run
+ok 1 - conversation draft, native files and verified reports share one workspace with a real Run
+  ---
+  duration_ms: 19070.4375
+  type: 'test'
+  ...
+# Subtest: preparation retries preserve drafts, pending starts cannot be replaced, and a resumed Run remains cancellable
+ok 2 - preparation retries preserve drafts, pending starts cannot be replaced, and a resumed Run remains cancellable
+  ---
+  duration_ms: 16704.863083
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 36305.395208
+SSH subprocess attempts: 0
+desktop command exit code: 0; elapsed: 36.385 s; pass/fail/skip counts are in the TAP summary above

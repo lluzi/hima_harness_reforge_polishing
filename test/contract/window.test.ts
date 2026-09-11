@@ -492,13 +492,23 @@ test('the served HimaGuide bundle carries the card\'s cancel and resume controls
     new Function('window', source)({ __ModuleLoader__: { load: (r: unknown) => loaded.push(r as never) } });
     const baseline = createRequire(path.join(harnessPackageDir, 'package.json'));
     const moduleExports = loaded[0]!.factory((spec) => baseline(spec)) as {
-      apply(ctx: { slots: { inject(name: string, cb: () => unknown): unknown; register(d: { name: string; key?: string; id?: string }, c: unknown): unknown } }): void;
+      apply(ctx: {
+        effect(callback: () => (() => void)): unknown;
+        sidebarRight: { openTab(kind: string): void };
+        sidebarRightTabs: { register(definition: unknown): () => void };
+        layout: { toggleSidebar(): void };
+        slots: { inject(name: string, callback: () => unknown): unknown; register(declaration: { name: string; key?: string; id?: string }, component: unknown): unknown };
+      }): void;
     };
     const registered: { name: string; key?: string; id?: string }[] = [];
     moduleExports.apply({
+      effect: (callback) => callback(),
+      sidebarRight: { openTab: () => undefined },
+      sidebarRightTabs: { register: () => () => undefined },
+      layout: { toggleSidebar: () => undefined },
       slots: {
         inject: (_name, cb) => cb(),
-        register: (declaration) => { registered.push(declaration); return () => undefined; },
+        register: (declaration) => { registered.push({ name: declaration.name, ...('key' in declaration ? { key: declaration.key } : {}), ...('id' in declaration ? { id: declaration.id } : {}) }); return () => undefined; },
       },
     });
     assert.deepEqual(registered.filter((r) => r.name === 'tool.call.toolview').map((r) => r.key).sort(), ['hima_observe', 'hima_run'], 'and claims no key it did not claim before');

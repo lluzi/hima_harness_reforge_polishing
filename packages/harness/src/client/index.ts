@@ -1,78 +1,84 @@
 // @hima-seam client-slots wrapped
-// The HimaGuide browser module: the workbench half of the bundle, served to the web shell as
-// `@hima/harness`'s client bundle. It contributes the keyed Run view and a workbench link in the
-// existing sidebar footer. It imports no other feature plugin's component.
-//
-// dsh publishes no installable types for the browser context, so the surface this module stands on
-// is stated here as a Hima-owned interface: that is the wrapped seam, and it is one screen wide.
-import { createElement, type ReactElement } from 'react';
+// Hima occupies the native dsh dock. The host owns sessions, chat, files and panel geometry;
+// this adapter registers the Hima view and passes navigation actions into presentation components.
+import { createElement, useState, type ReactElement } from 'react';
 import { HimaRunCard } from './HimaRunCard.js';
-import { HIMA_WORKBENCH_PATH } from '../paths.js';
+import { HimaWorkbench } from './HimaWorkbench.js';
+import { STUDIO_STYLE } from './workbench-style.js';
 
-/**
- * The wire tool names whose calls this module renders: the two that answer with a Run. Both get the
- * same card, because both answer with a run id and the card reads the Run itself — a second component
- * for the second tool would be the same JSON rendered twice, drifting apart.
- *
- * `hima_cancel` and `hima_resume` are deliberately not here. Each answers about a Run someone else's
- * card is already showing, and claiming their keys would put a second, competing copy of that Run in
- * the transcript rather than telling anyone something new.
- */
 const HIMA_RUN_TOOLS = ['hima_observe', 'hima_run'] as const;
+const WORKBENCH_KIND = 'hima-workbench';
+const WORKBENCH_ID = '@hima/harness/workbench';
 
-/** The slot this module contributes into: dsh's keyed atomic tool view, dispatched by tool name. */
-const TOOL_VIEW_SLOT = 'tool.call.toolview';
-const WORKBENCH_SLOT = 'sidebar.footer.action';
-
-/** The shell owns its navigation and Settings; this entry opens the existing Hima route. */
-function WorkbenchLink({ wide }: { wide: boolean }): ReactElement {
-  return createElement('a', {
-    href: HIMA_WORKBENCH_PATH,
-    title: 'Hima research workbench',
-    'aria-label': 'Hima research workbench',
-    'data-hima-control': 'open-workbench',
-    style: {
-      display: 'flex', alignItems: 'center', justifyContent: wide ? 'flex-start' : 'center',
-      gap: 10, minHeight: 36, padding: wide ? '6px 12px' : '6px', borderRadius: 8,
-      color: 'var(--dsw-alias-label-primary, #0f1115)', textDecoration: 'none', fontSize: 14,
-    },
-  }, createElement('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, 'aria-hidden': true },
-    createElement('rect', { x: 3, y: 3, width: 18, height: 18, rx: 3 }),
-    createElement('path', { d: 'M3 9h18M9 9v12M13 17l2-3 2 1 2-3' })),
-  wide ? 'Hima workbench' : null);
-}
-
-/** The slice of the browser plugin context this module uses. */
+/** The published slot contracts used by this bundle, kept at the existing wrapped seam. */
+type Registration = ({ inject?: (...args: string[]) => object; priority?: number }) & (
+  | { name: 'tool.call.toolview' | 'sidebar.right.pane.tab'; key: string }
+  | { name: 'sidebar.footer.action'; id: string }
+  | { name: 'sidebar.brand.mark' | 'sidebar.brand.name' | 'conversation.hero.brand.mark' }
+);
 export interface ClientContext {
   readonly slots: {
-    /** Register a keyed tool view or an identified sidebar action. */
-    register(declaration:
-      | { name: 'tool.call.toolview'; key: string }
-      | { name: 'sidebar.footer.action'; id: string }, component: unknown): unknown;
-    /** Run a registration for the lifetime of the named slot's declaration. */
+    register(declaration: Registration, component: unknown): unknown;
     inject(name: string, callback: () => unknown): unknown;
   };
+  readonly sidebarRight: { openTab(kind: string, options?: { params?: { runId?: string } }): void };
+  readonly sidebarRightTabs: { register(definition: { id: string; kind: string; title(address: string): string; guide: { order: number; title(): string; description(): string }[] }): () => void };
+  readonly layout: { toggleSidebar(): void };
+  effect(callback: () => (() => void)): unknown;
 }
 
-/** The browser services this module needs before it may run. */
-export const inject = ['slots'];
-
-/** Stable plugin name, as dsh's own client packages declare it. */
+export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout'];
 export const name = 'hima-guide';
 
-/**
- * Register the Hima tool view. A `hima_observe` or `hima_run` call then renders as the Hima card
- * instead of the generic tool row: where the Run stands, the path it took node by node, the blocker a
- * person has to clear, what was read, the verdicts, and what the Run decided next.
- *
- * @param ctx - the browser plugin context.
- */
+/** Hima's own mark, composed through the shell's brand seats. */
+function HimaMark({ size = 24, className }: { size?: number; className?: string }): ReactElement {
+  return createElement('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true, className },
+    createElement('path', { d: 'M4 5v14M20 5v14M4 12h16M4 5l5-3M15 22l5-3', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' }));
+}
+function HimaName(): ReactElement {
+  return createElement('span', { className: 'hima-brand' }, 'HimaHarness');
+}
+
+interface EntryProps {
+  wide: boolean;
+  useSessions<T>(selector: (state: { current?: string }) => T): T;
+  open(wide: boolean): void;
+}
+function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
+  const current = useSessions((state) => state.current);
+  const [error, setError] = useState<string>();
+  return createElement('div', { className: 'hima-entry', 'data-wide': wide },
+    createElement('style', null, STUDIO_STYLE),
+    createElement('button', {
+      type: 'button', disabled: current === undefined,
+      title: current === undefined ? 'Choose a workspace and session to open Live Run' : 'Live Run — beside the conversation',
+      'aria-label': 'Open Live Run beside the conversation', 'data-hima-control': 'open-workbench',
+      onClick: () => { try { open(wide); setError(undefined); } catch (failure) { setError((failure as Error).message); } },
+    }, createElement(HimaMark, { size: 18 }), wide ? 'Live Run' : null),
+    error ? createElement('p', { role: 'alert' }, error) : null,
+    wide && current === undefined ? createElement('p', null, 'Choose a workspace to begin') : null);
+}
+
 export function apply(ctx: ClientContext): void {
-  ctx.slots.inject(WORKBENCH_SLOT, () => ctx.slots.register({ name: WORKBENCH_SLOT, id: 'hima-workbench' }, WorkbenchLink));
-  ctx.slots.inject(TOOL_VIEW_SLOT, () => {
-    const claimed = HIMA_RUN_TOOLS.map((key) => ctx.slots.register({ name: TOOL_VIEW_SLOT, key }, HimaRunCard));
-    // One disposer for the two claims, so this callback answers what a single registration answered
-    // before: whatever the slot service does with a returned disposer, it gets one, not a list.
+  ctx.effect(() => ctx.sidebarRightTabs.register({
+    id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'Live Run',
+    guide: [{ order: 0, title: () => 'Hima Live Run', description: () => 'Research, execution and evidence beside the conversation.' }],
+  }));
+  const openRun = (runId?: string) => ctx.sidebarRight.openTab(WORKBENCH_KIND, runId === undefined ? undefined : { params: { runId } });
+  ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+    name: 'sidebar.right.pane.tab', key: WORKBENCH_ID,
+    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files') }),
+  }, HimaWorkbench));
+  ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
+    name: 'sidebar.footer.action', id: 'hima-workbench',
+    inject: () => ({ open: (wide: boolean) => { openRun(); if (wide) ctx.layout.toggleSidebar(); } }),
+  }, WorkbenchEntry));
+  for (const slot of ['sidebar.brand.mark', 'conversation.hero.brand.mark'] as const) {
+    ctx.slots.inject(slot, () => ctx.slots.register({ name: slot, priority: -10 }, HimaMark));
+  }
+  ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name', priority: -10 }, HimaName));
+  ctx.slots.inject('tool.call.toolview', () => {
+    const claimed = HIMA_RUN_TOOLS.map((key) => ctx.slots.register({ name: 'tool.call.toolview', key, inject: () => ({ openRun }) }, HimaRunCard));
     return () => { for (const dispose of claimed) if (typeof dispose === 'function') (dispose as () => void)(); };
   });
 }

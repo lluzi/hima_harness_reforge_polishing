@@ -1,9 +1,10 @@
 // The browser side of the Hima remote interface: one fetch wrapper over the `/hima/api/` namespace,
 // and the only place the HimaGuide module talks to the host. The wire contract lives in
 // `../remote.ts`; this file imports it as types alone, so nothing host-side reaches the bundle.
-import type { HimaErrorBody, HimaErrorCode, RunView } from '../remote.js';
+import type { HimaErrorBody, HimaErrorCode, RunHeadView, RunView } from '../remote.js';
+import type { StartChoices } from '../workbench.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
-import { runActionPath, runPath } from '../paths.js';
+import { HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runPath } from '../paths.js';
 
 /**
  * Why a Hima request did not answer. `hima/unreachable` is the one code minted here rather than by
@@ -29,8 +30,21 @@ function failureFrom(status: number, body: unknown): HimaFailure {
  * @returns the run view, or the coded reason there is none.
  */
 export function fetchRun(runId: string, signal?: AbortSignal): Promise<HimaResult<RunView>> {
-  return runRequest(runPath(runId), { signal });
+  return runRequest<RunView>(runPath(runId), { signal });
 }
+
+export const fetchRuns = (signal?: AbortSignal): Promise<HimaResult<{ runs: RunHeadView[] }>> =>
+  runRequest(HIMA_RUNS_PATH, { signal });
+
+export function fetchStartChoices(pack?: string, site?: string, signal?: AbortSignal): Promise<HimaResult<StartChoices>> {
+  const query = new URLSearchParams();
+  if (pack !== undefined) query.set('pack', pack);
+  if (site !== undefined) query.set('site', site);
+  return runRequest(`${HIMA_START_OPTIONS_PATH}?${query}`, { signal });
+}
+
+export const startCampaign = (body: Record<string, unknown>, signal?: AbortSignal): Promise<HimaResult<RunView>> =>
+  runRequest(HIMA_RUNS_START_PATH, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
 
 /**
  * Act on one Run from the card: stop it, or carry a waiting one on. Both answer with the Run in the
@@ -50,10 +64,10 @@ export function actOnRun(runId: string, action: 'cancel' | 'resume', signal?: Ab
 }
 
 /** One request to the namespace answering with a Run: a failure is a value the caller renders. */
-async function runRequest(target: string, init: RequestInit): Promise<HimaResult<RunView>> {
+async function runRequest<T>(target: string, init: RequestInit): Promise<HimaResult<T>> {
   let response: Response;
   try {
-    response = await fetch(target, { ...init, headers: { accept: 'application/json' } });
+    response = await fetch(target, { ...init, headers: { ...init.headers, accept: 'application/json' } });
   } catch (err) {
     return { ok: false, error: { code: 'hima/unreachable', message: couldNotReach((err as Error).message) } };
   }
@@ -64,5 +78,5 @@ async function runRequest(target: string, init: RequestInit): Promise<HimaResult
     return { ok: false, error: { code: 'hima/unreachable', message: answeredWithoutJson(String(response.status)) } };
   }
   if (!response.ok) return { ok: false, error: failureFrom(response.status, body) };
-  return { ok: true, value: body as RunView };
+  return { ok: true, value: body as T };
 }

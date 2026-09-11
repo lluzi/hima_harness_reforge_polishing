@@ -38,7 +38,8 @@
     "test/contract/loop.test.ts",
     "test/contract/start-form-window.test.ts",
     "test/contract/strategy.test.ts",
-    "test/contract/window.test.ts"
+    "test/contract/window.test.ts",
+    "test/contract/unified-workbench.test.ts"
   ],
   "live-site": [
     "test/contract/jobs.live.test.ts",

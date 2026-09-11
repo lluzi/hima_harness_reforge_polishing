@@ -44,9 +44,6 @@ const HOST_COOKIE_PREFIX = 'dsh-auth-';
 /** Only loopback is ever swept: a cookie on any other host is not ours to remove. */
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 
-/** The workbench page the harness bundle serves under the host's origin, behind the session fence. */
-const WORKBENCH_PATH = '/hima/';
-
 /** What a driver run, or a start that failed before there was a window to say so in, exits with. */
 const EXIT_FAILED = 1;
 
@@ -256,9 +253,8 @@ async function hostSession(session: Session, origin: string): Promise<DriverSess
 }
 
 /**
- * The native menu: quit, reload, the developer tools, and the two places in the host this window
- * goes — dsh's chat at `/`, and the workbench page. Nothing here reaches into the page; both items
- * are navigations the fence permits, because both are the host's own origin.
+ * The native menu keeps conversation and Live Run in the same mounted document. The latter
+ * activates the client's own dock entry; its button owns session readiness and panel navigation.
  */
 function installMenu(win: BrowserWindow): void {
   const goTo = (pathname: string) => (): void => { if (host !== undefined) void win.loadURL(`${host.origin}${pathname}`); };
@@ -269,8 +265,15 @@ function installMenu(win: BrowserWindow): void {
     {
       label: 'View',
       submenu: [
-        { label: 'Chat', accelerator: 'CmdOrCtrl+1', click: goTo('/') },
-        { label: 'Workbench', accelerator: 'CmdOrCtrl+2', click: goTo(WORKBENCH_PATH) },
+        { label: 'Conversation', accelerator: 'CmdOrCtrl+1', click: () => {
+          if (host !== undefined && new URL(win.webContents.getURL()).pathname === '/') {
+            void win.webContents.executeJavaScript(`document.querySelector('[contenteditable="true"]')?.focus()`);
+          } else goTo('/')();
+        } },
+        { label: 'Live Run', accelerator: 'CmdOrCtrl+2', click: () => {
+          // Activate the same native-dock entry as the sidebar; preserve the mounted conversation.
+          void win.webContents.executeJavaScript(`document.querySelector('button[data-hima-control="open-workbench"]')?.click()`);
+        } },
         { type: 'separator' },
         { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => { win.webContents.reload(); } },
         { label: 'Toggle Developer Tools', accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => { win.webContents.toggleDevTools(); } },

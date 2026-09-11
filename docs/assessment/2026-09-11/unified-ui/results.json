@@ -1,0 +1,43 @@
+{
+  "baseline": "e994087133ffd2f0bf1dcc79f611b4f70a1d3ac5",
+  "legacyReadOnlyReference": "636475cb30c7d312222b0c492872154f327d9113",
+  "issue": 21,
+  "dshVersion": "0.1.5-alpha.1",
+  "l2": {
+    "passed": 20,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 109.653
+  },
+  "l3": {
+    "distinctPassed": 4,
+    "unifiedSeconds": 36.385,
+    "legacyFormSeconds": 25.271,
+    "knownElectronBootsIncludingDiagnosis": 10
+  },
+  "successfulLiveModelValidation": false,
+  "liveEdaValidation": false,
+  "modelDiagnostic": "one native prompt failed with MISSING_CREDENTIAL; final tests send no model prompt",
+  "sourceHashes": {
+    "packages/harness/src/client/index.ts": "8de5b0d9804edae1f9e0aa9cfcb55adb7f65b024e38d29d1d221de12ec9321ab",
+    "packages/harness/src/client/HimaWorkbench.tsx": "031ac1f05fe04821794ba5d21d11ad99f1f81ee591fd592366824ee7d545ce65",
+    "packages/harness/src/client/workbench-style.ts": "b2aeae2191c8ebd71f53a5b4773de6e8ba6e9707e3fed86d8b519220c4fbfcff",
+    "packages/harness/src/client/HimaRunCard.tsx": "2d23cf799c81e7af592924a77d1aa35644e61752e4b3b3443c0bffc7f2fb000b",
+    "packages/harness/src/client/api.ts": "45c90abbe1c7c45ba1bd1beb9dbf7320486f8fe261360ee08d487e6deed3ead9",
+    "packages/harness/src/remote.ts": "adb02abd512cb7eafda669694d06123b239ac425ae0a677d0f48a6edb3ba300e",
+    "packages/harness/src/paths.ts": "01c882138a6cffc72d8197dab7ccae8b602faccd75a7708ca8bfd9b7b9553bb1",
+    "packages/desktop/src/main.ts": "788396b8027cb3b3eaf321dc10b1b10b6364f8f6aaf5b5a0d400a348a0c4cdfb",
+    "packages/desktop/src/driver.ts": "32a3db23c0a0ecce62aecb188c8a6c0abb4a3e8b1974346d87ba8c961b59fd50",
+    "test/contract/unified-workbench.test.ts": "b4c5a88ad63dad311fb6b233e5f48cdd3cc83fd5cd8faf1e7c79ee1ab291c4bf",
+    "test/contract/support/inspect-window.ts": "b1a6180bec1e466a6dd27208aff9b6c732a9380f73925128c5fefc3e1e10e334"
+  },
+  "screenshots": {
+    "light-report.png": "2eb8dfb7585a7b0a9a4c24fef176db3bdc6224ad9fa5ecb4f563e5e050829615",
+    "dark-cancelled.png": "724ee43738aece007014ea10044af08803deadd2b3b0e88d2c714372f62a303d",
+    "light-complete.png": "08a388fc05507e56661fa6e758591bce5cadc1b78e290a64828457fa7357eec3",
+    "light-running.png": "a4dfbf06514a986ca70d16f5629642a69bf0ac3e62fec69543ae4eb7fe6aae2f",
+    "light-start.png": "7ecf95203b37b24bb81ba655d2a917f8dbbeee4280c116733a2877081dd4b888",
+    "dark-blocked.png": "b4eb5e4d4793266124577b592d9afbf4246c47e75ebd8c86b62454739b96aeb5",
+    "light-code.png": "8d13629c4700333ec532b8631a4db1c61d692e6ebbec8f84b6f3b72d1ebcf24a"
+  }
+}

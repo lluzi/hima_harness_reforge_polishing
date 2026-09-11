@@ -1,0 +1,140 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/view.test.ts test/contract/view-run.test.ts test/contract/start-form.test.ts test/contract/experience-files.test.ts test/contract/run-controls.test.ts
+local: 5 selected; 20 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: an ended Run without a workspace explains why no report is deliverable through projection and read API
+ok 1 - an ended Run without a workspace explains why no report is deliverable through projection and read API
+  ---
+  duration_ms: 7598.956792
+  type: 'test'
+  ...
+# Subtest: schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+ok 2 - schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+  ---
+  duration_ms: 5409.054334
+  type: 'test'
+  ...
+# Subtest: failure between the two report writes leaves no record; the next Host completes and verifies both files
+ok 3 - failure between the two report writes leaves no record; the next Host completes and verifies both files
+  ---
+  duration_ms: 4939.347583
+  type: 'test'
+  ...
+# Subtest: simultaneous resumes clear one blocker once and launch only one replacement Job
+ok 4 - simultaneous resumes clear one blocker once and launch only one replacement Job
+  ---
+  duration_ms: 3210.804042
+  type: 'test'
+  ...
+# [{"kind":"resumed","status":"ended-budget-exhausted"},{"kind":"not-waiting","status":"running"}]
+# Subtest: a cancel crossing a resume leaves a terminal Run and no live Job
+ok 5 - a cancel crossing a resume leaves a terminal Run and no live Job
+  ---
+  duration_ms: 1684.657625
+  type: 'test'
+  ...
+# Subtest: a failed resume admission does not prevent a later corrected request
+ok 6 - a failed resume admission does not prevent a later corrected request
+  ---
+  duration_ms: 2474.341875
+  type: 'test'
+  ...
+# Subtest: an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+ok 7 - an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+  ---
+  duration_ms: 7251.683083
+  type: 'test'
+  ...
+# Subtest: Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+ok 8 - Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+  ---
+  duration_ms: 6918.81375
+  type: 'test'
+  ...
+# Subtest: a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+ok 9 - a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+  ---
+  duration_ms: 10644.976542
+  type: 'test'
+  ...
+# Subtest: the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget
+ok 10 - the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget
+  ---
+  duration_ms: 7175.980708
+  type: 'test'
+  ...
+# run run-e2621de7-9d46-4c49-9975-6161f7ee762d
+#   synthesize: done
+#   read-qor: done
+#   judge: done
+#   next-period: done
+# Subtest: over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either
+ok 11 - over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either
+  ---
+  duration_ms: 7214.234
+  type: 'test'
+  ...
+# Subtest: a run HimaFabric never started cannot be cancelled, and says so with 409 hima/run-not-in-state
+ok 12 - a run HimaFabric never started cannot be cancelled, and says so with 409 hima/run-not-in-state
+  ---
+  duration_ms: 4793.980583
+  type: 'test'
+  ...
+# Subtest: every route the workbench uses, and the workbench page itself, sit behind the web app's own session cookie
+ok 13 - every route the workbench uses, and the workbench page itself, sit behind the web app's own session cookie
+  ---
+  duration_ms: 4707.361125
+  type: 'test'
+  ...
+# Subtest: the served HimaGuide bundle claims the tool-view key of both Hima tools and carries the rendering of every run status and node state
+ok 14 - the served HimaGuide bundle claims the tool-view key of both Hima tools and carries the rendering of every run status and node state
+  ---
+  duration_ms: 4103.367375
+  type: 'test'
+  ...
+# Subtest: the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+ok 15 - the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+  ---
+  duration_ms: 4926.668
+  type: 'test'
+  ...
+# Subtest: a refused read is reported as a refusal in the run view, never as an empty pass
+ok 16 - a refused read is reported as a refusal in the run view, never as an empty pass
+  ---
+  duration_ms: 4188.729875
+  type: 'test'
+  ...
+# Subtest: a remote error reaches the caller as a coded JSON error, never as an empty answer
+ok 17 - a remote error reaches the caller as a coded JSON error, never as an empty answer
+  ---
+  duration_ms: 4850.677875
+  type: 'test'
+  ...
+# Subtest: a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+ok 18 - a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+  ---
+  duration_ms: 4853.724625
+  type: 'test'
+  ...
+# Subtest: every /hima/api route sits behind the web app's own session cookie
+ok 19 - every /hima/api route sits behind the web app's own session cookie
+  ---
+  duration_ms: 4621.031709
+  type: 'test'
+  ...
+# Subtest: the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+ok 20 - the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+  ---
+  duration_ms: 6134.837834
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 109570.23675
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 109.653 s; pass/fail/skip counts are in the TAP summary above

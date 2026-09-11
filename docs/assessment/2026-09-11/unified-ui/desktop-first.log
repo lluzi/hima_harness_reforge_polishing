@@ -1,0 +1,60 @@
+$ node scripts/run-contract-tests.mjs desktop --files test/contract/unified-workbench.test.ts
+desktop: 1 selected; 12 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: conversation draft, native files and verified reports share one workspace with a real Run
+not ok 1 - conversation draft, native files and verified reports share one workspace with a real Run
+  ---
+  duration_ms: 28786.33075
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:80:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok((await d.wait('studio-status', 'running', 20_000)).ok)
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:92:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: preparation retries preserve drafts, pending starts cannot be replaced, and a resumed Run remains cancellable
+not ok 2 - preparation retries preserve drafts, pending starts cannot be replaced, and a resumed Run remains cancellable
+  ---
+  duration_ms: 8474.326125
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:136:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    '' !== '2.3'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '2.3'
+  actual: ''
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:155:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 0
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 37623.113959
+SSH subprocess attempts: 0
+desktop command exit code: 1; elapsed: 37.692 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

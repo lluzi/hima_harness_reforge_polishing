@@ -14,7 +14,7 @@
 // which the workbench page the host serves at `/hima/` (`../workbench.ts`) reads too, so the two
 // mounts of the card say the same thing. The markers a driver reads and clicks (`data-hima-region`,
 // `data-hima-state-*`, `data-hima-control`) are the same on both, and are listed there.
-import { Fragment, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { runCardPath } from '../paths.js';
 import type { BranchView, GenerationJoinView, GenerationVerdictView, GenerationView, LoopView } from '../generations.js';
 import type { BlockerView, Citation, DecisionView, ExperienceView, NodeView, ObservationView, RunView, RunWords, VerdictView } from '../remote.js';
@@ -187,7 +187,7 @@ function MetersSection({ view }: { view: RunView }): ReactElement | null {
  * wider than a chat's tool view, and a card that made the conversation scroll sideways would be
  * unreadable everywhere else.
  */
-function GenerationsTable({ view }: { view: RunView }): ReactElement {
+export function GenerationsTable({ view }: { view: RunView }): ReactElement {
   const heads = [generationColumns.generation, generationColumns.period, generationColumns.slack, generationColumns.verdicts, generationColumns.decision, generationColumns.wall];
   const loops = loopsIn(view);
   const marked = loops.length === 0 ? {} : { 'data-hima-region': 'run-loops', ...stateAttributes(loopsState(view)) };
@@ -400,10 +400,42 @@ function BlockerRow({ blocker, latest }: { blocker: BlockerView; latest: boolean
 }
 
 /** What the card's controls need: which one is in flight, why the last one was refused, and how to act. */
-interface Acting {
+export interface Acting {
   readonly inFlight?: 'cancel' | 'resume';
   readonly refusal?: HimaFailure;
   act(action: 'cancel' | 'resume'): void;
+}
+
+/** One action owner for both presentations. Cancel may supersede a long-running Resume reply. */
+export function useRunActions(runId: string | undefined, onChanged: (view: RunView) => void): Acting {
+  const [state, setState] = useState<{ runId?: string; inFlight?: 'cancel' | 'resume'; refusal?: HimaFailure }>({ runId });
+  const pending = useRef<{ runId: string; kind: 'cancel' | 'resume'; controller: AbortController } | undefined>(undefined);
+  const latest = useRef({ runId, onChanged });
+  latest.current = { runId, onChanged };
+  useEffect(() => {
+    setState({ runId });
+    return () => {
+      const active = pending.current;
+      if (active !== undefined && active.runId === runId) { active.controller.abort(); pending.current = undefined; }
+    };
+  }, [runId]);
+  return {
+    ...(state.runId === runId ? state : {}),
+    act: (kind) => {
+      if (runId === undefined) return;
+      const prior = pending.current;
+      if (prior && !(prior.kind === 'resume' && kind === 'cancel')) return;
+      prior?.controller.abort();
+      const own = { runId, kind, controller: new AbortController() };
+      pending.current = own; setState({ runId, inFlight: kind });
+      void actOnRun(runId, kind, own.controller.signal).then((result) => {
+        if (own.controller.signal.aborted || pending.current !== own || latest.current.runId !== runId) return;
+        pending.current = undefined;
+        setState(result.ok ? { runId } : { runId, refusal: result.error });
+        if (result.ok) latest.current.onChanged(result.value);
+      });
+    },
+  };
 }
 
 /**
@@ -415,7 +447,7 @@ interface Acting {
  * the Run itself, which is what the card then shows. Nothing here holds Run state: HimaGuide never
  * does (CONTEXT.md, *HimaGuide*).
  */
-function RunControls({ view, acting }: { view: RunView; acting: Acting }): ReactElement {
+export function RunControls({ view, acting }: { view: RunView; acting: Acting }): ReactElement {
   const shown: ('cancel' | 'resume')[] = [
     ...(showsCancel(view.run.status) ? ['cancel' as const] : []),
     ...(showsResume(view.run.status) ? ['resume' as const] : []),
@@ -427,7 +459,7 @@ function RunControls({ view, acting }: { view: RunView; acting: Acting }): React
           key={name}
           type="button"
           data-hima-control={runControls[name].control}
-          disabled={acting.inFlight !== undefined}
+          disabled={acting.inFlight === 'cancel' || acting.inFlight === name}
           onClick={() => { acting.act(name); }}
         >
           {runControls[name].said}
@@ -443,7 +475,7 @@ function RunControls({ view, acting }: { view: RunView; acting: Acting }): React
  * where this same view carries it — the citations of a decision are verdicts as well as an
  * observation, and the view already holds both, so nothing has to be fetched again to resolve them.
  */
-function DecisionRow({ decision, view }: { decision: DecisionView; view: RunView }): ReactElement {
+export function DecisionRow({ decision, view }: { decision: DecisionView; view: RunView }): ReactElement {
   return (
     <div style={block}>
       <div>
@@ -481,7 +513,7 @@ function ValueRows({ values }: { values: readonly SemanticValue[] }): ReactEleme
 }
 
 /** One observation: the declared path, the content hash, the reader, the time, and what was read. */
-function ObservationRow({ observation }: { observation: ObservationView }): ReactElement {
+export function ObservationRow({ observation }: { observation: ObservationView }): ReactElement {
   return (
     <div style={block}>
       <div style={mono}>{observation.path}</div>
@@ -502,7 +534,7 @@ function CitationRow({ citation }: { citation: Citation }): ReactElement {
 }
 
 /** One verdict: the outcome, the rule that produced it, and every observation it cited. */
-function VerdictRow({ verdict }: { verdict: VerdictView }): ReactElement {
+export function VerdictRow({ verdict }: { verdict: VerdictView }): ReactElement {
   return (
     <div style={block}>
       <div>
@@ -527,14 +559,14 @@ function VerdictRow({ verdict }: { verdict: VerdictView }): ReactElement {
  * Both mounts show a current ledger preview. The saved document may use an older renderer; only
  * the link reads and verifies its original bytes. No Site read is implied by this preview.
  */
-function ExperienceSection({ view, experience }: { view: RunView; experience: ExperienceView }): ReactElement {
+export function ExperienceSection({ view, experience, onOpenSaved }: { view: RunView; experience: ExperienceView; onOpenSaved?: () => void }): ReactElement {
   return (
     <Section title={EXPERIENCE_HEADING} region="run-experience" state={experienceState(experience)}>
       <div style={block}>
         <div style={muted}>{experienceWrittenSaid(experience)}</div>
         <div style={{ ...muted, ...mono }}>{experienceFileSaid('markdown', experience.markdown)}</div>
         <div style={{ ...muted, ...mono }}>{experienceFileSaid('json', experience.json)}</div>
-        <div><a href={experienceMarkdownHref(view.run.id)}>{EXPERIENCE_MARKDOWN_LINK}</a></div>
+        <div><a href={experienceMarkdownHref(view.run.id)} onClick={onOpenSaved === undefined ? undefined : (event) => { event.preventDefault(); onOpenSaved(); }}>{EXPERIENCE_MARKDOWN_LINK}</a></div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {reportBlocks(experienceReport(view, experience.writtenAt).markdown).map((entry, index) => (
@@ -552,7 +584,7 @@ function ExperienceSection({ view, experience }: { view: RunView; experience: Ex
  * is closed (`experience-report.ts` writes it and `reportBlocks` reads it), a library in this bundle
  * would be a second opinion about what the file says, and this bundle ships beside React in a chat.
  */
-function ReportBlockRow({ block: entry }: { block: ReportBlock }): ReactElement {
+export function ReportBlockRow({ block: entry }: { block: ReportBlock }): ReactElement {
   if (entry.kind === 'heading') {
     // The report's own levels, stepped down under the section's heading: its title is the largest
     // thing in the section and never larger than the section itself.
@@ -688,38 +720,21 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
  * @param props - the keyed toolview payload; only the frozen call/result block is read.
  * @returns the Hima run card.
  */
-export function HimaRunCard({ block: toolBlock }: { block: ToolBlock }): ReactElement {
+export function HimaRunCard({ block: toolBlock, openRun }: { block: ToolBlock; openRun?: (runId: string) => void }): ReactElement {
   const runId = runIdOf(toolBlock);
   const [state, setState] = useState<{ view?: RunView; error?: HimaFailure }>({});
-  const [acted, setActed] = useState<{ inFlight?: 'cancel' | 'resume'; refusal?: HimaFailure }>({});
+  const acting = useRunActions(runId, (view) => setState({ view }));
 
   useEffect(() => {
     if (runId === undefined) return;
     const controller = new AbortController();
     setState({});
-    setActed({});
     void fetchRun(runId, controller.signal).then((result) => {
       if (controller.signal.aborted) return;
       setState(result.ok ? { view: result.value } : { error: result.error });
     });
     return () => { controller.abort(); };
   }, [runId]);
-
-  // A control's answer is the Run itself, so the card renders it and nothing is fetched again. A
-  // refusal leaves the card showing the Run as it was last read and says why beside the control that
-  // was clicked — which is the honest thing to show, because the Run may not have moved at all (a
-  // Site that could not be asked writes nothing) and this card is not the place to guess.
-  const acting: Acting = {
-    ...acted,
-    act: (action) => {
-      if (runId === undefined || acted.inFlight !== undefined) return;
-      setActed({ inFlight: action });
-      void actOnRun(runId, action).then((result) => {
-        setActed(result.ok ? {} : { refusal: result.error });
-        if (result.ok) setState({ view: result.value });
-      });
-    },
-  };
 
   if (runId === undefined) {
     // A failed call has something to say, and it is the tool's own words: saying "this call reported
@@ -737,9 +752,15 @@ export function HimaRunCard({ block: toolBlock }: { block: ToolBlock }): ReactEl
   }
   return (
     <div style={card}>
-      <a href={runCardPath(runId)} style={{ ...mono, color: 'inherit' }} title="Open this Run in the research workbench">{runId} ↗</a>
+      <a href={runCardPath(runId)} onClick={openRun === undefined ? undefined : (event) => { event.preventDefault(); openRun(runId); }} style={{ ...mono, color: 'inherit' }} title="Open this Run beside the conversation">{runId} ↗</a>
       {state.error !== undefined ? <FailureRow error={state.error} /> : null}
-      {state.view !== undefined ? <RunBody view={state.view} acting={acting} /> : null}
+      {state.view !== undefined ? (openRun === undefined
+        ? <RunBody view={state.view} acting={acting} />
+        : <>
+          <StatusBanner view={state.view} />
+          <RunControls view={state.view} acting={acting} />
+          <div style={muted}>Snapshot from this card's last read. Open Live Run for updates, experiments and evidence.</div>
+        </>) : null}
       {state.error === undefined && state.view === undefined ? <div style={muted}>reading the run…</div> : null}
     </div>
   );
