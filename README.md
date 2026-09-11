@@ -34,7 +34,7 @@ DSH_TELEMETRY_DISABLED=1 \
 pnpm run desktop --site local
 ```
 
-当前 `--site local` 每次启动会刷新样例 Pack 和生成的 flow；Campaign workspace 保留。Pack 内资产保留尚未实现，见 POL-07。已有 `test:contract` 包含真实 SSH 探测和远程写入用例；分组入口尚待 POL-01 落地。已执行的本地测试命令与原始结果保存在基线记录中；暂未安装 Git hooks。
+当前 `--site local` 每次启动会刷新样例 Pack 和生成的 flow；Campaign workspace 保留。Pack 内资产保留尚未实现，见 POL-07。`pnpm run test:contract` 现在只构建并运行本地组，不加载真实 Site 或桌面用例。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)，PLS-01 的迁移与本次结果见 [验证记录](docs/assessment/2026-09-11/pls-01/README.md)。暂未安装 Git hooks。
 
 ## 产品依据
 

@@ -13,7 +13,7 @@
     "typecheck": "pnpm -r run typecheck && tsc -p test/tsconfig.json",
     "test:unit": "node scripts/run-unit-tests.mjs",
     "desktop": "pnpm --filter @hima/desktop run build && pnpm --filter @hima/desktop run start",
-    "test:contract": "pnpm run build && node --test --test-concurrency=1 'test/contract/**/*.test.ts'",
+    "test:contract": "pnpm run build && node scripts/run-contract-tests.mjs local",
     "check:seams": "node scripts/check-seams.mjs",
     "check:node": "node scripts/require-node.mjs",
     "hooks:install": "git config core.hooksPath .githooks && echo 'hooks installed'"
