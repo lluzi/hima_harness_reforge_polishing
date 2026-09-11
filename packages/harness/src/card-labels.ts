@@ -1185,7 +1185,8 @@ export const startKnobField = (name: string, knob: StrategyKnob, word: RunWord |
 /** The control that submits the form, and the heading above it. */
 export const startControl: ControlLabel = { control: 'start', said: 'start campaign' };
 export const START_HEADING = 'start a campaign';
-export const START_STATIC_LIMIT = 'Connections, available licences and tools have not been tested. Starting a Campaign checks these declarations again.';
+export const LOCAL_DEMO_SOURCE = 'The built-in local demo uses simulated synthesis reports. Establish the source of a particular Run from its inputs and original reports.';
+export const START_STATIC_LIMIT = 'Connections, available licences and tools have not been tested. Starting a Campaign checks these declarations again. ' + LOCAL_DEMO_SOURCE;
 export const START_STATIC_FIT = 'Static declarations match.';
 export const START_STATIC_UNFIT = 'The selected Pack and Site do not match. Site owner: check bindings, allowed wrappers and declared capacity. Pack owner: check rules, readers and chooser declarations.';
 export const START_NO_PACK = 'No HimaPack is installed. Ask the Pack owner to install a Pack, then reload this page.';

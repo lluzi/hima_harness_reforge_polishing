@@ -35,6 +35,7 @@ import {
   loopClosedSaid,
   loopOpenedSaid,
   loopSaid,
+  LOCAL_DEMO_SOURCE,
   meterRows,
   NOT_HELD,
   NOTHING_JUDGED,
@@ -261,6 +262,7 @@ function researchOf(view: RunView): ExperienceResearch {
     conclusion, summary, trials,
     ...(next === undefined ? {} : { untestedNextStrategy: next }),
     limitations: [
+      LOCAL_DEMO_SOURCE,
       'Reported clock periods are report values, not measured Fmax. Requested strategy values are inputs, not measurements.',
       'Convergence records the Pack rule over the tried values; it does not prove an optimum or general strategy failure.',
       'Incomplete trials and unresolved or stale citations are retained as history and excluded from the definite result.',
