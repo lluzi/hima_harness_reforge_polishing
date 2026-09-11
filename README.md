@@ -48,6 +48,7 @@ pnpm run desktop --site local
 
 - [产品访谈与决定记录](/Users/lluzi/code/hima_harness_reforge_polishing/docs/product-interview.md)
 - [产品定义与验收目标](/Users/lluzi/code/hima_harness_reforge_polishing/docs/product-definition.md)
+- [执行职责：由同一个对话 Agent 执行业务节点](docs/adr/0006-conversational-agent-owns-business-execution.md)
 - [Pilot 进度方案](/Users/lluzi/code/hima_harness_reforge_polishing/docs/pilot-plan.md)
 - [分级测试方案](/Users/lluzi/code/hima_harness_reforge_polishing/docs/testing-strategy.md)
 - [统一工程工作区：原生对话、Live Run、代码和证据同屏](docs/assessment/2026-09-11/unified-ui/README.md)

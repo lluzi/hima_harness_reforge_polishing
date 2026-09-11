@@ -3,11 +3,11 @@
 Part of #1 (https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
 Backlog: POL-05
-Blocked by: #9
+Blocked by: #9, #22
 
 ## 目标与开工条件
 
-PLS-08 已交接模型/Workshop 能力；DeepSeek V4 Flash 凭据和小任务预算由运行环境提供。
+PLS-08 已交接模型/Workshop 能力，PLS-19 已建立对话 Agent 的节点执行接口；DeepSeek V4 Flash 凭据和小任务预算由运行环境提供。研究由同一个对话执行 Agent 发起并完成节点内工作，遵循 ADR-0006。
 
 完成本任务应达到下列验收行为；ready-for-agent 不解除依赖或外部资源前置条件。
 
@@ -17,7 +17,7 @@ PLS-08 已交接模型/Workshop 能力；DeepSeek V4 Flash 凭据和小任务预
 
 | 路径 | 修改或核对的接口/职责 |
 | --- | --- |
-| `packages/harness/src/node-turns.ts` | Workshop 所在现有节点执行与结果交接 |
+| `packages/harness/src/node-turns.ts` | 对话 Agent 调用的研究工具执行与结果交接 |
 | `packages/harness/src/tools.ts` | 实际研究/代码工具调用入口 |
 | `packages/harness/src/ledger.ts` | 导入后的模型/代码记录及事实关联 |
 | `packages/harness/src/experience-report.ts` | 研究贡献的可追溯信息 |
@@ -28,6 +28,7 @@ PLS-08 已交接模型/Workshop 能力；DeepSeek V4 Flash 凭据和小任务预
 1. 使用 PLS-08 交接的正式 Pack 中一条挖掘/分析路线及有界网表或路径样本，给模型输入/输出契约和预算；让模型写候选生成或分析算法、在本地执行，并使用检查结果继续判断。候选必须能追到样本中的实际对象，结果由独立校验方法检查。
 2. 至少覆盖一个初始策略被证据否定后修改算法/代码的路径；模型贡献不能只是选择固定 profile 或转述固定脚本输出。
 3. 模型会话、引用输入、代码内容/hash、工具执行和输出观测关联到相应节点/尝试；模型不能直接写 Judge verdict、改 Goal 或绕过工具范围。
+4. 核对控制所有者与实际调用链：不能由 Fabric 自主推进后仅在内部调用一个隐藏的研究 Agent，来替代对话 Agent 的执行。已有 Workshop 能力应通过 PLS-19 的上下文/工具协议复用。
 
 ## 验收标准
 

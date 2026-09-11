@@ -3,11 +3,11 @@
 Part of #1 (https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
 Backlog: POL-06
-Blocked by: #9, #14
+Blocked by: #9, #14, #22
 
 ## 目标与开工条件
 
-需要已交接的模型工具与方法文件身份；首切片限一个声明的探索位置。
+需要已交接的模型工具与方法文件身份，以及 PLS-19 的 Agent 节点执行协议；首切片限一个声明的探索位置。附加工作由对话执行 Agent 提议和执行，Fabric 接纳结构与约束，不自行接管业务推进。
 
 完成本任务应达到下列验收行为；ready-for-agent 不解除依赖或外部资源前置条件。
 

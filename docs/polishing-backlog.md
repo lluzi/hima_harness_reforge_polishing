@@ -8,7 +8,7 @@
 
 用户随后否定 UI-01 的分离页面与视觉方向，明确以旧版 himaharness 的视觉系统构建统一工程桌面。新的现行方向及实现见 [UI-02 #21](https://github.com/lluzi/hima_harness_reforge_polishing/issues/21) 和 [同屏工作区验证](assessment/2026-09-11/unified-ui/README.md)；UI-01 记录保留为历史，不是产品体验已获认可的证明。
 
-用户进一步要求 Agent 可以在运行途中控制指定节点。已补充 [节点介入规格](specs/polishing-v1/node-intervention.md) 与 [PLS-19](specs/polishing-v1/tasks/PLS-19.md)：把寻址、暂停/继续和真实回执作为研究基础能力，与 PLS-11 的算法修订/受影响下游重跑衔接。具体暂停默认策略尚待确认；此处记录需求，不能宣称功能已经实现。
+用户最新明确：由同一个对话 Agent 执行节点内业务并决定后续动作，Fabric 提供约束与事实。已据 [ADR-0006](adr/0006-conversational-agent-owns-business-execution.md) 改写[执行补充规格](specs/polishing-v1/node-intervention.md)和 [PLS-19](specs/polishing-v1/tasks/PLS-19.md)，替代此前仅增加外部介入接口的方案，并调整 PLS-08～12 的职责衔接。以下原 POL 动机仍可参考，但执行归属以最新规格为准；运行代码尚未迁移。
 
 ## 起点与判断
 

@@ -4,7 +4,7 @@
 
 本规格与任务通过本项目 GitHub Issues 管理；仓库内文档是本次发布的可审阅副本，实时任务状态以对应 Issue 为准。本次只编制规格与任务，不实施产品修改或执行真实研究。
 
-2026-09-11 新增要求：[节点级运行介入](node-intervention.md)。工程师通过 Agent 在运行途中定位、暂停、检查、修订并继续指定节点；这是研究闭环的必要控制能力。原 PLS-06 的全 Run 控制和 UI-02 的同屏显示不等于已满足此要求。PLS-19 补充共同控制接口，算法修订/下游有效性继续与 PLS-09～12 衔接；默认暂停语义仍按补充规格标记待定。
+2026-09-11 最新决定：[由对话 Agent 执行节点](../../adr/0006-conversational-agent-owns-business-execution.md)。同一个对话 Agent 执行节点内业务并决定后续动作；Fabric 提供上下文、合法性/预算约束、作业追踪、验收与事实记录。此前仅为自动 Fabric 增加外部介入接口的设想由此替代。PLS-19 及[执行补充规格](node-intervention.md)承载主路径调整，PLS-08～12 按该职责衔接。此处描述目标，当前自动驱动代码尚未迁移。
 
 ## Problem Statement
 
@@ -18,7 +18,7 @@
 
 1. 可重复、低成本的本地开发与验证；一个有依据的默认研究样例。
 2. 输入、启动、运行、阻塞、恢复、停止与报告全过程清楚可信，工程师能看到证据并采取下一步。
-3. 接收 Step 4 的明确快照后，让 AI 在指定研究节点发挥算法与策略创造力，在预算内回溯/附加探索，交付 Pack 内知识资产，并帮助下一次研究。
+3. 接收 Step 4 的明确快照并完成 Agent 节点执行接口后，由同一个对话 Agent 主导节点工作，在研究环节发挥算法与策略创造力，在预算内回溯/附加探索，交付 Pack 内知识资产，并帮助下一次研究。
 
 主力回归使用 L1 真实纯函数和 L2 真实 Host/本地作业，L3 只证明必要的窗口行为。真实模型与真实工具分别做 L4 小验证，完整 DTCO 与使用价值集中在 L5。每一层都明确它能证明与不能证明的结论。
 
@@ -81,7 +81,7 @@
 
 - 固定当前导入快照作为起点。Prototype 和旧 himaharness 只读；后续代码在 polishing 导入并验证。多包不拆成多领域上下文。
 - 沿用 dsh Host/会话/工具体系，Hima 的 Pack、Fabric、Ledger、Judge、Job/Permit、Experience 与 Electron shell。优先 Pack 方法、现有函数和现有职责内的修改，不新增第二图引擎、模型驱动器、知识服务或预算服务。
-- Ledger 记录真实执行；UI/报告是投影。模型提出假设、代码与探索，Executor 负责验证和记录，Judge 保持测量判断权威。
+- 同一个对话 Agent 是业务执行主体，负责节点内工作及后续业务选择；Fabric 不与它并行自动推进。Ledger 记录真实执行，UI/报告是投影，Fabric/工具验证执行约束和实际产物，Judge 保持测量判断权威。
 - 现有四类节点保持。参考图不可改写/删节点；附加研究属于执行轨迹，开始前验证影响范围和返回条件。跨多个模块的字段或契约变化必须列出全部消费者和兼容成本。
 - 现有能力的验证任务先复现；若已满足要求，允许以验证证据关闭，不为任务量制造重构。产品缺口与确定性反例分别说明。
 
@@ -96,7 +96,7 @@
 | Pack 方法 | `packs/opene902-timing-probe/{graph,contract}.yml`、`PACK.md`、已有 `over-constraining-push.yml` | 正常样例采用有依据的方法，错误方法保留反例；PLS-04 |
 | 输入/匹配 | `packs.ts` 的 `checkPack`、`goalParametersOf`；`remote.ts` 的 `startChoices`；`workbench.ts` 的 `renderStartForm` | 复用校验、解释缺口、保持输入与当前选择；PLS-05 |
 | 用户控制 | `fabric.ts` 的 `resumeRun`，`recovery.ts` 的 `reconcileRuns`/`cancelRun`，共享 labels 与两个 UI 投影 | 状态、实际停止、错误与继续一致；PLS-06 |
-| 执行/回溯 | `fabric.ts` 的 `drive`、`node-turns.ts` 的 `toolNode`/`observeNode`/`judgeNode`/`exploreNode` | 增长接纳、有效输入选择和受影响下游重跑；PLS-10～12 |
+| 执行/回溯 | `fabric.ts` 的 `drive`、`node-turns.ts` 的 `toolNode`/`observeNode`/`judgeNode`/`exploreNode` | 拆出 Agent 调用的节点操作、接纳/验收；增长和受影响下游由 Agent 组织；PLS-19、PLS-10～12 |
 | 记录/有效性 | `ledger.ts`、`workspace.ts`、`generations.ts` 的 `generationsOf` | 保留代码/输入/方法身份和替代关系；PLS-10、11、13 |
 | Budget | `budget.ts`、`job-cap.ts`、`fabric.ts` | 所有研究共享总界限，预留收尾而非增加额度；PLS-12 |
 | 报告/资产 | `experience-report.ts` 的 `ExperienceJson`/`experienceReport`，`experience.ts` 的 `writeExperience`/`readExperience` | 事实约束、研究材料、可靠归档与引用；PLS-07、14～16 |
@@ -122,7 +122,8 @@
 
 - 第一组 PLS-01～07：当前代码的测试、样例、输入/控制和报告；按每项依赖推进。
 - PLS-08：Step 4 快照与能力交接。外部前置缺失时，不能把后续任务视为已可实施。
-- 第二组 PLS-09～17：真实 AI 小研究、参考图保护/回溯、预算收尾、方法身份、归档、研究报告、再引用与 owner 升级/分享。
+- PLS-19：建立同一对话 Agent 的节点执行、事实回执和控制所有权；其基础接口是 PLS-09、PLS-10 的新增前置。
+- 第二组 PLS-09～17：在新执行职责下完成真实 AI 小研究、参考图保护/回溯、预算收尾、方法身份、归档、研究报告、再引用与 owner 升级/分享。
 - PLS-18：所有必要能力齐备后进行真实 DTCO 与第二次引用。
 
 任务标签 `ready-for-agent` 表示规格充分、无需重新 triage；不表示可以忽略 `Blocked by` 或外部资源前置条件。具体 DAG 和原 POL 对应关系在任务索引中。各任务都有独立结果与回滚要求，跨模块热点共享不构成并发修改许可。
@@ -206,3 +207,4 @@ ADR-0005 根据本次用户明确要求更新为 accepted：按行为分级测�
 - [ ] #17 PLS-16 下一次研究主动引用相关且获准的历史资产
 - [ ] #18 PLS-17 Pack 升级和分享由 owner 控制并保留客户资产
 - [ ] #19 PLS-18 完成真实 DTCO 研究 pilot 与第二次知识复用
+- [ ] #22 PLS-19 由对话 Agent 执行节点，Fabric 提供约束与事实
