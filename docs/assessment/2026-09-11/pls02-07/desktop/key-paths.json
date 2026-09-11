@@ -1,0 +1,21 @@
+{
+  "command": [
+    "pnpm",
+    "run",
+    "test:desktop",
+    "--files",
+    "test/contract/honest-standin-window.test.ts",
+    "test/contract/start-form-window.test.ts",
+    "test/contract/experience.test.ts"
+  ],
+  "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+  "exitCode": 1,
+  "elapsedSeconds": 54.669,
+  "pass": 3,
+  "fail": 1,
+  "skip": 0,
+  "electronBoots": 4,
+  "sshAttempts": 0,
+  "modelCalls": 0,
+  "EDAJobs": 0
+}

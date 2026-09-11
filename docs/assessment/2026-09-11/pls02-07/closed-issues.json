@@ -1,0 +1,30 @@
+[
+  {
+    "number": 5,
+    "state": "closed",
+    "state_reason": "completed",
+    "closed_at": "2026-09-11T10:32:02Z",
+    "html_url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/5"
+  },
+  {
+    "number": 6,
+    "state": "closed",
+    "state_reason": "completed",
+    "closed_at": "2026-09-11T10:32:03Z",
+    "html_url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/6"
+  },
+  {
+    "number": 7,
+    "state": "closed",
+    "state_reason": "completed",
+    "closed_at": "2026-09-11T10:32:04Z",
+    "html_url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/7"
+  },
+  {
+    "number": 8,
+    "state": "closed",
+    "state_reason": "completed",
+    "closed_at": "2026-09-11T10:32:06Z",
+    "html_url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/8"
+  }
+]

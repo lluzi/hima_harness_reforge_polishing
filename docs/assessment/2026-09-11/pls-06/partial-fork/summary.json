@@ -1,0 +1,41 @@
+{
+  "baseline": "ac2ed3a",
+  "runId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5",
+  "observedPartialState": {
+    "from": "start",
+    "join": "judge",
+    "branches": {
+      "synthesize": {
+        "currentNode": "synthesize",
+        "state": "running"
+      },
+      "synth-b": {
+        "currentNode": "synth-b",
+        "state": "blocked"
+      }
+    }
+  },
+  "livePeerSession": "hima-989f067f-synthesize-6f5ed4",
+  "stoppedBranchSession": "hima-989f067f-synth-b-45d759",
+  "earlyResumeStatus": 409,
+  "finalState": "ended-goal-not-met",
+  "launches": [
+    {
+      "branch": "synthesize",
+      "session": "hima-989f067f-synthesize-6f5ed4"
+    },
+    {
+      "branch": "synth-b",
+      "session": "hima-989f067f-synth-b-45d759"
+    },
+    {
+      "branch": "synth-b",
+      "session": "hima-989f067f-synth-b-1d446a"
+    }
+  ],
+  "resumes": 1,
+  "fixture": "3 s peer; existing STANDIN_SLEEP=0 override for failing branch b in disposable installed Pack",
+  "desktop": false,
+  "modelCalls": 0,
+  "remoteEdaJobs": 0
+}

@@ -1,0 +1,110 @@
+{
+  "productSourceCommit": "ac2ed3a36f40a4cb1da7c076fa92eee5818344ae",
+  "changedSinceInitialDesktop": [
+    "test/contract/support/driver.ts"
+  ],
+  "frozenAfterHelperFixFiles": 254,
+  "allFrozenAfterHelperFixUnchanged": true,
+  "existingContractCasesPassedAcrossScopedRuns": 6,
+  "scriptedCheckpointPassed": true,
+  "priorFailuresPreserved": true,
+  "newRuns": {
+    "honest-standin-final": {
+      "command": [
+        "pnpm",
+        "run",
+        "test:desktop",
+        "--files",
+        "test/contract/honest-standin-window.test.ts"
+      ],
+      "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+      "exitCode": 0,
+      "elapsedSeconds": 30.522,
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "electronBoots": 1,
+      "sshAttempts": 0,
+      "modelCalls": 0,
+      "EDAJobs": 0
+    },
+    "cancel-resume-final": {
+      "command": [
+        "/Users/lluzi/.local/node24/bin/node",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "--test-name-pattern=^(clicking cancel while the Job sleeps|a hard-blocked Run shows)",
+        "test/contract/window.test.ts"
+      ],
+      "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+      "exitCode": 0,
+      "elapsedSeconds": 39.728,
+      "pass": 2,
+      "fail": 0,
+      "skip": 0,
+      "electronBoots": 2,
+      "sshAttempts": 0,
+      "modelCalls": 0,
+      "EDAJobs": 0
+    },
+    "checkpoint-final": {
+      "command": [
+        "/Users/lluzi/.local/node24/bin/node",
+        "--test",
+        "--test-reporter=tap",
+        ".hima-tmp/pls02-07/checkpoint-final.test.ts"
+      ],
+      "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+      "exitCode": 0,
+      "elapsedSeconds": 28.016,
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "electronBoots": 1,
+      "sshAttempts": 0,
+      "modelCalls": 0,
+      "EDAJobs": 0
+    }
+  },
+  "screenshots": [
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/checkpoint-form-fit-final.png",
+      "sha256": "fc9b73f13a597f66fa273b4edda0ee7856936ba675c31bcd285851f659bf3559",
+      "bytes": 194634,
+      "width": 2480,
+      "height": 1684
+    },
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/checkpoint-blocked-log-final.png",
+      "sha256": "f69d865f58fbceafc7d2e24cb17575fa8e118057b9f963816f72db11e51c8e5e",
+      "bytes": 322799,
+      "width": 2480,
+      "height": 1684
+    },
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/checkpoint-resumed-report-final.png",
+      "sha256": "5d6fe0f28347dc370794b1f1233739ae61d59f268acf8920cccae0158eb778ac",
+      "bytes": 354749,
+      "width": 2480,
+      "height": 1684
+    }
+  ],
+  "limits": [
+    "Not a full Desktop suite",
+    "Three initially passed form/report cases were not repeated after a readiness-only test-helper change; product/lib stayed identical",
+    "Scripted checkpoint plus pending parent visual review, not senior engineer or real DTCO research validation",
+    "Actual model, remote Site, EDA and pilot not run"
+  ],
+  "newElectronBoots": 4,
+  "totalElectronBootsIncludingInitialFailureAndDiagnostic": 9,
+  "laterVisualCorrection": {
+    "evidence": "visual-final/summary.json",
+    "electronBoots": 1,
+    "pass": 1,
+    "fail": 0,
+    "skip": 0,
+    "why": "Parent found actual fixed-table overflow and the previous report PNG showed page top. New report target coordinates were verified before and after capture."
+  },
+  "grandTotalElectronBootsIncludingVisualCorrection": 10
+}

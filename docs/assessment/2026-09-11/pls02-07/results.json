@@ -1,0 +1,78 @@
+{
+  "batch": [
+    "PLS-02",
+    "PLS-03",
+    "PLS-04",
+    "PLS-05",
+    "PLS-06",
+    "PLS-07"
+  ],
+  "startCommit": "d923fb3",
+  "integratedBusinessCommit": "ac2ed3a36f40a4cb1da7c076fa92eee5818344ae",
+  "fullLocal": {
+    "pass": 181,
+    "fail": 0,
+    "skip": 0,
+    "commandSeconds": 505.079,
+    "electronBoots": 0,
+    "sshAttempts": 0
+  },
+  "additionalNonvisualDesktop": {
+    "pass": 10,
+    "fail": 0,
+    "skip": 0,
+    "seconds": 32.259,
+    "disjointFromFullLocal": true,
+    "electronBoots": 0,
+    "sshAttempts": 0
+  },
+  "partialForkCheckpoint": {
+    "pass": 1,
+    "fail": 0,
+    "skip": 0,
+    "seconds": 6.616,
+    "separateProbeNotInFullLocal": true
+  },
+  "keyDesktopContractCasesPassed": 6,
+  "scriptedRecoveryCheckpointPassed": true,
+  "finalVisualCheck": {
+    "pass": 1,
+    "fail": 0,
+    "skip": 0,
+    "seconds": 8.824,
+    "generationTextOverflowCssPixels": 0,
+    "visuallyInspected": true,
+    "reportViewportVerified": true
+  },
+  "groups": {
+    "local": 25,
+    "desktop": 12,
+    "live-site": 3
+  },
+  "liveSiteTestsNotRun": 15,
+  "modelCalls": 0,
+  "remoteEDAJobs": 0,
+  "fullPilotRun": false,
+  "sourceAndLegacyWrites": 0,
+  "pushPerformed": false,
+  "review": {
+    "standardsFindings": 0,
+    "specFindings": 0,
+    "fixedRange": "d923fb3...ac2ed3a"
+  },
+  "postReviewChanges": [
+    "test driver and manual script wait on the actual current Pack/Site static check before Start",
+    "fixed table quantities and verdict names can wrap instead of overlapping adjacent cells"
+  ],
+  "knownElectronBootsThisBatch": 19,
+  "postReviewChangesValidated": "typecheck/seams and scoped real-window checks; no business logic changes after ac2ed3a",
+  "finalCodeCommit": "93d79925053add9a3e0d2b054a46fbc86a5be149",
+  "issuesClosed": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ]
+}

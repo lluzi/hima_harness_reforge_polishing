@@ -1,0 +1,9 @@
+{
+  "status": 409,
+  "body": {
+    "error": {
+      "code": "hima/run-not-in-state",
+      "message": "cannot resume run run-989f067f-731d-4b1f-a9cf-b9224aab56e5: this run is running, and only a waiting run can be resumed; nothing was written"
+    }
+  }
+}

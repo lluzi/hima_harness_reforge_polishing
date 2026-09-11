@@ -1,0 +1,171 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/experience.host.test.ts test/contract/experience-files.test.ts test/contract/experience-report.test.ts test/contract/honest-standin.test.ts test/contract/start-form.test.ts test/contract/run-controls.test.ts
+local: 6 selected; 19 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: an ended Run without a workspace explains why no report is deliverable through projection and read API
+ok 1 - an ended Run without a workspace explains why no report is deliverable through projection and read API
+  ---
+  duration_ms: 2752.40025
+  type: 'test'
+  ...
+# Subtest: schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+ok 2 - schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+  ---
+  duration_ms: 1666.835542
+  type: 'test'
+  ...
+# Subtest: failure between the two report writes leaves no record; the next Host completes and verifies both files
+ok 3 - failure between the two report writes leaves no record; the next Host completes and verifies both files
+  ---
+  duration_ms: 1870.007792
+  type: 'test'
+  ...
+# Subtest: a goal claim requires completed cited evidence; requested period is not a measured Fmax
+ok 4 - a goal claim requires completed cited evidence; requested period is not a measured Fmax
+  ---
+  duration_ms: 1.622917
+  type: 'test'
+  ...
+# Subtest: a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+ok 5 - a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+  ---
+  duration_ms: 0.169625
+  type: 'test'
+  ...
+# Subtest: cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+ok 6 - cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+  ---
+  duration_ms: 0.246041
+  type: 'test'
+  ...
+# Subtest: missing, unresolved, stale and undetermined citations cannot establish a definite result
+ok 7 - missing, unresolved, stale and undetermined citations cannot establish a definite result
+  ---
+  duration_ms: 0.336375
+  type: 'test'
+  ...
+# Subtest: budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+ok 8 - budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+  ---
+  duration_ms: 0.215834
+  type: 'test'
+  ...
+# Subtest: no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+ok 9 - no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+  ---
+  duration_ms: 0.678834
+  type: 'test'
+  ...
+# Subtest: fork branches retain separate observations and partial branches do not inherit a completed peer
+ok 10 - fork branches retain separate observations and partial branches do not inherit a completed peer
+  ---
+  duration_ms: 0.42875
+  type: 'test'
+  ...
+# Subtest: a Campaign that met its goal leaves both report files on the site, with their hashes on the ledger and every number the card showed in the json
+ok 11 - a Campaign that met its goal leaves both report files on the site, with their hashes on the ledger and every number the card showed in the json
+  ---
+  duration_ms: 2589.546833
+  type: 'test'
+  ...
+# Subtest: a Campaign that stopped learning writes the convergence rule into both files as the reason it ended
+ok 12 - a Campaign that stopped learning writes the convergence rule into both files as the reason it ended
+  ---
+  duration_ms: 4021.916291
+  type: 'test'
+  ...
+# Subtest: a Campaign a Budget meter ended names that meter in its report, whichever meter it was
+ok 13 - a Campaign a Budget meter ended names that meter in its report, whichever meter it was
+  ---
+  duration_ms: 3080.537917
+  type: 'test'
+  ...
+# Subtest: a Campaign a person stopped writes its report at the cancel, with what was observed to stop as the reason
+ok 14 - a Campaign a person stopped writes its report at the cancel, with what was observed to stop as the reason
+  ---
+  duration_ms: 2312.090416
+  type: 'test'
+  ...
+# Subtest: a second host on the same home re-serves the report it finds rather than writing a second one
+ok 15 - a second host on the same home re-serves the report it finds rather than writing a second one
+  ---
+  duration_ms: 4453.905708
+  type: 'test'
+  ...
+# Subtest: the report is served as markdown to a session that has one, refused to a caller with none, refused outright once the file has changed under it, and answered as a site fault once the file is gone
+ok 16 - the report is served as markdown to a session that has one, refused to a caller with none, refused outright once the file has changed under it, and answered as a site fault once the file is gone
+  ---
+  duration_ms: 3118.040666
+  type: 'test'
+  ...
+# Subtest: a run whose ending stood while the site refused the report is finished by the next host, which writes it from records that have not moved
+ok 17 - a run whose ending stood while the site refused the report is finished by the next host, which writes it from records that have not moved
+  ---
+  duration_ms: 4818.798875
+  type: 'test'
+  ...
+# Subtest: /hima status names the report's two files on a Campaign that has ended
+ok 18 - /hima status names the report's two files on a Campaign that has ended
+  ---
+  duration_ms: 3317.839875
+  type: 'test'
+  ...
+# Subtest: a Campaign stopped while it waited on a person carries its Hard blocker into the report, log tail and all
+ok 19 - a Campaign stopped while it waited on a person carries its Hard blocker into the report, log tail and all
+  ---
+  duration_ms: 1957.306167
+  type: 'test'
+  ...
+# Subtest: on a stand-in that reports no margin for a met period, timing-push loosens by its guard band every generation and ends at the limit, while over-constraining-push converges below the achievable period and ends goal-met when the goal is reachable
+ok 20 - on a stand-in that reports no margin for a met period, timing-push loosens by its guard band every generation and ends at the limit, while over-constraining-push converges below the achievable period and ends goal-met when the goal is reachable
+  ---
+  duration_ms: 21475.65475
+  type: 'test'
+  ...
+# Subtest: simultaneous resumes clear one blocker once and launch only one replacement Job
+ok 21 - simultaneous resumes clear one blocker once and launch only one replacement Job
+  ---
+  duration_ms: 1223.966416
+  type: 'test'
+  ...
+# [{"kind":"resumed","status":"ended-budget-exhausted"},{"kind":"not-waiting","status":"running"}]
+# Subtest: a cancel crossing a resume leaves a terminal Run and no live Job
+ok 22 - a cancel crossing a resume leaves a terminal Run and no live Job
+  ---
+  duration_ms: 546.077416
+  type: 'test'
+  ...
+# Subtest: a failed resume admission does not prevent a later corrected request
+ok 23 - a failed resume admission does not prevent a later corrected request
+  ---
+  duration_ms: 759.373708
+  type: 'test'
+  ...
+# Subtest: an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+ok 24 - an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+  ---
+  duration_ms: 1625.042042
+  type: 'test'
+  ...
+# Subtest: Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+ok 25 - Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+  ---
+  duration_ms: 1694.163584
+  type: 'test'
+  ...
+# Subtest: a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+ok 26 - a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+  ---
+  duration_ms: 5250.802083
+  type: 'test'
+  ...
+1..26
+# tests 26
+# suites 0
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 69188.923541
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 69.213 s; pass/fail/skip counts are in the TAP summary above

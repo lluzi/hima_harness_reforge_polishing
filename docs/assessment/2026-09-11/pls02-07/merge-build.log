@@ -1,0 +1,7 @@
+$ pnpm -r run build
+Scope: 2 of 3 workspace projects
+packages/desktop build$ tsc -p tsconfig.json
+packages/harness build$ tsc -p tsconfig.json && node scripts/build-client.mjs
+packages/desktop build: Done
+packages/harness build: client: lib/client.js (72091 bytes)
+packages/harness build: Done

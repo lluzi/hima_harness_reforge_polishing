@@ -1,0 +1,213 @@
+{
+  "standin": true,
+  "scriptedVisualCheck": true,
+  "notResearchValidation": true,
+  "startClick": {
+    "ok": true,
+    "x": 217,
+    "y": 626,
+    "note": "the click landed on \"start\""
+  },
+  "savedReport": {
+    "status": 200,
+    "schema": "hima-experience/2",
+    "recordedMarkdownSha256": "a3edc9e4688a5c942fcda9ab0b42b17194b26dbbecfc08dd34893c5a647b83d7",
+    "originalMarkdownVerified": true
+  },
+  "fixedTableOverflow": {
+    "count": 8,
+    "cells": [
+      {
+        "text": "clock period 2.35 ns → 2.35",
+        "whiteSpace": "normal",
+        "cell": {
+          "left": 253,
+          "right": 425,
+          "width": 172
+        },
+        "fragmentCount": 2,
+        "leftOverflow": 0,
+        "rightOverflow": 0,
+        "clientWidth": 160,
+        "scrollWidth": 160
+      },
+      {
+        "text": "0",
+        "whiteSpace": "normal",
+        "cell": {
+          "left": 425,
+          "right": 521,
+          "width": 96
+        },
+        "fragmentCount": 1,
+        "leftOverflow": 0,
+        "rightOverflow": 0,
+        "clientWidth": 84,
+        "scrollWidth": 84
+      },
+      {
+        "text": "PASS setup-wns-all-nonnegative",
+        "whiteSpace": "normal",
+        "cell": {
+          "left": 521,
+          "right": 817,
+          "width": 296
+        },
+        "fragmentCount": 7,
+        "leftOverflow": 0,
+        "rightOverflow": 0,
+        "clientWidth": 284,
+        "scrollWidth": 284
+      },
+      {
+        "text": "FAIL clock-period-at-most",
+        "whiteSpace": "normal",
+        "cell": {
+          "left": 521,
+          "right": 817,
+          "width": 296
+        },
+        "fragmentCount": 5,
+        "leftOverflow": 0,
+        "rightOverflow": 0,
+        "clientWidth": 284,
+        "scrollWidth": 284
+      },
+      {
+        "text": "clock period 2.3 ns → 2.3 -0.05",
+        "whiteSpace": "normal",
+        "cell": {
+          "left": 253,
+          "right": 425,
+          "width": 172
+        },
+        "fragmentCount": 4,
+        "leftOverflow": 0,
+        "rightOverflow": 0,
+        "clientWidth": 160,
+        "scrollWidth": 160
+      },
+      {
+        "text": "0 0",
+        "whiteSpace": "normal",
+        "cell": {
+          "left": 425,
+          "right": 521,
+          "width": 96
+        },
+        "fragmentCount": 3,
+        "leftOverflow": 0,
+        "rightOverflow": 0,
+        "clientWidth": 84,
+        "scrollWidth": 84
+      },
+      {
+        "text": "PASS setup-wns-all-nonnegative",
+        "whiteSpace": "normal",
+        "cell": {
+          "left": 521,
+          "right": 817,
+          "width": 296
+        },
+        "fragmentCount": 7,
+        "leftOverflow": 0,
+        "rightOverflow": 0,
+        "clientWidth": 284,
+        "scrollWidth": 284
+      },
+      {
+        "text": "PASS clock-period-at-most",
+        "whiteSpace": "normal",
+        "cell": {
+          "left": 521,
+          "right": 817,
+          "width": 296
+        },
+        "fragmentCount": 5,
+        "leftOverflow": 0,
+        "rightOverflow": 0,
+        "clientWidth": 284,
+        "scrollWidth": 284
+      }
+    ],
+    "viewport": {
+      "width": 1240,
+      "height": 842,
+      "scrollWidth": 1240
+    }
+  },
+  "generationCapture": {
+    "viewport": {
+      "found": true,
+      "top": 52.953125,
+      "bottom": 249.953125,
+      "height": 197,
+      "viewportHeight": 842,
+      "scrollY": 458.5,
+      "chromeHeight": 41,
+      "heading": "generationstrategy → period (asked → observed)slackverdictsdecisionwall time1 doneclock period 2.35 ",
+      "snippet": "generationstrategy → period (asked → observed)slackverdictsdecisionwall time1 doneclock period 2.35 ns → 2.350PASS setup-wns-all-nonnegativeFAIL clock-period-at-mostnext strategy: clock period 2.3 ns982 ms2 doneclock period 2.3 ns → 2.3 -0.050 0PASS setup-wns-all-nonnegativePASS clock-period-at-mostgoal met824 ms"
+    },
+    "after": {
+      "top": 52.953125,
+      "scrollY": 458.5
+    },
+    "screenshot": {
+      "ok": true,
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/visual-final/generation-table.png",
+      "width": 2480,
+      "height": 1684,
+      "bytes": 368364
+    }
+  },
+  "reportTopCapture": {
+    "viewport": {
+      "found": true,
+      "top": 52.51953125,
+      "bottom": 2533.427734375,
+      "height": 2480.908203125,
+      "viewportHeight": 1052,
+      "scrollY": 2753.75,
+      "chromeHeight": 40.615234375,
+      "heading": "experience",
+      "snippet": "experiencewritten at 2026-09-11T10:21:52.887Z, and left on the site beside the campaign's results; the text below is a current preview from recorded facts, not the saved file. Open the saved report to verify its hash; its original wording may differ.markdown: /private/tmp/hima-checkpoint-39t0e3n0/hima-home-C7iRbe/workspace/opene902-timing-probe-20260911-102150-b9c0/hima-experience/run-1cfe7ccf-5583-4174-a941-76669bdf3c1d.md · sha256 a3edc9e4688a5c942fcda9ab0b42b17194b26dbbecfc08dd34893c5a647b83d7 · 4648 bytesjson: /private/tmp/hima-checkpoint-39t0e3n0/hima-home-C7iRbe/workspace/opene902-timing-probe-20260911-102150-b9c0/hima-experience/run-1cfe7ccf-5583-4174-a941-76669bdf3c1d.json · sha256 5"
+    },
+    "after": {
+      "top": 52.51953125,
+      "scrollY": 2753.75
+    },
+    "screenshot": {
+      "ok": true,
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/visual-final/report-top.png",
+      "width": 2480,
+      "height": 1684,
+      "bytes": 343742
+    }
+  },
+  "reportLimitsCapture": {
+    "viewport": {
+      "found": true,
+      "top": 52.734375,
+      "bottom": 76.728515625,
+      "height": 23.994140625,
+      "viewportHeight": 1052,
+      "scrollY": 3283.75,
+      "chromeHeight": 40.615234375,
+      "heading": "Research result and evidence limits",
+      "snippet": "Research result and evidence limits"
+    },
+    "after": {
+      "top": 52.734375,
+      "scrollY": 3283.75
+    },
+    "screenshot": {
+      "ok": true,
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/visual-final/report-research-limits.png",
+      "width": 2480,
+      "height": 1684,
+      "bytes": 277136
+    }
+  },
+  "savedReportLink": "/hima/api/runs/run-1cfe7ccf-5583-4174-a941-76669bdf3c1d/experience.md",
+  "scope": "Generation table at zoom 1; report top and research-limits viewports at zoom 0.8 after interactions. These are actual target viewports, not a claim that the whole report fits."
+}

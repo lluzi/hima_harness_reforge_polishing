@@ -1,0 +1,68 @@
+{
+  "integratedCommit": "ac2ed3a36f40a4cb1da7c076fa92eee5818344ae",
+  "postFreezeCodeChanges": [
+    "packages/harness/src/workbench-style.ts",
+    "scripts/acceptance-step3.ts",
+    "scripts/workbench-screenshot.ts",
+    "test/contract/support/driver.ts"
+  ],
+  "noLockJudgeChannelLedgerSchemaChanges": true,
+  "changedDocumentationLinksValid": true,
+  "knownTestGroups": {
+    "local": [
+      "test/contract/boot.test.ts",
+      "test/contract/command.test.ts",
+      "test/contract/dc-reader.test.ts",
+      "test/contract/fabric-licences.test.ts",
+      "test/contract/fabric-restart.test.ts",
+      "test/contract/fabric-retry.test.ts",
+      "test/contract/fabric.test.ts",
+      "test/contract/honest-standin.test.ts",
+      "test/contract/jobs-unreadable.test.ts",
+      "test/contract/jobs.test.ts",
+      "test/contract/judge.test.ts",
+      "test/contract/observe-ledger.test.ts",
+      "test/contract/observe-readers.test.ts",
+      "test/contract/observe.test.ts",
+      "test/contract/pack.test.ts",
+      "test/contract/run-controls.test.ts",
+      "test/contract/site-name.test.ts",
+      "test/contract/ssh.test.ts",
+      "test/contract/start-form.test.ts",
+      "test/contract/test-entry.test.ts",
+      "test/contract/view-run.test.ts",
+      "test/contract/view.test.ts",
+      "test/contract/experience.host.test.ts",
+      "test/contract/experience-report.test.ts",
+      "test/contract/experience-files.test.ts"
+    ],
+    "desktop": [
+      "test/contract/budget.test.ts",
+      "test/contract/desktop.test.ts",
+      "test/contract/drill-down.test.ts",
+      "test/contract/driver.test.ts",
+      "test/contract/experience.test.ts",
+      "test/contract/fork-join.test.ts",
+      "test/contract/honest-standin-window.test.ts",
+      "test/contract/ledger-version.test.ts",
+      "test/contract/loop.test.ts",
+      "test/contract/start-form-window.test.ts",
+      "test/contract/strategy.test.ts",
+      "test/contract/window.test.ts"
+    ],
+    "live-site": [
+      "test/contract/jobs.live.test.ts",
+      "test/contract/pack.live.test.ts",
+      "test/contract/ssh.live.test.ts"
+    ]
+  },
+  "finalVisualSourceAndLibStable": true,
+  "rawFailureLogsPreserved": true,
+  "noRuntimeProductTestsRepeatedForDocs": true,
+  "finalFilesSha256": {
+    "packages/harness/src/workbench-style.ts": "33dc4acff0c17d34f1520672117fac8863598bd636870a5d846fbb150c9d98ad",
+    "scripts/acceptance-step3.ts": "7a786fdbf6a6b67de62be9fbeed405684994e0a5efc83ff55859892cfa939b49",
+    "scripts/workbench-screenshot.ts": "8ea536717cb44d075c4b4b4798cdc2a0508a69ac3025196b740834ab7bb14274",
+    "test/contract/support/driver.ts": "a8b883e071ffbf95fc03bf2b2ac6989a6ab54a9d21b510f252fd8abbd9d43f63"
+  }
+}

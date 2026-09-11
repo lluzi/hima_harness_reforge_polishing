@@ -1,0 +1,20 @@
+{
+  "command": [
+    "/Users/lluzi/.local/node24/bin/node",
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "--test-name-pattern=^(clicking cancel while the Job sleeps|a hard-blocked Run shows)",
+    "test/contract/window.test.ts"
+  ],
+  "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+  "exitCode": 0,
+  "elapsedSeconds": 39.728,
+  "pass": 2,
+  "fail": 0,
+  "skip": 0,
+  "electronBoots": 2,
+  "sshAttempts": 0,
+  "modelCalls": 0,
+  "EDAJobs": 0
+}

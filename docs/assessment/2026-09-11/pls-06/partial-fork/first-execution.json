@@ -1,0 +1,13 @@
+{
+  "command": [
+    "/Users/lluzi/.local/node24/bin/node",
+    "--test",
+    "--test-reporter=tap",
+    "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls-06/partial-fork/probe.ts"
+  ],
+  "exitCode": 1,
+  "elapsedSeconds": 2.871,
+  "sshAttempts": 0,
+  "node": "v24.20.0",
+  "baseline": "ac2ed3a36f40a4cb1da7c076fa92eee5818344ae"
+}

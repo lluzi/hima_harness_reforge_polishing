@@ -40,4 +40,4 @@ PLS-08 是 Step 4 接口与能力交接点。其后 PLS-13 先确定方法身份
 - ADR-0005 已根据用户本次明确要求接受：L1/L2 是主要回归入口，L3 限于窗口行为，L4/L5 按影响与里程碑触发。
 - 不创建第二运行架构；需要跨模块改字段时列出生产者、消费者和兼容成本。
 
-发布身份、Issue 映射和回读核对见 [publication.json](publication.json) 与 [remote-verification.json](remote-verification.json)。全部标记 ready-for-agent，依赖与外部条件仍须满足；当前第一个任务是 [PLS-01 / #2](https://github.com/lluzi/hima_harness_reforge_polishing/issues/2)。
+发布身份、Issue 映射和回读核对见 [publication.json](publication.json) 与 [remote-verification.json](remote-verification.json)。全部标记 ready-for-agent，依赖与外部条件仍须满足；PLS-01～07 已完成，实际交付与验证见 [批次记录](../../assessment/2026-09-11/pls02-07/README.md)；后续任务依各 Issue 及 Step 4 完整快照等前置条件推进。

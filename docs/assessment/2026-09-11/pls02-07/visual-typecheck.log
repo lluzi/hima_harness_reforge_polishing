@@ -1,0 +1,6 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+packages/desktop typecheck$ tsc -p tsconfig.json --noEmit
+packages/harness typecheck$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+packages/desktop typecheck: Done
+packages/harness typecheck: Done

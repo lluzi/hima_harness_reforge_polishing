@@ -1,0 +1,122 @@
+{
+  "result": {
+    "command": [
+      "/Users/lluzi/.local/node24/bin/node",
+      "--test",
+      "--test-reporter=tap",
+      ".hima-tmp/pls02-07/visual-final.test.ts"
+    ],
+    "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+    "exitCode": 0,
+    "elapsedSeconds": 8.824,
+    "pass": 1,
+    "fail": 0,
+    "skip": 0,
+    "electronBoots": 1,
+    "sshAttempts": 0,
+    "modelCalls": 0,
+    "EDAJobs": 0
+  },
+  "frozenFileCount": 254,
+  "frozenSourceAndLibUnchanged": true,
+  "sourceChangesSinceInitialIntegratedL3": [
+    "packages/harness/src/workbench-style.ts",
+    "scripts/acceptance-step3.ts",
+    "scripts/workbench-screenshot.ts",
+    "test/contract/support/driver.ts"
+  ],
+  "styleSourceSha256": "33dc4acff0c17d34f1520672117fac8863598bd636870a5d846fbb150c9d98ad",
+  "styleLibSha256": "880767b13d1ddfe2636c217c04ee6ce0860448c6529f690305c801034e7f88d8",
+  "style": ".ledger.fixed .value,.ledger.fixed .verdict-line{white-space:normal}",
+  "fixedTableFields": 8,
+  "maxLeftOverflowCssPx": 0,
+  "maxRightOverflowCssPx": 0,
+  "savedReportVerified": {
+    "status": 200,
+    "schema": "hima-experience/2",
+    "recordedMarkdownSha256": "a3edc9e4688a5c942fcda9ab0b42b17194b26dbbecfc08dd34893c5a647b83d7",
+    "originalMarkdownVerified": true
+  },
+  "captures": {
+    "generationCapture": {
+      "viewport": {
+        "found": true,
+        "top": 52.953125,
+        "bottom": 249.953125,
+        "height": 197,
+        "viewportHeight": 842,
+        "scrollY": 458.5,
+        "chromeHeight": 41,
+        "heading": "generationstrategy \u2192 period (asked \u2192 observed)slackverdictsdecisionwall time1 doneclock period 2.35 ",
+        "snippet": "generationstrategy \u2192 period (asked \u2192 observed)slackverdictsdecisionwall time1 doneclock period 2.35 ns \u2192 2.350PASS setup-wns-all-nonnegativeFAIL clock-period-at-mostnext strategy: clock period 2.3 ns982 ms2 doneclock period 2.3 ns \u2192 2.3 -0.050 0PASS setup-wns-all-nonnegativePASS clock-period-at-mostgoal met824 ms"
+      },
+      "after": {
+        "top": 52.953125,
+        "scrollY": 458.5
+      }
+    },
+    "reportTopCapture": {
+      "viewport": {
+        "found": true,
+        "top": 52.51953125,
+        "bottom": 2533.427734375,
+        "height": 2480.908203125,
+        "viewportHeight": 1052,
+        "scrollY": 2753.75,
+        "chromeHeight": 40.615234375,
+        "heading": "experience",
+        "snippet": "experiencewritten at 2026-09-11T10:21:52.887Z, and left on the site beside the campaign's results; the text below is a current preview from recorded facts, not the saved file. Open the saved report to verify its hash; its original wording may differ.markdown: /private/tmp/hima-checkpoint-39t0e3n0/hima-home-C7iRbe/workspace/opene902-timing-probe-20260911-102150-b9c0/hima-experience/run-1cfe7ccf-5583-4174-a941-76669bdf3c1d.md \u00b7 sha256 a3edc9e4688a5c942fcda9ab0b42b17194b26dbbecfc08dd34893c5a647b83d7 \u00b7 4648 bytesjson: /private/tmp/hima-checkpoint-39t0e3n0/hima-home-C7iRbe/workspace/opene902-timing-probe-20260911-102150-b9c0/hima-experience/run-1cfe7ccf-5583-4174-a941-76669bdf3c1d.json \u00b7 sha256 5"
+      },
+      "after": {
+        "top": 52.51953125,
+        "scrollY": 2753.75
+      }
+    },
+    "reportLimitsCapture": {
+      "viewport": {
+        "found": true,
+        "top": 52.734375,
+        "bottom": 76.728515625,
+        "height": 23.994140625,
+        "viewportHeight": 1052,
+        "scrollY": 3283.75,
+        "chromeHeight": 40.615234375,
+        "heading": "Research result and evidence limits",
+        "snippet": "Research result and evidence limits"
+      },
+      "after": {
+        "top": 52.734375,
+        "scrollY": 3283.75
+      }
+    }
+  },
+  "screenshots": [
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/visual-final/generation-table.png",
+      "sha256": "982a7015dd1b2c933d53ba3766874999d01293bb70ae3c76a2ecb66125db60a4",
+      "bytes": 368364,
+      "width": 2480,
+      "height": 1684
+    },
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/visual-final/report-top.png",
+      "sha256": "103e731cea12538dc33ccf51dd8d045739c544f35d8c191b035252b5c401c6e0",
+      "bytes": 343742,
+      "width": 2480,
+      "height": 1684
+    },
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/visual-final/report-research-limits.png",
+      "sha256": "c2fae17ccf9aebc327db01817d8d05234b046d8a31119cebe952ebaf607142cd",
+      "bytes": 277136,
+      "width": 2480,
+      "height": 1684
+    }
+  ],
+  "limits": [
+    "Normal two-generation stand-in only",
+    "The report is taller than a viewport; these are report-top and research-limits viewports, not a whole-document screenshot",
+    "Parent visual inspection remains separate from DOM bounds checks",
+    "No real model, remote Site, EDA or senior-engineer research validation"
+  ]
+}

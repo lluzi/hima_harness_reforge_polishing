@@ -1,0 +1,84 @@
+TAP version 13
+# Subtest: /hima status prints every meter of a running Campaign against its bound, in the numbers the run row holds
+ok 1 - /hima status prints every meter of a running Campaign against its bound, in the numbers the run row holds
+  ---
+  duration_ms: 9917.028292
+  type: 'test'
+  ...
+# run run-b8b81bef-a476-41d9-b307-1aaadead80a0 of campaign opene902-timing-probe-20260911-100327-e052 on site local: running, generation 1 of at most 1
+#   workspace: /private/tmp/hima-checkpoint-bst0t33c/hima-home-WQECqB/workspace/opene902-timing-probe-20260911-100327-e052
+#   goal: clock period at most 2 ns
+#   strategy: clock period 2 ns
+#   budget: time box 5 min, retry allowance 2, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: synthesize
+#   meters:
+#     elapsed 133 ms of a time box of 5.0 min
+#     generation 1 of at most 1, 66 ms
+#     1 job launched, at most 1 job at a time
+#     synthesize: attempt 1 of a retry allowance of 2, and 1 attempt in the campaign so far
+#     Design-Compiler 1 seat of 1 declared
+#   nodes:
+#     synthesize (act): running, attempt 1, session hima-b8b81bef-synthesize-dfa546 holding Design-Compiler 1
+# Subtest: /hima status says which loop a Run is inside and how far into it, and /hima pack check refuses a drill-down that cannot be executed
+ok 2 - /hima status says which loop a Run is inside and how far into it, and /hima pack check refuses a drill-down that cannot be executed
+  ---
+  duration_ms: 2090.699083
+  type: 'test'
+  ...
+# Subtest: /hima pack check refuses a drill-down whose edges the engine could never take, and a graph that says twice where its runs wait
+ok 3 - /hima pack check refuses a drill-down whose edges the engine could never take, and a graph that says twice where its runs wait
+  ---
+  duration_ms: 233.672416
+  type: 'test'
+  ...
+# Subtest: /hima status says which fork a Run is inside and lists its branches with what each one is doing
+ok 4 - /hima status says which fork a Run is inside and lists its branches with what each one is doing
+  ---
+  duration_ms: 1907.999333
+  type: 'test'
+  ...
+# Subtest: /hima pack check refuses a fork the engine could never drive: a judge node inside a branch, two joins, an explore node after the join, and a fork inside a loop
+ok 5 - /hima pack check refuses a fork the engine could never drive: a judge node inside a branch, two joins, an explore node after the join, and a fork inside a loop
+  ---
+  duration_ms: 230.056791
+  type: 'test'
+  ...
+# Subtest: /hima status says which generation of how many a Campaign reached, and /hima pack check refuses a Loop that cannot be executed
+ok 6 - /hima status says which generation of how many a Campaign reached, and /hima pack check refuses a Loop that cannot be executed
+  ---
+  duration_ms: 7461.911542
+  type: 'test'
+  ...
+# Subtest: /hima status says the goal and the strategy in the pack's words, and /hima pack check refuses a word for a name the pack does not use
+ok 7 - /hima status says the goal and the strategy in the pack's words, and /hima pack check refuses a word for a name the pack does not use
+  ---
+  duration_ms: 4209.007584
+  type: 'test'
+  ...
+# Subtest: /hima run sets a knob by name with --set, refuses a value the declaration does not allow, and /hima status says every knob in the pack's words
+ok 8 - /hima run sets a knob by name with --set, refuses a value the declaration does not allow, and /hima status says every knob in the pack's words
+  ---
+  duration_ms: 4456.477459
+  type: 'test'
+  ...
+# Subtest: a contract declaring no strategy knob at all is refused when the pack is loaded, in the contract schema's own words
+ok 9 - a contract declaring no strategy knob at all is refused when the pack is loaded, in the contract schema's own words
+  ---
+  duration_ms: 152.560709
+  type: 'test'
+  ...
+# Subtest: /hima pack check holds a chooser's knobs and a pack's words against the contract's own declaration, before a Campaign exists
+ok 10 - /hima pack check holds a chooser's knobs and a pack's words against the contract's own declaration, before a Campaign exists
+  ---
+  duration_ms: 255.7405
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 32229.3975

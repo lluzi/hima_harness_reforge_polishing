@@ -1,0 +1,52 @@
+$ node scripts/run-contract-tests.mjs desktop --files test/contract/honest-standin-window.test.ts test/contract/start-form-window.test.ts test/contract/experience.test.ts
+desktop: 3 selected; 9 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: a Campaign that met its goal leaves both report files on the site, with their hashes on the ledger and every number the card showed in the json
+ok 1 - a Campaign that met its goal leaves both report files on the site, with their hashes on the ledger and every number the card showed in the json
+  ---
+  duration_ms: 10557.704209
+  type: 'test'
+  ...
+# Subtest: the start form opens a converged Run and the window shows its recorded decision
+not ok 2 - the start form opens a converged Run and the window shows its recorded decision
+  ---
+  duration_ms: 33865.982958
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/honest-standin-window.test.ts:7:1'
+  failureType: 'testCodeFailure'
+  error: 'wait run-status: {"ok":false,"error":"waited 30000 ms for region \\"run-status\\" to show \\"ended — converged\\" on http://127.0.0.1:53047/hima/; the region was absent"}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/honest-standin-window.test.ts:25:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: rapid Pack selections keep the current strategy and latest typed inputs when real responses arrive out of order
+ok 3 - rapid Pack selections keep the current strategy and latest typed inputs when real responses arrive out of order
+  ---
+  duration_ms: 2995.83925
+  type: 'test'
+  ...
+# Subtest: a rejected form retains the input, permits correction, and starts one Campaign despite repeated submission
+ok 4 - a rejected form retains the input, permits correction, and starts one Campaign despite repeated submission
+  ---
+  duration_ms: 6598.896375
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 3
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 54361.576625
+SSH subprocess attempts: 0
+desktop command exit code: 1; elapsed: 54.390 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

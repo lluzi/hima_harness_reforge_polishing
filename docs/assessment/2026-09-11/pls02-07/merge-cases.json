@@ -1,0 +1,18 @@
+{
+  "command": [
+    "pnpm",
+    "run",
+    "test:local",
+    "--files",
+    "test/contract/experience.host.test.ts",
+    "test/contract/experience-files.test.ts",
+    "test/contract/experience-report.test.ts",
+    "test/contract/honest-standin.test.ts",
+    "test/contract/start-form.test.ts",
+    "test/contract/run-controls.test.ts"
+  ],
+  "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+  "exitCode": 0,
+  "seconds": 69.433,
+  "electronBoots": 0
+}

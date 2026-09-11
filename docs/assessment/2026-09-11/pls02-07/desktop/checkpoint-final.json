@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/Users/lluzi/.local/node24/bin/node",
+    "--test",
+    "--test-reporter=tap",
+    ".hima-tmp/pls02-07/checkpoint-final.test.ts"
+  ],
+  "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+  "exitCode": 0,
+  "elapsedSeconds": 28.016,
+  "pass": 1,
+  "fail": 0,
+  "skip": 0,
+  "electronBoots": 1,
+  "sshAttempts": 0,
+  "modelCalls": 0,
+  "EDAJobs": 0
+}

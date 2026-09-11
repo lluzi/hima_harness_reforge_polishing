@@ -1,0 +1,95 @@
+{
+  "source": "ac2ed3a36f40a4cb1da7c076fa92eee5818344ae",
+  "driverScripted": true,
+  "standin": true,
+  "seniorEngineerResearchValidation": false,
+  "staticFit": {
+    "page": "/hima/",
+    "pack": "opene902-timing-probe",
+    "site": "local",
+    "target": "2.30",
+    "period": "2.35",
+    "status": "fit",
+    "checkPack": "opene902-timing-probe",
+    "checkSite": "local",
+    "error": "",
+    "startDisabled": false,
+    "button": {
+      "x": 149,
+      "y": 608.796875,
+      "width": 135.6484375,
+      "height": 35
+    },
+    "runVisible": false
+  },
+  "formScreenshot": {
+    "ok": true,
+    "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/checkpoint-form-fit-final.png",
+    "width": 2480,
+    "height": 1684,
+    "bytes": 194634
+  },
+  "startClick": {
+    "ok": true,
+    "x": 217,
+    "y": 626,
+    "note": "the click landed on \"start\""
+  },
+  "blocker": {
+    "ok": true,
+    "text": "blocker\nblocked synthesize after 1 attempt, last exit 2\n\njob \"synthesize\" in tmux session hima-d785d573-synthesize-9556de exited 2; node synthesize has now failed 1 time and spent its retry allowance of 1\n\nthe last 6 lines of the job's own log, as it wrote them\n[stand-in] Error: synthesis was told to fail this attempt\n\n\n[stand-in] 2 attempt(s) were left to fail; nothing was written to /private/tmp/hima-checkpoint-n685n71d/hima-home-OAMZ2L/hima/local/workspace/opene902-timing-probe-20260911-100944-469c/flow/results/opene902/syn/report\nmake: *** [synth] Error 3",
+    "state": {
+      "count": "1",
+      "node": "synthesize"
+    }
+  },
+  "originalLog": {
+    "ok": true,
+    "text": "[stand-in] Error: synthesis was told to fail this attempt\n\n\n[stand-in] 2 attempt(s) were left to fail; nothing was written to /private/tmp/hima-checkpoint-n685n71d/hima-home-OAMZ2L/hima/local/workspace/opene902-timing-probe-20260911-100944-469c/flow/results/opene902/syn/report\nmake: *** [synth] Error 3",
+    "state": {}
+  },
+  "blockedScreenshot": {
+    "ok": true,
+    "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/checkpoint-blocked-log-final.png",
+    "width": 2480,
+    "height": 1684,
+    "bytes": 322799
+  },
+  "failureRemainingBeforeCorrection": "1",
+  "resumeZoomReset": 1,
+  "resumeClick": {
+    "ok": true,
+    "x": 555,
+    "y": 397,
+    "note": "the click landed on \"resume\""
+  },
+  "reportPreview": {
+    "ok": true,
+    "text": "experience\nwritten at 2026-09-11T10:09:56.281Z, and left on the site beside the campaign's results; the text below is a current preview from recorded facts, not the saved file. Open the saved report to verify its hash; its original wording may differ.\nmarkdown: /private/tmp/hima-checkpoint-n685n71d/hima-home-OAMZ2L/hima/local/workspace/opene902-timing-probe-20260911-100944-469c/hima-experience/run-d785d573-c4db-488b-a344-0000155fbfd5.md · sha256 3b80b54de0657247cc1df2789059a734e836fb712e7c931c66514ef7bb2bd6d8 · 5438 bytes\njson: /private/tmp/hima-checkpoint-n685n71d/hima-home-OAMZ2L/hima/local/workspace/opene902-timing-probe-20260911-100944-469c/hima-experience/run-d785d573-c4db-488b-a344-0000155fbfd5.json · sha256 474e0e1333497ac04477d749532e12d92ccc7170ab2d9f09e23e47255e2b6c59 · 29948 bytes\nopen and verify the saved markdown\nCampaign opene902-timing-probe-20260911-100944-469c\n\nended — goal met.\n\nfact\tvalue\npack\topene902-timing-probe@2\nsite\tlocal\nrun\trun-d785d573-c4db-488b-a344-0000155fbfd5\ncampaign\topene902-timing-probe-20260911-100944-469c\ngoal\ttarget_period_ns=2.3\nwritten at\t2026-09-11T10:09:56.281Z\nResearch result and evidence limits\n\nThe recorded goal-met decision is supported by completed, cited judge evidence in this Campaign.\n\ntrial\tevidence\trecorded constraint outcome\tobservation\tjudge records\tscope\ngeneration 1\tjudged\tPASS\trun-d785d573-c4db-488b-a344-0000155fbfd5#000014: /private/tmp/hima-checkpoint-n685n71d/hima-home-OAMZ2L/hima/local/workspace/opene902-timing-probe-20260911-100944-469c/flow/results/opene902/syn/report/qor.rpt; sha256 ddfdfa27640a599b87deb477a7c1c3998782c667404d0881662617ae2d882ed6\trun-d785d573-c4db-488b-a344-0000155fbfd5#000017: PASS setup-wns-all-nonnegative@1; run-d785d573-c4db-488b-a344-0000155fbfd5#000018: FAIL clock-period-at-most@1\tThe experiment completed and its judge verdicts cite this observation. FAIL is a measured negative result, not an execution fault.\ngeneration 2\tjudged\tPASS\trun-d785d573-c4db-488b-a344-0000155fbfd5#000028: /private/tmp/hima-checkpoint-n685n71d/hima-home-OAMZ2L/hima/local/workspace/opene902-timing-probe-20260911-100944-469c/flow/results/opene902/syn/report/qor.rpt; sha256 f78c9ccb20c92816bd8d57228d379bbec65299f8bc89e74dd5b28fa6dd71a703\trun-d785d573-c4db-488b-a344-0000155fbfd5#000031: PASS setup-wns-all-nonnegative@1; run-d785d573-c4db-488b-a344-0000155fbfd5#000032: PASS clock-period-at-most@1\tThe experiment completed and its judge verdicts cite this observation. FAIL is a measured negative result, not an execution fault.\n\nThe built-in local demo uses simulated synthesis reports. Establish the source of a particular Run from its inputs and original reports.\n\nReported clock periods are report values, not measured Fmax. Requested strategy values are inputs, not measurements.\n\nConvergence records the Pack rule over the tried values; it does not prove an optimum or general strategy failure.\n\nIncomplete trials and unresolved or stale citations are retained as history and excluded from the definite result.\n\nWorkspace design, flow and container names are declarations, not verified runtime identity. Design-content identity, tool versions and operating system were not recorded; cross-trial comparability is unknown.\n\nNo causal research explanation or AI analysis was recorded by this deterministic report. No improvement percentage is inferred.\n\nenvironment\trecorded value\nsite\tlocal\ndeclaredDesign\topene902\ndeclaredFlowRoot\t/private/tmp/hima-checkpoint-n685n71d/hima-home-OAMZ2L/hima/local/standin-flow\ndeclaredContainer\thima-opene902-timing-probe-20260911-100944-469c\ntoolVersions\tnot recorded\noperatingSystem\tnot recorded\nThe budget\nmeter\tagainst its bound\nelapsed\t12.1 s of a time box of 5.0 min, 1.1 s of it waiting on a person, which widens the box by as much\ngeneration\t2 of at most 6, 8.0 s then 3.4 s\njobs\t3 jobs launched, at most 1 job at a time\nattempts\tnext-period: attempt 1 of a retry allowance of 1, and 10 attempts in the campaign so far\nDesign-Compiler\t0 seats of 1 declared, held for 9.5 s\nThe generations\ngeneration\tstrategy → period (asked → observed)\tslack\tverdicts\tdecision\twall time\n1\tclock period 2.35 ns → 2.35\t0\tPASS setup-wns-all-nonnegative, FAIL clock-period-at-most\tnext strategy: clock period 2.3 ns\t8.0 s\n2\tclock period 2.3 ns → 2.3\t0\tPASS setup-wns-all-nonnegative, PASS clock-period-at-most\tgoal met\t3.4 s\nRecorded experiment history\nGeneration 1\n\nIt asked the flow for clock period 2.35 ns and the report stated a clock period of 2.35 ns, with 0 ns of setup slack. HimaJudge found PASS on setup-wns-all-nonnegative, FAIL on clock-period-at-most. The decision was next strategy: clock period 2.3 ns. It took 8.0 s.\n\nGeneration 2\n\nIt asked the flow for clock period 2.3 ns and the report stated a clock period of 2.3 ns, with 0 ns of setup slack. HimaJudge found PASS on setup-wns-all-nonnegative, PASS on clock-period-at-most. The decision was goal met. It took 3.4 s.\n\nThe path\n#\tnode\tkind\tstate\tattempt\twhat was recorded\n1\tsynthesize\tact\tdone\t1\tsession hima-d785d573-synthesize-dd1c1a\n2\tblocked\twait\tblocked\t1\tthis pack routes a hard-blocker here; the Run waits for a person to clear it\n3\tread-qor\tact\tdone\t1\t\n4\tjudge\tjudge\tdone\t1\tPASS\n5\tnext-period\texplore\tdone\t1\t\nThe blockers\n\nsynthesize after 1 attempt, last exit 2: job \"synthesize\" in tmux session hima-d785d573-synthesize-9556de exited 2; node synthesize has now failed 1 time and spent its retry allowance of 1\n\nthe last 6 lines of the job's own log, as it wrote them:\n\n[stand-in] Error: synthesis was told to fail this attempt\n\n\n[stand-in] 2 attempt(s) were left to fail; nothing was written to /private/tmp/hima-checkpoint-n685n71d/hima-home-OAMZ2L/hima/local/workspace/opene902-timing-probe-20260911-100944-469c/flow/results/opene902/syn/report\nmake: *** [synth] Error 3",
+    "state": {
+      "source": "ledger-preview",
+      "recorded-file-sha256": "3b80b54de0657247cc1df2789059a734e836fb712e7c931c66514ef7bb2bd6d8",
+      "sha256": "3b80b54de0657247cc1df2789059a734e836fb712e7c931c66514ef7bb2bd6d8",
+      "written-at": "2026-09-11T10:09:56.281Z"
+    }
+  },
+  "savedReport": {
+    "status": 200,
+    "schema": "hima-experience/2",
+    "conclusion": "goal-supported"
+  },
+  "finishedScreenshot": {
+    "ok": true,
+    "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/checkpoint-resumed-report-final.png",
+    "width": 2480,
+    "height": 1684,
+    "bytes": 354749
+  },
+  "run": {
+    "runId": "run-d785d573-c4db-488b-a344-0000155fbfd5",
+    "status": "ended-goal-met",
+    "generations": 2,
+    "jobs": 3
+  },
+  "scope": "Scripted checkpoint, screenshots of the real window plus text from driver. Screenshot fit at reduced zoom is not full visual/usability acceptance."
+}

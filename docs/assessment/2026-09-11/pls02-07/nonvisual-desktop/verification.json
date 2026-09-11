@@ -1,0 +1,14 @@
+{
+  "sourceCommit": "ac2ed3a",
+  "reviewedDeclarations": 10,
+  "executedTitlesMatchSelection": true,
+  "sameSourceAndLibBeforeAfter": true,
+  "packFilesMatchFrozenCommit": true,
+  "packHashes": {
+    "packs/opene902-timing-probe/PACK.md": "f7bc84c29ef1482dfce7b541b4fa280d22fdfd1a844a7cc6ada272f3a0c413e3",
+    "packs/opene902-timing-probe/contract.yml": "185a52de20d8aac484025d9d3e211339df3e868d82ca704f54cf90d08d734418",
+    "packs/opene902-timing-probe/graph.yml": "9d331a5d78327392adb0ffa7afe145ffd934124cc4588d2e32cae8f69dfe5322",
+    "packs/opene902-timing-probe/tools/synth.sh": "2ec6d81e47522d39923677d6f797924de410f642b701f6927d96440b871d9398"
+  },
+  "localSuiteOverlap": "none; experience cases already moved to local were excluded"
+}

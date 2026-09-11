@@ -1,0 +1,24 @@
+{
+  "command": [
+    "/Users/lluzi/.local/node24/bin/node",
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=1",
+    "--test-name-pattern=^(?:/hima\\ status\\ prints\\ every\\ meter\\ of\\ a\\ running\\ Campaign\\ against\\ its\\ bound,\\ in\\ the\\ numbers\\ the\\ run\\ row\\ holds|/hima\\ status\\ says\\ which\\ loop\\ a\\ Run\\ is\\ inside\\ and\\ how\\ far\\ into\\ it,\\ and\\ /hima\\ pack\\ check\\ refuses\\ a\\ drill\\-down\\ that\\ cannot\\ be\\ executed|/hima\\ pack\\ check\\ refuses\\ a\\ drill\\-down\\ whose\\ edges\\ the\\ engine\\ could\\ never\\ take,\\ and\\ a\\ graph\\ that\\ says\\ twice\\ where\\ its\\ runs\\ wait|/hima\\ status\\ says\\ which\\ fork\\ a\\ Run\\ is\\ inside\\ and\\ lists\\ its\\ branches\\ with\\ what\\ each\\ one\\ is\\ doing|/hima\\ pack\\ check\\ refuses\\ a\\ fork\\ the\\ engine\\ could\\ never\\ drive:\\ a\\ judge\\ node\\ inside\\ a\\ branch,\\ two\\ joins,\\ an\\ explore\\ node\\ after\\ the\\ join,\\ and\\ a\\ fork\\ inside\\ a\\ loop|/hima\\ status\\ says\\ which\\ generation\\ of\\ how\\ many\\ a\\ Campaign\\ reached,\\ and\\ /hima\\ pack\\ check\\ refuses\\ a\\ Loop\\ that\\ cannot\\ be\\ executed|/hima\\ status\\ says\\ the\\ goal\\ and\\ the\\ strategy\\ in\\ the\\ pack's\\ words,\\ and\\ /hima\\ pack\\ check\\ refuses\\ a\\ word\\ for\\ a\\ name\\ the\\ pack\\ does\\ not\\ use|/hima\\ run\\ sets\\ a\\ knob\\ by\\ name\\ with\\ \\-\\-set,\\ refuses\\ a\\ value\\ the\\ declaration\\ does\\ not\\ allow,\\ and\\ /hima\\ status\\ says\\ every\\ knob\\ in\\ the\\ pack's\\ words|a\\ contract\\ declaring\\ no\\ strategy\\ knob\\ at\\ all\\ is\\ refused\\ when\\ the\\ pack\\ is\\ loaded,\\ in\\ the\\ contract\\ schema's\\ own\\ words|/hima\\ pack\\ check\\ holds\\ a\\ chooser's\\ knobs\\ and\\ a\\ pack's\\ words\\ against\\ the\\ contract's\\ own\\ declaration,\\ before\\ a\\ Campaign\\ exists)$",
+    "test/contract/budget.test.ts",
+    "test/contract/drill-down.test.ts",
+    "test/contract/fork-join.test.ts",
+    "test/contract/loop.test.ts",
+    "test/contract/strategy.test.ts"
+  ],
+  "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+  "exitCode": 0,
+  "elapsedSeconds": 32.259,
+  "pass": 10,
+  "fail": 0,
+  "skip": 0,
+  "electronBoots": 0,
+  "sshAttempts": 0,
+  "modelCalls": 0,
+  "EDAJobs": 0
+}

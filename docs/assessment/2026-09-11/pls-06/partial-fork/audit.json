@@ -1,0 +1,400 @@
+{
+  "commands": [
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/workspace.json"
+      ],
+      "wire": "'cat' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/workspace.json'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507"
+      ],
+      "wire": "'mkdir' '-p' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow"
+      ],
+      "wire": "'mkdir' '-p' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow'"
+    },
+    {
+      "argv": [
+        "cp",
+        "-R",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/Makefile",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/Makefile"
+      ],
+      "wire": "'cp' '-R' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/Makefile' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/Makefile'"
+    },
+    {
+      "argv": [
+        "cp",
+        "-R",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/flows",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/flows"
+      ],
+      "wire": "'cp' '-R' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/flows' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/flows'"
+    },
+    {
+      "argv": [
+        "cp",
+        "-R",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/manifests",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/manifests"
+      ],
+      "wire": "'cp' '-R' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/manifests' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/manifests'"
+    },
+    {
+      "argv": [
+        "cp",
+        "-R",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/tools",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/tools"
+      ],
+      "wire": "'cp' '-R' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/tools' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/tools'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/build"
+      ],
+      "wire": "'mkdir' '-p' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/build'"
+    },
+    {
+      "argv": [
+        "cp",
+        "-R",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/build/opene902",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/build/opene902"
+      ],
+      "wire": "'cp' '-R' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/build/opene902' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/build/opene902'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/sources"
+      ],
+      "wire": "'mkdir' '-p' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/sources'"
+    },
+    {
+      "argv": [
+        "cp",
+        "-R",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/sources/opene902",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/sources/opene902"
+      ],
+      "wire": "'cp' '-R' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow/sources/opene902' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/sources/opene902'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/workspace.json"
+      ],
+      "wire": "'tee' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/workspace.json'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synthesize-6f5ed4"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synthesize-6f5ed4'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "new-session",
+        "-d",
+        "-P",
+        "-F",
+        "#{pane_pid}",
+        "-s",
+        "hima-989f067f-synthesize-6f5ed4",
+        "-c",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+        "/bin/sh",
+        "-c",
+        "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+      ],
+      "wire": "'tmux' 'new-session' '-d' '-P' '-F' '#{pane_pid}' '-s' 'hima-989f067f-synthesize-6f5ed4' '-c' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507' '/bin/sh' '-c' ''\\''make'\\'' '\\''-C'\\'' '\\''/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow'\\'' '\\''DESIGN=opene902'\\'' '\\''synth'\\'' '\\''CLOCK_PERIOD_NS=2'\\'' '\\''FORCE_SYNTH=1'\\'' '\\''EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507'\\'' > '\\''/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.log'\\'' 2>&1; printf '\\''%s\\n'\\'' \"$?\" > '\\''/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'\\'''"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synthesize-6f5ed4"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synthesize-6f5ed4'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synth-b-45d759"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synth-b-45d759'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "new-session",
+        "-d",
+        "-P",
+        "-F",
+        "#{pane_pid}",
+        "-s",
+        "hima-989f067f-synth-b-45d759",
+        "-c",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+        "/bin/sh",
+        "-c",
+        "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit'"
+      ],
+      "wire": "'tmux' 'new-session' '-d' '-P' '-F' '#{pane_pid}' '-s' 'hima-989f067f-synth-b-45d759' '-c' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507' '/bin/sh' '-c' ''\\''make'\\'' '\\''-C'\\'' '\\''/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow'\\'' '\\''DESIGN=opene902'\\'' '\\''synth'\\'' '\\''CLOCK_PERIOD_NS=2.2'\\'' '\\''FORCE_SYNTH=1'\\'' '\\''EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507'\\'' '\\''RESULT_TAG=b'\\'' '\\''STANDIN_SLEEP=0'\\'' > '\\''/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.log'\\'' 2>&1; printf '\\''%s\\n'\\'' \"$?\" > '\\''/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit'\\'''"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synthesize-6f5ed4"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synthesize-6f5ed4'"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit"
+      ],
+      "wire": "'cat' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit'"
+    },
+    {
+      "argv": [
+        "tail",
+        "-n",
+        "40",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.log"
+      ],
+      "wire": "'tail' '-n' '40' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.log'"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synthesize-6f5ed4"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synthesize-6f5ed4'"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synthesize-6f5ed4"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synthesize-6f5ed4'"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synthesize-6f5ed4"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synthesize-6f5ed4'"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synthesize-6f5ed4"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synthesize-6f5ed4'"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synthesize-6f5ed4"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synthesize-6f5ed4'"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit"
+      ],
+      "wire": "'cat' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "has-session",
+        "-t",
+        "=hima-989f067f-synth-b-1d446a"
+      ],
+      "wire": "'tmux' 'has-session' '-t' '=hima-989f067f-synth-b-1d446a'"
+    },
+    {
+      "argv": [
+        "tmux",
+        "new-session",
+        "-d",
+        "-P",
+        "-F",
+        "#{pane_pid}",
+        "-s",
+        "hima-989f067f-synth-b-1d446a",
+        "-c",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+        "/bin/sh",
+        "-c",
+        "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit'"
+      ],
+      "wire": "'tmux' 'new-session' '-d' '-P' '-F' '#{pane_pid}' '-s' 'hima-989f067f-synth-b-1d446a' '-c' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507' '/bin/sh' '-c' ''\\''make'\\'' '\\''-C'\\'' '\\''/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow'\\'' '\\''DESIGN=opene902'\\'' '\\''synth'\\'' '\\''CLOCK_PERIOD_NS=2.2'\\'' '\\''FORCE_SYNTH=1'\\'' '\\''EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507'\\'' '\\''RESULT_TAG=b'\\'' '\\''STANDIN_SLEEP=0'\\'' > '\\''/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.log'\\'' 2>&1; printf '\\''%s\\n'\\'' \"$?\" > '\\''/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit'\\'''"
+    },
+    {
+      "argv": [
+        "test",
+        "-f",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit"
+      ],
+      "wire": "'test' '-f' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit"
+      ],
+      "wire": "'cat' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-experience"
+      ],
+      "wire": "'mkdir' '-p' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-experience'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-experience/run-989f067f-731d-4b1f-a9cf-b9224aab56e5.md"
+      ],
+      "wire": "'tee' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-experience/run-989f067f-731d-4b1f-a9cf-b9224aab56e5.md'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-experience/run-989f067f-731d-4b1f-a9cf-b9224aab56e5.json"
+      ],
+      "wire": "'tee' '--' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-experience/run-989f067f-731d-4b1f-a9cf-b9224aab56e5.json'"
+    }
+  ],
+  "windowFilled": false
+}

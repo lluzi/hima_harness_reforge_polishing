@@ -1,0 +1,29 @@
+TAP version 13
+# Subtest: checkpoint: static fit, original failure log, correction and resumed saved report
+not ok 1 - checkpoint: static fit, original failure log, correction and resumed saved report
+  ---
+  duration_ms: 73800.643
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-07/checkpoint.test.ts:39:1'
+  failureType: 'testCodeFailure'
+  error: '{"ok":false,"error":"waited 60000 ms for region \\"run-status\\" to show \\"ended\\" on http://127.0.0.1:53555/hima/?run=run-cad92173-d45d-4b4d-b3ac-b2591cf041cb; it last showed \\"waiting for a person\\\\n\\\\njob \\\\\\"synthesize\\\\\\" in tmux session hima-cad92173-synthesize-6b343d exited 2; node synthesize has now failed 1 time and spent its retry allowance of 1\\\\n\\\\nwhat is being explored\\\\nopene902-timing-probe · local\\\\ngoal: clock period at most 2.3 ns\\\\nstrategy: clock period 2.35 ns\\\\nwhere it stands\\\\ngeneration 1 of at most 6\\\\nblocked blocked\\\\nwhat it has spent\\\\nelapsed\\\\n3.3 s of a time box of 5.0 min\\\\ngeneration\\\\n1 of at most 6, 3.3 s\\\\njobs\\\\n1 job launched, at most 1 job at a time\\\\nattempts\\\\nsynthesize: attempt 1 of a retry allowance of 1, and 2 attempts in the campaign so far\\\\nDesign-Compiler\\\\n0 seats of 1 declared, held for 3.1 s\\\\nwhat a person must do\\\\ncancel this run\\\\nresume this run\\""}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-07/checkpoint.test.ts:103:71)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 73910.6675

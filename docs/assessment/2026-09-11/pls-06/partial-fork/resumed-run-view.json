@@ -1,0 +1,1158 @@
+{
+  "run": {
+    "id": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5",
+    "campaignId": "partial-fork-control-probe-20260911-095939-3507",
+    "siteId": "local",
+    "createdAt": "2026-09-11T09:59:39.880Z",
+    "status": "ended-goal-not-met",
+    "packId": "partial-fork-control-probe",
+    "packVersion": "2",
+    "words": {
+      "goal": {
+        "target_period_ns": {
+          "label": "clock period at most",
+          "unit": "ns"
+        }
+      },
+      "strategy": {
+        "periodNs": {
+          "label": "clock period",
+          "unit": "ns"
+        }
+      }
+    },
+    "goal": {
+      "target_period_ns": 2
+    },
+    "budget": {
+      "timeBoxMs": 60000,
+      "retryAllowance": 1,
+      "jobCap": 2,
+      "licences": {
+        "Design-Compiler": 2
+      },
+      "generationLimit": 6
+    },
+    "currentNode": "judge",
+    "strategy": {
+      "periodNs": 2
+    },
+    "generation": 1,
+    "meters": {
+      "elapsedMs": 3780,
+      "jobsLaunched": 3,
+      "attempts": 7,
+      "waitedMs": 3175,
+      "licenceMs": {
+        "Design-Compiler": 3241
+      },
+      "generationMs": [
+        3720
+      ]
+    }
+  },
+  "workspace": {
+    "design": "opene902",
+    "flowRoot": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/standin-flow",
+    "containerName": "hima-partial-fork-control-probe-20260911-095939-3507"
+  },
+  "observations": [
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000003",
+      "at": "2026-09-11T09:59:39.980Z",
+      "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/build/opene902/summary.txt",
+      "contentSha256": "b0ec3faede64a0d529e916b6f9a685920b2f55967deb007f4722e35bd4a0b3ec",
+      "bytes": 35,
+      "reader": {
+        "id": "raw",
+        "version": "1",
+        "reportKind": "raw",
+        "emits": []
+      },
+      "values": []
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015",
+      "at": "2026-09-11T09:59:43.250Z",
+      "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/results/opene902/syn/report/qor.rpt",
+      "contentSha256": "260bbd08ab108521c5a02d0a3b38761e92270ea7a9ef186e9c4a8f31a7155bc5",
+      "bytes": 478,
+      "reader": {
+        "id": "dc-qor-report",
+        "version": "1",
+        "reportKind": "dc-qor-report",
+        "emits": [
+          "setup_wns",
+          "setup_tns",
+          "clock_period",
+          "hold_wns",
+          "cell_area"
+        ]
+      },
+      "values": [
+        {
+          "type": "setup_wns",
+          "unit": "ns",
+          "mode": "setup",
+          "scope": "all",
+          "value": -0.2,
+          "group": "core_clk"
+        },
+        {
+          "type": "clock_period",
+          "unit": "ns",
+          "value": 2,
+          "group": "core_clk"
+        },
+        {
+          "type": "setup_tns",
+          "unit": "ns",
+          "mode": "setup",
+          "scope": "all",
+          "value": -0.2
+        },
+        {
+          "type": "hold_wns",
+          "unit": "ns",
+          "mode": "hold",
+          "scope": "all",
+          "value": 0,
+          "group": "core_clk"
+        },
+        {
+          "type": "cell_area",
+          "unit": "um2",
+          "value": 10475.516309
+        }
+      ],
+      "branchId": "synthesize"
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023",
+      "at": "2026-09-11T09:59:43.505Z",
+      "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/results/opene902/syn/report-b/qor.rpt",
+      "contentSha256": "8461bcdcf8cee6302a35604170313bdce09f6e89367f48f6c2580b12a1c0eb4f",
+      "bytes": 476,
+      "reader": {
+        "id": "dc-qor-report",
+        "version": "1",
+        "reportKind": "dc-qor-report",
+        "emits": [
+          "setup_wns",
+          "setup_tns",
+          "clock_period",
+          "hold_wns",
+          "cell_area"
+        ]
+      },
+      "values": [
+        {
+          "type": "setup_wns",
+          "unit": "ns",
+          "mode": "setup",
+          "scope": "all",
+          "value": 0,
+          "group": "core_clk"
+        },
+        {
+          "type": "clock_period",
+          "unit": "ns",
+          "value": 2.2,
+          "group": "core_clk"
+        },
+        {
+          "type": "setup_tns",
+          "unit": "ns",
+          "mode": "setup",
+          "scope": "all",
+          "value": 0
+        },
+        {
+          "type": "hold_wns",
+          "unit": "ns",
+          "mode": "hold",
+          "scope": "all",
+          "value": 0,
+          "group": "core_clk"
+        },
+        {
+          "type": "cell_area",
+          "unit": "um2",
+          "value": 10475.516309
+        }
+      ],
+      "branchId": "synth-b"
+    }
+  ],
+  "refusals": [],
+  "verdicts": [
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000026",
+      "at": "2026-09-11T09:59:43.581Z",
+      "outcome": "FAIL",
+      "ruleId": "setup-wns-all-nonnegative",
+      "ruleVersion": "1",
+      "valuesAsRead": [
+        {
+          "type": "setup_wns",
+          "unit": "ns",
+          "mode": "setup",
+          "scope": "all",
+          "value": -0.2,
+          "group": "core_clk"
+        }
+      ],
+      "cites": [
+        {
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015",
+          "observation": {
+            "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015",
+            "at": "2026-09-11T09:59:43.250Z",
+            "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/results/opene902/syn/report/qor.rpt",
+            "contentSha256": "260bbd08ab108521c5a02d0a3b38761e92270ea7a9ef186e9c4a8f31a7155bc5",
+            "bytes": 478,
+            "reader": {
+              "id": "dc-qor-report",
+              "version": "1",
+              "reportKind": "dc-qor-report",
+              "emits": [
+                "setup_wns",
+                "setup_tns",
+                "clock_period",
+                "hold_wns",
+                "cell_area"
+              ]
+            },
+            "values": [
+              {
+                "type": "setup_wns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": -0.2,
+                "group": "core_clk"
+              },
+              {
+                "type": "clock_period",
+                "unit": "ns",
+                "value": 2,
+                "group": "core_clk"
+              },
+              {
+                "type": "setup_tns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": -0.2
+              },
+              {
+                "type": "hold_wns",
+                "unit": "ns",
+                "mode": "hold",
+                "scope": "all",
+                "value": 0,
+                "group": "core_clk"
+              },
+              {
+                "type": "cell_area",
+                "unit": "um2",
+                "value": 10475.516309
+              }
+            ],
+            "branchId": "synthesize"
+          }
+        }
+      ]
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000027",
+      "at": "2026-09-11T09:59:43.597Z",
+      "outcome": "PASS",
+      "ruleId": "clock-period-at-most",
+      "ruleVersion": "1",
+      "valuesAsRead": [
+        {
+          "type": "clock_period",
+          "unit": "ns",
+          "value": 2,
+          "group": "core_clk"
+        }
+      ],
+      "cites": [
+        {
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015",
+          "observation": {
+            "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015",
+            "at": "2026-09-11T09:59:43.250Z",
+            "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/results/opene902/syn/report/qor.rpt",
+            "contentSha256": "260bbd08ab108521c5a02d0a3b38761e92270ea7a9ef186e9c4a8f31a7155bc5",
+            "bytes": 478,
+            "reader": {
+              "id": "dc-qor-report",
+              "version": "1",
+              "reportKind": "dc-qor-report",
+              "emits": [
+                "setup_wns",
+                "setup_tns",
+                "clock_period",
+                "hold_wns",
+                "cell_area"
+              ]
+            },
+            "values": [
+              {
+                "type": "setup_wns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": -0.2,
+                "group": "core_clk"
+              },
+              {
+                "type": "clock_period",
+                "unit": "ns",
+                "value": 2,
+                "group": "core_clk"
+              },
+              {
+                "type": "setup_tns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": -0.2
+              },
+              {
+                "type": "hold_wns",
+                "unit": "ns",
+                "mode": "hold",
+                "scope": "all",
+                "value": 0,
+                "group": "core_clk"
+              },
+              {
+                "type": "cell_area",
+                "unit": "um2",
+                "value": 10475.516309
+              }
+            ],
+            "branchId": "synthesize"
+          }
+        }
+      ],
+      "boundParameters": {
+        "target_period_ns": 2
+      }
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000028",
+      "at": "2026-09-11T09:59:43.615Z",
+      "outcome": "PASS",
+      "ruleId": "setup-wns-all-nonnegative",
+      "ruleVersion": "1",
+      "valuesAsRead": [
+        {
+          "type": "setup_wns",
+          "unit": "ns",
+          "mode": "setup",
+          "scope": "all",
+          "value": 0,
+          "group": "core_clk"
+        }
+      ],
+      "cites": [
+        {
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023",
+          "observation": {
+            "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023",
+            "at": "2026-09-11T09:59:43.505Z",
+            "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/results/opene902/syn/report-b/qor.rpt",
+            "contentSha256": "8461bcdcf8cee6302a35604170313bdce09f6e89367f48f6c2580b12a1c0eb4f",
+            "bytes": 476,
+            "reader": {
+              "id": "dc-qor-report",
+              "version": "1",
+              "reportKind": "dc-qor-report",
+              "emits": [
+                "setup_wns",
+                "setup_tns",
+                "clock_period",
+                "hold_wns",
+                "cell_area"
+              ]
+            },
+            "values": [
+              {
+                "type": "setup_wns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": 0,
+                "group": "core_clk"
+              },
+              {
+                "type": "clock_period",
+                "unit": "ns",
+                "value": 2.2,
+                "group": "core_clk"
+              },
+              {
+                "type": "setup_tns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": 0
+              },
+              {
+                "type": "hold_wns",
+                "unit": "ns",
+                "mode": "hold",
+                "scope": "all",
+                "value": 0,
+                "group": "core_clk"
+              },
+              {
+                "type": "cell_area",
+                "unit": "um2",
+                "value": 10475.516309
+              }
+            ],
+            "branchId": "synth-b"
+          }
+        }
+      ]
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000029",
+      "at": "2026-09-11T09:59:43.631Z",
+      "outcome": "FAIL",
+      "ruleId": "clock-period-at-most",
+      "ruleVersion": "1",
+      "valuesAsRead": [
+        {
+          "type": "clock_period",
+          "unit": "ns",
+          "value": 2.2,
+          "group": "core_clk"
+        }
+      ],
+      "cites": [
+        {
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023",
+          "observation": {
+            "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023",
+            "at": "2026-09-11T09:59:43.505Z",
+            "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/results/opene902/syn/report-b/qor.rpt",
+            "contentSha256": "8461bcdcf8cee6302a35604170313bdce09f6e89367f48f6c2580b12a1c0eb4f",
+            "bytes": 476,
+            "reader": {
+              "id": "dc-qor-report",
+              "version": "1",
+              "reportKind": "dc-qor-report",
+              "emits": [
+                "setup_wns",
+                "setup_tns",
+                "clock_period",
+                "hold_wns",
+                "cell_area"
+              ]
+            },
+            "values": [
+              {
+                "type": "setup_wns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": 0,
+                "group": "core_clk"
+              },
+              {
+                "type": "clock_period",
+                "unit": "ns",
+                "value": 2.2,
+                "group": "core_clk"
+              },
+              {
+                "type": "setup_tns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": 0
+              },
+              {
+                "type": "hold_wns",
+                "unit": "ns",
+                "mode": "hold",
+                "scope": "all",
+                "value": 0,
+                "group": "core_clk"
+              },
+              {
+                "type": "cell_area",
+                "unit": "um2",
+                "value": 10475.516309
+              }
+            ],
+            "branchId": "synth-b"
+          }
+        }
+      ],
+      "boundParameters": {
+        "target_period_ns": 2
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000004",
+      "at": "2026-09-11T09:59:39.996Z",
+      "nodeId": "start",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000013",
+      "at": "2026-09-11T09:59:43.200Z",
+      "nodeId": "synthesize",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "jobSession": "hima-989f067f-synthesize-6f5ed4",
+      "branchId": "synthesize"
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000021",
+      "at": "2026-09-11T09:59:43.454Z",
+      "nodeId": "synth-b",
+      "kind": "act",
+      "state": "done",
+      "attempt": 2,
+      "jobSession": "hima-989f067f-synth-b-1d446a",
+      "branchId": "synth-b"
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000016",
+      "at": "2026-09-11T09:59:43.266Z",
+      "nodeId": "read-qor",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "branchId": "synthesize"
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000024",
+      "at": "2026-09-11T09:59:43.523Z",
+      "nodeId": "read-qor-b",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1,
+      "branchId": "synth-b"
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000030",
+      "at": "2026-09-11T09:59:43.651Z",
+      "nodeId": "judge",
+      "kind": "judge",
+      "state": "done",
+      "attempt": 1,
+      "outcome": "FAIL"
+    }
+  ],
+  "generations": [
+    {
+      "generation": 1,
+      "strategy": {
+        "periodNs": 2
+      },
+      "nodes": [
+        {
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000002",
+          "at": "2026-09-11T09:59:39.955Z",
+          "nodeId": "start",
+          "kind": "act",
+          "state": "running",
+          "attempt": 1
+        },
+        {
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000004",
+          "at": "2026-09-11T09:59:39.996Z",
+          "nodeId": "start",
+          "kind": "act",
+          "state": "done",
+          "attempt": 1
+        },
+        {
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000025",
+          "at": "2026-09-11T09:59:43.555Z",
+          "nodeId": "judge",
+          "kind": "judge",
+          "state": "running",
+          "attempt": 1
+        },
+        {
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000030",
+          "at": "2026-09-11T09:59:43.651Z",
+          "nodeId": "judge",
+          "kind": "judge",
+          "state": "done",
+          "attempt": 1,
+          "outcome": "FAIL"
+        }
+      ],
+      "observation": {
+        "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000003",
+        "at": "2026-09-11T09:59:39.980Z",
+        "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/build/opene902/summary.txt",
+        "contentSha256": "b0ec3faede64a0d529e916b6f9a685920b2f55967deb007f4722e35bd4a0b3ec",
+        "bytes": 35,
+        "reader": {
+          "id": "raw",
+          "version": "1",
+          "reportKind": "raw",
+          "emits": []
+        },
+        "values": []
+      },
+      "verdicts": [
+        {
+          "ruleId": "setup-wns-all-nonnegative",
+          "outcome": "FAIL",
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000026",
+          "cites": [
+            "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015"
+          ]
+        },
+        {
+          "ruleId": "clock-period-at-most",
+          "outcome": "PASS",
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000027",
+          "cites": [
+            "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015"
+          ]
+        },
+        {
+          "ruleId": "setup-wns-all-nonnegative",
+          "outcome": "PASS",
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000028",
+          "cites": [
+            "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023"
+          ]
+        },
+        {
+          "ruleId": "clock-period-at-most",
+          "outcome": "FAIL",
+          "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000029",
+          "cites": [
+            "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023"
+          ]
+        }
+      ],
+      "wallMs": 3720,
+      "state": "done",
+      "branches": [
+        {
+          "id": "synthesize",
+          "nodes": [
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000006",
+              "at": "2026-09-11T09:59:40.065Z",
+              "nodeId": "synthesize",
+              "kind": "act",
+              "state": "running",
+              "attempt": 1,
+              "jobSession": "hima-989f067f-synthesize-6f5ed4",
+              "branchId": "synthesize"
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000013",
+              "at": "2026-09-11T09:59:43.200Z",
+              "nodeId": "synthesize",
+              "kind": "act",
+              "state": "done",
+              "attempt": 1,
+              "jobSession": "hima-989f067f-synthesize-6f5ed4",
+              "branchId": "synthesize"
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000014",
+              "at": "2026-09-11T09:59:43.224Z",
+              "nodeId": "read-qor",
+              "kind": "act",
+              "state": "running",
+              "attempt": 1,
+              "branchId": "synthesize"
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000016",
+              "at": "2026-09-11T09:59:43.266Z",
+              "nodeId": "read-qor",
+              "kind": "act",
+              "state": "done",
+              "attempt": 1,
+              "branchId": "synthesize"
+            }
+          ],
+          "jobs": [
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000005",
+              "at": "2026-09-11T09:59:40.045Z",
+              "event": "launched",
+              "job": {
+                "session": "hima-989f067f-synthesize-6f5ed4",
+                "pid": 76735,
+                "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+                "name": "synthesize",
+                "startedAt": "2026-09-11T09:59:40.027Z",
+                "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+              },
+              "nodeId": "synthesize",
+              "branchId": "synthesize",
+              "licences": {
+                "Design-Compiler": 1
+              }
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000012",
+              "at": "2026-09-11T09:59:43.180Z",
+              "event": "finished",
+              "job": {
+                "session": "hima-989f067f-synthesize-6f5ed4",
+                "pid": 76735,
+                "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+                "name": "synthesize",
+                "startedAt": "2026-09-11T09:59:40.027Z",
+                "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+              },
+              "exitCode": 0,
+              "nodeId": "synthesize",
+              "branchId": "synthesize"
+            }
+          ],
+          "state": "done",
+          "verdicts": [
+            {
+              "ruleId": "setup-wns-all-nonnegative",
+              "outcome": "FAIL",
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000026",
+              "cites": [
+                "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015"
+              ]
+            },
+            {
+              "ruleId": "clock-period-at-most",
+              "outcome": "PASS",
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000027",
+              "cites": [
+                "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015"
+              ]
+            }
+          ],
+          "observedPeriodNs": 2,
+          "slackNs": -0.2,
+          "observation": {
+            "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000015",
+            "at": "2026-09-11T09:59:43.250Z",
+            "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/results/opene902/syn/report/qor.rpt",
+            "contentSha256": "260bbd08ab108521c5a02d0a3b38761e92270ea7a9ef186e9c4a8f31a7155bc5",
+            "bytes": 478,
+            "reader": {
+              "id": "dc-qor-report",
+              "version": "1",
+              "reportKind": "dc-qor-report",
+              "emits": [
+                "setup_wns",
+                "setup_tns",
+                "clock_period",
+                "hold_wns",
+                "cell_area"
+              ]
+            },
+            "values": [
+              {
+                "type": "setup_wns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": -0.2,
+                "group": "core_clk"
+              },
+              {
+                "type": "clock_period",
+                "unit": "ns",
+                "value": 2,
+                "group": "core_clk"
+              },
+              {
+                "type": "setup_tns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": -0.2
+              },
+              {
+                "type": "hold_wns",
+                "unit": "ns",
+                "mode": "hold",
+                "scope": "all",
+                "value": 0,
+                "group": "core_clk"
+              },
+              {
+                "type": "cell_area",
+                "unit": "um2",
+                "value": 10475.516309
+              }
+            ],
+            "branchId": "synthesize"
+          }
+        },
+        {
+          "id": "synth-b",
+          "nodes": [
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000008",
+              "at": "2026-09-11T09:59:40.108Z",
+              "nodeId": "synth-b",
+              "kind": "act",
+              "state": "running",
+              "attempt": 1,
+              "jobSession": "hima-989f067f-synth-b-45d759",
+              "branchId": "synth-b"
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000011",
+              "at": "2026-09-11T09:59:40.176Z",
+              "nodeId": "synth-b",
+              "kind": "act",
+              "state": "blocked",
+              "attempt": 1,
+              "jobSession": "hima-989f067f-synth-b-45d759",
+              "branchId": "synth-b",
+              "reason": "job \"synth-b\" in tmux session hima-989f067f-synth-b-45d759 exited 2; node synth-b has now failed 1 time and spent its retry allowance of 1"
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000019",
+              "at": "2026-09-11T09:59:43.409Z",
+              "nodeId": "synth-b",
+              "kind": "act",
+              "state": "running",
+              "attempt": 2,
+              "jobSession": "hima-989f067f-synth-b-1d446a",
+              "branchId": "synth-b"
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000021",
+              "at": "2026-09-11T09:59:43.454Z",
+              "nodeId": "synth-b",
+              "kind": "act",
+              "state": "done",
+              "attempt": 2,
+              "jobSession": "hima-989f067f-synth-b-1d446a",
+              "branchId": "synth-b"
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000022",
+              "at": "2026-09-11T09:59:43.478Z",
+              "nodeId": "read-qor-b",
+              "kind": "act",
+              "state": "running",
+              "attempt": 1,
+              "branchId": "synth-b"
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000024",
+              "at": "2026-09-11T09:59:43.523Z",
+              "nodeId": "read-qor-b",
+              "kind": "act",
+              "state": "done",
+              "attempt": 1,
+              "branchId": "synth-b"
+            }
+          ],
+          "jobs": [
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000007",
+              "at": "2026-09-11T09:59:40.081Z",
+              "event": "launched",
+              "job": {
+                "session": "hima-989f067f-synth-b-45d759",
+                "pid": 76813,
+                "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+                "name": "synth-b",
+                "startedAt": "2026-09-11T09:59:40.064Z",
+                "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit'"
+              },
+              "nodeId": "synth-b",
+              "branchId": "synth-b",
+              "licences": {
+                "Design-Compiler": 1
+              }
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000009",
+              "at": "2026-09-11T09:59:40.140Z",
+              "event": "finished",
+              "job": {
+                "session": "hima-989f067f-synth-b-45d759",
+                "pid": 76813,
+                "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+                "name": "synth-b",
+                "startedAt": "2026-09-11T09:59:40.064Z",
+                "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit'"
+              },
+              "exitCode": 2,
+              "nodeId": "synth-b",
+              "branchId": "synth-b"
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000018",
+              "at": "2026-09-11T09:59:43.391Z",
+              "event": "launched",
+              "job": {
+                "session": "hima-989f067f-synth-b-1d446a",
+                "pid": 77477,
+                "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+                "name": "synth-b",
+                "startedAt": "2026-09-11T09:59:43.369Z",
+                "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit'"
+              },
+              "nodeId": "synth-b",
+              "branchId": "synth-b",
+              "licences": {
+                "Design-Compiler": 1
+              }
+            },
+            {
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000020",
+              "at": "2026-09-11T09:59:43.438Z",
+              "event": "finished",
+              "job": {
+                "session": "hima-989f067f-synth-b-1d446a",
+                "pid": 77477,
+                "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+                "name": "synth-b",
+                "startedAt": "2026-09-11T09:59:43.369Z",
+                "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit'"
+              },
+              "exitCode": 0,
+              "nodeId": "synth-b",
+              "branchId": "synth-b"
+            }
+          ],
+          "state": "done",
+          "verdicts": [
+            {
+              "ruleId": "setup-wns-all-nonnegative",
+              "outcome": "PASS",
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000028",
+              "cites": [
+                "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023"
+              ]
+            },
+            {
+              "ruleId": "clock-period-at-most",
+              "outcome": "FAIL",
+              "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000029",
+              "cites": [
+                "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023"
+              ]
+            }
+          ],
+          "observedPeriodNs": 2.2,
+          "slackNs": 0,
+          "observation": {
+            "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000023",
+            "at": "2026-09-11T09:59:43.505Z",
+            "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/results/opene902/syn/report-b/qor.rpt",
+            "contentSha256": "8461bcdcf8cee6302a35604170313bdce09f6e89367f48f6c2580b12a1c0eb4f",
+            "bytes": 476,
+            "reader": {
+              "id": "dc-qor-report",
+              "version": "1",
+              "reportKind": "dc-qor-report",
+              "emits": [
+                "setup_wns",
+                "setup_tns",
+                "clock_period",
+                "hold_wns",
+                "cell_area"
+              ]
+            },
+            "values": [
+              {
+                "type": "setup_wns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": 0,
+                "group": "core_clk"
+              },
+              {
+                "type": "clock_period",
+                "unit": "ns",
+                "value": 2.2,
+                "group": "core_clk"
+              },
+              {
+                "type": "setup_tns",
+                "unit": "ns",
+                "mode": "setup",
+                "scope": "all",
+                "value": 0
+              },
+              {
+                "type": "hold_wns",
+                "unit": "ns",
+                "mode": "hold",
+                "scope": "all",
+                "value": 0,
+                "group": "core_clk"
+              },
+              {
+                "type": "cell_area",
+                "unit": "um2",
+                "value": 10475.516309
+              }
+            ],
+            "branchId": "synth-b"
+          }
+        }
+      ],
+      "join": {
+        "nodeId": "judge",
+        "outcome": "FAIL"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000005",
+      "at": "2026-09-11T09:59:40.045Z",
+      "event": "launched",
+      "job": {
+        "session": "hima-989f067f-synthesize-6f5ed4",
+        "pid": 76735,
+        "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+        "name": "synthesize",
+        "startedAt": "2026-09-11T09:59:40.027Z",
+        "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+      },
+      "nodeId": "synthesize",
+      "branchId": "synthesize",
+      "licences": {
+        "Design-Compiler": 1
+      }
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000007",
+      "at": "2026-09-11T09:59:40.081Z",
+      "event": "launched",
+      "job": {
+        "session": "hima-989f067f-synth-b-45d759",
+        "pid": 76813,
+        "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+        "name": "synth-b",
+        "startedAt": "2026-09-11T09:59:40.064Z",
+        "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit'"
+      },
+      "nodeId": "synth-b",
+      "branchId": "synth-b",
+      "licences": {
+        "Design-Compiler": 1
+      }
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000009",
+      "at": "2026-09-11T09:59:40.140Z",
+      "event": "finished",
+      "job": {
+        "session": "hima-989f067f-synth-b-45d759",
+        "pid": 76813,
+        "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+        "name": "synth-b",
+        "startedAt": "2026-09-11T09:59:40.064Z",
+        "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-45d759.exit'"
+      },
+      "exitCode": 2,
+      "nodeId": "synth-b",
+      "branchId": "synth-b"
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000012",
+      "at": "2026-09-11T09:59:43.180Z",
+      "event": "finished",
+      "job": {
+        "session": "hima-989f067f-synthesize-6f5ed4",
+        "pid": 76735,
+        "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+        "name": "synthesize",
+        "startedAt": "2026-09-11T09:59:40.027Z",
+        "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synthesize-6f5ed4.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "synthesize",
+      "branchId": "synthesize"
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000018",
+      "at": "2026-09-11T09:59:43.391Z",
+      "event": "launched",
+      "job": {
+        "session": "hima-989f067f-synth-b-1d446a",
+        "pid": 77477,
+        "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+        "name": "synth-b",
+        "startedAt": "2026-09-11T09:59:43.369Z",
+        "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit'"
+      },
+      "nodeId": "synth-b",
+      "branchId": "synth-b",
+      "licences": {
+        "Design-Compiler": 1
+      }
+    },
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000020",
+      "at": "2026-09-11T09:59:43.438Z",
+      "event": "finished",
+      "job": {
+        "session": "hima-989f067f-synth-b-1d446a",
+        "pid": 77477,
+        "workspace": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507",
+        "name": "synth-b",
+        "startedAt": "2026-09-11T09:59:43.369Z",
+        "wire": "'make' '-C' '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095939-3507' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-989f067f-synth-b-1d446a.exit'"
+      },
+      "exitCode": 0,
+      "nodeId": "synth-b",
+      "branchId": "synth-b"
+    }
+  ],
+  "blockers": [
+    {
+      "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000010",
+      "at": "2026-09-11T09:59:40.159Z",
+      "nodeId": "synth-b",
+      "attempts": 1,
+      "reason": "job \"synth-b\" in tmux session hima-989f067f-synth-b-45d759 exited 2; node synth-b has now failed 1 time and spent its retry allowance of 1",
+      "lastExitCode": 2,
+      "logTail": "[stand-in] Error: synthesis was told to fail this attempt\n\n\n[stand-in] 1 attempt(s) were left to fail; nothing was written to /private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/flow/results/opene902/syn/report-b\nmake: *** [synth] Error 3\n"
+    }
+  ],
+  "cancels": [],
+  "decision": null,
+  "experience": {
+    "recordId": "run-989f067f-731d-4b1f-a9cf-b9224aab56e5#000031",
+    "writtenAt": "2026-09-11T09:59:43.670Z",
+    "markdown": {
+      "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-experience/run-989f067f-731d-4b1f-a9cf-b9224aab56e5.md",
+      "sha256": "118e0fff6393b4c6522eb8d94ef0cb9838269ed68be7d5c5556b384a5971afbc",
+      "bytes": 5835
+    },
+    "json": {
+      "path": "/private/tmp/hima-partial-2yy3p15w/hima-home-LSpaMB/workspace/partial-fork-control-probe-20260911-095939-3507/hima-experience/run-989f067f-731d-4b1f-a9cf-b9224aab56e5.json",
+      "sha256": "e7186fb0ccca88de8f513109dd507b0b4616f997ad13573b808fbda4cdef13e9",
+      "bytes": 39916
+    }
+  }
+}

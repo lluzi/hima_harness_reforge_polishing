@@ -1,0 +1,42 @@
+TAP version 13
+# Subtest: one blocked branch remains visible beside a live peer; only that blocked branch runs after resume
+not ok 1 - one blocked branch remains visible beside a live peer; only that blocked branch runs after resume
+  ---
+  duration_ms: 2694.986875
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls-06/partial-fork/probe.ts:16:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /failing on purpose/. Input:
+    
+    '[stand-in] Error: synthesis was told to fail this attempt\n' +
+      '\n' +
+      '\n' +
+      '[stand-in] 1 attempt(s) were left to fail; nothing was written to /private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow/results/opene902/syn/report-b\n' +
+      'make: *** [synth] Error 3\n'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    [stand-in] Error: synthesis was told to fail this attempt
+    
+    
+    [stand-in] 1 attempt(s) were left to fail; nothing was written to /private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow/results/opene902/syn/report-b
+    make: *** [synth] Error 3
+    
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls-06/partial-fork/probe.ts:59:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2841.921583

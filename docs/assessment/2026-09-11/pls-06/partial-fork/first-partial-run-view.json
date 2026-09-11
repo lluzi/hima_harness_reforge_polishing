@@ -1,0 +1,337 @@
+{
+  "run": {
+    "id": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a",
+    "campaignId": "partial-fork-control-probe-20260911-095833-9a88",
+    "siteId": "local",
+    "createdAt": "2026-09-11T09:58:33.468Z",
+    "status": "running",
+    "packId": "partial-fork-control-probe",
+    "packVersion": "2",
+    "words": {
+      "goal": {
+        "target_period_ns": {
+          "label": "clock period at most",
+          "unit": "ns"
+        }
+      },
+      "strategy": {
+        "periodNs": {
+          "label": "clock period",
+          "unit": "ns"
+        }
+      }
+    },
+    "goal": {
+      "target_period_ns": 2
+    },
+    "budget": {
+      "timeBoxMs": 60000,
+      "retryAllowance": 1,
+      "jobCap": 2,
+      "licences": {
+        "Design-Compiler": 2
+      },
+      "generationLimit": 6
+    },
+    "currentNode": "judge",
+    "strategy": {
+      "periodNs": 2
+    },
+    "generation": 1,
+    "fork": {
+      "from": "start",
+      "join": "judge",
+      "branches": {
+        "synthesize": {
+          "currentNode": "synthesize",
+          "state": "running"
+        },
+        "synth-b": {
+          "currentNode": "synth-b",
+          "state": "blocked"
+        }
+      }
+    },
+    "meters": {
+      "elapsedMs": 301,
+      "jobsLaunched": 2,
+      "attempts": 3,
+      "licenceMs": {
+        "Design-Compiler": 54
+      },
+      "generationMs": [
+        260
+      ]
+    }
+  },
+  "workspace": {
+    "design": "opene902",
+    "flowRoot": "/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/standin-flow",
+    "containerName": "hima-partial-fork-control-probe-20260911-095833-9a88"
+  },
+  "observations": [
+    {
+      "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000003",
+      "at": "2026-09-11T09:58:33.564Z",
+      "path": "/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow/build/opene902/summary.txt",
+      "contentSha256": "b0ec3faede64a0d529e916b6f9a685920b2f55967deb007f4722e35bd4a0b3ec",
+      "bytes": 35,
+      "reader": {
+        "id": "raw",
+        "version": "1",
+        "reportKind": "raw",
+        "emits": []
+      },
+      "values": []
+    }
+  ],
+  "refusals": [],
+  "verdicts": [],
+  "nodes": [
+    {
+      "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000004",
+      "at": "2026-09-11T09:58:33.582Z",
+      "nodeId": "start",
+      "kind": "act",
+      "state": "done",
+      "attempt": 1
+    },
+    {
+      "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000006",
+      "at": "2026-09-11T09:58:33.652Z",
+      "nodeId": "synthesize",
+      "kind": "act",
+      "state": "running",
+      "attempt": 1,
+      "jobSession": "hima-d1828eea-synthesize-5414d2",
+      "branchId": "synthesize"
+    },
+    {
+      "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000011",
+      "at": "2026-09-11T09:58:33.761Z",
+      "nodeId": "synth-b",
+      "kind": "act",
+      "state": "blocked",
+      "attempt": 1,
+      "jobSession": "hima-d1828eea-synth-b-fc7908",
+      "branchId": "synth-b",
+      "reason": "job \"synth-b\" in tmux session hima-d1828eea-synth-b-fc7908 exited 2; node synth-b has now failed 1 time and spent its retry allowance of 1"
+    }
+  ],
+  "generations": [
+    {
+      "generation": 1,
+      "strategy": {
+        "periodNs": 2
+      },
+      "nodes": [
+        {
+          "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000002",
+          "at": "2026-09-11T09:58:33.537Z",
+          "nodeId": "start",
+          "kind": "act",
+          "state": "running",
+          "attempt": 1
+        },
+        {
+          "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000004",
+          "at": "2026-09-11T09:58:33.582Z",
+          "nodeId": "start",
+          "kind": "act",
+          "state": "done",
+          "attempt": 1
+        }
+      ],
+      "observation": {
+        "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000003",
+        "at": "2026-09-11T09:58:33.564Z",
+        "path": "/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow/build/opene902/summary.txt",
+        "contentSha256": "b0ec3faede64a0d529e916b6f9a685920b2f55967deb007f4722e35bd4a0b3ec",
+        "bytes": 35,
+        "reader": {
+          "id": "raw",
+          "version": "1",
+          "reportKind": "raw",
+          "emits": []
+        },
+        "values": []
+      },
+      "verdicts": [],
+      "wallMs": 285,
+      "state": "blocked",
+      "branches": [
+        {
+          "id": "synthesize",
+          "nodes": [
+            {
+              "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000006",
+              "at": "2026-09-11T09:58:33.652Z",
+              "nodeId": "synthesize",
+              "kind": "act",
+              "state": "running",
+              "attempt": 1,
+              "jobSession": "hima-d1828eea-synthesize-5414d2",
+              "branchId": "synthesize"
+            }
+          ],
+          "jobs": [
+            {
+              "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000005",
+              "at": "2026-09-11T09:58:33.633Z",
+              "event": "launched",
+              "job": {
+                "session": "hima-d1828eea-synthesize-5414d2",
+                "pid": 73436,
+                "workspace": "/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88",
+                "name": "synthesize",
+                "startedAt": "2026-09-11T09:58:33.614Z",
+                "wire": "'make' '-C' '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095833-9a88' > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synthesize-5414d2.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synthesize-5414d2.exit'"
+              },
+              "nodeId": "synthesize",
+              "branchId": "synthesize",
+              "licences": {
+                "Design-Compiler": 1
+              }
+            }
+          ],
+          "state": "running",
+          "verdicts": []
+        },
+        {
+          "id": "synth-b",
+          "nodes": [
+            {
+              "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000008",
+              "at": "2026-09-11T09:58:33.697Z",
+              "nodeId": "synth-b",
+              "kind": "act",
+              "state": "running",
+              "attempt": 1,
+              "jobSession": "hima-d1828eea-synth-b-fc7908",
+              "branchId": "synth-b"
+            },
+            {
+              "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000011",
+              "at": "2026-09-11T09:58:33.761Z",
+              "nodeId": "synth-b",
+              "kind": "act",
+              "state": "blocked",
+              "attempt": 1,
+              "jobSession": "hima-d1828eea-synth-b-fc7908",
+              "branchId": "synth-b",
+              "reason": "job \"synth-b\" in tmux session hima-d1828eea-synth-b-fc7908 exited 2; node synth-b has now failed 1 time and spent its retry allowance of 1"
+            }
+          ],
+          "jobs": [
+            {
+              "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000007",
+              "at": "2026-09-11T09:58:33.670Z",
+              "event": "launched",
+              "job": {
+                "session": "hima-d1828eea-synth-b-fc7908",
+                "pid": 73514,
+                "workspace": "/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88",
+                "name": "synth-b",
+                "startedAt": "2026-09-11T09:58:33.653Z",
+                "wire": "'make' '-C' '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095833-9a88' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synth-b-fc7908.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synth-b-fc7908.exit'"
+              },
+              "nodeId": "synth-b",
+              "branchId": "synth-b",
+              "licences": {
+                "Design-Compiler": 1
+              }
+            },
+            {
+              "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000009",
+              "at": "2026-09-11T09:58:33.724Z",
+              "event": "finished",
+              "job": {
+                "session": "hima-d1828eea-synth-b-fc7908",
+                "pid": 73514,
+                "workspace": "/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88",
+                "name": "synth-b",
+                "startedAt": "2026-09-11T09:58:33.653Z",
+                "wire": "'make' '-C' '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095833-9a88' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synth-b-fc7908.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synth-b-fc7908.exit'"
+              },
+              "exitCode": 2,
+              "nodeId": "synth-b",
+              "branchId": "synth-b"
+            }
+          ],
+          "state": "blocked",
+          "verdicts": []
+        }
+      ],
+      "join": {
+        "nodeId": "judge"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000005",
+      "at": "2026-09-11T09:58:33.633Z",
+      "event": "launched",
+      "job": {
+        "session": "hima-d1828eea-synthesize-5414d2",
+        "pid": 73436,
+        "workspace": "/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88",
+        "name": "synthesize",
+        "startedAt": "2026-09-11T09:58:33.614Z",
+        "wire": "'make' '-C' '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095833-9a88' > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synthesize-5414d2.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synthesize-5414d2.exit'"
+      },
+      "nodeId": "synthesize",
+      "branchId": "synthesize",
+      "licences": {
+        "Design-Compiler": 1
+      }
+    },
+    {
+      "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000007",
+      "at": "2026-09-11T09:58:33.670Z",
+      "event": "launched",
+      "job": {
+        "session": "hima-d1828eea-synth-b-fc7908",
+        "pid": 73514,
+        "workspace": "/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88",
+        "name": "synth-b",
+        "startedAt": "2026-09-11T09:58:33.653Z",
+        "wire": "'make' '-C' '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095833-9a88' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synth-b-fc7908.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synth-b-fc7908.exit'"
+      },
+      "nodeId": "synth-b",
+      "branchId": "synth-b",
+      "licences": {
+        "Design-Compiler": 1
+      }
+    },
+    {
+      "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000009",
+      "at": "2026-09-11T09:58:33.724Z",
+      "event": "finished",
+      "job": {
+        "session": "hima-d1828eea-synth-b-fc7908",
+        "pid": 73514,
+        "workspace": "/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88",
+        "name": "synth-b",
+        "startedAt": "2026-09-11T09:58:33.653Z",
+        "wire": "'make' '-C' '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow' 'DESIGN=opene902' 'synth' 'CLOCK_PERIOD_NS=2.2' 'FORCE_SYNTH=1' 'EDA_CONTAINER_NAME=hima-partial-fork-control-probe-20260911-095833-9a88' 'RESULT_TAG=b' 'STANDIN_SLEEP=0' > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synth-b-fc7908.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/hima-d1828eea-synth-b-fc7908.exit'"
+      },
+      "exitCode": 2,
+      "nodeId": "synth-b",
+      "branchId": "synth-b"
+    }
+  ],
+  "blockers": [
+    {
+      "recordId": "run-d1828eea-9b4e-45e6-ba8f-2279c348085a#000010",
+      "at": "2026-09-11T09:58:33.743Z",
+      "nodeId": "synth-b",
+      "attempts": 1,
+      "reason": "job \"synth-b\" in tmux session hima-d1828eea-synth-b-fc7908 exited 2; node synth-b has now failed 1 time and spent its retry allowance of 1",
+      "lastExitCode": 2,
+      "logTail": "[stand-in] Error: synthesis was told to fail this attempt\n\n\n[stand-in] 1 attempt(s) were left to fail; nothing was written to /private/tmp/hima-partial-ffrd3a19/hima-home-oNwb77/workspace/partial-fork-control-probe-20260911-095833-9a88/flow/results/opene902/syn/report-b\nmake: *** [synth] Error 3\n"
+    }
+  ],
+  "cancels": [],
+  "decision": null
+}

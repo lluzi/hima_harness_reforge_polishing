@@ -1,0 +1,70 @@
+{
+  "source": "ac2ed3a36f40a4cb1da7c076fa92eee5818344ae",
+  "sourceAndLibFilesVerifiedUnchanged": 254,
+  "keyPaths": {
+    "command": [
+      "pnpm",
+      "run",
+      "test:desktop",
+      "--files",
+      "test/contract/honest-standin-window.test.ts",
+      "test/contract/start-form-window.test.ts",
+      "test/contract/experience.test.ts"
+    ],
+    "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+    "exitCode": 1,
+    "elapsedSeconds": 54.669,
+    "pass": 3,
+    "fail": 1,
+    "skip": 0,
+    "electronBoots": 4,
+    "sshAttempts": 0,
+    "modelCalls": 0,
+    "EDAJobs": 0
+  },
+  "checkpoint": {
+    "command": [
+      "/Users/lluzi/.local/node24/bin/node",
+      "--test",
+      "--test-reporter=tap",
+      ".hima-tmp/pls02-07/checkpoint.test.ts"
+    ],
+    "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing",
+    "exitCode": 1,
+    "elapsedSeconds": 73.936,
+    "pass": 0,
+    "fail": 1,
+    "skip": 0,
+    "electronBoots": 1,
+    "sshAttempts": 0,
+    "modelCalls": 0,
+    "EDAJobs": 0
+  },
+  "notRun": [
+    "two selected window.test.ts cancel/resume cases",
+    "other Desktop cases",
+    "real model",
+    "real Site/EDA"
+  ],
+  "screenshots": [
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/diagnosis-checking-disabled.png",
+      "sha256": "4ad684c6c489213d89120a430401c3a87b0302fb1da11684ef16bbc1f192e92e",
+      "bytes": 166371
+    },
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/checkpoint-form-fit.png",
+      "sha256": "705f75f7248a098661e7888b79aca8307c508c0d1e08f5fe44a170948de0d75f",
+      "bytes": 194665
+    },
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-11/pls02-07/desktop/checkpoint-blocked-log.png",
+      "sha256": "b0416b42fc322f781400c7808acc02f28710b480193b7203a85d8d7352843304",
+      "bytes": 320960
+    }
+  ],
+  "diagnosis": {
+    "staticCheck": "Controlled actual reply delay observed checking/disabled, no Run; releasing reply reached fit/enabled and a subsequent real click started the Run. Button top moved from 541 to 608.796875 CSS px. This supports a readiness/reflow race in the old immediate-click test, but the original failed run did not capture its click note.",
+    "checkpointResume": "At zoom 0.85, click returned page received event on no marked control; the old waiting Run stayed at one launched Job. No resume execution failure has been demonstrated. Final resumed/report screenshot not captured."
+  }
+}
