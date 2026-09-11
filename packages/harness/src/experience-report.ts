@@ -10,13 +10,9 @@
 // and not the other is not a shape this module can produce. What the Markdown adds is order, tables
 // and a paragraph of reasoning per generation — the report is a document and not a dump.
 //
-// **The report is a function of the run view, and the run view is a fold of the ledger.** So a face
-// showing the report composes it rather than fetching a file the window would otherwise re-read off
-// the Site every second, and what it composes is what is on the Site: an ended Run's records are
-// final, and the one instant the report states is `writtenAt`, which the `experience` record keeps
-// precisely so a later composition is the same document byte for byte. What is on the Site is still
-// the artefact — the routes read it back and hold it against the hashes (`experience.ts`) — and the
-// section on both mounts links to it.
+// A freshly composed report is a ledger projection made by the current renderer. A saved report
+// may have been written by an earlier version. Only readExperience reads and verifies those original
+// bytes; the two must never be described as interchangeable.
 //
 // The Markdown's dialect is this file's own and deliberately small: headings, paragraphs, tables and
 // fenced code, no inline markup at all. `reportBlocks` below reads exactly that dialect back, so the
@@ -51,7 +47,7 @@ import {
 } from './card-labels.js';
 import type { BranchView, GenerationView, LoopView } from './generations.js';
 import type { RunBudget, RunMeters, RunStatus } from './ledger.js';
-import type { BlockerView, CancelView, NodeView, RunView } from './remote.js';
+import type { BlockerView, CancelView, NodeView, ObservationView, RunView, VerdictView } from './remote.js';
 
 /**
  * What the machine's file says it is. Read by whoever opens it: a schema key is what lets a later
@@ -59,7 +55,7 @@ import type { BlockerView, CancelView, NodeView, RunView } from './remote.js';
  * the keys it happens to find. It is versioned separately from the ledger's own domain, because the
  * file outlives the ledger that wrote it — it is the Site owner's, kept beside the results (D44).
  */
-export const EXPERIENCE_SCHEMA = 'hima-experience/1';
+export const EXPERIENCE_SCHEMA = 'hima-experience/2';
 
 /** The directory the two files live in, under the Campaign workspace, beside the results. */
 export const EXPERIENCE_DIR = 'hima-experience';
@@ -87,8 +83,8 @@ export interface ExperiencePack {
  * Loops and branches are exactly the rows the card's table showed, and the path is exactly the path
  * it drew. A report that recomputed anything would be a second account of a Campaign that has ended.
  */
-export interface ExperienceJson {
-  readonly schema: typeof EXPERIENCE_SCHEMA;
+export interface ExperienceJsonV1 {
+  readonly schema: 'hima-experience/1';
   readonly runId: string;
   readonly campaignId: string;
   readonly pack: ExperiencePack;
@@ -109,9 +105,46 @@ export interface ExperienceJson {
   readonly writtenAt: string;
 }
 
-/** The two documents of one report: what machines read, and what people read. */
+/** Schema 1 remains a readable historical document; only new writes use schema 2. */
+export interface ExperienceJsonV2 extends Omit<ExperienceJsonV1, 'schema'> {
+  readonly schema: typeof EXPERIENCE_SCHEMA;
+  readonly research: ExperienceResearch;
+}
+export type ExperienceJson = ExperienceJsonV1 | ExperienceJsonV2;
+
+export interface ExperienceTrial {
+  readonly generation: number;
+  readonly loopId?: string;
+  readonly branchId?: string;
+  /** Absent for a branch whose requested knobs were never recorded. */
+  readonly strategy?: GenerationView['strategy'];
+  readonly status: 'judged' | 'incomplete' | 'undetermined';
+  readonly reason: string;
+  readonly observation?: ObservationView;
+  readonly verdicts: readonly VerdictView[];
+  /** The completed judge node's recorded outcome, never recalculated from the measured number. */
+  readonly constraintOutcome?: GenerationView['verdicts'][number]['outcome'];
+}
+
+export interface ExperienceResearch {
+  readonly conclusion: 'goal-supported' | 'measured-negative' | 'goal-not-established' | 'insufficient-evidence';
+  readonly summary: string;
+  readonly trials: readonly ExperienceTrial[];
+  readonly untestedNextStrategy?: GenerationView['strategy'];
+  readonly limitations: readonly string[];
+  readonly environment: {
+    readonly site: string;
+    readonly declaredDesign: string;
+    readonly declaredFlowRoot: string;
+    readonly declaredContainer: string;
+    readonly toolVersions: 'not recorded';
+    readonly operatingSystem: 'not recorded';
+  };
+}
+
+/** The two documents of one newly composed report. Historical files are read without recomposition. */
 export interface ExperienceReport {
-  readonly json: ExperienceJson;
+  readonly json: ExperienceJsonV2;
   readonly markdown: string;
 }
 
@@ -129,7 +162,7 @@ export function experienceReport(view: RunView, writtenAt: string): ExperienceRe
 }
 
 /** The machine's file, from the run view and nothing else. */
-function experienceJson(view: RunView, writtenAt: string): ExperienceJson {
+function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV2 {
   const { run } = view;
   return {
     schema: EXPERIENCE_SCHEMA,
@@ -142,6 +175,7 @@ function experienceJson(view: RunView, writtenAt: string): ExperienceJson {
     ...(run.goal === undefined ? {} : { goal: run.goal }),
     ...(run.budget === undefined ? {} : { budget: run.budget }),
     ending: endingOf(view),
+    research: researchOf(view),
     generations: view.generations,
     ...(run.meters === undefined ? {} : { meters: run.meters }),
     path: view.nodes,
@@ -149,6 +183,113 @@ function experienceJson(view: RunView, writtenAt: string): ExperienceJson {
     cancels: view.cancels,
     writtenAt,
   };
+}
+
+/** Read completed judge evidence, without re-running rules or deciding whether a Run may advance. */
+function researchOf(view: RunView): ExperienceResearch {
+  const observations = new Map(view.observations.map((observation) => [observation.recordId, observation]));
+  const verdicts = new Map(view.verdicts.map((verdict) => [verdict.recordId, verdict]));
+  const trials: ExperienceTrial[] = [];
+  let pendingDecisionId: string | undefined;
+  const trial = (generation: GenerationView, loopId?: string, branch?: BranchView): ExperienceTrial => {
+    const source = branch ?? generation;
+    const observation = source.observation === undefined ? undefined : observations.get(source.observation.recordId);
+    const nodes = source.nodes ?? [];
+    const lastAct = nodes.findLastIndex((node) => node.kind === 'act');
+    const lastJudge = nodes.findLastIndex((node) => node.kind === 'judge');
+    const judge = nodes[lastJudge];
+    // A later act (including a failed retry) must not borrow the previous judge's answer. A branch
+    // is judged by its generation's join, whose transition is outside the branch's own records.
+    const settled = lastAct >= 0 && nodes[lastAct]!.state === 'done'
+      && (branch === undefined
+        ? lastJudge > lastAct && judge?.state === 'done'
+        : branch.state === 'done' && generation.join?.outcome !== undefined);
+    const latest = new Map(source.verdicts.map((verdict) => [verdict.ruleId, verdict]));
+    const cited = [...latest.values()].flatMap((verdict) => {
+      const held = verdict.recordId === undefined ? undefined : verdicts.get(verdict.recordId);
+      return held === undefined ? [] : [held];
+    });
+    const traced = observation !== undefined && cited.length > 0 && cited.length === latest.size
+      && cited.every((verdict) => verdict.cites.length > 0 && verdict.cites.every((citation) =>
+        citation.recordId === observation.recordId && citation.observation?.contentSha256 === observation.contentSha256));
+    const status = !settled || !traced ? 'incomplete'
+      : cited.some((verdict) => verdict.outcome === 'UNDETERMINED') ? 'undetermined' : 'judged';
+    const reason = !settled ? 'Execution and a subsequent completed judge are not both recorded for this trial.'
+      : !traced ? 'The complete verdict set cannot be traced to this trial\'s own observation; it does not support a result.'
+        : status === 'undetermined' ? 'The judge recorded missing or unknown evidence; no definite result is established.'
+          : 'The experiment completed and its judge verdicts cite this observation. FAIL is a measured negative result, not an execution fault.';
+    const constraintOutcome = branch === undefined ? judge?.outcome : undefined;
+    return {
+      generation: generation.generation,
+      ...(loopId === undefined ? {} : { loopId }),
+      ...(branch === undefined ? { strategy: generation.strategy } : { branchId: branch.id }),
+      status, reason,
+      ...(observation === undefined ? {} : { observation }),
+      verdicts: cited,
+      ...(status !== 'judged' || constraintOutcome === undefined ? {} : { constraintOutcome }),
+    };
+  };
+  const visit = (generations: readonly GenerationView[], loopId?: string): void => {
+    for (const generation of generations) {
+      if (generation === generations.at(-1) && generation.decisionRecordId === view.decision?.recordId) pendingDecisionId = generation.decisionRecordId;
+      if (generation.branches?.length) {
+        for (const branch of generation.branches) trials.push(trial(generation, loopId, branch));
+      } else trials.push(trial(generation, loopId));
+      for (const loop of generation.loops ?? []) visit(loop.generations, loop.id);
+    }
+  };
+  visit(view.generations);
+  const judged = trials.filter((entry) => entry.status === 'judged');
+  const decision = view.decision;
+  const supportedGoal = view.run.status === 'ended-goal-met' && decision !== null && 'goalMet' in decision.chosen
+    && judged.some((entry) => entry.observation !== undefined
+      && decision.cites.includes(entry.observation.recordId)
+      && entry.verdicts.every((verdict) => verdict.outcome === 'PASS')
+      && trials.filter((peer) => peer.generation === entry.generation && peer.loopId === entry.loopId)
+        .every((peer) => peer.status === 'judged' && peer.verdicts.every((verdict) => verdict.outcome === 'PASS'))
+      && decision.cites.every((id) => id === entry.observation!.recordId || entry.verdicts.some((verdict) => verdict.recordId === id))
+      && entry.verdicts.every((verdict) => decision.cites.includes(verdict.recordId)));
+  const negative = judged.some((entry) => entry.verdicts.some((verdict) => verdict.outcome === 'FAIL'));
+  const conclusion = supportedGoal ? 'goal-supported' : judged.length === 0 ? 'insufficient-evidence'
+    : negative ? 'measured-negative' : 'goal-not-established';
+  const summary = supportedGoal ? 'The recorded goal-met decision is supported by completed, cited judge evidence in this Campaign.'
+    : conclusion === 'measured-negative' ? 'Completed experiments include negative judge results. These results apply only to the recorded trials and do not establish that every strategy or the Campaign proposition is ineffective.'
+      : conclusion === 'goal-not-established' ? 'Completed judge evidence is recorded, but it does not establish the Campaign goal.'
+        : 'No complete, traceable judge evidence establishes a research result. Execution status alone is not a research conclusion.';
+  const next = decision !== null && pendingDecisionId === decision.recordId && 'strategy' in decision.chosen ? decision.chosen.strategy : undefined;
+  return {
+    conclusion, summary, trials,
+    ...(next === undefined ? {} : { untestedNextStrategy: next }),
+    limitations: [
+      'Reported clock periods are report values, not measured Fmax. Requested strategy values are inputs, not measurements.',
+      'Convergence records the Pack rule over the tried values; it does not prove an optimum or general strategy failure.',
+      'Incomplete trials and unresolved or stale citations are retained as history and excluded from the definite result.',
+      'Workspace design, flow and container names are declarations, not verified runtime identity. Design-content identity, tool versions and operating system were not recorded; cross-trial comparability is unknown.',
+      'No causal research explanation or AI analysis was recorded by this deterministic report. No improvement percentage is inferred.',
+    ],
+    environment: { site: view.run.siteId, declaredDesign: view.workspace?.design ?? 'not recorded', declaredFlowRoot: view.workspace?.flowRoot ?? 'not recorded', declaredContainer: view.workspace?.containerName ?? 'not recorded', toolVersions: 'not recorded', operatingSystem: 'not recorded' },
+  };
+}
+
+/** Each statement links back to a reading and its judge records; coverage is separate from ending. */
+function researchSection(research: ExperienceResearch): string[] {
+  const trialRows = research.trials.map((trial) => [
+    [trial.loopId, `generation ${trial.generation}`, trial.branchId].filter(Boolean).join(' / '),
+    trial.status,
+    trial.constraintOutcome ?? NOT_HELD,
+    trial.observation === undefined ? 'no observation recorded' : `${trial.observation.recordId}: ${trial.observation.path}; sha256 ${trial.observation.contentSha256}`,
+    trial.verdicts.map((verdict) => `${verdict.recordId}: ${verdict.outcome} ${verdict.ruleId}@${verdict.ruleVersion}`).join('; ') || 'no resolvable verdicts',
+    trial.reason,
+  ]);
+  return [
+    '## Research result and evidence limits', '', research.summary, '',
+    ...table(['trial', 'evidence', 'recorded constraint outcome', 'observation', 'judge records', 'scope'], trialRows), '',
+    ...(research.untestedNextStrategy === undefined ? [] : [
+      `The next strategy was proposed but not executed as a subsequent trial: ${JSON.stringify(research.untestedNextStrategy)}. It is unmeasured.`, '',
+    ]),
+    ...research.limitations.flatMap((line) => [line, '']),
+    ...table(['environment', 'recorded value'], Object.entries(research.environment)), '',
+  ];
 }
 
 /**
@@ -238,7 +379,7 @@ function fenced(text: string): string[] {
 }
 
 /** The person's file, composed from the machine's so the two cannot say different numbers. */
-function experienceMarkdown(json: ExperienceJson, view: RunView): string {
+function experienceMarkdown(json: ExperienceJsonV2, view: RunView): string {
   const lines: string[] = [
     `# Campaign ${json.campaignId}`,
     '',
@@ -253,6 +394,7 @@ function experienceMarkdown(json: ExperienceJson, view: RunView): string {
       ['written at', json.writtenAt],
     ]),
     '',
+    ...researchSection(json.research),
     ...budgetSection(view),
     ...generationsSection(json.generations, view),
     ...reasoningSection(json.generations, view),
@@ -397,7 +539,7 @@ function reasoningSection(generations: readonly GenerationView[], view: RunView)
       : `Generation ${String(gen.generation)} of loop ${entry.loop.name}`;
     lines.push(`### ${which}`, '', reasoningOf(gen, view), '');
   }
-  return lines.length === 0 ? [] : ['## The reasoning', '', ...lines];
+  return lines.length === 0 ? [] : ['## Recorded experiment history', '', ...lines];
 }
 
 /** The paragraph itself: the Strategy, the measurement, the verdicts, the branches and the decision,
@@ -406,7 +548,7 @@ function reasoningOf(gen: GenerationView, view: RunView): string {
   const asked = `It asked the flow for ${strategySaid(gen.strategy, view.run.words?.strategy)}`;
   const measured = gen.observedPeriodNs === undefined
     ? ' and no report of it has been read'
-    : ` and measured ${String(gen.observedPeriodNs)} ns`
+    : ` and the report stated a clock period of ${String(gen.observedPeriodNs)} ns`
       + (gen.slackNs === undefined ? '' : `, with ${String(gen.slackNs)} ns of setup slack`);
   const judged = gen.verdicts.length === 0
     ? ` ${NOTHING_JUDGED[0]!.toUpperCase()}${NOTHING_JUDGED.slice(1)}.`

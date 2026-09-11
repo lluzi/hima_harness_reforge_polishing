@@ -43,6 +43,9 @@ export type GenerationState = 'running' | 'done' | 'blocked';
 export interface GenerationVerdictView {
   readonly ruleId: string;
   readonly outcome: VerdictOutcome;
+  /** Optional only for views written before report schema 2. These identify the judge's facts. */
+  readonly recordId?: string;
+  readonly cites?: readonly string[];
 }
 
 /** One Generation of a Run's Loop as HimaGuide shows it: what it was asked for, what it measured,
@@ -67,6 +70,9 @@ export interface GenerationView {
    * Strategy the Campaign is on and only its own decisions move it after that.
    */
   readonly strategy: RunStrategy;
+  /** This generation's raw reading and node transitions, for report provenance, not a new verdict. */
+  readonly observation?: ObservationView;
+  readonly nodes?: readonly NodeView[];
   /**
    * The clock period this generation's latest observation stated. Absent until one has been read —
    * and absent for the whole of a generation that **forked** (#29): its branches each synthesized at
@@ -81,6 +87,7 @@ export interface GenerationView {
   readonly verdicts: readonly GenerationVerdictView[];
   /** What this generation's Explore node decided, in the card's own words. Absent until it decided. */
   readonly decision?: string;
+  readonly decisionRecordId?: string;
   /** From this generation's first record to its last — or to now, for the current generation of a
    *  Run that is still running. Zero for a generation the row has opened and nothing has written in. */
   readonly wallMs: number;
@@ -351,7 +358,7 @@ function branchesOf(run: RunRecord, own: readonly LedgerRecord[], generation: nu
       nodes: nodes.map(nodeView),
       jobs: mine.filter((r): r is JobRecord => r.type === 'job').map(jobView),
       state: branchState(run, generation, id, nodes),
-      verdicts: mine.filter((r): r is VerdictRecord => r.type === 'verdict').map((v) => ({ ruleId: v.ruleId, outcome: v.outcome })),
+      verdicts: mine.filter((r): r is VerdictRecord => r.type === 'verdict').map((v) => ({ ruleId: v.ruleId, outcome: v.outcome, recordId: v.id, cites: v.cites })),
       // The branch's own numbers, off the branch's own latest reading and through the fold a
       // generation's row is composed by: one table, one arithmetic, whichever depth a row is at.
       ...quantitiesOf(observation),
@@ -438,16 +445,18 @@ function rowOf(fold: Fold, generation: number, strategy: RunStrategy, own: reado
   const head = {
     generation,
     strategy,
+    nodes: own.filter((r): r is NodeRecord => r.type === 'node' && r.branchId === undefined).map(nodeView),
+    ...(observation === undefined ? {} : { observation: observationView(observation) }),
     ...quantitiesOf(observation),
     verdicts: own
       .filter((r): r is VerdictRecord => r.type === 'verdict')
-      .map((v) => ({ ruleId: v.ruleId, outcome: v.outcome })),
+      .map((v) => ({ ruleId: v.ruleId, outcome: v.outcome, recordId: v.id, cites: v.cites })),
     wallMs: wallMsOf(fold, generation, own),
     state: stateOf(fold, generation, own),
   };
   // An absent key, never an undefined one, as everywhere else a view is composed: a generation that
   // has decided nothing yet says so by omission.
-  return decision === undefined ? head : { ...head, decision: chosenSaid(decision, words) };
+  return decision === undefined ? head : { ...head, decision: chosenSaid(decision, words), decisionRecordId: decision.id };
 }
 
 /** The decision one generation made, out of that generation's own records. */

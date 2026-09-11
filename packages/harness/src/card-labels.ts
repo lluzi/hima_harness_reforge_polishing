@@ -1298,19 +1298,11 @@ export const tailSaid = (logTail: string): string =>
 /** The drawer's own head, beside `cancel`, `blocker`, `observed`, `verdicts` and `decision`. */
 export const EXPERIENCE_HEADING = 'experience';
 
-/**
- * Where and when the report was written, and where the text under it comes from, said above it.
- *
- * The second half is not decoration. What a mount shows is *composed* from this Run's own records at
- * the instant the record kept, which is the document that was written to the Site — and the one
- * thing neither mount can see is somebody editing the file afterwards, which is exactly when the
- * `.md` route stops serving it and answers `hima/experience-changed` instead. So the section says
- * which of the two a person is reading rather than presenting the composition as the file itself,
- * and the link beside it is how the file as the Site has it is fetched and held against its hash.
- */
+/** Saved-file metadata and a current preview are distinct, including after renderer upgrades. */
 export const experienceWrittenSaid = (experience: ExperienceView): string =>
   `written at ${experience.writtenAt}, and left on the site beside the campaign's results;`
-  + ' the report below is composed from this run\'s own records, and the link is the file as the site has it';
+  + ' the text below is a current preview from recorded facts, not the saved file.'
+  + ' Open the saved report to verify its hash; its original wording may differ.';
 
 /**
  * One file of the report: which of the two it is, where it is on the Site, what it hashes to and how
@@ -1324,7 +1316,7 @@ export const experienceFileSaid = (which: 'markdown' | 'json', file: ExperienceF
 
 /** What the link under the report offers: the file itself, as the Site has it, read back and held
  *  against its hash on the way through. */
-export const EXPERIENCE_MARKDOWN_LINK = 'open the markdown as the site has it';
+export const EXPERIENCE_MARKDOWN_LINK = 'open and verify the saved markdown';
 
 /**
  * Where that link goes: the `.md` route of the Hima namespace, for this Run.
@@ -1336,17 +1328,8 @@ export const EXPERIENCE_MARKDOWN_LINK = 'open the markdown as the site has it';
  */
 export const experienceMarkdownHref = (runId: string): string => experienceMarkdownPath(runId);
 
-/**
- * What the experience region's state attributes say: the hash of the Markdown, and when the report
- * was written.
- *
- * The Markdown's hash and not the JSON's, because the Markdown is the document the section is
- * showing — a driver reading this region is reading the report a person reads, and the one hash
- * beside it must be that file's. The JSON's is a line of the section's own text.
- *
- * Here for the reason `decisionState` and `generationsState` are: a driver reads one set of keys,
- * and two mounts computing them separately are two sets waiting to disagree.
- */
+/** These are the saved file's metadata, not a hash of the current preview. `sha256` is retained
+ * as a compatibility alias for older drivers; the explicit key and source remove the ambiguity. */
 export function experienceState(experience: ExperienceView): Readonly<Record<string, string>> {
-  return { sha256: experience.markdown.sha256, 'written-at': experience.writtenAt };
+  return { source: 'ledger-preview', 'recorded-file-sha256': experience.markdown.sha256, sha256: experience.markdown.sha256, 'written-at': experience.writtenAt };
 }

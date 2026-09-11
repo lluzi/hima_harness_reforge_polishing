@@ -342,6 +342,8 @@ export interface RunHeadView {
 /** A whole Run as HimaGuide shows it. Every operation that answers with a Run answers with this. */
 export interface RunView {
   readonly run: RunHeadView;
+  /** Workspace declarations, not an observed runtime/tool-version inventory. */
+  readonly workspace?: { readonly design: string; readonly flowRoot: string; readonly containerName: string };
   readonly observations: readonly ObservationView[];
   readonly refusals: readonly RefusalView[];
   readonly verdicts: readonly VerdictView[];
@@ -366,13 +368,14 @@ export interface RunView {
    * The record and **not** the files. This view is composed from the ledger alone, synchronously,
    * and is re-composed every time the window's page refreshes itself — a second, on an open card —
    * so reading two files off a Site to answer it would put an ssh round trip on every render. What
-   * a face shows is composed from this same view (`experience-report.ts`), which is what the file
-   * holds; the files themselves are read back, and held against these hashes, by the two experience
-   * routes.
+   * a face shows is a current ledger preview, distinct from the saved file. Only the experience
+   * routes read the original bytes and verify these hashes; renderer upgrades may change previews.
    *
    * Absent on every Run that has not ended, and on an ended Run whose report is still owed.
    */
   readonly experience?: ExperienceView;
+  /** Why an ended Campaign has no deliverable report yet. No file is implied by this message. */
+  readonly experienceUnavailable?: string;
 }
 
 /** One file of the report as HimaGuide shows it: where it is on the Site, and what it hashes to. */
@@ -638,6 +641,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
   const experience = records.findLast((r): r is ExperienceRecord => r.type === 'experience');
   return {
     run: runHeadView(run, prepared?.packVersion, words),
+    ...(prepared === undefined ? {} : { workspace: { design: prepared.design, flowRoot: prepared.flowRoot, containerName: prepared.containerName } }),
     observations,
     refusals: records.filter((r): r is RefusalRecord => r.type === 'refusal').map(refusalView),
     verdicts: records.filter((r): r is VerdictRecord => r.type === 'verdict').map((v) => verdictView(v, byId)),
@@ -652,6 +656,11 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     decision: decision ? decisionView(decision) : null,
     // An absent key, never an undefined one: a Run whose report is not written says so by omission.
     ...(experience === undefined ? {} : { experience: experienceView(experience) }),
+    ...(experience !== undefined || !(run.status === 'cancelled' || run.status?.startsWith('ended-')) ? {} : {
+      experienceUnavailable: prepared === undefined
+        ? 'No report file can be delivered: no Campaign workspace was prepared. The execution records remain available.'
+        : 'The Campaign ended, but both report files have not been recorded as written. Check the Site or write error; restart retries an owed report.',
+    }),
   };
 }
 
@@ -1070,7 +1079,7 @@ async function experienceOperation(ops: RemoteOperations, runId: string, asMarkd
   if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
   const read = await ops.readExperience(runId);
   if (read.kind === 'none') {
-    return failure(404, 'hima/record-not-found', `run ${runId} has no experience record: a campaign's technical report is written when its run ends`);
+    return failure(404, 'hima/record-not-found', read.why ?? `run ${runId} has no experience record: a campaign's technical report is written when its run ends`);
   }
   if (read.kind === 'changed') {
     return failure(

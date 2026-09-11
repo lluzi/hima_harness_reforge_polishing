@@ -58,6 +58,7 @@ import {
   containerNameFor,
   defaultRetryAllowance,
   EXPERIENCE_DIR,
+  EXPERIENCE_SCHEMA,
   flowDirName,
   hasEnded,
   loadPack,
@@ -1582,7 +1583,7 @@ const reportWhereItBelongs = files !== undefined
 check(
   'report-on-the-site-beside-the-results',
   "The campaign's technical report is on the site under the campaign workspace, beside the results, and both files are exactly what the ledger says they are.",
-  `Both files are at \`<workspace>/${EXPERIENCE_DIR}/<runId>.md\` and \`.json\`; each was read back off the site through HimaChannel's \`cat\` — a read-only probe — and hashes to the \`sha256\` the Run's \`experience\` record states, at the byte count it states; and \`GET /hima/api/runs/<id>/experience\`, which reads them back the same way from the host and verifies both hashes itself, answers 200 with that same record and a report whose schema is \`hima-experience/1\`. The record is the claim that the files are there (D44), so a record without the files, or files that no longer hash to it, is a failure here.`,
+  `Both files are at \`<workspace>/${EXPERIENCE_DIR}/<runId>.md\` and \`.json\`; each was read back off the site through HimaChannel's \`cat\` — a read-only probe — and hashes to the \`sha256\` the Run's \`experience\` record states, at the byte count it states; and \`GET /hima/api/runs/<id>/experience\`, which reads them back the same way from the host and verifies both hashes itself, answers 200 with that same record and a report whose schema is \`${EXPERIENCE_SCHEMA}\`. The record is the claim that the files are there (D44), so a record without the files, or files that no longer hash to it, is a failure here.`,
   reportWhereItBelongs
     && reportOnSite.error === ''
     && reportOnSite.markdown?.sha256 === files?.markdown.sha256
@@ -1593,7 +1594,7 @@ check(
     && experienceAnswer !== undefined
     && experienceAnswer.experience.markdown.sha256 === files?.markdown.sha256
     && experienceAnswer.experience.json.sha256 === files?.json.sha256
-    && experienceAnswer.report.schema === 'hima-experience/1',
+    && experienceAnswer.report.schema === EXPERIENCE_SCHEMA,
   files === undefined
     ? 'the run carries no experience record'
     : `${files.markdown.path} sha256 ${files.markdown.sha256} (${String(files.markdown.bytes)} bytes); ${files.json.path} sha256 ${files.json.sha256} (${String(files.json.bytes)} bytes)`

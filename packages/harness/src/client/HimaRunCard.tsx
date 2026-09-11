@@ -523,10 +523,8 @@ function VerdictRow({ verdict }: { verdict: VerdictView }): ReactElement {
  * written (#30): where both files are on the Site, what each hashes to, a link to the Markdown as
  * the Site has it, and the report itself.
  *
- * The same section the workbench page shows, in the same words, from the same composition
- * (`experience-report.ts`): the report is a function of this very run view and of the instant the
- * record kept, so what the chat's card renders is what is in the file, and neither mount reads a
- * Site to show it.
+ * Both mounts show a current ledger preview. The saved document may use an older renderer; only
+ * the link reads and verifies its original bytes. No Site read is implied by this preview.
  */
 function ExperienceSection({ view, experience }: { view: RunView; experience: ExperienceView }): ReactElement {
   return (
@@ -675,7 +673,9 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
             <DecisionRow decision={view.decision} view={view} />
           </Section>
         )}
-      {view.experience === undefined ? null : <ExperienceSection view={view} experience={view.experience} />}
+      {view.experience === undefined
+        ? (view.experienceUnavailable === undefined ? null : <Section title={EXPERIENCE_HEADING} region="run-experience" state={{ source: 'not-written' }}><div>{view.experienceUnavailable}</div></Section>)
+        : <ExperienceSection view={view} experience={view.experience} />}
     </>
   );
 }

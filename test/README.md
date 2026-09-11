@@ -34,3 +34,9 @@ live 的控制 socket 位于本次私有 `TMPDIR`，恢复用例在删除/改写
 缺少/hash 不符的报告副本默认失败；显式 `HIMA_FIXTURES_OPTIONAL=1` 才允许相关用例 skip，不能算通过。桌面不可用与真实 Site 不可达沿用相应 skip 说明；未选择的组是“未跑”，并非“通过”或“依赖可用”。stand-in 通过只证明机制，不认证模型能力或真实 EDA 指标。
 
 PLS-01 的逐用例/逐断言迁移对账和本次结果见 [验证记录](../docs/assessment/2026-09-11/pls-01/README.md)。
+
+## 报告验证（PLS-07）
+
+报告的纯投影反例在 `experience-report.test.ts`；旧有内容、hash、取消及恢复矩阵移到 `experience.host.test.ts`，通过同一真实 Host/HTTP 及本地作业验证。`experience-files.test.ts` 补充 v1 文件原字节兼容、无 workspace 和两文件写入间故障的真实 Host 检查。它们归入 local。
+
+`experience.test.ts` 保留一个真实窗口报告打开用例，验证预览来源、已记录文件 hash、报告关键结论和保存文件入口。报告正文的组合不再重复启动窗口。逐项迁移及本次结果见 [PLS-07 验证](../docs/assessment/2026-09-11/pls-07/README.md)。

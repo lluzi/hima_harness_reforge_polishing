@@ -63,7 +63,7 @@ export type WriteExperienceResult =
 export type ReadExperienceResult =
   | { readonly kind: 'read'; readonly record: ExperienceRecord; readonly markdown: string; readonly json: ExperienceJson }
   /** This Run has no `experience` record: it has not ended, or its report is still to be written. */
-  | { readonly kind: 'none' }
+  | { readonly kind: 'none'; readonly why?: string }
   /** The file on the Site is not the one the record hashed: somebody has changed it since. */
   | { readonly kind: 'changed'; readonly file: 'markdown' | 'json'; readonly path: string; readonly recorded: string; readonly found: string }
   /** The Site answered, and what it said was that the file the record names cannot be read. */
@@ -196,18 +196,28 @@ async function refused(deps: ExperienceDeps, runId: string, path: string, reason
 export async function readExperience(deps: ExperienceDeps, runId: string): Promise<ReadExperienceResult> {
   const run = existingRun(deps.ledger, runId);
   const record = experienceOf(deps.ledger, runId);
-  if (record === undefined) return { kind: 'none' };
+  if (record === undefined) return { kind: 'none', why: runView(deps.ledger, run).experienceUnavailable ?? `run ${runId} has not ended and has no saved report` };
   const site = loadSite(deps.sitesDir, run.siteId);
   const channel = channelFor(site);
   const markdown = await readFile(site, channel, 'markdown', record.markdown);
   if ('problem' in markdown) return markdown.problem;
   const json = await readFile(site, channel, 'json', record.json);
   if ('problem' in json) return json.problem;
+  let document: ExperienceJson;
+  try {
+    const parsed = JSON.parse(Buffer.from(json.bytes).toString('utf8'));
+    if (parsed === null || typeof parsed !== 'object' || !['hima-experience/1', 'hima-experience/2'].includes(parsed.schema)
+      || parsed.runId !== runId || parsed.writtenAt !== record.writtenAt) {
+      throw new Error('unsupported report schema or report identity does not match the recorded Run and write time');
+    }
+    document = parsed as ExperienceJson;
+  } catch (error) {
+    return { kind: 'unreadable', file: 'json', path: record.json.path, recorded: record.json.sha256, why: `the verified bytes are not a supported report: ${(error as Error).message}` };
+  }
   return {
-    kind: 'read',
-    record,
+    kind: 'read', record,
     markdown: Buffer.from(markdown.bytes).toString('utf8'),
-    json: JSON.parse(Buffer.from(json.bytes).toString('utf8')) as ExperienceJson,
+    json: document,
   };
 }
 

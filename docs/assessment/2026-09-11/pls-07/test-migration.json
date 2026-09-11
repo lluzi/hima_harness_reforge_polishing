@@ -1,0 +1,81 @@
+{
+  "baseline": "a9228de32b941f2658491c7ff32cba56c3542598",
+  "oldCases": 9,
+  "hostCases": 9,
+  "retainedWindowCases": 1,
+  "mapping": [
+    {
+      "oldFile": "test/contract/experience.test.ts",
+      "oldCase": "a Campaign that met its goal leaves both report files on the site, with their hashes on the ledger and every number the card showed in the json",
+      "now": [
+        "test/contract/experience.host.test.ts",
+        "test/contract/experience.test.ts"
+      ],
+      "notes": "HTTP/file/cancel/restart assertions retained at real Host; window-only report-open and IPC checks retained in the single L3 case."
+    },
+    {
+      "oldFile": "test/contract/experience.test.ts",
+      "oldCase": "a Campaign that stopped learning writes the convergence rule into both files as the reason it ended",
+      "now": [
+        "test/contract/experience.host.test.ts"
+      ],
+      "notes": "HTTP/file/cancel/restart assertions retained at real Host; window-only report-open and IPC checks retained in the single L3 case."
+    },
+    {
+      "oldFile": "test/contract/experience.test.ts",
+      "oldCase": "a Campaign a Budget meter ended names that meter in its report, whichever meter it was",
+      "now": [
+        "test/contract/experience.host.test.ts"
+      ],
+      "notes": "HTTP/file/cancel/restart assertions retained at real Host; window-only report-open and IPC checks retained in the single L3 case."
+    },
+    {
+      "oldFile": "test/contract/experience.test.ts",
+      "oldCase": "a Campaign a person stopped writes its report at the cancel, with what was observed to stop as the reason",
+      "now": [
+        "test/contract/experience.host.test.ts"
+      ],
+      "notes": "HTTP/file/cancel/restart assertions retained at real Host; window-only report-open and IPC checks retained in the single L3 case."
+    },
+    {
+      "oldFile": "test/contract/experience.test.ts",
+      "oldCase": "a second host on the same home re-serves the report it finds rather than writing a second one",
+      "now": [
+        "test/contract/experience.host.test.ts"
+      ],
+      "notes": "HTTP/file/cancel/restart assertions retained at real Host; window-only report-open and IPC checks retained in the single L3 case."
+    },
+    {
+      "oldFile": "test/contract/experience.test.ts",
+      "oldCase": "the report is served as markdown to a session that has one, refused to a caller with none, refused outright once the file has changed under it, and answered as a site fault once the file is gone",
+      "now": [
+        "test/contract/experience.host.test.ts"
+      ],
+      "notes": "HTTP/file/cancel/restart assertions retained at real Host; window-only report-open and IPC checks retained in the single L3 case."
+    },
+    {
+      "oldFile": "test/contract/experience.test.ts",
+      "oldCase": "a run whose ending stood while the site refused the report is finished by the next host, which writes it from records that have not moved",
+      "now": [
+        "test/contract/experience.host.test.ts"
+      ],
+      "notes": "HTTP/file/cancel/restart assertions retained at real Host; window-only report-open and IPC checks retained in the single L3 case."
+    },
+    {
+      "oldFile": "test/contract/experience.test.ts",
+      "oldCase": "/hima status names the report's two files on a Campaign that has ended",
+      "now": [
+        "test/contract/experience.host.test.ts"
+      ],
+      "notes": "HTTP/file/cancel/restart assertions retained at real Host; window-only report-open and IPC checks retained in the single L3 case."
+    },
+    {
+      "oldFile": "test/contract/experience.test.ts",
+      "oldCase": "a Campaign stopped while it waited on a person carries its Hard blocker into the report, log tail and all",
+      "now": [
+        "test/contract/experience.host.test.ts"
+      ],
+      "notes": "HTTP/file/cancel/restart assertions retained at real Host; window-only report-open and IPC checks retained in the single L3 case."
+    }
+  ]
+}

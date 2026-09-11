@@ -1,0 +1,53 @@
+{
+  "baseline": "a9228de32b941f2658491c7ff32cba56c3542598",
+  "prototypeImport": "b4ac9d9360ad6da68b5fd2824621ba6edab7408b",
+  "node": "v24.20.0",
+  "pnpm": "11.25.0",
+  "buildExitCode": 0,
+  "typecheckExitCode": 0,
+  "seamsExitCode": 0,
+  "inventoryExitCode": 0,
+  "local": {
+    "pass": 19,
+    "fail": 0,
+    "skip": 0,
+    "commandExitCode": 0,
+    "elapsedSeconds": 38.423,
+    "sshAttempts": 0
+  },
+  "desktop": {
+    "pass": 1,
+    "fail": 0,
+    "skip": 0,
+    "commandExitCode": 0,
+    "elapsedSeconds": 12.119,
+    "sshAttempts": 0
+  },
+  "desktopScopeNote": "The single window check preceded the final pure report check requiring every peer in a fork to support Goal. UI and the single-branch goal path did not change; L1 and real Host L2 were rerun after that fix.",
+  "modelCalls": 0,
+  "remoteSiteJobs": 0,
+  "EDAJobs": 0,
+  "notRun": [
+    "remaining local files",
+    "other 10 desktop files",
+    "live-site",
+    "model",
+    "full pilot/acceptance-step3"
+  ],
+  "sourceSha256": {
+    "packages/harness/src/card-labels.ts": "56446b09409defc311852ae5bf0a5459a42012653cae5e1a99cbd588e28e8a6e",
+    "packages/harness/src/client/HimaRunCard.tsx": "2d549bbf9440258a36873a1c8e3766fd07b351a9dfa1b50e1097e8bdf39378df",
+    "packages/harness/src/experience-report.ts": "6ac7b82296caf9de5bfcefe370016e4f7dc8d3a588f3d1b5b003fb89930b8ae5",
+    "packages/harness/src/experience.ts": "68689dcea931933388d73632f26cc2ed15395e8e311227329366837c594e14df",
+    "packages/harness/src/generations.ts": "2f53f38d1e5a2b640346e2dbeb3c08f3e297dc30068abf70fa89d84f651890db",
+    "packages/harness/src/remote.ts": "05dede4c038c93a9481972d12e3b489c04edd4f47b5dc8ce25cd6c974017fd96",
+    "packages/harness/src/workbench.ts": "55c2e468d620b1d789f3a3b8e43aa4484e13052516793852d3db69ea07f619f8",
+    "scripts/acceptance-step3.ts": "3894f393c41b448867d226596aceb45812fe3453967ee611c971c4eedfb2c0a1",
+    "test/README.md": "7257a06205124681eec6fec6405b446e9bdb6944316693c6c39da79df783a3f5",
+    "test/contract-groups.json": "7ac21357fb3bccefd1812bd161492d873bc125b74e0108e8a0b69f3341f13f15",
+    "test/contract/experience-files.test.ts": "5c895d236de964c1d318abed5acb4f10d2a9f94cfdb93321411aac90d9cf3d3b",
+    "test/contract/experience-report.test.ts": "40bda16a421dfa7dad89adf40bbe07bef8aebbf2ac0118bd662c6e30d19fe4bd",
+    "test/contract/experience.host.test.ts": "5ead1b18ba965b7519e145aa3c0c50113305e68ecd9853454c720d9b05ca9eba",
+    "test/contract/experience.test.ts": "b97bfc0f31d3ce1fbef8a4c2aa5168ee20a303e960a3759f3f7c289a899b96be"
+  }
+}

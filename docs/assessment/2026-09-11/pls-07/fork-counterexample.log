@@ -1,0 +1,73 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/experience-report.test.ts
+local: 1 selected; 21 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a goal claim requires completed cited evidence; requested period is not a measured Fmax
+ok 1 - a goal claim requires completed cited evidence; requested period is not a measured Fmax
+  ---
+  duration_ms: 1.680833
+  type: 'test'
+  ...
+# Subtest: a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+ok 2 - a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+  ---
+  duration_ms: 0.164625
+  type: 'test'
+  ...
+# Subtest: cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+ok 3 - cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+  ---
+  duration_ms: 0.238584
+  type: 'test'
+  ...
+# Subtest: missing, unresolved, stale and undetermined citations cannot establish a definite result
+ok 4 - missing, unresolved, stale and undetermined citations cannot establish a definite result
+  ---
+  duration_ms: 0.29825
+  type: 'test'
+  ...
+# Subtest: budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+ok 5 - budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+  ---
+  duration_ms: 0.727416
+  type: 'test'
+  ...
+# Subtest: no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+ok 6 - no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+  ---
+  duration_ms: 0.17
+  type: 'test'
+  ...
+# Subtest: fork branches retain separate observations and partial branches do not inherit a completed peer
+not ok 7 - fork branches retain separate observations and partial branches do not inherit a completed peer
+  ---
+  duration_ms: 0.469417
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls07-worktree/test/contract/experience-report.test.ts:103:1'
+  failureType: 'testCodeFailure'
+  error: 'one completed branch cannot certify a goal while a required peer is incomplete'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'goal-supported'
+  actual: 'goal-supported'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls07-worktree/test/contract/experience-report.test.ts:115:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1397:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+    Test.postRun (node:internal/test_runner/test:1537:19)
+    Test.run (node:internal/test_runner/test:1462:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 6
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 102.783958
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 0.127 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

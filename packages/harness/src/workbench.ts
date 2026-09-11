@@ -1065,11 +1065,8 @@ function verdictBlock(verdict: VerdictView): string {
  * The Campaign's technical report, at the end of the evidence (#30): where it is on the Site, what
  * each file hashes to, a link to the Markdown as the Site has it, and the report itself.
  *
- * The report shown here is composed from this very run view, which is what is in the file: an ended
- * Run's records are final and the instant the document states is the record's own `writtenAt`, so
- * this is the same document byte for byte (`experience-report.ts` says why it is composed rather
- * than fetched off the Site on every render). The link is how a person gets the file itself, read
- * back through the route and held against its hash on the way.
+ * The text is a current ledger preview. The saved document may use an older renderer. Only the
+ * link reads the original file and verifies its recorded hash, without rewriting historical bytes.
  */
 function experienceBlock(view: RunView, experience: ExperienceView): string {
   return '<div class="block">'
@@ -1134,7 +1131,7 @@ function renderCard(view: RunView): string {
     // Last, because it is the whole Campaign said at once and a person reads it after the records it
     // was composed from — and only on a Run that has one, which is a Run that has ended (#30).
     + (view.experience === undefined
-      ? ''
+      ? (view.experienceUnavailable === undefined ? '' : drawer(EXPERIENCE_HEADING, note(view.experienceUnavailable), { name: 'run-experience', state: { source: 'not-written' } }))
       : drawer(EXPERIENCE_HEADING, experienceBlock(view, view.experience), { name: 'run-experience', state: experienceState(view.experience) }));
   // The band's own head carries the plot's keys beside the section's name: a legend is a line of
   // labels, and a line of labels does not need a line of its own.
