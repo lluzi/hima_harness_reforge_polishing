@@ -19,7 +19,7 @@ pnpm run test:local --files test/contract/test-entry.test.ts test/contract/boot.
 
 后两组按分级政策单独选择。不要使用 `test/contract/**/*.test.ts` 全量 glob，也不要用 `--test-name-pattern` 当作外部依赖隔离手段：模块注册发生在名称过滤之前。live 文件另有显式选择检查，误用直接 glob 会在探测前失败。
 
-使用 `--files <path>...` 选择相关子集，例如 `pnpm run test:desktop --files test/contract/honest-standin.test.ts`。名称必须精确属于该组，空选择、路径丢失、重复或跨组选取都会在执行前失败。`--list --files ...` 只预览子集。入口输出选中/未选中文件数、TAP 的 pass/fail/skip、耗时及命令退出码；未选中的组和文件是未跑。尚无真实模型或完整 pilot 命令，不提供假通过的空入口。
+使用 `--files <path>...` 选择相关子集，例如 `pnpm run test:desktop --files test/contract/honest-standin-window.test.ts`。名称必须精确属于该组，空选择、路径丢失、重复或跨组选取都会在执行前失败。`--list --files ...` 只预览子集。入口输出选中/未选中文件数、TAP 的 pass/fail/skip、耗时及命令退出码；未选中的组和文件是未跑。尚无真实模型或完整 pilot 命令，不提供假通过的空入口。
 
 入口在任何导入/执行前对所有 `.test.ts/.test.mjs` 等测试文件核对清单。新增文件未归类、清单路径丢失或重复归类都会失败，不能靠文件名约定静默漏测。`--check` 与 `--list` 均不执行测试。
 

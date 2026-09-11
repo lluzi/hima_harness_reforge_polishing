@@ -27,7 +27,7 @@ pnpm run check:local
 ```sh
 pnpm run build
 pnpm run test:local --files test/contract/test-entry.test.ts test/contract/boot.test.ts
-pnpm run test:desktop --files test/contract/honest-standin.test.ts
+pnpm run test:desktop --files test/contract/honest-standin-window.test.ts
 ```
 
 `test:local`、`test:desktop` 和 `test:live:site` 只运行选定组，不隐式构建。`test:contract` 是 `test:local` 的兼容入口。`--files` 必须明确列出属于该组的现有文件；不传时执行整组，空选择或跨组选取会失败。完整 local 与相关短子集分别计时，不能把子集通过当成全组通过。

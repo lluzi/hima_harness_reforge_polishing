@@ -19,18 +19,17 @@
 // violated at, and against one it can reach its goal-met clause ends the Campaign happily. The third
 // is the other half of #54's worked example, and the only test in the suite that reaches that clause.
 //
-// Driven through the desktop shell in driver mode (D42, ADR-0004), the one seam a step-3 test boots
-// through: the Runs are started over the routes with the session the shell established, and what is
-// asserted is what the ledger holds and what the page shows.
+// PLS-03: the same three Campaigns run through the real HTTP Host and local Jobs.
+// Window assertions remain in honest-standin-window.test.ts; no engine or reader is replaced.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bootDriver } from './support/driver.ts';
-import { api } from './support/hima-api.ts';
+import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
+import { localHome } from './support/fabric.ts';
+import { api, openSession } from './support/hima-api.ts';
 import { installOverConstraining, packsDirOf, timingProbePackId } from './support/pack.ts';
-import type { BootedDriver } from './support/driver.ts';
 import type { RunView } from '@hima/harness';
 
-/** One second of synthesis per generation: this test runs eleven of them and none of its subjects is
+/** One second of synthesis per generation: this test runs thirteen of them and none of its subjects is
  *  what a Job does while it sleeps. */
 const SYNTH_SECONDS = 1;
 
@@ -48,7 +47,7 @@ const REACHABLE_NS = 2.25;
 
 /** Start one Campaign and wait for it, as the window's own start does: the route answers with the
  *  whole run view once the Run has ended. */
-async function campaign(d: BootedDriver, cookie: string, pack: string, host: { readonly url: string }, targetNs = UNREACHABLE_NS): Promise<RunView> {
+async function campaign(cookie: string, pack: string, host: { readonly url: string }, targetNs = UNREACHABLE_NS): Promise<RunView> {
   const started = await api(host, cookie, '/hima/api/runs', {
     method: 'POST',
     body: JSON.stringify({ pack, site: 'local', goal: { target_period_ns: targetNs }, strategy: { periodNs: START_NS } }),
@@ -60,19 +59,20 @@ async function campaign(d: BootedDriver, cookie: string, pack: string, host: { r
 }
 
 test('on a stand-in that reports no margin for a met period, timing-push loosens by its guard band every generation and ends at the limit, while over-constraining-push converges below the achievable period and ends goal-met when the goal is reachable', async (t) => {
-  const d = await bootDriver(t, { home: 'hima', sleepSeconds: SYNTH_SECONDS });
-  if (!d) return;
+  const local = await localHome(t, { sleepSeconds: SYNTH_SECONDS });
+  if (!local) return;
+  const { h } = local;
+  let host: BootedHost | undefined;
   try {
-    const host = await d.host();
-    assert.ok(host.ok, JSON.stringify(host));
-    const cookie = await d.cookie();
+    host = await bootHimaHost(h);
+    const cookie = await openSession(host);
 
     // The reference pack, unchanged: the D45 trace. Every generation meets the period it was asked
     // for, so every generation reads a slack of exactly 0.00 and the push clause computes
     // `period − 0 + 0.05` — one guard band looser than the period that just passed. Nothing ever
     // violates, nothing ever stops moving, and the Campaign runs out the six generations the pack
     // allows it.
-    const pushed = await campaign(d, cookie, timingProbePackId, host);
+    const pushed = await campaign(cookie, timingProbePackId, host);
     assert.deepEqual(
       pushed.generations.map((r) => r.observedPeriodNs),
       [2.3, 2.35, 2.4, 2.45, 2.5, 2.55],
@@ -92,8 +92,8 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
     // achievable period by violating. 2.15 misses by 0.05, which says the design closes at 2.20, so
     // it asks for 2.15 again — and two generations asking and measuring the same period is what the
     // pack calls having stopped learning.
-    const honest = await installOverConstraining(packsDirOf(d.home), 'over-constraining-probe');
-    const converged = await campaign(d, cookie, honest, host);
+    const honest = await installOverConstraining(packsDirOf(h), 'over-constraining-probe');
+    const converged = await campaign(cookie, honest, host);
     assert.deepEqual(
       converged.generations.map((r) => r.observedPeriodNs),
       [2.3, 2.25, 2.2, 2.15, 2.15],
@@ -122,16 +122,7 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
       `the generation it converged on is the one that violated: ${JSON.stringify(last.verdicts)}`,
     );
 
-    const opened = await d.open(`/hima/?run=${encodeURIComponent(converged.run.id)}`);
-    assert.ok(opened.ok, JSON.stringify(opened));
-    const status = await d.wait('run-status', 'ended — converged');
-    assert.ok(status.ok, `wait run-status: ${JSON.stringify(status)}`);
-    const decision = await d.read('run-decision');
-    assert.ok(decision.ok, JSON.stringify(decision));
-    assert.ok(
-      decision.text.includes('converged: period moved by less than 0.05 over 1 generation, at 2.15 then 2.15'),
-      `the card says the rule in words, at the period it settled on: ${decision.text}`,
-    );
+    // The real window checks for this decision live in honest-standin-window.test.ts.
     // The third Campaign, on the same flow and the same chooser, with the one thing changed that the
     // chooser's remaining clause turns on: a Goal this design can actually reach. Generation one asks
     // for 2.30, which the flow meets — constraint PASS — and which misses a 2.25 goal, so the first
@@ -139,7 +130,7 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
     // meets 2.25 and *is* 2.25, so both verdicts pass, and `{ constraint: PASS, goal: PASS }` is the
     // clause that has nothing left to ask for: the decision is that the Goal is met, and the Campaign
     // ends there rather than exploring on.
-    const met = await campaign(d, cookie, honest, host, REACHABLE_NS);
+    const met = await campaign(cookie, honest, host, REACHABLE_NS);
     assert.equal(met.run.status, 'ended-goal-met', `the goal-met clause ended it: ${JSON.stringify(met.run)}`);
     assert.equal(met.run.generation, 2, 'at the second generation, one step in from where it started');
     assert.deepEqual(
@@ -155,8 +146,7 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
     assert.ok(met.decision, 'and the ending is a decision, on record');
     assert.deepEqual(met.decision.chosen, { goalMet: true }, `the clause's own word, and no next Strategy: ${JSON.stringify(met.decision.chosen)}`);
 
-    assert.deepEqual(d.unexpectedStdout(), []);
   } finally {
-    await d.dispose();
+    try { if (host) await host.stop(); } finally { await h.dispose(); }
   }
 });

@@ -1,0 +1,3 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/honest-standin.test.ts
+select distinct files declared in local: test/contract/honest-standin.test.ts
+[ELIFECYCLE] Command failed with exit code 1.

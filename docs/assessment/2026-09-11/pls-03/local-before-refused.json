@@ -1,0 +1,13 @@
+{
+  "command": [
+    "pnpm",
+    "run",
+    "test:local",
+    "--files",
+    "test/contract/honest-standin.test.ts"
+  ],
+  "cwd": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls02-validation/clean",
+  "exitCode": 1,
+  "seconds": 0.324,
+  "electronBoots": 0
+}
