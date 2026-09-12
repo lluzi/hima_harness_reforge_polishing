@@ -221,33 +221,64 @@ test('mid-write failure and process death cannot publish a partial import or alt
   if (first.type === 'observation') first.reader.version = 'x'.repeat(2 * 1024 * 1024);
   await writeFile(source, JSON.stringify(changed));
   const before = await readFile(source);
-  // Kill this test's private child as soon as it creates staging, before publishing the home.
-  // Observe real filesystem/process events; no alternate storage engine or production failpoint.
-  let sawStage = false;
-  const child = spawn(process.execPath, [path.join(repoRoot, 'packages/desktop/lib/hima-home.js'),
-    '--import-ledger', source, '--home', home], { stdio: 'ignore' });
+  // Filesystem notifications are asynchronous: publication can finish before a staging event is
+  // delivered, and the temporary name may never be observed. Keep only this private test process
+  // alive after invoking the unchanged CLI module so SIGKILL remains observable even in that case.
+  let sawImportOutput = false;
   const watcher = watch(path.dirname(home), (_event, filename) => {
-    if (String(filename).startsWith('.hima-ledger-import-')) { sawStage = true; child.kill('SIGKILL'); }
+    if (String(filename).startsWith('.hima-ledger-import-') || filename === path.basename(home)) {
+      sawImportOutput = true;
+      child.kill('SIGKILL');
+    }
   });
+  const child = spawn(process.execPath, ['--input-type=module', '--eval',
+    'setInterval(() => {}, 1000); await import((await import("node:url")).pathToFileURL(process.argv[1]).href);',
+    path.join(repoRoot, 'packages/desktop/lib/hima-home.js'), '--import-ledger', source, '--home', home,
+  ], { stdio: 'ignore' });
   try {
     const signal = await new Promise<NodeJS.Signals | null>((resolve, reject) => {
-      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('import staging was not observed')); }, 15_000);
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('import output was not observed')); }, 15_000);
       child.once('error', (error) => { clearTimeout(timer); reject(error); });
       child.once('close', (_code, signal) => { clearTimeout(timer); resolve(signal); });
     });
-    assert.ok(sawStage);
+    assert.ok(sawImportOutput);
     assert.equal(signal, 'SIGKILL');
   } finally { watcher.close(); }
-  await assert.rejects(stat(home), { code: 'ENOENT' });
+  const published = await stat(home).then((found) => {
+    assert.ok(found.isDirectory());
+    return true;
+  }, (error: NodeJS.ErrnoException) => {
+    assert.equal(error.code, 'ENOENT');
+    return false;
+  });
+  if (published) {
+    // The rename may win the race. Every file and every source fact must then be present; an
+    // existing directory, a parseable Ledger alone, or an unverified receipt is not a pass.
+    const imported = await readFile(storedAt(home));
+    assert.deepEqual(JSON.parse(imported.toString()), { ...changed, unit: { name: 'hima_ledger', version: 20 } });
+    assert.deepEqual(await readFile(path.join(home, 'ledger-import/source-v19.json')), before);
+    const receipt = JSON.parse(await readFile(path.join(home, 'ledger-import/receipt.json'), 'utf8'));
+    assert.match(receipt.importedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(receipt, {
+      format: 'hima-ledger-import-v1',
+      source: { path: source, version: 19, sha256: hash(before), bytes: before.length, backup: 'ledger-import/source-v19.json' },
+      target: { version: 20, sha256: hash(imported), file: 'storages/hima_ledger.json' },
+      importedAt: receipt.importedAt, runs: Object.keys(changed.tables.runs).length,
+      records: Object.keys(changed.tables.records).length, ownership: 'unchanged-unowned',
+    });
+    assert.deepEqual((await readdir(home)).sort(), ['ledger-import', 'storages']);
+  }
   assert.deepEqual(await readFile(source), before);
   // A real OS file-size limit returns EFBIG from the backup write. The caught-failure path must
-  // clean only its own staging, preserving the interrupted process's unpublished remnants.
+  // clean only its own staging. A separate absent target proves that path even if publication won
+  // the kill race, while preserving the earlier run's complete home or unpublished remnants.
+  const writeErrorHome = path.join(path.dirname(home), 'write-error-home');
   const held = (await readdir(path.dirname(home))).sort();
   await assert.rejects(execute('/bin/sh', ['-c', 'ulimit -f 1; exec "$@"', 'import-test', process.execPath,
-    path.join(repoRoot, 'packages/desktop/lib/hima-home.js'), '--import-ledger', source, '--home', home,
+    path.join(repoRoot, 'packages/desktop/lib/hima-home.js'), '--import-ledger', source, '--home', writeErrorHome,
   ], { timeout: 15_000 }), /EFBIG/);
   assert.deepEqual((await readdir(path.dirname(home))).sort(), held);
-  await assert.rejects(stat(home), { code: 'ENOENT' });
+  await assert.rejects(stat(writeErrorHome), { code: 'ENOENT' });
   assert.deepEqual(await readFile(source), before);
 });
 
