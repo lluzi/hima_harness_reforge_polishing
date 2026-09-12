@@ -11,7 +11,7 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 - [代码导入清单](docs/assessment/2026-09-11/source-import.json)
 - [Prototype 的版本化参考材料](docs/upstream/README.md)
 
-2026-09-12：PLS-20 已在独立集成分支接收固定快照 `ca47fa0`，保留统一工作区 UI-02 和 PLS-01～07。处理记录与本版本独立验证见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。后续先做 PLS-21/22/13，再接 PLS-19；当前自动 drive/Workshop 路径是接收基线，同一对话 Agent 接管执行尚未实施。
+2026-09-12：PLS-20 已接收固定快照 `ca47fa0` 并合入 main，保留统一工作区 UI-02 和 PLS-01～07。处理记录与本版本独立验证见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。后续先做 PLS-21/22/13，再接 PLS-19；当前自动 drive/Workshop 路径是接收基线，同一对话 Agent 接管执行尚未实施。
 
 ## 本地准备
 

@@ -1,6 +1,6 @@
 # Step 4 接收与接续开发
 
-日期：2026-09-12。状态：PLS-20 已在独立分支接收源码，独立验证见 [交付记录](../../assessment/2026-09-12/pls-20/README.md)。以已交付 PLS/UI 为起点，不重开已完成任务。GitHub 实时状态以对应 Issue 为准。
+日期：2026-09-12。状态：PLS-20 已完成并合入 main，独立验证见 [交付记录](../../assessment/2026-09-12/pls-20/README.md)。以已交付 PLS/UI 为起点，不重开已完成任务。GitHub 实时状态以对应 Issue 为准。
 
 [完整规格](spec.md) · [来源及重叠清单](baseline.json) · [上游任务承接](upstream-disposition.md) · [执行协议](../polishing-v1/node-intervention.md) · [父规格 #1](https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
@@ -8,7 +8,7 @@
 
 | 任务 | GitHub | 依赖 | 完成点 |
 | --- | --- | --- | --- |
-| [PLS-20：整合 ca47fa0 快照并保留已交付的 PLS 与统一工作区](../polishing-v1/tasks/PLS-20.md) | [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23) | [PLS-02 / #3](https://github.com/lluzi/hima_harness_reforge_polishing/issues/3), [PLS-04 / #5](https://github.com/lluzi/hima_harness_reforge_polishing/issues/5), [PLS-05 / #6](https://github.com/lluzi/hima_harness_reforge_polishing/issues/6), [PLS-06 / #7](https://github.com/lluzi/hima_harness_reforge_polishing/issues/7), [PLS-07 / #8](https://github.com/lluzi/hima_harness_reforge_polishing/issues/8), [UI-02 / #21](https://github.com/lluzi/hima_harness_reforge_polishing/issues/21) | ready-for-agent；不解除依赖/资源门槛 |
+| [PLS-20：整合 ca47fa0 快照并保留已交付的 PLS 与统一工作区](../polishing-v1/tasks/PLS-20.md) | [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23) | [PLS-02 / #3](https://github.com/lluzi/hima_harness_reforge_polishing/issues/3), [PLS-04 / #5](https://github.com/lluzi/hima_harness_reforge_polishing/issues/5), [PLS-05 / #6](https://github.com/lluzi/hima_harness_reforge_polishing/issues/6), [PLS-06 / #7](https://github.com/lluzi/hima_harness_reforge_polishing/issues/7), [PLS-07 / #8](https://github.com/lluzi/hima_harness_reforge_polishing/issues/8), [UI-02 / #21](https://github.com/lluzi/hima_harness_reforge_polishing/issues/21) | 已完成；#23 closed |
 | [PLS-21：打通正式 Pack 的 Goal 与参数声明并约束 Job 启动输入](../polishing-v1/tasks/PLS-21.md) | [PLS-21 / #24](https://github.com/lluzi/hima_harness_reforge_polishing/issues/24) | [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23) | ready-for-agent；不解除依赖/资源门槛 |
 | [PLS-22：让 Pack 编写流程生成可执行 Workshop 并在安装环境独立完成](../polishing-v1/tasks/PLS-22.md) | [PLS-22 / #25](https://github.com/lluzi/hima_harness_reforge_polishing/issues/25) | [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23) | ready-for-agent；不解除依赖/资源门槛 |
 | [PLS-23：通过编写流程交付 AES 的真实 Fmax probe Pack](../polishing-v1/tasks/PLS-23.md) | [PLS-23 / #26](https://github.com/lluzi/hima_harness_reforge_polishing/issues/26) | [PLS-19 / #22](https://github.com/lluzi/hima_harness_reforge_polishing/issues/22), [PLS-21 / #24](https://github.com/lluzi/hima_harness_reforge_polishing/issues/24), [PLS-22 / #25](https://github.com/lluzi/hima_harness_reforge_polishing/issues/25), [PLS-13 / #14](https://github.com/lluzi/hima_harness_reforge_polishing/issues/14) | ready-for-agent；不解除依赖/资源门槛 |
@@ -32,7 +32,7 @@
 
 PLS-20 → PLS-21/22/13 → PLS-19 → PLS-23/24 → PLS-08/09 → PLS-25；增长、有效性和资产工作按表中依赖穿插，PLS-18 汇总完整 DTCO，PLS-26 真人验收。并行只适用于互不覆盖文件与已明确接口的工作，不同时改 Pack/注册/Ledger 等热点。
 
-PLS-01～07 与 UI-02 仍为已完成。本轮新增 7 项、修订 12 项后续任务；不把上游所有重构建议都列为 pilot 前置。PLS-20 验证及 Git 同步完成后，下一开发前沿为 PLS-21、PLS-22、PLS-13。
+PLS-01～07 与 UI-02 仍为已完成。本轮新增 7 项、修订 12 项后续任务；不把上游所有重构建议都列为 pilot 前置。PLS-20 验证及 Git 同步已完成，下一开发前沿为 PLS-21、PLS-22、PLS-13。
 
 ## 规格发布验证
 

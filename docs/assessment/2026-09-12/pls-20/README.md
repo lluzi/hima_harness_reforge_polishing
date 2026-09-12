@@ -1,6 +1,6 @@
 # PLS-20：Step 4 快照整合
 
-状态：代码、分级验证与独立审查已完成；Git 提交与同步见 [交付记录](delivery.json)。汇总见 [results.json](results.json)，全部失败和定点复验见 [attempts.json](attempts.json)。
+状态：代码、分级验证、独立审查和 Git 同步均已完成。实现提交 `26d3810` 已合入 main，#23 已关闭；同步证据见 [交付记录](delivery.json)。汇总见 [results.json](results.json)，全部失败和定点复验见 [attempts.json](attempts.json)。
 
 在已交付 PLS-01～07 / UI-02 上接收 `ca47fa0` 的 Pack-local 数据、Model moment、Workshop、九阶段 stand-in、五阶段作者流程与 release 机制。正确的默认 Pack v2 方法、预检、重复恢复保护、诚实报告和原生对话旁的统一工作区保留。当前执行方式仍是接收基线；同一对话 Agent 的执行主导权属于 PLS-19，本切片没有提前实施。
 

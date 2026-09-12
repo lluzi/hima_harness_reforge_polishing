@@ -154,7 +154,8 @@
       "UI-02"
     ],
     "triage": "ready-for-agent",
-    "taskFile": "docs/specs/polishing-v1/tasks/PLS-20.md"
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-20.md",
+    "state": "closed"
   },
   {
     "id": "PLS-21",

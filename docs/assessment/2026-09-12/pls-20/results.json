@@ -79,11 +79,12 @@
     "changedPaths": [],
     "sourceWritesByThisTask": 0
   },
-  "delivery": "pending commit and verified push; tracked separately in delivery.json",
+  "delivery": "Implementation committed and branch/main remote SHA verified; see delivery.json.",
   "limits": [
     "Stand-in/replay mechanisms do not establish real DTCO research quality or Fmax improvement.",
     "Old Ledger 14 homes are refused by version gate 19; no data migration.",
     "Early diagnostic Host counts were not instrumented; final local and all Desktop/model launch counts are recorded.",
     "Individual model API request and token counts were not measured."
-  ]
+  ],
+  "implementationCommit": "26d38105188bfe49b05f1184b540480c86d62635"
 }

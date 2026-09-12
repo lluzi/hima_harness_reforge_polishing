@@ -1,4 +1,13 @@
 {
-  "status": "pending commit and push",
-  "productIdentity": "881dcaa8af9f9341674761e8c7b035989307ad29af5d7a616beec33ae73f6313"
+  "schema": "hima-pls20-delivery/1",
+  "status": "complete",
+  "implementationCommit": "26d38105188bfe49b05f1184b540480c86d62635",
+  "validatedProductIdentity": "881dcaa8af9f9341674761e8c7b035989307ad29af5d7a616beec33ae73f6313",
+  "verifiedAt": "2026-09-12T15:26:45.879761+00:00",
+  "workingBranch": "codex/pls20-step4-integration",
+  "workingBranchRemoteSHA": "26d38105188bfe49b05f1184b540480c86d62635",
+  "mainRemoteSHAAtImplementationDelivery": "26d38105188bfe49b05f1184b540480c86d62635",
+  "issue": 23,
+  "issueState": "CLOSED",
+  "laterDocumentationCommits": "Delivery metadata may be committed after this SHA; they do not change the validated implementation."
 }
