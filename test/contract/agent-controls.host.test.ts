@@ -209,7 +209,7 @@ test('hard deadline stops an existing long Job and records the time box as the c
 });
 
 test('an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives', async (t) => {
-  const home = await localHome(t, { sleepSeconds: 8 });
+  const home = await localHome(t, { sleepSeconds: 60 });
   assert.ok(home);
   const host = await bootInProcess(home.h);
   const savedPath = process.env.PATH!;
@@ -217,21 +217,18 @@ test('an unknown launch remains fenced and truthfully uncertain when the hard de
   assert.ok(realTmux);
   let runId: string | undefined;
   try {
-    const owner = await createRootAgent(host.ctx, home.h.workspace);
-    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, timeBoxMs: 1500, ownerSessionId: String(owner.id) });
-    assert.equal(started.kind, 'ran');
-    if (started.kind !== 'ran') return;
-    runId = started.run.id;
-    const begun = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0, requestId: 'unknown-begin', action: 'begin', nodeId: started.run.currentNode });
     const bin = path.join(home.h.home, 'lost-launch-bin');
     const launched = path.join(home.h.home, 'launch-was-dispatched');
+    const delayed = path.join(home.h.home, 'prelaunch-probe-delayed');
+    const panePid = path.join(home.h.home, 'actual-pane-pid');
     const quoted = (word: string) => "'" + word.replaceAll("'", "'\\''") + "'";
     await mkdir(bin);
-    // The real tmux server starts the private Job, but the acknowledgement is lost and subsequent
-    // probes are unreadable. A caught pre-dispatch storage exception cannot simulate this state.
+    // Stage fault injection before the Run's budget begins. The marker is written only after
+    // tmux succeeds, never by a redirection that merely precedes a possibly rejected command.
     await writeFile(path.join(bin, 'tmux'), `#!/bin/sh
 if [ "$1" = new-session ]; then
-  ${quoted(realTmux)} "$@" > ${quoted(launched)} || exit $?
+  ${quoted(realTmux)} "$@" > ${quoted(panePid)} || exit $?
+  printf launched > ${quoted(launched)}
   echo 'private test lost launch acknowledgement' >&2
   exit 75
 fi
@@ -239,17 +236,33 @@ if [ "$1" = has-session ] && [ -f ${quoted(launched)} ]; then
   echo 'private test cannot reach the launched session' >&2
   exit 75
 fi
+if [ "$1" = has-session ] && [ ! -f ${quoted(delayed)} ]; then
+  sleep 2
+  printf delayed > ${quoted(delayed)}
+fi
 exec ${quoted(realTmux)} "$@"
 `, { mode: 0o755 });
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, timeBoxMs: 8000, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    const begun = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0, requestId: 'unknown-begin', action: 'begin', nodeId: started.run.currentNode });
+    assert.equal(begun.kind, 'accepted', begun.reason);
     process.env.PATH = `${bin}:${savedPath}`;
-    const work = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 1, requestId: 'unknown-work', action: 'work', executionId: begun.receipt?.executionId });
+    let response: Awaited<ReturnType<typeof host.ctx.hima.executionAction>> | undefined;
+    const pending = host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 1, requestId: 'unknown-work', action: 'work', executionId: begun.receipt?.executionId })
+      .then((answer) => { response = answer; return answer; });
+    await waitUntil('the real launch succeeds or the action explains why it did not', () => existsSync(launched) || response !== undefined, 12_000);
+    assert.ok(existsSync(launched), `the intended post-dispatch fault was never reached: ${JSON.stringify({ kind: response?.kind, reason: response?.reason, execution: response?.context.executions[0]?.phase, probeDelayed: existsSync(delayed) })}`);
+    t.diagnostic('actual tmux success was observed after the private slow probe; only the acknowledgement and subsequent probes are faulted');
+    const work = await pending;
     assert.equal(work.kind, 'accepted');
     assert.equal(work.context.executions[0]?.phase, 'uncertain');
-    assert.ok(existsSync(launched));
     const intent = work.context.executions[0]!.intent!;
     assert.ok(intent);
     execFileSync(realTmux, ['has-session', '-t', `=${intent.job.session}`], { env: { ...process.env, PATH: savedPath } });
-    await waitUntil('the deadline exposes its unconfirmed stop', () => host.ctx.hima.executionContext(runId!).run.control?.stop?.status === 'uncertain', 6000);
+    await waitUntil('the deadline exposes its unconfirmed stop', () => host.ctx.hima.executionContext(runId!).run.control?.stop?.status === 'uncertain', 12_000);
     const context = host.ctx.hima.executionContext(runId);
     assert.notEqual(context.run.status, 'cancelled');
     assert.notEqual(context.run.status, 'ended-budget-exhausted');

@@ -1,0 +1,32 @@
+TAP version 13
+# Subtest: an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+not ok 1 - an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+  ---
+  duration_ms: 9011.751125
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-controls.host.test.ts:211:1'
+  failureType: 'testCodeFailure'
+  error: 'the intended post-dispatch fault was never reached: {"kind":"accepted","reason":"Job was not dispatched: the Campaign time box expired before this Job was launched","execution":"failed","probeDelayed":true}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-controls.host.test.ts:257:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9880.930958
+
+Exact-case exit: 1; elapsed: 9.987s
+Host boots: ['host-in-process']
+SSH attempts: 0
