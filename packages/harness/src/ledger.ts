@@ -1290,7 +1290,7 @@ export const executionReceipt = z.strictObject({
 });
 export type ExecutionReceipt = z.infer<typeof executionReceipt>;
 export const executionRequest = z.strictObject({
-  digest: sha256Hex, actor: z.string(), epoch: z.number().int().positive(),
+  digest: sha256Hex, actor: z.string(), epoch: z.number().int().nonnegative(),
   revision: z.number().int().nonnegative(), at: z.string(),
   state: z.enum(['admitted', 'done', 'uncertain']), receipt: executionReceipt,
   origin: z.enum(['agent', 'human']).optional(),
@@ -1304,6 +1304,11 @@ export const runControl = z.strictObject({
   executions: z.record(z.string(), nodeExecution),
   requests: z.record(z.string(), executionRequest),
   siteDigest: sha256Hex.optional(),
+  /** A new verification of old records, never a fabricated historical workspace digest. */
+  adoption: z.strictObject({
+    at: z.string(), workspaceSeq: z.number().int().positive(), workspaceMetadataSha256: sha256Hex,
+    methodDigest: sha256Hex, legacyWaitedMs: z.number().int().nonnegative(),
+  }).optional(),
 });
 export type RunControl = z.infer<typeof runControl>;
 

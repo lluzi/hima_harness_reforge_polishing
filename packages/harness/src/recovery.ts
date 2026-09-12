@@ -2,20 +2,23 @@
 // and what a person's cancel does to a Run that is still going. One reason to change: how a Run that
 // nothing is driving is picked up, or put down.
 //
-// Both rest on the property the driver is arranged around — **the engine holds nothing the ledger
-// does not** — and both are here rather than in the driver because they are the two ways a Run is
-// acted on from outside the loop that advances it. Neither is reached from a drive: they call the
-// driver to carry a Run on, never the other way round.
+// Production recovery observes already admitted Jobs and preserves execution ownership. Historical
+// automatic Runs keep their records and need a verified explicit adoption before business work.
+// The old driver below is reachable only in the explicitly enabled Node regression fixture.
 //
 // A Run is not stopped until the stop is observed, and a Run picked up again is never relaunched.
 // Those two are what the whole of this module is written around: nothing here may say a licence was
 // released while the tool still holds it, and nothing here may pay a second licence-minute for an
 // attempt that is already running on the Site.
-import { boundInputs, positionOf, type Pack, type PackNode } from './packs.js';
+import { boundInputs, positionOf, substitute, workspaceFileName, type Pack, type PackNode } from './packs.js';
+import { createHash } from 'node:crypto';
+import { channelFor } from './channel.js';
+import { decideRead } from './shell.js';
+import { workspaceFile } from './workspace.js';
 import { loadRunPack } from './release.js';
-import { jobKill, jobStatus } from './jobs.js';
-import { loadSite } from './sites.js';
-import { existingRun } from './runs.js';
+import { jobKill, jobStatus, reconcileLaunchIntent } from './jobs.js';
+import { loadSite, pathsOf } from './sites.js';
+import { existingRun, legacyAutomaticAllowed } from './runs.js';
 import { recordNode } from './ledger.js';
 import type { JobRecord, NodeState, RunFork, RunRecord, WorkspaceRecord } from './ledger.js';
 import { openJobsOfRun } from './job-cap.js';
@@ -23,7 +26,7 @@ import { advance, attemptOf, attemptOfSession, currentAttemptOf, waitedMsOf } fr
 import { killDidNotTake, type Driving, type FabricDeps } from './node-turns.js';
 import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
-import { drive } from './fabric.js';
+import { drive, controlling, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
 import { owesAnExperience, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
 
@@ -55,7 +58,7 @@ export interface ReconcileOutcome {
    * (#30). Nothing about the Run moves — it ended as it ended — and what is written is the report it
    * was owed, on the Site and on the ledger.
    */
-  readonly found: 'running' | 'finished' | 'gone' | 'nothing-open' | 'never-started' | 'stopped-elsewhere' | 'unreadable' | 'site-unreadable' | 'experience';
+  readonly found: 'running' | 'finished' | 'gone' | 'nothing-open' | 'never-started' | 'stopped-elsewhere' | 'unreadable' | 'site-unreadable' | 'experience' | 'uncertain';
   readonly detail: string;
 }
 
@@ -104,6 +107,16 @@ export async function reconcileRuns(deps: FabricDeps): Promise<ReconcileOutcome[
     // A Run HimaFabric opened is one carrying the pack it runs; anything else in this ledger is an
     // observation's own Probe-campaign Run, which no fabric ever started and none may end.
     if (run.packId === undefined) continue;
+    if (run.control !== undefined) {
+      try { out.push(await controlling(deps, run.id, () => reconcileControlledRun(deps, run))); }
+      catch (error) { out.push({ runId: run.id, found: 'unreadable', detail: (error as Error).message }); }
+      continue;
+    }
+    if (!legacyAutomaticAllowed()) {
+      try { out.push(await reconcileHistoricalRun(deps, run)); }
+      catch (error) { out.push({ runId: run.id, found: error instanceof SiteUnreadableError ? 'site-unreadable' : 'unreadable', detail: (error as Error).message }); }
+      continue;
+    }
     // A Run that is over is not this reconciliation's to advance, and there is exactly one thing it
     // may still owe: the Campaign's technical report, if the host that ended it went away before it
     // could be written (#30). A Run that has its report is passed over as it always was.
@@ -138,6 +151,159 @@ export async function reconcileRuns(deps: FabricDeps): Promise<ReconcileOutcome[
     }
   }
   return out;
+}
+
+/** Old history remains old history. Collect only an already launched Job and its reader facts. */
+async function reconcileHistoricalRun(deps: FabricDeps, run: RunRecord): Promise<ReconcileOutcome> {
+  const records = deps.ledger.records({ runId: run.id });
+  let found: ReconcileOutcome['found'] = 'nothing-open';
+  for (const launch of records) {
+    if (launch.type !== 'job' || launch.event !== 'launched') continue;
+    if (records.some((record) => record.type === 'node' && record.jobSession === launch.job.session && ['done', 'retrying', 'blocked', 'cancelled'].includes(record.state))) continue;
+    const status = await jobStatus(deps, { run: run.id, session: launch.job.session });
+    found = status.state.state === 'running' ? 'running' : status.state.state === 'finished' ? 'finished' : 'gone';
+    if (run.packDigest === undefined || launch.nodeId === undefined || launch.generation !== (run.loop?.generation ?? run.generation) || launch.loopId !== run.loop?.id) continue;
+    const ctx = drivingFor(deps, run);
+    const node = positionOf(ctx.pack, launch.nodeId)?.node;
+    if (node !== undefined) observeExecution({ ...ctx, nonblocking: true, passiveObservation: true, ...(launch.branchId === undefined ? {} : { branchId: launch.branchId }) }, node, undefined, launch.job.session);
+  }
+  return { runId: run.id, found, detail: 'historical Run retained; only existing Job/reader facts are observed; explicit safe adoption is required before new business work' };
+}
+
+/** Rebuild only the exact admitted effect. No business operation or hidden Agent is started. */
+async function reconcileControlledRun(deps: FabricDeps, snapshot: RunRecord): Promise<ReconcileOutcome> {
+  let found: ReconcileOutcome['found'] = 'nothing-open';
+  const details: string[] = [];
+  const uncertainExecutions: string[] = [];
+  for (const execution of Object.values(snapshot.control!.executions)) {
+    if (execution.phase !== 'working' && execution.phase !== 'uncertain') continue;
+    const requests = Object.entries(existingRun(deps.ledger, snapshot.id).control!.requests)
+      .filter(([, request]) => request.receipt.executionId === execution.id && request.state !== 'done');
+    const uncertain = async (reason: string): Promise<void> => {
+      uncertainExecutions.push(execution.id); details.push(`${execution.id}: ${reason}`);
+      await updateExecution(deps, snapshot.id, execution.id, { phase: 'uncertain', reason });
+      for (const [requestId] of requests) await updateExecution(deps, snapshot.id, execution.id, {}, requestId, 'uncertain');
+    };
+    if (requests.some(([, request]) => request.receipt.action !== 'work')) {
+      await uncertain('the Host was interrupted during an admitted non-Job action; its prior Job does not establish whether that action committed; it was not replayed');
+      continue;
+    }
+    let session = execution.jobSession;
+    if (execution.intent !== undefined) {
+      const recovered = await reconcileLaunchIntent(deps, execution.intent);
+      if (recovered.kind === 'uncertain') { await uncertain(recovered.reason); continue; }
+      session = recovered.record.job.session;
+    }
+    if (session === undefined) {
+      await uncertain('the Host was interrupted after admission without a confirmed effect; inspect the original request and evidence; it was not replayed');
+      continue;
+    }
+    try {
+      const ctx = executionDriving(deps, existingRun(deps.ledger, snapshot.id), execution);
+      const node = positionOf(ctx.pack, execution.nodeId)?.node;
+      if (node === undefined) throw new Error('the retained method does not declare this execution node');
+      const status = await jobStatus(deps, { run: snapshot.id, session });
+      if (status.job === undefined) { await uncertain(`no recorded Job establishes session ${session}`); continue; }
+      await updateExecution(deps, snapshot.id, execution.id, { phase: 'working', jobSession: session });
+      for (const [requestId] of requests) await updateExecution(deps, snapshot.id, execution.id, {}, requestId);
+      found = status.state.state === 'running' ? 'running' : status.state.state === 'finished' ? 'finished' : 'gone';
+      details.push(`${execution.id}: observing original Job ${session}; no next node was started`);
+      observeExecution(ctx, node, execution, session);
+    } catch (error) { await uncertain((error as Error).message); }
+  }
+  // Non-Job admissions have no recoverable process effect. Preserve the request and expose its gap.
+  const run = existingRun(deps.ledger, snapshot.id);
+  const control = run.control!;
+  const interrupted = Object.entries(control.requests).filter(([, request]) => request.state === 'admitted');
+  if (interrupted.length > 0) {
+    const requests = { ...control.requests };
+    const executions = { ...control.executions };
+    for (const [id, request] of interrupted) {
+      requests[id] = { ...request, state: 'uncertain' };
+      const execution = request.receipt.executionId === undefined ? undefined : executions[request.receipt.executionId];
+      if (execution !== undefined && execution.phase !== 'completed') executions[execution.id] = { ...execution, phase: 'uncertain', reason: 'the Host was interrupted after admission without a confirmed effect; this action was not replayed' };
+    }
+    await deps.ledger.advanceRun(run.id, { control: { ...control, requests, executions } });
+    found = 'uncertain'; details.push('an admitted request has no confirmed effect and was not replayed');
+  }
+  // A crash can follow the actual launch before claimSlotAndLaunch counted it. Recovered receipts
+  // are actual expenditure too; never lower an existing historical meter or count a Job twice.
+  const launched = deps.ledger.records({ runId: run.id, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched' && record.nodeId !== undefined).length;
+  const held = existingRun(deps.ledger, run.id).meters?.jobsLaunched ?? 0;
+  if (launched > held) await advance(deps.ledger, run.id, { jobs: launched - held });
+  return { runId: run.id, found: uncertainExecutions.length > 0 ? 'uncertain' : found, detail: details.join('; ') || 'Agent-owned context retained; waiting for an explicit business action from its owner' };
+}
+
+/** Called only under Fabric's existing admission queue. Verification records present evidence. */
+export async function adoptHistoricalRun(deps: FabricDeps, req: ExecutionActionRequest): Promise<ExecutionActionResult> {
+  const answer = (kind: ExecutionActionResult['kind'], reason?: string): ExecutionActionResult => ({ kind, context: executionContext(deps, req.runId), ...(reason === undefined ? {} : { reason }) });
+  const run = existingRun(deps.ledger, req.runId);
+  if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return answer('refused', 'adoption requires the actual live conversation on this Host');
+  if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return answer('refused', 'request identity must be a bounded plain identifier');
+  const digest = identityOf(req);
+  const before = run.control?.requests[req.requestId];
+  if (run.control !== undefined) return before?.digest === digest && run.control.owner === req.actor && before.receipt.action === 'adopt'
+    ? { ...answer('duplicate'), receipt: before.receipt } : answer('refused', 'this Run already has an owner; use explicit handoff');
+  if (req.expectedEpoch !== 0 || req.expectedRevision !== 0) return answer('refused', 'historical adoption requires expected owner epoch and control revision 0');
+  if (run.status !== 'running' && run.status !== 'waiting') return answer('refused', 'adoption requires a prepared unfinished Run at a safe node boundary');
+  try {
+    if (run.packId === undefined || run.packDigest === undefined) throw new Error('the original Run method digest is missing; the current Pack cannot establish that historical identity');
+    const pack = loadRunPack(deps.packsDir, run.packId, run.packDigest);
+    if (run.goal === undefined || run.budget === undefined || run.strategy === undefined || run.firstStrategy === undefined || run.generation === undefined || positionOf(pack, run.currentNode) === undefined) throw new Error('the original Goal, budget, strategy, generation or node boundary is missing');
+    if (run.loop !== undefined || run.fork !== undefined) throw new Error('historical adoption requires an outer node boundary with no open Loop or fork');
+    const records = deps.ledger.records({ runId: run.id });
+    const prepared = records.findLast((record): record is WorkspaceRecord => record.type === 'workspace');
+    if (prepared === undefined) throw new Error('the original workspace record is missing');
+    const boundary = records.findLast((record) => record.type === 'node');
+    const explicitWait = boundary?.type === 'node' && boundary.kind === 'wait' && boundary.state === 'blocked' && boundary.nodeId === run.currentNode;
+    const closedJobBoundary = boundary?.type === 'node' && boundary.jobSession !== undefined && ['done', 'retrying', 'blocked', 'cancelled'].includes(boundary.state)
+      && records.some((record) => record.type === 'job' && record.job.session === boundary.jobSession && record.event !== 'launched');
+    if (!explicitWait && !closedJobBoundary) throw new Error('the historical boundary has no verified closed Job or explicit Wait node; absence of a launch receipt cannot prove no effect');
+    for (const launch of records) {
+      if (launch.type !== 'job' || launch.event !== 'launched') continue;
+      const closed = records.some((record) => record.type === 'job' && record.job.session === launch.job.session && record.event !== 'launched');
+      if (!closed) {
+        const status = await jobStatus(deps, { run: run.id, session: launch.job.session });
+        if (status.state.state !== 'finished') throw new Error(`Job ${launch.job.session} is ${status.state.state}; adoption requires no in-flight or uncertain Job`);
+      }
+      if (launch.nodeId !== undefined && !records.some((record) => record.type === 'node' && record.jobSession === launch.job.session && ['done', 'retrying', 'blocked', 'cancelled'].includes(record.state))) throw new Error(`Job ${launch.job.session} has no collected node/reader result; wait for existing fact collection before adoption`);
+    }
+    for (const session of records) {
+      if (session.type === 'session' && session.event === 'opened' && !records.some((record) => record.type === 'session' && record.event === 'closed' && record.sessionId === session.sessionId)) throw new Error(`session ${session.sessionId} is still open; adoption needs a closed code/session boundary`);
+    }
+    const site = loadSite(deps.sitesDir, run.siteId);
+    const channel = channelFor(site);
+    const metadataPath = pathsOf(site).join(prepared.workspace, workspaceFileName);
+    const permit = await decideRead(site, metadataPath, channel);
+    if (!permit.ok) throw new Error(`workspace metadata cannot be verified: ${permit.reason}`);
+    const bytes = await channel.readFile(permit.absPath);
+    const parsed = workspaceFile.safeParse(JSON.parse(Buffer.from(bytes).toString('utf8')));
+    if (!parsed.success) throw new Error('workspace.json is not valid original preparation metadata');
+    const file = parsed.data;
+    const mismatches: string[] = [];
+    if ((file.pack.digest !== undefined && file.pack.digest !== run.packDigest) || (prepared.packDigest !== undefined && prepared.packDigest !== run.packDigest)) mismatches.push('method digest');
+    if (file.pack.id !== run.packId || file.pack.id !== prepared.packId || file.pack.version !== prepared.packVersion || file.pack.version !== pack.contract.version) mismatches.push('Pack identity/version');
+    if (file.campaign !== run.campaignId || file.campaign !== prepared.campaignId || file.site !== run.siteId) mismatches.push('Campaign/Site identity');
+    if (file.workspace !== prepared.workspace || file.flowRoot !== prepared.flowRoot || file.design !== prepared.design || file.containerName !== prepared.containerName || file.preparedAt !== prepared.preparedAt || identityOf(file.copied) !== identityOf(prepared.copied)) mismatches.push('historical workspace/input metadata');
+    const bindings = boundInputs(pack, site);
+    if (bindings.flowRoot !== file.flowRoot || bindings.design !== file.design || pathsOf(site).join(bindings.workspaceRoot!, run.campaignId) !== file.workspace) mismatches.push('current Site input bindings');
+    const copied = pack.contract.workspace.copy.map((entry) => substitute(entry, bindings, 'adoption copy identity'));
+    if (identityOf([...copied].sort()) !== identityOf([...file.copied].sort())) mismatches.push('original method copy list');
+    const unknownInputs = pack.contract.inputs.filter((input) => !['flowRoot', 'design', 'workspaceRoot'].includes(input.name));
+    if (unknownInputs.length > 0) mismatches.push(`unrecorded input bindings: ${unknownInputs.map((input) => input.name).join(', ')}`);
+    if (mismatches.length > 0) throw new Error(`cannot verify adoption: ${mismatches.join('; ')}`);
+    const at = new Date().toISOString();
+    const lastResume = records.findLast((record) => record.type === 'resumed')?.seq ?? 0;
+    const blocker = run.status === 'waiting' ? records.findLast((record) => record.type === 'blocker' && record.seq > lastResume) : undefined;
+    const legacyWaitedMs = waitedMsOf(deps.ledger, run.id) + (blocker === undefined ? 0 : Math.max(0, Date.parse(at) - Date.parse(blocker.at)));
+    const receipt = { requestId: req.requestId, action: 'adopt', owner: req.actor, epoch: 1 };
+    await advance(deps.ledger, run.id, {}, { status: 'running', control: {
+      mode: 'agent', owner: req.actor, epoch: 1, revision: 1, paused: ['*'], executions: {}, siteDigest: identityOf(site),
+      adoption: { at, workspaceSeq: prepared.seq, workspaceMetadataSha256: createHash('sha256').update(bytes).digest('hex'), methodDigest: run.packDigest, legacyWaitedMs },
+      requests: { [req.requestId]: { digest, actor: req.actor, epoch: 0, revision: 0, at, state: 'done', origin: req.origin ?? 'agent', receipt } },
+    } });
+    return { ...answer('accepted'), receipt };
+  } catch (error) { return answer('refused', (error as Error).message); }
 }
 
 /**
@@ -415,6 +581,12 @@ export async function cancelRun(deps: FabricDeps, runId: string): Promise<Cancel
   // neither of these was.
   if (run.status === undefined) return { kind: 'not-started', run };
   if (run.status !== 'running' && run.status !== 'waiting') return { kind: 'ended', run };
+
+  for (const execution of Object.values(run.control?.executions ?? {})) {
+    if (execution.intent === undefined) continue;
+    const recovered = await reconcileLaunchIntent(deps, execution.intent);
+    if (recovered.kind === 'uncertain') return { kind: 'not-stopped', run: existingRun(deps.ledger, runId), session: execution.intent.job.session, reason: recovered.reason };
+  }
 
   // Every launch this Run still has open, at every node and not only the one it stands at: a Run
   // routed to a Wait node when its Retry allowance was spent stands away from the node whose Job may

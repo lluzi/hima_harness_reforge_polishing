@@ -138,6 +138,8 @@ const blockerTailChars = 16 * 1024;
  * is what lets #14 rebuild this from the ledger and carry a Run on.
  */
 export interface Driving {
+  /** Historical recovery observes already launched Jobs while preserving a human waiting state. */
+  readonly passiveObservation?: true;
   /** Agent-controlled launches return identity immediately; capacity never queues business work. */
   readonly nonblocking?: boolean;
   readonly beforeLaunch?: LaunchRequest['beforeLaunch'];
@@ -453,7 +455,8 @@ export async function waitForJob(ctx: Driving, node: PackNode, attempt: number, 
  * ever waiting again.
  */
 function stoppedElsewhere(ctx: Driving, session: string): boolean {
-  if (existingRun(ctx.deps.ledger, ctx.runId).status !== 'running') return true;
+  const status = existingRun(ctx.deps.ledger, ctx.runId).status;
+  if (status !== 'running' && !(ctx.passiveObservation && status === 'waiting')) return true;
   const records = ctx.deps.ledger.records({ runId: ctx.runId });
   const launched = records.findLast((r) => r.type === 'job' && r.event === 'launched' && r.job.session === session);
   return launched !== undefined && records.some((r) => r.type === 'cancel' && r.seq > launched.seq);

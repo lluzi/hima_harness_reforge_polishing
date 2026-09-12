@@ -54,6 +54,8 @@ try {
         HIMA_USER_DATA: path.join(temporary, 'electron'), DSH_TELEMETRY_DISABLED: '1',
         HIMA_TEST_GROUP: group, HIMA_TEST_TMPDIR: temporary,
         HIMA_TEST_BOOT_LOG: path.join(temporary, 'boots.txt'),
+        HIMA_TEST_LEGACY_AUTO_DRIVE: process.env.HIMA_TEST_LEGACY_AUTO_DRIVE ?? '1',
+        HIMA_TEST_SILENT_AGENT: process.env.HIMA_TEST_SILENT_AGENT ?? '1',
       };
       const sshLog = path.join(temporary, 'ssh-attempts.jsonl');
       delete env.TMUX;

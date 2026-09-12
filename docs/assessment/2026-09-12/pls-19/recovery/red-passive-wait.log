@@ -1,0 +1,25 @@
+TAP version 13
+# Subtest: a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+not ok 1 - a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+  ---
+  duration_ms: 13974.753916
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-recovery/test/contract/agent-recovery.host.test.ts:63:1'
+  failureType: 'testCodeFailure'
+  error: 'the original Job is collected while historical waiting stays unchanged did not happen within 10000 ms'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    waitUntil (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-recovery/test/contract/support/fabric.ts:92:39)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-recovery/test/contract/agent-recovery.host.test.ts:85:5)
+    async Test.run (node:internal/test_runner/test:1313:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14496.768333

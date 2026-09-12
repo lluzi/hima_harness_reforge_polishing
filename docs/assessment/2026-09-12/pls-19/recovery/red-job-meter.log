@@ -1,0 +1,32 @@
+TAP version 13
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+not ok 1 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 8913.733542
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-recovery/test/contract/agent-recovery.host.test.ts:246:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    a launch whose receipt was lost still spends one Job from the Campaign
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-recovery/test/contract/agent-recovery.host.test.ts:286:12)
+    async Test.run (node:internal/test_runner/test:1313:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9874.331333

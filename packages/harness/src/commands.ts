@@ -10,6 +10,7 @@
 // here because they are read by a person and not by a caller, and because `/hima run` and `/hima
 // status` must describe one Run the one way.
 import { createRequire } from 'node:module';
+import { legacyAutomaticAllowed } from './runs.js';
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands';
 import { hasEnded, type BlockerRecord, type CancelRecord, type CodeRecord, type DecisionRecord, type ExperienceRecord, type JobRecord, type LedgerRecord, type NodeRecord, type ObservationRecord, type ResumedRecord, type RunRecord, type SessionRecord, type VerdictRecord, type WorkspaceRecord } from './ledger.js';
 import { cancelSessions, chosenAs, standingWorkshop } from './record-views.js';
@@ -645,7 +646,7 @@ async function handleRun(deps: FabricDeps, rest: readonly string[], ownerSession
   let result: StartRunResult;
   try {
     result = await startRun(deps, {
-      ownerSessionId,
+      ownerSessionId: legacyAutomaticAllowed() ? undefined : ownerSessionId,
       pack,
       site,
       goal: goal.params,
