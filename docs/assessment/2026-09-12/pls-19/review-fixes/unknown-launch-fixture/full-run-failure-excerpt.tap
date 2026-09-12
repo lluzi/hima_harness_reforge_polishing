@@ -1,0 +1,28 @@
+not ok 7 - an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+  ---
+  duration_ms: 2985.024
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/agent-controls.host.test.ts:211:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'failed'
+    - 'uncertain'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'uncertain'
+  actual: 'failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/agent-controls.host.test.ts:247:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: pending stop I/O does not hold the conversational admission path
+ok 8 - pending stop I/O does not hold the conversational admission path
+  ---
+  duration_ms: 1860.723625
+  type: 'test'

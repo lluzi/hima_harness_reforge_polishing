@@ -1,0 +1,6 @@
+105267c933815a702b09cd746ef0cbbf07666714c88eac6347958dc580699b1a  test/contract/agent-controls.host.test.ts
+0c47084e10f2cded467bf048e77221f8f884fa24527ecedb3a73f5dcfbeabf7c  docs/assessment/2026-09-12/pls-19/review-fixes/unknown-launch-fixture/README.md
+1f9747d5b14d46a2fdb439e4a0dde2c53d35c2af3389f74c6d1f6bd88765195c  docs/assessment/2026-09-12/pls-19/review-fixes/unknown-launch-fixture/controls-green.log
+5de515dc5792711916f18425bf490aa1e41f2422f6b2878503cc35c3b210f68d  docs/assessment/2026-09-12/pls-19/review-fixes/unknown-launch-fixture/full-run-failure-excerpt.tap
+fbfc92c0554ceecf6c9d40c74a3a7a983457de04493670b94dd4864586b6b894  docs/assessment/2026-09-12/pls-19/review-fixes/unknown-launch-fixture/slow-probe-red.tap
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/assessment/2026-09-12/pls-19/review-fixes/unknown-launch-fixture/test-types.log
