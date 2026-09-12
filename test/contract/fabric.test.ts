@@ -275,33 +275,24 @@ test('a run of a pack naming a chooser this harness does not ship is refused bef
   }
 });
 
-test('an act node naming an argument the Run cannot bind blocks with a reason naming it, and launches nothing', async (t) => {
+test('an act node asking for an absent Goal is refused before creating a Run or launching a Job', async (t) => {
   const local = await localFabric(t);
   if (!local) return;
   const { h, host, dispose } = local;
   try {
-    // The shipped pack, varied in one place: its act node asks the Run's Goal for a knob no Goal
-    // binds. Nothing in the knob set can be checked statically for a Goal — its names come from the
-    // Run, not the pack — so this is the path where the fabric itself must say what went wrong.
+    // Legacy Pack Goal references are also validated at admission. A missing binding must not
+    // create a Campaign only to discover the error at its first act node.
     await writePackVariant(packsDirOf(h), 'unbindable-argument', [], [
       ['PERIOD_NS: { from: strategy, name: periodNs }', 'PERIOD_NS: { from: goal, name: no_such_knob }'],
     ]);
+    const runsBefore = host.ctx.hima.ledger.runs();
     clearRemoteCommands();
     const started = await himaCommand(host, h.workspace, '/hima run unbindable-argument --site local --goal target_period_ns=2.0 --set periodNs=2.0', siteCommandTimeoutMs);
     for (const line of started.text.split('\n')) t.diagnostic(line);
     assert.equal(started.kind, 'error', started.text);
-    const runId = started.runId!;
-    assert.ok(runId, `the run is named even when it stops at its first node: ${started.text}`);
-
-    const run = runOf(host, runId);
-    assert.equal(run.status, 'waiting', 'a run that needs a person waits; it did not end');
-    const nodes = nodeRecords(host, runId);
-    assert.deepEqual(nodes.map((r) => [r.nodeId, r.state]), [['synthesize', 'blocked']], 'one record, and it says the node is blocked');
-    assert.match(nodes[0]!.reason ?? '', /PERIOD_NS/, `the reason names the argument: ${nodes[0]!.reason}`);
-    assert.match(nodes[0]!.reason ?? '', /no_such_knob/, `and what it asked the Run for: ${nodes[0]!.reason}`);
-    assert.match(started.text, /synthesize \(act\): blocked, attempt 1, node synthesize names argument PERIOD_NS/, `and a person reads it in the answer: ${started.text}`);
-
-    assert.deepEqual(jobRecords(host, runId), [], 'nothing was launched');
+    assert.equal(started.runId, undefined, 'invalid Goal creates no Run');
+    assert.match(started.text, /invalid Goal parameter "no_such_knob"/, 'the admission error identifies the missing binding');
+    assert.deepEqual(host.ctx.hima.ledger.runs(), runsBefore, 'no Run means no associated node or Job history');
     assert.deepEqual(
       remoteCommands().filter((c) => c.argv[0] === 'tmux'),
       [],

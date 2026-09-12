@@ -11,7 +11,9 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 - [代码导入清单](docs/assessment/2026-09-11/source-import.json)
 - [Prototype 的版本化参考材料](docs/upstream/README.md)
 
-2026-09-12：PLS-20 已接收固定快照 `ca47fa0` 并合入 main，保留统一工作区 UI-02 和 PLS-01～07。处理记录与本版本独立验证见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。后续先做 PLS-21/22/13，再接 PLS-19；当前自动 drive/Workshop 路径是接收基线，同一对话 Agent 接管执行尚未实施。
+2026-09-12：PLS-20 已接收固定快照 `ca47fa0`，保留统一工作区 UI-02 和 PLS-01～07，见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。当前工作分支已实现 Pack Goal 声明、安装态编写、方法与资产隔离，以及同一对话 Agent 的节点执行；本批最终验证仍在进行，状态与边界见 [实施记录](docs/assessment/2026-09-12/pls-next/implementation-plan.md)。
+
+开始 Run 会准备工作区并绑定当前对话 Agent。该 Agent 通过 `hima_context` 读取参考图与实际状态，通过 `hima_execute` 开始节点、读写研究代码、提交 Job、检查结果并请求完成。Fabric 验证权限、预算和依赖，追踪已提交的 Job；下一业务节点需要 Agent 再次请求。长 Job 运行时仍可在同一对话中要求暂停或检查；暂停阻止新工作，已启动的 Job 可以继续落下事实，取消则请求实际停止。未交付的增长和修订操作会明确拒绝。
 
 ## 本地准备
 
@@ -55,7 +57,7 @@ node packages/desktop/lib/hima-home.js \
 
 命令保存原字节备份、SHA-256 回执和身份不变的 Ledger 后退出，不启动 Host 或绑定执行 owner。只导入 Ledger 历史；Site、Pack、工作文件与 Agent 会话不随之复制。导入不等于在途 Run 已安全接管，旧 Host 必须保持停止，后续接管仍须通过 PLS-19 的安全边界检查。操作和验证范围见 [导入证据](docs/assessment/2026-09-12/pls-19/ledger-import/README.md)。其他旧版本继续保留给对应旧构建读取；Experience v1/v2 文件仍按已记录的原字节/hash 读取。
 
-当前 `--site local` 每次启动会刷新样例 Pack 和生成的 flow；Campaign workspace 保留。Pack 内资产保留尚未实现，见 POL-07。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)，入口验证见 [PLS-02 记录](docs/assessment/2026-09-11/pls-02/README.md)。Git hooks 仍须显式 `pnpm run hooks:install` 安装；pre-commit 构建并检查静态类型，pre-push 执行一次 `check:local`。Hook 通过只认证所跑的本地范围，窗口、模型或 Site 检查由实际改动决定。
+当前 `--site local` 每次启动会刷新生成的 flow；Campaign workspace 保留。样例 Pack 按方法清单安装，保留 `run-assets/<runId>/`，运行资产不改变方法 digest。旧 Run 使用保存的原方法；同版本不同内容、归属不明或中断的更新会拒绝覆盖，见 [PLS-13](docs/assessment/2026-09-12/pls-13/README.md)。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)。Git hooks 仍须显式 `pnpm run hooks:install` 安装；pre-commit 构建并检查静态类型，pre-push 执行一次 `check:local`。Hook 通过只认证所跑的本地范围，窗口、模型或 Site 检查由实际改动决定。
 
 ## 产品依据
 

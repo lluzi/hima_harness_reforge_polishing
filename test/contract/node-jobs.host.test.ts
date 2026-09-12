@@ -271,6 +271,7 @@ test('the Pack chooser is readonly advice and does not accept its recommendation
     const node = pack.graph.nodes.find((n) => n.id === 'next-period');
     assert.ok(node?.kind === 'explore');
     const ledger = host.ctx.hima.ledger;
+    await ledger.advanceRun(ctx.runId, { generation: 1 });
     // Typed fixture observations seed this advice test; they are not a claim about an EDA run.
     await ledger.appendObservation(ctx.runId, {
       path: 'fixture.rpt', contentSha256: 'a'.repeat(64), bytes: 10,
@@ -281,7 +282,7 @@ test('the Pack chooser is readonly advice and does not accept its recommendation
     await ledger.appendNode(ctx.runId, { nodeId: 'judge', kind: 'judge', state: 'done', attempt: 1 });
     const before = ledger.records({ runId: ctx.runId });
     const advice = exploreRecommendation({ ...ctx, pack }, node);
-    assert.equal(advice.ok, true);
+    assert.equal(advice.ok, true, advice.ok ? undefined : advice.reason);
     if (!advice.ok) return;
     assert.ok('strategy' in advice.chosen);
     if (!('strategy' in advice.chosen)) return;

@@ -5,7 +5,7 @@ import { rename } from 'node:fs/promises';
 import path from 'node:path';
 import { himaCommand } from './support/command.ts';
 import { jobRecords, killSessions, localFabric, recordsOf, sessionsOf } from './support/fabric.ts';
-import { packsDirOf, timingProbePackId } from './support/pack.ts';
+import { timingProbePackId } from './support/pack.ts';
 import { tmuxHasSession } from './support/tmux.ts';
 
 test('simultaneous resumes clear one blocker once and launch only one replacement Job', async (t) => {
@@ -63,16 +63,18 @@ test('a failed resume admission does not prevent a later corrected request', asy
   if (!local) return;
   const { h, host, dispose } = local;
   let runId: string | undefined;
-  const pack = path.join(packsDirOf(h), timingProbePackId);
+  const site = path.join(h.home, 'hima/sites/local.yml');
   try {
     const started = await himaCommand(host, h.workspace, `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.0 --set periodNs=2.0 --generations 1 --retries 1 --time-box 0.5`);
     runId = started.runId!;
     const before = recordsOf(host, runId);
-    await rename(pack, `${pack}.held`);
+    // Method recovery now returns an explicit refusal. A missing live Site still rejects the
+    // admission promise, exercising queue recovery after an actual I/O error.
+    await rename(site, `${site}.held`);
     try {
-      await assert.rejects(() => host.ctx.hima.resumeRun(runId!, 'missing-pack'), /pack/i);
+      await assert.rejects(() => host.ctx.hima.resumeRun(runId!, 'missing-site'), /site/i);
       assert.deepEqual(recordsOf(host, runId), before, 'failed validation changes no history');
-    } finally { await rename(`${pack}.held`, pack); }
+    } finally { await rename(`${site}.held`, site); }
     assert.equal((await host.ctx.hima.resumeRun(runId, 'corrected-face')).kind, 'resumed');
     assert.equal(recordsOf(host, runId).filter((r) => r.type === 'resumed').length, 1);
   } finally {

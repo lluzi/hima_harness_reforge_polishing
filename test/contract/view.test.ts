@@ -225,7 +225,7 @@ test('the Hima browser module is in the served boot graph and its bundle is serv
         slots: { inject(name: string, callback: () => unknown): unknown; register(declaration: { name: string; key?: string; id?: string }, component: unknown): unknown };
       }): void;
     };
-    assert.deepEqual(moduleExports.inject, ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions'], 'the module declares its existing native UI services');
+    assert.deepEqual(moduleExports.inject, ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions', 'conversation'], 'the module declares its existing native UI services');
     const registered: { name: string; key?: string; id?: string }[] = [];
     let component: unknown;
     moduleExports.apply({
