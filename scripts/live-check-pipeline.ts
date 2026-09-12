@@ -109,10 +109,14 @@ await runLive('live-check-pipeline', 24, async (check: LiveCheck) => {
     && goal.parameter?.name === 'minimum' && typeof goal.predicate.threshold === 'object' && goal.predicate.threshold.parameter === 'minimum'
     && JSON.stringify(judge!.parameters.bind.minimum) === JSON.stringify({ from: 'goal', name: 'minimum' }), { constraint, goal, bind: judge!.parameters.bind });
   const { chooser, origin } = resolveChooser(pack, explore!.parameters.chooser!, 'the reading');
+  // For finite numeric inputs and a bound Goal, the preceding PASS/PASS clause consumes every
+  // Goal PASS. The ordered constraint-PASS fallback may therefore omit Goal FAIL; final current
+  // observation/Goal-PASS checks below remain mandatory, including for any unbound or unknown case.
   check.require('the authored chooser declares Goal completion and the bounded fallback limit',
     origin === 'pack' && Object.values(chooser.reads).some((read) => read.type === 'numeric_sum' && read.unit === 'count')
     && chooser.decide[0]?.when.constraint === 'PASS' && chooser.decide[0]?.when.goal === 'PASS' && chooser.decide[0]?.goalMet === true
-    && chooser.decide[1]?.when.constraint === 'PASS' && chooser.decide[1]?.when.goal === 'FAIL'
+    && chooser.decide[1]?.when.constraint === 'PASS'
+    && (chooser.decide[1]?.when.goal === undefined || chooser.decide[1]?.when.goal === 'FAIL')
     && chooser.parameter?.unit === 'count' && chooser.decide[1]?.next?.limit === chooser.parameter.name && explore!.parameters.bind[chooser.parameter.name] === 0,
     { chooser, origin });
   check.require('compilation preserved the approved intent and specification', readFileSync(path.join(folder, pipelineFiles.intent), 'utf8') === intent

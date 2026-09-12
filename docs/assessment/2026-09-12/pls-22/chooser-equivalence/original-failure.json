@@ -1,0 +1,62 @@
+{
+  "sourceSha": "572621663a3fa857dc58c5e1af88db45bfbbe74e",
+  "evidence": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-authoring-3/evidence.json",
+  "evidenceSha256": "ffd5773342edb5d4e42db0bbd4676d950dbd9cd788fd38620aaca01a81343411",
+  "failure": "Error: the authored chooser declares Goal completion and the bounded fallback limit\n    at LiveCheck.require (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:126:116)\n    at file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-pipeline.ts:112:9\n    at async LiveCheck.wait (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:141:18)\n    at async runLive (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:381:9)\n    at async file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-pipeline.ts:12:1",
+  "failedCheck": {
+    "claim": "the authored chooser declares Goal completion and the bounded fallback limit",
+    "passed": false,
+    "saw": {
+      "chooser": {
+        "id": "limit-down-to-zero",
+        "version": "1",
+        "title": "Reach for the largest reachable sum by dropping the limit to the bound fallback",
+        "parameter": {
+          "name": "fallbackLimit",
+          "unit": "count"
+        },
+        "reads": {
+          "sum": {
+            "type": "numeric_sum",
+            "unit": "count"
+          }
+        },
+        "decide": [
+          {
+            "when": {
+              "constraint": "PASS",
+              "goal": "PASS"
+            },
+            "goalMet": true
+          },
+          {
+            "when": {
+              "constraint": "PASS"
+            },
+            "next": {
+              "limit": "fallbackLimit"
+            }
+          }
+        ]
+      },
+      "origin": "pack"
+    }
+  },
+  "runCount": 0,
+  "originalPackFolder": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric",
+  "files": {
+    "contract.yml": "b34942c2ed331926f12b691232a610ca3cb989f9a40b73646ab828209d3e4600",
+    "graph.yml": "117925a2cfbef541bf9c9cd4ab02e606703c532167c1d4612ce69a0b38c90781",
+    "semantics.yml": "238cf1ea9a434e394d09b13cdf6809c51e88e3d47ed681051644987028897ac2",
+    "FABRIC.md": "ddd7cf50bbe1aea0cfd70a96d8a264370c541a741ef83461fa2c235f061b5bc5",
+    "INTENT.md": "8a1f06b2b046a0a3a3d93605e409d8ede7bf1e6a47d0480bd67d9f2d55807df7",
+    "SPEC.md": "4dc816ede8df2f0fed0371fa9b7eb60ced70cc4d7f0ba6d710d40b33d6f66ce7",
+    "tools/prepare.sh": "b36cf2665c0cb99aad6a2a8fd4b670682e9fad5070bc00567965c89fb63c9a80",
+    "tools/read-result.sh": "a5fe424b7347fd19da76e786791bb3704497144c3b2a9059a1461105d1e63e63",
+    "knowledge/numeric-strict-sum.md": "bfea7e2b1452dc987134690ecf3def45e8344db0b01aac780949b06db263d235",
+    "choosers/limit-down-to-zero.yml": "9cc20d09078311c1161e3b7cd0d1c8ae139de7898d4682e5dfbc3b600a0f949b",
+    "rules/numeric-sum-meets-minimum.yml": "aef5dfbf330dae20a674ea05788cc1ac1a0197768f7fb86c9a9dc5e6951808e4",
+    "rules/numeric-sum-nonnegative.yml": "6e4ee14857befb23a81a53358c2dd3d2eb56a5f2f5fa3f1f153549ba91ee445a",
+    "readers/read-result.yml": "307d6f36d5d0e7fec478c137d7f9eb869493a0af3e2b47be2c076964f8f1fd8d"
+  }
+}

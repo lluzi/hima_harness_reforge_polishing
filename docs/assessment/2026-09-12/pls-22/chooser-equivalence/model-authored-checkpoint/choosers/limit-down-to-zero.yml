@@ -1,0 +1,33 @@
+# The Pack-owned chooser of the strict-bound sum method. It reads the measured numeric_sum and the
+# Judge's two verdicts, and it never reads a pass as a margin the tool did not state.
+#
+# - The constraint and the goal PASSED — the measured sum reached the acceptance bound. There is no
+#   next strategy; the decision is that the goal is met, and this is the only clause that says so.
+# - The constraint PASSED and the goal did not — the sum fell short of the bound. The next strategy
+#   drops the threshold to the bound fallback, which admits every nonnegative value and so reaches
+#   the largest sum this input allows: the tightest move towards the goal, never looser.
+#
+# First matching `when` wins. `constraint` is the verdict of the judge node's first rule — the one
+# the outgoing edge was chosen by — and `goal` the verdict of its goal rule. `next` sets this pack's
+# own strategy knob by name; the next strategy expression names the bound parameter rather than
+# writing a bare number.
+id: limit-down-to-zero
+version: '1'
+title: Reach for the largest reachable sum by dropping the limit to the bound fallback
+
+# The one number this pack binds in its explore node's `bind:`. What the fallback threshold is, is
+# the pack author's judgement and not this file's.
+parameter:
+  name: fallbackLimit
+  unit: count
+
+# What is read out of the Run's latest observation, by type: the measured sum the Judge ruled on.
+reads:
+  sum: { type: numeric_sum, unit: count }
+
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: PASS }
+    next:
+      limit: fallbackLimit

@@ -1,0 +1,8 @@
+# The value types this pack's own reader emits. The bundle's vocabulary is timing quantities and
+# serves nothing here, so this pack declares the one type its method speaks.
+values:
+  numeric_sum:
+    unit: count
+    description: >-
+      the sum of this generation's actual measured values that are strictly greater than its LIMIT,
+      with equality to LIMIT excluded; the integer alone, as the Workshop's result.txt states it

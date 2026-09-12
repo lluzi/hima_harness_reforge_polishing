@@ -1,0 +1,79 @@
+# The authored-numeric pack as a HimaFabric graph: prepare the measured input, let the Workshop
+# write its own script and produce the sum, read it into numeric_sum, judge it against the validity
+# constraint and the goal minimum in that order, and choose the next strategy — the loop's one
+# revisit — until the goal is met, a rule FAILs to the wait, or the Campaign's generation budget is
+# spent before another generation starts.
+#
+# Four node kinds and no more: act, judge, explore, wait. An act node has one unlabelled edge out; a
+# judge node's edges carry the outcome they are taken on, chosen by the first rule listed. The loop
+# is the last edge below, `next-limit` back to `prepare`, marked `revisit: true`; it is the only edge
+# that goes backwards.
+id: authored-numeric
+version: '1'
+entry: prepare
+
+nodes:
+  # Act: the Golden Flow's one preparation stage, in the Campaign's own copy of the flow. It writes
+  # flow/measured.txt from flow/numbers.txt; the flow's copy into the workspace carries the numbers.
+  - id: prepare
+    kind: act
+    parameters:
+      tool: prepare
+
+  # Act: the one real Workshop. It is given the actual measured input, the strategy's LIMIT and this
+  # pack's declared knowledge, and it writes its own script during the Run. WORKSPACE and the other
+  # reserved values are supplied by the fabric and are not bound here; only LIMIT is chosen per
+  # generation, from the strategy knob the chooser sets.
+  - id: analyze
+    kind: act
+    parameters:
+      workshop: analyze
+      arguments:
+        LIMIT: { from: strategy, name: limit }
+
+  # Act: read the Workshop's result into HimaLedger through the contract's own reader, so the produced
+  # file becomes checked evidence before any rule has an opinion about it.
+  - id: observe
+    kind: act
+    parameters:
+      observes: analysis
+
+  # Judge: the validity constraint first, then the goal rule whose bound the Run's goal supplies. The
+  # outgoing edge is chosen by the first rule's outcome: a constraint PASS continues to Explore and
+  # carries both verdicts there, while a constraint FAIL — including a malformed or unreadable result,
+  # which carries no successful numeric claim — goes to the wait.
+  - id: judge
+    kind: judge
+    parameters:
+      rules:
+        - numeric-sum-nonnegative
+        - numeric-sum-meets-minimum
+      bind:
+        minimum: { from: goal, name: minimum }
+
+  # Explore: the Pack-owned chooser, which reads numeric_sum. A constraint PASS with a goal PASS
+  # declares the goal met; a constraint PASS with a goal FAIL proposes the next strategy, naming the
+  # bound fallback parameter. No converge block: this pack declares no convergence ending.
+  - id: next-limit
+    kind: explore
+    parameters:
+      chooser: limit-down-to-zero
+      bind:
+        fallbackLimit: 0
+
+  # Wait: where a Run stops for a person. The judge's FAIL edge lands here, and so does an
+  # UNDETERMINED the pack labelled no edge for.
+  - id: blocked
+    kind: wait
+    parameters:
+      blocker: hard-blocker
+
+edges:
+  - { from: prepare, to: analyze }
+  - { from: analyze, to: observe }
+  - { from: observe, to: judge }
+  - { from: judge, to: next-limit, outcome: PASS }
+  - { from: judge, to: blocked, outcome: FAIL }
+  # The loop: taken only when the decision chose a next strategy. A decision of goal met has no edge
+  # to take and the Run ends where it stands.
+  - { from: next-limit, to: prepare, revisit: true }
