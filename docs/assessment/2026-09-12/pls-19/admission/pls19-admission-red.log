@@ -1,0 +1,37 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-execution.host.test.ts
+local: 1 selected; 35 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 1 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 7799.135667
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+not ok 2 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 2542.856709
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/agent-execution.host.test.ts:30:1'
+  failureType: 'testCodeFailure'
+  error: 'host.ctx.hima.executionAction is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/agent-execution.host.test.ts:41:41)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 1
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11760.964875
+Test boot attempts: {"host-process":0,"host-in-process":2,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 11.957 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

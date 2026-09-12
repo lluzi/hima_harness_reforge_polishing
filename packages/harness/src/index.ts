@@ -24,6 +24,7 @@ import type {} from '@deepseek-ai/dsh-commands';
 import { Ledger, ledgerSpec } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
+import { executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { readExperience, type ReadExperienceResult } from './experience.js';
 import { handleHimaCommand, himaCommandDescription } from './commands.js';
@@ -404,6 +405,10 @@ export default class Hima extends Service {
   startRun(request: StartRunRequest): Promise<StartRunResult> {
     return startRun(this.deps(), request);
   }
+
+  executionContext(runId: string): ExecutionContext { return executionContext(this.deps(), runId); }
+
+  executionAction(request: ExecutionActionRequest): Promise<ExecutionActionResult> { return executionAction(this.deps(), request); }
 
   resumeRun(runId: string, who: string): Promise<ResumeResult> {
     return resumeRun(this.deps(), { runId, who });

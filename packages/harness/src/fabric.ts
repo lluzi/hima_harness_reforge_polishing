@@ -34,6 +34,7 @@
 // stopping one `recovery.ts`.
 import { goalDeclarationOf, boundInputs, checkPack, loadInstalledPack, loadPack, packStageFrom, positionOf, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, type PackFolderSnapshot } from './pack-folder.js';
+import { createHash, randomUUID } from 'node:crypto';
 import { campaignIdFor, prepareWorkspace, type PrepareResult } from './workspace.js';
 import { writeExperience } from './experience.js';
 import { loadSite } from './sites.js';
@@ -54,6 +55,8 @@ import type {
   RunStrategy,
   VerdictOutcome,
   WorkspaceRecord,
+  NodeExecution,
+  ExecutionReceipt,
 } from './ledger.js';
 import { chosenAs, chosenKind, type ChosenKind } from './record-views.js';
 import { allowsRunArgument, allowsTimeBoxMs, runArguments, goalFrom, strategyFrom, timeBoxMsBounds, type StrategyValue } from './run-arguments.js';
@@ -116,6 +119,8 @@ function packPurpose(folder: PackFolderSnapshot): RunPurpose {
 }
 
 export interface StartRunRequest {
+  /** Internal Host admission: the actual calling conversation, never a model-chosen identity. */
+  readonly ownerSessionId?: string;
   readonly pack: string;
   readonly site: string;
   /** The Goal as bound parameters, typed and checkable, immutable for the Campaign (D3). */
@@ -185,6 +190,9 @@ export type StartRunResult =
  *         turn threw, after the fault has been recorded against the Run.
  */
 export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<StartRunResult> {
+  if (req.ownerSessionId !== undefined && !deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.ownerSessionId)) {
+    throw new RunStartError('the execution owner must be a live conversation on this Host');
+  }
   const site = loadSite(deps.sitesDir, req.site);
   // **One reading of the pack folder, and everything this start says about it is derived from it**
   // (#64) — the contract and graph this Campaign is driven by, the rung the folder stands on, the
@@ -279,7 +287,8 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   // from and the seal was verified against, so what the row records, what the check accepted and
   // what this Campaign is driven by are all the same folder.
   const packDigest = folder.digest(packDigestExcludes);
-  const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1 });
+  const control = req.ownerSessionId === undefined ? {} : { control: { mode: 'agent' as const, owner: req.ownerSessionId, epoch: 1, revision: 0, paused: [], executions: {}, requests: {} } };
+  const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1, ...control });
   // Said as soon as it is true, and before the preparation below can take seconds over a 56 MB copy:
   // a caller that answers on the Run's existence must have the Run before anything else can happen
   // to it.
@@ -340,7 +349,7 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
     // A Run opened a moment ago has waited on nobody: there is no blocker to have waited at.
     waitedMs: 0,
   };
-  await drive(driving);
+  if (opened.control === undefined) await drive(driving);
   return { kind: 'ran', run: existingRun(deps.ledger, opened.id), workspace };
 }
 
@@ -388,6 +397,8 @@ export type ResumeResult =
  *         Run was started with is no longer installed; RunFaultError when a node's turn threw.
  */
 export async function resumeRun(deps: FabricDeps, req: { readonly runId: string; readonly who: string }): Promise<ResumeResult> {
+  const owned = existingRun(deps.ledger, req.runId);
+  if (owned.control !== undefined) return { kind: 'unresumable', run: owned, reason: 'this Run belongs to its conversational Agent; inspect its execution context and use its control protocol' };
   // Serialize only admission, never the potentially long-running Job. The next caller then reads
   // the ledger state the admitted caller wrote and receives the existing not-waiting answer.
   const chains = resumesPerRun.get(deps.ledger) ?? new Map<string, Promise<unknown>>();
@@ -509,6 +520,7 @@ export interface Resumption {
  * ending, and the throw carries on to the caller exactly as it did.
  */
 export async function drive(ctx: Driving, resume?: Resumption): Promise<void> {
+  if (existingRun(ctx.deps.ledger, ctx.runId).control !== undefined) throw new RunStartError('automatic drive cannot advance an Agent-owned Run');
   await driveOn(ctx, resume);
   await writeExperience(ctx.deps, ctx.runId);
 }
@@ -1010,4 +1022,108 @@ async function blockAtEntry(deps: FabricDeps, run: RunRecord, pack: Pack, reason
   const entry = pack.graph.nodes.find((n) => n.id === pack.graph.entry);
   if (entry) await recordNode(deps.ledger, run.id, entry, 'blocked', attemptOf(deps.ledger, run.id, entry.id), { reason });
   await advance(deps.ledger, run.id, {}, { status: 'waiting', currentNode: pack.graph.entry, strategy });
+}
+
+/** The Host supplies actor from the actual tool/session context. */
+export interface ExecutionActionRequest {
+  readonly runId: string; readonly actor: string;
+  readonly expectedEpoch: number; readonly expectedRevision: number; readonly requestId: string;
+  readonly action: 'begin'; readonly nodeId: string;
+}
+export interface ExecutionContext {
+  readonly run: RunRecord; readonly nodes: readonly PackNode[];
+  readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly reason?: string;
+}
+export interface ExecutionActionResult {
+  readonly kind: 'accepted' | 'duplicate' | 'refused'; readonly context: ExecutionContext;
+  readonly receipt?: ExecutionReceipt; readonly reason?: string;
+}
+
+// A live queue serializes admission, never holds a Job's lifetime or replaces durable state.
+const controlsPerRun = new WeakMap<Ledger, Map<string, Promise<unknown>>>();
+function controlling<T>(deps: FabricDeps, runId: string, act: () => Promise<T>): Promise<T> {
+  const chains = controlsPerRun.get(deps.ledger) ?? new Map<string, Promise<unknown>>();
+  controlsPerRun.set(deps.ledger, chains);
+  const pending = (chains.get(runId) ?? Promise.resolve()).then(act);
+  const settled = pending.then(() => undefined, () => undefined);
+  chains.set(runId, settled);
+  void settled.then(() => { if (chains.get(runId) === settled) chains.delete(runId); });
+  return pending;
+}
+
+function identityOf(value: unknown): string {
+  const stable = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(stable);
+    if (item !== null && typeof item === 'object') return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)).map(([key, field]) => [key, stable(field)]));
+    return item;
+  };
+  return createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+}
+function executionPack(deps: FabricDeps, run: RunRecord): Pack {
+  if (run.packId === undefined || run.packDigest === undefined) throw new RunStartError('the original Pack method identity is unavailable');
+  const { folder, pack } = loadInstalledPack(deps.packsDir, run.packId);
+  if (folder.digest(packDigestExcludes) !== run.packDigest) throw new RunStartError('the installed method changed; recover the original method before execution');
+  return pack;
+}
+function inputIdentity(deps: FabricDeps, run: RunRecord): string {
+  return identityOf({
+    method: run.packDigest, site: run.siteId, goal: run.goal, strategy: run.strategy,
+    generation: run.generation, loop: run.loop,
+    workspace: deps.ledger.records({ runId: run.id, type: 'workspace' }).findLast((record) => record.type === 'workspace'),
+    evidence: deps.ledger.records({ runId: run.id }).filter((record) => (record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id),
+  });
+}
+export function executionContext(deps: FabricDeps, runId: string): ExecutionContext {
+  const run = existingRun(deps.ledger, runId);
+  const executions = Object.values(run.control?.executions ?? {});
+  if (run.control === undefined) return { run, nodes: [], available: [], executions, reason: 'historical automatic Run; explicit safe ownership migration is required' };
+  try {
+    const pack = executionPack(deps, run);
+    const nodes = [...pack.graph.nodes, ...Object.values(pack.graph.loops).flatMap((loop) => loop.nodes)];
+    const available = run.status === 'running' && run.currentNode !== undefined && run.control.paused.length === 0 ? [run.currentNode] : [];
+    return { run, nodes, available, executions };
+  } catch (error) {
+    return { run, nodes: [], available: [], executions, reason: (error as Error).message };
+  }
+}
+
+/** Claiming runs no tool; repeated claims return the same durable execution. */
+export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): Promise<ExecutionActionResult> {
+  return controlling(deps, req.runId, async () => {
+    const answer = (kind: ExecutionActionResult['kind'], extra: { receipt?: ExecutionReceipt; reason?: string } = {}): ExecutionActionResult => ({ kind, context: executionContext(deps, req.runId), ...extra });
+    const no = (reason: string): ExecutionActionResult => answer('refused', { reason });
+    const run = existingRun(deps.ledger, req.runId);
+    const control = run.control;
+    if (req.action !== 'begin') return no('this execution operation is not implemented');
+    if (control === undefined) return no('this historical Run has no conversational owner');
+    if (control.owner !== req.actor || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
+    if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
+    if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return no('request identity must be a bounded plain identifier');
+    const digest = identityOf(req);
+    const before = Object.hasOwn(control.requests, req.requestId) ? control.requests[req.requestId] : undefined;
+    if (before !== undefined) return before.digest === digest ? answer('duplicate', { receipt: before.receipt }) : no('this request identity was already used with different contents');
+    if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
+    if (run.status !== 'running') return no('this Run is not active');
+    if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted');
+    if (control.paused.length > 0) return no('business admission is paused');
+    const context = executionContext(deps, req.runId);
+    if (context.reason !== undefined) return no(context.reason);
+    if (!context.available.includes(req.nodeId)) return no('this node is not currently available from the reference graph and execution facts');
+    const node = context.nodes.find((item) => item.id === req.nodeId);
+    if (node === undefined || run.packDigest === undefined) return no('the node or its method identity is unavailable');
+    if (context.executions.some((execution) => execution.nodeId === node.id && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.phase !== 'completed' && execution.phase !== 'failed')) return no('this node already has an admitted execution');
+    const execution: NodeExecution = {
+      id: `execution-${randomUUID()}`, nodeId: node.id, kind: node.kind,
+      generation: run.generation ?? 1, attempt: attemptOf(deps.ledger, run.id, node.id),
+      methodDigest: run.packDigest, inputDigest: inputIdentity(deps, run), phase: 'begun',
+      ...(run.loop === undefined ? {} : { loopId: run.loop.id, loopGeneration: run.loop.generation }),
+    };
+    const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
+    await deps.ledger.advanceRun(run.id, { control: {
+      ...control, revision: control.revision + 1,
+      executions: { ...control.executions, [execution.id]: execution },
+      requests: { ...control.requests, [req.requestId]: { digest, actor: req.actor, epoch: control.epoch, revision: control.revision, at: new Date().toISOString(), state: 'done', receipt } },
+    } });
+    return answer('accepted', { receipt });
+  });
 }

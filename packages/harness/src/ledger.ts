@@ -1255,12 +1255,42 @@ export const runIdPattern = /run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}
 export const runPurpose = z.enum(['campaign', 'test']);
 export type RunPurpose = z.infer<typeof runPurpose>;
 
+/** Business ownership is durable Run state, obtained from the Host's actual conversation. */
+export const nodeExecution = z.strictObject({
+  id: z.string(), nodeId: z.string(), kind: nodeKind,
+  generation: z.number().int().positive(), loopId: z.string().optional(),
+  loopGeneration: z.number().int().positive().optional(), branchId: z.string().optional(),
+  attempt: z.number().int().positive(), methodDigest: sha256Hex, inputDigest: sha256Hex,
+  phase: z.enum(['begun', 'working', 'ready', 'completed', 'failed', 'uncertain']),
+});
+export type NodeExecution = z.infer<typeof nodeExecution>;
+export const executionReceipt = z.strictObject({
+  requestId: z.string(), action: z.string(), executionId: z.string().optional(),
+});
+export type ExecutionReceipt = z.infer<typeof executionReceipt>;
+export const executionRequest = z.strictObject({
+  digest: sha256Hex, actor: z.string(), epoch: z.number().int().positive(),
+  revision: z.number().int().nonnegative(), at: z.string(),
+  state: z.enum(['admitted', 'done', 'uncertain']), receipt: executionReceipt,
+});
+export const runControl = z.strictObject({
+  mode: z.literal('agent'),
+  owner: z.string().min(1),
+  epoch: z.number().int().positive(),
+  revision: z.number().int().nonnegative(),
+  paused: z.array(z.string()),
+  executions: z.record(z.string(), nodeExecution),
+  requests: z.record(z.string(), executionRequest),
+});
+export type RunControl = z.infer<typeof runControl>;
+
 export const runRecord = z.object({
   id: z.string(),
   campaignId: z.string(),
   siteId: z.string(),
   createdAt: z.string(),
   nextSeq: z.number().int().positive(),
+  control: runControl.optional(),
   status: runStatus.optional(),
   /**
    * The pack this Run runs. Recorded on the row itself, and not only on the workspace record the
@@ -1332,7 +1362,7 @@ export type RunRecord = z.infer<typeof runRecord>;
 
 /** What a caller states about a Run when it opens one; the ledger owns the id, the time, and the sequence.
  *  Not `loop`: a Run opens in its pack's own graph, and drills down only once an Explore node says so. */
-export type RunOpening = Pick<RunRecord, 'campaignId' | 'siteId'> & Partial<Pick<RunRecord, 'status' | 'packId' | 'purpose' | 'packDigest' | 'goal' | 'budget' | 'currentNode' | 'strategy' | 'firstStrategy' | 'generation' | 'meters'>>;
+export type RunOpening = Pick<RunRecord, 'campaignId' | 'siteId'> & Partial<Pick<RunRecord, 'status' | 'packId' | 'purpose' | 'packDigest' | 'goal' | 'budget' | 'currentNode' | 'strategy' | 'firstStrategy' | 'generation' | 'meters' | 'control'>>;
 
 /** What HimaFabric may change about a Run as it moves. Never its identity, its Goal, its Budget, the
  *  Strategy it started with, or its sequence — a field this type does not name is one no advance can
@@ -1349,7 +1379,7 @@ export type RunOpening = Pick<RunRecord, 'campaignId' | 'siteId'> & Partial<Pick
  *  by key inside the one write below. Branches run at once and each of them moves on its own, so a
  *  branch that stated the whole `fork` would be stating where the *other* branches stood a moment
  *  ago, and whichever of two branches wrote second would put the first one back. */
-export type RunProgress = Partial<Pick<RunRecord, 'status' | 'currentNode' | 'strategy' | 'generation' | 'meters'>> & {
+export type RunProgress = Partial<Pick<RunRecord, 'status' | 'currentNode' | 'strategy' | 'generation' | 'meters' | 'control'>> & {
   readonly loop?: RunLoop | null;
   readonly fork?: RunFork | null;
   readonly branch?: { readonly id: string } & RunBranch;
@@ -1531,7 +1561,8 @@ export const ledgerSpec = defineDomain({
   // `packDigest` is a sha256 and not any string, within this same version: nothing has ever written
   // one that is not, and a row carrying something a check could never match is a Run that would read
   // as untestable rather than as wrong.
-  version: 19,
+  // Older builds must reject this domain rather than strip ownership and re-enter drive.
+  version: 20,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
