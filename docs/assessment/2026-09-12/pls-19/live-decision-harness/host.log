@@ -1,0 +1,10 @@
+{"passed":true,"failure":null,"checks":["active first Job survived pause; mechanical completion did not start a successor","generation 1 measured 56 with cutoff 10; constraint PASS and full-sum Goal FAIL","false success refused; explicit owner next-strategy revisited analyze with cutoff 0","generation 2 measured 69; both rules PASS; stale citations refused; current evidence accepted","same owner, one Run, two distinct executable directories, original budget/Goal/method, five cumulative Jobs, zero model requests"],"modelRequests":0,"elapsedMs":132786}
+✔ docs/assessment/2026-09-12/pls-19/live-decision-harness/verify-host.ts (133543.611125ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 133568.872875
