@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { finalizationDenial, sameTestClaims, verifyRuntimeUpgrade, type RuntimeUpgrade } from '../../scripts/live-check-pipeline-finalize.ts';
+import { finalizationDenial, sameScientificFacts, sameTestClaims, verifyRuntimeUpgrade, type RuntimeUpgrade } from '../../scripts/live-check-pipeline-finalize.ts';
 import { sha256 } from '../../scripts/live-check-workshop.ts';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
@@ -12,6 +12,20 @@ import { digestTrees } from './support/pipeline.ts';
 const run = 'run-00000000-0000-4000-8000-000000000000';
 const original = `## Run\n\nrun: ${run} — goal minimum 1; limit 16.\n\n## Ending\n\nstatus: ended-goal-met — observed sum 169; Judge PASS.\n`;
 const repaired = original.replace(' — goal', '\n\ngoal').replace(' — observed', '\n\nobserved');
+
+test('scientific facts survive cold-decode key reordering but reject changed budgets readings and record order', () => {
+  const before = { runs: [{ id: run, status: 'ended-goal-met', budget: { generationLimit: 1, timeBoxMs: 480000 }, control: { owner: 'same-agent', revision: 17 } }],
+    records: [{ id: 'observation', values: [{ type: 'numeric_sum', value: 169 }] }, { id: 'verdict', outcome: 'PASS', cites: ['observation'] }] };
+  const decoded = { runs: [{ control: { revision: 17, owner: 'same-agent' }, budget: { timeBoxMs: 480000, generationLimit: 1 }, status: 'ended-goal-met', id: run }],
+    records: [{ values: [{ value: 169, type: 'numeric_sum' }], id: 'observation' }, { cites: ['observation'], outcome: 'PASS', id: 'verdict' }] };
+  assert.notEqual(JSON.stringify(before), JSON.stringify(decoded), 'the fixture must exercise the actual false-failure pattern');
+  assert.equal(sameScientificFacts(decoded, before), true);
+  const budget = structuredClone(decoded); budget.runs[0]!.budget.generationLimit = 2;
+  assert.equal(sameScientificFacts(budget, before), false);
+  const reading = structuredClone(decoded); reading.records[0]!.values![0]!.value = 170;
+  assert.equal(sameScientificFacts(reading, before), false);
+  assert.equal(sameScientificFacts({ ...decoded, records: [...decoded.records].reverse() }, before), false);
+});
 
 test('finalization permits only formatting, preserving numeric and narrative facts', () => {
   assert.equal(sameTestClaims(original, repaired), true);

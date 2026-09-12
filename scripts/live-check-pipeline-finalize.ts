@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { parse } from 'yaml';
 import { HIMA_TEST_SECTIONS, packDigestOf, packStage, packVersionFile, pipelineFiles } from '@hima/harness';
 import { bootInProcess, injectedSkills, resumeTestAgent, toolCalls, type InProcessHost } from '../test/contract/support/boot-inprocess.ts';
@@ -11,8 +12,12 @@ import { guardInstalled, runLive, sha256, within, type LiveCheck } from './live-
 import { parseParent, probeReader, retainedHome, verifyCompletedNumericRun } from './live-check-pipeline-checkpoint.ts';
 
 type Costs = { hosts: number; nativeSessionsCreated: number; modelRequestSteps: number; userMessages: number };
-type RecordedRun = { run: ReturnType<InProcessHost['ctx']['hima']['ledger']['runs']>[number]; records: ReturnType<InProcessHost['ctx']['hima']['ledger']['records']> };
-type Continuation = {
+export type RecordedRun = { run: ReturnType<InProcessHost['ctx']['hima']['ledger']['runs']>[number]; records: ReturnType<InProcessHost['ctx']['hima']['ledger']['records']> };
+/** Compare scientific values; object property enumeration order is not a Run fact. */
+export function sameScientificFacts(actual: { runs: readonly unknown[]; records: readonly unknown[] }, expected: { runs: readonly unknown[]; records: readonly unknown[] }): boolean {
+  return isDeepStrictEqual(actual, expected);
+}
+export type Continuation = {
   check: string; status: string; costs: Costs; checks: { claim: string; passed: boolean }[]; runs: RecordedRun[];
   agents: { id: string; session: string; cwd: string; options: { provider: string; model: string }; skills: string[]; toolCalls: ReturnType<typeof toolCalls> }[];
   observed: {
@@ -28,7 +33,7 @@ export interface RuntimeUpgrade {
   protectedRoots: string[]; protectedBefore: Record<string, string>; protectedAfter: Record<string, string>;
 }
 
-async function bundleHashes(bundle: string) {
+export async function bundleHashes(bundle: string) {
   return new Map([...(await digestTrees([bundle], path.join(bundle, 'node_modules')))].map(([file, hash]) => [path.relative(bundle, file), hash]));
 }
 export async function verifyRuntimeUpgrade(upgrade: RuntimeUpgrade, home: string, oldHashes: Record<string, string>) {
@@ -146,8 +151,8 @@ async function finalize(check: LiveCheck, fromPath: string, runtimePath: string)
     check.require('actual release seal covers exact original Run corrected method and file bytes', seal.test.run === held.runId && seal.methodDigest === from.observed.methodCorrection.correctedDigest
       && packDigestOf(folder) === seal.methodDigest && Object.entries(seal.files).every(([file, hash]) => sha256(readFileSync(path.join(folder, file))) === hash) && packStage(folder).stage === 'released', seal);
     check.require('all five stage skills remain in the exact original native conversation', ['hima-grill', 'hima-spec', 'hima-fabric', 'hima-test', 'hima-release'].every((skill) => injectedSkills(author).includes(skill)) && check.requestSessions.size === 1 && check.requestSessions.has(original.id), injectedSkills(author));
-    check.require('no Run creation execution budget reset or scientific record changed during finalization', JSON.stringify(host.ctx.hima.ledger.runs()) === JSON.stringify(from.runs.map((entry) => entry.run))
-      && JSON.stringify(host.ctx.hima.ledger.records({ runId: held.runId })) === JSON.stringify(from.runs[0]!.records), host.ctx.hima.ledger.runs());
+    check.require('no Run creation execution budget reset or scientific record changed during finalization', sameScientificFacts({ runs: host.ctx.hima.ledger.runs(), records: host.ctx.hima.ledger.records({ runId: held.runId }) },
+      { runs: from.runs.map((entry) => entry.run), records: from.runs[0]!.records }), host.ctx.hima.ledger.runs());
     const delta = changedBetween(before, await digestTrees([path.join(home, 'hima/packs'), path.join(home, 'numeric-flow'), path.join(home, 'workspace'), held.upgrade.bundle], home + '.excluded'));
     check.require('finalization changed only TEST formatting and the native VERSION seal', JSON.stringify(delta) === JSON.stringify([`${path.join(folder, pipelineFiles.test)} (rewritten)`, `${path.join(folder, pipelineFiles.version)} (new)`].sort()), delta);
     check.observed.seal = seal; check.observed.finalTest = test;

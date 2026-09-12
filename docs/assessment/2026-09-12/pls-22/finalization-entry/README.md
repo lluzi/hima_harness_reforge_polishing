@@ -1,5 +1,7 @@
 # Finalization of the completed numeric Run
 
+The model has now completed TEST repair and native release. The finalization run hit an order-sensitive comparison defect after its seal checks passed; [the separate read-only audit](../post-finalization-audit/README.md) confirms the actual released result and preserves that original failed evidence. The preparation-stage record below remains as recorded.
+
 The new opt-in [finalizer](../../../../../scripts/live-check-pipeline-finalize.ts) performs only TEST formatting/check and native release. It does not create or execute any Run, change the method, or reset a budget. The source is [continuation 2](../live-continuation-2/evidence.json): the original author fixed the reader, passed nine direct reader cases, completed Run `run-cbfcba3e-fc8d-459e-b6a6-304de9764a81` as `ended-goal-met`, and wrote TEST.md before the driver timed out.
 
 ## Diagnosis
