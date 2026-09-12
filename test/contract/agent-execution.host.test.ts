@@ -1,4 +1,4 @@
-// PLS-19: real Host and private local Jobs, no model replay or Electron.
+// PLS-19: real Host and private local Jobs; replay guards, no real model or Electron.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -265,6 +265,35 @@ exec ${quoted(realTmux)} "$@"
     await working?.catch(() => undefined);
     restoreDisk(); process.env.PATH = savedPath;
     if (runId) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});
+
+
+for (const status of ['waiting', 'cancelled'] as const) test(`production refuses a standalone moment on a historical ${status} Run before any session is composed`, async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  const replay = await writeMomentFixture(home.h, 'one-turn');
+  await writeReplayOverlay(home.h.home, { file: replay.file, overrideFile: replay.override });
+  const host = await bootInProcess(home.h);
+  const legacyFlag = process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const prepared = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(prepared.kind, 'ran');
+    if (prepared.kind !== 'ran') return;
+    await host.ctx.hima.ledger.advanceRun(prepared.run.id, { control: undefined, status });
+    delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+    const run = host.ctx.hima.ledger.run(prepared.run.id);
+    const records = host.ctx.hima.ledger.records({ runId: prepared.run.id });
+    const agents = host.ctx.get('agents')!.list().map((agent) => agent.id);
+    await assert.rejects(host.ctx.hima.openMoment(prepared.run.id, 'inspect the historical node'), /standalone historical model moments are unavailable/);
+    assert.deepEqual(host.ctx.hima.ledger.run(prepared.run.id), run);
+    assert.deepEqual(host.ctx.hima.ledger.records({ runId: prepared.run.id }), records, 'no opened or closed session can be recorded by this request');
+    assert.deepEqual(host.ctx.get('agents')!.list().map((agent) => agent.id), agents, 'no second Agent is composed');
+  } finally {
+    if (legacyFlag === undefined) delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+    else process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = legacyFlag;
     await host.dispose(); await home.h.dispose();
   }
 });

@@ -1,0 +1,38 @@
+{
+  "base": "b08decdf864924460755db84e2c1a84942e9455b",
+  "productChange": "production retirement of standalone historical moment at shared public service boundary",
+  "sourceSha256": {
+    "packages/harness/src/moments.ts": "2dc89eb65bf6c9f450d52d219c255c2651ad84bbc0c0208ef6bc00918a3defb6",
+    "test/contract/agent-execution.host.test.ts": "c51c7acf29a3be8fe49b80c0876f24c7cbb405248cad0d7af57ef6ff40805bab"
+  },
+  "red": {
+    "cases": 2,
+    "failed": 2,
+    "elapsedSeconds": 8.447
+  },
+  "green": {
+    "cases": 17,
+    "passed": 17,
+    "failed": 0,
+    "skipped": 0,
+    "elapsedSeconds": 109.847,
+    "hostProcess": 6,
+    "hostInProcess": 12,
+    "electron": 0,
+    "ssh": 0
+  },
+  "checks": [
+    "Harness build",
+    "full typecheck",
+    "seams",
+    "boundary",
+    "git diff --check"
+  ],
+  "notRun": [
+    "full local suite",
+    "real model",
+    "Electron",
+    "EDA",
+    "SSH"
+  ]
+}

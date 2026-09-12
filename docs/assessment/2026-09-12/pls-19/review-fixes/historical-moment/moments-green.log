@@ -1,0 +1,117 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-execution.host.test.ts test/contract/moment.host.test.ts
+local: 2 selected; 44 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 1 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 3522.8835
+  type: 'test'
+  ...
+# Subtest: the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+ok 2 - the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+  ---
+  duration_ms: 4214.724958
+  type: 'test'
+  ...
+# Subtest: pause and an explicit handoff fence old owners without changing Goal or budget
+ok 3 - pause and an explicit handoff fence old owners without changing Goal or budget
+  ---
+  duration_ms: 801.255917
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 4 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 973.059
+  type: 'test'
+  ...
+# Subtest: an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+ok 5 - an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+  ---
+  duration_ms: 533.563625
+  type: 'test'
+  ...
+# Subtest: a delayed actual Site probe that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+ok 6 - a delayed actual Site probe that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+  ---
+  duration_ms: 10526.615708
+  type: 'test'
+  ...
+# Subtest: a delayed actual intent persistence that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+ok 7 - a delayed actual intent persistence that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+  ---
+  duration_ms: 11440.424959
+  type: 'test'
+  ...
+# Subtest: production refuses a standalone moment on a historical waiting Run before any session is composed
+ok 8 - production refuses a standalone moment on a historical waiting Run before any session is composed
+  ---
+  duration_ms: 1073.76725
+  type: 'test'
+  ...
+# Subtest: production refuses a standalone moment on a historical cancelled Run before any session is composed
+ok 9 - production refuses a standalone moment on a historical cancelled Run before any session is composed
+  ---
+  duration_ms: 1709.273458
+  type: 'test'
+  ...
+# Subtest: through the Host with the replay stand-in: a moment opens on a stand-in node, the replayed turn answers, and the ledger holds the pair that brackets it
+ok 10 - through the Host with the replay stand-in: a moment opens on a stand-in node, the replayed turn answers, and the ledger holds the pair that brackets it
+  ---
+  duration_ms: 15304.811292
+  type: 'test'
+  ...
+# Subtest: through the Host with the replay stand-in: a moment on a Run that has ended leaves the Generation rows the card and the report were written from exactly as they were
+ok 11 - through the Host with the replay stand-in: a moment on a Run that has ended leaves the Generation rows the card and the report were written from exactly as they were
+  ---
+  duration_ms: 13238.150417
+  type: 'test'
+  ...
+# Subtest: through the Host with the replay stand-in: a host taken away mid-moment leaves one open record, the next host closes it interrupted exactly once, and the node takes another moment that completes
+ok 12 - through the Host with the replay stand-in: a host taken away mid-moment leaves one open record, the next host closes it interrupted exactly once, and the node takes another moment that completes
+  ---
+  duration_ms: 19224.782292
+  type: 'test'
+  ...
+# Subtest: the scan reports a regular file it could not read, rather than passing over it
+ok 13 - the scan reports a regular file it could not read, rather than passing over it
+  ---
+  duration_ms: 24.712125
+  type: 'test'
+  ...
+# Subtest: the scan reports a directory it could not open, and passes over a link pointing at nothing
+ok 14 - the scan reports a directory it could not open, and passes over a link pointing at nothing
+  ---
+  duration_ms: 13.794417
+  type: 'test'
+  ...
+# Subtest: the moment route refuses what it cannot do, in the namespace's own words
+ok 15 - the moment route refuses what it cannot do, in the namespace's own words
+  ---
+  duration_ms: 12256.165917
+  type: 'test'
+  ...
+# Subtest: through the Host with a model that refuses: the turn answers nothing, the moment closes failed, and the route says why
+ok 16 - through the Host with a model that refuses: the turn answers nothing, the moment closes failed, and the route says why
+  ---
+  duration_ms: 11096.820083
+  type: 'test'
+  ...
+# Subtest: a moment refuses a governed tool name by construction: no session is composed and no record is written
+ok 17 - a moment refuses a governed tool name by construction: no session is composed and no record is written
+  ---
+  duration_ms: 2079.170666
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 109767.362583
+Test boot attempts: {"host-process":6,"host-in-process":12,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 109.847 s; pass/fail/skip counts are in the TAP summary above

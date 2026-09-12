@@ -1,0 +1,10 @@
+2dc89eb65bf6c9f450d52d219c255c2651ad84bbc0c0208ef6bc00918a3defb6  packages/harness/src/moments.ts
+c51c7acf29a3be8fe49b80c0876f24c7cbb405248cad0d7af57ef6ff40805bab  test/contract/agent-execution.host.test.ts
+72f535f68f04f29029f66d5e6ed79df332218a63263daa0a7674c47bc47057ed  docs/assessment/2026-09-12/pls-19/review-fixes/historical-moment/README.md
+dc34255ca561ffc326d1387a6ffa93738b773a553b289396ca3b285f50988278  docs/assessment/2026-09-12/pls-19/review-fixes/historical-moment/boundary.log
+22b41923dfc568f145e30ab510b46b26ab1522bed3aa766a3a3cdf11630cfb1f  docs/assessment/2026-09-12/pls-19/review-fixes/historical-moment/build.log
+4ef54d249ce54138091d222b41acd5fb9ebb2191fa67dfee3cc95787f9016b31  docs/assessment/2026-09-12/pls-19/review-fixes/historical-moment/historical-red.tap
+1caa0d4bb85fd34e1ef1bf31e2b451164693db49cf73870c111b6455ad8c35b9  docs/assessment/2026-09-12/pls-19/review-fixes/historical-moment/moments-green.log
+66335f28f5ba9f65fcf1006dc1f6a168ce6768c711801a2d2fc1bc4e9ed1f5ad  docs/assessment/2026-09-12/pls-19/review-fixes/historical-moment/seams.log
+421477bb59a41953bc0abf45aab37b271bfa978c4708c2c63c8f80b3d7073971  docs/assessment/2026-09-12/pls-19/review-fixes/historical-moment/typecheck.log
+8792f950e09f99759da94bada0a8e8383fff3dade21c9d599e80ad968f9d9376  docs/assessment/2026-09-12/pls-19/review-fixes/historical-moment/verification.json
