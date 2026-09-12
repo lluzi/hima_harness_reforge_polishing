@@ -13,15 +13,15 @@
 // release — first release and re-release alike — because a release is a statement about one instant,
 // and a seal whose hashes, whose version and whose evidence came from three readings of a folder
 // would be a document that was never true all at once.
-import { randomUUID } from 'node:crypto';
-import { closeSync, constants, fstatSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import { runIdPattern } from './ledger.js';
-import { PackNotFoundError } from './errors.js';
-import { packFilePath, packId, packSha256, pipelineFiles, type PackFolderSnapshot } from './pack-folder.js';
-import { checkTestRecord, installedPackFolder, loadPackFrom, packFiles, packStageFrom, runNamedByTestRecord, type PackContract, type ReleaseDeps } from './packs.js';
+import { PackFolderError, PackNotFoundError } from './errors.js';
+import { methodHistoryDirectory, methodInstallFile, methodUpdateFile, packDigestExcludes, packFilePath, packId, packSha256, pipelineFiles, runAssetsDirectory, snapshotPackFolder, snapshotPackFolderIfThere, type PackFolderSnapshot } from './pack-folder.js';
+import { checkTestRecord, installedPackFolder, loadPackFrom, packFiles, packStageFrom, runNamedByTestRecord, type Pack, type PackContract, type ReleaseDeps } from './packs.js';
 
 /**
  * The version file a release writes: which pack, which version, when, the test record it rests on,
@@ -35,6 +35,8 @@ import { checkTestRecord, installedPackFolder, loadPackFrom, packFiles, packStag
 export const packVersionFile = z.strictObject({
   pack: packId,
   version: z.string(),
+  /** New seals state the same method identity as Run/test/workspace; old method-only seals remain readable. */
+  methodDigest: packSha256.optional(),
   /**
    * When the release was written, as an ISO instant.
    *
@@ -123,6 +125,7 @@ export function releaseIssue(folder: PackFolderSnapshot, contract: Pick<PackCont
   const said = (what: string): string => `${pipelineFiles.version} is there and ${what}`;
   if (sealed.pack !== contract.id) return said(`seals pack "${sealed.pack}", and ${packFiles.contract} declares "${contract.id}"`);
   if (sealed.version !== contract.version) return said(`seals version ${sealed.version}, and ${packFiles.contract} declares version ${contract.version}`);
+  if (Object.keys(sealed.files).some((at) => inTree(at, runAssetsDirectory))) return said('mixes run-assets with reference method files; this legacy seal needs owner review and a new tested release, not an invented replacement identity');
   const now = new Map(folder.sealFiles());
   for (const [at, sha] of Object.entries(sealed.files)) {
     const here = now.get(at);
@@ -132,6 +135,7 @@ export function releaseIssue(folder: PackFolderSnapshot, contract: Pick<PackCont
   for (const [at] of now) {
     if (!Object.hasOwn(sealed.files, at)) return said(`${at} is not listed in it`);
   }
+  if (sealed.methodDigest !== undefined && sealed.methodDigest !== folder.digest(packDigestExcludes)) return said('names a methodDigest that does not match this reference method');
   // And the two halves of the evidence, which the hashes above cannot hold against each other.
   const record = folder.text(pipelineFiles.test);
   if (record === undefined) return said(`rests on ${pipelineFiles.test}, and this folder holds none`);
@@ -241,6 +245,7 @@ export function releasePack(deps: ReleaseDeps, req: { readonly pack: string }): 
   const composed = {
     pack: pack.id,
     version: pack.contract.version,
+    methodDigest: folder.digest(packDigestExcludes),
     released: new Date().toISOString(),
     test: { record: pipelineFiles.test, run: record.run },
     files: Object.fromEntries(files),
@@ -263,6 +268,7 @@ export function releasePack(deps: ReleaseDeps, req: { readonly pack: string }): 
     '# pack whose files no longer match it.',
     `pack: ${yamlScalar(sealed.pack)}`,
     `version: ${yamlScalar(sealed.version)}`,
+    `methodDigest: ${yamlScalar(sealed.methodDigest!)}`,
     `released: ${yamlScalar(sealed.released)}`,
     'test:',
     `  record: ${yamlScalar(sealed.test.record)}`,
@@ -324,6 +330,7 @@ function sealWrittenIssue(file: string, sealed: PackVersionFile, files: readonly
   }
   if (written.pack !== sealed.pack) return `${pipelineFiles.version} on the disk seals pack "${written.pack}" and this release sealed "${sealed.pack}"`;
   if (written.version !== sealed.version) return `${pipelineFiles.version} on the disk seals version ${written.version} and this release sealed ${sealed.version}`;
+  if (written.methodDigest !== sealed.methodDigest) return `${pipelineFiles.version} on the disk names a different methodDigest`;
   if (written.test.run !== sealed.test.run) return `${pipelineFiles.version} on the disk rests on run ${written.test.run} and this release sealed run ${sealed.test.run}`;
   for (const [at, sha] of files) {
     const there = written.files[at];
@@ -334,4 +341,213 @@ function sealWrittenIssue(file: string, sealed: PackVersionFile, files: readonly
     if (!files.some(([here]) => here === at)) return `${pipelineFiles.version} on the disk lists ${at}, which is not a file this release sealed`;
   }
   return undefined;
+}
+
+/** Installer ownership is a verified file list, never an inference from a directory name. */
+const methodManifest = z.strictObject({
+  format: z.literal(1),
+  pack: packId,
+  version: z.string(),
+  digest: packSha256,
+  files: z.record(packFilePath, packSha256),
+});
+type MethodManifest = z.infer<typeof methodManifest>;
+
+const inTree = (at: string, root: string): boolean => at === root || at.startsWith(`${root}/`);
+const hashFiles = (folder: PackFolderSnapshot): Readonly<Record<string, string>> =>
+  Object.fromEntries([...folder.sealFiles(), ...(folder.has(pipelineFiles.version)
+    ? [[pipelineFiles.version, createMethodHash(folder.files.get(pipelineFiles.version)!)]] as const : [])]);
+
+function createMethodHash(bytes: Uint8Array): string {
+  // Same SHA-256 bytes as the snapshot's named file list; this includes the seal itself for installation.
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+function manifestOf(folder: PackFolderSnapshot): MethodManifest {
+  const pack = loadPackFrom(folder);
+  const issue = releaseIssue(folder, pack.contract);
+  if (issue !== undefined) throw new PackFolderError(issue);
+  return { format: 1, pack: pack.id, version: pack.contract.version, digest: folder.digest(packDigestExcludes), files: hashFiles(folder) };
+}
+
+/** Inspect every ancestor: refusing only the final symlink would still write through its parent. */
+function plainAncestors(at: string): void {
+  const absolute = path.resolve(at);
+  const parent = path.dirname(absolute);
+  if (parent !== absolute) plainAncestors(parent);
+  const entry = lstatSync(absolute, { throwIfNoEntry: false });
+  // macOS's immutable system aliases are how os.tmpdir() spells its root. No customer-controlled
+  // link beneath them is accepted, and no arbitrary symlink target is treated as an alias.
+  if (process.platform === 'darwin' && ['/var', '/tmp', '/etc'].includes(absolute)
+      && entry?.isSymbolicLink() && realpathSync(absolute) === `/private${absolute}`) return;
+  if (entry !== undefined && !entry.isDirectory()) throw new PackFolderError(`${absolute} is not a plain directory; method installation cannot follow symlinks`);
+}
+
+function readManifest(folder: PackFolderSnapshot): MethodManifest | undefined {
+  const file = path.join(folder.dir, methodInstallFile);
+  if (lstatSync(file, { throwIfNoEntry: false }) === undefined) return undefined;
+  const parsed = methodManifest.safeParse(JSON.parse(sealJustWritten(file)));
+  if (!parsed.success) throw new PackFolderError(`${file} is not a verified method manifest: ${parsed.error.message}`);
+  const actual = manifestOf(folder);
+  if (JSON.stringify(Object.entries(parsed.data.files).sort()) !== JSON.stringify(Object.entries(actual.files).sort())
+      || parsed.data.pack !== actual.pack || parsed.data.version !== actual.version || parsed.data.digest !== actual.digest) {
+    throw new PackFolderError(`${folder.dir} differs from its method manifest (unknown or changed method files); nothing was overwritten`);
+  }
+  return parsed.data;
+}
+
+function verifyInstallOwnership(folder: PackFolderSnapshot, history = true): void {
+  const id = path.basename(folder.dir);
+  const digests = new Set<string>();
+  for (const entry of folder.entries) {
+    if ((history && inTree(entry, runAssetsDirectory)) || entry === methodInstallFile) continue;
+    if (history && inTree(entry, methodHistoryDirectory)) {
+      const [, digest, archivedId] = entry.split('/');
+      if (digest === undefined) continue;
+      if (!packSha256.safeParse(digest).success || (archivedId !== undefined && archivedId !== id)) {
+        throw new PackFolderError(`${folder.dir}/${entry} has unknown ownership in method history; nothing was overwritten`);
+      }
+      digests.add(digest);
+      continue;
+    }
+    if (entry.split('/').some((segment) => segment.startsWith('.'))) throw new PackFolderError(`${folder.dir}/${entry} has unknown ownership; nothing was overwritten`);
+    if (!folder.files.has(entry) && ![...folder.files.keys()].some((file) => file.startsWith(`${entry}/`))) {
+      throw new PackFolderError(`${folder.dir}/${entry} has unknown directory ownership; nothing was overwritten`);
+    }
+  }
+  for (const digest of digests) {
+    const archived = snapshotPackFolder(path.join(folder.dir, methodHistoryDirectory, digest, id));
+    verifyInstallOwnership(archived, false);
+    if (readManifest(archived)?.digest !== digest) throw new PackFolderError(`${archived.dir} has no verified method manifest`);
+  }
+}
+
+/** Write exactly the method snapshot's explicit list; private assets and hidden files are never copied. */
+function writeMethodFiles(folder: PackFolderSnapshot, to: string): void {
+  for (const [relative, bytes] of folder.files) {
+    packFilePath.parse(relative);
+    const target = path.join(to, relative);
+    plainAncestors(path.dirname(target));
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, bytes, { flag: 'wx', mode: folder.modes.get(relative) });
+  }
+}
+
+/** Method-only sharing uses an explicit file list from one verified snapshot, into a new directory. */
+export function exportPackMethod(req: { readonly from: string; readonly to: string }): { readonly dir: string; readonly files: readonly string[]; readonly digest: string } {
+  plainAncestors(req.from);
+  const folder = snapshotPackFolder(path.resolve(req.from));
+  if (readManifest(folder) !== undefined) verifyInstallOwnership(folder);
+  const manifest = manifestOf(folder);
+  const dir = path.resolve(req.to);
+  plainAncestors(path.dirname(dir));
+  mkdirSync(dir, { recursive: false });
+  writeMethodFiles(folder, dir);
+  return { dir, files: Object.keys(manifest.files), digest: manifest.digest };
+}
+
+/** Preserve the actual bytes an identified Run used. Old rows with no digest receive no invented identity. */
+export function preservePackMethod(folder: PackFolderSnapshot): string {
+  return preserveMethodAt(folder, folder.dir);
+}
+
+function preserveMethodAt(folder: PackFolderSnapshot, installedDir: string): string {
+  const manifest = manifestOf(folder);
+  const dir = path.join(installedDir, methodHistoryDirectory, manifest.digest, manifest.pack);
+  plainAncestors(path.dirname(dir));
+  const existing = snapshotPackFolderIfThere(dir);
+  if (existing !== undefined) {
+    const held = readManifest(existing);
+    verifyInstallOwnership(existing, false);
+    if (held?.digest !== manifest.digest || held.pack !== manifest.pack) throw new PackFolderError(`${dir} is not the preserved method ${manifest.digest}`);
+    return dir;
+  }
+  mkdirSync(path.dirname(dir), { recursive: true });
+  mkdirSync(dir);
+  writeMethodFiles(folder, dir);
+  writeFileSync(path.join(dir, methodInstallFile), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+  return dir;
+}
+
+/** Resolve historical execution against its own verified method, or refuse before interpreting it. */
+export function loadRunPack(packsDir: string, id: string, digest: string | undefined): Pack {
+  packId.parse(id);
+  if (digest === undefined) throw new PackFolderError(`Run of pack ${id} has no recorded method digest; its original method cannot be verified`);
+  packSha256.parse(digest);
+  const installed = path.resolve(packsDir, id);
+  plainAncestors(installed);
+  const history = path.join(installed, methodHistoryDirectory, digest, id);
+  plainAncestors(history);
+  const preserved = snapshotPackFolderIfThere(history);
+  const folder = preserved ?? snapshotPackFolder(installed);
+  if (folder.digest(packDigestExcludes) !== digest) throw new PackFolderError(`Run of pack ${id} needs method ${digest}; the installed method differs and no verified original snapshot is available`);
+  if (preserved !== undefined && readManifest(preserved)?.digest !== digest) throw new PackFolderError(`${history} is not a verified original method snapshot`);
+  if (preserved !== undefined) verifyInstallOwnership(preserved, false);
+  return loadPackFrom(preserved === undefined ? snapshotPackFolder(preservePackMethod(folder)) : folder);
+}
+
+/**
+ * Install declared method bytes while leaving run-assets in place. The marker is written before
+ * changing any installed method file; a crash leaves a refused installation and both old/new
+ * method snapshots for explicit repair. No failure path removes a customer directory.
+ */
+export function installPackMethod(req: { readonly from: string; readonly to: string }): { readonly dir: string; readonly digest: string; readonly changed: boolean } {
+  plainAncestors(req.from);
+  const source = snapshotPackFolder(path.resolve(req.from));
+  if (readManifest(source) !== undefined) verifyInstallOwnership(source);
+  const next = manifestOf(source);
+  const dir = path.resolve(req.to);
+  if (path.basename(dir) !== next.pack) throw new PackFolderError(`method ${next.pack} cannot be installed as ${path.basename(dir)}`);
+  plainAncestors(dir);
+  mkdirSync(path.dirname(dir), { recursive: true });
+  const lock = path.join(path.dirname(dir), `.${next.pack}.hima-install-lock`);
+  try {
+    writeFileSync(lock, `${JSON.stringify({ pack: next.pack, digest: next.digest })}\n`, { flag: 'wx' });
+  } catch (err) {
+    throw new PackFolderError(`${lock} cannot be acquired; another installation may be running or interrupted: ${(err as Error).message}`);
+  }
+  try {
+    return installMethodSnapshot(source, next, dir);
+  } finally {
+    rmSync(lock);
+  }
+}
+
+function installMethodSnapshot(source: PackFolderSnapshot, next: MethodManifest, dir: string): { readonly dir: string; readonly digest: string; readonly changed: boolean } {
+  const previous = snapshotPackFolderIfThere(dir);
+  let owned: MethodManifest | undefined;
+  if (previous !== undefined) {
+    owned = readManifest(previous);
+    verifyInstallOwnership(previous);
+    if (owned === undefined) {
+      // A legacy installation can be adopted only by byte equality, never by matching its version alone.
+      const actual = manifestOf(previous);
+      if (JSON.stringify(Object.entries(actual.files).sort()) !== JSON.stringify(Object.entries(next.files).sort())) {
+        throw new PackFolderError(`${dir} has no verified method manifest and differs from the source; nothing was overwritten`);
+      }
+      owned = actual;
+    }
+    if (owned.version === next.version && owned.digest !== next.digest) throw new PackFolderError(`pack ${next.pack}@${next.version} has different method content; declare a new version before updating`);
+    preservePackMethod(previous);
+    if (JSON.stringify(Object.entries(owned.files).sort()) === JSON.stringify(Object.entries(next.files).sort())) {
+      if (!previous.entries.has(methodInstallFile)) writeFileSync(path.join(dir, methodInstallFile), `${JSON.stringify(owned, null, 2)}\n`, { flag: 'wx' });
+      return { dir, digest: next.digest, changed: false };
+    }
+  } else {
+    mkdirSync(dir, { recursive: true });
+  }
+  preserveMethodAt(source, dir);
+  const marker = path.join(dir, methodUpdateFile);
+  writeFileSync(marker, `${JSON.stringify({ previous: owned ?? null, next }, null, 2)}\n`, { flag: 'wx' });
+  // Only files owned and checked above can be replaced or removed. run-assets is absent from both lists.
+  for (const relative of Object.keys(owned?.files ?? {})) rmSync(path.join(dir, relative));
+  // Remove only the now-empty declared method directories. Never recursively remove a directory:
+  // a concurrent customer addition stops the transaction instead of being swept up with it.
+  for (const relative of [...previous?.directories ?? []].sort((a, b) => b.length - a.length)) rmdirSync(path.join(dir, relative));
+  writeMethodFiles(source, dir);
+  const tempManifest = path.join(dir, `${methodInstallFile}.next`);
+  writeFileSync(tempManifest, `${JSON.stringify(next, null, 2)}\n`, { flag: 'wx' });
+  renameSync(tempManifest, path.join(dir, methodInstallFile));
+  rmSync(marker);
+  return { dir, digest: next.digest, changed: true };
 }

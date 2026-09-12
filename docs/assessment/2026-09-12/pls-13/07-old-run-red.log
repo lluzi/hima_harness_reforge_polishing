@@ -1,0 +1,25 @@
+✔ repeated local seeding preserves the installed Pack customer archive byte for byte (336.825667ms)
+✖ a real Host resumes the old Run against its original method after an installed version upgrade (2603.531417ms)
+✔ installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them (108.522ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3629.451459
+
+✖ failing tests:
+
+test at test/contract/pack-method-assets.test.ts:29:1
+✖ a real Host resumes the old Run against its original method after an installed version upgrade (2603.531417ms)
+  Error: pack opene902-timing-probe: graph.yml is version 2 while contract.yml is version 3
+      at broken (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/packages/harness/lib/packs.js:1202:43)
+      at validatePack (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/packages/harness/lib/packs.js:1208:9)
+      at loadPackFrom (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/packages/harness/lib/packs.js:1140:5)
+      at manifestOf (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/packages/harness/lib/release.js:364:18)
+      at installPackMethod (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/packages/harness/lib/release.js:500:18)
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/test/contract/pack-method-assets.test.ts:47:3)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7)

@@ -1,0 +1,24 @@
+✔ a run left with no fabric state at all is still picked up by the next host, not left looking like a run no fabric ever touched (2100.149375ms)
+ℹ run run-6cb29729-c85d-4352-a0bb-1cdcf72af3cb of campaign opene902-timing-probe-interrupted on site local: waiting
+ℹ   goal: clock period at most 2 ns
+ℹ   budget: time box 60 min, retry allowance 3, at most 6 generations, job cap 1, licences Design-Compiler 1
+ℹ   current node: synthesize
+ℹ   meters:
+ℹ     elapsed 317 ms of a time box of 60.0 min
+ℹ     0 jobs launched, at most 1 job at a time
+ℹ     synthesize: attempt 1 of a retry allowance of 3, and 0 attempts in the campaign so far
+ℹ     Design-Compiler 0 seats of 1 declared
+ℹ   nodes:
+ℹ     synthesize (act): blocked, attempt 1, HimaFabric opened this run and never started it: campaign opene902-timing-probe-interrupted got no workspace to run in, so nothing was launched anywhere. The host that was preparing it went away before it could finish or say why; start the campaign again once a person has looked at it
+✔ a run whose pack this machine cannot load is refused by /hima judge, naming the pack and why, rather than judged on the bundle's copy of the rule (1811.372333ms)
+ℹ cannot judge run-c4eb85ba-327d-4610-a7e6-3adc1f66676a: run run-c4eb85ba-327d-4610-a7e6-3adc1f66676a runs pack "opene902-timing-probe", whose own rules/ is where its rule ids are looked for first, and this machine cannot load that pack: Run of pack opene902-timing-probe needs method 0f4a8a9c0af7cf831cf0212af20d1d4e2006f4bdb560aad2c304cf238c077074; the installed method differs and no verified original snapshot is available
+✔ preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared (1914.595292ms)
+✔ a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing (499.601458ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2775.579542

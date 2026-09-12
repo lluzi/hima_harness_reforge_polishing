@@ -32,8 +32,9 @@
 // an outcome's edge leads to, and where a Run stops. What a turn itself does is `node-turns.ts`, what
 // a Run may spend `budget.ts`, what a Site will hold `job-cap.ts`, and picking a Run up again or
 // stopping one `recovery.ts`.
-import { boundInputs, checkPack, loadInstalledPack, loadPack, packStageFrom, positionOf, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
-import { packDigestExcludes, type PackFolderSnapshot } from './pack-folder.js';
+import { boundInputs, checkPack, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from './pack-folder.js';
+import { loadRunPack, preservePackMethod } from './release.js';
 import { campaignIdFor, prepareWorkspace, type PrepareResult } from './workspace.js';
 import { writeExperience } from './experience.js';
 import { loadSite } from './sites.js';
@@ -278,6 +279,14 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   // from and the seal was verified against, so what the row records, what the check accepted and
   // what this Campaign is driven by are all the same folder.
   const packDigest = folder.digest(packDigestExcludes);
+  // Every runtime file resolver must point at the same retained method, including during a live
+  // installation update. A frozen graph alone would still read new rules/scripts by pathname.
+  try {
+    folder = snapshotPackFolder(preservePackMethod(folder));
+    pack = loadPackFrom(folder);
+  } catch (err) {
+    throw new RunStartError(`pack ${req.pack} cannot preserve its method for this Run: ${(err as Error).message}`);
+  }
   const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1 });
   // Said as soon as it is true, and before the preparation below can take seconds over a 56 MB copy:
   // a caller that answers on the Run's existence must have the Run before anything else can happen
@@ -433,7 +442,12 @@ async function admitResume(deps: FabricDeps, req: { readonly runId: string; read
   if (nodeId === undefined) {
     return { kind: 'unresumable', run, reason: `run ${run.id} stands at no node, so there is nothing to re-enter` };
   }
-  const pack = loadPack(deps.packsDir, prepared.packId);
+  let pack: Pack;
+  try {
+    pack = loadRunPack(deps.packsDir, prepared.packId, run.packDigest);
+  } catch (err) {
+    return { kind: 'unresumable', run, reason: `run ${run.id} cannot recover its original method: ${(err as Error).message}` };
+  }
   // Across the whole pack, its drill-down loops included: a Run blocked inside a Loop is re-entered
   // at the node inside that Loop that failed, and the row's own `loop` is what says it is still
   // open, so the drive below carries on inside it (#28).

@@ -11,7 +11,8 @@
 // Those two are what the whole of this module is written around: nothing here may say a licence was
 // released while the tool still holds it, and nothing here may pay a second licence-minute for an
 // attempt that is already running on the Site.
-import { boundInputs, loadPack, positionOf, type Pack, type PackNode } from './packs.js';
+import { boundInputs, positionOf, type Pack, type PackNode } from './packs.js';
+import { loadRunPack } from './release.js';
 import { jobKill, jobStatus } from './jobs.js';
 import { loadSite } from './sites.js';
 import { existingRun } from './runs.js';
@@ -343,7 +344,7 @@ function drivingFor(deps: FabricDeps, run: RunRecord): Driving {
 /** The pack a Run runs, as its own row says. Throws when this machine no longer has that pack. */
 function packOf(deps: FabricDeps, run: RunRecord): Pack {
   if (run.packId === undefined) throw new Error(`run ${run.id} does not say which pack it runs`);
-  return loadPack(deps.packsDir, run.packId);
+  return loadRunPack(deps.packsDir, run.packId, run.packDigest);
 }
 
 /**

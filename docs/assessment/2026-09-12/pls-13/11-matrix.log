@@ -1,0 +1,15 @@
+✔ repeated local seeding preserves the installed Pack customer archive byte for byte (277.2935ms)
+✔ a real Host resumes the old Run against its original method after an installed version upgrade (2984.5725ms)
+✔ run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused (81.188041ms)
+✔ an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation (92.421209ms)
+✔ asset symlinks and parent-directory links refuse installation and method export without changing their targets (43.868541ms)
+✔ legacy installations are adopted only by exact bytes and missing historical identity is never invented (69.927667ms)
+✔ installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them (75.448167ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4186.120708

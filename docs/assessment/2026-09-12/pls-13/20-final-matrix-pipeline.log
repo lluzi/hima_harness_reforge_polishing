@@ -1,0 +1,74 @@
+local: 2 selected; 33 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: repeated local seeding preserves the installed Pack customer archive byte for byte
+ok 1 - repeated local seeding preserves the installed Pack customer archive byte for byte
+  ---
+  duration_ms: 463.158209
+  type: 'test'
+  ...
+# Subtest: a real Host resumes the old Run against its original method after an installed version upgrade
+ok 2 - a real Host resumes the old Run against its original method after an installed version upgrade
+  ---
+  duration_ms: 3008.530125
+  type: 'test'
+  ...
+# Subtest: run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+ok 3 - run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+  ---
+  duration_ms: 126.007083
+  type: 'test'
+  ...
+# Subtest: an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+ok 4 - an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+  ---
+  duration_ms: 72.285417
+  type: 'test'
+  ...
+# Subtest: asset symlinks and parent-directory links refuse installation and method export without changing their targets
+ok 5 - asset symlinks and parent-directory links refuse installation and method export without changing their targets
+  ---
+  duration_ms: 54.664125
+  type: 'test'
+  ...
+# Subtest: legacy installations are adopted only by exact bytes and missing historical identity is never invented
+ok 6 - legacy installations are adopted only by exact bytes and missing historical identity is never invented
+  ---
+  duration_ms: 88.196875
+  type: 'test'
+  ...
+# Subtest: installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+ok 7 - installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+  ---
+  duration_ms: 95.646042
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-fabric reads every source its body names before it writes, compiles the spec into a pack that loads and fits, and records the author's review in their own words
+ok 8 - through a booted host with the replay stand-in: /hima-fabric reads every source its body names before it writes, compiles the spec into a pack that loads and fits, and records the author's review in their own words
+  ---
+  duration_ms: 3009.471208
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-fabric refuses a spec that contradicts itself, naming the section and quoting the line, and writes nothing at all
+ok 9 - through a booted host with the replay stand-in: /hima-fabric refuses a spec that contradicts itself, naming the section and quoting the line, and writes nothing at all
+  ---
+  duration_ms: 948.281958
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-test runs the compiled pack as a run marked a test and writes the record from what that run recorded, /hima-release seals the folder, and a file changed afterwards is named by the check and refused by a campaign
+ok 10 - through a booted host with the replay stand-in: /hima-test runs the compiled pack as a run marked a test and writes the record from what that run recorded, /hima-release seals the folder, and a file changed afterwards is named by the check and refused by a campaign
+  ---
+  duration_ms: 25116.836417
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 34086.95175
+Test boot attempts: {"host-process":0,"host-in-process":24,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 34.166 s; pass/fail/skip counts are in the TAP summary above

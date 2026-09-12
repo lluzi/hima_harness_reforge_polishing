@@ -30,7 +30,7 @@ import {
   type Pack,
   type PackCheck,
 } from './packs.js';
-import type { PackFolderSnapshot } from './pack-folder.js';
+import { packDigestExcludes, packSha256, type PackFolderSnapshot } from './pack-folder.js';
 import { runFor } from './runs.js';
 import type { Ledger, RefusalRecord, RunRecord, WorkspaceRecord } from './ledger.js';
 
@@ -82,7 +82,7 @@ export function campaignIdFor(pack: Pack, now: Date): string {
 export const workspaceFile = z.strictObject({
   format: z.literal(1),
   campaign: z.string(),
-  pack: z.strictObject({ id: z.string(), version: z.string() }),
+  pack: z.strictObject({ id: z.string(), version: z.string(), digest: packSha256.optional() }),
   site: z.string(),
   design: z.string(),
   flowRoot: z.string(),
@@ -216,7 +216,10 @@ function belongsElsewhere(file: WorkspaceFile, asked: PreparationIdentity): stri
   }
   const missing = asked.copied.filter((rel) => !file.copied.includes(rel));
   const stale = file.copied.filter((rel) => !asked.copied.includes(rel));
-  if (missing.length === 0 && stale.length === 0) return undefined;
+  if (missing.length === 0 && stale.length === 0) {
+    return file.pack.digest === asked.packDigest ? undefined
+      : `that workspace records ${file.pack.digest ?? 'no method digest'}, and this preparation asks for method ${asked.packDigest}; the original method cannot be reused as a different method. Nothing was copied`;
+  }
   return (
     `that workspace was prepared from a different copy list: it carries ${file.copied.join(', ')}, and pack `
     + `${file.pack.id}@${asked.packVersion} copies ${asked.copied.join(', ')}`
@@ -232,6 +235,7 @@ interface PreparationIdentity {
   readonly campaign: string;
   readonly packId: string;
   readonly packVersion: string;
+  readonly packDigest: string;
   readonly site: string;
   readonly design: string;
   readonly flowRoot: string;
@@ -309,6 +313,7 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
       campaign: campaignId,
       packId: pack.id,
       packVersion: pack.contract.version,
+      packDigest: folder.digest(packDigestExcludes),
       site: site.name,
       design: bindings.design!,
       flowRoot: bindings.flowRoot!,
@@ -370,7 +375,7 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
     const file: WorkspaceFile = {
       format: 1,
       campaign: identity.campaign,
-      pack: { id: identity.packId, version: identity.packVersion },
+      pack: { id: identity.packId, version: identity.packVersion, digest: identity.packDigest },
       site: identity.site,
       design: identity.design,
       flowRoot: identity.flowRoot,
@@ -405,6 +410,7 @@ function recordOf(file: WorkspaceFile): Omit<WorkspaceRecord, 'id' | 'runId' | '
     campaignId: file.campaign,
     packId: file.pack.id,
     packVersion: file.pack.version,
+    ...(file.pack.digest === undefined ? {} : { packDigest: file.pack.digest }),
     workspace: file.workspace,
     flowRoot: file.flowRoot,
     design: file.design,

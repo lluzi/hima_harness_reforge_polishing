@@ -1,0 +1,22 @@
+{
+  "baseline": "4d8bc8c9b1e1f1205eb7725ac14ee89386cdd3f2",
+  "files": {
+    "packages/desktop/package.json": "d3093a9ce753e4cba7d58589df3f3ba4c9f529a8f05d4e6414e77562a90e6842",
+    "packages/desktop/src/local-site.ts": "f5b976bfd28d977453bf59e7b0c4189eaa456817066e9932218c12dc43ce422f",
+    "packages/harness/src/fabric.ts": "0fccdbd0afe9de9aee7f865194ad4274b6aeaaec21c04e47927d175153dc7a6f",
+    "packages/harness/src/index.ts": "21140ac0a8a241e1bd6ea4386899c61412a70749fc3e5f9c7995cd5f4e6339d0",
+    "packages/harness/src/judge.ts": "ce98ab2c2a41419d68c312fdbf6a28179224da7caecd0994325400b30b9cebc1",
+    "packages/harness/src/ledger.ts": "8fb87ce9ded122d09b6b404dbcb2b737511c58d4efbf8da2f1a2142b83fb89f8",
+    "packages/harness/src/pack-folder.ts": "e934888cca92879d0a0ba72dea32a37406e3e5ff613d7d04714b9cf79d5f271a",
+    "packages/harness/src/recovery.ts": "1a1aec3dd040d4ef1380e9c5c392d01c64ee2c6adcf5bff420105f5695c2725e",
+    "packages/harness/src/release.ts": "35ea73210c0e0dc836fa03f86e1e198a6ad87b459c8f37a341dc52917728c8c0",
+    "packages/harness/src/workspace.ts": "6ce6d9b9909832165cf81b53d938e78110070e5069e757df896d6419ac4d9e48",
+    "pnpm-lock.yaml": "c90ee6de238349ebace1529959c6d7be0aa7662d0557e8fcc830c6ead0ed3b25",
+    "test/contract-groups.json": "7be56f7cf2d8279bc6922890d260e2bdbe43bcf17131ce885eb29ff06c548625",
+    "test/contract/fabric-restart.test.ts": "96c1bf832f9aec573f0b36caf309d65df4ce7934a291386bd3e6dbd7ec5d15bc",
+    "test/contract/judge.test.ts": "ba33446557d7008281fa44e52a8a59762aba1b688167647056b8ac9fc670ca36",
+    "test/contract/pack-method-assets.test.ts": "495ff6a52ad6adfba5966ba6cb135502cbbc871e4101bb50df08c748daca37a8",
+    "test/contract/pack.test.ts": "eae742b64104509df199c256f43823223c14700c9a8235991560aab3eba3c972",
+    "test/contract/pipeline-stages.host.test.ts": "02c3b4c5926f82ce078ac48c76088feb8ad21e81a166dd7c71a6f75cb6636cce"
+  }
+}

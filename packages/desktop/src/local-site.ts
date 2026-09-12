@@ -142,7 +142,8 @@
 // Nothing in here imports a sibling module. The contract suite loads this file as TypeScript through
 // Node's type stripping, which resolves specifiers literally — a `./hima-home.js` import would be a
 // file that does not exist in `src/` — so what this module needs, it takes as arguments.
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { exportPackMethod, installPackMethod, pipelineFiles } from '@hima/harness';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -1349,8 +1350,8 @@ export interface ConvergingVariantRequest {
  * Write the reference pack again as the converging variant: the same contract, the same graph but
  * for the explore node's chooser, and that chooser carried in the variant's own `choosers/` folder.
  *
- * Rewritten whole on every call — a variant is generated, never edited in place — so a developer or
- * a test always gets the pack this checkout describes.
+ * Generated privately, then installed through the same method manifest as the reference Pack.
+ * Customer assets and previous methods survive a generated variant update too.
  *
  * @param req - the pack to vary and where to put it.
  * @returns the variant's pack id and directory.
@@ -1358,26 +1359,36 @@ export interface ConvergingVariantRequest {
  *         pack's own file having drifted rather than a variant that varied nothing.
  */
 export async function writeConvergingVariant(req: ConvergingVariantRequest): Promise<{ readonly id: string; readonly dir: string }> {
-  const dir = path.resolve(req.to);
-  const id = path.basename(dir);
-  await rm(dir, { recursive: true, force: true });
-  await cp(path.resolve(req.from), dir, { recursive: true });
-  // A pack's declared id is its directory name, in both files.
-  for (const file of ['contract.yml', 'graph.yml']) {
-    const at = path.join(dir, file);
-    const text = await readFile(at, 'utf8');
-    const renamed = text.replace(/^id: .+$/m, `id: ${id}`);
-    if (renamed === text) throw new Error(`${at} holds no "id:" line to rename to ${id}`);
-    await writeFile(at, renamed);
+  const destination = path.resolve(req.to);
+  const id = path.basename(destination);
+  await mkdir(path.dirname(destination), { recursive: true });
+  const staging = await mkdtemp(path.join(path.dirname(destination), '.hima-variant-'));
+  const dir = path.join(staging, id);
+  try {
+    exportPackMethod({ from: path.resolve(req.from), to: dir });
+    // This generated derivative has not run its own authoring pipeline. The original pack's test
+    // record and seal cannot certify the different method below.
+    for (const file of Object.values(pipelineFiles)) await rm(path.join(dir, file), { force: true });
+    // A pack's declared id is its directory name, in both files.
+    for (const file of ['contract.yml', 'graph.yml']) {
+      const at = path.join(dir, file);
+      const text = await readFile(at, 'utf8');
+      const renamed = text.replace(/^id: .+$/m, `id: ${id}`);
+      if (renamed === text) throw new Error(`${at} holds no "id:" line to rename to ${id}`);
+      await writeFile(at, renamed);
+    }
+    const graphAt = path.join(dir, 'graph.yml');
+    const graph = await readFile(graphAt, 'utf8');
+    const [needle, replacement] = CONVERGING_GRAPH_LINES;
+    if (!graph.includes(needle) && !graph.includes(replacement)) throw new Error(`${graphAt} holds no explore node stating\n${needle}\nto vary onto ${OVER_CONSTRAINING_CHOOSER_ID}`);
+    await writeFile(graphAt, graph.replace(needle, replacement));
+    await mkdir(path.join(dir, 'choosers'), { recursive: true });
+    await writeFile(path.join(dir, 'choosers', `${OVER_CONSTRAINING_CHOOSER_ID}.yml`), overConstrainingChooserYaml);
+    installPackMethod({ from: dir, to: destination });
+    return { id, dir: destination };
+  } finally {
+    await rm(staging, { recursive: true, force: true });
   }
-  const graphAt = path.join(dir, 'graph.yml');
-  const graph = await readFile(graphAt, 'utf8');
-  const [needle, replacement] = CONVERGING_GRAPH_LINES;
-  if (!graph.includes(needle) && !graph.includes(replacement)) throw new Error(`${graphAt} holds no explore node stating\n${needle}\nto vary onto ${OVER_CONSTRAINING_CHOOSER_ID}`);
-  await writeFile(graphAt, graph.replace(needle, replacement));
-  await mkdir(path.join(dir, 'choosers'), { recursive: true });
-  await writeFile(path.join(dir, 'choosers', `${OVER_CONSTRAINING_CHOOSER_ID}.yml`), overConstrainingChooserYaml);
-  return { id, dir };
 }
 
 export interface LocalSiteRequest {
@@ -1544,10 +1555,10 @@ const LOCAL_DIR = 'hima/local';
  * home can run is whatever that makefile has targets for, and a person who has just been given a
  * home should be told what they are rather than having to read the file.
  *
- * Idempotent, and deliberate about what it will overwrite: the pack copy, the flow and the two site
- * files are the checkout's and the generator's, so they are refreshed on every seeding; the
- * workspace root is where a developer's Campaigns and their results live, so it is created when
- * absent and otherwise not touched at all.
+ * Pack updates replace only verified method files and preserve run-assets plus original method
+ * snapshots. Unknown ownership, changed content at the same version and interrupted updates refuse
+ * installation. The generated flow and two Site files are refreshed; the workspace root is created
+ * when absent and otherwise left intact.
  *
  * @param req - the home to seed and the checkout to seed it from.
  * @returns what was made, and the lines saying so.
@@ -1563,8 +1574,7 @@ export async function seedLocalSite(req: SeedLocalSiteRequest): Promise<SeededLo
   const packsDir = path.join(home, 'hima/packs');
   const packDir = path.join(packsDir, TIMING_PROBE_PACK_ID);
   await mkdir(packsDir, { recursive: true });
-  await rm(packDir, { recursive: true, force: true });
-  await cp(shippedPack, packDir, { recursive: true });
+  installPackMethod({ from: shippedPack, to: packDir });
   did.push(`local site: installed the shipped pack ${TIMING_PROBE_PACK_ID} into ${packDir}`);
 
   // Keep the named variant for existing fixtures and saved selections. The shipped v2 Pack

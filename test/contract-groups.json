@@ -15,6 +15,7 @@
     "test/contract/observe-readers.test.ts",
     "test/contract/observe.test.ts",
     "test/contract/pack.test.ts",
+    "test/contract/pack-method-assets.test.ts",
     "test/contract/run-controls.test.ts",
     "test/contract/site-name.test.ts",
     "test/contract/ssh.test.ts",
