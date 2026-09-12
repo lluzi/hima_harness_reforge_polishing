@@ -1,0 +1,9 @@
+# Import interruption test observation
+
+Complete local at59f15f3: 357/359 passed,2 failed,0 skipped; 1429.030s,47 subprocess Hosts +340 in-process Hosts,0 Electron/SSH. One failure was the independently corrected1500ms launch fixture. The other was the import test waiting15s exclusively for a named filesystem notification. That failed run captured neither child diagnostics nor destination state, so it cannot establish why the notification was not observed or whether publication had occurred. No product import defect is demonstrated by that output.
+
+A diagnostic-only rerun capturing child output passed9/9 in7.267s, so the precise original platform timing/event cause remains unobserved. The test's observation boundary has now been changed to read actual private-directory state until a staging directory or final home exists, then send a real SIGKILL to its private child. A finished import leaves the final directory, which cannot be missed just because a transient staging name disappeared. Child import errors are allowed to exit and diagnostics are retained; cleanup always awaits that child. The product import implementation is unchanged.
+
+The prior acceptance remains strict: absent target or complete expected Ledger + original backup bytes + exact hash receipt, with source unchanged. A separate real EFBIG case proves the partial-write cleanup path. SIGKILL may land after publication and does not by itself prove pre-publication death.
+
+Corrected file:9/9 pass,0fail/skip,7.485s;3 in-process Hosts,0 subprocess Hosts/Electron/SSH. New build is unnecessary for this test-only edit against unchanged import code; final TypeScript and affected integration checks follow after pending guide changes. No automatic repetition of the24-minute complete suite is counted as necessary for this waiting-condition fix.

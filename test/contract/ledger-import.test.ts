@@ -4,7 +4,6 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { watch } from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -221,29 +220,39 @@ test('mid-write failure and process death cannot publish a partial import or alt
   if (first.type === 'observation') first.reader.version = 'x'.repeat(2 * 1024 * 1024);
   await writeFile(source, JSON.stringify(changed));
   const before = await readFile(source);
-  // Filesystem notifications are asynchronous: publication can finish before a staging event is
-  // delivered, and the temporary name may never be observed. Keep only this private test process
-  // alive after invoking the unchanged CLI module so SIGKILL remains observable even in that case.
-  let sawImportOutput = false;
-  const watcher = watch(path.dirname(home), (_event, filename) => {
-    if (String(filename).startsWith('.hima-ledger-import-') || filename === path.basename(home)) {
-      sawImportOutput = true;
-      child.kill('SIGKILL');
-    }
-  });
+  // Observe persistent filesystem state, not delivery of a named fs.watch notification. The
+  // staging name can disappear before a look, but successful publication leaves the final home.
+  // Keep only this private child alive so either observed state permits an actual SIGKILL.
   const child = spawn(process.execPath, ['--input-type=module', '--eval',
-    'setInterval(() => {}, 1000); await import((await import("node:url")).pathToFileURL(process.argv[1]).href);',
+    'const hold = setInterval(() => {}, 1000); await import((await import("node:url")).pathToFileURL(process.argv[1]).href); if (process.exitCode) clearInterval(hold);',
     path.join(repoRoot, 'packages/desktop/lib/hima-home.js'), '--import-ledger', source, '--home', home,
-  ], { stdio: 'ignore' });
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let diagnostics = '';
+  child.stdout.on('data', (chunk) => { diagnostics += String(chunk); });
+  child.stderr.on('data', (chunk) => { diagnostics += String(chunk); });
+  let spawnError: Error | undefined;
+  const closed = new Promise<NodeJS.Signals | null>((resolve) => {
+    child.once('error', (error) => { spawnError = error; resolve(null); });
+    child.once('close', (_code, signal) => resolve(signal));
+  });
   try {
-    const signal = await new Promise<NodeJS.Signals | null>((resolve, reject) => {
-      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('import output was not observed')); }, 15_000);
-      child.once('error', (error) => { clearTimeout(timer); reject(error); });
-      child.once('close', (_code, signal) => { clearTimeout(timer); resolve(signal); });
-    });
-    assert.ok(sawImportOutput);
-    assert.equal(signal, 'SIGKILL');
-  } finally { watcher.close(); }
+    const deadline = Date.now() + 15_000;
+    let files: string[] = [];
+    let sawImportOutput = false;
+    while (Date.now() < deadline && child.exitCode === null && child.signalCode === null && spawnError === undefined) {
+      files = await readdir(path.dirname(home));
+      sawImportOutput = files.some((name) => name.startsWith('.hima-ledger-import-') || name === path.basename(home));
+      if (sawImportOutput) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ifError(spawnError);
+    assert.ok(sawImportOutput, `import output absent; files=${JSON.stringify(files)}; child=${diagnostics}`);
+    child.kill('SIGKILL');
+    assert.equal(await closed, 'SIGKILL');
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    await closed;
+  }
   const published = await stat(home).then((found) => {
     assert.ok(found.isDirectory());
     return true;
