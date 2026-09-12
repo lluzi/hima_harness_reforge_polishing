@@ -1,0 +1,83 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/pipeline-finalize.test.ts test/contract/pipeline-checkpoint.test.ts test/contract/checkpoint-resume.host.test.ts
+local: 3 selected; 46 unselected in local; other groups not run (not passes)
+TAP version 13
+# live-check-pipeline-checkpoint: PASS; evidence /private/tmp/hima-tests-1R94Tg/hima-home-LZxBTW/completed-turn-evidence
+# Subtest: native persisted resume restores the explicitly held model and finishes an actual tool before say returns
+ok 1 - native persisted resume restores the explicitly held model and finishes an actual tool before say returns
+  ---
+  duration_ms: 3719.244917
+  type: 'test'
+  ...
+# Subtest: LiveCheck reports a native turn failure instead of advancing to method assertions
+ok 2 - LiveCheck reports a native turn failure instead of advancing to method assertions
+  ---
+  duration_ms: 1702.716125
+  type: 'test'
+  ...
+# live-check-pipeline-checkpoint: FAIL; evidence /private/tmp/hima-tests-1R94Tg/hima-home-gdXDwD/cleanup-evidence
+# Subtest: cleanup survives an already disposed projection, records failure and scans the retained external home
+ok 3 - cleanup survives an already disposed projection, records failure and scans the retained external home
+  ---
+  duration_ms: 1534.454875
+  type: 'test'
+  ...
+# Subtest: checkpoint admission refuses an existing Run, additional failure, missing stage, altered contract and split author
+ok 4 - checkpoint admission refuses an existing Run, additional failure, missing stage, altered contract and split author
+  ---
+  duration_ms: 13.644458
+  type: 'test'
+  ...
+# Subtest: checkpoint provenance rejects changed installed bytes before any Host or reader execution
+ok 5 - checkpoint provenance rejects changed installed bytes before any Host or reader execution
+  ---
+  duration_ms: 14.749084
+  type: 'test'
+  ...
+# Subtest: checkpoint provenance rejects changed or extra authored files before any Host or reader execution
+ok 6 - checkpoint provenance rejects changed or extra authored files before any Host or reader execution
+  ---
+  duration_ms: 8.561667
+  type: 'test'
+  ...
+# Subtest: reader probes expose whitespace concatenation and do not pass inherited environment to child scripts
+ok 7 - reader probes expose whitespace concatenation and do not pass inherited environment to child scripts
+  ---
+  duration_ms: 196.122583
+  type: 'test'
+  ...
+# Subtest: checkpoint CLI requires a parent and isolates its opt-in flags from LiveCheck budgets
+ok 8 - checkpoint CLI requires a parent and isolates its opt-in flags from LiveCheck budgets
+  ---
+  duration_ms: 1.3755
+  type: 'test'
+  ...
+# Subtest: finalization permits only formatting, preserving numeric and narrative facts
+ok 9 - finalization permits only formatting, preserving numeric and narrative facts
+  ---
+  duration_ms: 1.02675
+  type: 'test'
+  ...
+# Subtest: actual native tools cannot start a Run or write method/version files during finalization
+ok 10 - actual native tools cannot start a Run or write method/version files during finalization
+  ---
+  duration_ms: 2436.412375
+  type: 'test'
+  ...
+# Subtest: runtime upgrade manifest binds preserved old bytes, current installed bytes and unchanged protected data
+ok 11 - runtime upgrade manifest binds preserved old bytes, current installed bytes and unchanged protected data
+  ---
+  duration_ms: 25.120583
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11787.358958
+Test boot attempts: {"host-process":0,"host-in-process":7,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 11.878 s; pass/fail/skip counts are in the TAP summary above

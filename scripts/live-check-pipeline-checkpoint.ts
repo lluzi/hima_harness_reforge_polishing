@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
 import { HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, loadPack, packDigestOf, packStage, packVersionFile, pipelineFiles, resolveChooser, resolveRule, runIdPattern } from '@hima/harness';
-import { bootInProcess, injectedSkills, resumeTestAgent, toolCalls } from '../test/contract/support/boot-inprocess.ts';
+import { bootInProcess, injectedSkills, resumeTestAgent, toolCalls, type InProcessHost } from '../test/contract/support/boot-inprocess.ts';
 import type { HimaHome } from '../test/contract/support/dsh-home.ts';
 import { changedBetween, digestTrees, sectionsOf } from '../test/contract/support/pipeline.ts';
 import { guardInstalled, runLive, sha256, within, type LiveCheck } from './live-check-workshop.ts';
@@ -174,7 +174,49 @@ export function probeReader(script: string, parentDirectory: string) {
   return { originalScript: script, sha256: sha256(readFileSync(script)), directory, childEnvironment: ['PATH=/usr/bin:/bin', 'HOME=private probe', 'TMPDIR=private probe', 'LC_ALL=C'], cases, passed: cases.every((item) => item.passed) };
 }
 
-function retainedHome(home: string): HimaHome {
+/** Reuse the same actual-Run science/identity checks when only record finalization remains. */
+export function verifyCompletedNumericRun(check: Pick<LiveCheck, 'require' | 'observed'>, host: InProcessHost, author: Parameters<typeof toolCalls>[0],
+  folder: string, runId: string, identity: { input: { numbers: number[]; limit: number; sha256: string }; methodDigest: string; readerSha256: string }) {
+  const { input, methodDigest: methodBeforeTest, readerSha256 } = identity;
+  const { numbers, limit } = input;
+  const pack = loadPack(path.dirname(folder), packId);
+  const judge = pack.graph.nodes.find((node) => node.kind === 'judge');
+  const explore = pack.graph.nodes.find((node) => node.kind === 'explore');
+  assert.ok(judge?.kind === 'judge' && explore?.kind === 'explore');
+  const constraint = resolveRule(pack, judge.parameters.rules[0]!, 'the reading').rule;
+  const goal = resolveRule(pack, judge.parameters.rules[1]!, 'the reading').rule;
+  const row = host.ctx.hima.ledger.run(runId);
+  check.require('actual original-owned test Run ended goal-met', !!row && row.packId === packId && row.purpose === 'test'
+    && row.status === 'ended-goal-met' && row.control?.owner === String(author.id), row);
+  check.require('one Run retained the original one-generation budget Goal cutoff and owner', host.ctx.hima.ledger.runs().length === 1 && row?.budget?.timeBoxMs === 480_000 && row.budget.generationLimit === 1 && row.budget.retryAllowance === 2 && row.generation === 1 && row.goal?.minimum === 1 && row.firstStrategy?.limit === limit && row.strategy?.limit === limit && row.control?.epoch === 1, row ?? null);
+  check.require('test froze and executed the corrected model-authored method', row?.packDigest === methodBeforeTest && packDigestOf(folder) === methodBeforeTest, { before: methodBeforeTest, run: row?.packDigest, after: packDigestOf(folder) });
+  const records = host.ctx.hima.ledger.records({ runId: row!.id });
+  const workspace = records.findLast((r) => r.type === 'workspace');
+  check.require('Run workspace holds corrected method and unchanged measured input', workspace?.type === 'workspace' && workspace.packDigest === methodBeforeTest
+    && sha256(readFileSync(path.join(workspace.workspace, 'flow/numbers.txt'))) === input.sha256
+    && sha256(readFileSync(path.join(workspace.workspace, 'flow/measured.txt'))) === input.sha256, workspace);
+  const expected = numbers.filter((n) => n > limit).reduce((sum, n) => sum + n, 0);
+  const current = records.filter((r) => r.generation === 1 && r.loopId === undefined && (!('branchId' in r) || r.branchId === undefined));
+  const observation = current.findLast((r) => r.type === 'observation' && r.values.some((value) => value.type === 'numeric_sum' && value.unit === 'count' && value.value === expected));
+  check.require('authored reader measured the independent actual-input strict-bound sum', observation?.type === 'observation', { expected, initialLimit: limit, observations: current.filter((r) => r.type === 'observation') });
+  assert.ok(observation?.type === 'observation');
+  check.require('observation identifies the corrected reader bytes', observation.reader.sha256 === readerSha256, observation.reader);
+  const outputBytes = readFileSync(observation.path);
+  check.require('actual output contains the exact independent sum with matching observed hash', outputBytes.toString('utf8').trim() === String(expected) && sha256(outputBytes) === observation.contentSha256, { path: observation.path, expected, actual: outputBytes.toString('utf8'), observedSha256: observation.contentSha256, actualSha256: sha256(outputBytes) });
+  const constraintVerdict = current.findLast((r) => r.type === 'verdict' && r.ruleId === constraint.id && r.ruleVersion === constraint.version);
+  const goalVerdict = current.findLast((r) => r.type === 'verdict' && r.ruleId === goal.id && r.ruleVersion === goal.version);
+  assert.ok(constraintVerdict?.type === 'verdict' && goalVerdict?.type === 'verdict', 'current ordered Judge verdicts missing');
+  check.require('actual current constraint and bound Goal PASS cite the verified observation', constraintVerdict.outcome === 'PASS' && goalVerdict.outcome === 'PASS' && goalVerdict.boundParameters?.minimum === 1 && constraintVerdict.cites.includes(observation.id) && goalVerdict.cites.includes(observation.id), { constraintVerdict, goalVerdict });
+  const decision = current.findLast((r) => r.type === 'decision' && r.nodeId === explore.id);
+  check.require('original owner completed Explore goal-met with actual current observation and both verdicts', decision?.type === 'decision' && 'goalMet' in decision.chosen && decision.chosen.goalMet && decision.agent?.sessionId === String(author.id) && row!.control?.executions[decision.agent.executionId]?.phase === 'completed' && [observation.id, constraintVerdict.id, goalVerdict.id].every((id) => decision.cites.includes(id)) && current.some((r) => r.type === 'node' && r.nodeId === judge.id && r.state === 'done' && r.seq < decision.seq), decision);
+  check.observed.currentSuccess = { expected, initialLimit: limit, observation, constraintVerdict, goalVerdict, decision };
+  const codes = records.filter((r) => r.type === 'code');
+  check.observed.code = codes.map((r) => ({ record: r, content: readFileSync(r.path, 'utf8'), actualSha256: sha256(readFileSync(r.path)) }));
+  check.require('original model generated Workshop code whose actual bytes match recorded hashes', codes.length > 0 && codes.every((r) => r.sessionId === String(author.id) && sha256(readFileSync(r.path)) === r.sha256), check.observed.code);
+  return { row: row!, records };
+}
+
+export function retainedHome(home: string): HimaHome {
   return { home, profileDir: path.join(home, 'profiles/hima'), workspace: path.join(home, 'workspace'),
     env: { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: path.join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1' },
     dispose: async () => { /* This is a retained checkpoint, never a disposable home. */ } };
@@ -222,7 +264,7 @@ export async function preflightOnly(parentPath: string, out: string, priorPath?:
 
 async function continueCheckpoint(check: LiveCheck, parentPath: string, priorPath?: string): Promise<void> {
   const checkpoint = await inspectCheckpoint(parentPath);
-  const { parent, folder, home, bundle, flow, readerScript, judge, explore, constraint, goal, numbers, limit } = checkpoint;
+  const { parent, folder, home, bundle, flow, readerScript, limit } = checkpoint;
   const h = retainedHome(home); check.home = h;
   check.observed.parent = { path: checkpoint.parentPath, sha256: checkpoint.parentSha256, sourceSha: parent.observed.sourceSha, costs: parent.costs,
     originalAuthor: checkpoint.author.id, methodDigest: parent.observed.methodBeforeTest.digest, authoredFiles: parent.observed.authoredFiles,
@@ -303,31 +345,7 @@ async function continueCheckpoint(check: LiveCheck, parentPath: string, priorPat
     const named = new RegExp(`^run: (${runIdPattern.source})$`, 'm').exec(testText);
     const row = named ? host.ctx.hima.ledger.run(named[1]!) : undefined;
     check.require('TEST.md names the actual owned Goal-met test Run', !!row && row.packId === packId && row.purpose === 'test' && row.status === 'ended-goal-met' && row.control?.owner === String(author.id) && /^status: ended-goal-met$/m.test(testText), row ?? null);
-    check.require('one Run retained the original one-generation budget Goal cutoff and owner', host.ctx.hima.ledger.runs().length === 1 && row?.budget?.timeBoxMs === 480_000 && row.budget.generationLimit === 1 && row.budget.retryAllowance === 2 && row.generation === 1 && row.goal?.minimum === 1 && row.firstStrategy?.limit === limit && row.strategy?.limit === limit && row.control?.epoch === 1, row ?? null);
-    check.require('test froze and executed the corrected model-authored method', row?.packDigest === methodBeforeTest && packDigestOf(folder) === methodBeforeTest, { parent: parent.observed.methodBeforeTest.digest, before: methodBeforeTest, run: row?.packDigest, after: packDigestOf(folder) });
-    const records = host.ctx.hima.ledger.records({ runId: row!.id });
-    const workspace = records.findLast((r) => r.type === 'workspace');
-    check.require('Run workspace holds corrected method and unchanged measured input', workspace?.type === 'workspace' && workspace.packDigest === methodBeforeTest
-      && sha256(readFileSync(path.join(workspace.workspace, 'flow/numbers.txt'))) === parent.observed.input.sha256
-      && sha256(readFileSync(path.join(workspace.workspace, 'flow/measured.txt'))) === parent.observed.input.sha256, workspace);
-    const expected = numbers.filter((n) => n > limit).reduce((sum, n) => sum + n, 0);
-    const current = records.filter((r) => r.generation === 1 && r.loopId === undefined && (!('branchId' in r) || r.branchId === undefined));
-    const observation = current.findLast((r) => r.type === 'observation' && r.values.some((value) => value.type === 'numeric_sum' && value.unit === 'count' && value.value === expected));
-    check.require('authored reader measured the independent actual-input strict-bound sum', observation?.type === 'observation', { expected, initialLimit: limit, observations: current.filter((r) => r.type === 'observation') });
-    assert.ok(observation?.type === 'observation');
-    check.require('observation identifies the corrected reader bytes', observation.reader.sha256 === afterReader.sha256, observation.reader);
-    const outputBytes = readFileSync(observation.path);
-    check.require('actual output contains the exact independent sum with matching observed hash', outputBytes.toString('utf8').trim() === String(expected) && sha256(outputBytes) === observation.contentSha256, { path: observation.path, expected, actual: outputBytes.toString('utf8'), observedSha256: observation.contentSha256, actualSha256: sha256(outputBytes) });
-    const constraintVerdict = current.findLast((r) => r.type === 'verdict' && r.ruleId === constraint.id && r.ruleVersion === constraint.version);
-    const goalVerdict = current.findLast((r) => r.type === 'verdict' && r.ruleId === goal.id && r.ruleVersion === goal.version);
-    assert.ok(constraintVerdict?.type === 'verdict' && goalVerdict?.type === 'verdict', 'current ordered Judge verdicts missing');
-    check.require('actual current constraint and bound Goal PASS cite the verified observation', constraintVerdict.outcome === 'PASS' && goalVerdict.outcome === 'PASS' && goalVerdict.boundParameters?.minimum === 1 && constraintVerdict.cites.includes(observation.id) && goalVerdict.cites.includes(observation.id), { constraintVerdict, goalVerdict });
-    const decision = current.findLast((r) => r.type === 'decision' && r.nodeId === explore.id);
-    check.require('original owner completed Explore goal-met with actual current observation and both verdicts', decision?.type === 'decision' && 'goalMet' in decision.chosen && decision.chosen.goalMet && decision.agent?.sessionId === String(author.id) && row!.control?.executions[decision.agent.executionId]?.phase === 'completed' && [observation.id, constraintVerdict.id, goalVerdict.id].every((id) => decision.cites.includes(id)) && current.some((r) => r.type === 'node' && r.nodeId === judge.id && r.state === 'done' && r.seq < decision.seq), decision);
-    check.observed.currentSuccess = { expected, initialLimit: limit, observation, constraintVerdict, goalVerdict, decision };
-    const codes = records.filter((r) => r.type === 'code');
-    check.observed.code = codes.map((r) => ({ record: r, content: readFileSync(r.path, 'utf8'), actualSha256: sha256(readFileSync(r.path)) }));
-    check.require('original model generated Workshop code whose actual bytes match recorded hashes', codes.length > 0 && codes.every((r) => r.sessionId === String(author.id) && sha256(readFileSync(r.path)) === r.sha256), check.observed.code);
+    const { records } = verifyCompletedNumericRun(check, host, author, folder, row!.id, { input: parent.observed.input, methodDigest: methodBeforeTest, readerSha256: afterReader.sha256 });
     const testCalls = toolCalls(author).slice(testCallStart);
     check.require('original author test used all controlled owned Workshop actions', ['begin', 'read', 'knowledge', 'write', 'work', 'complete'].every((action) => testCalls.some((call) => call.name === 'hima_execute' && call.args.action === action)), testCalls);
     stage('tested');
