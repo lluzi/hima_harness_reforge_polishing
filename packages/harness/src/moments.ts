@@ -55,6 +55,7 @@ import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent';
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
 import { randomUUID } from 'node:crypto';
 import type { Ledger, MomentOutcome, SessionRecord } from './ledger.js';
+import { legacyAutomaticAllowed } from './runs.js';
 // The two refusals a moment can arrive with, in the leaf every face recognises errors by type from.
 import { MomentTurnError, NoCurrentNodeError, RunRunningError, RunStartError, WorkshopNodeError } from './errors.js';
 // The tool names the pack authoring guard governs, which are also the names no moment may be opened
@@ -514,6 +515,11 @@ export async function momentOnCurrentNode(deps: MomentDeps, runId: string, instr
   if (!run) throw new Error(`unknown run ${runId}`);
   if (run.control !== undefined) {
     throw new RunStartError(`run ${runId} is controlled by its conversation Agent; separate model moments are unavailable in every Run state`);
+  }
+  // Production historical Runs cannot open a second execution Agent while explicit adoption
+  // verifies their boundary. Standalone moments survive only in the isolated legacy regression.
+  if (!legacyAutomaticAllowed()) {
+    throw new RunStartError('standalone historical model moments are unavailable; use the conversation Agent to inspect this Run');
   }
   // Never while somebody is driving this Run (#62). The drive opens its own moments at the node it
   // is standing on, numbered by that node's attempt; a moment opened here at the same time would
