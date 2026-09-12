@@ -1,0 +1,151 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-execution.host.test.ts test/contract/pack-method-assets.test.ts test/contract/skills.test.ts
+local: 3 selected; 34 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 1 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 3656.855584
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 2 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 983.707542
+  type: 'test'
+  ...
+# Subtest: repeated local seeding preserves the installed Pack customer archive byte for byte
+ok 3 - repeated local seeding preserves the installed Pack customer archive byte for byte
+  ---
+  duration_ms: 358.049458
+  type: 'test'
+  ...
+# Subtest: a real Host resumes the old Run against its original method after an installed version upgrade
+ok 4 - a real Host resumes the old Run against its original method after an installed version upgrade
+  ---
+  duration_ms: 2782.836416
+  type: 'test'
+  ...
+# Subtest: run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+ok 5 - run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+  ---
+  duration_ms: 160.005
+  type: 'test'
+  ...
+# Subtest: an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+ok 6 - an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+  ---
+  duration_ms: 95.916291
+  type: 'test'
+  ...
+# Subtest: asset symlinks and parent-directory links refuse installation and method export without changing their targets
+ok 7 - asset symlinks and parent-directory links refuse installation and method export without changing their targets
+  ---
+  duration_ms: 61.376666
+  type: 'test'
+  ...
+# Subtest: legacy installations are adopted only by exact bytes and missing historical identity is never invented
+ok 8 - legacy installations are adopted only by exact bytes and missing historical identity is never invented
+  ---
+  duration_ms: 119.840167
+  type: 'test'
+  ...
+# Subtest: a method-only export preserves executable method scripts
+ok 9 - a method-only export preserves executable method scripts
+  ---
+  duration_ms: 3333.7455
+  type: 'test'
+  ...
+# Subtest: installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+ok 10 - installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+  ---
+  duration_ms: 170.404
+  type: 'test'
+  ...
+# Subtest: installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it
+ok 11 - installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it
+  ---
+  duration_ms: 3674.8555
+  type: 'test'
+  ...
+# {"fixture":"pipeline/workshop (handwritten replay)","runId":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db","packDigest":"1b906357f52938bc1d3e3ea40aca2b1de2868776f7b840267c144c4ffdfbdc80","inputSha256":"222ff324016eea6ca5dee6cfc712664c37d43881960897bab91f5b5080b8e35b","code":[{"id":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db\#000004","runId":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db","siteId":"local","seq":4,"at":"2026-09-12T16:34:42.787Z","writer":"executor","generation":1,"type":"code","nodeId":"analyze","attempt":1,"sessionId":"session-dc07a57a-fb42-411c-92f2-a454b89c5d2f","workshop":"analyze","path":"/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis/entry.sh","sha256":"cc150e52dcbfa4dfb6cf4889af758525ad2e01c305163ab8ae05c2bb3600dd81","bytes":118,"language":"sh"}],"observations":[{"id":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db\#000014","runId":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db","siteId":"local","seq":14,"at":"2026-09-12T16:34:43.262Z","writer":"executor","generation":1,"type":"observation","path":"/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis/result.txt","contentSha256":"084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0","bytes":3,"reader":{"id":"sum-file","version":"1","reportKind":"scaled-sum","emits":["scaled_sum"],"file":"tools/read-sum.sh","sha256":"38c7913f3561d11a1e9572931f720ce8f22887cc0386263086a72b99f8552a0e"},"values":[{"type":"scaled_sum","value":42,"unit":"count"}]}],"jobs":[{"id":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db\#000006","runId":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db","siteId":"local","seq":6,"at":"2026-09-12T16:34:42.936Z","writer":"executor","generation":1,"type":"job","event":"launched","job":{"session":"hima-9969c51d-workshop-analyze-d44dcc","pid":83402,"workspace":"/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42","name":"workshop-analyze","startedAt":"2026-09-12T16:34:42.884Z","wire":"'sh' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis/entry.sh' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42' '2' > '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-9969c51d-workshop-analyze-d44dcc.log' 2>&1; printf '%s\\\\n' \\"$?\\" > '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-9969c51d-workshop-analyze-d44dcc.exit'"},"nodeId":"analyze","workshop":{"id":"analyze","entry":{"path":"/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis/entry.sh","sha256":"cc150e52dcbfa4dfb6cf4889af758525ad2e01c305163ab8ae05c2bb3600dd81"}},"attempt":1},{"id":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db\#000008","runId":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db","siteId":"local","seq":8,"at":"2026-09-12T16:34:43.012Z","writer":"executor","generation":1,"type":"job","event":"finished","job":{"session":"hima-9969c51d-workshop-analyze-d44dcc","pid":83402,"workspace":"/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42","name":"workshop-analyze","startedAt":"2026-09-12T16:34:42.884Z","wire":"'sh' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis/entry.sh' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42' '2' > '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-9969c51d-workshop-analyze-d44dcc.log' 2>&1; printf '%s\\\\n' \\"$?\\" > '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-9969c51d-workshop-analyze-d44dcc.exit'"},"exitCode":0,"nodeId":"analyze"},{"id":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db\#000011","runId":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db","siteId":"local","seq":11,"at":"2026-09-12T16:34:43.169Z","writer":"executor","generation":1,"type":"job","event":"launched","job":{"session":"hima-9969c51d-reader-sum-file-6c0d42","pid":83502,"workspace":"/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42","name":"reader-sum-file","startedAt":"2026-09-12T16:34:43.126Z","wire":"'sh' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-readers/sum-file/read-sum.sh' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis/result.txt' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-readers/sum-file/read-analysis-g1-a1.json' > '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-9969c51d-reader-sum-file-6c0d42.log' 2>&1; printf '%s\\\\n' \\"$?\\" > '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-9969c51d-reader-sum-file-6c0d42.exit'"},"nodeId":"read-analysis","reading":{"reader":{"id":"sum-file","version":"1","reportKind":"scaled-sum","emits":["scaled_sum"],"file":"tools/read-sum.sh","sha256":"38c7913f3561d11a1e9572931f720ce8f22887cc0386263086a72b99f8552a0e"},"out":"/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-readers/sum-file/read-analysis-g1-a1.json","report":{"path":"/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis/result.txt","contentSha256":"084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0","bytes":3}},"attempt":1},{"id":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db\#000013","runId":"run-9969c51d-ca6b-455e-9fc3-47bb31dcb7db","siteId":"local","seq":13,"at":"2026-09-12T16:34:43.239Z","writer":"executor","generation":1,"type":"job","event":"finished","job":{"session":"hima-9969c51d-reader-sum-file-6c0d42","pid":83502,"workspace":"/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42","name":"reader-sum-file","startedAt":"2026-09-12T16:34:43.126Z","wire":"'sh' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-readers/sum-file/read-sum.sh' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/research/analysis/result.txt' '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-readers/sum-file/read-analysis-g1-a1.json' > '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-9969c51d-reader-sum-file-6c0d42.log' 2>&1; printf '%s\\\\n' \\"$?\\" > '/private/tmp/hima-tests-Cj3h3F/hima-home-2I6g7S/workspace/authored-workshop-20260912-163442-5e42/hima-9969c51d-reader-sum-file-6c0d42.exit'"},"exitCode":0,"nodeId":"read-analysis"}]}
+# Subtest: from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding
+ok 12 - from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding
+  ---
+  duration_ms: 573.48525
+  type: 'test'
+  ...
+# Subtest: on a booted host: the bundle registers the pipeline's five skills from one provider — a person's to invoke, never the model's to choose
+ok 13 - on a booted host: the bundle registers the pipeline's five skills from one provider — a person's to invoke, never the model's to choose
+  ---
+  duration_ms: 430.923875
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-grill writes the pack intent record in the pack folder and nothing outside it, /hima-spec writes the pack spec beside it, and pack check says the folder is specified
+ok 14 - through a booted host with the replay stand-in: /hima-grill writes the pack intent record in the pack folder and nothing outside it, /hima-spec writes the pack spec beside it, and pack check says the folder is specified
+  ---
+  duration_ms: 1426.552583
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an authoring session may not write outside its pack folder and has no shell, and the same two calls go through in an ordinary session
+ok 15 - through a booted host with the replay stand-in: an authoring session may not write outside its pack folder and has no shell, and the same two calls go through in an ordinary session
+  ---
+  duration_ms: 1015.408042
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an authoring session's target is judged as the tool received it — a new file inside the folder goes through, and a dot segment, a link out of the folder and an edit outside do not
+ok 16 - through a booted host with the replay stand-in: an authoring session's target is judged as the tool received it — a new file inside the folder goes through, and a dot segment, a link out of the folder and an edit outside do not
+  ---
+  duration_ms: 667.898084
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an absent packs directory leaves a session untouched, and a packs directory or a working directory that will not resolve stops the governed tools
+ok 17 - through a booted host with the replay stand-in: an absent packs directory leaves a session untouched, and a packs directory or a working directory that will not resolve stops the governed tools
+  ---
+  duration_ms: 1691.090459
+  type: 'test'
+  ...
+# Subtest: the intent record the live check authors its spec stage from is the one the contract suite runs the grill stage against
+ok 18 - the intent record the live check authors its spec stage from is the one the contract suite runs the grill stage against
+  ---
+  duration_ms: 34.77375
+  type: 'test'
+  ...
+# Subtest: every skeleton in the pack anatomy reference is a file this harness accepts: assembled into a folder they load as a pack and fit the local site
+ok 19 - every skeleton in the pack anatomy reference is a file this harness accepts: assembled into a folder they load as a pack and fit the local site
+  ---
+  duration_ms: 414.607083
+  type: 'test'
+  ...
+# pack example-probe@1 on site local: fit — 3 of 3 inputs bound, 1 tool, 1 rule, 1 reader, 1 chooser, 1 knowledge file, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-Cj3h3F/hima-home-RzcVEG/standin-flow
+#   design = a-subject
+#   workspaceRoot = /private/tmp/hima-tests-Cj3h3F/hima-home-RzcVEG/workspace
+# tools:
+#   measure (tools/measure.sh): "make" is an allowed wrapper of site local
+# rules:
+#   measurement-within-bound@1: found in the pack
+# readers:
+#   measurement-file@1 reads measurement: found in the pack
+# semantics:
+#   measured_ms: declared by this pack in /private/tmp/hima-tests-Cj3h3F/hima-home-RzcVEG/hima/packs/example-probe/semantics.yml
+#   8 value types come from the bundle
+# choosers:
+#   step-back-off@1 chooses at next-step: found in the pack
+# knowledge:
+#   the-step-method.md (why this pack changes the step the way it does): found in the pack
+# licences:
+#   measure holds 1 of "measuring-seat": site local declares 1
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 24188.888291
+Test boot attempts: {"host-process":0,"host-in-process":17,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 24.287 s; pass/fail/skip counts are in the TAP summary above

@@ -402,6 +402,8 @@ export const workspaceRecord = z.object({
   campaignId: z.string(),
   packId: z.string(),
   packVersion: z.string(),
+  /** Absent in legacy records; absence never establishes an original method identity. */
+  packDigest: sha256Hex.optional(),
   /** Absolute, as the Site resolved it. */
   workspace: z.string(),
   /** The Site's own flow, read to make the copy and never written. */

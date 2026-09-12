@@ -6,7 +6,7 @@
 import type { Ledger, ObservationRecord, VerdictOutcome, VerdictRecord, VerdictWriter } from './ledger.js';
 import type { SemanticValue } from './semantics.js';
 import { describeRequirement, loadRule, sameRequirement, type PredicateOp, type Requirement, type Rule } from './rules.js';
-import { loadPack } from './packs.js';
+import { loadRunPack } from './release.js';
 import { dataOnDisk, type DataPlace } from './pack-data.js';
 
 /**
@@ -134,13 +134,11 @@ export class Judge {
    * loader's own words about why, which is what a person acts on; nothing is written.
    */
   #rulePlaces(runId: string): readonly DataPlace[] | undefined {
-    const packId = this.#ledger.run(runId)?.packId;
+    const run = this.#ledger.run(runId);
+    const packId = run?.packId;
     if (packId === undefined) return undefined;
     try {
-      // Read off the disk as the judgement is made (#64), not out of the reading the pack was
-      // parsed from: judging is a node running, and a pack edited between two generations means the
-      // correction (D46). `packDataAt` in `packs.ts` sets the two instants beside each other.
-      return loadPack(this.#packsDir, packId).ruleDirs.map(dataOnDisk);
+      return loadRunPack(this.#packsDir, packId, run?.packDigest).ruleDirs.map(dataOnDisk);
     } catch (err) {
       throw new Error(
         `run ${runId} runs pack "${packId}", whose own rules/ is where its rule ids are looked for first, and this machine cannot load that pack: ${(err as Error).message}`,

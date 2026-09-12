@@ -1,0 +1,36 @@
+✔ repeated local seeding preserves the installed Pack customer archive byte for byte (689.437791ms)
+✖ a real Host resumes the old Run against its original method after an installed version upgrade (4145.282666ms)
+✔ installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them (223.004834ms)
+
+Interrupted while running:
+
+⚠ test/contract/pack-method-assets.test.ts (test/contract/pack-method-assets.test.ts:1:1)
+✖ test/contract/pack-method-assets.test.ts (316571.090334ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 1
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 316593.602666
+
+✖ failing tests:
+
+test at test/contract/pack-method-assets.test.ts:29:1
+✖ a real Host resumes the old Run against its original method after an installed version upgrade (4145.282666ms)
+  AssertionError [ERR_ASSERTION]: cannot resume run-edf9758e-d8f0-4f93-924d-1962f9b763e4: run run-edf9758e-d8f0-4f93-924d-1962f9b763e4 stands at node "blocked", which pack opene902-timing-probe@3 no longer has; nothing was written
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/test/contract/pack-method-assets.test.ts:51:10)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'cannot resume run-edf9758e-d8f0-4f93-924d-1962f9b763e4: run run-edf9758e-d8f0-4f93-924d-1962f9b763e4 stands at node "blocked", which pack opene902-timing-probe@3 no longer has; nothing was written',
+    expected: /current node: blocked\n/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at test/contract/pack-method-assets.test.ts:1:1
+✖ test/contract/pack-method-assets.test.ts (316571.090334ms)
+  'Promise resolution is still pending but the event loop has already resolved'

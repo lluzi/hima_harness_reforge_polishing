@@ -1,0 +1,40 @@
+✖ a method-only export preserves executable method scripts (119.951208ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 820.273333
+
+✖ failing tests:
+
+test at test/contract/pack-method-assets.test.ts:165:1
+✖ a method-only export preserves executable method scripts (119.951208ms)
+  Error: spawnSync /var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/pls13-method-RDgHzW/share/tools/direct-check.sh EACCES
+      at Object.spawnSync (node:internal/child_process:1160:20)
+      at spawnSync (node:child_process:928:24)
+      at execFileSync (node:child_process:971:15)
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/test/contract/pack-method-assets.test.ts:171:16)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    errno: -13,
+    code: 'EACCES',
+    syscall: 'spawnSync /var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/pls13-method-RDgHzW/share/tools/direct-check.sh',
+    path: '/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/pls13-method-RDgHzW/share/tools/direct-check.sh',
+    spawnargs: [],
+    error: Error: spawnSync /var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/pls13-method-RDgHzW/share/tools/direct-check.sh EACCES
+        at Object.spawnSync (node:internal/child_process:1160:20)
+        at spawnSync (node:child_process:928:24)
+        at execFileSync (node:child_process:971:15)
+        at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/test/contract/pack-method-assets.test.ts:171:16)
+        at async Test.run (node:internal/test_runner/test:1404:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3),
+    status: null,
+    signal: null,
+    output: null,
+    pid: 0,
+    stdout: undefined,
+    stderr: undefined
+  }

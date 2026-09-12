@@ -16,7 +16,7 @@ import { writeLocalSite, writeSampleReport } from './support/site.ts';
 import { requireOpene902Fixture } from './support/opene902-fixtures.ts';
 import { installPack, writePackFiles } from './support/pack.ts';
 // Loads the `ctx.hima` declaration merge onto Context.
-import type {} from '@hima/harness';
+import { packDigestOf } from '@hima/harness';
 import type {} from '@deepseek-ai/dsh-tools';
 
 type Host = InProcessHost;
@@ -436,7 +436,7 @@ test('a run whose pack this machine cannot load is refused by /hima judge, namin
   await writePackFiles(installed.dir, { 'rules/clock-period-at-most.yml': packsOwnGoalRule });
   const host = await bootInProcess(h);
   try {
-    const run = await host.ctx.hima.ledger.createRun({ campaignId: 'campaign-unloadable-pack', siteId: 'local', packId: installed.id });
+    const run = await host.ctx.hima.ledger.createRun({ campaignId: 'campaign-unloadable-pack', siteId: 'local', packId: installed.id, packDigest: packDigestOf(installed.dir) });
     // ...and then the pack stops loading, which is what an editing mistake, a half-finished install or
     // a removed folder looks like to this host.
     await rm(path.join(installed.dir, 'contract.yml'));
@@ -444,7 +444,7 @@ test('a run whose pack this machine cannot load is refused by /hima judge, namin
     for (const line of judged.text.split('\n')) t.diagnostic(line);
     assert.equal(judged.kind, 'error', judged.text);
     assert.ok(judged.text.includes(installed.id), `the refusal names the pack whose rules could not be reached: ${judged.text}`);
-    assert.match(judged.text, /contract\.yml/, `and says why it would not load, in the loader's own words: ${judged.text}`);
+    assert.match(judged.text, /needs method .*no verified original snapshot/, `the missing original method is named, and a different installed rule cannot replace it: ${judged.text}`);
     assert.deepEqual(
       verdicts(host, run.id),
       [],

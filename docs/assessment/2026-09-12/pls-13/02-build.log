@@ -1,0 +1,11 @@
+$ pnpm -r run build
+Scope: 2 of 3 workspace projects
+packages/desktop build$ tsc -p tsconfig.json
+packages/harness build$ tsc -p tsconfig.json && node scripts/build-client.mjs
+packages/desktop build: src/local-site.ts(146,10): error TS2614: Module '"@hima/harness"' has no exported member 'exportPackMethod'. Did you mean to use 'import exportPackMethod from "@hima/harness"' instead?
+packages/desktop build: src/local-site.ts(146,28): error TS2614: Module '"@hima/harness"' has no exported member 'installPackMethod'. Did you mean to use 'import installPackMethod from "@hima/harness"' instead?
+packages/desktop build: Failed
+/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/packages/desktop:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @hima/desktop@0.1.0 build: `tsc -p tsconfig.json`
+Exit status 2
+[ELIFECYCLE] Command failed with exit code 2.

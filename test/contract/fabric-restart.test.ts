@@ -64,7 +64,7 @@ import {
 } from './support/pack.ts';
 import { killSession, startSession, tmuxHasSession } from './support/tmux.ts';
 import type {} from '@deepseek-ai/dsh-tools';
-import { clearRemoteCommands, jobPollFastForMs, jobPollFastMs, jobPollSlowMs, remoteCommands } from '@hima/harness';
+import { clearRemoteCommands, jobPollFastForMs, jobPollFastMs, jobPollSlowMs, packDigestOf, remoteCommands } from '@hima/harness';
 import type { CancelRecord, NodeRecord, RunView } from '@hima/harness';
 
 /** How long a test waits for something on the Site to become true before it fails. */
@@ -1061,6 +1061,8 @@ test('a run left with no fabric state at all is still picked up by the next host
       campaignId: 'opene902-timing-probe-interrupted',
       siteId: 'local',
       packId: timingProbePackId,
+      // Current startRun records method identity before preparation can be interrupted.
+      packDigest: packDigestOf(path.join(h.home, 'hima/packs', timingProbePackId)),
       goal: { target_period_ns: 2 },
       // Both of the Site's declared scarcities, as `startRun` copies them: the local site declares
       // one job slot and one Design Compiler seat, which is what the shipped pack's synth tool holds.

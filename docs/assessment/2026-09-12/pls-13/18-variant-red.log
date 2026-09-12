@@ -1,0 +1,21 @@
+✖ run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused (151.955833ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 577.650083
+
+✖ failing tests:
+
+test at test/contract/pack-method-assets.test.ts:80:1
+✖ run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused (151.955833ms)
+  Error: VERSION.yml is there and seals pack "opene902-timing-probe", and contract.yml declares "over-constraining-probe"
+      at manifestOf (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/packages/harness/lib/release.js:377:15)
+      at installPackMethod (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/packages/harness/lib/release.js:513:18)
+      at writeConvergingVariant (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/packages/desktop/src/local-site.ts:1384:3)
+      at async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/test/contract/pack-method-assets.test.ts:99:19)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)

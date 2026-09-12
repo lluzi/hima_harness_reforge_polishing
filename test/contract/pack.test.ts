@@ -20,7 +20,7 @@ import { graphForLegacyTimingPush, installDrillDown, installPack, packsDirOf, sh
 import { writeStandinFlow } from './support/standin-flow.ts';
 import { killSessions } from './support/fabric.ts';
 import { bundledReaderValues } from './support/readings.ts';
-import { checkPack, clearRemoteCommands, heldToOneInode, HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, jobPlumbing, loadPack, loadSite, packStageOf, packVersionFile, quote, readOnlyProbes, readSemanticsFile, remoteCommands, shippedSemanticsFile, workspacePlumbing } from '@hima/harness';
+import { checkPack, clearRemoteCommands, heldToOneInode, HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, jobPlumbing, loadPack, loadSite, packDigestOf, packStageOf, packVersionFile, quote, readOnlyProbes, readSemanticsFile, remoteCommands, shippedSemanticsFile, workspacePlumbing } from '@hima/harness';
 // The bundled reader library's own declarations, which this file holds against the bundle's own
 // semantics: a reader's `emits` is TypeScript and the vocabulary it draws on is a YAML file, and
 // nothing else in the suite has both open at once.
@@ -1132,7 +1132,7 @@ test('preparing a campaign on the local site creates its workspace, copies the f
     // container name a later cleanup would need.
     const file = JSON.parse(await readFile(path.join(workspace, 'workspace.json'), 'utf8'));
     assert.equal(file.campaign, campaign);
-    assert.deepEqual(file.pack, { id: timingProbePackId, version: '2' });
+    assert.deepEqual(file.pack, { id: timingProbePackId, version: '2', digest: packDigestOf(path.join(packsDirOf(h), timingProbePackId)) });
     assert.equal(file.site, 'local');
     assert.equal(file.design, 'opene902');
     assert.equal(file.flowRoot, flowRoot);

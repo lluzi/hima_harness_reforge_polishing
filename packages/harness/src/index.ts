@@ -81,7 +81,7 @@ export type { PackFolderSnapshot } from './pack-folder.js';
 // check that holds a folder against one. On the surface because the release verb is reached through
 // the command face and the tool face alike, and the acceptance and live-check scripts read a sealed
 // folder back.
-export { packVersionFile, releaseIssue, releasePack } from './release.js';
+export { exportPackMethod, installPackMethod, loadRunPack, packVersionFile, preservePackMethod, releaseIssue, releasePack } from './release.js';
 export type { PackVersionFile, ReleaseResult } from './release.js';
 // The pack authoring pipeline's five skills (#63): what the bundle puts on a host, and where their
 // bodies and the authoring knowledge they cite live. On the surface because the contract suite holds

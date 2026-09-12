@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { bootInProcess, createRootAgent, saidByModel, sayAsUser, toolCalls, toolResults, type InProcessHost } from './support/boot-inprocess.ts';
@@ -438,6 +438,12 @@ test('through a booted host with the replay stand-in: /hima-test runs the compil
     // -------------------------------------------------------------------------------------------
     // The release stage: the seal, and what a change to a sealed folder does.
     // -------------------------------------------------------------------------------------------
+    // PLS-13: this real Run's TEST record must still verify after customer knowledge is archived.
+    const customerReport = path.join(packDir, 'run-assets', runId, 'customer-report.md');
+    await mkdir(path.dirname(customerReport), { recursive: true });
+    await writeFile(customerReport, '# Private customer research\nA negative result worth retaining.\n');
+    assert.equal(packDigestOf(packDir), digestAsTested);
+    assert.match((await packCheck(h)).text, /^test record: run .+, ended ended-converged, files as tested$/m);
     await replayStage(h, 'release');
     const sealing = await runStage(h, packDir, [`/hima-release ${authoredPackId}`]);
     assert.deepEqual(sealing.calls, ['hima_pack_check', 'hima_pack_release'],
@@ -447,6 +453,7 @@ test('through a booted host with the replay stand-in: /hima-test runs the compil
     const sealAt = path.join(packDir, pipelineFiles.version);
     const seal = packVersionFile.parse(parse(await readFile(sealAt, 'utf8')));
     assert.equal(seal.pack, authoredPackId, 'the seal names the pack it is in');
+    assert.equal(seal.methodDigest, digestAsTested, 'the release states the same method identity as its actual test Run');
     assert.equal(seal.version, loadPack(packsDirOf(h), authoredPackId).contract.version, 'and the version its contract declares, which is what a release seals');
     assert.deepEqual(seal.test, { record: pipelineFiles.test, run: runId }, 'and the test record it rests on, with the Run that wrote it');
     // Every regular file of the folder but the seal itself, with the hash the harness computed —

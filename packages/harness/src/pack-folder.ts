@@ -15,6 +15,8 @@
 //
 // **What the snapshot promises**, exactly:
 //
+// - `run-assets/` is customer knowledge, excluded from every method snapshot view. Its entries are
+//   inspected for symlinks and special files, but their bytes are never read, sealed or exported;
 // - no entry that was not a plain file when it was inspected enters a digest, a seal or a Run — every
 //   entry of the folder, hidden or not, is `lstat`ed, and a hidden *directory* is walked too, so
 //   nothing is left uninspected merely because its name begins with a dot. A hidden **regular file**
@@ -71,6 +73,12 @@ export const packId = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'a pack, tool, no
  * itself.
  */
 export const pipelineFiles = { intent: 'INTENT.md', spec: 'SPEC.md', fabric: 'FABRIC.md', test: 'TEST.md', version: 'VERSION.yml' } as const;
+
+/** Customer knowledge has one home, and never forms part of reference-method identity. */
+export const runAssetsDirectory = 'run-assets';
+export const methodInstallFile = '.hima-method-install.json';
+export const methodHistoryDirectory = '.hima-method-history';
+export const methodUpdateFile = '.hima-method-update.json';
 
 /**
  * The files a pack's digest is taken **without**: the pipeline's own records (#64).
@@ -250,7 +258,8 @@ function entriesOfDirectory(at: string, was: Stats): Buffer[] {
  * **One reading of a pack folder**: every file of it, by path relative to the folder, with the bytes
  * that were read (#64).
  *
- * `files` is the whole of it. The two views below are derivations of that map and take no second look
+ * `files` is the reference method and its authoring records, never root `run-assets/` or hidden
+ * installer metadata/history. The two views below derive from that map and take no second look
  * at anything, which is the point: a digest, a seal and the contract a Campaign is driven by are then
  * three statements about one instant rather than three instants.
  *
@@ -262,10 +271,14 @@ function entriesOfDirectory(at: string, was: Stats): Buffer[] {
 export interface PackFolderSnapshot {
   /** The folder this is a reading of. */
   readonly dir: string;
-  /** Every file of the pack, by path relative to `dir`, `/` between the segments. */
+  /** Every method/authoring file, by path relative to `dir`; customer assets never enter this map. */
   readonly files: ReadonlyMap<string, Uint8Array>;
+  /** Plain-file permissions for faithful method export; byte identity retains its existing format. */
+  readonly modes: ReadonlyMap<string, number>;
+  /** Every inspected entry, including private files; ownership checks must not mistake hidden for owned. */
+  readonly entries: ReadonlySet<string>;
   /**
-   * Every directory the walk descended, by the same relative paths, hidden subtrees excluded.
+   * Every method directory the walk descended; run-assets and hidden subtrees excluded.
    *
    * Held because "this folder does not hold that file" and "a directory is standing where that file
    * should be" are different things to tell a person, and one reading is what knows both. Nothing is
@@ -297,7 +310,7 @@ const digestOver = (files: readonly (readonly [string, string])[]): string =>
   createHash('sha256').update(files.map(([at, sha]) => `${at} ${sha}\n`).join('')).digest('hex');
 
 /** The snapshot's two derived views, over one map of bytes read once. */
-function viewsOf(dir: string, files: ReadonlyMap<string, Uint8Array>, directories: ReadonlySet<string>): PackFolderSnapshot {
+function viewsOf(dir: string, files: ReadonlyMap<string, Uint8Array>, directories: ReadonlySet<string>, entries: ReadonlySet<string>, modes: ReadonlyMap<string, number>): PackFolderSnapshot {
   // Hashed once, on the first question that needs it: a Run asks for one digest, a release asks for
   // a digest and a file list, and hashing the same bytes twice would be two spellings of one number.
   let hashes: readonly (readonly [string, string])[] | undefined;
@@ -309,6 +322,8 @@ function viewsOf(dir: string, files: ReadonlyMap<string, Uint8Array>, directorie
   return {
     dir,
     files,
+    modes,
+    entries,
     directories,
     text: (relative) => {
       const bytes = files.get(relative);
@@ -370,8 +385,14 @@ export function snapshotPackFolderIfThere(dir: string): PackFolderSnapshot | und
   const root = lstatSync(dir, { throwIfNoEntry: false });
   if (root === undefined) return undefined;
   if (!root.isDirectory()) throw new PackFolderError(notAPlainFile(dir));
+  if (lstatSync(path.join(dir, methodUpdateFile), { throwIfNoEntry: false }) !== undefined) {
+    throw new PackFolderError(`${dir} has an interrupted method update (${methodUpdateFile}); keep run-assets intact and restore the previous method from ${methodHistoryDirectory} before retrying`);
+  }
+  const manifestBefore = lstatSync(path.join(dir, methodInstallFile), { throwIfNoEntry: false });
   const files = new Map<string, Uint8Array>();
+  const modes = new Map<string, number>();
   const directories = new Set<string>();
+  const entries = new Set<string>();
   /**
    * @param folder - the directory being read.
    * @param was - what the caller's `lstat` said that directory was.
@@ -389,15 +410,17 @@ export function snapshotPackFolderIfThere(dir: string): PackFolderSnapshot | und
       // called and wherever it is.
       const what = lstatSync(file);
       if (!what.isFile() && !what.isDirectory()) throw new PackFolderError(notAPlainFile(file));
-      const outside = beneathHidden || hidden(name);
       const relative = prefix === '' ? name : `${prefix}/${name}`;
+      entries.add(relative);
+      const outside = beneathHidden || hidden(name) || relative === runAssetsDirectory;
+      if (relative === runAssetsDirectory && !what.isDirectory()) throw new PackFolderError(`${file} must be a plain directory for customer run assets`);
       if (!outside) {
         const held = packFilePath.safeParse(relative);
         if (!held.success) throw new PackFolderError(`${file} is not a name a pack file can have: ${held.error.issues[0]!.message}`);
       }
       if (what.isDirectory()) {
         if (!outside) directories.add(relative);
-        walk(file, what, outside ? '' : relative, outside);
+        walk(file, what, relative, outside);
         continue;
       }
       // A hidden regular file is inspected — it was `lstat`ed above, like every other entry — and
@@ -405,10 +428,17 @@ export function snapshotPackFolderIfThere(dir: string): PackFolderSnapshot | und
       // to no digest, no seal and no Campaign.
       if (outside) continue;
       files.set(relative, bytesOfPlainFile(file, what));
+      modes.set(relative, what.mode & 0o777);
     }
   };
   walk(dir, root, '', false);
-  return viewsOf(dir, files, directories);
+  const manifestAfter = lstatSync(path.join(dir, methodInstallFile), { throwIfNoEntry: false });
+  if (lstatSync(path.join(dir, methodUpdateFile), { throwIfNoEntry: false }) !== undefined
+      || (manifestBefore === undefined) !== (manifestAfter === undefined)) {
+    throw new PackFolderError(`${dir} changed during a method update; retry after the installation is complete`);
+  }
+  if (manifestBefore !== undefined && manifestAfter !== undefined) heldToOneInode(path.join(dir, methodInstallFile), manifestBefore, manifestAfter);
+  return viewsOf(dir, files, directories, entries, modes);
 }
 
 /** What a Campaign of a pack folder ran, as the run row records it (#64): the digest of everything in

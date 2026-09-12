@@ -1,0 +1,25 @@
+✖ repeated local seeding preserves the installed Pack customer archive byte for byte (87.582834ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 261.149375
+
+✖ failing tests:
+
+test at test/contract/pack-method-assets.test.ts:12:1
+✖ repeated local seeding preserves the installed Pack customer archive byte for byte (87.582834ms)
+  Error: ENOENT: no such file or directory, open '/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/pls13-seed-0UO9ey/hima/packs/opene902-timing-probe/run-assets/run-isolated-evidence/report.md'
+      at async open (node:internal/fs/promises:1345:25)
+      at async readFile (node:internal/fs/promises:1996:14)
+      at async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13/test/contract/pack-method-assets.test.ts:22:20)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/pls13-seed-0UO9ey/hima/packs/opene902-timing-probe/run-assets/run-isolated-evidence/report.md'
+  }
