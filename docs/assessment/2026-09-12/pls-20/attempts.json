@@ -1,0 +1,176 @@
+[
+  {
+    "log": "logs/check-local-1.tap",
+    "counts": {
+      "tests": 278,
+      "pass": 266,
+      "fail": 12,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 1,
+    "seconds": 991.753,
+    "bootAttempts": {
+      "host-process": 41,
+      "host-in-process": 259,
+      "electron": 0
+    },
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  },
+  {
+    "log": "logs/compatibility-2.tap",
+    "counts": {
+      "tests": 30,
+      "pass": 30,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 0,
+    "seconds": 87.853,
+    "bootAttempts": {
+      "host-process": 10,
+      "host-in-process": 11,
+      "electron": 0
+    },
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  },
+  {
+    "log": "logs/desktop-1.tap",
+    "counts": {
+      "tests": 6,
+      "pass": 5,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 1,
+    "seconds": 83.743,
+    "bootAttempts": {
+      "host-process": 0,
+      "host-in-process": 0,
+      "electron": 6
+    },
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  },
+  {
+    "log": "logs/desktop-2.tap",
+    "counts": {
+      "tests": 4,
+      "pass": 3,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 1,
+    "seconds": 65.421,
+    "bootAttempts": {
+      "host-process": 0,
+      "host-in-process": 0,
+      "electron": 5
+    },
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  },
+  {
+    "log": "logs/desktop-3.tap",
+    "counts": {
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 0,
+    "seconds": 49.517,
+    "bootAttempts": {
+      "host-process": 0,
+      "host-in-process": 0,
+      "electron": 3
+    },
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  },
+  {
+    "log": "logs/focused-1.tap",
+    "counts": {
+      "tests": 72,
+      "pass": 66,
+      "fail": 6,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 1,
+    "seconds": 41.398,
+    "bootAttempts": null,
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  },
+  {
+    "log": "logs/new-mechanisms-1.tap",
+    "counts": {
+      "tests": 19,
+      "pass": 8,
+      "fail": 11,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 1,
+    "seconds": 164.558,
+    "bootAttempts": null,
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  },
+  {
+    "log": "logs/new-mechanisms-2.tap",
+    "counts": {
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 0,
+    "seconds": 50.283,
+    "bootAttempts": null,
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  },
+  {
+    "log": "logs/pack-2.tap",
+    "counts": {
+      "tests": 62,
+      "pass": 62,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 0,
+    "seconds": 24.818,
+    "bootAttempts": null,
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  },
+  {
+    "log": "logs/restart-2.tap",
+    "counts": {
+      "tests": 19,
+      "pass": 19,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 0,
+    "seconds": 152.59,
+    "bootAttempts": {
+      "host-process": 1,
+      "host-in-process": 31,
+      "electron": 0
+    },
+    "role": "diagnostic-and-targeted-verification; final frozen full local separate"
+  }
+]

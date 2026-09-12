@@ -26,7 +26,7 @@ import assert from 'node:assert/strict';
 import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
 import { localHome } from './support/fabric.ts';
 import { api, openSession } from './support/hima-api.ts';
-import { installLegacyTimingPush, packsDirOf, timingProbePackId } from './support/pack.ts';
+import { installLegacyTimingPush, overConstrainingChooserId, packsDirOf, timingProbePackId } from './support/pack.ts';
 import type { RunView } from '@hima/harness';
 
 /** One second of synthesis per generation: this test runs fourteen of them and none of its subjects is
@@ -87,6 +87,12 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
     assert.equal(pushed.run.status, 'ended-budget-exhausted', `and never ended-converged: ${JSON.stringify(pushed.run)}`);
     assert.equal(pushed.run.meters?.endedBy, 'generation-limit', 'the meter that ended it is what it was allowed, not what it learned');
     assert.equal(pushed.run.generation, 6, 'all six generations of the pack were spent');
+    assert.ok(pushed.decision, 'the last generation still decided, and the limit refused to open the generation that would have tried it');
+    assert.deepEqual(
+      [pushed.decision.chooser, pushed.decision.chooserOrigin],
+      ['timing-push', 'bundle'],
+      `the reference pack carries no chooser of its own, so the push it names is the bundle's: ${JSON.stringify(pushed.decision)}`,
+    );
 
     // The same flow, the same starting period, the second shipped chooser. It never asks a met
     // period what it had to spare: it takes one step tighter each time and lets the tool state the
@@ -108,6 +114,14 @@ test('on a stand-in that reports no margin for a met period, timing-push loosens
     assert.equal(converged.run.status, 'ended-converged', `the exploration reached an ending of its own: ${JSON.stringify(converged.run)}`);
     assert.equal(converged.run.generation, 5, 'at the fifth generation, inside the six the pack allows');
     assert.ok(converged.decision, 'the ending is a decision, on record');
+    // Which chooser, and out of which of the two folders (#57): this variant carries
+    // `over-constraining-push` in its own `choosers/`, and the bundle ships no such file at all, so
+    // a decision that said only the id would leave a person looking for clauses that are not there.
+    assert.deepEqual(
+      [converged.decision.chooser, converged.decision.chooserOrigin],
+      [overConstrainingChooserId, 'pack'],
+      `the method this Campaign ran on is the pack's own, and the record says so: ${JSON.stringify(converged.decision)}`,
+    );
     assert.deepEqual(
       converged.decision.chosen,
       { converged: { read: 'period', band: 0.05, generations: 1, values: [2.15, 2.15] } },

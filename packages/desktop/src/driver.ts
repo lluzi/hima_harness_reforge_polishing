@@ -309,9 +309,12 @@ async function clickOp(opts: DriverOptions, control: string): Promise<Answer> {
   let resendAt = 0;
   for (;;) {
     if (Date.now() >= resendAt) {
-      // Input events reach a focused window; the driver's window is shown without focus so a suite
-      // does not steal a person's keyboard until a click actually needs the window.
-      opts.win.focus();
+      // Input events reach the page's focus. The window itself is never focused for a first attempt:
+      // focusing it activates this app and takes the keyboard from whatever the person was typing
+      // into, once per click, across a whole suite. Only a click the page did not take after a
+      // resend earns the real focus, which is the one case where the window is known to need it.
+      if (sent === 0) opts.win.webContents.focus();
+      else opts.win.focus();
       opts.win.webContents.sendInputEvent({ type: 'mouseMove', x, y });
       opts.win.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
       opts.win.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });

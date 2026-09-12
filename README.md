@@ -11,7 +11,7 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 - [代码导入清单](docs/assessment/2026-09-11/source-import.json)
 - [Prototype 的版本化参考材料](docs/upstream/README.md)
 
-2026-09-12 已决定以 polishing 作为 Step 4 后续开发主线，接收点固定为 `ca47fa0`。当前仅完成接续规格，源码尚未导入；首个实施任务为 PLS-20。统一工作区 UI-02 和 PLS-01～07 是本轮必须保留的已交付成果。
+2026-09-12：PLS-20 已在独立集成分支接收固定快照 `ca47fa0`，保留统一工作区 UI-02 和 PLS-01～07。处理记录与本版本独立验证见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。后续先做 PLS-21/22/13，再接 PLS-19；当前自动 drive/Workshop 路径是接收基线，同一对话 Agent 接管执行尚未实施。
 
 ## 本地准备
 
@@ -23,7 +23,7 @@ pnpm install --frozen-lockfile --store-dir "$PWD/.hima-tmp/pnpm-store"
 pnpm run check:local
 ```
 
-`check:local` 依次检查 Node/seams、构建一次、检查类型、执行完整本地组；全新副本没有 `lib/` 也适用。测试的类型声明来自 Harness 的构建输出，因此源码变化后，执行叶测试命令前必须先 `pnpm run build`。依赖和构建产物仅用于本工作区，不与 prototype 共享可写目录。
+`check:local` 依次检查 Node/seams/Pack boundary、构建一次、检查类型、执行完整本地组；全新副本没有 `lib/` 也适用。测试的类型声明来自 Harness 的构建输出，因此源码变化后，执行叶测试命令前必须先 `pnpm run build`。依赖和构建产物仅用于本工作区，不与 prototype 共享可写目录。
 
 日常修改先构建一次，再选择相关文件获得短反馈；提交前按影响补足对应验证。以下两组共用同一份新构建：
 
@@ -38,12 +38,14 @@ pnpm run test:desktop --files test/contract/honest-standin-window.test.ts
 隔离的本地桌面入口如下；`local` 使用受控 stand-in，不是真实 EDA：
 
 ```sh
-DSH_HOME="$PWD/.hima-tmp/dev/dsh" \
-DSH_AGENTS_HOME="$PWD/.hima-tmp/dev/agents" \
-HIMA_USER_DATA="$PWD/.hima-tmp/dev/electron" \
+DSH_HOME="$PWD/.hima-tmp/pls20-dev/dsh" \
+DSH_AGENTS_HOME="$PWD/.hima-tmp/pls20-dev/agents" \
+HIMA_USER_DATA="$PWD/.hima-tmp/pls20-dev/electron" \
 DSH_TELEMETRY_DISABLED=1 \
 pnpm run desktop --site local
 ```
+
+Ledger 版本为 19；升级前的版本 14 home 会被明确拒绝，不会自动迁移。使用上面的独立 home，保留旧 home 给旧版本读取。Experience v1/v2 文件仍按已记录的原字节/hash 读取。
 
 当前 `--site local` 每次启动会刷新样例 Pack 和生成的 flow；Campaign workspace 保留。Pack 内资产保留尚未实现，见 POL-07。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)，入口验证见 [PLS-02 记录](docs/assessment/2026-09-11/pls-02/README.md)。Git hooks 仍须显式 `pnpm run hooks:install` 安装；pre-commit 构建并检查静态类型，pre-push 执行一次 `check:local`。Hook 通过只认证所跑的本地范围，窗口、模型或 Site 检查由实际改动决定。
 

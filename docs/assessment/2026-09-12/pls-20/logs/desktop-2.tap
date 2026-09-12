@@ -1,0 +1,57 @@
+$ node scripts/run-contract-tests.mjs desktop --files test/contract/unified-workbench.test.ts test/contract/ledger-version.test.ts
+desktop: 2 selected; 15 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: a HimaLedger stored under an older domain version is refused when the next shell opens it, and that shell says so instead of coming up
+ok 1 - a HimaLedger stored under an older domain version is refused when the next shell opens it, and that shell says so instead of coming up
+  ---
+  duration_ms: 24161.502583
+  type: 'test'
+  ...
+# Subtest: conversation draft, native files and verified reports share one workspace with a real Run
+ok 2 - conversation draft, native files and verified reports share one workspace with a real Run
+  ---
+  duration_ms: 15976.210792
+  type: 'test'
+  ...
+# Subtest: preparation retries preserve drafts, pending starts cannot be replaced, and a resumed Run remains cancellable
+ok 3 - preparation retries preserve drafts, pending starts cannot be replaced, and a resumed Run remains cancellable
+  ---
+  duration_ms: 17619.586041
+  type: 'test'
+  ...
+# Subtest: a Pack under authoring and its Workshop code records remain visible beside the native conversation
+not ok 4 - a Pack under authoring and its Workshop code records remain visible beside the native conversation
+  ---
+  duration_ms: 6907.609458
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:195:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + undefined
+    - true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/unified-workbench.test.ts:216:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 3
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 65361.201625
+Test boot attempts: {"host-process":0,"host-in-process":0,"electron":5}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+desktop command exit code: 1; elapsed: 65.421 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

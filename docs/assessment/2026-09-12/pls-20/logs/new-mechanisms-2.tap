@@ -1,0 +1,166 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/moment.host.test.ts test/contract/pack-readers.host.test.ts test/contract/workshop.host.test.ts
+local: 3 selected; 31 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: through the Host with the replay stand-in: a moment opens on a stand-in node, the replayed turn answers, and the ledger holds the pair that brackets it
+ok 1 - through the Host with the replay stand-in: a moment opens on a stand-in node, the replayed turn answers, and the ledger holds the pair that brackets it
+  ---
+  duration_ms: 7857.639792
+  type: 'test'
+  ...
+# Subtest: through the Host with the replay stand-in: a moment on a Run that has ended leaves the Generation rows the card and the report were written from exactly as they were
+ok 2 - through the Host with the replay stand-in: a moment on a Run that has ended leaves the Generation rows the card and the report were written from exactly as they were
+  ---
+  duration_ms: 7781.181666
+  type: 'test'
+  ...
+# Subtest: through the Host with the replay stand-in: a host taken away mid-moment leaves one open record, the next host closes it interrupted exactly once, and the node takes another moment that completes
+ok 3 - through the Host with the replay stand-in: a host taken away mid-moment leaves one open record, the next host closes it interrupted exactly once, and the node takes another moment that completes
+  ---
+  duration_ms: 10895.993417
+  type: 'test'
+  ...
+# Subtest: the scan reports a regular file it could not read, rather than passing over it
+ok 4 - the scan reports a regular file it could not read, rather than passing over it
+  ---
+  duration_ms: 3.801667
+  type: 'test'
+  ...
+# Subtest: the scan reports a directory it could not open, and passes over a link pointing at nothing
+ok 5 - the scan reports a directory it could not open, and passes over a link pointing at nothing
+  ---
+  duration_ms: 3.603792
+  type: 'test'
+  ...
+# Subtest: the moment route refuses what it cannot do, in the namespace's own words
+ok 6 - the moment route refuses what it cannot do, in the namespace's own words
+  ---
+  duration_ms: 5597.153458
+  type: 'test'
+  ...
+# Subtest: through the Host with a model that refuses: the turn answers nothing, the moment closes failed, and the route says why
+ok 7 - through the Host with a model that refuses: the turn answers nothing, the moment closes failed, and the route says why
+  ---
+  duration_ms: 5839.0955
+  type: 'test'
+  ...
+# Subtest: a moment refuses a governed tool name by construction: no session is composed and no record is written
+ok 8 - a moment refuses a governed tool name by construction: no session is composed and no record is written
+  ---
+  duration_ms: 760.679292
+  type: 'test'
+  ...
+# Subtest: a site whose permit will not run the wrapper a reader declares is unfit before a campaign exists, and the check names the wrapper and what the site does allow
+ok 9 - a site whose permit will not run the wrapper a reader declares is unfit before a campaign exists, and the check names the wrapper and what the site does allow
+  ---
+  duration_ms: 942.909583
+  type: 'test'
+  ...
+# pack pack-reader-unpermitted@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 2 tools, 3 rules, 2 readers, 0 choosers, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-UltiTU/hima-home-uDaYLU/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-UltiTU/hima-home-uDaYLU/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+#   mine (tools/mine.sh): "make" is an allowed wrapper of site local
+# rules:
+#   candidates-at-least@1: found in the pack
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+#   count-candidates@1 reads candidates: found in the pack, and reader "count-candidates", named by output "candidates", runs its script with "sh" is not an allowed wrapper of site local (allowed: make)
+# semantics:
+#   candidate_count: declared by this pack in /private/tmp/hima-tests-UltiTU/hima-home-uDaYLU/hima/packs/pack-reader-unpermitted/semantics.yml
+#   candidate_slack: declared by this pack in /private/tmp/hima-tests-UltiTU/hima-home-uDaYLU/hima/packs/pack-reader-unpermitted/semantics.yml
+#   8 value types come from the bundle
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - reader "count-candidates", named by output "candidates", runs its script with "sh" is not an allowed wrapper of site local (allowed: make)
+# Subtest: `/hima status` names the reader of the run's latest reading, in the words both card mounts say it in
+ok 10 - `/hima status` names the reader of the run's latest reading, in the words both card mounts say it in
+  ---
+  duration_ms: 1360.836875
+  type: 'test'
+  ...
+# run run-4eed42fd-3f3d-45a2-a7aa-48e928eb6aec of campaign pack-reader-said-20260912-144751-3412 on site local: ended-goal-not-met, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-UltiTU/hima-home-mkNQVz/workspace/pack-reader-said-20260912-144751-3412
+#   goal: target_period_ns=2
+#   strategy: clock period 2 ns
+#   budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: judge
+#   meters:
+#     elapsed 997 ms of a time box of 60.0 min
+#     generation 1 of at most 1, 885 ms
+#     2 jobs launched, at most 1 job at a time
+#     judge: attempt 1 of a retry allowance of 3, and 3 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared
+#   nodes:
+#     mine (act): done, attempt 1, session hima-4eed42fd-mine-9b2ecd
+#     read-candidates (act): done, attempt 1, session hima-4eed42fd-reader-count-candidates-e8e98b
+#     judge (judge): done, attempt 1, PASS
+#   latest reading: /private/tmp/hima-tests-UltiTU/hima-home-mkNQVz/workspace/pack-reader-said-20260912-144751-3412/flow/results/opene902/mine-timing/candidates.json, read by count-candidates@1 · pack script tools/count-candidates.sh sha256 9a8317b47b02
+#   experience: written at 2026-09-12T14:47:52.049Z
+#     markdown: /private/tmp/hima-tests-UltiTU/hima-home-mkNQVz/workspace/pack-reader-said-20260912-144751-3412/hima-experience/run-4eed42fd-3f3d-45a2-a7aa-48e928eb6aec.md · sha256 11627492702035cb77ab7e55a38e18447642dd8a138256ccf0cb5b9cdb9293a2 · 3362 bytes
+#     json: /private/tmp/hima-tests-UltiTU/hima-home-mkNQVz/workspace/pack-reader-said-20260912-144751-3412/hima-experience/run-4eed42fd-3f3d-45a2-a7aa-48e928eb6aec.json · sha256 02abcdd87f382a766b3e98718222ba269d8ecdb0a77352a04865a6c5c4c0f782 · 10118 bytes
+# Subtest: in process over the same home: a write that landed and verified but that the ledger would not record is named in the tool's answer, in the host log and in the node the run blocks at
+ok 11 - in process over the same home: a write that landed and verified but that the ledger would not record is named in the tool's answer, in the host log and in the node the run blocks at
+  ---
+  duration_ms: 1868.123917
+  type: 'test'
+  ...
+# Subtest: in process over the same home: a host log that throws where the landed byte is reported stops neither the tool's answer nor the fault the node blocks on
+ok 12 - in process over the same home: a host log that throws where the landed byte is reported stops neither the tool's answer nor the fault the node blocks on
+  ---
+  duration_ms: 1390.482
+  type: 'test'
+  ...
+# Subtest: a workshop declaration this harness will not run is refused before a campaign exists, naming the field
+ok 13 - a workshop declaration this harness will not run is refused before a campaign exists, naming the field
+  ---
+  duration_ms: 1089.378917
+  type: 'test'
+  ...
+# Subtest: at the ledger object: a job whose launch record names its attempt is that attempt, whether or not a node record ever named its session
+ok 14 - at the ledger object: a job whose launch record names its attempt is that attempt, whether or not a node record ever named its session
+  ---
+  duration_ms: 1657.6445
+  type: 'test'
+  ...
+# Subtest: in process over the same home: the moment of a retry is given the reason the attempt before it failed and the tail of that attempt's log
+ok 15 - in process over the same home: the moment of a retry is given the reason the attempt before it failed and the tail of that attempt's log
+  ---
+  duration_ms: 1906.744875
+  type: 'test'
+  ...
+# run run-18948bcf-be49-49f6-a09c-86573be78a68 of campaign workshop-probe-20260912-144758-d07f on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-UltiTU/hima-home-e3G2Cf/workspace/workshop-probe-20260912-144758-d07f
+#   goal: target_period_ns=2
+#   strategy: clock period 2 ns
+#   budget: time box 10 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 1.6 s of a time box of 10.0 min
+#     generation 1 of at most 1, 1.5 s
+#     4 jobs launched, at most 1 job at a time
+#     mine: attempt 3 of a retry allowance of 3, and 5 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 570 ms
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-18948bcf-synthesize-9574e5 holding Design-Compiler 1
+#     mine (act): blocked, attempt 3, session hima-18948bcf-workshop-mine-ab6fb4, job "mine" in tmux session hima-18948bcf-workshop-mine-ab6fb4 exited 3; node mine has now failed 3 times and spent its retry allowance of 3
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   workshop mine: blocked · 1 file
+#   blocker: mine after 3 attempts, last exit 3, 1 line of log on record run-18948bcf-be49-49f6-a09c-86573be78a68\#000029: job "mine" in tmux session hima-18948bcf-workshop-mine-ab6fb4 exited 3; node mine has now failed 3 times and spent its retry allowance of 3
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 50213.053709
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 50.283 s; pass/fail/skip counts are in the TAP summary above

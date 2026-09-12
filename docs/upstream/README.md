@@ -5,3 +5,5 @@
 这些是带版本的参考材料，记录 prototype 当时的设计、工作流程和历史验收，不能替代 polishing 的产品定义或独立验证。其旧仓库 Issue 路径、绝对路径及历史状态也按来源保留，不是本项目的新指令。
 
 运行代码、配置、测试与 Pack 位于本仓库原有相对位置。映射和每个文件的 hash 见 [导入清单](../assessment/2026-09-11/source-import.json)。本地冻结的 Git 引用为 `refs/remotes/prototype/snapshot-2026-09-11`，后续可直接对比源码；无需去源目录修改或运行代码。
+
+`ca47fa0/` 保存本次接收点 `ca47fa05ebe7417c23f0aebbb769db627bbf08a0` 的完整来源说明，仍然只是版本化参考。新旧文件三方处理、每个结果的 hash 与只读源校验见 [PLS-20 导入清单](../assessment/2026-09-12/pls-20/import-manifest.json)。

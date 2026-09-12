@@ -10,12 +10,19 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { appendFileSync } from 'node:fs';
 import { himaHomeSources, himaProfileDir, prepareHimaHome } from '../../../packages/desktop/src/hima-home.ts';
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 export const dshBin = path.join(repoRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js');
 export const profileTemplateDir = himaHomeSources(repoRoot).profileTemplate;
 export const harnessPackageDir = himaHomeSources(repoRoot).harnessPackage;
+
+/** Test-only cost evidence. No paths, command arguments or credentials enter the journal. */
+export function recordTestBoot(kind: 'host-process' | 'host-in-process' | 'electron'): void {
+  const at = process.env.HIMA_TEST_BOOT_LOG;
+  if (at) appendFileSync(at, `${kind}\n`);
+}
 
 export interface HimaHome {
   readonly home: string;

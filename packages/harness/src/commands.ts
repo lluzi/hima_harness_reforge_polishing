@@ -11,28 +11,30 @@
 // status` must describe one Run the one way.
 import { createRequire } from 'node:module';
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands';
-import { hasEnded, type BlockerRecord, type CancelRecord, type DecisionRecord, type ExperienceRecord, type JobRecord, type NodeRecord, type ResumedRecord, type RunRecord, type VerdictRecord, type WorkspaceRecord } from './ledger.js';
-import { cancelSessions, chosenAs } from './record-views.js';
+import { hasEnded, type BlockerRecord, type CancelRecord, type CodeRecord, type DecisionRecord, type ExperienceRecord, type JobRecord, type LedgerRecord, type NodeRecord, type ObservationRecord, type ResumedRecord, type RunRecord, type SessionRecord, type VerdictRecord, type WorkspaceRecord } from './ledger.js';
+import { cancelSessions, chosenAs, standingWorkshop } from './record-views.js';
 import { observe, type ObserveResult } from './observe.js';
 import { jobKill, jobStatus, jobTail, launchJob, type JobKillResult, type JobStatusResult, type LaunchResult } from './jobs.js';
 import { claimSlot, fullSaid, type FullSlot } from './job-cap.js';
 import { loadSite } from './sites.js';
-import { checkPack, installedPackWords, loadPack, type PackCheck } from './packs.js';
+import { checkInstalledPack, installedPackWords, type PackCheck, type PackCheckResult, type PackStage } from './packs.js';
+import { releasePack } from './release.js';
+import type { PackDataOrigin } from './ledger.js';
 import { campaignIdIssue, prepareWorkspace, type PrepareResult } from './workspace.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName } from './run-arguments.js';
 // Type-only: the shape a pack's words travel in, declared with the rest of the run view.
 import type { RunWords } from './remote.js';
-import { bannerLines, branchSaid, branchesIn, convergedSaid, experienceFileSaid, meterLines, strategySaid } from './card-labels.js';
+import { bannerLines, branchSaid, branchesIn, convergedSaid, experienceFileSaid, meterLines, readerSaid, runPurposeMark, strategySaid, workshopSaid } from './card-labels.js';
 import { generationsOf } from './generations.js';
 import { counted } from './words.js';
-import { PackNotFoundError, RunFaultError, RunReferenceError, RunStartError, SiteNotFoundError, SiteUnreadableError } from './errors.js';
+import { PackFolderError, PackNotFoundError, RunFaultError, RunReferenceError, RunStartError, SiteNotFoundError, SiteUnreadableError } from './errors.js';
 
 /** What `/hima` says it is, in the one line a person sees in the host's command list. Here with the
  *  handlers it describes, so a verb added below is a verb named here. */
 export const himaCommandDescription =
-  'HimaHarness: version, observe <site> <path> to read a report into the ledger, judge <runId> --rules <id,...> to rule on what it holds, job launch|status|tail|kill to run a job on a site under its permit, pack check|prepare to hold a HimaPack against a site and give a campaign its workspace, run <pack> --site <site> --goal <name>=<value> to start a campaign and let HimaFabric execute its graph, resume <runId> to clear a waiting run and carry it on, status <runId> to see where a run stands, and cancel <runId> to stop one';
+  'HimaHarness: version, observe <site> <path> to read a report into the ledger, judge <runId> --rules <id,...> to rule on what it holds, job launch|status|tail|kill to run a job on a site under its permit, pack check|prepare|release to hold a HimaPack against a site, give a campaign its workspace and seal a tested pack, run <pack> --site <site> --goal <name>=<value> to start a campaign and let HimaFabric execute its graph, resume <runId> to clear a waiting run and carry it on, status <runId> to see where a run stands, and cancel <runId> to stop one';
 
 const require = createRequire(import.meta.url);
 const bundleVersion: string = require('../package.json').version;
@@ -49,7 +51,7 @@ function describeObserveResult(result: ObserveResult): string {
   const runId = result.run.id;
   if (result.kind === 'observed') {
     const { record } = result;
-    return `observed ${record.path} on ${record.siteId}: sha256 ${record.contentSha256} (${record.bytes} bytes), reader ${record.reader.id}@${record.reader.version}, record ${record.id} in ${runId}`;
+    return `observed ${record.path} on ${record.siteId}: sha256 ${record.contentSha256} (${record.bytes} bytes), reader ${readerSaid(record.reader)}, record ${record.id} in ${runId}`;
   }
   const { record } = result;
   return `refused ${record.path} on ${record.siteId}: ${record.reason}; recorded as ${record.id} in ${runId}`;
@@ -103,39 +105,127 @@ function describeJobStatus(session: string, result: JobStatusResult): string {
  * is the question asked; the detail follows because a `fit` answer is worth as much as an unfit one
  * when someone is deciding whether a Site is set up right.
  */
+/**
+ * What became of one id the pack named, in the words the check reports it in (#57): found, and in
+ * which of the two places it was looked for. The origin is said on every resolved line rather than
+ * only on the pack's own, because "found" with nothing after it is what this line used to say and a
+ * person reading it would not know a second place had been looked in at all.
+ */
+const foundIn = (origin: PackDataOrigin | undefined): string => `found in the ${origin ?? 'bundle'}`;
+
+/**
+ * What one line of the check says about one id: where it was found, what is wrong with it, or — when
+ * an id resolved and then failed on something else — **both**.
+ *
+ * Both, because they are two different facts and the second does not cancel the first. A chooser
+ * whose binding is invalid was still read out of one of two files, and a person deciding which file
+ * to edit has to be told which one answered; a line that printed only the error would send them to
+ * the bundle's copy of a chooser their pack had replaced.
+ *
+ * @param origin - where the id resolved, or undefined when it never resolved at all.
+ * @param error - what is wrong, or undefined when nothing is.
+ */
+const saidOf = (origin: PackDataOrigin | undefined, error: string | undefined): string => {
+  if (error === undefined) return foundIn(origin);
+  return origin === undefined ? error : `${foundIn(origin)}, and ${error}`;
+};
+
+/**
+ * How far up the pack authoring pipeline a folder has come, as one line a person reads (#63).
+ *
+ * The rung first, with what validated to get there, then what the next rung wants and who writes it
+ * — because "where am I" and "what do I do next" are the two questions a pack author has, and the
+ * second is the one an answer that stopped at the first would leave them guessing at. A file that is
+ * there and wrong is said last and said plainly: the ladder stopped on something, and a person who
+ * is not told what would go on writing the file they already wrote.
+ *
+ * @param stage - what the ladder found.
+ * @returns the line, without a trailing newline.
+ */
+export function packStageSaid(stage: PackStage): string {
+  const reached = stage.validated.length === 0 ? stage.stage : `${stage.stage} (${stage.validated.join(', ')} validate)`;
+  const next = stage.next === undefined ? 'nothing after it: this is the top of the ladder' : `next: ${stage.next} — ${stage.needs!}`;
+  return `stage: ${reached}; ${next}${stage.issue === undefined ? '' : `; ${stage.issue}`}`;
+}
+
 export function describePackCheck(check: PackCheck): string {
   const found = [
     `${check.inputs.filter((i) => i.bound !== undefined).length} of ${counted(check.inputs.length, 'input')} bound`,
     counted(check.tools.length, 'tool'),
+    ...(check.workshops.length === 0 ? [] : [counted(check.workshops.length, 'workshop')]),
     counted(check.rules.length, 'rule'),
     counted(check.readers.length, 'reader'),
     counted(check.choosers.length, 'chooser'),
+    ...(check.knowledge.length === 0 ? [] : [counted(check.knowledge.length, 'knowledge file')]),
     counted(check.licences.length, 'licence'),
   ].join(', ');
   const verdict = check.fit ? `fit — ${found}` : `unfit — ${counted(check.errors.length, 'error')}; ${found}`;
   const lines = [`pack ${check.packId}@${check.packVersion} on site ${check.siteName}: ${verdict}`];
+  lines.push(packStageSaid(check.stage));
   lines.push('inputs:');
   for (const i of check.inputs) lines.push(`  ${i.name} = ${i.bound ?? `(not bound) ${i.error}`}`);
   if (check.tools.length > 0) lines.push('tools:');
   for (const t of check.tools) {
     lines.push(`  ${t.id} (${t.file}): ${t.error ?? `"${t.wrapper}" is an allowed wrapper of site ${check.siteName}`}`);
   }
+  // The workshops, beside the tools and in the same shape (#62): what a Job of each runs, where the
+  // model writes and which file of that directory is launched, and which output it must produce with
+  // the reader that turns it into an observation.
+  if (check.workshops.length > 0) lines.push('workshops:');
+  for (const w of check.workshops) {
+    lines.push(`  ${w.id} — ${w.wrapper}, writes ${w.directory}/${w.entry}, produces ${w.produces} (read by ${w.reader})${w.error === undefined ? '' : `: ${w.error}`}`);
+  }
   if (check.rules.length > 0) lines.push('rules:');
-  for (const r of check.rules) lines.push(`  ${r.resolved ?? r.ref}: ${r.error ?? 'found'}`);
+  for (const r of check.rules) lines.push(`  ${r.resolved ?? r.ref}: ${saidOf(r.origin, r.error)}`);
   if (check.readers.length > 0) lines.push('readers:');
-  for (const r of check.readers) lines.push(`  ${r.resolved ?? r.id} reads ${r.output}: ${r.error ?? 'found'}`);
+  for (const r of check.readers) lines.push(`  ${r.resolved ?? r.id} reads ${r.output}: ${saidOf(r.origin, r.error)}`);
+  // What vocabulary a Run of this pack speaks (#61). The pack's own value types are named — those are
+  // the ones a person is about to edit a file for — and the bundle's are counted, because the same
+  // eight come from the bundle for every pack and a list nobody reads twice is noise on a report a
+  // person reads for the exceptions.
+  lines.push('semantics:');
+  for (const type of check.semantics.pack) lines.push(`  ${type}: declared by this pack in ${check.semantics.file}`);
+  lines.push(`  ${counted(check.semantics.fromBundle, 'value type')} come${check.semantics.fromBundle === 1 ? 's' : ''} from the bundle`);
   if (check.choosers.length > 0) lines.push('choosers:');
-  for (const c of check.choosers) lines.push(`  ${c.resolved ?? c.ref} chooses at ${c.node}: ${c.error ?? 'found'}`);
+  for (const c of check.choosers) lines.push(`  ${c.resolved ?? c.ref} chooses at ${c.node}: ${saidOf(c.origin, c.error)}`);
+  if (check.knowledge.length > 0) lines.push('knowledge:');
+  for (const k of check.knowledge) lines.push(`  ${k.file} (${k.purpose}): ${saidOf(k.origin, k.error)}`);
   if (check.licences.length > 0) lines.push('licences:');
   for (const l of check.licences) {
-    lines.push(`  ${l.tool} holds ${l.held} of "${l.name}": ${l.error ?? `site ${check.siteName} declares ${l.declared}`}`);
+    // A workshop says so; a tool is named bare, as this line has always named one (#62).
+    lines.push(`  ${l.holder === 'workshop' ? 'workshop ' : ''}${l.tool} holds ${l.held} of "${l.name}": ${l.error ?? `site ${check.siteName} declares ${String(l.declared)}`}`);
   }
+  // What this host's ledger says about the Run the folder's test record rests on (#64). One line,
+  // and only when a ledger was in hand to ask: `checkPack` opens files, and whether a Campaign really
+  // ran these very bytes is a question only the ledger answers.
+  if (check.testRecord !== undefined) lines.push(check.testRecord.said ?? check.testRecord.error!);
   if (check.errors.length > 0) {
     lines.push('errors:');
     for (const e of check.errors) lines.push(`  - ${e}`);
   }
   return lines.join('\n');
 }
+
+/**
+ * One pack check as a person reads it, whatever stage the folder stands at (#64): the whole check for
+ * a folder that holds a pack, and the ladder alone for one that does not yet.
+ *
+ * Both faces that check a pack say it through this, so a pack author who checks their own folder from
+ * the fabric stage and then checks it again at a terminal reads one answer about one folder.
+ */
+export function describePackCheckResult(result: PackCheckResult): string {
+  if (result.kind === 'checked') return describePackCheck(result.check);
+  return [`pack ${result.pack} on site ${result.siteName}: unfit — ${result.why}`, packStageSaid(result.stage)].join('\n');
+}
+
+/** Whether that check says this Site may host this pack. A folder with no pack in it may not, which
+ *  is why this is one function rather than a field a caller reads off one arm of the union. */
+export const packCheckFit = (result: PackCheckResult): boolean => result.kind === 'checked' && result.check.fit;
+
+/** The ladder as that check found it, whichever arm answered: what a caller wanting the stage as data
+ *  reads, so `hima_pack_check` need not take the words apart again. */
+export const packCheckStage = (result: PackCheckResult): PackStage =>
+  (result.kind === 'checked' ? result.check.stage : result.stage);
 
 /** One preparation as a person reads it: what was prepared or found, where, and what it holds. */
 export function describePrepare(result: PrepareResult): string {
@@ -190,7 +280,12 @@ function describeRun(deps: FabricDeps, run: RunRecord): string {
   const fork = run.fork === undefined
     ? ''
     : `, in the fork at ${run.fork.from} waiting at ${run.fork.join} for ${counted(Object.keys(run.fork.branches).length, 'branch')}`;
-  const lines = [`run ${run.id} of campaign ${run.campaignId} on site ${run.siteId}: ${run.status ?? 'no fabric state; HimaFabric never started this run'}${generation}${loop}${fork}`];
+  // What this Run is for, where it is not an ordinary Campaign (#64): a test run of a pack somebody
+  // is still authoring is not a result, and a person reading the status of one has to be told before
+  // they read anything else on it.
+  const purpose = runPurposeMark(run.purpose);
+  const marked = purpose === undefined ? '' : `, ${purpose}`;
+  const lines = [`run ${run.id} of campaign ${run.campaignId} on site ${run.siteId}: ${run.status ?? 'no fabric state; HimaFabric never started this run'}${marked}${generation}${loop}${fork}`];
   const workspace = records.findLast((r): r is WorkspaceRecord => r.type === 'workspace')?.workspace;
   if (workspace !== undefined) lines.push(`  workspace: ${workspace}`);
   // What the Campaign is for and what it is set to, in the very words the card says them in
@@ -248,6 +343,24 @@ function describeRun(deps: FabricDeps, run: RunRecord): string {
   // one thing about one branch.
   const branches = branchesIn({ generations: generationsOf(run, records, wordsOf(deps, run).words) });
   if (branches.length > 0) lines.push('  branches:', ...branches.map((b) => `    ${branchSaid(b)}`));
+  // What this Run last read, and **who read it** (#61): one line, in the very words both card mounts
+  // say it in (`readerSaid`). A reading is the evidence every verdict of a Campaign cites, and since
+  // a reader may be a script in the pack's own folder rather than code in this bundle, its id and
+  // version alone no longer identify what produced a number — a pack folder is plain files a person
+  // edits, so the file and the hash of the bytes that were shipped and run are the whole of it. The
+  // latest, and not all of them: a Campaign of six generations has six readings and a person asking
+  // where a Run stands is asking about the one its current verdicts were reached on.
+  const reading = records.findLast((r): r is ObservationRecord => r.type === 'observation');
+  if (reading) lines.push(`  latest reading: ${reading.path}, read by ${readerSaid(reading.reader)}`);
+  // Where the node the Run stands at stands as a workshop, when it is one (#62): the card's own
+  // standing line, so a person at a terminal and a person at the window read one sentence about one
+  // workshop. The files it wrote are the card's rows and the run view's `code`; a command line says
+  // where the workshop is, which is what a person asking where a Run stands is asking.
+  // Where the node this Run stands at stands as a workshop, when it is one (#62): the same fold the
+  // run view is composed through and over the same records, so a person at a terminal and a person at
+  // the window cannot be told two things about one node.
+  const workshop = standingWorkshop(run, records);
+  if (workshop !== undefined) lines.push(`  ${workshopSaid(workshop)}`);
   // The blocker before the decision, because a Run that is waiting is waiting on this and a person
   // reading it has come to find out what to clear. The log tail is not printed: it is on the record,
   // and `/hima job tail` is how a person reads a log at whatever length they want.
@@ -399,6 +512,36 @@ function parseSetFlags(flags: readonly string[]): { strategy: Record<string, str
 }
 
 /**
+ * Every word of a flag list this command did not consume, in words (#64).
+ *
+ * A flag face that reads the flags it knows and ignores the rest answers *something* for every
+ * spelling a person can get wrong, and the answer is silence: `--test false` starts a test run and
+ * leaves `false` lying there, `--test=false` is not `--test` at all and starts an ordinary Campaign,
+ * and a misspelled `--generation 2` runs to the default limit. None of those is a refusal, and every
+ * one of them is a Campaign the person did not ask for.
+ *
+ * @param flags - the words after the positional arguments.
+ * @param takesAValue - the options that swallow the word after them.
+ * @param bare - the options that say one thing and take no value.
+ * @returns the refusal, naming the first word nothing consumed, or undefined when every word was.
+ */
+function unconsumedArgument(
+  flags: readonly string[],
+  takesAValue: readonly string[],
+  bare: readonly string[],
+): string | undefined {
+  for (let i = 0; i < flags.length; i++) {
+    const word = flags[i]!;
+    if (takesAValue.includes(word)) { i += 1; continue; }
+    if (bare.includes(word)) continue;
+    // `--anything` this command does not declare, including `--test=false`, which is one word and is
+    // not the flag `--test`; and a bare word left over, which is what `--test false` leaves behind.
+    return word.startsWith('-') ? `unknown option "${word}"` : `unexpected argument "${word}"`;
+  }
+  return undefined;
+}
+
+/**
  * One numeric flag of a Run, validated against what `runArguments` says it may be. `absent` when the
  * flag was not typed at all; an error when it was typed with no value, a non-number, or a number
  * this flag cannot mean — a flag typed wrongly never reads as "not given".
@@ -458,7 +601,7 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
   if (sub === 'resume') return handleResume(deps, rest, String(agent.id));
   if (sub === 'status') return handleStatus(deps, rest);
   if (sub === 'cancel') return handleCancel(deps, rest);
-  return { kind: 'error', text: `unknown hima command "${sub}"; try /hima version, /hima observe <site> <path>, /hima judge <runId> --rules <id,...>, /hima job launch|status|tail|kill, /hima pack check|prepare, /hima run <pack> --site <site> --goal <name>=<value>, /hima resume <runId>, /hima status <runId>, or /hima cancel <runId>` };
+  return { kind: 'error', text: `unknown hima command "${sub}"; try /hima version, /hima observe <site> <path>, /hima judge <runId> --rules <id,...>, /hima job launch|status|tail|kill, /hima pack check|prepare|release, /hima run <pack> --site <site> --goal <name>=<value>, /hima resume <runId>, /hima status <runId>, or /hima cancel <runId>` };
 }
 
 /**
@@ -474,10 +617,16 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
  */
 async function handleRun(deps: FabricDeps, rest: readonly string[]): Promise<CommandResult> {
   const [pack = '', ...flags] = rest;
-  const usage = 'usage: /hima run <pack> --site <site> --goal <name>=<value>... [--set <knob>=<value>]... [--time-box <minutes>] [--retries <n>] [--generations <n>]';
+  const usage = 'usage: /hima run <pack> --site <site> --goal <name>=<value>... [--set <knob>=<value>]... [--test] [--time-box <minutes>] [--retries <n>] [--generations <n>]';
   const wrong = { kind: 'error', text: usage } as const;
   const site = flagValue(flags, '--site');
   if (!pack || pack.startsWith('--') || !site) return wrong;
+  // Before anything is parsed out of them, every word of the flag list is one this command consumes
+  // (#64). `--test` is the reason: a bare flag beside five that take values is exactly where a
+  // person writes `--test false`, and a Campaign marked as a test when they asked for the opposite
+  // is a Run whose whole meaning is wrong and which said nothing about it.
+  const leftOver = unconsumedArgument(flags, ['--site', '--goal', '--set', '--time-box', '--retries', '--generations'], ['--test']);
+  if (leftOver !== undefined) return { kind: 'error', text: `${usage}\n${leftOver}` };
   const goal = parseNamedNumbers(flags, '--goal');
   if ('error' in goal) return { kind: 'error', text: `${usage}\n${goal.error}` };
   if (Object.keys(goal.params).length === 0) return wrong;
@@ -497,6 +646,10 @@ async function handleRun(deps: FabricDeps, rest: readonly string[]): Promise<Com
       site,
       goal: goal.params,
       strategy: set.strategy,
+      // A bare flag, because it says one thing and has no value to get wrong (#64): a Run of a pack
+      // this person is authoring is a test run whether or not they say so, and this is how they say
+      // so of a released pack they want to exercise without it counting as a Campaign.
+      ...(flagPresent(flags, '--test') ? { test: true } : {}),
       timeBoxMs: timeBox.value === undefined ? undefined : Math.round(timeBox.value * 60_000),
       retryAllowance: retries.value,
       generationLimit: generations.value,
@@ -504,7 +657,7 @@ async function handleRun(deps: FabricDeps, rest: readonly string[]): Promise<Com
   } catch (err) {
     // A pack, a Site or a request the caller got wrong is theirs to fix; every other fault
     // propagates as it always has.
-    if (err instanceof PackNotFoundError || err instanceof SiteNotFoundError || err instanceof RunStartError || err instanceof RunReferenceError) {
+    if (err instanceof PackNotFoundError || err instanceof PackFolderError || err instanceof SiteNotFoundError || err instanceof RunStartError || err instanceof RunReferenceError) {
       return { kind: 'error', text: `/hima run ${pack}: ${err.message}` };
     }
     // A fault mid-drive is already recorded against the Run: the message, and the Run as it now
@@ -551,7 +704,7 @@ async function handleResume(deps: FabricDeps, rest: readonly string[], who: stri
   } catch (err) {
     // A run or a pack the caller got wrong is theirs to fix and nothing was written; a fault
     // mid-drive is already recorded against the Run and is shown with the Run it stopped.
-    if (err instanceof RunReferenceError || err instanceof PackNotFoundError || err instanceof SiteNotFoundError) {
+    if (err instanceof RunReferenceError || err instanceof PackNotFoundError || err instanceof PackFolderError || err instanceof SiteNotFoundError) {
       return { kind: 'error', text: `/hima resume ${runId}: ${err.message}` };
     }
     if (err instanceof RunFaultError) {
@@ -620,9 +773,31 @@ async function handlePack(deps: FabricDeps, rest: readonly string[]): Promise<Co
   const usage = [
     'usage: /hima pack check <pack> --site <site>',
     '       /hima pack prepare <pack> --site <site> [--campaign <id>]',
+    '       /hima pack release <pack>',
   ].join('\n');
   const wrong = { kind: 'error', text: usage } as const;
-  if ((verb !== 'check' && verb !== 'prepare') || !pack) return wrong;
+  if ((verb !== 'check' && verb !== 'prepare' && verb !== 'release') || !pack) return wrong;
+  // The release names no Site and takes no other flag: it seals a folder against the Run that tested
+  // it, and every fact it uses is on this machine. A `--site` typed at it is a person expecting it to
+  // check something it does not check, which is worth the usage line rather than a silent pass.
+  if (verb === 'release') {
+    if (flags.length > 0) return wrong;
+    try {
+      const released = releasePack(deps, { pack });
+      if (released.kind === 'refused') return { kind: 'error', text: released.reason };
+      const { sealed } = released;
+      return {
+        kind: 'success',
+        text: [
+          `${released.rewritten ? 'resealed' : 'released'} pack ${sealed.pack}@${sealed.version} at ${released.file}`,
+          `  ${counted(Object.keys(sealed.files).length, 'file')} sealed, on test record ${sealed.test.record} of run ${sealed.test.run}`,
+        ].join('\n'),
+      };
+    } catch (err) {
+      if (err instanceof PackNotFoundError) return { kind: 'error', text: `/hima pack release: ${err.message}` };
+      throw err;
+    }
+  }
   const site = flagValue(flags, '--site');
   // A flag typed with no value must never read as "not given".
   if (!site) return wrong;
@@ -635,16 +810,17 @@ async function handlePack(deps: FabricDeps, rest: readonly string[]): Promise<Co
   }
   try {
     if (verb === 'check') {
-      const check = checkPack(loadPack(deps.packsDir, pack), loadSite(deps.sitesDir, site));
-      return { kind: check.fit ? 'success' : 'error', text: describePackCheck(check) };
+      const result = checkInstalledPack(deps, { pack, site });
+      return { kind: packCheckFit(result) ? 'success' : 'error', text: describePackCheckResult(result) };
     }
     const result = await prepareWorkspace(deps, { pack, site, campaign });
     const text = describePrepare(result);
     return result.kind === 'prepared' || result.kind === 'reused' ? { kind: 'success', text } : { kind: 'error', text };
   } catch (err) {
-    // A pack or a site the caller named wrongly is theirs to fix and nothing was written; a pack
-    // whose own files are broken, or any other fault, propagates as it always has.
-    if (err instanceof PackNotFoundError || err instanceof SiteNotFoundError || err instanceof RunReferenceError) {
+    // A pack or a site the caller named wrongly is theirs to fix and nothing was written; so is a
+    // folder that is not a folder of plain files (#64), which is a path a person can go and look at.
+    // A pack whose own files are broken, or any other fault, propagates as it always has.
+    if (err instanceof PackNotFoundError || err instanceof PackFolderError || err instanceof SiteNotFoundError || err instanceof RunReferenceError) {
       return { kind: 'error', text: `/hima pack ${verb}: ${err.message}` };
     }
     throw err;

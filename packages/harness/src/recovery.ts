@@ -9,7 +9,7 @@
 //
 // A Run is not stopped until the stop is observed, and a Run picked up again is never relaunched.
 // Those two are what the whole of this module is written around: nothing here may say a licence was
-// released while dc_shell still holds it, and nothing here may pay a second licence-minute for an
+// released while the tool still holds it, and nothing here may pay a second licence-minute for an
 // attempt that is already running on the Site.
 import { boundInputs, loadPack, positionOf, type Pack, type PackNode } from './packs.js';
 import { jobKill, jobStatus } from './jobs.js';
@@ -24,6 +24,7 @@ import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
 import { drive } from './fabric.js';
 import { owesAnExperience, writeExperience } from './experience.js';
+import { closeInterruptedMoments } from './moments.js';
 
 // ---------------------------------------------------------------------------------------------
 // Finding a Run again: what a host does with the Runs the last one left in flight.
@@ -68,7 +69,7 @@ export interface ReconcileOutcome {
  * **Nothing is relaunched.** A Job is found again through its own `launched` record and waited for
  * where it stands, so exactly one `launched` record exists per attempt whatever a host did in the
  * middle of it — which is what makes a restart cost nothing on a Site where a generation is two and a
- * half minutes of licensed Design Compiler.
+ * half minutes of licensed synthesis.
  *
  * A Job that is *gone* is a failed attempt, and what becomes of it is the Retry allowance's to say,
  * exactly as it is for an attempt that failed while a host was watching: another turn at the node
@@ -90,6 +91,14 @@ export interface ReconcileOutcome {
  */
 export async function reconcileRuns(deps: FabricDeps): Promise<ReconcileOutcome[]> {
   const out: ReconcileOutcome[] = [];
+  // Before any Run is looked at: a Model moment lives in one process, so every moment this ledger
+  // still has open belonged to the host that went away, and the close it is missing is written here
+  // (#59). Over every Run rather than inside the walk below, because that walk passes over the Runs
+  // this reconciliation has nothing else to do with — a Run that is over, or one no fabric started —
+  // and a session left hanging open on such a Run would be one no boot ever closed.
+  for (const closed of await closeInterruptedMoments(deps.ledger)) {
+    deps.log?.(`hima: closed an interrupted model moment of ${closed.runId}: session ${closed.sessionId} at ${closed.nodeId}`);
+  }
   for (const run of deps.ledger.runs()) {
     // A Run HimaFabric opened is one carrying the pack it runs; anything else in this ledger is an
     // observation's own Probe-campaign Run, which no fabric ever started and none may end.
@@ -347,7 +356,7 @@ function packOf(deps: FabricDeps, run: RunRecord): Pack {
  * unsettled: a Run whose Retry allowance is spent is routed to the pack's Wait node with the node
  * that failed behind it, and a Run inside a fork stands at the join with a Job open in every branch.
  * Asking only about the node a Run stands at would tell a person their Run had nothing to stop while
- * dc_shell still held the licence, and a Run final at `cancelled` is one `reconcileRuns` passes over
+ * the tool still held the licence, and a Run final at `cancelled` is one `reconcileRuns` passes over
  * for ever. So the cancel takes them all.
  */
 async function openJob(deps: FabricDeps, run: RunRecord, nodeId?: string): Promise<JobRecord | undefined> {
@@ -374,7 +383,7 @@ export type CancelResult =
   | { readonly kind: 'not-started'; readonly run: RunRecord }
   /**
    * The kill did not take within its bounded wait: the session is still there. The Run is NOT
-   * cancelled — nothing may say a licence was released while dc_shell still holds it — so the node is
+   * cancelled — nothing may say a licence was released while the tool still holds it — so the node is
    * blocked naming the session and the Run waits for a person.
    */
   | { readonly kind: 'not-stopped'; readonly run: RunRecord; readonly session: string; readonly reason: string };
@@ -385,7 +394,7 @@ export type CancelResult =
  * Every Job and not the newest, because a Run can hold several at once: a fork drives an act node
  * per branch and each of them launches (#29), and a Run whose allowance was spent stands at a Wait
  * node with the Job it gave up on possibly still on the Site. One that stopped only the first would
- * end the Run saying its licences were released while dc_shell still held one.
+ * end the Run saying its licences were released while the tool still held one.
  *
  * The request and the observed stop are two records (#9), in that order and never merged: the `cancel`
  * record says a person asked, the `killed` job record and the `cancelled` node record say what
@@ -492,7 +501,7 @@ export async function cancelRun(deps: FabricDeps, runId: string): Promise<Cancel
     }
   }
   if (notStopped) {
-    // One Job still on the Site is enough: nothing may say a licence was released while dc_shell
+    // One Job still on the Site is enough: nothing may say a licence was released while the tool
     // still holds it, so the Run is not cancelled and a person is told which session to look at.
     await advance(deps.ledger, run.id, {}, { status: 'waiting' });
     return { kind: 'not-stopped', run: existingRun(deps.ledger, run.id), ...notStopped };

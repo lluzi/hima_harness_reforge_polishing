@@ -1,26 +1,32 @@
 // L3: native dsh conversation + Hima dock. Real Host and local Jobs; no model turn or SSH.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { bootDriver, type BootedDriver } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
 import { api } from './support/hima-api.ts';
 import { inspectWindow } from './support/inspect-window.ts';
 import { writeSampleReport } from './support/site.ts';
+import { localHome } from './support/fabric.ts';
+import { installWorkshopPack, packsDirOf, writePackVariant } from './support/pack.ts';
+import { writeMomentScenario } from './support/moments.ts';
+import { HIMA_INTENT_SECTIONS } from '@hima/harness';
 import type { RunView } from '@hima/harness';
 
 type Inspector = Awaited<ReturnType<typeof inspectWindow>>;
 const draft = 'UI validation draft — compare strategies and preserve each experiment’s evidence. Not sent to a model.';
 
-async function prepareSession(d: BootedDriver, browser: Inspector) {
+async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = false) {
   await d.open('/');
   await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
   await browser.markText('button', 'Continue', 'notice-continue');
   assert.ok((await d.click('notice-continue')).ok);
-  await browser.wait(`document.body.innerText.includes('Configure later')`);
-  await browser.markText('button', 'Configure later', 'models-later');
-  assert.ok((await d.click('models-later')).ok);
+  if (!modelReady) {
+    await browser.wait(`document.body.innerText.includes('Configure later')`);
+    await browser.markText('button', 'Configure later', 'models-later');
+    assert.ok((await d.click('models-later')).ok);
+  }
   const host = await d.host(); assert.ok(host.ok);
   const cookie = await d.cookie();
   // Fixture setup through the actual public Host RPC. Native folder-picker automation is not
@@ -184,4 +190,47 @@ test('preparation retries preserve drafts, pending starts cannot be replaced, an
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
     await capture(d, browser, 'dark-cancelled');
   } finally { await finish(d, browser); }
+});
+
+test('a Pack under authoring and its Workshop code records remain visible beside the native conversation', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  if (!home) return;
+  const pack = await installWorkshopPack(packsDirOf(home.h));
+  await writeFile(path.join(packsDirOf(home.h), pack, 'INTENT.md'), HIMA_INTENT_SECTIONS.map((heading) => `## ${heading}\n\nLocal UI fixture for this declared method.\n`).join('\n'));
+  const broken = path.join(packsDirOf(home.h), 'broken-pack');
+  await writePackVariant(packsDirOf(home.h), 'broken-pack', []);
+  await symlink(home.h.workspace, path.join(broken, '.state'));
+  const scenario = await writeMomentScenario(home.h, 'writes');
+  const port = await freePort();
+  const d = await bootDriver(t, { existing: home.h, model: { replay: { file: scenario.file, override: scenario.override } }, remoteDebuggingPort: port });
+  if (!d) { await home.h.dispose(); return; }
+  let browser: Inspector | undefined;
+  try {
+    browser = await inspectWindow(port);
+    // Replay already supplies a configured model; dsh correctly omits the missing-model dialog.
+    const { host, cookie } = await prepareSession(d, browser, true);
+    const url = await browser.evaluate<string>('location.href');
+    await fillStart(d, browser, '2.0');
+    const options = await browser.evaluate<{ value: string; text: string; disabled: boolean }[]>(`[...document.querySelector('[data-hima-control="studio-pack"]').options].map(o=>({value:o.value,text:o.textContent,disabled:o.disabled}))`);
+    assert.ok(options.find((o) => o.value === pack)?.text.includes('test pack (intent)'));
+    assert.equal(options.find((o) => o.value === 'broken-pack')?.disabled, true);
+    assert.ok(options.find((o) => o.value === 'broken-pack')?.text.includes('unreadable'));
+    assert.ok((await d.fill('studio-pack', pack)).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]').getAttribute('data-hima-state-status')==='fit'`);
+    assert.ok((await d.click('studio-start')).ok);
+    assert.ok((await d.wait('run-workshop', 'miner.sh', 40_000)).ok);
+    assert.ok((await d.wait('studio-status', 'ended', 40_000)).ok);
+    const id = await currentRun(d);
+    const view = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
+    assert.equal(view.run.purpose, 'test');
+    const status = await d.read('studio-status'); assert.ok(status.ok);
+    assert.equal(status.state.purpose, 'test');
+    assert.ok(status.text.includes('test run'));
+    const workshop = await d.read('run-workshop'); assert.ok(workshop.ok);
+    assert.ok(view.code.length > 0);
+    for (const code of view.code) assert.ok(workshop.text.includes(code.sha256.slice(0, 12)), workshop.text);
+    assert.equal(await browser.evaluate('location.href'), url);
+    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
+    await capture(d, browser, 'light-workshop');
+  } finally { await finish(d, browser); await home.h.dispose(); }
 });

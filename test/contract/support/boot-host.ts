@@ -7,7 +7,7 @@
 // existing tests already hold, plus the isolated home's environment.
 import type { ChildProcess } from 'node:child_process';
 import type { HimaHome } from './dsh-home.ts';
-import { dshBin } from './dsh-home.ts';
+import { dshBin, recordTestBoot } from './dsh-home.ts';
 import { HIMA_PROFILE } from '../../../packages/desktop/src/hima-home.ts';
 import { freePort as reservePort, launchHimaHost } from '../../../packages/desktop/src/host-launch.ts';
 
@@ -31,6 +31,7 @@ export const freePort = reservePort;
  * @returns the booted host.
  */
 export async function bootHimaHost(h: HimaHome, timeoutMs = 90_000): Promise<BootedHost> {
+  recordTestBoot('host-process');
   const host = await launchHimaHost({
     dshEntry: dshBin,
     node: process.execPath,

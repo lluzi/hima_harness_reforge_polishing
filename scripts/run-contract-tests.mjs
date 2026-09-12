@@ -53,6 +53,7 @@ try {
         DSH_HOME: path.join(temporary, 'dsh'), DSH_AGENTS_HOME: path.join(temporary, 'agents'),
         HIMA_USER_DATA: path.join(temporary, 'electron'), DSH_TELEMETRY_DISABLED: '1',
         HIMA_TEST_GROUP: group, HIMA_TEST_TMPDIR: temporary,
+        HIMA_TEST_BOOT_LOG: path.join(temporary, 'boots.txt'),
       };
       const sshLog = path.join(temporary, 'ssh-attempts.jsonl');
       delete env.TMUX;
@@ -70,6 +71,13 @@ try {
         });
         if (result.error) throw result.error;
         process.exitCode = result.status ?? 1;
+        const boots = readdirSync(temporary).includes('boots.txt') ? readFileSync(env.HIMA_TEST_BOOT_LOG, 'utf8').trim().split('\n') : [];
+        const counts = Object.fromEntries(['host-process', 'host-in-process', 'electron'].map((kind) => [kind, boots.filter((boot) => boot === kind).length]));
+        console.error(`Test boot attempts: ${JSON.stringify(counts)}; Electron launches also start their own Host`);
+        if (group === 'local' && counts.electron !== 0) {
+          console.error('local must not start Electron');
+          process.exitCode = 1;
+        }
         if (group !== 'live-site') {
           const attempts = readdirSync(temporary).includes('ssh-attempts.jsonl') ? readFileSync(sshLog, 'utf8') : '';
           console.error(`SSH subprocess attempts: ${attempts.trim() ? attempts.trim().split('\n').length : 0}`);

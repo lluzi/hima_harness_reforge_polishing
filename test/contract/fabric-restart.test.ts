@@ -22,7 +22,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { chmod, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { chmod, readFile, rm, writeFile } from 'node:fs/promises';
 import { type HimaHome } from './support/dsh-home.ts';
 // The pieces every fabric suite composes: the home a Run is driven in, the ledger as a test reads
 // it, and the waits that let a test act while a Job is still on the Site.
@@ -46,10 +48,23 @@ import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
 import { api, openSession } from './support/hima-api.ts';
 import { himaCommand, siteCommandTimeoutMs, type CommandOutcome } from './support/command.ts';
 import { writeLocalSite } from './support/site.ts';
-import { timingProbePackId } from './support/pack.ts';
+import {
+  candidateCountType,
+  candidateSlackType,
+  installPackReader,
+  MINED_SLACK_MODE,
+  MINED_SLACK_NS,
+  MINED_SLACK_SCOPE,
+  MINED_TOP_N,
+  packReaderFile,
+  packReaderId,
+  packReaderScript,
+  packsDirOf,
+  timingProbePackId,
+} from './support/pack.ts';
 import { killSession, startSession, tmuxHasSession } from './support/tmux.ts';
 import type {} from '@deepseek-ai/dsh-tools';
-import { clearRemoteCommands, remoteCommands } from '@hima/harness';
+import { clearRemoteCommands, jobPollFastForMs, jobPollFastMs, jobPollSlowMs, remoteCommands } from '@hima/harness';
 import type { CancelRecord, NodeRecord, RunView } from '@hima/harness';
 
 /** How long a test waits for something on the Site to become true before it fails. */
@@ -1071,6 +1086,319 @@ test('a run left with no fabric state at all is still picked up by the next host
     const status = await himaCommand(second, h.workspace, `/hima status ${opened.id}`);
     for (const line of status.text.split('\n')) t.diagnostic(line);
     assert.match(status.text, /synthesize \(act\): blocked/, status.text);
+  } finally {
+    await after.done();
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Ticket #61: a reader's Job outlives its host too, and what reads it back is what its launch said
+// ---------------------------------------------------------------------------------------------
+
+/** The reader Job of a Run, once its launch and the node record that waits on it are both written.
+ *  Not `launchedJobOf`, which answers with the first Job a Run launched: here that is the mining
+ *  stage, and the Job this suite takes a host away from is the one after it. */
+async function readerJobOf(host: InProcessHost, timeoutMs = waitTimeoutMs): Promise<OpenJob> {
+  let found: OpenJob | undefined;
+  await waitUntil('the reader job was launched and its node record written', () => {
+    for (const run of host.ctx.hima.ledger.runs()) {
+      const launched = jobRecords(host, run.id).find((r) => r.event === 'launched' && r.job.name === `reader-${packReaderId}`);
+      if (!launched) continue;
+      if (!nodeRecords(host, run.id).some((r) => r.state === 'running' && r.jobSession === launched.job.session)) continue;
+      found = { runId: run.id, session: launched.job.session, workspace: launched.job.workspace };
+      return true;
+    }
+    return false;
+  }, timeoutMs);
+  return found!;
+}
+
+test('a reader job picked up after a restart is read back from what its own launch recorded, and neither the script nor the declaration is resolved again from a pack folder that has changed since', async (t) => {
+  const local = await localHome(t, { sleepSeconds: 0 });
+  if (!local) return;
+  const { h } = local;
+  const after = cleanup(h);
+  const packsDir = packsDirOf(h);
+  try {
+    // A reader that takes its time, so the host can be taken away while its Job is demonstrably
+    // still on the Site — the stand-in of a reader that has a real report to walk.
+    const slow = packReaderScript.replace('set -eu\n', 'set -eu\nsleep 20\n');
+    const pack = await installPackReader(packsDir, 'restarted-reader', { script: slow });
+    const first = await after.boot();
+    const pending = startRunInBackground(first, h, `/hima run ${pack} --site local --goal target_period_ns=2.0 --set periodNs=2.0 ${ONE_GENERATION}`);
+    const job = await readerJobOf(first);
+    after.remember(job.session);
+    assert.ok(tmuxHasSession(job.session), 'the reader job is running on the site');
+
+    // What the launch wrote down, whole: not only the reader, but the file the script was told to
+    // write and the report as it stood when it was read. Both are read here, off the record, and
+    // held against the workspace — the record is what the next host will settle from, so a record
+    // that named the wrong file or hashed the wrong bytes would be a reading about nothing.
+    const launched = jobRecords(first, job.runId).findLast((r) => r.event === 'launched' && r.job.session === job.session);
+    assert.ok(launched?.reading, `the launch recorded what its reader was launched to read: ${JSON.stringify(launched)}`);
+    const { out, report } = launched.reading;
+    assert.equal(
+      out,
+      path.join(job.workspace, 'hima-readers', packReaderId, 'read-candidates-g1-a1.json'),
+      'the record says where this attempt of this node was told to write, and names all three',
+    );
+    const asItStood = await readFile(report.path);
+    assert.equal(createHash('sha256').update(asItStood).digest('hex'), report.contentSha256, 'and the report as it stood, by the hash of its bytes');
+    assert.equal(report.bytes, asItStood.byteLength, 'and by how many there were');
+
+    await after.drop(first);
+    await pending;
+    assert.ok(tmuxHasSession(job.session), 'and it is still running: a host going away does not stop a reader either');
+
+    // The pack folder changes while the Run is between hosts, which is the whole point: a pack is
+    // plain files a person edits, and the person who edits them is not told which Runs are in
+    // flight. The script gets new bytes; the declaration promises a second value type.
+    await writeFile(path.join(packsDir, pack, packReaderFile), `${slow}# edited while the run was between hosts\n`);
+    await writeFile(
+      path.join(packsDir, pack, 'readers', `${packReaderId}.yml`),
+      `id: ${packReaderId}\nversion: '2'\nfile: ${packReaderFile}\nargv: [sh, '\${READER}', '\${REPORT}', '\${OUT}']\nreportKind: standin-candidates\nemits: [${candidateCountType}, cell_area]\n`,
+    );
+    // And the report itself, which the flow could as easily have rewritten: more bytes, and the same
+    // count, so that what the reader emits is unchanged and the only thing that can differ is the
+    // provenance the observation carries.
+    await writeFile(report.path, `${asItStood.toString('utf8')}\n{ "note": "rewritten while the run was between hosts" }\n`);
+    const asItIsNow = await readFile(report.path);
+    assert.notEqual(createHash('sha256').update(asItIsNow).digest('hex'), report.contentSha256, 'the report on disk is not the report that was read');
+
+    const second = await after.boot();
+    const reconciled = await second.ctx.hima.reconciled;
+    assert.deepEqual(reconciled.map((r) => [r.runId, r.found]), [[job.runId, 'running']], JSON.stringify(reconciled));
+    const { runId } = job;
+    await waitUntil('the run reached an ending', () => runOf(second, runId).status?.startsWith('ended') === true, 120_000);
+
+    // One observation, and it is the launch's: the hash of the bytes that were actually shipped and
+    // run, the version and the emitted set the declaration held when the Job was launched. A read
+    // back off the pack folder as it stands would have hashed bytes no Job ever ran, and would have
+    // refused the reading for missing a value type the script it launched never promised.
+    const observations = recordsOf(second, runId).filter((r) => r.type === 'observation');
+    assert.equal(observations.length, 1, `the reading was taken once: ${JSON.stringify(observations)}`);
+    const reading = observations[0]!;
+    assert.equal(reading.type === 'observation' ? reading.reader.sha256 : '', createHash('sha256').update(slow).digest('hex'), 'the hash is of the bytes the job ran');
+    assert.equal(reading.type === 'observation' ? reading.reader.version : '', '1', 'at the version the declaration held when it was launched');
+    assert.deepEqual(reading.type === 'observation' ? reading.reader.emits : [], [candidateCountType, candidateSlackType], 'promising what it promised then');
+    assert.deepEqual(
+      reading.type === 'observation' ? reading.values : [],
+      [
+        { type: candidateCountType, unit: 'count', value: MINED_TOP_N },
+        { type: candidateSlackType, unit: 'ns', value: MINED_SLACK_NS, mode: MINED_SLACK_MODE, scope: MINED_SLACK_SCOPE },
+      ],
+      'and carrying what the script wrote',
+    );
+    // The provenance is the launch's too, and this is where that matters most: the report on disk is
+    // no longer the report this reading is of, and an observation that hashed it now would say this
+    // number came out of bytes nobody read it from.
+    assert.deepEqual(
+      reading.type === 'observation' ? { path: reading.path, contentSha256: reading.contentSha256, bytes: reading.bytes } : {},
+      report,
+      'the observation carries the report as it stood when the reader was launched, by path, hash and byte count',
+    );
+    assert.notEqual(
+      reading.type === 'observation' ? reading.bytes : 0,
+      asItIsNow.byteLength,
+      'and not as it stands now, which is what says it was not re-read',
+    );
+    assert.ok(existsSync(out), `and the script wrote where the record says it was told to: ${out}`);
+    assert.equal(
+      nodeRecords(second, runId).findLast((r) => r.nodeId === 'read-candidates')?.state,
+      'done',
+      'the observing node settled on its reading, not on an exit code',
+    );
+    assert.deepEqual(jobRecords(second, runId).filter((r) => r.event === 'launched').map((r) => r.job.name), ['mine', `reader-${packReaderId}`], 'nothing was launched twice');
+  } finally {
+    await after.done();
+  }
+});
+
+test('an observe node whose job was launched by something that recorded no reading is blocked naming that launch record, and only after the job it is watching has ended', async (t) => {
+  // The one case `resumeNode` has left once a `launched` record decides the branch: an observe
+  // node\'s Job whose launch record says nothing about a reader. Such a node launches a Job for one
+  // reason — to run a reader script — so a record that does not say what was launched to be read is
+  // a fault and never a tool\'s Job: settling it from an exit code would advance the Run with no
+  // observation in it and have the judge that follows rule on the generation before it.
+  //
+  // The shape is staged on the ledger through the booted host rather than driven into being, because
+  // nothing this harness does produces it any more — the launch and the record are one step. What is
+  // asserted is all the next host\'s own: which record it names, that it never settles the node
+  // `done`, and that it watched the Job it found to its end before saying anything at all.
+  const local = await localHome(t, { sleepSeconds: 0 });
+  if (!local) return;
+  const { h } = local;
+  const after = cleanup(h);
+  try {
+    const slow = packReaderScript.replace('set -eu\n', 'set -eu\nsleep 10\n');
+    const pack = await installPackReader(packsDirOf(h), 'reader-without-a-record', { script: slow });
+    const first = await after.boot();
+    const pending = startRunInBackground(first, h, `/hima run ${pack} --site local --goal target_period_ns=2.0 --set periodNs=2.0 ${ONE_GENERATION}`);
+    const job = await readerJobOf(first);
+    after.remember(job.session);
+    const real = jobRecords(first, job.runId).findLast((r) => r.event === 'launched' && r.job.session === job.session);
+    assert.ok(real?.reading, `the real launch recorded a reading: ${JSON.stringify(real)}`);
+    // A second launch record for the same session, shaped as a tool\'s: this is what the next host
+    // will find, `resumeNode` reading the last launch of the session it was handed.
+    const toolShaped = await first.ctx.hima.ledger.appendJob(job.runId, { event: 'launched', job: real.job, nodeId: 'read-candidates' });
+    await after.drop(first);
+    await pending;
+    assert.ok(tmuxHasSession(job.session), 'the reader job is still running on the site');
+
+    const second = await after.boot();
+    const { runId } = job;
+    await waitUntil('the observing node was settled by the next host', () => nodeRecords(second, runId).some((r) => r.state === 'blocked'), 120_000);
+    // The node record and the Run's transition are separate durable writes. Observing the first
+    // does not mean the continuation has finished the second yet.
+    await waitUntil('the blocked Run is waiting for a person', () => runOf(second, runId).status === 'waiting');
+
+    const blocked = nodeRecords(second, runId).findLast((r) => r.nodeId === 'read-candidates');
+    assert.equal(blocked?.state, 'blocked', `the node is blocked and never done: ${JSON.stringify(nodeRecords(second, runId))}`);
+    assert.ok(
+      (blocked!.reason ?? '').includes(toolShaped.id),
+      `and the blocker names the launch record a person can go and look at: ${blocked!.reason}`,
+    );
+    assert.match(blocked!.reason ?? '', /says nothing about a reader/, blocked!.reason ?? '');
+    assert.deepEqual(recordsOf(second, runId).filter((r) => r.type === 'observation'), [], 'nothing was read back, and nothing was invented');
+
+    // And it was blocked only once the Job it found had ended: a Job whose launch cannot be read
+    // back is still watched to its end, because a blocker is where a Run stops for a person and not
+    // a reason to walk away from something running on their Site.
+    const finished = recordsOf(second, runId).find((r) => r.type === 'job' && r.event === 'finished' && r.job.session === job.session);
+    assert.ok(finished, `the job's own ending is on the ledger: ${JSON.stringify(recordsOf(second, runId).map((r) => r.type))}`);
+    assert.ok(blocked!.seq > finished.seq, `and the node was settled after it: blocked at ${blocked!.seq}, finished at ${finished.seq}`);
+    assert.equal(runOf(second, runId).status, 'waiting', 'the run waits for a person');
+  } finally {
+    await after.done();
+  }
+});
+
+test('a cancel that never saw a reader\'s job, appended in the gap between two polls after that job had finished, is what reads the job back: the site is asked about that job one last time, the reading is written after the cancel record, and only then is the node done', async (t) => {
+  // **The branch this test binds**, and what it takes to reach it on purpose.
+  //
+  // `waitForJob` settles a reader Job two ways. The ordinary one: a poll sees the Job finished and
+  // reads it back. And `stoppedWithJob`: the Run has stopped being this loop\'s to advance, the kill
+  // this loop then sends finds the Job already over, and the reading is read back on *that* path —
+  // which is what keeps a node from being called `done` with nothing observed when a cancel and a
+  // Job\'s own ending cross. The two produce the same one observation and the same `done`, so a test
+  // that merely waits for the Job to end and then appends a cancel cannot say which one it drove.
+  //
+  // Two things make it say so. **The gap**: the poll\'s cadence is asked of the audit rather than
+  // guessed at — the test waits until the waiter has left its fast phase and until a look has just
+  // gone out on the wire, which leaves `jobPollSlowMs` before the next one — and the Job\'s ending is
+  // the test\'s to choose, because this variant\'s script waits for a file beside its own output
+  // before it writes anything. So the Job finishes and the cancel is appended inside one gap, and
+  // the next look finds both already true. **The kill\'s own question**: once a Job has written its
+  // exit status, nothing on the poll path ever asks the Site about its session again — `jobState`
+  // reads the exit file first and answers `finished` without probing tmux at all (#18). The one
+  // thing that still asks is the kill this loop sends when the Run has been stopped from elsewhere.
+  // So the audit is cleared the moment the Job is over, and a `tmux has-session` for it after that
+  // is an effect only `stoppedWithJob` can have produced. The ledger says the same thing again in
+  // its order: the Job\'s own `finished` record and the observation are both *after* the cancel.
+  //
+  // The cancel is the record a cancel that **crossed the launch** leaves — a request naming every
+  // Job it found open, which was none, because it read this Run\'s records in the moment before the
+  // launch was on them. It is written rather than raced for: the millisecond a face and a launch
+  // cross is not one a test can be made to land in on demand, and the suite already has a test of
+  // the losing side of that race (`a cancel that arrives while the job is still being launched`).
+  const local = await localHome(t, { sleepSeconds: 0 });
+  if (!local) return;
+  const { h } = local;
+  const after = cleanup(h);
+  try {
+    // A reader that reads when it is told to: it waits for a `go` file beside the output it was told
+    // to write, so that the moment this Job ends is one the test chooses rather than one it watches
+    // for. Nothing else about it changes — it is the fixture\'s own script, and what it writes is
+    // what the fixture\'s reader always writes.
+    const waits = packReaderScript.replace(
+      'set -eu\n',
+      'set -eu\nwhile [ ! -f "$(dirname "$2")/go" ]; do sleep 0.1; done\n',
+    );
+    const pack = await installPackReader(packsDirOf(h), 'cancelled-reader', { script: waits });
+    const host = await after.boot();
+    const pending = startRunInBackground(host, h, `/hima run ${pack} --site local --goal target_period_ns=2.0 --set periodNs=2.0 ${ONE_GENERATION}`);
+    const job = await readerJobOf(host);
+    after.remember(job.session);
+
+    // The launch record says what this Job was launched to read, and where it was told to write it:
+    // the `go` file goes beside that, which is also how this test never has to re-derive a path the
+    // harness chose.
+    const launched = jobRecords(host, job.runId).findLast((r) => r.event === 'launched' && r.job.session === job.session);
+    assert.ok(launched?.reading, `the launch recorded what its reader was launched to read: ${JSON.stringify(launched)}`);
+    const exitFile = path.join(job.workspace, `${job.session}.exit`);
+    const go = path.join(path.dirname(launched.reading.out), 'go');
+
+    // Wait until the waiter has left its fast phase, so the gap below is the slow interval.
+    const launchedAt = Date.parse(launched.job.startedAt);
+    await waitUntil(
+      'the job poll left its fast phase',
+      () => Date.now() - launchedAt >= jobPollFastForMs + jobPollFastMs,
+      waitTimeoutMs,
+      50,
+    );
+    // A look has just gone out, so the next one is a slow interval away. Everything until the cancel
+    // is written happens inside that gap.
+    clearRemoteCommands();
+    await waitUntil('the poll asked the site about this job', () => askedAboutSession(job.session), waitTimeoutMs, 10);
+    const gapOpened = Date.now();
+    await writeFile(go, '');
+    await waitUntil(
+      'the reader job wrote its exit status and its session ended',
+      async () => !tmuxHasSession(job.session) && (await readFile(exitFile).catch(() => Buffer.alloc(0))).byteLength > 0,
+      waitTimeoutMs,
+      20,
+    );
+    assert.deepEqual(
+      jobRecords(host, job.runId).filter((r) => r.job.session === job.session).map((r) => r.event),
+      ['launched'],
+      'and nothing has been written about its ending: the next look has not happened yet',
+    );
+    // From here the Job has an exit status on the Site, so nothing that merely polls will ever ask
+    // about its session again.
+    clearRemoteCommands();
+    await host.ctx.hima.ledger.appendCancel(job.runId, { nodeId: 'read-candidates', jobSessions: [] });
+    const spent = Date.now() - gapOpened;
+    assert.ok(spent < jobPollSlowMs, `the job finished and the cancel was written inside one poll interval: ${spent} ms of ${jobPollSlowMs}`);
+
+    await pending;
+    const cancelled = cancelRecords(host, job.runId);
+    assert.equal(cancelled.length, 1, `the one cancel this test wrote: ${JSON.stringify(cancelled)}`);
+    const cancelSeq = cancelled[0]!.seq;
+
+    // The wire: the Site was asked whether this session was still there *after* the job had written
+    // its exit status — the question a kill asks before it stops something, and one no poll can ask
+    // any more, because the exit file decides before the session is ever probed.
+    assert.ok(
+      askedAboutSession(job.session),
+      `the loop asked the site about the job it was holding before settling it, which only the cancel path does: ${JSON.stringify(remoteCommands().map((c) => c.argv.join(' ')))}`,
+    );
+
+    const records = recordsOf(host, job.runId);
+    const finished = records.find((r) => r.type === 'job' && r.event === 'finished' && r.job.session === job.session);
+    assert.ok(finished, `the job's ending was written: ${JSON.stringify(records.map((r) => r.type))}`);
+    assert.ok(
+      finished.seq > cancelSeq,
+      `after the cancel, which is what says no poll ever saw this job end: finished at ${finished.seq}, cancel at ${cancelSeq}`,
+    );
+
+    const observations = records.filter((r) => r.type === 'observation');
+    assert.equal(observations.length, 1, `the reading the finished job wrote was read back: ${JSON.stringify(records.map((r) => r.type))}`);
+    assert.ok(
+      observations[0]!.seq > cancelSeq,
+      `on the cancel path and nowhere else: the observation is at ${observations[0]!.seq} and the cancel at ${cancelSeq}`,
+    );
+    assert.deepEqual(
+      observations[0]!.type === 'observation' ? observations[0]!.values : [],
+      [
+        { type: candidateCountType, unit: 'count', value: MINED_TOP_N },
+        { type: candidateSlackType, unit: 'ns', value: MINED_SLACK_NS, mode: MINED_SLACK_MODE, scope: MINED_SLACK_SCOPE },
+      ],
+      'and written down whole',
+    );
+    const settled = nodeRecords(host, job.runId).findLast((r) => r.nodeId === 'read-candidates');
+    assert.equal(settled?.state, 'done', `and only then is the node done: ${JSON.stringify(settled)}`);
+    assert.ok(settled!.seq > cancelSeq, `after the cancel too: the node settled at ${settled!.seq}`);
+    assert.ok(!tmuxHasSession(job.session), 'nothing of the run is left on the site');
   } finally {
     await after.done();
   }

@@ -14,12 +14,11 @@
 // Determinism is the point (D6): given the verdicts HimaJudge wrote and the values a reader read,
 // the same ledger always yields the same next strategy, and a person can re-derive it from the
 // decision record and this file alone.
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
-import { analysisMode, pathScope, semanticUnit, semanticValueType, unitFor } from './semantics.js';
+import { analysisMode, pathScope, semanticSlug } from './semantics.js';
+import { dataOnDisk, placesLooked, readDataFile, type DataPlace } from './pack-data.js';
 import { ChooserReferenceError } from './errors.js';
 import type { StrategyDeclaration, StrategyValue } from './run-arguments.js';
 import type { DecisionChoice, ObservationRecord, RunStrategy, VerdictRecord } from './ledger.js';
@@ -40,19 +39,18 @@ const outcome = z.enum(['PASS', 'FAIL', 'UNDETERMINED']);
  * scope the way a rule's requirement narrows one, and the unit it is measured in. An omitted `mode`
  * or `scope` does not narrow. The unit is not free — it must be the one the semantics bind to the
  * type — so a chooser cannot read a cell area and do nanosecond arithmetic with it.
+ *
+ * *Which* semantics bind it is no longer a table in this bundle (#61): a value type is declared in a
+ * `semantics.yml`, the pack's own ahead of the bundle's, so the pair is held by `/hima pack check`
+ * against the file that actually answered — the one place both files are open at once, and the same
+ * place a chooser's knobs are already held against the contract that names it.
  */
-export const chooserRead = z
-  .strictObject({
-    type: semanticValueType,
-    unit: semanticUnit,
-    mode: analysisMode.optional(),
-    scope: pathScope.optional(),
-  })
-  .superRefine((r, ctx) => {
-    if (r.unit !== unitFor[r.type]) {
-      ctx.addIssue({ code: 'custom', message: `${r.type} is measured in ${unitFor[r.type]}, not ${r.unit}`, path: ['unit'] });
-    }
-  });
+export const chooserRead = z.strictObject({
+  type: semanticSlug,
+  unit: semanticSlug,
+  mode: analysisMode.optional(),
+  scope: pathScope.optional(),
+});
 export type ChooserRead = z.infer<typeof chooserRead>;
 
 /**
@@ -117,7 +115,7 @@ export const chooserSchema = z
     title: z.string(),
     /** The one parameter a pack binds in its Explore node. A chooser with none takes its numbers
      *  from its own file alone. */
-    parameter: z.strictObject({ name: declaredName, unit: semanticUnit }).optional(),
+    parameter: z.strictObject({ name: declaredName, unit: semanticSlug }).optional(),
     reads: z.record(declaredName, chooserRead),
     decide: z.array(chooserClause).min(1),
   })
@@ -168,27 +166,50 @@ const CHOOSER_ID = /^[a-z0-9][a-z0-9-]*$/;
 /** The shipped choosers directory, `choosers/` beside `lib/` in this package. */
 export const shippedChoosersDir: string = fileURLToPath(new URL('../choosers/', import.meta.url));
 
+/** One chooser as it was loaded, and which of the directories asked it came out of (#57), for the
+ *  reason `LoadedRule` states: the directory is carried out of the lookup that won, never worked out
+ *  again from the filesystem afterwards. */
+export interface LoadedChooser {
+  readonly chooser: Chooser;
+  /** The directory of the place the file was read from. */
+  readonly dir: string;
+  /** The file itself. */
+  readonly at: string;
+}
+
 /**
- * Load one chooser by reference: `<id>` or `<id>@<version>`. An unknown id, a file that declares a
- * different id, a chooser that fails its schema, or a version that does not match all throw — a
- * chooser the harness cannot produce is an error, never a silent pass.
+ * Load one chooser by reference, and say where it was read from: `<id>` or `<id>@<version>`. An
+ * unknown id, a file that declares a different id, a chooser that fails its schema, or a version
+ * that does not match all throw — a chooser the harness cannot produce is an error, never a silent
+ * pass.
+ *
+ * `places` is an ordered list and the first of them holding `<id>.yml` wins, exactly as a rule's is
+ * (#57): the pack's own `choosers/` first, the bundle's second, and a miss names both places. A
+ * push rule is the *method* a pack sells, so the pack folder is where one belongs; the bundle keeps
+ * the few any pack of this kind would otherwise write out again.
+ *
+ * @param ref - `<id>` or `<id>@<version>`.
+ * @param places - where to look, in order, each saying which instant its bytes are from (#64). The
+ *                 bundle's own choosers read off the disk, when nothing says otherwise.
  */
-export function loadChooser(ref: string, dir: string = shippedChoosersDir): Chooser {
+export function loadChooserFrom(ref: string, places: readonly DataPlace[] = [dataOnDisk(shippedChoosersDir)]): LoadedChooser {
   const [id = '', wantVersion, ...extra] = ref.split('@');
   if (extra.length > 0 || !CHOOSER_ID.test(id)) throw new ChooserReferenceError(`invalid chooser reference "${ref}"; expected <id> or <id>@<version>`);
-  const file = path.join(dir, `${id}.yml`);
-  let text: string;
-  try {
-    text = readFileSync(file, 'utf8');
-  } catch {
-    throw new ChooserReferenceError(`unknown chooser "${id}": no chooser file at ${file}`);
-  }
-  const loaded = chooserSchema.parse(parse(text));
+  const found = readDataFile(id, places);
+  if (!found.ok) throw new ChooserReferenceError(`unknown chooser "${id}": no chooser file at ${placesLooked(found.looked)}`);
+  const file = found.at;
+  const loaded = chooserSchema.parse(parse(found.text));
   if (loaded.id !== id) throw new Error(`chooser file ${file} declares id "${loaded.id}", not "${id}"`);
   if (wantVersion !== undefined && loaded.version !== wantVersion) {
     throw new ChooserReferenceError(`chooser "${id}" is at version ${loaded.version}, not ${wantVersion}`);
   }
-  return loaded;
+  return { chooser: loaded, dir: found.dir, at: found.at };
+}
+
+/** The chooser alone, for the callers that apply one and have no report to make about where it came
+ *  from. Everything else is `loadChooserFrom`'s. */
+export function loadChooser(ref: string, places: readonly DataPlace[] = [dataOnDisk(shippedChoosersDir)]): Chooser {
+  return loadChooserFrom(ref, places).chooser;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -390,7 +411,7 @@ function nextStrategy(chooser: Chooser, clause: ChooserClause, input: ChooserInp
  * pack asked to keep exploring on.
  *
  * And it is the *rounded* move that is compared — the very number the rationale below states, in the
- * three decimals every period on the ledger is rounded to. Design Compiler prints a period at two
+ * three decimals every period on the ledger is rounded to. A synthesis tool prints a period at two
  * decimals, so real generations differ by whole hundredths, and in IEEE doubles 2.30 − 2.25 is
  * 0.04999999999999982 while 2.29 − 2.24 is 0.05000000000000004: comparing the raw values would have
  * a band of 0.05 keep exploring on one of those pairs and stop on the other, and would let a record

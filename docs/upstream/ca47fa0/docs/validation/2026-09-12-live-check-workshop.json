@@ -1,0 +1,180 @@
+{
+  "check": "live-check-workshop",
+  "startedAt": "2026-09-12T08:05:22.902Z",
+  "finishedAt": "2026-09-12T08:05:56.355Z",
+  "node": "v24.20.0",
+  "keyShape": "35 characters, beginning \"sk-b\"",
+  "run": {
+    "id": "run-292b43ce-1eee-4f05-a4f0-e15df944ace3",
+    "pack": "workshop-probe",
+    "site": "local",
+    "status": "ended-goal-not-met"
+  },
+  "workshop": {
+    "id": "mine",
+    "directory": "hima-workshop/mine",
+    "entry": "miner.sh",
+    "preset": "hima-moment"
+  },
+  "sessions": [
+    {
+      "id": "run-292b43ce-1eee-4f05-a4f0-e15df944ace3#000007",
+      "runId": "run-292b43ce-1eee-4f05-a4f0-e15df944ace3",
+      "siteId": "local",
+      "seq": 7,
+      "at": "2026-09-12T08:05:34.499Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "session",
+      "preset": "hima-moment",
+      "sessionId": "session-e2a2ddd8-f6a8-416f-9209-8f9756c909ea",
+      "model": "deepseek-v4-flash",
+      "nodeId": "mine",
+      "attempt": 1,
+      "event": "opened",
+      "tools": [
+        "hima_workshop_write",
+        "hima_workshop_read",
+        "hima_workshop_knowledge"
+      ],
+      "workshop": {
+        "id": "mine",
+        "entry": "miner.sh",
+        "entryPath": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-hbDOCy/workspace/workshop-probe-20260912-080531-1327/hima-workshop/mine/miner.sh"
+      }
+    },
+    {
+      "id": "run-292b43ce-1eee-4f05-a4f0-e15df944ace3#000009",
+      "runId": "run-292b43ce-1eee-4f05-a4f0-e15df944ace3",
+      "siteId": "local",
+      "seq": 9,
+      "at": "2026-09-12T08:05:53.731Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "session",
+      "preset": "hima-moment",
+      "sessionId": "session-e2a2ddd8-f6a8-416f-9209-8f9756c909ea",
+      "model": "deepseek-v4-flash",
+      "nodeId": "mine",
+      "attempt": 1,
+      "event": "closed",
+      "outcome": "completed"
+    }
+  ],
+  "code": [
+    {
+      "id": "run-292b43ce-1eee-4f05-a4f0-e15df944ace3#000008",
+      "runId": "run-292b43ce-1eee-4f05-a4f0-e15df944ace3",
+      "siteId": "local",
+      "seq": 8,
+      "at": "2026-09-12T08:05:51.655Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "code",
+      "nodeId": "mine",
+      "attempt": 1,
+      "sessionId": "session-e2a2ddd8-f6a8-416f-9209-8f9756c909ea",
+      "workshop": "mine",
+      "path": "/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-hbDOCy/workspace/workshop-probe-20260912-080531-1327/hima-workshop/mine/miner.sh",
+      "sha256": "ee836557b38282e321984e86f3bbd18c366e13d8b9d2bfe464bc7c50ea927578",
+      "bytes": 1611,
+      "language": "shell"
+    }
+  ],
+  "script": "#!/bin/sh\n# Mining stage: state how many cell candidates this synthesis left, and the\n# slack they were held to, in the shape this pack's reader (count-candidates) reads.\n#\n#   sh miner.sh <workspace-root> <design>\n#\n# Count   <- the whole thousands of square microns of the post-synthesis\n#            \"Cell Area:\" line in flow/results/<design>/syn/report/qor.rpt\n# Slack   <- the \"Critical Path Slack:\" of the path group that report names,\n#            in ns (setup pass, the one the report states).\n#\n# Writes flow/results/<design>/mine-timing/candidates.json\n\nset -eu\n\nARG1=${1:-}\nARG2=${2:-}\n\n# The fabric launches this with the workspace root first and the design second;\n# tolerate the design being handed in alone as well.\nif [ -n \"$ARG2\" ]; then\n  WS=$ARG1\n  DESIGN=$ARG2\nelse\n  WS=$(dirname \"$ARG1\")\n  DESIGN=$(basename \"$ARG1\")\nfi\n\nREPORT=\"$WS/flow/results/$DESIGN/syn/report/qor.rpt\"\nOUTDIR=\"$WS/flow/results/$DESIGN/mine-timing\"\nOUT=\"$OUTDIR/candidates.json\"\n\nif [ ! -f \"$REPORT\" ]; then\n  echo \"miner: no post-synthesis report at $REPORT\" >&2\n  exit 1\nfi\n\nCELL_AREA=$(awk '/Cell Area:/ { print $3; exit }' \"$REPORT\")\nif [ -z \"$CELL_AREA\" ]; then\n  echo \"miner: no 'Cell Area:' line in $REPORT\" >&2\n  exit 1\nfi\n\n# Whole number of thousands of square microns.\nCOUNT=$(awk -v a=\"$CELL_AREA\" 'BEGIN { printf \"%d\", a / 1000 }')\n\nSLACK=$(awk '/Critical Path Slack:/ { print $4; exit }' \"$REPORT\")\nif [ -z \"$SLACK\" ]; then\n  echo \"miner: no 'Critical Path Slack:' line in $REPORT\" >&2\n  exit 1\nfi\n\nmkdir -p \"$OUTDIR\"\n\nprintf '{\\n  \"count\": %s,\\n  \"slack\": %s\\n}\\n' \"$COUNT\" \"$SLACK\" > \"$OUT\"\n\ncat \"$OUT\"\n",
+  "values": [
+    {
+      "type": "candidate_count",
+      "value": 10,
+      "unit": "count"
+    },
+    {
+      "type": "candidate_slack",
+      "value": -0.1,
+      "unit": "ns",
+      "mode": "setup",
+      "scope": "reg2reg"
+    }
+  ],
+  "home": {
+    "filesRead": 116,
+    "unreadable": [],
+    "holdingTheKey": []
+  },
+  "refusal": null,
+  "checks": [
+    {
+      "claim": "a model moment opened at the workshop node",
+      "predicate": "an opened session record at node mine",
+      "saw": "[\"opened@mine\",\"closed@mine\"]",
+      "passed": true
+    },
+    {
+      "claim": "the moment reached exactly the workshop's three tools",
+      "predicate": "tools === [\"hima_workshop_write\",\"hima_workshop_read\",\"hima_workshop_knowledge\"]",
+      "saw": "[\"hima_workshop_write\",\"hima_workshop_read\",\"hima_workshop_knowledge\"]",
+      "passed": true
+    },
+    {
+      "claim": "the moment closed having done what it was opened for",
+      "predicate": "a closed record with outcome completed",
+      "saw": "[\"completed\"]",
+      "passed": true
+    },
+    {
+      "claim": "the model wrote the entry inside the workshop directory",
+      "predicate": "a code record whose path ends hima-workshop/mine/miner.sh",
+      "saw": "[\"/private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-hbDOCy/workspace/workshop-probe-20260912-080531-1327/hima-workshop/mine/miner.sh\"]",
+      "passed": true
+    },
+    {
+      "claim": "the record hashes the bytes that are really on the site",
+      "predicate": "sha256 === ee836557b38282e321984e86f3bbd18c366e13d8b9d2bfe464bc7c50ea927578",
+      "saw": "ee836557b38282e321984e86f3bbd18c366e13d8b9d2bfe464bc7c50ea927578",
+      "passed": true
+    },
+    {
+      "claim": "the fabric ran what the model wrote, within the allowance",
+      "predicate": "a launched and an ended job named workshop-mine that exited 0",
+      "saw": "[\"launched\",\"finished:0\"]",
+      "passed": true
+    },
+    {
+      "claim": "the node after it read what the script produced",
+      "predicate": "an observation holding candidate_count",
+      "saw": "[{\"type\":\"candidate_count\",\"value\":10,\"unit\":\"count\"},{\"type\":\"candidate_slack\",\"value\":-0.1,\"unit\":\"ns\",\"mode\":\"setup\",\"scope\":\"reg2reg\"}]",
+      "passed": true
+    },
+    {
+      "claim": "the workshop node is done, within the allowance",
+      "predicate": "the run's path holds the workshop node in state done",
+      "saw": "[\"done\"]",
+      "passed": true
+    },
+    {
+      "claim": "the scan read the home rather than nothing",
+      "predicate": "more than fifty files were read",
+      "saw": "116 files",
+      "passed": true
+    },
+    {
+      "claim": "the scan read every file it found",
+      "predicate": "no file under the home was unreadable",
+      "saw": "[]",
+      "passed": true
+    },
+    {
+      "claim": "the key reached no file the run wrote",
+      "predicate": "no file under the home holds the key",
+      "saw": "[]",
+      "passed": true
+    },
+    {
+      "claim": "the harness wrote no env file",
+      "predicate": "no .env exists under the home",
+      "saw": "[]",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

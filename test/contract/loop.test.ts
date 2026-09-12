@@ -488,11 +488,10 @@ test('/hima status says which generation of how many a Campaign reached, and /hi
       '  - { from: next-period, to: synthesize, revisit: true }',
       '  - { from: next-period, to: synthesize }',
     ]]);
-    await assert.rejects(
-      himaCommand(host, h.workspace, '/hima pack check cycles-without-a-revisit --site local'),
-      /graph\.yml cycles through "synthesize" → "read-qor" → "judge" → "next-period" → "synthesize" without a revisit edge/,
-      'the refusal names the cycle it walked and what declares a loop',
-    );
+    const refusedCyclesWithoutARevisit = await himaCommand(host, h.workspace, '/hima pack check cycles-without-a-revisit --site local');
+    assert.equal(refusedCyclesWithoutARevisit.kind, 'error', refusedCyclesWithoutARevisit.text);
+    assert.match(refusedCyclesWithoutARevisit.text, /graph\.yml cycles through "synthesize" → "read-qor" → "judge" → "next-period" → "synthesize" without a revisit edge/,
+      `the refusal names the cycle it walked and what declares a loop: ${refusedCyclesWithoutARevisit.text}`);
 
     // Two explore nodes, each declaring how many generations a Campaign of this pack may take, and
     // disagreeing: a Run has one Budget, so one of the two numbers would be quietly ignored. Refused
@@ -513,11 +512,10 @@ test('/hima status says which generation of how many a Campaign reached, and /hi
       + '\n'
       + '  - id: blocked\n',
     ]]);
-    await assert.rejects(
-      himaCommand(host, h.workspace, '/hima pack check two-generation-limits --site local'),
-      /graph\.yml declares 2 different generation limits — 6 on explore node "next-period", 3 on explore node "second-thoughts" — where a campaign has one budget/,
-      'the refusal names both numbers and the node each came from',
-    );
+    const refusedTwoGenerationLimits = await himaCommand(host, h.workspace, '/hima pack check two-generation-limits --site local');
+    assert.equal(refusedTwoGenerationLimits.kind, 'error', refusedTwoGenerationLimits.text);
+    assert.match(refusedTwoGenerationLimits.text, /graph\.yml declares 2 different generation limits — 6 on explore node "next-period", 3 on explore node "second-thoughts" — where a campaign has one budget/,
+      `the refusal names both numbers and the node each came from: ${refusedTwoGenerationLimits.text}`);
   } finally {
     killSessions(sessions);
     await dispose();

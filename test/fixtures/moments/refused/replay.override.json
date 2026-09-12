@@ -1,0 +1,8 @@
+[
+  {
+    "kind": "throw",
+    "chunks": [],
+    "message": "the recorded model route refused this request",
+    "code": "MISSING_CREDENTIAL"
+  }
+]

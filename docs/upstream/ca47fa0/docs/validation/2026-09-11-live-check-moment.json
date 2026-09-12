@@ -1,0 +1,124 @@
+{
+  "check": "live-check-moment",
+  "startedAt": "2026-09-11T07:38:46.457Z",
+  "finishedAt": "2026-09-11T07:38:53.077Z",
+  "node": "v24.20.0",
+  "keyShape": "35 characters, beginning \"sk-b\"",
+  "instructions": "Answer with exactly the word READY. Say nothing else.",
+  "run": {
+    "id": "run-7729af51-2e37-4011-9314-eb24b76657b5",
+    "nodeId": "next-period",
+    "pack": "opene902-timing-probe",
+    "site": "local"
+  },
+  "moment": {
+    "sessionId": "session-5ef7cc71-a18c-4953-a885-0f19364e5475",
+    "model": "deepseek-v4-flash",
+    "tools": [],
+    "text": "The user is asking me to answer with exactly the word READY. There's a mention of an approval policy changing from \"ask\" to \"never\" — that's a system-level note, likely indicating I should just comply. The instruction is clear: answer with exactly the word READY, nothing else.READY"
+  },
+  "records": [
+    {
+      "id": "run-7729af51-2e37-4011-9314-eb24b76657b5#000017",
+      "runId": "run-7729af51-2e37-4011-9314-eb24b76657b5",
+      "siteId": "local",
+      "seq": 17,
+      "at": "2026-09-11T07:38:51.113Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "session",
+      "preset": "hima-moment",
+      "sessionId": "session-5ef7cc71-a18c-4953-a885-0f19364e5475",
+      "model": "deepseek-v4-flash",
+      "nodeId": "next-period",
+      "attempt": 1,
+      "event": "opened",
+      "tools": []
+    },
+    {
+      "id": "run-7729af51-2e37-4011-9314-eb24b76657b5#000018",
+      "runId": "run-7729af51-2e37-4011-9314-eb24b76657b5",
+      "siteId": "local",
+      "seq": 18,
+      "at": "2026-09-11T07:38:52.689Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "session",
+      "preset": "hima-moment",
+      "sessionId": "session-5ef7cc71-a18c-4953-a885-0f19364e5475",
+      "model": "deepseek-v4-flash",
+      "nodeId": "next-period",
+      "attempt": 1,
+      "event": "closed",
+      "outcome": "completed"
+    }
+  ],
+  "home": {
+    "filesRead": 99,
+    "holdingTheKey": []
+  },
+  "refusal": null,
+  "checks": [
+    {
+      "claim": "the moment route answered",
+      "predicate": "POST /hima/api/runs/<id>/moment answers 200",
+      "saw": "200 {\"sessionId\":\"session-5ef7cc71-a18c-4953-a885-0f19364e5475\",\"model\":\"deepseek-v4-flash\",\"tools\":[],\"text\":\"The user is asking me to answer with exactly the word READY. There's a mention of an approval policy changing from \\\"ask\\\" to \\\"never\\\" — that's a system-level note, likely indicating I should just comply. The instruction is clear: answer with exactly the word READY, nothing else.READY\"}",
+      "passed": true
+    },
+    {
+      "claim": "the model followed the instruction",
+      "predicate": "the answer contains \"READY\"",
+      "saw": "\"The user is asking me to answer with exactly the word READY. There's a mention of an approval policy changing from \\\"ask\\\" to \\\"never\\\" — that's a system-level note, likely indicating I should just comply. The instruction is clear: answer with exactly the word READY, nothing else.READY\"",
+      "passed": true
+    },
+    {
+      "claim": "the model is the profile's default",
+      "predicate": "the session's model is deepseek-v4-flash",
+      "saw": "deepseek-v4-flash",
+      "passed": true
+    },
+    {
+      "claim": "the session reached no tool",
+      "predicate": "the tool list dsh reports for the session is empty",
+      "saw": "[]",
+      "passed": true
+    },
+    {
+      "claim": "the answer names dsh's own session",
+      "predicate": "the session id begins \"session-\"",
+      "saw": "session-5ef7cc71-a18c-4953-a885-0f19364e5475",
+      "passed": true
+    },
+    {
+      "claim": "the ledger holds the pair that brackets the moment",
+      "predicate": "exactly one opened and one closed record",
+      "saw": "[\"opened\",\"closed:completed\"]",
+      "passed": true
+    },
+    {
+      "claim": "both records name the moment's own session, preset and model",
+      "predicate": "sessionId === session-5ef7cc71-a18c-4953-a885-0f19364e5475, preset === hima-moment, model === deepseek-v4-flash",
+      "saw": "[{\"sessionId\":\"session-5ef7cc71-a18c-4953-a885-0f19364e5475\",\"preset\":\"hima-moment\",\"model\":\"deepseek-v4-flash\",\"nodeId\":\"next-period\",\"attempt\":1,\"generation\":1},{\"sessionId\":\"session-5ef7cc71-a18c-4953-a885-0f19364e5475\",\"preset\":\"hima-moment\",\"model\":\"deepseek-v4-flash\",\"nodeId\":\"next-period\",\"attempt\":1,\"generation\":1}]",
+      "passed": true
+    },
+    {
+      "claim": "the scan read the home rather than nothing",
+      "predicate": "more than fifty files were read",
+      "saw": "99 files",
+      "passed": true
+    },
+    {
+      "claim": "the key reached no file the run wrote",
+      "predicate": "no file under the home holds the key",
+      "saw": "[]",
+      "passed": true
+    },
+    {
+      "claim": "the harness wrote no env file",
+      "predicate": "no .env exists under the home",
+      "saw": "[]",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

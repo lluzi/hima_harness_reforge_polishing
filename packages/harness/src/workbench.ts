@@ -82,6 +82,10 @@
 //   data-hima-region="run-cancel"       the stop a person asked for; -observed, what came of the latest
 //   data-hima-region="run-blocker"      the blockers; -count, and -node naming the latest
 //   data-hima-region="run-blocker-tail" the latest blocker's log tail, as the Job wrote it
+//   data-hima-region="run-refusal"      what the run refused to read or to write down, and why; -count
+//   data-hima-region="run-workshop"     where the node the Run stands at stands as a workshop (#62),
+//                                       and what its current attempt wrote; -workshop, -state,
+//                                       -files and -node
 //   data-hima-region="run-observation"  what was observed; -count
 //   data-hima-region="run-decision"     the decision; -chosen="goal-met"|"converged"|"next-strategy",
 //                                       -strategy on a next strategy (the whole Strategy as JSON, by
@@ -119,12 +123,12 @@
 //   data-hima-control="start-retries"   the Retry allowance
 //   data-hima-control="start-generations" the Budget's generation limit
 //   data-hima-control="start"           submits the form
-import { answeredWithNoCode, bad, bannerLines, branchesIn, branchesState, branchLines, branchPointSaid, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, couldNotReach, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, good, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, askedObservedSaid, startKnobField, NO_FABRIC_STATE, NO_RUNS, NOT_HELD, NOT_RECORDED, NOTHING_JUDGED, NOTHING_TO_DO_ENDED, NOTHING_TO_DO_NO_FABRIC, nodeStateLabel, outcomeColour, pathColumns, plain, plotLabels, plotValue, runColumns, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, START_HEADING, START_NO_PACK, START_NO_SITE, START_STATIC_FIT, START_STATIC_UNFIT, START_STATIC_LIMIT, startControl, startForm, tailSaid, warn } from './card-labels.js';
+import { answeredWithNoCode, bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchPointSaid, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, couldNotReach, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, good, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, askedObservedSaid, startKnobField, NO_FABRIC_STATE, NO_RUNS, NOT_HELD, NOT_RECORDED, NOTHING_JUDGED, NOTHING_TO_DO_ENDED, NOTHING_TO_DO_NO_FABRIC, nodeStateLabel, workshopStateLabel, workshopSaid, workshopState, codeSaid, codeOfWorkshop, readerSaid, outcomeColour, pathColumns, plain, plotLabels, plotValue, runColumns, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, START_HEADING, START_NO_PACK, START_NO_SITE, START_STATIC_FIT, START_STATIC_UNFIT, START_STATIC_LIMIT, startControl, startForm, tailSaid, warn } from './card-labels.js';
 import type { PackCheck } from './packs.js';
 import type { LedgerBranchRow, LedgerGenerationRow, LedgerJoinRow, LedgerRow, MeterRow, StartField } from './card-labels.js';
 import { experienceReport, reportBlocks } from './experience-report.js';
 import { HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_WORKBENCH_PATH, runCardPath } from './paths.js';
-import { chosenKind, type ChosenKind } from './record-views.js';
+import { chosenKind, type ChosenKind, type WorkshopState } from './record-views.js';
 import type { BranchState, BranchView, GenerationState, GenerationVerdictView, GenerationView, LoopView } from './generations.js';
 import type { LoopOutcome, NodeState, RunStatus, RunStrategy } from './ledger.js';
 import type { BlockerView, DecisionView, ExperienceView, NodeView, ObservationView, RunHeadView, RunView, RunWords, StrategyDeclaration, VerdictView } from './remote.js';
@@ -217,6 +221,19 @@ const nodeStateGlyph: Readonly<Record<NodeState, Glyph>> = {
   cancelled: 'missed',
   'waiting-for-slot': 'waiting',
   reconciled: 'pending',
+};
+
+/** Which shape a workshop node's own state wears, keyed by every one there is for the reason the
+ *  node states are: a state this page cannot draw must not be drawn as nothing. */
+const workshopGlyph: Readonly<Record<WorkshopState, Glyph>> = {
+  writing: 'running',
+  written: 'pending',
+  'no-entry': 'missed',
+  running: 'running',
+  done: 'done',
+  failed: 'waiting',
+  blocked: 'blocked',
+  interrupted: 'waiting',
 };
 
 /** Which shape each generation's row wears. */
@@ -439,7 +456,11 @@ function verdictBand(view: RunView): string {
   const { run } = view;
   const lines = bannerLines(view.run);
   const marked = { 'data-hima-region': 'run-status', ...(run.status === undefined ? {} : { 'data-hima-state-status': run.status }) };
-  const exploring = (run.packId === undefined ? '' : `<div>${mono(run.packId)}<span class="faint"> · </span>${mono(run.siteId)}</div>`)
+  // A test run says so before anything else on the card (#64): it is a pack author exercising their
+  // own work, and reading one as a result of that pack is the mistake this mark exists to stop.
+  const purpose = runPurposeMark(run.purpose);
+  const exploring = (purpose === undefined ? '' : `<div${attributes({ 'data-hima-state-purpose': run.purpose! })}>${escape(purpose)}</div>`)
+    + (run.packId === undefined ? '' : `<div>${mono(run.packId)}<span class="faint"> · </span>${mono(run.siteId)}</div>`)
     + (lines.goal === undefined ? '' : `<div>${figured(lines.goal)}</div>`)
     + (lines.strategy === undefined ? '' : `<div>${figured(lines.strategy)}</div>`);
   const spent = meterSection(view);
@@ -1044,7 +1065,7 @@ function observationBlock(observation: ObservationView): string {
     + `<div class="mono">${escape(observation.path)}</div>`
     + valueRows(observation)
     + faint(`sha256 ${observation.contentSha256}`)
-    + faint(`read by ${observation.reader.id}@${observation.reader.version} · ${String(observation.bytes)} bytes · ${observation.at}`)
+    + faint(`read by ${readerSaid(observation.reader)} · ${String(observation.bytes)} bytes · ${observation.at}`)
     + '</div>';
 }
 
@@ -1105,6 +1126,30 @@ function reportHtml(markdown: string): string {
   }).join('');
 }
 
+/**
+ * The workshop of the node the Run stands at: where it stands, and what its current attempt wrote.
+ *
+ * The state's own pill beside the standing line, and then one row per file — its path, the head of
+ * its hash, its size and the language the pack says it is in. The hash is what a person holds the
+ * file on the Site against, which is why it is on the row rather than in a drawer of its own; the
+ * file's *contents* are not shown, and reading one is #66.
+ *
+ * A workshop that has written nothing yet renders the line alone, which is the honest thing to show
+ * for a moment that is still open.
+ */
+function workshopBlock(view: RunView): string {
+  const workshop = view.workshop!;
+  const label = labelled(workshopStateLabel, workshop.state);
+  const files = codeOfWorkshop(view);
+  return '<div class="block">'
+    + `<div>${statePill(workshopStateLabel, workshopGlyph, workshop.state)} ${figured(workshopSaid(workshop))}</div>`
+    + faint(`node ${workshop.nodeId}, attempt ${String(workshop.attempt)}, entry ${workshop.entry}${workshop.sessionId === undefined ? '' : `, session ${workshop.sessionId}`}`)
+    + (files.length === 0
+      ? note(`nothing written yet — ${label.said}`)
+      : files.map((code) => `<div class="mono">${figured(codeSaid(code))}</div>`).join(''))
+    + '</div>';
+}
+
 /** One part of the evidence drawer, with a region marker when a driver reads it; only ever rendered
  *  with something in it. */
 function drawer(title: string, body: string, region?: { readonly name: string; readonly state: Readonly<Record<string, string>> }): string {
@@ -1123,8 +1168,17 @@ function renderCard(view: RunView): string {
   const latestCancel = view.cancels.at(-1);
   const evidence = (latestCancel === undefined ? '' : drawer('cancel', view.cancels.map((c) => cancelBlock(view, c)).join(''), { name: 'run-cancel', state: { observed: cancelObserved(view, latestCancel).key } }))
     + (view.blockers.length === 0 ? '' : drawer('blocker', view.blockers.map((b) => blockerBlock(b, b === latestBlocker)).join(''), { name: 'run-blocker', state: { count: String(view.blockers.length), ...(latestBlocker === undefined ? {} : { node: latestBlocker.nodeId }) } }))
+    // Marked for a driver like the blocker beside it (#61): a refusal is where a Campaign says a
+    // pack's own reader produced something nobody could stand behind, and a test that read only the
+    // node table would be asserting that a node is blocked without ever reading the sentence a
+    // person is given about why.
     + (view.refusals.length === 0 ? '' : drawer('refused', view.refusals.map((r) =>
-      `<div class="block block-bad"><div>${pill('refused', warn, 'missed')}</div><div class="mono">${escape(r.path)}</div>${note(r.reason)}</div>`).join('')))
+      `<div class="block block-bad"><div>${pill('refused', warn, 'missed')}</div><div class="mono">${escape(r.path)}</div>${note(r.reason)}</div>`).join(''), { name: 'run-refusal', state: { count: String(view.refusals.length) } }))
+    // The workshop of the node the Run stands at, where that node is one (#62): the standing line with
+    // the state's own pill, and this attempt's files under it. Before the reading, because it is
+    // where the Run *is* — a person watching a workshop is watching something being written now, and
+    // what was read is what the generation before it produced.
+    + (view.workshop === undefined ? '' : drawer('workshop', workshopBlock(view), { name: 'run-workshop', state: workshopState(view.workshop) }))
     + (view.observations.length === 0 ? '' : drawer('observed', view.observations.map(observationBlock).join(''), { name: 'run-observation', state: { count: String(view.observations.length) } }))
     + (view.verdicts.length === 0 ? '' : drawer('verdicts', view.verdicts.map(verdictBlock).join('')))
     + (view.decision === null ? '' : drawer('decision', decisionBlock(view.decision, view), { name: 'run-decision', state: decisionState(view.decision) }));
@@ -1180,12 +1234,46 @@ export interface StartChoices {
   readonly preparation?: { readonly kind: 'request' | 'pack' | 'site'; readonly message: string };
   readonly strategy?: StrategyDeclaration;
   readonly words?: RunWords;
+  /**
+   * What each pack's option is marked with, by pack id (#64): `test pack (<stage>)` for a folder the
+   * authoring pipeline has started and not finished, `unreadable: <why>` for one whose own reading
+   * refuses it, and nothing at all for a released pack or a hand-written one.
+   *
+   * Read by the host when the page is composed, for the reason `strategy` is: a pack folder is a
+   * directory and this module opens none. A pack with no entry here is offered plain, which is every
+   * pack this repository ships.
+   */
+  readonly marks?: Readonly<Record<string, string>>;
+  /**
+   * The packs a person may not choose: a folder whose own reading refuses it has no contract, no
+   * graph and no rung, so there is nothing for a start to be a start of (#64).
+   *
+   * Still listed, and listed with its mark: a pack that vanished off the form would tell a person
+   * nothing, and what they need is the path the reading refused. Absent when every installed folder
+   * reads, which is every home this repository's own tests leave behind but the two that arrange one
+   * on purpose — and it is composed whether or not any folder is startable, because a home where
+   * none is, is the one that most needs every option to say why.
+   */
+  readonly cannotStart?: readonly string[];
 }
 
 /** One `<option>` per installed thing; the value is the identity a route takes, which is also the
- *  word a person reads, because a pack id and a Site name are what they are called everywhere else. */
-const options = (values: readonly string[], selected?: string): string =>
-  (selected !== undefined && !values.includes(selected) ? [selected, ...values] : values).map((v) => `<option value="${escape(v)}"${v === selected ? ' selected' : ''}>${escape(v)}</option>`).join('');
+ *  word a person reads, because a pack id and a Site name are what they are called everywhere else.
+ *  An option in `unchoosable` is rendered `disabled`: it is still on the list, with its mark saying
+ *  why, and it is not something a person can select (#64). */
+const options = (
+  values: readonly string[],
+  selected?: string,
+  marks: Readonly<Record<string, string>> = {},
+  unchoosable: readonly string[] = [],
+): string =>
+  (selected !== undefined && !values.includes(selected) ? [selected, ...values] : values).map((v) => {
+    // The value is the pack id whatever the option reads, because the value is what the start route
+    // takes: a mark is something a person reads, never something a request carries.
+    const mark = marks[v];
+    const disabled = unchoosable.includes(v) ? ' disabled' : '';
+    return `<option value="${escape(v)}"${disabled}${v === selected ? ' selected' : ''}>${escape(mark === undefined ? v : `${v} — ${mark}`)}</option>`;
+  }).join('');
 
 /** One labelled field: the label above the control it wraps, and the sentence under it saying what
  *  may go in it. A wrapping `<label>` needs no `for`, so the control's marker is its only identity. */
@@ -1217,7 +1305,7 @@ function renderStartForm(choices: StartChoices): string {
     + `<h2 class="eyebrow">${escape(START_HEADING)}</h2>`
     + `<form${attributes(marked)}>`
     + '<fieldset class="form-group"><legend>Method and environment</legend><div class="fields">'
-    + choiceField(startForm.pack, choices.packs, choices.pack)
+    + choiceField(startForm.pack, choices.packs, choices.pack, choices.marks, choices.cannotStart)
     + choiceField(startForm.site, choices.sites, choices.site)
     + '</div></fieldset>'
     + '<fieldset class="form-group"><legend>Goal and starting strategy</legend><div class="fields">'
@@ -1254,8 +1342,14 @@ function renderStartCheck(choices: StartChoices): string {
 const numberField = (f: StartField): string =>
   field(f.said, f.hint, `<input type="text" inputmode="decimal" autocomplete="off"${attributes({ 'data-hima-control': f.control })}>`);
 
-const choiceField = (f: StartField, values: readonly string[], selected?: string): string =>
-  field(f.said, f.hint, `<select${attributes({ 'data-hima-control': f.control })}>${options(values, selected)}</select>`);
+const choiceField = (
+  f: StartField,
+  values: readonly string[],
+  selected?: string,
+  marks?: Readonly<Record<string, string>>,
+  unchoosable?: readonly string[],
+): string =>
+  field(f.said, f.hint, `<select${attributes({ 'data-hima-control': f.control })}>${options(values, selected, marks, unchoosable)}</select>`);
 
 /**
  * One field per knob the selected pack declares its Strategy to be made of (#58), each labelled with
@@ -1297,7 +1391,8 @@ function renderRunList(runs: readonly RunHeadView[]): string {
   const rows = runs.map((run) => '<tr>'
     + `<td><a class="mono" href="${runCardPath(run.id)}">${escape(run.id)}</a></td>`
     + `<td>${run.status === undefined ? `<span class="faint">${escape(NO_FABRIC_STATE)}</span>` : statePill(runStatusLabel, runStatusGlyph, run.status)}</td>`
-    + `<td class="mono">${run.packId === undefined ? `<span class="faint">${escape(NOT_RECORDED)}</span>` : escape(run.packId)}</td>`
+    + `<td class="mono">${run.packId === undefined ? `<span class="faint">${escape(NOT_RECORDED)}</span>` : escape(run.packId)}`
+    + `${runPurposeMark(run.purpose) === undefined ? '' : `<span class="faint"> · ${escape(runPurposeMark(run.purpose)!)}</span>`}</td>`
     // The timestamp in the page's own reading face (`--hima-font-ui`) and not the mono one: the
     // body sets `tabular-nums`, so its digits line up down the column either way, and twenty-four
     // monospaced characters here is what pushed the run id — the column a person actually reads a

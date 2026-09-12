@@ -1,0 +1,1109 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/pack.test.ts test/contract/start-form.test.ts test/contract/experience-report.test.ts
+local: 3 selected; 31 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a goal claim requires completed cited evidence; requested period is not a measured Fmax
+ok 1 - a goal claim requires completed cited evidence; requested period is not a measured Fmax
+  ---
+  duration_ms: 5.9495
+  type: 'test'
+  ...
+# Subtest: a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+ok 2 - a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+  ---
+  duration_ms: 0.588
+  type: 'test'
+  ...
+# Subtest: cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+ok 3 - cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+  ---
+  duration_ms: 0.698083
+  type: 'test'
+  ...
+# Subtest: missing, unresolved, stale and undetermined citations cannot establish a definite result
+ok 4 - missing, unresolved, stale and undetermined citations cannot establish a definite result
+  ---
+  duration_ms: 4.47775
+  type: 'test'
+  ...
+# Subtest: budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+ok 5 - budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+  ---
+  duration_ms: 1.447583
+  type: 'test'
+  ...
+# Subtest: no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+ok 6 - no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+  ---
+  duration_ms: 0.624
+  type: 'test'
+  ...
+# Subtest: fork branches retain separate observations and partial branches do not inherit a completed peer
+ok 7 - fork branches retain separate observations and partial branches do not inherit a completed peer
+  ---
+  duration_ms: 1.295791
+  type: 'test'
+  ...
+# Subtest: the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+ok 8 - the shipped pack is a folder of plain files whose graph is act, act, judge, explore, with PASS and FAIL into the explore node and one revisit edge back
+  ---
+  duration_ms: 34.307667
+  type: 'test'
+  ...
+# Subtest: the legacy timing-push chooser is a YAML file beside the judge rules, and states its rule as data
+ok 9 - the legacy timing-push chooser is a YAML file beside the judge rules, and states its rule as data
+  ---
+  duration_ms: 5.934375
+  type: 'test'
+  ...
+# Subtest: the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+ok 10 - the check on a site that binds every input reports the inputs, the tool, the rules and the reader, with no errors
+  ---
+  duration_ms: 1733.310292
+  type: 'test'
+  ...
+# pack opene902-timing-probe@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-jPOGSt/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-jPOGSt/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# Subtest: a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+ok 11 - a site that binds only some of the pack's inputs fails the check, naming the input it did not bind
+  ---
+  duration_ms: 291.450875
+  type: 'test'
+  ...
+# Subtest: a pack whose tool runs a command the site does not allow fails the check, naming the command
+ok 12 - a pack whose tool runs a command the site does not allow fails the check, naming the command
+  ---
+  duration_ms: 308.415
+  type: 'test'
+  ...
+# Subtest: a pack referencing a rule that does not exist fails the check, naming the rule
+ok 13 - a pack referencing a rule that does not exist fails the check, naming the rule
+  ---
+  duration_ms: 339.061542
+  type: 'test'
+  ...
+# Subtest: a pack naming a reader that does not exist fails the check, naming the reader
+ok 14 - a pack naming a reader that does not exist fails the check, naming the reader
+  ---
+  duration_ms: 358.257833
+  type: 'test'
+  ...
+# Subtest: a pack naming a chooser that does not exist fails the check, naming the chooser
+ok 15 - a pack naming a chooser that does not exist fails the check, naming the chooser
+  ---
+  duration_ms: 387.218417
+  type: 'test'
+  ...
+# Subtest: a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+ok 16 - a pack binding a negative value to the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 350.613583
+  type: 'test'
+  ...
+# Subtest: a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+ok 17 - a pack whose explore node binds nothing for the chooser's parameter fails the check, naming the parameter
+  ---
+  duration_ms: 406.361458
+  type: 'test'
+  ...
+# Subtest: a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+ok 18 - a pack whose act node takes an argument from a strategy knob its contract does not declare is refused when the pack is loaded, naming the knob
+  ---
+  duration_ms: 357.874167
+  type: 'test'
+  ...
+# Subtest: a pack whose act node binds one of the names the harness binds itself is refused when the pack is loaded, naming the node and the name
+ok 19 - a pack whose act node binds one of the names the harness binds itself is refused when the pack is loaded, naming the node and the name
+  ---
+  duration_ms: 301.946
+  type: 'test'
+  ...
+# Subtest: a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+ok 20 - a pack the packs directory does not hold is an error naming what was looked for, not an empty answer
+  ---
+  duration_ms: 324.548125
+  type: 'test'
+  ...
+# Subtest: a pack carrying its own rule, chooser and knowledge resolves each ahead of the bundle's, and the check says where every id it resolved came from
+not ok 21 - a pack carrying its own rule, chooser and knowledge resolves each ahead of the bundle's, and the check says where every id it resolved came from
+  ---
+  duration_ms: 305.578833
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:487:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    the pack's own chooser won: pack carries-its-own@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 knowledge file, 1 licence
+    stage: none; next: intent — INTENT.md, written by /hima-grill
+    inputs:
+      flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-ezTgu1/standin-flow
+      design = opene902
+      workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-ezTgu1/workspace
+    tools:
+      synth (tools/synth.sh): "make" is an allowed wrapper of site local
+    rules:
+      setup-wns-all-nonnegative@1: found in the bundle
+      clock-period-at-most@2: found in the pack
+    readers:
+      dc-qor-report@1 reads qorReport: found in the bundle
+    semantics:
+      8 value types come from the bundle
+    choosers:
+      over-constraining-push@1 chooses at next-period: found in the pack
+    knowledge:
+      push-method.md (why this pack pushes the clock period the way it does): found in the pack
+    licences:
+      synth holds 1 of "Design-Compiler": site local declares 1
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    pack carries-its-own@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 knowledge file, 1 licence
+    stage: none; next: intent — INTENT.md, written by /hima-grill
+    inputs:
+      flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-ezTgu1/standin-flow
+      design = opene902
+      workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-ezTgu1/workspace
+    tools:
+      synth (tools/synth.sh): "make" is an allowed wrapper of site local
+    rules:
+      setup-wns-all-nonnegative@1: found in the bundle
+      clock-period-at-most@2: found in the pack
+    readers:
+      dc-qor-report@1 reads qorReport: found in the bundle
+    semantics:
+      8 value types come from the bundle
+    choosers:
+      over-constraining-push@1 chooses at next-period: found in the pack
+    knowledge:
+      push-method.md (why this pack pushes the clock period the way it does): found in the pack
+    licences:
+      synth holds 1 of "Design-Compiler": site local declares 1
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:506:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# pack carries-its-own@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 knowledge file, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-ezTgu1/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-ezTgu1/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@2: found in the pack
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# knowledge:
+#   push-method.md (why this pack pushes the clock period the way it does): found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# Subtest: a rule and a chooser present in neither the pack nor the bundle are refused at the check, in words naming both places looked
+ok 22 - a rule and a chooser present in neither the pack nor the bundle are refused at the check, in words naming both places looked
+  ---
+  duration_ms: 307.082125
+  type: 'test'
+  ...
+# Subtest: the three ways a pack reader does not hang together are each refused by name: a reader with no script, a script with no semantics, and a semantics entry no reader produces
+ok 23 - the three ways a pack reader does not hang together are each refused by name: a reader with no script, a script with no semantics, and a semantics entry no reader produces
+  ---
+  duration_ms: 413.8045
+  type: 'test'
+  ...
+# pack reader-with-no-script@2 on site local: unfit — 2 errors; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@9 reads qorReport: found in the pack, and reader "dc-qor-report", named by output "qorReport", declares its script at /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/hima/packs/reader-with-no-script/readers/dc-qor-report.yml as "tools/not-written-yet.sh", and there is no file at /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/hima/packs/reader-with-no-script/tools/not-written-yet.sh
+# semantics:
+#   clock_period: declared by this pack in /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/hima/packs/reader-with-no-script/semantics.yml
+#   7 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - reader "dc-qor-report", named by output "qorReport", declares its script at /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/hima/packs/reader-with-no-script/readers/dc-qor-report.yml as "tools/not-written-yet.sh", and there is no file at /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/hima/packs/reader-with-no-script/tools/not-written-yet.sh
+#   - contract.yml: environment.wrappers declares "sh", which no tool, workshop or reader of this pack runs
+# pack script-with-no-semantics@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@9 reads qorReport: found in the pack, and reader "dc-qor-report", named by output "qorReport", declares it emits "candidate_count", which no semantics file declares; add it to /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/hima/packs/script-with-no-semantics/semantics.yml
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - reader "dc-qor-report", named by output "qorReport", declares it emits "candidate_count", which no semantics file declares; add it to /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/hima/packs/script-with-no-semantics/semantics.yml
+# pack semantics-nobody-emits@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@9 reads qorReport: found in the pack
+# semantics:
+#   clock_period: declared by this pack in /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/hima/packs/semantics-nobody-emits/semantics.yml
+#   candidate_count: declared by this pack in /private/tmp/hima-tests-97c5bL/hima-home-nSKjoP/hima/packs/semantics-nobody-emits/semantics.yml
+#   7 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - semantics.yml: declares the value type "candidate_count", which none of this pack's own readers emits; a value type nothing produces is a rule nothing can ever rule on
+# Subtest: a pack reader that hangs together is fit, and the check says its declaration answered the id rather than the bundle's registry
+ok 24 - a pack reader that hangs together is fit, and the check says its declaration answered the id rather than the bundle's registry
+  ---
+  duration_ms: 447.457208
+  type: 'test'
+  ...
+# pack reader-of-its-own@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-SIRnjU/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-SIRnjU/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@9 reads qorReport: found in the pack
+# semantics:
+#   clock_period: declared by this pack in /private/tmp/hima-tests-97c5bL/hima-home-SIRnjU/hima/packs/reader-of-its-own/semantics.yml
+#   7 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# Subtest: a reader declaration that would reach outside the pack folder or smuggle a shell expansion onto its command line is refused: a file above the folder, a symlink standing in for the script, and an argv word holding a $
+ok 25 - a reader declaration that would reach outside the pack folder or smuggle a shell expansion onto its command line is refused: a file above the folder, a symlink standing in for the script, and an argv word holding a $
+  ---
+  duration_ms: 381.369833
+  type: 'test'
+  ...
+# /hima pack check: /private/tmp/hima-tests-97c5bL/hima-home-MDoTYF/hima/packs/reader-file-is-a-link/tools/read-qor.sh is not a plain file (a symlink, a socket or the like), and a pack folder is plain files: nothing can say what a campaign ran while one of them is somewhere else
+# Subtest: a reader script the declaration puts outside the pack's tools folder is refused naming the file, and so is a tools folder that is a link out of the pack
+ok 26 - a reader script the declaration puts outside the pack's tools folder is refused naming the file, and so is a tools folder that is a link out of the pack
+  ---
+  duration_ms: 298.439791
+  type: 'test'
+  ...
+# pack reader-outside-tools@2 on site local: unfit — 3 errors; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-G6fuIH/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-G6fuIH/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report reads qorReport: reader "dc-qor-report", named by output "qorReport", is declared at /private/tmp/hima-tests-97c5bL/hima-home-G6fuIH/hima/packs/reader-outside-tools/readers/dc-qor-report.yml, and it does not read as a reader declaration: file: the file "readers/read-qor.sh" is not one: a reader's script is a file under the pack's own tools/, as in "tools/count-candidates.sh"
+# semantics:
+#   clock_period: declared by this pack in /private/tmp/hima-tests-97c5bL/hima-home-G6fuIH/hima/packs/reader-outside-tools/semantics.yml
+#   7 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - reader "dc-qor-report", named by output "qorReport", is declared at /private/tmp/hima-tests-97c5bL/hima-home-G6fuIH/hima/packs/reader-outside-tools/readers/dc-qor-report.yml, and it does not read as a reader declaration: file: the file "readers/read-qor.sh" is not one: a reader's script is a file under the pack's own tools/, as in "tools/count-candidates.sh"
+#   - contract.yml: environment.wrappers declares "sh", which no tool, workshop or reader of this pack runs
+#   - semantics.yml: declares the value type "clock_period", which none of this pack's own readers emits; a value type nothing produces is a rule nothing can ever rule on
+# /hima pack check: /private/tmp/hima-tests-97c5bL/hima-home-G6fuIH/hima/packs/reader-tools-is-a-link/tools is not a plain file (a symlink, a socket or the like), and a pack folder is plain files: nothing can say what a campaign ran while one of them is somewhere else
+# Subtest: a reader whose argv begins with a placeholder rather than a wrapper is refused at load: the word pack check holds against the permit is the word the launch runs
+ok 27 - a reader whose argv begins with a placeholder rather than a wrapper is refused at load: the word pack check holds against the permit is the word the launch runs
+  ---
+  duration_ms: 258.697959
+  type: 'test'
+  ...
+# pack reader-argv-head-expands@2 on site local: unfit — 3 errors; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-L26HAa/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-L26HAa/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report reads qorReport: reader "dc-qor-report", named by output "qorReport", is declared at /private/tmp/hima-tests-97c5bL/hima-home-L26HAa/hima/packs/reader-argv-head-expands/readers/dc-qor-report.yml, and it does not read as a reader declaration: argv.0: the first word of a reader's argv is the wrapper itself, a literal word this contract declares and the site's permit allows; "${READER}" is a placeholder the harness substitutes
+# semantics:
+#   clock_period: declared by this pack in /private/tmp/hima-tests-97c5bL/hima-home-L26HAa/hima/packs/reader-argv-head-expands/semantics.yml
+#   7 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - reader "dc-qor-report", named by output "qorReport", is declared at /private/tmp/hima-tests-97c5bL/hima-home-L26HAa/hima/packs/reader-argv-head-expands/readers/dc-qor-report.yml, and it does not read as a reader declaration: argv.0: the first word of a reader's argv is the wrapper itself, a literal word this contract declares and the site's permit allows; "${READER}" is a placeholder the harness substitutes
+#   - contract.yml: environment.wrappers declares "sh", which no tool, workshop or reader of this pack runs
+#   - semantics.yml: declares the value type "clock_period", which none of this pack's own readers emits; a value type nothing produces is a rule nothing can ever rule on
+# Subtest: a semantics file and a reader declaration that are not YAML at all are each an error naming the file, and the reader's names the reader and the output it was looked up for
+ok 28 - a semantics file and a reader declaration that are not YAML at all are each an error naming the file, and the reader's names the reader and the output it was looked up for
+  ---
+  duration_ms: 365.239083
+  type: 'test'
+  ...
+# pack semantics-not-yaml@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-aGwokB/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-aGwokB/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@9 reads qorReport: found in the pack
+# semantics:
+#   0 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - the semantics file /private/tmp/hima-tests-97c5bL/hima-home-aGwokB/hima/packs/semantics-not-yaml/semantics.yml is not YAML: Flow map in block collection must be sufficiently indented and end with a } at line 3, column 1:
+# 
+#   clock_period: { unit: ns
+# 
+# ^
+# 
+# pack reader-not-yaml@2 on site local: unfit — 3 errors; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-aGwokB/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-aGwokB/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report reads qorReport: reader "dc-qor-report", named by output "qorReport", is declared at /private/tmp/hima-tests-97c5bL/hima-home-aGwokB/hima/packs/reader-not-yaml/readers/dc-qor-report.yml, and it is not YAML: Flow sequence in block collection must be sufficiently indented and end with a ] at line 3, column 1:
+# 
+# argv: [sh, 
+# emits: [clock_period]
+# ^
+# 
+# semantics:
+#   clock_period: declared by this pack in /private/tmp/hima-tests-97c5bL/hima-home-aGwokB/hima/packs/reader-not-yaml/semantics.yml
+#   7 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - reader "dc-qor-report", named by output "qorReport", is declared at /private/tmp/hima-tests-97c5bL/hima-home-aGwokB/hima/packs/reader-not-yaml/readers/dc-qor-report.yml, and it is not YAML: Flow sequence in block collection must be sufficiently indented and end with a ] at line 3, column 1:
+# 
+# argv: [sh, 
+# emits: [clock_period]
+# ^
+# 
+#   - contract.yml: environment.wrappers declares "sh", which no tool, workshop or reader of this pack runs
+#   - semantics.yml: declares the value type "clock_period", which none of this pack's own readers emits; a value type nothing produces is a rule nothing can ever rule on
+# Subtest: a rule needing a value type no semantics file declares, and a chooser reading one in a unit the declaration does not bind, are both refused naming the type and the units
+not ok 29 - a rule needing a value type no semantics file declares, and a chooser reading one in a unit the declaration does not bind, are both refused naming the type and the units
+  ---
+  duration_ms: 306.816625
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:795:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    pack chooser-wrong-unit@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+    stage: none; next: intent — INTENT.md, written by /hima-grill
+    inputs:
+      flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-8IO98F/standin-flow
+      design = opene902
+      workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-8IO98F/workspace
+    tools:
+      synth (tools/synth.sh): "make" is an allowed wrapper of site local
+    rules:
+      setup-wns-all-nonnegative@1: found in the bundle
+      clock-period-at-most@1: found in the bundle
+    readers:
+      dc-qor-report@1 reads qorReport: found in the bundle
+    semantics:
+      8 value types come from the bundle
+    choosers:
+      over-constraining-push@1 chooses at next-period: found in the pack
+    licences:
+      synth holds 1 of "Design-Compiler": site local declares 1
+    
+    'success' !== 'error'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'error'
+  actual: 'success'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:820:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# pack rule-on-nothing@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-8IO98F/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-8IO98F/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@2: found in the pack
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - rule "clock-period-at-most" needs the value type "candidate_count", which no semantics file declares
+# pack chooser-wrong-unit@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-8IO98F/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-8IO98F/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# Subtest: every value type the bundled readers declare they emit is declared in the bundle's own semantics.yml, in the unit those readers read it in
+ok 30 - every value type the bundled readers declare they emit is declared in the bundle's own semantics.yml, in the unit those readers read it in
+  ---
+  duration_ms: 1.213083
+  type: 'test'
+  ...
+# Subtest: a knowledge file the contract names and the pack folder does not hold leaves the pack unfit, naming the folder looked in and that the bundle ships none
+ok 31 - a knowledge file the contract names and the pack folder does not hold leaves the pack unfit, naming the folder looked in and that the bundle ships none
+  ---
+  duration_ms: 263.800292
+  type: 'test'
+  ...
+# Subtest: a rule a drill-down Loop names and the contract does not list is resolved through the pack like any other, and a miss there is refused in the same words
+ok 32 - a rule a drill-down Loop names and the contract does not list is resolved through the pack like any other, and a miss there is refused in the same words
+  ---
+  duration_ms: 298.790333
+  type: 'test'
+  ...
+# pack loop-rule-of-its-own@2 on site local: fit — 3 of 3 inputs bound, 1 tool, 3 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-XDpcar/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-XDpcar/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+#   loop-only-rule@1: found in the pack
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# Subtest: a rule file the pack folder holds and this machine cannot read is an error naming the path, never a quiet fall back to the bundle
+ok 33 - a rule file the pack folder holds and this machine cannot read is an error naming the path, never a quiet fall back to the bundle
+  ---
+  duration_ms: 280.138625
+  type: 'test'
+  ...
+# /hima pack check: /private/tmp/hima-tests-97c5bL/hima-home-PfWXUR/hima/packs/unreadable-rule/rules/clock-period-at-most.yml is a file of this pack and cannot be read: EACCES: permission denied, open '/private/tmp/hima-tests-97c5bL/hima-home-PfWXUR/hima/packs/unreadable-rule/rules/clock-period-at-most.yml'
+# Subtest: a pack whose output names a reader outside its own readers/ is refused when the pack is loaded, rather than resolving a file beyond the pack folder
+ok 34 - a pack whose output names a reader outside its own readers/ is refused when the pack is loaded, rather than resolving a file beyond the pack folder
+  ---
+  duration_ms: 261.608083
+  type: 'test'
+  ...
+# Subtest: a reader-declaration path that is ENOTDIR is an error naming the path, never a quiet fall back to the bundle
+ok 35 - a reader-declaration path that is ENOTDIR is an error naming the path, never a quiet fall back to the bundle
+  ---
+  duration_ms: 385.703959
+  type: 'test'
+  ...
+# pack reader-dir-is-a-file@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-23be1H/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-23be1H/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report reads qorReport: cannot read /private/tmp/hima-tests-97c5bL/hima-home-23be1H/hima/packs/reader-dir-is-a-file/readers/dc-qor-report.yml: /private/tmp/hima-tests-97c5bL/hima-home-23be1H/hima/packs/reader-dir-is-a-file/readers is a plain file of this pack folder and not a directory
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - cannot read /private/tmp/hima-tests-97c5bL/hima-home-23be1H/hima/packs/reader-dir-is-a-file/readers/dc-qor-report.yml: /private/tmp/hima-tests-97c5bL/hima-home-23be1H/hima/packs/reader-dir-is-a-file/readers is a plain file of this pack folder and not a directory
+# Subtest: a chooser that resolved and then failed its binding is reported with both where it came from and what is wrong with it
+not ok 36 - a chooser that resolved and then failed its binding is reported with both where it came from and what is wrong with it
+  ---
+  duration_ms: 428.217334
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:1032:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    the chooser line says both where the file came from and what is wrong: pack own-chooser-bad-bind@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+    stage: none; next: intent — INTENT.md, written by /hima-grill
+    inputs:
+      flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-2iUA76/standin-flow
+      design = opene902
+      workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-2iUA76/workspace
+    tools:
+      synth (tools/synth.sh): "make" is an allowed wrapper of site local
+    rules:
+      setup-wns-all-nonnegative@1: found in the bundle
+      clock-period-at-most@1: found in the bundle
+    readers:
+      dc-qor-report@1 reads qorReport: found in the bundle
+    semantics:
+      8 value types come from the bundle
+    choosers:
+      over-constraining-push@1 chooses at next-period: found in the pack, and node "next-period" binds -0.1 to chooser parameter "stepNs", which must be zero or more
+    licences:
+      synth holds 1 of "Design-Compiler": site local declares 1
+    errors:
+      - node "next-period" binds -0.1 to chooser parameter "stepNs", which must be zero or more
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    pack own-chooser-bad-bind@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+    stage: none; next: intent — INTENT.md, written by /hima-grill
+    inputs:
+      flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-2iUA76/standin-flow
+      design = opene902
+      workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-2iUA76/workspace
+    tools:
+      synth (tools/synth.sh): "make" is an allowed wrapper of site local
+    rules:
+      setup-wns-all-nonnegative@1: found in the bundle
+      clock-period-at-most@1: found in the bundle
+    readers:
+      dc-qor-report@1 reads qorReport: found in the bundle
+    semantics:
+      8 value types come from the bundle
+    choosers:
+      over-constraining-push@1 chooses at next-period: found in the pack, and node "next-period" binds -0.1 to chooser parameter "stepNs", which must be zero or more
+    licences:
+      synth holds 1 of "Design-Compiler": site local declares 1
+    errors:
+      - node "next-period" binds -0.1 to chooser parameter "stepNs", which must be zero or more
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:1047:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# pack own-chooser-bad-bind@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-2iUA76/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-2iUA76/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack, and node "next-period" binds -0.1 to chooser parameter "stepNs", which must be zero or more
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - node "next-period" binds -0.1 to chooser parameter "stepNs", which must be zero or more
+# Subtest: a directory named like a knowledge file is not a knowledge file: the check says so rather than counting it as resolved
+ok 37 - a directory named like a knowledge file is not a knowledge file: the check says so rather than counting it as resolved
+  ---
+  duration_ms: 364.201292
+  type: 'test'
+  ...
+# pack knowledge-is-a-directory@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 knowledge file, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-0abJX1/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-0abJX1/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# knowledge:
+#   push-method.md (why this pack pushes the clock period the way it does): knowledge file "push-method.md" (why this pack pushes the clock period the way it does) is at /private/tmp/hima-tests-97c5bL/hima-home-0abJX1/hima/packs/knowledge-is-a-directory/knowledge/push-method.md, which is not a plain file
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - knowledge file "push-method.md" (why this pack pushes the clock period the way it does) is at /private/tmp/hima-tests-97c5bL/hima-home-0abJX1/hima/packs/knowledge-is-a-directory/knowledge/push-method.md, which is not a plain file
+# Subtest: a symlink standing where a knowledge file goes is not a knowledge file: the check refuses it rather than reading pack-local through a link to outside the pack
+ok 38 - a symlink standing where a knowledge file goes is not a knowledge file: the check refuses it rather than reading pack-local through a link to outside the pack
+  ---
+  duration_ms: 329.43025
+  type: 'test'
+  ...
+# /hima pack check: /private/tmp/hima-tests-97c5bL/hima-home-0PpAUm/hima/packs/knowledge-is-a-symlink/knowledge/push-method.md is not a plain file (a symlink, a socket or the like), and a pack folder is plain files: nothing can say what a campaign ran while one of them is somewhere else
+# Subtest: preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+ok 39 - preparing a campaign on the local site creates its workspace, copies the flow into it, and records what it prepared
+  ---
+  duration_ms: 359.723583
+  type: 'test'
+  ...
+# Subtest: preparing the same campaign twice copies nothing the second time and says so
+ok 40 - preparing the same campaign twice copies nothing the second time and says so
+  ---
+  duration_ms: 408.096375
+  type: 'test'
+  ...
+# Subtest: a workspace that is there but carries no workspace.json is not prepared over the top of
+ok 41 - a workspace that is there but carries no workspace.json is not prepared over the top of
+  ---
+  duration_ms: 274.321042
+  type: 'test'
+  ...
+# Subtest: a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+ok 42 - a workspace prepared for another design is not reused for this one: it says whose it is and prepares nothing
+  ---
+  duration_ms: 492.363333
+  type: 'test'
+  ...
+# Subtest: a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+ok 43 - a workspace prepared from a shorter copy list than the pack now declares is not reused: it names the piece that is missing and copies nothing
+  ---
+  duration_ms: 502.149917
+  type: 'test'
+  ...
+# Subtest: a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+ok 44 - a dangling symlink where the workspace goes is refused: a write would follow it wherever it points
+  ---
+  duration_ms: 276.4055
+  type: 'test'
+  ...
+# Subtest: a workspace.json that cannot be read as one is an answer, not a crash
+ok 45 - a workspace.json that cannot be read as one is an answer, not a crash
+  ---
+  duration_ms: 364.41425
+  type: 'test'
+  ...
+# Subtest: a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+ok 46 - a campaign whose workspace root is outside the permit's write roots is refused before anything is created
+  ---
+  duration_ms: 378.191875
+  type: 'test'
+  ...
+# Subtest: the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+ok 47 - the channel admits exactly the verbs workspace preparation runs, and they are nobody else's
+  ---
+  duration_ms: 0.383208
+  type: 'test'
+  ...
+# Subtest: the shipped pack has never been through the authoring pipeline, and the check says so without holding it against it
+ok 48 - the shipped pack has never been through the authoring pipeline, and the check says so without holding it against it
+  ---
+  duration_ms: 273.482792
+  type: 'test'
+  ...
+# Subtest: a pack folder whose intent record is missing a section stays below the first rung, and the check names the section
+ok 49 - a pack folder whose intent record is missing a section stays below the first rung, and the check names the section
+  ---
+  duration_ms: 385.831375
+  type: 'test'
+  ...
+# Subtest: a pack folder holding both records and a contract and graph that load stands at compiled, and the check says the test stage is next
+ok 50 - a pack folder holding both records and a contract and graph that load stands at compiled, and the check says the test stage is next
+  ---
+  duration_ms: 273.0375
+  type: 'test'
+  ...
+# Subtest: a folder the pipeline has only grilled is checked as the stage it is, not as a pack nobody installed
+ok 51 - a folder the pipeline has only grilled is checked as the stage it is, not as a pack nobody installed
+  ---
+  duration_ms: 279.040583
+  type: 'test'
+  ...
+# Subtest: a record holding a heading that is not one of its sections does not validate, and the check names the first deviation
+ok 52 - a record holding a heading that is not one of its sections does not validate, and the check names the first deviation
+  ---
+  duration_ms: 309.862083
+  type: 'test'
+  ...
+# Subtest: a record whose sections are in another order, or hold one of them twice, does not validate either
+ok 53 - a record whose sections are in another order, or hold one of them twice, does not validate either
+  ---
+  duration_ms: 351.398125
+  type: 'test'
+  ...
+# Subtest: a folder whose contract and graph parse but do not hang together is not compiled, and the check answers the ladder beside the loader's own words
+ok 54 - a folder whose contract and graph parse but do not hang together is not compiled, and the check answers the ladder beside the loader's own words
+  ---
+  duration_ms: 387.504334
+  type: 'test'
+  ...
+# Subtest: the rungs above compiled are cumulative too, a released pack says there is nothing after it, and a test record this ledger cannot vouch for carries no folder past compiled
+not ok 55 - the rungs above compiled are cumulative too, a released pack says there is nothing after it, and a test record this ledger cannot vouch for carries no folder past compiled
+  ---
+  duration_ms: 472.181791
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:1612:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    pack released-probe@2 on site local: unfit — 2 errors; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+    stage: compiled (INTENT.md, SPEC.md, contract.yml, graph.yml, FABRIC.md validate); next: tested — TEST.md, written by /hima-test; test record names run run-2bcdc6e6-46cd-4683-8d4c-2a463f3e86bd, which this ledger does not hold
+    inputs:
+      flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-JFTPAu/standin-flow
+      design = opene902
+      workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-JFTPAu/workspace
+    tools:
+      synth (tools/synth.sh): "make" is an allowed wrapper of site local
+    rules:
+      setup-wns-all-nonnegative@1: found in the bundle
+      clock-period-at-most@1: found in the bundle
+    readers:
+      dc-qor-report@1 reads qorReport: found in the bundle
+    semantics:
+      8 value types come from the bundle
+    choosers:
+      over-constraining-push@1 chooses at next-period: found in the pack
+    licences:
+      synth holds 1 of "Design-Compiler": site local declares 1
+    test record names run run-2bcdc6e6-46cd-4683-8d4c-2a463f3e86bd, which this ledger does not hold
+    errors:
+      - VERSION.yml is there and seals version 1, and contract.yml declares version 2
+      - test record names run run-2bcdc6e6-46cd-4683-8d4c-2a463f3e86bd, which this ledger does not hold
+    
+    'error' !== 'success'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'success'
+  actual: 'error'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:1659:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: packStageOf answers absence only for a folder that is not there, and throws for an id that is not one and for a file standing where a pack folder should
+ok 56 - packStageOf answers absence only for a folder that is not there, and throws for an id that is not one and for a file standing where a pack folder should
+  ---
+  duration_ms: 291.321042
+  type: 'test'
+  ...
+# Subtest: a fabric record missing a section leaves the folder at specified, and the check names the section
+ok 57 - a fabric record missing a section leaves the folder at specified, and the check names the section
+  ---
+  duration_ms: 1183.074917
+  type: 'test'
+  ...
+# Subtest: a test record missing a section, or holding no run line, leaves the folder at compiled and the check says which
+ok 58 - a test record missing a section, or holding no run line, leaves the folder at compiled and the check says which
+  ---
+  duration_ms: 485.165916
+  type: 'test'
+  ...
+# Subtest: a VERSION.yml that is a link is refused naming it rather than read through, by the check and by the release, and the file it points at is untouched
+ok 59 - a VERSION.yml that is a link is refused naming it rather than read through, by the check and by the release, and the file it points at is untouched
+  ---
+  duration_ms: 279.272542
+  type: 'test'
+  ...
+# Subtest: a pack folder that is a link out of the packs directory is refused naming it, by the ladder, by the check and by a run
+ok 60 - a pack folder that is a link out of the packs directory is refused naming it, by the ladder, by the check and by a run
+  ---
+  duration_ms: 267.832291
+  type: 'test'
+  ...
+# Subtest: a hidden entry is not a file of a pack: the seal ignores it and a released folder stays released, while a name no pack file can have is refused before anything is hashed
+not ok 61 - a hidden entry is not a file of a pack: the seal ignores it and a released folder stays released, while a name no pack file can have is refused before anything is hashed
+  ---
+  duration_ms: 278.263417
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:1867:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"stage":"tested","validated":["INTENT.md","SPEC.md","contract.yml","graph.yml","FABRIC.md","TEST.md"],"next":"released","needs":"VERSION.yml, written by /hima-release","issue":"VERSION.yml is there and seals version 1, and contract.yml declares version 2"}
+    + actual - expected
+    
+    + 'tested'
+    - 'released'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'released'
+  actual: 'tested'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:1888:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a hidden entry that is not a plain file is refused naming it: the digest, the release and a campaign all stop at a link nobody reviewing the folder can see
+ok 62 - a hidden entry that is not a plain file is refused naming it: the digest, the release and a campaign all stop at a link nobody reviewing the folder can see
+  ---
+  duration_ms: 302.189334
+  type: 'test'
+  ...
+# Subtest: a link under a hidden directory is refused naming it: a namespace nobody may declare is not a namespace nobody has to look at
+not ok 63 - a link under a hidden directory is refused naming it: a namespace nobody may declare is not a namespace nobody has to look at
+  ---
+  duration_ms: 312.995791
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:1958:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    pack hidden-subtree-probe@2 on site local: unfit — 2 errors; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+    stage: compiled (INTENT.md, SPEC.md, contract.yml, graph.yml, FABRIC.md validate); next: tested — TEST.md, written by /hima-test; test record names run run-7853b088-2455-41f1-bbbe-82929fc0da65, which this ledger does not hold
+    inputs:
+      flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-hFjpuG/standin-flow
+      design = opene902
+      workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-hFjpuG/workspace
+    tools:
+      synth (tools/synth.sh): "make" is an allowed wrapper of site local
+    rules:
+      setup-wns-all-nonnegative@1: found in the bundle
+      clock-period-at-most@1: found in the bundle
+    readers:
+      dc-qor-report@1 reads qorReport: found in the bundle
+    semantics:
+      8 value types come from the bundle
+    choosers:
+      over-constraining-push@1 chooses at next-period: found in the pack
+    licences:
+      synth holds 1 of "Design-Compiler": site local declares 1
+    test record names run run-7853b088-2455-41f1-bbbe-82929fc0da65, which this ledger does not hold
+    errors:
+      - VERSION.yml is there and seals version 1, and contract.yml declares version 2
+      - test record names run run-7853b088-2455-41f1-bbbe-82929fc0da65, which this ledger does not hold
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    pack hidden-subtree-probe@2 on site local: unfit — 2 errors; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+    stage: compiled (INTENT.md, SPEC.md, contract.yml, graph.yml, FABRIC.md validate); next: tested — TEST.md, written by /hima-test; test record names run run-7853b088-2455-41f1-bbbe-82929fc0da65, which this ledger does not hold
+    inputs:
+      flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-hFjpuG/standin-flow
+      design = opene902
+      workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-hFjpuG/workspace
+    tools:
+      synth (tools/synth.sh): "make" is an allowed wrapper of site local
+    rules:
+      setup-wns-all-nonnegative@1: found in the bundle
+      clock-period-at-most@1: found in the bundle
+    readers:
+      dc-qor-report@1 reads qorReport: found in the bundle
+    semantics:
+      8 value types come from the bundle
+    choosers:
+      over-constraining-push@1 chooses at next-period: found in the pack
+    licences:
+      synth holds 1 of "Design-Compiler": site local declares 1
+    test record names run run-7853b088-2455-41f1-bbbe-82929fc0da65, which this ledger does not hold
+    errors:
+      - VERSION.yml is there and seals version 1, and contract.yml declares version 2
+      - test record names run run-7853b088-2455-41f1-bbbe-82929fc0da65, which this ledger does not hold
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack.test.ts:2000:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: the one reading of a pack folder refuses a path whose second look is a different inode, and accepts the one whose two looks are the same file
+ok 64 - the one reading of a pack folder refuses a path whose second look is a different inode, and accepts the one whose two looks are the same file
+  ---
+  duration_ms: 6.693
+  type: 'test'
+  ...
+# Subtest: the check answers out of the one reading the pack was parsed from: a pack-local rule taken off the disk after the load is still the rule the check reports, and the bundle is still read where it lies
+ok 65 - the check answers out of the one reading the pack was parsed from: a pack-local rule taken off the disk after the load is still the rule the check reports, and the bundle is still read where it lies
+  ---
+  duration_ms: 19.855833
+  type: 'test'
+  ...
+# Subtest: a directory standing where a pack-local data file goes is refused naming the path, never read as a pack that declares none: the semantics file and a rule file
+ok 66 - a directory standing where a pack-local data file goes is refused naming the path, never read as a pack that declares none: the semantics file and a rule file
+  ---
+  duration_ms: 310.8735
+  type: 'test'
+  ...
+# pack semantics-is-a-directory@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-3IMWYQ/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-3IMWYQ/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+# semantics:
+#   0 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - cannot read the semantics file /private/tmp/hima-tests-97c5bL/hima-home-3IMWYQ/hima/packs/semantics-is-a-directory/semantics.yml: a directory stands there
+# pack rule-is-a-directory@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 1 tool, 2 rules, 1 reader, 1 chooser, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-97c5bL/hima-home-3IMWYQ/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-97c5bL/hima-home-3IMWYQ/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+# rules:
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most: cannot read /private/tmp/hima-tests-97c5bL/hima-home-3IMWYQ/hima/packs/rule-is-a-directory/rules/clock-period-at-most.yml: a directory stands there, and a pack's data file is a plain file
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+# semantics:
+#   8 value types come from the bundle
+# choosers:
+#   over-constraining-push@1 chooses at next-period: found in the pack
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - cannot read /private/tmp/hima-tests-97c5bL/hima-home-3IMWYQ/hima/packs/rule-is-a-directory/rules/clock-period-at-most.yml: a directory stands there, and a pack's data file is a plain file
+# Subtest: a regular file standing where a pack folder would be is named by the check and by a run, never quietly left off the list the start form is built from
+ok 67 - a regular file standing where a pack folder would be is named by the check and by a run, never quietly left off the list the start form is built from
+  ---
+  duration_ms: 284.872458
+  type: 'test'
+  ...
+# Subtest: a test record whose Ending holds two status lines is refused naming the section: a campaign ends once, and a record may not say it ended twice
+ok 68 - a test record whose Ending holds two status lines is refused naming the section: a campaign ends once, and a record may not say it ended twice
+  ---
+  duration_ms: 2521.726042
+  type: 'test'
+  ...
+# Subtest: a test record naming two runs is a record naming none, and the rung says so
+ok 69 - a test record naming two runs is a record naming none, and the rung says so
+  ---
+  duration_ms: 274.025041
+  type: 'test'
+  ...
+# Subtest: an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+ok 70 - an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+  ---
+  duration_ms: 4672.770292
+  type: 'test'
+  ...
+# Subtest: Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+ok 71 - Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+  ---
+  duration_ms: 4003.441875
+  type: 'test'
+  ...
+# Subtest: a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+ok 72 - a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+  ---
+  duration_ms: 7949.228833
+  type: 'test'
+  ...
+1..72
+# tests 72
+# suites 0
+# pass 66
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 41338.314875
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 41.398 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

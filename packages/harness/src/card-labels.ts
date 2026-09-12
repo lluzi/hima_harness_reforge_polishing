@@ -15,11 +15,12 @@
 // ledger says it (`ledgerRows`), and the two meters that are read off the records rather than off
 // the run row (`attemptsAt`, `seatsHeld`), which are pairings a face would otherwise make twice.
 import type { BranchState, BranchView, GenerationJoinView, GenerationState, GenerationView, LoopView } from './generations.js';
-import type { DecisionChoice, LoopOutcome, NodeKind, NodeState, RunBudget, RunMeters, RunStatus, RunStrategy } from './ledger.js';
+import type { DecisionChoice, LoopOutcome, NodeKind, NodeState, ReaderRef, RunBudget, RunMeters, RunPurpose, RunStatus, RunStrategy } from './ledger.js';
+import type { PackStageOrRefusal } from './packs.js';
 import type { CancelView, DecisionView, ExperienceFileView, ExperienceView, RunHeadView, RunView, RunWord, RunWords } from './remote.js';
 import type { SemanticValue } from './semantics.js';
 import { experienceMarkdownPath } from './paths.js';
-import { cancelSessions, chosenAs, chosenKind, type ChosenKind, type ConvergedChoice } from './record-views.js';
+import { cancelSessions, chosenAs, chosenKind, type ChosenKind, type CodeView, type ConvergedChoice, type WorkshopState, type WorkshopView } from './record-views.js';
 import { runArguments, strategyKnobWhat, type StrategyKnob } from './run-arguments.js';
 import { counted } from './words.js';
 
@@ -52,6 +53,62 @@ export const runStatusLabel: Readonly<Record<RunStatus, StateLabel>> = {
   'ended-converged': { said: 'ended — converged', colour: warn },
   'ended-budget-exhausted': { said: 'ended — budget exhausted', colour: bad },
 };
+
+/**
+ * What a Run is for, in the word a person reads (#64).
+ *
+ * Keyed by every `RunPurpose` there is, for the reason the statuses are: a purpose added to the
+ * ledger is a build error here rather than a raw key on somebody's screen.
+ *
+ * A face marks a Run whose purpose is not the ordinary one and leaves an ordinary Campaign unmarked
+ * — `runPurposeMark` below is the one place that decides — because a word repeated on every card of
+ * every Campaign is a word nobody reads, and what this mark exists to say is "do not read this Run
+ * as a result: it is a pack author exercising their own work".
+ */
+export const runPurposeSaid: Readonly<Record<RunPurpose, string>> = {
+  campaign: 'campaign run',
+  test: 'test run',
+};
+
+/**
+ * The mark a face puts on a Run that is not an ordinary Campaign, or nothing (#64).
+ *
+ * An absent purpose reads `campaign`, exactly as the row's own schema says: every Run written before
+ * the pipeline existed was an ordinary Campaign. One function, every face — the card's banner, the
+ * run list and `/hima status` — because a Run marked one way in the window and another at a terminal
+ * is two Runs to whoever reads both.
+ *
+ * @param purpose - the Run's purpose as the row carries it.
+ * @returns the word, or undefined for an ordinary Campaign.
+ */
+export const runPurposeMark = (purpose: RunPurpose | undefined): string | undefined =>
+  purpose === undefined || purpose === 'campaign' ? undefined : runPurposeSaid[purpose];
+
+/**
+ * What the start form marks a pack folder with, or nothing (#64).
+ *
+ * A folder the authoring pipeline has started and not finished is a pack under construction: a
+ * Campaign of it is a test run (`packPurpose`), and a person choosing it off the form should be able
+ * to see that before they start one rather than afterwards on the card. A released pack and a
+ * hand-written one are offered plain, because neither is anybody's work in progress.
+ *
+ * The same split `packPurpose` makes, said in the one place a person reads it, so the form's mark and
+ * the Run's own mark cannot come to disagree about which packs are being authored.
+ *
+ * A folder **nothing can read** is marked with the reading's own refusal, which names the path
+ * (#64). It is still offered, because a person whose pack has disappeared off the form has been told
+ * nothing at all; it is offered as an option nobody can choose, because there is nothing to start.
+ *
+ * @param stage - how far up the ladder that folder has come, or why it cannot be read.
+ * @returns the mark, or undefined for a readable pack that is not in the pipeline.
+ */
+export const packStageMark = (stage: PackStageOrRefusal): string | undefined =>
+  // The type-only import above is the whole of what this module may take from `packs.ts`: the client
+  // build bundles this file, and `packs.ts` opens directories. So the refusal is told from a rung by
+  // its shape here rather than by that module's own predicate.
+  typeof stage !== 'string'
+    ? `unreadable: ${stage.unreadable}`
+    : stage === 'none' || stage === 'released' ? undefined : `test pack (${stage})`;
 
 /**
  * What ended a Run where the graph did not, in words: the meter that ran out, or the person who
@@ -130,6 +187,28 @@ export function duration(ms: number): string {
 // (`words.ts`, which imports nothing, so the browser bundle can have it too) and both cards read it
 // from here, where every other word they share is.
 export { counted };
+
+/**
+ * **Which reader read an observation, and — for a pack's own — which script** (#61):
+ * `count-candidates@1 · pack script tools/count-candidates.sh sha256 a1b2c3d4e5f6`.
+ *
+ * Said in one place because four faces say it: the workbench page, the chat's card, `/hima observe`'s
+ * own answer, and the `latest reading:` line `/hima run` and `/hima status` both print. A reader this bundle ships is code inside the bundle and says its id
+ * and version alone, as it always has; a pack reader is a plain file a person can open and edit, so
+ * the id and version alone do not identify what ran, and the file and the hash of the very bytes that
+ * were shipped and launched are the whole of the evidence.
+ *
+ * Twelve characters of the hash, because this one shares a line with the reader's name and its file
+ * and is read to tell two versions of a script apart at a glance. The report's own hash on the line
+ * below is shown whole, because that one is the evidence a verdict is checked against; the record
+ * carries all of both.
+ */
+export function readerSaid(reader: ReaderRef): string {
+  const said = `${reader.id}@${reader.version}`;
+  return reader.file === undefined || reader.sha256 === undefined
+    ? said
+    : `${said} · pack script ${reader.file} sha256 ${reader.sha256.slice(0, 12)}`;
+}
 
 /** One typed value as a person reads it: `setup_wns (setup, all)`, or the bare type where neither applies. */
 export function nameOf(value: SemanticValue): string {
@@ -718,6 +797,90 @@ export const branchesIn = (view: { readonly generations: readonly GenerationView
   view.generations.flatMap((g) => g.branches ?? []);
 
 // ---------------------------------------------------------------------------------------------
+// The workshop (#62): where a node that writes its own code stands, and what it wrote
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * What each state a workshop node can be in is called on screen, keyed by every one there is for the
+ * reason the statuses, the node states and the branch states are: a state this card cannot name must
+ * not reach a person as a blank.
+ *
+ * The colours say what a person should do about it. `writing` and `running` are plain — something is
+ * happening and nobody is needed. `written` is plain too: the model is done and the Job is a moment
+ * away. `no entry` is the warning colour: the moment closed having written something other than the
+ * file the fabric runs, so there is nothing to launch and the attempt is about to be settled failed.
+ * `failed` is the warning colour, because an attempt that failed inside its allowance is a Campaign
+ * still going; `interrupted` is the same, because a host went away and a resume is what carries it
+ * on. `blocked` is the error colour, because that one is a person's to clear, and `done` is the
+ * success colour.
+ */
+export const workshopStateLabel: Readonly<Record<WorkshopState, StateLabel>> = {
+  writing: { said: 'writing', colour: plain },
+  written: { said: 'written', colour: plain },
+  'no-entry': { said: 'no entry', colour: warn },
+  running: { said: 'running', colour: plain },
+  done: { said: 'done', colour: good },
+  failed: { said: 'failed', colour: warn },
+  blocked: { said: 'blocked', colour: bad },
+  interrupted: { said: 'interrupted', colour: warn },
+};
+
+/**
+ * The workshop's standing line: which workshop, where it stands, and how many files it has written
+ * this attempt.
+ *
+ * One line is a command line's shape (`/hima status` prints the first half of it), and the card puts
+ * the state's own pill beside it — so both faces are composed of the same words either way.
+ */
+export const workshopSaid = (workshop: WorkshopView): string =>
+  `workshop ${workshop.workshop}: ${labelled(workshopStateLabel, workshop.state).said} · ${counted(workshop.files, 'file')}`;
+
+/** One file a Model moment wrote, in one row: where it is, the head of its hash, how big it is, and
+ *  what the pack calls the language it is in. */
+export const codeSaid = (code: CodeView): string =>
+  `${code.path} · ${code.sha256.slice(0, 12)} · ${counted(code.bytes, 'byte')} · ${code.language}`;
+
+/**
+ * The **files** the workshop node's current attempt wrote, oldest first, each at the version that is
+ * on the Site: what the card lists under the standing line.
+ *
+ * This attempt's and not every one, because the line above them is about this attempt: a node that
+ * failed twice wrote three scripts, and the two earlier ones belong to attempts a person reads on the
+ * records route rather than beside the state of the one running now. Every one of them is still on
+ * the run view (`RunView.code`), which is where a report — and a person after the version history of
+ * one file — reads them from.
+ */
+export const codeOfWorkshop = (view: RunView): readonly CodeView[] => {
+  const workshop = view.workshop;
+  if (workshop === undefined) return [];
+  // One row per file and the latest record of it, walked backwards until this attempt's own files
+  // have been counted off. Backwards, and counted against `workshop.files`, because that is what
+  // narrows the list to the Generation the view was folded in: `RunView.code` is every file the Run
+  // ever wrote and carries no Generation of its own, while `files` is the number of distinct paths
+  // the fold saw in *this* Generation's records — and this Generation's records are the last ones
+  // there are, so stopping at that many distinct paths stops exactly at its boundary. A path written
+  // twice in one attempt is one row at its later hash, which is what the count above it says too:
+  // the card is about the files this attempt left, not about every write it made.
+  if (workshop.files === 0) return [];
+  const atThisAttempt = view.code.filter((c) => c.nodeId === workshop.nodeId && c.attempt === workshop.attempt);
+  const rows: CodeView[] = [];
+  const seen = new Set<string>();
+  for (let at = atThisAttempt.length - 1; at >= 0 && rows.length < workshop.files; at -= 1) {
+    const code = atThisAttempt[at]!;
+    if (seen.has(code.path)) continue;
+    seen.add(code.path);
+    rows.unshift(code);
+  }
+  return rows;
+};
+
+/** What the workshop region's state attributes say: which workshop, where it stands, how many files
+ *  it wrote and at which node — the four a driver reads without parsing a sentence. */
+export function workshopState(workshop: WorkshopView): Readonly<Record<string, string>> {
+  return { workshop: workshop.workshop, state: workshop.state, files: String(workshop.files), node: workshop.nodeId };
+}
+
+// ---------------------------------------------------------------------------------------------
 // The Budget's meters (#27): every meter of a Campaign against the bound it was started under
 // ---------------------------------------------------------------------------------------------
 
@@ -796,7 +959,7 @@ function attemptsAt(view: MeteredRun): { readonly nodeId: string; readonly attem
  * and stops when the Run stops waiting; this is what has been seen released, and a Job that vanished
  * without writing an exit status has released nothing anybody watched. A blocked Run still saying it
  * holds the Site's only seat is a Run worth going and looking at, which is the direction a licence
- * meter has to err in: a card saying a seat is free while dc_shell still holds it is the one wrong
+ * meter has to err in: a card saying a seat is free while the tool still holds it is the one wrong
  * answer it must never give.
  */
 function seatsHeld(view: MeteredRun): Readonly<Record<string, number>> {
@@ -825,8 +988,8 @@ function seatsHeld(view: MeteredRun): Readonly<Record<string, number>> {
  * nothing is holding still says the Run has seats available to it. The name is lower-cased there,
  * and this is the only key where that shows: every key here becomes a `data-hima-state-<key>`
  * attribute on both mounts, and an HTML attribute name is lower-cased by the DOM whether it was
- * written by the parser or by React — so a key spelled `licence-Design-Compiler` here would be read
- * back off the page as `licence-design-compiler`, which is two key sets disagreeing, which is the
+ * written by the parser or by React — so a key spelled `licence-Synth-Seat` here would be read
+ * back off the page as `licence-synth-seat`, which is two key sets disagreeing, which is the
  * one thing this function exists to prevent. The licence's own spelling is on the line a person
  * reads (`meterLines`), where it is the Site's word and not an attribute name.
  */
@@ -1065,7 +1228,7 @@ export type CancelObservedKey = 'no-job' | 'killed' | 'already-gone' | 'not-take
  * A cancel is two records and never one (#9): the `cancel` record says a person asked, and the Job
  * and node records say what actually stopped. The card shows the request beside what came of it,
  * because "cancelled" without the observed stop is exactly the guess a person clicked the control to
- * avoid — a licence is not free until dc_shell has really gone.
+ * avoid — a licence is not free until the tool has really gone.
  *
  * Read off this Run's own records rather than off the route's answer to the click, so a card opened
  * an hour later says the same thing as the card that was open when the click happened.

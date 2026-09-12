@@ -18,7 +18,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import readline from 'node:readline';
 import type { TestContext } from 'node:test';
-import { createEmptyHome, createHimaHome, repoRoot, type HimaHome } from './dsh-home.ts';
+import { createEmptyHome, createHimaHome, recordTestBoot, repoRoot, type HimaHome } from './dsh-home.ts';
 import { installPack, timingProbePackId } from './pack.ts';
 import { writeLocalSite } from './site.ts';
 import { writeStandinFlow, type StandinFlow } from './standin-flow.ts';
@@ -158,6 +158,35 @@ export interface BootDriverOptions {
    */
   readonly window?: { readonly width: number; readonly height: number };
   /**
+   * The model a driven host answers with (#59): dsh's keyless replay adapter over one of the
+   * committed scenarios, in place of the DeepSeek one. Absent, the host keeps the product's own
+   * model route — which, with no key in its environment, answers every turn with a refusal.
+   *
+   * Passed to the shell as `--replay`/`--replay-override`, which are driver-mode flags: a window a
+   * person opens cannot be told to fake its model. `writeMomentFixture` is what makes the two paths.
+   */
+  readonly model?: {
+    readonly replay: {
+      readonly file: string;
+      readonly override?: string;
+      /**
+       * Recorded child-session logs, in the order the adapter binds them (#62): the host's second
+       * model session takes the first of these, its third the second, and so on. A scenario with
+       * more than one moment in one host process needs them, because a sidecar replaces the primary
+       * session's script alone; `writeMomentScenario` is what makes them.
+       */
+      readonly children?: readonly string[];
+    };
+  };
+  /**
+   * Environment the shell — and so the host inside it — is launched with, over the home's own.
+   *
+   * One test needs this and its subject is the reason it exists: a key reaches this product through
+   * the launching environment and through no door of the harness's, so proving the harness writes no
+   * key takes a run with a key in that environment and a scan of everything it wrote afterwards.
+   */
+  readonly env?: Readonly<Record<string, string>>;
+  /**
    * The local Site's declared parallel job count and licence seats, for a test whose subject is two
    * Runs wanting the Site at once (#27). Left out, the site's own defaults stand: one job slot and
    * one seat of the licence the shipped pack's synthesis holds — which is a Site where the job cap
@@ -222,12 +251,16 @@ export async function bootDriver(t: TestContext, options: BootDriverOptions): Pr
     writeFileSync(path.join(userData, 'window-state.json'), `${JSON.stringify(options.window)}\n`);
   }
 
+  recordTestBoot('electron');
   const child = spawn(electron.at, [
     ...(options.remoteDebuggingPort === undefined ? [] : [`--remote-debugging-port=${options.remoteDebuggingPort}`]),
     mainEntry,
     '--driver',
     ...(options.seed === undefined ? [] : ['--site', options.seed]),
     ...(options.theme === undefined ? [] : ['--theme', options.theme]),
+    ...(options.model === undefined ? [] : ['--replay', options.model.replay.file]),
+    ...(options.model?.replay.override === undefined ? [] : ['--replay-override', options.model.replay.override]),
+    ...(options.model?.replay.children ?? []).flatMap((child) => ['--replay-child', child]),
   ], {
     cwd: home.workspace,
     // `HIMA_NODE` is this test's own Node, which is the Node 24 dsh needs; the shell would otherwise
@@ -241,6 +274,7 @@ export async function bootDriver(t: TestContext, options: BootDriverOptions): Pr
       HIMA_WORKSPACE: home.workspace,
       HIMA_USER_DATA: userData,
       BROWSER: 'none',
+      ...options.env,
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   });

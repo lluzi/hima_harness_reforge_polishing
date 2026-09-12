@@ -32,7 +32,8 @@
 // an outcome's edge leads to, and where a Run stops. What a turn itself does is `node-turns.ts`, what
 // a Run may spend `budget.ts`, what a Site will hold `job-cap.ts`, and picking a Run up again or
 // stopping one `recovery.ts`.
-import { boundInputs, checkPack, loadPack, positionOf, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { boundInputs, checkPack, loadInstalledPack, loadPack, packStageFrom, positionOf, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { packDigestExcludes, type PackFolderSnapshot } from './pack-folder.js';
 import { campaignIdFor, prepareWorkspace, type PrepareResult } from './workspace.js';
 import { writeExperience } from './experience.js';
 import { loadSite } from './sites.js';
@@ -47,6 +48,7 @@ import type {
   ResumedRecord,
   RunLoop,
   RunProgress,
+  RunPurpose,
   RunRecord,
   RunStatus,
   RunStrategy,
@@ -55,7 +57,7 @@ import type {
 } from './ledger.js';
 import { chosenAs, chosenKind, type ChosenKind } from './record-views.js';
 import { allowsRunArgument, allowsTimeBoxMs, runArguments, strategyFrom, timeBoxMsBounds, type StrategyValue } from './run-arguments.js';
-import { RunFaultError, RunStartError, SiteUnreadableError } from './errors.js';
+import { PackNotFoundError, RunFaultError, RunStartError, SiteUnreadableError } from './errors.js';
 import {
   advance,
   attemptOf,
@@ -79,9 +81,10 @@ import {
   judgeNode,
   observeNode,
   progress,
+  resumeNode,
   stillDriving,
   toolNode,
-  waitForJob,
+  workshopNode,
   type Driving,
   type FabricDeps,
   type Step,
@@ -90,6 +93,27 @@ import {
 /** The dependencies every fabric operation takes, declared with the turn that is handed them and
  *  named again here so a caller finds them beside `startRun`. */
 export type { FabricDeps };
+
+/**
+ * What a Run of this pack is for when nobody said (#64): the pack folder's own stage decides.
+ *
+ * A folder the authoring pipeline has started and not finished — anywhere from `intent` to `tested` —
+ * is a pack under construction, and a Campaign of it is the author exercising their own work. A
+ * folder at `released` is a pack somebody has sealed and installed, and a folder at `none` is a
+ * hand-written pack that never went through the pipeline at all, as the one this repository ships is;
+ * a Campaign of either is an ordinary Campaign, and marking it a test would put a word on every card
+ * of every pack written before the pipeline existed.
+ *
+ * Read here rather than asked of the caller, so that the mark is a fact about the pack folder as it
+ * stands and not a flag three faces each have to remember to pass.
+ *
+ * @param folder - the one reading of the pack's folder this start is acting on.
+ * @returns what the Run is for.
+ */
+function packPurpose(folder: PackFolderSnapshot): RunPurpose {
+  const stage = packStageFrom(folder).stage;
+  return stage === 'none' || stage === 'released' ? 'campaign' : 'test';
+}
 
 export interface StartRunRequest {
   readonly pack: string;
@@ -102,6 +126,14 @@ export interface StartRunRequest {
    * now: what a Strategy is made of is the pack's, and so is what a Run of it starts at.
    */
   readonly strategy?: Readonly<Record<string, StrategyValue>>;
+  /**
+   * Start this Run as the **test run** of its pack (#64), whatever stage that pack's folder stands at.
+   *
+   * The pipeline's test stage says so of its own Run, and a person may say so of a released pack they
+   * want to exercise without it counting as a Campaign. Left out, the pack's own folder decides:
+   * `packPurpose` below says how, and why a folder still in the pipeline is a test by default.
+   */
+  readonly test?: boolean;
   readonly timeBoxMs?: number;
   readonly retryAllowance?: number;
   /** How many Generations this Campaign's Loop may open. Absent, the pack's own, then the default. */
@@ -154,7 +186,22 @@ export type StartRunResult =
  */
 export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<StartRunResult> {
   const site = loadSite(deps.sitesDir, req.site);
-  const pack = loadPack(deps.packsDir, req.pack);
+  // **One reading of the pack folder, and everything this start says about it is derived from it**
+  // (#64) — the contract and graph this Campaign is driven by, the rung the folder stands on, the
+  // seal the check verifies, and the digest the row records. Two readings would be two folders
+  // whenever anything happened between them: a Run could be driven by one contract and recorded
+  // against another folder's digest, and "the seal verified" would be a statement about files this
+  // Run did not record. A folder that cannot be read — something in it that is not a plain file, a
+  // name no pack file can have, a file this process cannot read — stops the start before a Run
+  // exists, naming the path.
+  let folder: PackFolderSnapshot;
+  let pack: Pack;
+  try {
+    ({ folder, pack } = loadInstalledPack(deps.packsDir, req.pack));
+  } catch (err) {
+    if (err instanceof PackNotFoundError) throw err;
+    throw new RunStartError(`pack ${req.pack} cannot be run: ${(err as Error).message}`);
+  }
   // A pack the Site cannot host is answered before a Campaign exists, exactly as preparation does:
   // nothing was attempted anywhere, so nothing is recorded anywhere.
   const check = checkPack(pack, site);
@@ -221,7 +268,17 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   // Campaign starts with goes on the row in the same write and is never written again: `strategy`
   // below moves with the Loop, so this is the only place what generation one asked the flow for
   // stays readable once a decision has been acted on.
-  const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, packId: pack.id, goal, budget, firstStrategy: strategy, generation: 1 });
+  // What this Run is for, and which bytes of the pack folder it is about to run (#64). Both are
+  // written once, with the row, and never again: a Run runs one pack, and which files that pack was
+  // made of when it started is exactly the fact a test record later rests on. The digest is taken
+  // here rather than at the first node, because a folder edited mid-Campaign has already been run
+  // from — a Run says what it started on, and every later check compares the folder against that.
+  const purpose = req.test === true ? 'test' : packPurpose(folder);
+  // Derived from the one reading above, not taken again: these are the bytes the pack was parsed
+  // from and the seal was verified against, so what the row records, what the check accepted and
+  // what this Campaign is driven by are all the same folder.
+  const packDigest = folder.digest(packDigestExcludes);
+  const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1 });
   // Said as soon as it is true, and before the preparation below can take seconds over a 56 MB copy:
   // a caller that answers on the Run's existence must have the Run before anything else can happen
   // to it.
@@ -246,7 +303,7 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   // report only that HimaFabric never started this Run.
   let prepared: PrepareResult;
   try {
-    prepared = await prepareWorkspace(deps, { pack: pack.id, site: site.name, campaign: campaignId, run: opened.id });
+    prepared = await prepareWorkspace(deps, { pack: pack.id, site: site.name, campaign: campaignId, run: opened.id, folder });
   } catch (err) {
     const message = (err as Error).message;
     await blockAtEntry(deps, opened, pack, `the campaign workspace could not be prepared: ${message}`, strategy);
@@ -501,7 +558,7 @@ async function driveOn(ctx: Driving, resume?: Resumption): Promise<void> {
       // is for everything else here, so a host that picked this Run up re-enters every branch.
       step = run.fork !== undefined && resuming === undefined
         ? await runFork(ctx, run.fork)
-        : resuming === undefined ? await runNode(ctx, run, node, attempt) : await waitForJob(ctx, node, attempt, resuming.session);
+        : resuming === undefined ? await runNode(ctx, run, node, attempt) : await resumeNode(ctx, node, attempt, resuming.session);
     } catch (err) {
       // Ticket #18: one fault is not recorded here, and it is the one where recording it would be the
       // damage. A Site that could not be asked, while this node has a Job open on it, is not a node
@@ -874,6 +931,10 @@ async function runNode(ctx: Driving, run: RunRecord, node: PackNode, attempt: nu
     return { kind: 'blocked' };
   }
   if (node.kind === 'act') {
+    // Three forms, and the graph declares exactly one of them per node (`validatePack`): run one of
+    // the pack's tools, read one of its outputs, or open the workshop where the AI writes the script
+    // this node runs (#62).
+    if (node.parameters.workshop !== undefined) return workshopNode(ctx, node, attempt);
     return node.parameters.tool === undefined
       ? observeNode(ctx, node, attempt)
       : toolNode(ctx, run, node, attempt);

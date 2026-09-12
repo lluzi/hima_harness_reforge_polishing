@@ -9,7 +9,7 @@ pnpm run check:local
 pnpm run test:local --files test/contract/test-entry.test.ts test/contract/boot.test.ts
 ```
 
-`check:local` 检查 Node/seams，构建一次，检查类型并运行完整 `local`。下列叶命令使用当前构建，不再内部 build；源码变化后先构建，再跨组复用该产物。`test:contract` 兼容转发到 `test:local`。`test:unit` 目前明确报告 0 文件、未运行，退出 0 不能作为额外覆盖。
+`check:local` 检查 Node/seams/Pack boundary，构建一次，检查类型并运行完整 `local`。下列叶命令使用当前构建，不再内部 build；源码变化后先构建，再跨组复用该产物。`test:contract` 兼容转发到 `test:local`。`test:unit` 目前明确报告 0 文件、未运行，退出 0 不能作为额外覆盖。
 
 | 组 | 内容与前置条件 | 显式入口 |
 | --- | --- | --- |
@@ -42,3 +42,12 @@ PLS-01 的逐用例/逐断言迁移对账和本次结果见 [验证记录](../do
 `experience.test.ts` 保留一个真实窗口报告打开用例，验证预览来源、已记录文件 hash、报告关键结论和保存文件入口。报告正文的组合不再重复启动窗口。逐项迁移及本次结果见 [PLS-07 验证](../docs/assessment/2026-09-11/pls-07/README.md)。
 
 共享 fillForm 会在返回前等待当前 Pack/Site 的实际静态检查为 fit；手工保留输入审计的截图/验收脚本使用同一 waitForStartCheck，再点击 Start。故意测试 unfit/请求竞争的用例使用底层 fill/read 操作。按钮在检查期间禁用且位置会变化，“鼠标事件收到”不能代替“Run 已创建”。自动操作的交互在 zoom 1 执行；缩放截图先完成交互，并在滚动/缩放后等待布局再拍摄。
+
+
+## PLS-20：接收 ca47fa0
+
+当前清单共 54 文件：local 34、desktop 17、live-site 3。新增 boundary、profile-overlay、skills、standin-stages、substitute 在 local；Moment 的非窗口机制、Pack reader 的命令/Permit、Workshop 的记录/恢复边界、作者 pipeline/release 分别在 `*.host.test.ts`。这些使用真实 Host、真实本地文件/Job 和明确标注的 replay。剩余窗口断言仍在原 desktop 文件，没有删掉后冒充全组通过。
+
+[迁移对账](../docs/assessment/2026-09-12/pls-20/test-inventory.json)记录原 polishing 与 ca47fa0 每条静态测试声明的去向。四组迁移的合计断言调用数保持 84/92/153/248；这只是对账，不是运行证明。实际通过、失败、未跑与成本见 [本轮验证](../docs/assessment/2026-09-12/pls-20/README.md)。
+
+组入口统计 Host 子进程、in-process Host 和 Electron 启动尝试；每次 Electron 启动还启动自己的 Host。local 出现 Electron 计数即失败。SSH 哨兵保持 Node `execFile` 的 Promise 成功/错误结构，Promise 入口也执行同一拒绝检查。计数只写测试私有目录，内容不含命令参数、路径或凭据。

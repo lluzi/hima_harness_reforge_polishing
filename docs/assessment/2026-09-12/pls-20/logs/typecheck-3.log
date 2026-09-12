@@ -1,0 +1,14 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+packages/desktop typecheck$ tsc -p tsconfig.json --noEmit
+packages/harness typecheck$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+packages/desktop typecheck: Done
+packages/harness typecheck: Done
+test/contract/experience-report.test.ts(24,3): error TS2741: Property 'code' is missing in type '{ run: { id: string; campaignId: string; siteId: string; createdAt: string; status: "ended-goal-met"; packId: string; packVersion: string; goal: { target_period_ns: number; }; generation: number; }; ... 8 more ...; decision: { ...; }; }' but required in type 'RunView'.
+test/contract/moment.host.test.ts(107,60): error TS2353: Object literal may only specify known properties, and 'override' does not exist in type 'ReplayStandIn'.
+test/contract/moment.host.test.ts(170,60): error TS2353: Object literal may only specify known properties, and 'override' does not exist in type 'ReplayStandIn'.
+test/contract/moment.host.test.ts(220,60): error TS2353: Object literal may only specify known properties, and 'override' does not exist in type 'ReplayStandIn'.
+test/contract/moment.host.test.ts(246,67): error TS2353: Object literal may only specify known properties, and 'override' does not exist in type 'ReplayStandIn'.
+test/contract/moment.host.test.ts(357,60): error TS2353: Object literal may only specify known properties, and 'override' does not exist in type 'ReplayStandIn'.
+test/contract/moment.host.test.ts(404,60): error TS2353: Object literal may only specify known properties, and 'override' does not exist in type 'ReplayStandIn'.
+[ELIFECYCLE] Command failed with exit code 2.

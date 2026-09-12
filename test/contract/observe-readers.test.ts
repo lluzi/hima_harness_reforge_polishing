@@ -4,12 +4,13 @@
 // reader carries into the record: the report kind it accepts, the value types it can emit, and its
 // own version.
 //
-// `semantics.ts` binds every value type to its one unit and refines a `SemanticValue` that disagrees
-// (a DRC count in ns, a WNS in percent) into a validation failure, so no such value can reach the
-// ledger. That refusal is not reachable from this seam — nothing a caller can type reaches a
-// reader's unit choice, and the readers are the only producers of typed values — so what is asserted
-// here is the binding's other half: every value a real report produces carries the unit its type
-// binds to, checked against the table below rather than against the reader's own opinion.
+// Since #61 the binding lives in `packages/harness/semantics.yml` rather than in a table in
+// `semantics.ts`, and every reading — a bundled reader's as much as a pack script's — is held against
+// it by the one validator before it can reach the ledger. That refusal is not reachable from this
+// seam (nothing a caller can type reaches a bundled reader's unit choice), so what is asserted here
+// is the binding's other half: every value a real report produces carries the unit its type binds to,
+// checked against the table below rather than against the reader's own opinion — and every type the
+// reader declares it emits is in every reading, unknown with a reason where the report is silent.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -20,21 +21,18 @@ import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { himaCommand } from './support/command.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
 import { requireOpene902Fixture } from './support/opene902-fixtures.ts';
+import { assertReadAsDeclared } from './support/readings.ts';
 // Loads the `ctx.hima` declaration merge onto Context.
 import type {} from '@hima/harness';
 import type {} from '@deepseek-ai/dsh-tools';
 
 interface Value { type: string; value: number | null; unit: string; mode?: string; scope?: string; unknownReason?: string }
 
-/** The one unit each value type is bound to, restated here independently of `semantics.ts`. */
-const boundUnit: Record<string, string> = {
-  setup_wns: 'ns', setup_tns: 'ns', hold_wns: 'ns', hold_tns: 'ns', clock_period: 'ns',
-  placement_density: 'percent', drc_violation_count: 'count',
-};
-
-function assertUnitsBound(values: Value[]): void {
-  for (const v of values) assert.equal(v.unit, boundUnit[v.type], `${v.type} must be read in ${boundUnit[v.type] ?? '(an unknown type)'}`);
-}
+/** Every value a real report produced, held against what the bundled readers are known to read each
+ *  type in (`support/readings.ts`) — the unit, and the qualifiers. The same table `pack.test.ts`
+ *  holds against `packages/harness/semantics.yml`, which is what ties the file the bundle ships to
+ *  what its readers actually emit. */
+const assertUnitsBound = assertReadAsDeclared;
 
 /** What the Innovus summary reader declares: the report kind it accepts and every type it can emit. */
 const summaryReaderRef = {
@@ -91,9 +89,20 @@ test('the innovus-timing-summary reader emits setup WNS/TNS, density, and an unk
     assert.match(clockPeriod?.unknownReason ?? '', /not stated in an Innovus optDesign summary/);
     assert.equal(clockPeriod?.unit, 'ns');
 
-    // Nothing from a Hold-mode table leaked into a Setup-mode read.
-    assert.equal(find(values, 'hold_wns'), undefined);
-    assert.equal(find(values, 'hold_tns'), undefined);
+    // Nothing from a Hold-mode table leaked into a Setup-mode read — and the hold types this reader
+    // declares it emits are still there, unknown, saying which mode the report actually states
+    // (#61). A reader emits every type its own `emits` names or its output is refused by the one
+    // validator: a hold rule applied to this reading goes UNDETERMINED with the report's own reason
+    // on it, rather than for want of a value nobody said was missing.
+    for (const type of ['hold_wns', 'hold_tns']) {
+      const unread = find(values, type, 'all');
+      assert.deepEqual(
+        unread,
+        { type, value: null, unit: 'ns', mode: 'hold', scope: 'all', unknownReason: 'this report states the setup mode timing table, so it says nothing about hold timing' },
+        `${type} is unknown and says why, never a number this report does not hold: ${JSON.stringify(unread)}`,
+      );
+      assert.equal(find(values, type, 'reg2reg')?.value, null, `and the same for the reg2reg scope: ${JSON.stringify(values)}`);
+    }
   } finally { await host.dispose(); await h.dispose(); }
 });
 
@@ -123,8 +132,17 @@ test('the innovus-timing-summary reader emits hold WNS for both scopes from the 
     assert.deepEqual(tnsR2r, { type: 'hold_tns', value: 0, unit: 'ns', mode: 'hold', scope: 'reg2reg' });
     const density = find(values, 'placement_density');
     assert.deepEqual(density, { type: 'placement_density', value: 44.345, unit: 'percent' });
-    assert.equal(find(values, 'setup_wns'), undefined, 'a Hold summary carries no Setup-mode values');
-    assert.equal(find(values, 'setup_tns'), undefined, 'nor Setup-mode TNS');
+    // A Hold summary states no Setup-mode numbers, and the setup types this reader declares are
+    // there saying exactly that rather than missing (#61), as the Setup read above says of hold.
+    for (const type of ['setup_wns', 'setup_tns']) {
+      const unread = find(values, type, 'all');
+      assert.deepEqual(
+        unread,
+        { type, value: null, unit: 'ns', mode: 'setup', scope: 'all', unknownReason: 'this report states the hold mode timing table, so it says nothing about setup timing' },
+        `${type} is unknown and says why, never a number a hold summary does not hold: ${JSON.stringify(unread)}`,
+      );
+      assert.equal(find(values, type, 'reg2reg')?.value, null, `and the same for the reg2reg scope: ${JSON.stringify(values)}`);
+    }
   } finally { await host.dispose(); await h.dispose(); }
 });
 

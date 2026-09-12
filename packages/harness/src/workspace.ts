@@ -23,12 +23,14 @@ import {
   boundInputs,
   checkPack,
   flowDirName,
-  loadPack,
+  loadInstalledPack,
+  loadPackFrom,
   substitute,
   workspaceFileName,
   type Pack,
   type PackCheck,
 } from './packs.js';
+import type { PackFolderSnapshot } from './pack-folder.js';
 import { runFor } from './runs.js';
 import type { Ledger, RefusalRecord, RunRecord, WorkspaceRecord } from './ledger.js';
 
@@ -100,6 +102,16 @@ export interface PrepareRequest {
   readonly campaign?: string;
   /** An existing Run to record against; absent, preparation opens the Campaign's own Run. */
   readonly run?: string;
+  /**
+   * The reading of the pack's folder the caller is already acting on (#64).
+   *
+   * `startRun` passes the very reading its check accepted and its row recorded, so the workspace is
+   * copied from the bytes that Run says it ran: unthreaded, a folder replaced between the start and
+   * this call would put a copy list nobody recorded into a workspace a Run claims otherwise about.
+   * A caller that is only preparing — the acceptance script, a person at `/hima pack prepare` — is
+   * its own operation and takes its own reading.
+   */
+  readonly folder?: PackFolderSnapshot;
 }
 
 export type PrepareResult =
@@ -237,8 +249,16 @@ interface PreparationIdentity {
  */
 export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest): Promise<PrepareResult> {
   const site = loadSite(deps.sitesDir, req.site);
-  const pack = loadPack(deps.packsDir, req.pack);
-  // A pack the Site cannot host is answered before a Run exists: nothing was attempted anywhere.
+  // One reading of the pack's folder, which the pack is parsed out of and the check is made from
+  // (#64): a preparation that loaded the pack from one reading and checked it against another could
+  // copy a workspace for a folder neither of them describes. The caller's, where the caller is
+  // already acting on one.
+  const { folder, pack } = req.folder === undefined
+    ? loadInstalledPack(deps.packsDir, req.pack)
+    : { folder: req.folder, pack: loadPackFrom(req.folder) };
+  // A pack the Site cannot host is answered before a Run exists: nothing was attempted anywhere. Out
+  // of the reading the pack carries (#64), which is the caller's own where the caller had one, so
+  // this second check re-reads nothing at all.
   const check = checkPack(pack, site);
   if (!check.fit) return { kind: 'unfit', check };
   const bindings = boundInputs(pack, site);

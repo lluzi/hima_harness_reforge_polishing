@@ -25,7 +25,7 @@ export const defaultRetryAllowance = 3;
  * How many Generations a Campaign may open when neither the person who started it nor the pack says:
  * six. Enough for a push chooser to walk in from a first guess and converge — the reference pack's
  * own Loop converges in three on the stand-in — and few enough that a pack with no convergence
- * declared cannot spend a night of Design Compiler discovering that.
+ * declared cannot spend a night of licensed synthesis discovering that.
  *
  * The pack's own `converge.generationLimit` is what usually decides, and a person's `--generations`
  * before that; this is the floor under both, so a Loop is always bounded by something.
@@ -333,7 +333,7 @@ export const endGenerationLimit = (ledger: Ledger, runId: string): Promise<RunRe
  * A Run with no generation matches the records that carry none, which is the Probe-campaign Run no
  * fabric started: it has no Loop, so all of its records are its one and only turn.
  */
-const nodeRecordsOfGeneration = (ledger: Ledger, runId: string): NodeRecord[] => {
+export const nodeRecordsOfGeneration = (ledger: Ledger, runId: string): NodeRecord[] => {
   const run = existingRun(ledger, runId);
   const generation = run.loop?.generation ?? run.generation;
   return nodeRecordsIn(ledger, runId).filter((r) => r.generation === generation && r.loopId === run.loop?.id);
@@ -364,18 +364,34 @@ export function currentAttemptOf(ledger: Ledger, runId: string, nodeId: string):
 }
 
 /**
- * Which attempt at this node the Job in this session was: what the `running` record that opened it
- * says, or the next one for a Job whose host died between the launch and that record.
+ * Which attempt at this node the Job in this session was: **what its own launch record says**, or
+ * what the `running` record that opened it says, or the next one for a Job that has neither.
  *
  * What a process picking a Job up again numbers its records with — the reconciliation that finds an
  * interrupted attempt, and a branch of a fork whose Job was launched by a host that has gone (#29).
  * It is the same attempt at the same node, joined by a second process, and numbering it afresh would
  * say a Job was launched twice.
  *
+ * The launch record first, since #62. A launch and the node record that names its session are two
+ * writes, the launch first, and a host that died between them left an attempt that no node record
+ * could name: the fall-back then read `attemptOf`, which is one past the highest number any record
+ * carries, and settled an attempt-1 moment, its `code` record and its Job as attempt 2. The launch is
+ * where the attempt is actually in hand, so the launch is where it is now written down, and this
+ * reads it there.
+ *
+ * The node record stays as the second answer, and not as a nicety: every `launched` record written
+ * before this change carries no `attempt` at all, and a ledger from before domain 18 is exactly the
+ * one a restart is most likely to be picking a Job up out of. `attemptOf` stays as the third for a
+ * Job that has neither — a Job launched from the `/hima job` face belongs to no node and numbers no
+ * attempt.
+ *
  * Beside `attemptOf` and `currentAttemptOf` because it is the third answer to their one question,
  * and the three must count over the same records: the Generation's own (`nodeRecordsOfGeneration`).
  */
 export function attemptOfSession(ledger: Ledger, runId: string, nodeId: string, session: string): number {
+  const launched = ledger.records({ runId, type: 'job' })
+    .findLast((r) => r.type === 'job' && r.event === 'launched' && r.job.session === session);
+  if (launched?.type === 'job' && launched.attempt !== undefined) return launched.attempt;
   const opened = nodeRecordsOfGeneration(ledger, runId).findLast((r) => r.nodeId === nodeId && r.state === 'running' && r.jobSession === session);
   return opened?.attempt ?? attemptOf(ledger, runId, nodeId);
 }

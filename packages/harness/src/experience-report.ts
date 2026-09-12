@@ -41,13 +41,14 @@ import {
   NOTHING_JUDGED,
   pathColumns,
   askedObservedSaid,
+  runPurposeMark,
   runStatusLabel,
   slackSaid,
   strategySaid,
   tailSaid,
 } from './card-labels.js';
 import type { BranchView, GenerationView, LoopView } from './generations.js';
-import type { RunBudget, RunMeters, RunStatus } from './ledger.js';
+import type { RunBudget, RunMeters, RunPurpose, RunStatus } from './ledger.js';
 import type { BlockerView, CancelView, NodeView, ObservationView, RunView, VerdictView } from './remote.js';
 
 /**
@@ -89,6 +90,16 @@ export interface ExperienceJsonV1 {
   readonly runId: string;
   readonly campaignId: string;
   readonly pack: ExperiencePack;
+  /**
+   * What this Run was for (#64): an ordinary Campaign, or the test run of a pack somebody was still
+   * authoring.
+   *
+   * In the machine's file because the file outlives the ledger that wrote it: a report of a test run
+   * archived beside a Site's results is a pack author exercising their own work, and a later reader
+   * with nothing but the file has no other way to tell it from a result. Every face marks one — the
+   * card's banner, the run list, `/hima status` — and this is the same mark written down.
+   */
+  readonly purpose?: RunPurpose;
   /** The Site this Campaign ran on, as the Site's own file names it. */
   readonly site: string;
   /** The Goal as bound parameters, immutable for the life of the Campaign (D3). */
@@ -109,6 +120,7 @@ export interface ExperienceJsonV1 {
 /** Schema 1 remains a readable historical document; only new writes use schema 2. */
 export interface ExperienceJsonV2 extends Omit<ExperienceJsonV1, 'schema'> {
   readonly schema: typeof EXPERIENCE_SCHEMA;
+  readonly purpose: RunPurpose;
   readonly research: ExperienceResearch;
 }
 export type ExperienceJson = ExperienceJsonV1 | ExperienceJsonV2;
@@ -170,6 +182,9 @@ function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV2 {
     runId: run.id,
     campaignId: run.campaignId,
     pack: { id: run.packId ?? '', version: run.packVersion ?? '' },
+    // An absent purpose reads `campaign`, exactly as the row's own schema says: every Run written
+    // before the pipeline existed was an ordinary Campaign.
+    purpose: run.purpose ?? 'campaign',
     site: run.siteId,
     // An absent key, never an undefined one, as everywhere else a view is composed: a Run that was
     // given no Goal and no Budget says so by omission rather than with an empty object.
@@ -382,9 +397,15 @@ function fenced(text: string): string[] {
 
 /** The person's file, composed from the machine's so the two cannot say different numbers. */
 function experienceMarkdown(json: ExperienceJsonV2, view: RunView): string {
+  const mark = runPurposeMark(json.purpose);
   const lines: string[] = [
     `# Campaign ${json.campaignId}`,
     '',
+    // Where the card says it, and in the card's own word (#64): a test run says so before anything
+    // else about it, because reading one as a result of the pack it ran is the mistake the mark
+    // exists to stop — and a report filed beside a Site's results is read long after the window is
+    // shut.
+    ...(mark === undefined ? [] : [mark, '']),
     endingLine(json.ending),
     '',
     ...table(['fact', 'value'], [

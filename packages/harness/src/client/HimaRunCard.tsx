@@ -17,10 +17,10 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { runCardPath } from '../paths.js';
 import type { BranchView, GenerationJoinView, GenerationVerdictView, GenerationView, LoopView } from '../generations.js';
-import type { BlockerView, Citation, DecisionView, ExperienceView, NodeView, ObservationView, RunView, RunWords, VerdictView } from '../remote.js';
+import type { BlockerView, Citation, DecisionView, ExperienceView, NodeView, ObservationView, RunView, RunWords, VerdictView, WorkshopView } from '../remote.js';
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
-import { bad, bannerLines, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, good, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, outcomeColour, askedObservedSaid, plain, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, warn } from '../card-labels.js';
+import { bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, good, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, outcomeColour, askedObservedSaid, plain, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, warn, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
 import { actOnRun, fetchRun, type HimaFailure } from './api.js';
 
 /** The slice of the tool block this card reads. The owner passes the frozen call or result node. */
@@ -109,6 +109,7 @@ function StatusBanner({ view }: { view: RunView }): ReactElement {
           ? <span style={muted}>{NO_FABRIC_STATE}</span>
           : <span style={{ color: status.colour, fontWeight: 500 }}>{status.said}</span>}
         {run.packId === undefined ? null : <span style={{ ...muted, ...mono }}> · {run.packId}</span>}
+        {runPurposeMark(run.purpose) === undefined ? null : <span style={muted} data-hima-state-purpose={run.purpose}> · {runPurposeMark(run.purpose)}</span>}
       </div>
       {[lines.goal, lines.strategy, lines.generation].filter((l): l is string => l !== undefined).map((line) => <div key={line} style={muted}>{line}</div>)}
     </div>
@@ -519,10 +520,38 @@ export function ObservationRow({ observation }: { observation: ObservationView }
       <div style={mono}>{observation.path}</div>
       <div style={{ ...muted, ...mono }}>sha256 {observation.contentSha256}</div>
       <div style={muted}>
-        read by {observation.reader.id}@{observation.reader.version} · {observation.bytes} bytes · {observation.at}
+        read by {readerSaid(observation.reader)} · {observation.bytes} bytes · {observation.at}
       </div>
       <ValueRows values={observation.values} />
     </div>
+  );
+}
+
+/**
+ * The workshop of the node the Run stands at: where it stands, and what its current attempt wrote.
+ *
+ * The same block the Workbench mount draws, from the same view and in the same words (ADR-0004: a
+ * card change lands in both mounts). The state's own colour beside the standing line, then the node,
+ * the attempt, the entry and the session, then one row per file — its path, the head of its hash, its
+ * size, and the language the pack says it is in. The hash is what a person holds the file on the Site
+ * against; the file's *contents* are not shown, and reading one is #66.
+ */
+export function WorkshopSection({ view, workshop }: { view: RunView; workshop: WorkshopView }): ReactElement {
+  const label = labelled(workshopStateLabel, workshop.state);
+  const files = codeOfWorkshop(view);
+  return (
+    <Section title="workshop" region="run-workshop" state={workshopState(workshop)}>
+      <div style={block}>
+        <div style={{ color: label.colour, fontWeight: 500 }}>{workshopSaid(workshop)}</div>
+        <div style={muted}>
+          node {workshop.nodeId}, attempt {workshop.attempt}, entry {workshop.entry}
+          {workshop.sessionId === undefined ? '' : `, session ${workshop.sessionId}`}
+        </div>
+        {files.length === 0
+          ? <div style={muted}>nothing written yet — {label.said}</div>
+          : files.map((code) => <div key={code.recordId} style={mono}>{codeSaid(code)}</div>)}
+      </div>
+    </Section>
   );
 }
 
@@ -675,7 +704,7 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
       {view.refusals.length === 0
         ? null
         : (
-          <Section title="refused">
+          <Section title="refused" region="run-refusal" state={{ count: String(view.refusals.length) }}>
             {view.refusals.map((r) => (
               <div key={r.recordId} style={block}>
                 <div style={{ color: warn }}>refused</div>
@@ -685,6 +714,12 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
             ))}
           </Section>
         )}
+      {/*
+        The workshop of the node the Run stands at, where that node is one (#62). Before the reading,
+        exactly as the Workbench mount orders it: a person watching a workshop is watching something
+        being written now, and what was read is what the generation before it produced.
+      */}
+      {view.workshop === undefined ? null : <WorkshopSection view={view} workshop={view.workshop} />}
       {view.observations.length === 0
         ? null
         : (

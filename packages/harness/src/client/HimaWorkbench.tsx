@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import type { RunView } from '../remote.js';
 import type { StartChoices } from '../workbench.js';
-import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows, nodeStateLabel, runStatusLabel, startForm, startKnobField, START_STATIC_LIMIT } from '../card-labels.js';
+import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows, nodeStateLabel, runPurposeMark, runStatusLabel, startForm, startKnobField, START_STATIC_LIMIT } from '../card-labels.js';
 import { reportBlocks } from '../experience-report.js';
 import { runPath } from '../paths.js';
 import { fetchRun, fetchRuns, fetchStartChoices, startCampaign, type HimaResult } from './api.js';
-import { DecisionRow, ExperienceSection, GenerationsTable, ObservationRow, ReportBlockRow, RunControls, useRunActions, VerdictRow } from './HimaRunCard.js';
+import { DecisionRow, ExperienceSection, GenerationsTable, ObservationRow, ReportBlockRow, RunControls, useRunActions, VerdictRow, WorkshopSection } from './HimaRunCard.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot. */
 export interface WorkbenchProps {
@@ -97,7 +97,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles }: WorkbenchPro
       <select aria-label='Run on this host' disabled={starting} data-hima-control='studio-run' value={selected ?? ''} onChange={(e) => { if (!startPending.current) { setSelected(e.target.value || undefined); setCreating(false); } }}>
         <option value=''>Select a run on this host</option>
         {selected && !list.value?.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
-        {list.value?.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
+        {list.value?.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
       </select>
       <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); }}>↻</button>
     </div>
@@ -116,6 +116,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles }: WorkbenchPro
                 <div className='hima-run-controls'><RunControls view={view} acting={acting} /></div>
                 <ExecutionTrace view={view} />
                 <JobActivity view={view} />
+                {view.workshop ? <WorkshopSection view={view} workshop={view.workshop} /> : null}
               </> : section === 'experiments' ? <div className='hima-detail'><h3>Experiment history</h3><p className='hima-small'>Recorded generations, measurements and decisions.</p>{view.generations.length ? <GenerationsTable view={view} /> : <p>No generation has been recorded.</p>}</div>
                 : section === 'evidence' ? <EvidenceTrail view={view} />
                   : <div className='hima-detail hima-report'><h3>Technical report</h3>{saved ? <><button className='hima-button' onClick={() => { savedRead.current?.abort(); setSaved(undefined); }}>← Current ledger preview</button><p className='hima-small'>{saved.markdown !== undefined ? 'Saved Markdown · original bytes verified by the Host' : saved.loading ? 'Reading and verifying the saved file…' : 'Saved file could not be verified'}</p>{saved.loading ? <p>Reading saved report…</p> : saved.error ? <p role='alert' className='hima-notice'>{saved.error}</p> : reportBlocks(saved.markdown!).map((block, index) => <ReportBlockRow key={index} block={block} />)}</> : view.experience ? <ExperienceSection view={view} experience={view.experience} onOpenSaved={() => { void openSaved(); }} /> : <p>{view.experienceUnavailable ?? 'A technical report will appear here when the Run closes.'}</p>}</div>}
@@ -131,8 +132,8 @@ function RunSummary({ view }: { view: RunView }): ReactElement {
   const status = run.status === undefined ? undefined : labelled(runStatusLabel, run.status);
   const lines = bannerLines(run);
   const blocker = run.status === 'waiting' ? view.blockers.at(-1) : undefined;
-  return <section className='hima-run-summary' data-hima-region='studio-status' data-hima-state-status={run.status ?? 'unknown'}>
-    <div className='hima-run-title'><h3>{run.packId ?? run.campaignId}</h3><span className='hima-state' data-state={run.status}>{stateGlyph(run.status ?? 'unknown')} {status?.said ?? 'No Fabric state recorded'}</span></div>
+  return <section className='hima-run-summary' data-hima-region='studio-status' data-hima-state-status={run.status ?? 'unknown'} data-hima-state-purpose={run.purpose ?? 'campaign'}>
+    <div className='hima-run-title'><h3>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''}</h3><span className='hima-state' data-state={run.status}>{stateGlyph(run.status ?? 'unknown')} {status?.said ?? 'No Fabric state recorded'}</span></div>
     <p className='hima-run-context'>{view.workspace?.design ?? 'Design not recorded'} <span>·</span> {run.siteId} {run.packVersion ? <><span>·</span> Pack v{run.packVersion}</> : null}</p>
     <div className='hima-headlines'><div><span className='hima-studio-eyebrow'>RESEARCH GOAL</span><p>{lines.goal ?? 'No goal recorded'}</p></div><div><span className='hima-studio-eyebrow'>CURRENT STEP</span><p>{run.currentNode ?? 'No current node recorded'}</p></div></div>
     <div className='hima-metrics'>
@@ -230,7 +231,7 @@ function StartRunForm({ onStarted, onClose, onBusy }: { onStarted(view: RunView)
   return <form className='hima-start-form' data-hima-region='studio-start' onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <div className='hima-section-heading'><h3>New research run</h3><button type='button' className='hima-icon-button' aria-label='Close new Run form' disabled={submitting} onClick={onClose}>×</button></div>
     <p className='hima-small'>The Pack supplies the method. Set the objective and bounds for this experiment.</p>
-    <div className='hima-fields'>{(['pack', 'site'] as const).map((kind) => <label key={kind}>{kind === 'pack' ? 'Method / Pack' : 'Execution Site'}<select data-hima-control={`studio-${kind}`} disabled={submitting} value={selection[kind] ?? prepared?.[kind] ?? ''} onChange={(event) => { checkPending.current = true; setChecking(true); setSelection({ pack: prepared?.pack, site: prepared?.site, ...selection, [kind]: event.target.value }); }}><option value='' disabled>Choose…</option>{(kind === 'pack' ? prepared?.packs : prepared?.sites)?.map((value) => <option key={value}>{value}</option>)}</select></label>)}</div>
+    <div className='hima-fields'>{(['pack', 'site'] as const).map((kind) => <label key={kind}>{kind === 'pack' ? 'Method / Pack' : 'Execution Site'}<select data-hima-control={`studio-${kind}`} disabled={submitting} value={selection[kind] ?? prepared?.[kind] ?? ''} onChange={(event) => { checkPending.current = true; setChecking(true); setSelection({ pack: prepared?.pack, site: prepared?.site, ...selection, [kind]: event.target.value }); }}><option value='' disabled>Choose…</option>{(kind === 'pack' ? prepared?.packs : prepared?.sites)?.map((value) => <option key={value} value={value} disabled={kind === 'pack' && prepared?.cannotStart?.includes(value)}>{value}{kind === 'pack' && prepared?.marks?.[value] ? ` — ${prepared.marks[value]}` : ''}</option>)}</select></label>)}</div>
     <div className='hima-fields'><label>Target period (ns)<input data-hima-control='studio-target' value={values.target ?? ''} onChange={(event) => setValues({ ...values, target: event.target.value })} placeholder='Your research objective' /></label>
       {Object.entries(prepared?.strategy ?? {}).map(([name, knob]) => { const field = startKnobField(name, knob, prepared?.words?.strategy[name]); return <label key={name}>{field.said}{knob.type === 'choice' ? <select data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })}>{knob.options.map((option) => <option key={option}>{option}</option>)}</select> : <input data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })} />}<small>{field.hint}</small></label>; })}
     </div>

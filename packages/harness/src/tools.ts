@@ -14,7 +14,10 @@ import type { VerdictRecord } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
-import { describePackCheck, describePrepare } from './commands.js';
+import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
+import { checkInstalledPack, loadPack, packWords } from './packs.js';
+import { releasePack } from './release.js';
+import { runView, type RunWords } from './remote.js';
 import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyValue } from './run-arguments.js';
 
 /** One tool as `ctx.tools.register` takes it: whatever `defineTool` makes of a definition. */
@@ -239,6 +242,10 @@ export function himaTools(deps: FabricDeps): ToolDefinition[] {
           additionalProperties: true,
           description: 'What to set the pack\'s own strategy knobs to for the first generation, by the names its contract declares, e.g. { "<knob>": <value> }. A knob left out takes the default that pack declares; a knob it does not declare, or a value outside the bounds or the list it declares, is refused and no run is started.',
         },
+        test: {
+          type: 'boolean',
+          description: 'Start this run as the test run of its pack, whatever stage the pack folder stands at. Omitted, the folder decides: a pack the authoring pipeline is still carrying an author through is a test run, and a released or hand-written pack is an ordinary campaign.',
+        },
         timeBox: { type: 'number', description: 'The time box in minutes. Omitted, sixty.' },
         retries: { type: 'integer', description: 'The retry allowance per node per generation. Omitted, three.' },
         generations: { type: 'integer', description: "How many generations this campaign's loop may open. Omitted, the pack's own limit, then six." },
@@ -270,6 +277,10 @@ export function himaTools(deps: FabricDeps): ToolDefinition[] {
           site: args.site,
           goal: goal.params,
           strategy: strategyArgument(args.strategy),
+          // An absent key, never an undefined one, as everywhere else a request is composed here:
+          // the schema above has already held it to a boolean, so a caller that said nothing has
+          // said nothing and the pack folder decides.
+          ...(args.test === undefined ? {} : { test: args.test }),
           timeBoxMs: timeBox === undefined ? undefined : Math.round(timeBox * 60_000),
           retryAllowance: toolNumber('retries', args.retries),
           generationLimit: toolNumber('generations', args.generations),
@@ -304,6 +315,136 @@ export function himaTools(deps: FabricDeps): ToolDefinition[] {
       // The calling agent's session is who the ledger records; a call arriving without one is
       // the workbench's, as the resume route's is.
       execute: async (args, exec) => resumeToolValue(await resumeRun(deps, { runId: args.run, who: exec.agent === undefined ? 'workbench' : String(exec.agent.id) })),
+    }),
+    // ---------------------------------------------------------------------------------------
+    // The three the pack authoring pipeline's stages call (#64). A stage is a model following a
+    // skill body with the tools that exist, and what a stage must never do is *compute* — a hash, a
+    // folder digest, a check against the ledger. Each of these is one of those computations, so the
+    // skill asks for it and writes down the answer rather than working one out.
+    //
+    // Registered globally with the rest, which is what puts them within reach of an authoring
+    // session: the guard governs `write`, `edit` and `bash` and nothing else, so a chat whose working
+    // directory is a pack folder can ask these three exactly as any other session can.
+    // ---------------------------------------------------------------------------------------------
+    defineTool({
+      name: 'hima_pack_check',
+      description: 'Hold a HimaPack against a named Site and answer how far up the authoring pipeline its folder has come: whether the site can host it, which rung the folder stands on, what the next rung needs, and the whole check in the words `/hima pack check` prints. A folder with no contract in it yet is answered by the ladder rather than as an unknown pack.',
+      parameters: {
+        pack: { type: 'string', required: true, description: 'Pack id, which is the folder name under the packs directory.' },
+        site: { type: 'string', required: true, description: 'Site name, as in the site file.' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            fit: { type: 'boolean', required: true, description: 'Whether this site can host this pack as the folder now stands.' },
+            stage: { type: 'string', required: true, description: 'The highest rung of the authoring pipeline this folder has reached.' },
+            next: { type: 'string', description: 'The rung above, or absent at the top of the ladder.' },
+            needs: { type: 'string', description: 'What that rung needs and which stage writes it; absent at the top.' },
+            issue: { type: 'string', description: 'Why the ladder stopped here, when it stopped on a file that is there and wrong.' },
+            text: { type: 'string', required: true, description: 'The whole check as `/hima pack check` prints it.' },
+          },
+        },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      execute: (args) => {
+        const result = checkInstalledPack(deps, { pack: args.pack, site: args.site });
+        const stage = packCheckStage(result);
+        // An absent key, never an undefined one: at the top of the ladder there is no next rung, and
+        // a rung that stopped on nothing has no issue to name.
+        const head = { fit: packCheckFit(result), stage: stage.stage, text: describePackCheckResult(result) };
+        const withNext = stage.next === undefined ? head : { ...head, next: stage.next, needs: stage.needs! };
+        return Promise.resolve(stage.issue === undefined ? withNext : { ...withNext, issue: stage.issue });
+      },
+    }),
+    defineTool({
+      name: 'hima_status',
+      description: 'Read one HimaHarness run back out of the HimaLedger: the run row, every observation, refusal and verdict, the state of each node, one row per generation of its loop, its jobs, its blockers, its latest decision and its experience report. What the run view route answers, without a browser. A run this ledger does not hold is answered in words and nothing is read, and a run whose pack cannot be loaded is answered as unreadable naming the pack rather than as a view with the pack\'s own words missing.',
+      parameters: {
+        run: { type: 'string', required: true, description: 'The run id, as /hima run or /hima status names it.' },
+      },
+      output: {
+        schema: {
+          // Open, because what a run view carries is the run view's own declaration (`remote.ts`) and
+          // it grows with the harness: a closed schema here would be a second spelling of it, and the
+          // first ticket to add a section to a Run would make this tool refuse its own answer.
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            kind: { type: 'string', required: true, enum: ['run', 'unknown', 'unreadable'], description: 'Whether this ledger holds that run, and whether its pack could be read.' },
+            reason: { type: 'string', description: 'Why there is nothing to read, when there is nothing.' },
+            run: { type: 'json', description: 'The run row: its identity, status, pack, purpose, goal, budget, strategy and meters.' },
+          },
+        },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      execute: (args) => {
+        const run = deps.ledger.run(args.run);
+        // A refusal in words, as `hima_resume` answers one: the caller asked about a run and there is
+        // no such run, which is a fact about their request and not a fault of this host.
+        if (!run) return Promise.resolve({ kind: 'unknown' as const, reason: `no run ${args.run} in the HimaLedger; nothing was read` });
+        // The pack's own words for the numbers this Run is stated in, loaded here and **not** through
+        // `installedPackWords` (#64). That helper answers "no words" for every way of failing to load
+        // a pack, which is right for a card rendered once a second and wrong for a stage: a pipeline
+        // stage writes a record from this answer, and a pack that will not load is the very thing the
+        // stage has to be told about rather than handed a view with the words quietly missing.
+        let words: RunWords | undefined;
+        try {
+          words = run.packId === undefined ? undefined : packWords(loadPack(deps.packsDir, run.packId));
+        } catch (err) {
+          return Promise.resolve({
+            kind: 'unreadable' as const,
+            reason: `run ${args.run} names pack ${run.packId!}, and that pack cannot be read: ${(err as Error).message}`,
+          });
+        }
+        // The very JSON the run view route puts on the wire, round-tripped through it: a view whose
+        // arrays are readonly is a TypeScript shape, and what a tool answers with is a JSON document.
+        // Doing it here rather than retyping the view's sections as tool schema keeps this tool's
+        // answer and the route's one answer — the day a section is added to a Run it is in both.
+        const view: unknown = JSON.parse(JSON.stringify(runView(deps.ledger, run, words)));
+        return Promise.resolve({ kind: 'run' as const, ...(view as Record<string, never>) });
+      },
+    }),
+    defineTool({
+      name: 'hima_pack_release',
+      description: 'Seal a tested HimaPack: write VERSION.yml over every file the folder is made of, with the hashes this harness computed, the version its contract declares, and the test record it rests on. Refuses a folder that is not tested, one whose test record no longer holds against the ledger, and one holding anything that is not a plain file. Releasing again over the same version rewrites the seal, which is what follows a fixed script and a re-run test stage.',
+      parameters: {
+        pack: { type: 'string', required: true, description: 'Pack id, which is the folder name under the packs directory.' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            kind: { type: 'string', required: true, enum: ['released', 'refused'] },
+            pack: { type: 'string', description: 'The pack that was sealed.' },
+            version: { type: 'string', description: 'The version its contract declares, which is what was sealed.' },
+            released: { type: 'string', description: 'When the seal was written.' },
+            run: { type: 'string', description: 'The run its test record rests on.' },
+            files: { type: 'integer', description: 'How many files the seal covers.' },
+            file: { type: 'string', description: 'Where the seal was written.' },
+            rewritten: { type: 'boolean', description: 'Whether this replaced a seal the folder already carried.' },
+            reason: { type: 'string', description: 'Why nothing was sealed, when nothing was.' },
+          },
+        },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      execute: (args) => {
+        const result = releasePack(deps, { pack: args.pack });
+        if (result.kind === 'refused') return Promise.resolve({ kind: 'refused' as const, reason: result.reason });
+        const { sealed } = result;
+        return Promise.resolve({
+          kind: 'released' as const,
+          pack: sealed.pack,
+          version: sealed.version,
+          released: sealed.released,
+          run: sealed.test.run,
+          files: Object.keys(sealed.files).length,
+          file: result.file,
+          rewritten: result.rewritten,
+        });
+      },
     }),
     defineTool({
       name: 'hima_cancel',

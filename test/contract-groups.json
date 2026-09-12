@@ -24,7 +24,16 @@
     "test/contract/view.test.ts",
     "test/contract/experience.host.test.ts",
     "test/contract/experience-report.test.ts",
-    "test/contract/experience-files.test.ts"
+    "test/contract/experience-files.test.ts",
+    "test/contract/boundary.test.ts",
+    "test/contract/profile-overlay.test.ts",
+    "test/contract/skills.test.ts",
+    "test/contract/standin-stages.test.ts",
+    "test/contract/substitute.test.ts",
+    "test/contract/moment.host.test.ts",
+    "test/contract/workshop.host.test.ts",
+    "test/contract/pack-readers.host.test.ts",
+    "test/contract/pipeline-stages.host.test.ts"
   ],
   "desktop": [
     "test/contract/budget.test.ts",
@@ -39,7 +48,11 @@
     "test/contract/start-form-window.test.ts",
     "test/contract/strategy.test.ts",
     "test/contract/window.test.ts",
-    "test/contract/unified-workbench.test.ts"
+    "test/contract/unified-workbench.test.ts",
+    "test/contract/moment.test.ts",
+    "test/contract/workshop.test.ts",
+    "test/contract/pack-readers.test.ts",
+    "test/contract/pipeline-stages.test.ts"
   ],
   "live-site": [
     "test/contract/jobs.live.test.ts",

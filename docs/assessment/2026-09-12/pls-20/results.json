@@ -1,0 +1,89 @@
+{
+  "schema": "hima-pls20-validation/1",
+  "validatedAt": "2026-09-12T15:23:55.311830+00:00",
+  "baseline": "0c8f127a93a4ad933aedd9b08e10330d87868cf5",
+  "upstream": "ca47fa05ebe7417c23f0aebbb769db627bbf08a0",
+  "productIdentity": "881dcaa8af9f9341674761e8c7b035989307ad29af5d7a616beec33ae73f6313",
+  "buildIdentity": "import-manifest.json buildFiles (145 hashes)",
+  "groups": {
+    "local": 34,
+    "desktop": 17,
+    "live-site": 3
+  },
+  "l0": {
+    "passed": true,
+    "details": "l0.json"
+  },
+  "local": {
+    "passed": true,
+    "counts": {
+      "tests": 278,
+      "pass": 278,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "exitCode": 0,
+    "seconds": 989.164,
+    "bootAttempts": {
+      "host-process": 43,
+      "host-in-process": 259,
+      "electron": 0
+    },
+    "sshAttempts": 0,
+    "realModelSessions": 0,
+    "log": "logs/local-final.tap"
+  },
+  "desktop": {
+    "passedDistinctCases": 7,
+    "evidence": [
+      "logs/desktop-1.tap",
+      "logs/desktop-2.tap",
+      "logs/desktop-3.tap"
+    ],
+    "attempts": 13,
+    "failedAttempts": 2,
+    "electronLaunches": 14,
+    "seconds": 198.681,
+    "scope": "cold native conversation, files/report, preparation races, resume/cancel, Workshop/purpose/invalid-Pack option, version refusal, no credential persistence"
+  },
+  "liveModel": {
+    "passed": true,
+    "checks": 12,
+    "realModelSessions": 1,
+    "apiRequests": null,
+    "tokens": null,
+    "model": "deepseek-v4-flash",
+    "seconds": 53.727,
+    "electronLaunches": 1,
+    "replay": false,
+    "researchClaim": false,
+    "evidence": "live-model/2026-09-12-live-check-workshop.json"
+  },
+  "liveSite": {
+    "ran": false,
+    "sshAttempts": 0,
+    "edaJobs": 0
+  },
+  "pilot": {
+    "ran": false
+  },
+  "review": {
+    "standardsFindings": 0,
+    "specFindings": 0,
+    "details": "review.md"
+  },
+  "sourceReadback": {
+    "checkedCommittedFiles": 247,
+    "changedPaths": [],
+    "sourceWritesByThisTask": 0
+  },
+  "delivery": "pending commit and verified push; tracked separately in delivery.json",
+  "limits": [
+    "Stand-in/replay mechanisms do not establish real DTCO research quality or Fmax improvement.",
+    "Old Ledger 14 homes are refused by version gate 19; no data migration.",
+    "Early diagnostic Host counts were not instrumented; final local and all Desktop/model launch counts are recorded.",
+    "Individual model API request and token counts were not measured."
+  ]
+}

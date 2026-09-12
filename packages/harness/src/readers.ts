@@ -1,9 +1,19 @@
-// HimaGadget readers turn report bytes into typed semantics. The raw reader records only identity;
-// the two Innovus readers below turn a recognised report kind into the base timing vocabulary.
+// The readers this bundle ships: the default library, and no longer the only way a report is read.
+// The raw reader records only identity; the two Innovus readers and the qor reader below turn a
+// recognised report kind into the value types `packages/harness/semantics.yml` declares.
+//
+// Since #61 a HimaPack brings readers of its own — a script in its tools folder, shipped to the Site
+// and launched as a Job, whose output is validated against the pack's own `semantics.yml` — so what
+// is here is what every pack of this kind would otherwise write out again, and a pack that ships its
+// own scripts for these report kinds runs on those instead.
 //
 // Every reader declares itself: the report kind it accepts, the value types it can emit, and its own
 // version. The declaration is `ReaderRef`, so it travels into each observation record unchanged and
-// a pack can state the readers a goal needs without running one.
+// a pack can state the readers a goal needs without running one. **What it declares it emits is what
+// it emits**: every type in `emits` appears in every reading, unknown with a reason where the report
+// does not state it, because the one validator (`semantics.ts`) holds the set of types produced
+// against the set declared — a reader that quietly emitted fewer on some reports would be a rule
+// going UNDETERMINED for want of a number nobody noticed was missing.
 import { gunzipSync } from 'node:zlib';
 import type { ReaderRef } from './ledger.js';
 import type { SemanticValue } from './semantics.js';
@@ -85,19 +95,33 @@ function timingValue(
   row: string[] | undefined,
   missingReason: string,
 ): SemanticValue {
-  const type = `${mode}_${kind}` as SemanticValue['type'];
   const n = row ? cellFor(columns, row, scope) : undefined;
-  if (n === undefined) return { type, unit: 'ns', mode, scope, value: null, unknownReason: missingReason };
-  return { type, unit: 'ns', mode, scope, value: n };
+  if (n === undefined) return { type: `${mode}_${kind}`, unit: 'ns', mode, scope, value: null, unknownReason: missingReason };
+  return { type: `${mode}_${kind}`, unit: 'ns', mode, scope, value: n };
+}
+
+/** The two analysis passes and the two path scopes, in the order a reader states them. */
+const MODES: readonly Mode[] = ['setup', 'hold'];
+const SCOPES: readonly ('all' | 'reg2reg')[] = ['all', 'reg2reg'];
+
+/** All four WNS/TNS values of one analysis pass, unknown for the one reason none of them was read. */
+function unreadTiming(mode: Mode, reason: string): SemanticValue[] {
+  return (['wns', 'tns'] as const).flatMap((kind) =>
+    SCOPES.map((scope): SemanticValue => ({ type: `${mode}_${kind}`, unit: 'ns', mode, scope, value: null, unknownReason: reason })));
 }
 
 /**
  * Reads an Innovus `optDesign -postRoute` summary (gzip or plain text). Detects Setup vs Hold mode
  * from the table header and emits WNS/TNS for the `all` and `reg2reg` scopes in that mode, plus
  * placement density from the `Density:` line. A clock period is never stated in this report, so it
- * is always emitted unknown. If the mode itself cannot be found (for example a report truncated
- * before its table), no WNS/TNS values are guessed at — fabricating a mode would be worse than
- * omitting it — but density and clock period are still reported, unknown if their lines are missing.
+ * is always emitted unknown.
+ *
+ * The *other* mode's four values are emitted unknown too, saying which mode the report actually
+ * states — and if the header itself cannot be found (a report truncated before its table), all eight
+ * are unknown saying that. Nothing is guessed at either way: fabricating a mode would be worse than
+ * saying nothing, and *omitting* a declared type would be this reader's record promising a hold slack
+ * its reading never mentions. An unknown with the report's own reason on it is the honest third
+ * answer, exactly as it is for a missing line.
  */
 export const innovusTimingSummaryReader: Reader = {
   id: 'innovus-timing-summary',
@@ -119,16 +143,26 @@ export const innovusTimingSummaryReader: Reader = {
     const values: SemanticValue[] = [];
 
     const header = findModeHeader(lines);
-    if (header) {
-      const { mode, columns } = header;
+    // Both analysis passes, always, because both are declared: one report states one of them, and the
+    // other is reported unknown saying so rather than left out. A reading that simply omitted the
+    // other pass would be a reader emitting fewer types than its own record says it can, and a hold
+    // rule applied to it would go UNDETERMINED with nothing anywhere saying why.
+    for (const mode of MODES) {
+      if (header === undefined) {
+        values.push(...unreadTiming(mode, 'no "Setup mode" or "Hold mode" timing table header found in the report'));
+        continue;
+      }
+      if (header.mode !== mode) {
+        values.push(...unreadTiming(mode, `this report states the ${header.mode} mode timing table, so it says nothing about ${mode} timing`));
+        continue;
+      }
+      const { columns } = header;
       const wnsRow = findRow(lines, /^WNS \(ns\):$/);
       const tnsRow = findRow(lines, /^TNS \(ns\):$/);
       const wnsReason = `no "WNS (ns):" row found in the ${mode} mode timing table`;
       const tnsReason = `no "TNS (ns):" row found in the ${mode} mode timing table`;
-      values.push(timingValue('wns', mode, 'all', columns, wnsRow, wnsReason));
-      values.push(timingValue('wns', mode, 'reg2reg', columns, wnsRow, wnsReason));
-      values.push(timingValue('tns', mode, 'all', columns, tnsRow, tnsReason));
-      values.push(timingValue('tns', mode, 'reg2reg', columns, tnsRow, tnsReason));
+      for (const scope of SCOPES) values.push(timingValue('wns', mode, scope, columns, wnsRow, wnsReason));
+      for (const scope of SCOPES) values.push(timingValue('tns', mode, scope, columns, tnsRow, tnsReason));
     }
 
     const densityMatch = /^Density:\s*([0-9.]+)%/m.exec(text);
@@ -419,3 +453,13 @@ const registry = new Map<string, Reader>(
 export function readerNamed(id: string): Reader | undefined {
   return registry.get(id);
 }
+
+/**
+ * Every reader this bundle ships, as a declaration: what each accepts and what each emits (#61).
+ *
+ * On the surface because the bundle is now one of two places a reader can come from, and both a pack
+ * author composing a contract and the contract test that holds these `emits` against
+ * `packages/harness/semantics.yml` need the same list the registry answers from. Derived from the
+ * registry rather than written out again, so a reader added there cannot be missing from here.
+ */
+export const bundledReaders: readonly ReaderRef[] = [...registry.values()].map(declarationOf);

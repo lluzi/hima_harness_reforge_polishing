@@ -1,0 +1,44 @@
+{
+  "schema": "hima-pls20-l0/1",
+  "node": "v24.20.0",
+  "pnpm": "11.25.0",
+  "buildLog": "logs/build-3.log",
+  "typecheckLog": "logs/typecheck-5.log",
+  "commands": [
+    {
+      "command": "pnpm install --lockfile-only --store-dir \"$PWD/.hima-tmp/pnpm-store\"",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm install --frozen-lockfile --store-dir \"$PWD/.hima-tmp/pnpm-store\"",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm run check:node",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm run check:seams",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm run check:boundary",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/run-contract-tests.mjs --check",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm run typecheck",
+      "exitCode": 0
+    }
+  ],
+  "staticDurationsSeconds": null,
+  "buildReuse": "The final build is shared by subsequent local, desktop and live-model tests; no implicit leaf-command builds.",
+  "gitDiffWhitespace": "Original source reference files preserve their original whitespace; current-code diff is checked excluding docs/upstream."
+}

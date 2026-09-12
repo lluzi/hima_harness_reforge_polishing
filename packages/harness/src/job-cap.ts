@@ -11,7 +11,7 @@
 // ledger, and nothing of the driver — a Run's graph is nothing to do with how much of its Site is
 // free, and both faces that launch reach this the same way.
 import { jobSessionThere, jobStatus, launchJob, pollAfter, type JobDeps, type LaunchResult } from './jobs.js';
-import { recordNode, type JobRecord, type Ledger, type NodeKind, type RunRecord, givesUpLaunch } from './ledger.js';
+import { recordNode, type JobRecord, type LaunchedReading, type LaunchedWorkshop, type Ledger, type NodeKind, type RunRecord, givesUpLaunch } from './ledger.js';
 import { driving, existingRun } from './runs.js';
 import { advance, timeBoxSpent } from './budget.js';
 import type { Site } from './sites.js';
@@ -115,7 +115,7 @@ export async function heldJobSlots(deps: JobDeps, siteName: string): Promise<Job
  * it has accounted for that launch, and the Run can be wrong. Three paths write exactly that record
  * about a session that is still there — a kill that did not take, on a cancel (`cancelRun`,
  * `stoppedWithJob`) and on the time box — and that outcome exists precisely because nothing may say a
- * licence was released while dc_shell still holds it.
+ * licence was released while the tool still holds it.
  *
  * So the rule is both halves together: **a launch with no `finished` or `killed` record is open
  * unless the Run has accounted for it on a node *and* the Site reports its session gone.** A Site
@@ -395,6 +395,15 @@ export async function claimSlotAndLaunch(
     readonly argv: readonly string[];
     readonly licences: Readonly<Record<string, number>>;
     readonly waitedMs: number;
+    /**
+     * What the Job is called, when it is not called after the node it belongs to (#61).
+     *
+     * A node launches one Job and the node's own id is the natural name for it — except at an observe
+     * node, which may launch the pack's *reader* script, and a Job named after the node would then be
+     * indistinguishable on the Site from the tool Job of a node of that name. `reader-<id>` says what
+     * is running in that tmux session while it is running, which is the whole use of a Job's name.
+     */
+    readonly jobName?: string;
     readonly log?: (line: string) => void;
     /**
      * The branch of a fork this launch is made inside, when it is made inside one (#29). Carried onto
@@ -404,6 +413,12 @@ export async function claimSlotAndLaunch(
      * queued and which is running.
      */
     readonly branchId?: string;
+    /** What this launch was decided to read, when it is a pack reader's (#61): carried straight to
+     *  the `launched` record, which is where a host that never launched it reads it back from. */
+    readonly reading?: LaunchedReading;
+    /** The entry a workshop's Job gives its wrapper as the first operand, and the hash it was verified to have (#62): carried straight
+     *  to the `launched` record, which is what ties the Job on the audit to the bytes in the ledger. */
+    readonly workshop?: LaunchedWorkshop;
   },
 ): Promise<Claim> {
   const { site, run, node, attempt } = req;
@@ -431,11 +446,17 @@ export async function claimSlotAndLaunch(
           site: site.name,
           workspace: req.workspace,
           argv: req.argv,
-          name: node.id,
+          name: req.jobName ?? node.id,
           run: run.id,
           nodeId: node.id,
           licences: req.licences,
           ...inBranch,
+          ...(req.reading === undefined ? {} : { reading: req.reading }),
+          ...(req.workshop === undefined ? {} : { workshop: req.workshop }),
+          // Which attempt at the node this Job belongs to, written where the attempt is in hand
+          // (#62): a host that picks the Job up after a restart numbers the records it writes for it
+          // from here, rather than inferring it from a node record the launch may have outlived.
+          attempt,
         }),
     });
     if (claimed.kind === 'unreadable') {

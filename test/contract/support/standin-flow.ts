@@ -31,6 +31,15 @@ export interface StandinOptions {
   readonly failuresByTag?: Readonly<Record<string, number>>;
   /** What this flow closes at, in ns. Default 2.20 — what `local-site.ts` generates. */
   readonly achievableNs?: number;
+  /**
+   * A symlink the `synth` stage plants at the Campaign workspace root before it writes anything:
+   * `<name>` pointing at `<to>`, relative to that root.
+   *
+   * For the one test that needs the workspace to have been rearranged **by a Job of the Campaign's
+   * own** — which is the way a link really gets into a workspace, a script the model wrote having
+   * made one — rather than by the test reaching in during a window it has to win a race for.
+   */
+  readonly plantsLink?: { readonly name: string; readonly to: string };
 }
 
 /**
@@ -55,6 +64,7 @@ export async function writeStandinFlow(t: TestContext, h: HimaHome, opts: Standi
     failures: opts.failures,
     failuresByTag: opts.failuresByTag,
     achievableNs: opts.achievableNs,
+    plantsLink: opts.plantsLink,
   });
   return { root: flow.root, design: flow.design, achievableNs: flow.achievableNs, failFile: flow.failFile };
 }

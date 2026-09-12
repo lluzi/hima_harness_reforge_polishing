@@ -287,13 +287,14 @@ test('a contract declaring no strategy knob at all is refused when the pack is l
     // ledger's own row schema rather than in a sentence about the pack.
     await writePackVariant(packsDirOf(h), 'declares-no-knob', [[shippedStrategyBlock, 'strategy: {}']]);
     // Refused where the contract is read, so it is refused the way every other thing the contract
-    // can be wrong about itself is: a pack whose own files do not parse propagates out of the
-    // command rather than being answered, because there is no pack there to report on.
-    await assert.rejects(
-      () => himaCommand(host, h.workspace, '/hima pack check declares-no-knob --site local'),
-      /strategy: declares no knob, and a pack whose Strategy has nothing in it has nothing for an Explore node to choose/,
-      'the empty block is refused for being empty, and not further down for the chooser and words that then have no knob to name',
-    );
+    // can be wrong about itself is. Since #63 the check answers that refusal rather than throwing
+    // it, with the rung the folder stands on beside it — a pack that will not load is a folder that
+    // has not reached `compiled`, and a person told only what is broken is not told what writes the
+    // file that would fix it.
+    const refusedDeclaresNoKnob = await himaCommand(host, h.workspace, '/hima pack check declares-no-knob --site local');
+    assert.equal(refusedDeclaresNoKnob.kind, 'error', refusedDeclaresNoKnob.text);
+    assert.match(refusedDeclaresNoKnob.text, /strategy: declares no knob, and a pack whose Strategy has nothing in it has nothing for an Explore node to choose/,
+      `the empty block is refused for being empty, and not further down for the chooser and words that then have no knob to name: ${refusedDeclaresNoKnob.text}`);
 
     // The shipped pack, unvaried, is the control: the refusal above is about the one thing that was
     // varied and not about a pack that could never have loaded.

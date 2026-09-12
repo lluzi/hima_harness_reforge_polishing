@@ -26,7 +26,7 @@ export const runArguments = {
     allowed: (n: number) => Number.isInteger(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER,
   },
   // Bounded above at a thousand, and the bound is a judgement rather than a type's limit: a
-  // Generation of the reference pack is two and a half minutes of licensed Design Compiler, so a
+  // Generation of the reference pack is two and a half minutes of licensed synthesis, so a
   // thousand of them is already several days of one Campaign — past anything a person means by
   // "keep exploring" and well short of the numbers that only fail when the ledger is next opened.
   // Bounded below at one because a Loop that may open no generation at all is a Campaign that

@@ -1,14 +1,15 @@
 // @hima-seam plugin-module direct
 // @hima-seam commands direct
 // @hima-seam tools direct
+// @hima-seam skills direct
 // @hima-seam storage-domain direct
 // HimaHarness core plugin: the bundle's entry row on a DeepSeek Harness host. One reason to change:
 // what this bundle contributes to a host and what it hands back.
 //
 // It opens the ledger, makes HimaJudge the one holder of the verdict-writer capability, mounts the
-// Hima namespace where a browser surface is composed, puts the `/hima` command and the `hima_*` tools
-// on the host as effects that unwind when the plugin unloads, and picks up the Runs the last process
-// left in flight. What those faces say is `commands.ts` and `tools.ts`; what the operations do is
+// Hima namespace where a browser surface is composed, puts the `/hima` command, the `hima_*` tools
+// and the pack authoring pipeline's five skills on the host as effects that unwind when the plugin
+// unloads, and picks up the Runs the last process left in flight. What those faces say is `commands.ts` and `tools.ts`; what the operations do is
 // their own modules. Nothing here decides anything: every method below is one of those operations
 // with this host's dependencies handed to it.
 //
@@ -31,6 +32,10 @@ import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
 import { checkPack, loadPack, packWords, installedPackWords, installedPacks } from './packs.js';
 import { installedSites, loadSite } from './sites.js';
+import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
+import { installedPackStages } from './packs.js';
+import { registerHimaSkills } from './skills.js';
+import { registerAuthoringGuard } from './authoring.js';
 // The audit the routes answer with: the module-level pair every channel in this process records into.
 import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from './channel.js';
 
@@ -43,19 +48,73 @@ export type { Site, SshTarget, Permit } from './sites.js';
 
 // A HimaPack is data, and reading it is part of the bundle's surface: an operator inspects a pack
 // against a Site before starting a Campaign, and the contract suite reads the same answer.
-export { loadPack, installedPacks, checkPack, flowDirName, workspaceFileName, packFiles, toolArgv, outputPath, boundInputs, strategyKnobsOf } from './packs.js';
-export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, ContractOutput, PackCheck, ChooserCheck } from './packs.js';
+export { loadPack, installedPacks, checkPack, flowDirName, workspaceFileName, packFiles, toolArgv, outputPath, boundInputs, strategyKnobsOf, resolveRule, resolveChooser, packReadersDir, packKnowledgeDir } from './packs.js';
+export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackWorkshop, ContractOutput, PackCheck, ChooserCheck, KnowledgeCheck, WorkshopCheck, PackDataAt } from './packs.js';
+// The workshop (#62): the act node where the AI writes a script inside its declared directory and the
+// fabric runs it. On the surface because the contract suite asserts which three tools a workshop's
+// moment reaches and the live check opens one against the real model route.
+export { workshopArgv, readersDirName } from './packs.js';
+export { WORKSHOP_WRITE_TOOL, WORKSHOP_READ_TOOL, WORKSHOP_KNOWLEDGE_TOOL, WORKSHOP_READ_CAP } from './workshop.js';
+// How far up the pack authoring pipeline a folder has come (#63). On the surface because the pack
+// check reports it, the `/hima pack check` words print it, and the contract suite holds a folder the
+// pipeline authored against the sections the two stages are required to write.
+export { packStage, packStageOf, installedPackStages, isUnreadablePackFolder, pipelineFiles, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS } from './packs.js';
+export type { PackStage, PackStageName, PackStageOrRefusal, UnreadablePackFolder } from './packs.js';
+// The three rungs #64 made real: what the fabric and test records must hold, what a pack folder
+// hashes to, the seal a release writes over it, and the release itself. On the surface because the
+// contract suite holds an authored folder against the sections its stages are required to write, the
+// release verb is reached through the command face and the tool face alike, and the acceptance and
+// live-check scripts read a sealed folder back.
+export { HIMA_FABRIC_SECTIONS, HIMA_TEST_SECTIONS, checkTestRecord, runNamedByTestRecord, withTestRecord } from './packs.js';
+export type { ReleaseDeps, RunLookup, RunRecordSeen, TestRecordCheck, TestRecordRun } from './packs.js';
+// The one reading of a pack folder every answer about that folder is derived from (#64), and the two
+// things derived from it that a caller outside this bundle asks for: what a Campaign of a folder ran,
+// and which of its files a digest leaves out. On the surface because the contract suite holds an
+// authored folder's digest to the rule it states itself, and the live check reads one back.
+// `heldToOneInode` is on it for one reason, written down where the test that uses it is: it is the
+// one rule of that reading no arrangement of the filesystem can stage from a second call of this
+// process, so the suite holds the comparison itself rather than a race it cannot win.
+export { heldToOneInode, packDigestExcludes, packDigestOf, snapshotPackFolder } from './pack-folder.js';
+export type { PackFolderSnapshot } from './pack-folder.js';
+// The release (#64): the seal a tested folder is versioned with, the verb that writes one, and the
+// check that holds a folder against one. On the surface because the release verb is reached through
+// the command face and the tool face alike, and the acceptance and live-check scripts read a sealed
+// folder back.
+export { packVersionFile, releaseIssue, releasePack } from './release.js';
+export type { PackVersionFile, ReleaseResult } from './release.js';
+// The pack authoring pipeline's five skills (#63): what the bundle puts on a host, and where their
+// bodies and the authoring knowledge they cite live. On the surface because the contract suite holds
+// the registered row against them and the live check invokes two of the stages by name.
+export { himaSkillProvider, himaSkillsDir, registerHimaSkills, HIMA_SKILLS, HIMA_SKILL_PROVIDER, HIMA_KNOWLEDGE_FILES, HIMA_PACK_ANATOMY_FILE } from './skills.js';
+export type { HimaSkillName } from './skills.js';
+// The tools the authoring guard holds an authoring session to (#63), and which a Model moment
+// refuses by name (D48). Only the classification is on the surface, and only because the contract
+// suite holds it against a booted host's own tool list — the rule itself is plugin wiring, registered
+// below and reached through no export.
+export { FILE_WRITING_TOOLS, SHELL_TOOL, GOVERNED_TOOLS } from './authoring.js';
+// Where an id a pack names resolves from (#57): the pack's own folder first, the bundle's second.
+// On the surface because the check reports it, the decision record carries it, and the boundary
+// between the two is what this bundle's callers need to be able to say.
+export { packDataDirs } from './pack-data.js';
 export { prepareWorkspace, campaignIdFor, containerNameFor, campaignIdIssue, workspaceFile } from './workspace.js';
 export type { PrepareRequest, PrepareResult, WorkspaceFile } from './workspace.js';
 
 // HimaFabric and the choosers an Explore node picks a next strategy with: part of the surface
 // because the acceptance script and the contract suite start runs the same way the faces do.
-export { versionLine } from './commands.js';
+export { versionLine, packStageSaid } from './commands.js';
 export { startRun, resumeRun } from './fabric.js';
 export { cancelRun, reconcileRuns } from './recovery.js';
+// Model moments (#59): the one generic element a model needs, on the surface because the contract
+// suite and the live check both open one, and because the acceptance record names the preset.
+export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn, nextMomentAttempt, HIMA_MOMENT_PRESET } from './moments.js';
+export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
+export { MomentTurnError, NoCurrentNodeError } from './errors.js';
 export { writeExperience, readExperience } from './experience.js';
 export type { WriteExperienceResult, ReadExperienceResult } from './experience.js';
-export { defaultTimeBoxMs, defaultRetryAllowance } from './budget.js';
+// `attemptOfSession` is exported for the one thing that cannot be shown through a face: which
+// attempt a Job belongs to when the host that launched it died before the node record naming its
+// session was written. The contract suite asserts that reading at the ledger object (#62).
+export { defaultTimeBoxMs, defaultRetryAllowance, attemptOfSession } from './budget.js';
 export type { FabricDeps, StartRunRequest, StartRunResult, ResumeResult } from './fabric.js';
 export type { CancelResult, ReconcileOutcome } from './recovery.js';
 export { runArguments, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason } from './run-arguments.js';
@@ -97,6 +156,7 @@ export type {
   ExperienceView,
   ExperienceFileView,
   ExperienceAnswer,
+  MomentAnswer,
 } from './remote.js';
 
 // The Campaign's technical report (#30): what it says, and how a face reads one back. On the surface
@@ -136,7 +196,7 @@ export type { MeteredRun } from './card-labels.js';
 // What the ledger holds, for a caller reading records back through the namespace. `hasEnded` is the
 // one predicate over a Run's status every face shares: what counts as an ending is the ledger's to
 // say, not each caller's.
-export { hasEnded } from './ledger.js';
+export { hasEnded, runIdPattern } from './ledger.js';
 export type {
   LedgerRecord,
   ObservationRecord,
@@ -151,6 +211,9 @@ export type {
   CancelRecord,
   LoopRecord,
   ExperienceRecord,
+  SessionRecord,
+  CodeRecord,
+  MomentOutcome,
   ExperienceFile,
   LoopOutcome,
   RunLoop,
@@ -162,17 +225,42 @@ export type {
   NodeKind,
   NodeState,
   DecisionChoice,
+  PackDataOrigin,
+  RunPurpose,
   RunStatus,
   RunBudget,
   RunStrategy,
   RunMeters,
 } from './ledger.js';
-// The Job poll's two intervals, on the surface for the reason `jobs.ts` states: a test that holds a
-// Site unreadable and asserts the waiter kept asking must hold it for longer than one of them, and
-// an interval spelled out again in the test goes stale the day this one is tuned (#18).
-export { jobPollFastMs, jobPollSlowMs } from './jobs.js';
+// The Job poll's cadence — its two intervals and how long the fast one lasts — on the surface for
+// the reason `jobs.ts` states: a test that holds a Site unreadable and asserts the waiter kept asking
+// must hold it for longer than one of them, and an interval spelled out again in the test goes stale
+// the day this one is tuned (#18). A test that has to act **between** two looks needs the third for
+// the same reason: how long it has is which interval the waiter has settled into (#61).
+export { jobPollFastForMs, jobPollFastMs, jobPollSlowMs } from './jobs.js';
 export type { JobState, KillOutcome } from './jobs.js';
-export type { SemanticValue, SemanticValueType, SemanticUnit } from './semantics.js';
+export type { AnalysisMode, PathScope, SemanticDeclaration, Semantics, SemanticsFile, SemanticValue } from './semantics.js';
+// The value types a reading is held to, and the one validator every reader's output passes through
+// (#61): on the surface because a pack's own `semantics.yml` decides what a Campaign may measure, and
+// a caller composing or checking one needs the same reading of it the harness does.
+// And the two shapes a reader's output meets at that one gate (#61): the envelope a pack script
+// writes, and one typed value in it. On the surface for one reason, and only since #64: the
+// reference file the fabric stage is told to write its readers from shows an example of each, and
+// the suite holds that example to these very schemas rather than to a second spelling of them.
+export { bundleSemantics, readingDocument, readSemanticsFile, resolveSemantics, semanticsFileName, semanticValue, shippedSemanticsFile, validateReading } from './semantics.js';
+// The readers this bundle ships, as declarations: one of the two places a reader can come from since
+// #61, and what a pack author composing a contract chooses between.
+export { bundledReaders } from './readers.js';
+// **The one gate between a reader and HimaLedger** (#61): the function both paths into an
+// observation go through, which parses every value, holds it against the semantics in force and
+// writes one record — an observation or a refusal, never half of either.
+//
+// On the surface because it is the *narrow* door onto a wide one that is already there: a caller
+// holding `ctx.hima.ledger` can append an observation with no check at all, and a stored record that
+// does not match its schema is a ledger the next host cannot open. Nothing about a reading should
+// ever be written any other way, and a door nobody can reach is not the one that gets used.
+export { appendReading } from './observe.js';
+export type { AppendedReading, Reading } from './observe.js';
 
 export interface Config {
   /** Directory holding one `<site>.yml` per Site, each naming its Permit file. */
@@ -182,7 +270,7 @@ export interface Config {
 }
 
 export default class Hima extends Service {
-  static inject = ['storageDomain', 'commands', 'tools'];
+  static inject = ['storageDomain', 'commands', 'tools', 'skills'];
   static Config = z.object({ sitesDir: z.string().required(), packsDir: z.string().required() });
 
   ledger!: Ledger;
@@ -204,7 +292,7 @@ export default class Hima extends Service {
     const domain = await this.ctx.storageDomain.open(ledgerSpec);
     this.ledger = new Ledger(domain);
     // The judge takes the ledger's one verdict-writer capability here; nothing else can obtain it.
-    this.judge = createJudge(this.ledger);
+    this.judge = createJudge(this.ledger, this.config.packsDir);
     this.ctx.effect(() => () => domain.close());
     // The HimaGuide face: the Hima namespace, mounted only where a browser surface is composed.
     // A headless host has no web server and no browser session to guard it with, and still works.
@@ -218,6 +306,11 @@ export default class Hima extends Service {
           resumeRun: (runId, who) => this.resumeRun(runId, who),
           cancelRun: (runId) => this.cancelRun(runId),
           readExperience: (runId) => this.readExperience(runId),
+          // The one operation of this namespace that reaches dsh's agent seam, and the only one
+          // that needs the host itself rather than the ledger: a moment is composed out of this
+          // context (#59). Handed in like every other operation, so `remote.ts` stays a module a
+          // browser bundle can read the types of.
+          openMoment: (runId, instructions) => this.openMoment(runId, instructions),
           // The audit is this process's, so it is read here and not handed in: `remoteCommands` and
           // `clearRemoteCommands` are the module-level pair `channel.ts` keeps, and the drain reads
           // and clears with nothing awaited between the two, so no command can be sent unrecorded in
@@ -252,6 +345,7 @@ export default class Hima extends Service {
             // Only local declarations are read. Fabric rechecks them when a Run is actually started.
             return { ...fields, check: checkPack(pack, site) };
           },
+          packStages: () => installedPackStages(this.config.packsDir),
         }),
         'hima: /hima/api routes',
       );
@@ -267,6 +361,16 @@ export default class Hima extends Service {
       }),
     );
     for (const tool of himaTools(this.deps())) this.ctx.effect(() => this.ctx.tools.register(tool));
+    // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
+    // A person invokes one by typing its name; the model never chooses one for itself, because a
+    // stage is a person's decision about their own pack folder.
+    this.ctx.effect(() => registerHimaSkills(this.ctx), 'hima: the pack authoring pipeline\'s skills');
+    // And the rule those stages are actually held to, rather than told (#63). A session standing in
+    // a folder under `packsDir` is an authoring session of that folder: it writes nowhere else and
+    // has no shell. Registered on this context, so it applies to every agent, and as an effect, so
+    // it unwinds with the plugin. `authoring.ts` says why this is a guard and not a longer skill
+    // body, and why dsh's own file sandbox is not this rule.
+    this.ctx.effect(() => registerAuthoringGuard(this.ctx, this.config.packsDir), 'hima: the pack authoring guard');
     // Last, and deliberately not awaited: every Run the last process left in flight is picked up
     // again from the ledger and carried on. The host serves while that happens — a Run resumed here
     // may have an hour of synthesis still to wait for, and a workbench that would not answer until
@@ -314,6 +418,17 @@ export default class Hima extends Service {
     return readExperience(this.deps(), runId);
   }
 
+  /**
+   * Open one Model moment on the node a Run stands at, ask it one turn, and close it (#59).
+   *
+   * The one operation here that is handed this host's `ctx` rather than `deps()`: a moment is an
+   * isolated dsh session, and composing one takes the context the bundle was applied with. Every
+   * other operation is given the ledger and where things are installed, and reaches no host at all.
+   */
+  openMoment(runId: string, instructions: string): Promise<MomentOnNode> {
+    return momentOnCurrentNode({ ledger: this.ledger, ctx: this.ctx }, runId, instructions);
+  }
+
   /** What every Hima operation is given: this host's ledger and judge, where its Sites and packs
    *  are installed, and the host log. The log is for the one thing HimaFabric has to say that is not
    *  a record: a stretch of polls during which a Site could not be asked (#18). It goes there rather
@@ -325,6 +440,10 @@ export default class Hima extends Service {
       judge: this.judge,
       sitesDir: this.config.sitesDir,
       packsDir: this.config.packsDir,
+      // The host a workshop's Model moment is composed on (#62). The one thing here that is not a
+      // file or a record, handed in for the same reason the moment route is handed `openMoment`: a
+      // moment is composed out of this context, and every other operation reaches no host at all.
+      host: this.ctx,
       log: (line) => this.ctx.logger.info(line),
     };
   }

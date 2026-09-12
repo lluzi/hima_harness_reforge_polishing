@@ -1,0 +1,50 @@
+# The value types the readers this bundle ships emit, and what each one is measured in (#61).
+#
+# This is the *default* vocabulary and not the vocabulary: a HimaPack carries a `semantics.yml` of
+# its own beside its `contract.yml`, resolved ahead of this file, so a pack whose method yields a
+# candidate count or an adoption ratio declares it where the method lives (D46). What is here is what
+# every pack of this kind would otherwise write out again — the base timing quantities the bundled
+# readers read out of a synthesis or a post-route report — and nothing else.
+#
+# Every reader's output is held against the resolved list before it reaches HimaLedger: the type
+# declared, the unit the declared one, `mode` and `scope` carried exactly where they are declared.
+# The four slack types are the ones that carry both, because a slack is a statement about one
+# analysis pass over one path group and a number that forgot which is a number nobody can compare.
+#
+# `setup_wns`, `setup_tns`, `hold_wns` and `hold_tns` are *slacks*: negative when the requirement is
+# missed, and a rule reads them that way (`hold-wns-all-nonnegative` passes at `>= 0`). A tool that
+# prints a violation as a positive magnitude has that magnitude turned into the slack it stands for
+# by the reader, so that one type means one thing whichever tool produced it.
+values:
+  setup_wns:
+    unit: ns
+    mode: [setup]
+    scope: [all, reg2reg]
+    description: the worst setup slack, in the analysis pass and path group it names
+  setup_tns:
+    unit: ns
+    mode: [setup]
+    scope: [all, reg2reg]
+    description: the total negative setup slack over the paths of its group
+  hold_wns:
+    unit: ns
+    mode: [hold]
+    scope: [all, reg2reg]
+    description: the worst hold slack, in the analysis pass and path group it names
+  hold_tns:
+    unit: ns
+    mode: [hold]
+    scope: [all, reg2reg]
+    description: the total negative hold slack over the paths of its group
+  clock_period:
+    unit: ns
+    description: the clock period a generation was synthesized at, as the report states it
+  placement_density:
+    unit: percent
+    description: how much of the placeable area a generation's placement occupies
+  drc_violation_count:
+    unit: count
+    description: how many design-rule violations a verification pass reported
+  cell_area:
+    unit: um2
+    description: the total cell area of a generation's netlist

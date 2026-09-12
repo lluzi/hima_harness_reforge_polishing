@@ -1,0 +1,9 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+packages/desktop typecheck$ tsc -p tsconfig.json --noEmit
+packages/harness typecheck$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+packages/desktop typecheck: Done
+packages/harness typecheck: Done
+test/contract/experience-report.test.ts(26,5): error TS2741: Property 'chooserOrigin' is missing in type '{ recordId: string; at: string; nodeId: string; chooser: string; chosen: { goalMet: true; }; rationale: {}; cites: string[]; }' but required in type 'DecisionView'.
+test/contract/honest-standin.test.ts(122,8): error TS2304: Cannot find name 'overConstrainingChooserId'.
+[ELIFECYCLE] Command failed with exit code 2.

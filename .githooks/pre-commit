@@ -5,6 +5,7 @@ set -e
 [ -d "$HOME/.local/node24/bin" ] && PATH="$HOME/.local/node24/bin:$PATH"
 node scripts/require-node.mjs
 pnpm run check:seams
+pnpm run check:boundary
 pnpm run build
 pnpm run typecheck
 pnpm run test:unit

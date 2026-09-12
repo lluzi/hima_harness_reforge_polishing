@@ -1,0 +1,52 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-failing-1",
+          "name": "hima_workshop_write",
+          "arguments": "{\"path\":\"miner.sh\",\"content\":\"#!/bin/sh\\n# Written in the workshop, and wrong: it says what went wrong and gives up.\\nset -eu\\necho \\\"miner: the mining stage found no netlist to read\\\" >&2\\nexit 3\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "text"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": "miner.sh is written."
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "stop"
+        }
+      }
+    ]
+  }
+]

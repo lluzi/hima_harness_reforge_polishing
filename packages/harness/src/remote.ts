@@ -11,7 +11,7 @@
 // web app's own Host/Origin fence and session cookie to every one of them, so a Hima route is
 // exactly as guarded as `/api` is.
 //
-// The whole namespace, twelve operations and no more:
+// The whole namespace, thirteen operations and no more:
 //   GET  /hima/api/runs/<runId>           the Run: where it stands, its observations, its refusals,
 //                                         its verdicts with every citation resolved to the record it
 //                                         was read from, its nodes, its Jobs, and its decision
@@ -22,7 +22,7 @@
 //                                         view as the read above. `params` binds a value for any
 //                                         parameter a rule in `judge` declares, e.g. `{ target_period_ns: 2.3 }`.
 //   POST /hima/api/runs                   start a Campaign and execute its graph, body
-//                                         `{ pack, site, goal, strategy?, timeBox?, retries?, generations? }`, answering
+//                                         `{ pack, site, goal, strategy?, test?, timeBox?, retries?, generations? }`, answering
 //                                         with the Run when it stops — the same view as the read above.
 //   POST /hima/api/runs/start             the same body and the same operation, answering as soon as
 //                                         the Run exists while HimaFabric goes on driving it in the
@@ -53,6 +53,12 @@
 //   GET  /hima/api/runs/<runId>/experience.md
 //                                         the same report's Markdown alone, as `text/markdown`: what
 //                                         the card's link opens
+//   POST /hima/api/runs/<runId>/moment    open one Model moment on the node this Run stands at, body
+//                                         `{ instructions }`: an isolated model session with those
+//                                         instructions as its whole system prompt and no tools at
+//                                         all, asked one turn and closed, answering
+//                                         `{ sessionId, model, tools, text }` (#59). The ledger
+//                                         carries the pair of `session` records either way
 // The three reads are #3's three ledger reads — by run, by type, and by ID — and every one of them
 // goes through the host: nothing in the browser reaches a storage domain.
 //
@@ -70,6 +76,7 @@ import type {} from '@deepseek-ai/dsh-client-connection';
 import type {
   BlockerRecord,
   CancelRecord,
+  CodeRecord,
   DecisionChoice,
   DecisionRecord,
   ExperienceRecord,
@@ -81,15 +88,18 @@ import type {
   NodeRecord,
   NodeState,
   ObservationRecord,
+  PackDataOrigin,
   ReaderRef,
   RefusalRecord,
   RunBudget,
   RunLoop,
   RunFork,
   RunMeters,
+  RunPurpose,
   RunRecord,
   RunStatus,
   RunStrategy,
+  SessionRecord,
   VerdictRecord,
   WorkspaceRecord,
 } from './ledger.js';
@@ -101,18 +111,26 @@ import { generationsOf } from './generations.js';
 import type { RemoteCommand } from './channel.js';
 // The three record-to-view mappings a branch row reads too, so both folds are one description
 // (`record-views.ts`). Re-exported below, because a face reading a Run reads them from here.
-import { jobView, nodeView, observationView } from './record-views.js';
-import type { JobView, NodeView, ObservationView } from './record-views.js';
-export type { ObservationView, NodeView, JobView } from './record-views.js';
+import { codeView, jobView, nodeView, observationView, standingWorkshop } from './record-views.js';
+import type { CodeView, JobView, NodeView, ObservationView, WorkshopView } from './record-views.js';
+export type { ObservationView, NodeView, JobView, CodeView, WorkshopView, WorkshopState } from './record-views.js';
 import type { SemanticValue } from './semantics.js';
 import type { ObserveRequest, ObserveResult } from './observe.js';
 import type { ExperienceJson } from './experience-report.js';
 import type { ReadExperienceResult } from './experience.js';
 import type { ResumeResult, StartRunRequest, StartRunResult } from './fabric.js';
 import type { CancelResult } from './recovery.js';
-import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyValue } from './run-arguments.js';
-import { SiteNotFoundError, RuleReferenceError, RunFaultError, RunReferenceError, RunStartError, PackNotFoundError, SiteUnreadableError } from './errors.js';
+// Type-only, like every other shape here: `moments.ts` reaches dsh's agent seam, and this module is
+// bundled into the browser half, where a runtime import of it would ship the seam to every browser.
+import type { MomentOnNode } from './moments.js';
+import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyDeclaration, type StrategyValue } from './run-arguments.js';
+import { SiteNotFoundError, RuleReferenceError, RunFaultError, RunReferenceError, RunStartError, PackFolderError, PackNotFoundError, SiteUnreadableError, MomentTurnError, NoCurrentNodeError, RunRunningError, WorkshopNodeError } from './errors.js';
 import { messagePage, runPage, runsPage, type StartChoices } from './workbench.js';
+// Type-only, and erased: the ladder's rung names, declared where a pack folder is read.
+import type { PackStageOrRefusal } from './packs.js';
+// The one place the form's mark for a pack folder's stage is decided, beside every other word a
+// person reads off this harness.
+import { packStageMark } from './card-labels.js';
 import { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
 
 // The one namespace and the one document, both from the leaf every face reads them from
@@ -154,6 +172,14 @@ export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
  * as they were, and the right thing for a caller to do is ask again once the Site is back — which is what 503 means and what no other code here says. Its message carries
  * the Site's name and the Site's own words, because unlike a `RunFaultError` there is nothing written
  * for the caller to fetch instead, and the Site's words are what an operator acts on;
+ * `hima/moment-failed` (502) — a Model moment opened and its turn produced no answer (#59): the
+ * model route refused the request, failed mid-stream, or was cut off. Its own code and its own
+ * status because it is the third machine in this namespace that can fail to answer — a Site is
+ * `hima/site-unreadable`, this harness is `hima/internal`, and a model is neither. Nothing the
+ * caller sent is wrong and nothing here broke, so 502 is what it is: the gateway asked something
+ * upstream and got nothing usable back. Its message carries the model route's own words, because
+ * that is the entire content of the failure and, unlike a `RunFaultError`, there is no record for
+ * the caller to fetch instead — the moment is on the ledger, closed `failed`, and the reason is not;
  * `hima/internal` (500) — the operation failed for a reason the caller did not cause. Its message is
  * deliberately generic — a 500 body reaches whoever made the request, and a raw error text can carry
  * host paths and errno detail that belong in the host's log, not on the wire — with one exception: a
@@ -163,7 +189,7 @@ export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
  * (`startRunOperation` in this file states which).
  * A failure is never an empty answer: the client renders the code.
  */
-export type HimaErrorCode = 'hima/run-not-found' | 'hima/record-not-found' | 'hima/bad-request' | 'hima/run-not-in-state' | 'hima/run-not-stopped' | 'hima/experience-changed' | 'hima/not-authorized' | 'hima/site-unreadable' | 'hima/internal';
+export type HimaErrorCode = 'hima/run-not-found' | 'hima/record-not-found' | 'hima/bad-request' | 'hima/run-not-in-state' | 'hima/run-not-stopped' | 'hima/run-running' | 'hima/workshop-node' | 'hima/experience-changed' | 'hima/not-authorized' | 'hima/site-unreadable' | 'hima/moment-failed' | 'hima/internal';
 export interface HimaErrorBody { readonly error: { readonly code: HimaErrorCode; readonly message: string } }
 
 /** One refusal as HimaGuide shows it: a Run that read nothing still says why. */
@@ -221,6 +247,9 @@ export interface DecisionView {
   readonly at: string;
   readonly nodeId: string;
   readonly chooser: string;
+  /** Which of the two places that chooser was read from (#57): the pack's own `choosers/`, or the
+   *  bundle's. Carried because two packs may name one chooser and mean two different clauses. */
+  readonly chooserOrigin: PackDataOrigin;
   readonly chosen: DecisionChoice;
   readonly rationale: Readonly<Record<string, number>>;
   readonly cites: readonly string[];
@@ -297,6 +326,16 @@ export interface RunHeadView {
   /** The pack this Run runs. Absent on a Probe-campaign Run, which runs none. */
   readonly packId?: string;
   /**
+   * What this Run is for (#64): an ordinary Campaign, or the test run of a pack the authoring
+   * pipeline is still carrying an author through.
+   *
+   * On the view because every face marks a test run — the card's banner on both mounts, the run list
+   * and `/hima status` — so that a Campaign somebody reads as a result cannot be one a pack author
+   * opened to write their own test record from. Absent on every Run written before the pipeline
+   * existed, which reads `campaign`.
+   */
+  readonly purpose?: RunPurpose;
+  /**
    * The version of that pack, as the workspace this Campaign was prepared in recorded it.
    *
    * Read off the `workspace` record rather than off the row, because that is where it is: a Run's
@@ -362,6 +401,34 @@ export interface RunView {
   /** The Run's latest decision, or null when it has made none. */
   readonly decision: DecisionView | null;
   /**
+   * Every file a Model moment of this Run wrote, oldest first (#62): where each is on the Site, what
+   * it hashes to, and which node, attempt and session wrote it.
+   *
+   * Every one of them and not only the current node's, for the reason `blockers` is every blocker: a
+   * Campaign whose workshop failed twice and then succeeded is a Campaign a person reads three files
+   * of, and the attempt each belongs to is on the row.
+   */
+  readonly code: readonly CodeView[];
+  /**
+   * Where this Run's workshop stands (#62): the workshop node the Run stands at, or — once it has
+   * moved past it — the last one it did stand at.
+   *
+   * The last one it stood at, and not only the current node, because of where a workshop node leaves
+   * a Run: a workshop that succeeded is a Run standing at the node *after* it within milliseconds,
+   * and a workshop whose Retry allowance ran out is a Run routed to the pack's own Wait node. Either
+   * way the thing a person came to read — what was written, and how it went — is about a node the Run
+   * is no longer standing at. One entry and not a list, because a pack declares one workshop per node
+   * and a Campaign asks about the one it is in the middle of.
+   *
+   * Read off the Run's own `session` records, which carry the workshop and its entry since #62, and
+   * narrowed to the Generation the Run is in (`standingWorkshop`): no pack folder is opened to
+   * compose it, so a Campaign whose pack has since been edited or uninstalled still shows what its
+   * workshop did.
+   *
+   * Absent on every Run no workshop moment has opened on.
+   */
+  readonly workshop?: WorkshopView;
+  /**
    * The Campaign's technical report, once it has been written: where both files are on the Site,
    * what each hashes to, and when it was written (#30).
    *
@@ -411,6 +478,23 @@ export interface ExperienceAnswer {
   readonly report: ExperienceJson;
 }
 
+/**
+ * What `POST /hima/api/runs/<id>/moment` answers with (#59): the session a Model moment ran in, and
+ * what the model said in it.
+ *
+ * `tools` is dsh's own answer about that session's scope and not the caller's list, which is what
+ * makes it worth carrying on the wire at all: a caller that asked for a moment with no tools reads
+ * back that the session really had none. `sessionId` is dsh's own, so the same answer names the
+ * session log this turn is in, on the machine that ran it, and pairs with the two `session` records
+ * the ledger now carries for it.
+ */
+export interface MomentAnswer {
+  readonly sessionId: string;
+  readonly model: string;
+  readonly tools: readonly string[];
+  readonly text: string;
+}
+
 /** The records of one run, exactly as the ledger holds them. */
 export interface RecordsView { readonly records: readonly LedgerRecord[] }
 
@@ -454,6 +538,12 @@ export interface StartRunBody {
    * what it declares, is refused and no Run is started.
    */
   readonly strategy?: Readonly<Record<string, StrategyValue>>;
+  /**
+   * Start this Run as the **test run** of its pack (#64), whatever stage that pack's folder stands
+   * at. Left out, the pack's folder decides: a pack the pipeline is still authoring is a test run,
+   * and a released or hand-written pack is an ordinary Campaign.
+   */
+  readonly test?: boolean;
   readonly timeBox?: number;
   readonly retries?: number;
   /** How many Generations this Campaign's Loop may open. Absent, the pack's own, then the default. */
@@ -476,6 +566,15 @@ export interface RemoteOperations {
    *  `experience` record keeps. Here rather than done in this module, for the reason `installed` is:
    *  this namespace reaches no Site and opens no file of its own. */
   readExperience(runId: string): Promise<ReadExperienceResult>;
+  /**
+   * Open one Model moment on the node this Run stands at, ask it one turn, and close it (#59).
+   *
+   * Here rather than done in this module for a harder reason than the two above: this file is
+   * bundled into the browser half through `client/api.ts`, and a moment reaches dsh's agent seam —
+   * the one seam ADR-0001 keeps behind a single Hima file (`moments.ts`). The route below shapes the
+   * request and the answer; what a moment *is* stays where the seam is.
+   */
+  openMoment(runId: string, instructions: string): Promise<MomentOnNode>;
   /** HimaChannel's audit of what this host process has asked Sites to run since the last drain, and
    *  whether its rolling window has been full. Here rather than read from `channel.ts` for the same
    *  reason `readExperience` is: that module reaches ssh and this one is bundled into the browser
@@ -505,6 +604,18 @@ export interface RemoteOperations {
   /** Read local Pack/Site declarations once. Loading faults identify their preparation owner;
    * unexpected checking faults still propagate to the Host's internal error boundary. */
   startPreparation(packId: string, siteName: string | undefined): Pick<StartChoices, 'strategy' | 'words' | 'check' | 'preparation'>;
+  /**
+   * How far up the pack authoring pipeline each installed pack folder has come (#64), by pack id —
+   * or, for a folder nothing can read, the reading's own refusal naming the path.
+   *
+   * Here for the reason `installed` is: a pack folder is a directory, and this namespace opens none.
+   * Asked when the start form is rendered, so a folder the test stage finished while a window was
+   * open is marked for what it now is on the next look.
+   *
+   * **Per folder, and never for the list**: one folder somebody left a link in is one option a person
+   * cannot start, not a page with no start form on it.
+   */
+  packStages(): Readonly<Record<string, PackStageOrRefusal>>;
 }
 
 /** A request the caller got wrong: it reaches them as `hima/bad-request`, with its own message. */
@@ -567,6 +678,7 @@ function decisionView(record: DecisionRecord): DecisionView {
     at: record.at,
     nodeId: record.nodeId,
     chooser: record.chooser,
+    chooserOrigin: record.chooserOrigin,
     chosen: record.chosen,
     rationale: record.rationale,
     cites: record.cites,
@@ -580,7 +692,8 @@ function runHeadView(run: RunRecord, packVersion?: string, words?: RunWords): Ru
   // no empty fabric state and the client can tell "not started" from "started and at zero".
   const withStatus = run.status === undefined ? head : { ...head, status: run.status };
   const withPack = run.packId === undefined ? withStatus : { ...withStatus, packId: run.packId };
-  const withVersion = packVersion === undefined ? withPack : { ...withPack, packVersion };
+  const withPurpose = run.purpose === undefined ? withPack : { ...withPack, purpose: run.purpose };
+  const withVersion = packVersion === undefined ? withPurpose : { ...withPurpose, packVersion };
   const withWords = words === undefined ? withVersion : { ...withVersion, words };
   const withGoal = run.goal === undefined ? withWords : { ...withWords, goal: run.goal };
   const withBudget = run.budget === undefined ? withGoal : { ...withGoal, budget: run.budget };
@@ -639,6 +752,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
   // ending wrote — both read off this Run's own records, which is where each of them is.
   const prepared = records.findLast((r): r is WorkspaceRecord => r.type === 'workspace');
   const experience = records.findLast((r): r is ExperienceRecord => r.type === 'experience');
+  const workshop = standingWorkshop(run, records);
   return {
     run: runHeadView(run, prepared?.packVersion, words),
     ...(prepared === undefined ? {} : { workspace: { design: prepared.design, flowRoot: prepared.flowRoot, containerName: prepared.containerName } }),
@@ -654,6 +768,11 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     blockers: records.filter((r): r is BlockerRecord => r.type === 'blocker').map(blockerView),
     cancels: records.filter((r): r is CancelRecord => r.type === 'cancel').map(cancelView),
     decision: decision ? decisionView(decision) : null,
+    code: records.filter((r): r is CodeRecord => r.type === 'code').map(codeView),
+    // Where the Run's current node stands as a workshop, when it is one (#62). An absent key, never
+    // an undefined one: a Run standing at an ordinary act node says so by omission. Composed from
+    // these same records and nothing else, which is what the comment on `RunView.workshop` promises.
+    ...(workshop === undefined ? {} : { workshop }),
     // An absent key, never an undefined one: a Run whose report is not written says so by omission.
     ...(experience === undefined ? {} : { experience: experienceView(experience) }),
     ...(experience !== undefined || !(run.status === 'cancelled' || run.status?.startsWith('ended-')) ? {} : {
@@ -673,9 +792,10 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
  * through one of them without its words would be a card that said the same Campaign two ways
  * depending on which button a person had pressed last.
  */
-const runAnswer = (ops: RemoteOperations, run: RunRecord): RunView => runView(ops.ledger, run, ops.packWords(run.packId));
+const runAnswer = (ops: RemoteOperations, run: RunRecord): RunView =>
+  runView(ops.ledger, run, ops.packWords(run.packId));
 
-const RECORD_TYPES = new Set<LedgerRecord['type']>(['observation', 'refusal', 'verdict', 'job', 'workspace', 'node', 'blocker', 'resumed', 'decision', 'cancel', 'loop', 'experience']);
+const RECORD_TYPES = new Set<LedgerRecord['type']>(['observation', 'refusal', 'verdict', 'job', 'workspace', 'node', 'blocker', 'resumed', 'decision', 'cancel', 'loop', 'experience', 'session', 'code']);
 
 function recordType(raw: string | null): LedgerRecord['type'] | undefined {
   if (raw === null) return undefined;
@@ -717,6 +837,16 @@ function optionalString(body: Record<string, unknown>, key: string): string | un
   const value = body[key];
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || value === '') throw new BadRequest(`"${key}" must be a non-empty string when given`);
+  return value;
+}
+
+/** One boolean a request body may state. Refused rather than coerced: `"test": "yes"` is a caller
+ *  who believes they asked for a test run, and a truthy string quietly read as one would start a
+ *  Campaign marked in a way they never see the refusal for. */
+function optionalBoolean(body: Record<string, unknown>, key: string): boolean | undefined {
+  const value = body[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') throw new BadRequest(`"${key}" must be true or false when given; got ${JSON.stringify(value)}`);
   return value;
 }
 
@@ -850,6 +980,7 @@ async function readStartBody(req: IncomingMessage): Promise<StartRunBody> {
     site: requiredString(body, 'site'),
     goal: requiredNumberRecord(body, 'goal'),
     strategy: strategyRecord(body, 'strategy'),
+    test: optionalBoolean(body, 'test'),
     timeBox: runNumber(body, 'timeBox'),
     retries: runNumber(body, 'retries'),
     generations: runNumber(body, 'generations'),
@@ -863,6 +994,7 @@ const startRequestOf = (request: StartRunBody): StartRunRequest => ({
   site: request.site,
   goal: request.goal,
   strategy: request.strategy,
+  test: request.test,
   timeBoxMs: request.timeBox === undefined ? undefined : Math.round(request.timeBox * 60_000),
   retryAllowance: request.retries,
   generationLimit: request.generations,
@@ -902,7 +1034,7 @@ async function startRunOperation(ops: RemoteOperations, req: IncomingMessage): P
  * carrying whatever path the fault touched), same as the node record it matches.
  */
 function startThrew(request: StartRunBody, err: unknown): Answer {
-  if (err instanceof SiteNotFoundError || err instanceof PackNotFoundError || err instanceof RunStartError || err instanceof RunReferenceError) {
+  if (err instanceof SiteNotFoundError || err instanceof PackNotFoundError || err instanceof PackFolderError || err instanceof RunStartError || err instanceof RunReferenceError) {
     throw new BadRequest(`cannot start a run of pack ${request.pack} on site ${request.site}: ${err.message}`);
   }
   if (err instanceof RunFaultError) return failure(500, 'hima/internal', err.message);
@@ -1044,7 +1176,7 @@ async function resumeRunOperation(ops: RemoteOperations, runId: string): Promise
   try {
     result = await ops.resumeRun(runId, 'workbench');
   } catch (err) {
-    if (err instanceof SiteNotFoundError || err instanceof PackNotFoundError || err instanceof RunReferenceError) {
+    if (err instanceof SiteNotFoundError || err instanceof PackNotFoundError || err instanceof PackFolderError || err instanceof RunReferenceError) {
       throw new BadRequest(`cannot resume run ${runId}: ${err.message}`);
     }
     // A fault mid-drive is ours, and carries its own message for the same reason starting a Run does:
@@ -1101,6 +1233,52 @@ async function experienceOperation(ops: RemoteOperations, runId: string, asMarkd
   }
   if (asMarkdown) return { status: 200, body: read.markdown, media: 'text/markdown' };
   return ok({ experience: experienceView(read.record), markdown: read.markdown, report: read.json } satisfies ExperienceAnswer);
+}
+
+/**
+ * `POST /hima/api/runs/<runId>/moment`: open one Model moment on the node this Run stands at, ask it
+ * the instructions, close it, and answer with what the model said (#59).
+ *
+ * Why a route at all, beside the workshop's own moments (#62). A moment is the one generic
+ * element the harness owes a pack that wants to consult a model, and a mechanism nothing can reach
+ * is a mechanism nothing can check. This is how the contract suite opens one against the keyless
+ * replay stand-in, and how the live check opens one against the real model with the owner's key —
+ * the same three steps #62's act node will take with the pack's own tools in hand. It answers with
+ * the session's id, its model, the tools dsh reports for it and the turn's text: everything an
+ * auditor needs to hold the answer against the pair of records the ledger now carries.
+ *
+ * A Run this ledger does not hold is the same 404 every other route gives for it. A Run standing at
+ * no node is the conflict code, for the reason a resume of a Run that is not waiting is: nothing in
+ * the request is wrong. A Run that is **running** is the conflict code too, with its own
+ * `hima/run-running` (#62): a Run being driven opens its own moments at the node it stands on, and
+ * this route's session counter would take the number that drive's next retry is about to take. A Run
+ * **waiting at a workshop node** is refused for the same reason with `hima/workshop-node`: a workshop
+ * interrupted or out of Retry allowance leaves the Run waiting at that node, and the attempt after it
+ * belongs to the resume. A turn that produced no answer is `hima/moment-failed`, and the moment is
+ * closed `failed` before the answer is composed, so the ledger says what happened either way.
+ */
+async function momentOperation(ops: RemoteOperations, runId: string, req: IncomingMessage): Promise<Answer> {
+  // The Run before the body, as every other route of this namespace does it: a request naming a Run
+  // this ledger does not hold is answered 404 whatever else is wrong with it, so a caller with a
+  // stale Run id is told the one thing that is actually true of its request.
+  if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+  const body = await readJsonBody(req);
+  const instructions = requiredString(body, 'instructions');
+  let moment: MomentOnNode;
+  try {
+    moment = await ops.openMoment(runId, instructions);
+  } catch (err) {
+    if (err instanceof NoCurrentNodeError) throw new NotInState(err.message);
+    // A Run somebody is driving opens its own moments, and its own session counter is the node's
+    // attempt (#62): a moment opened here beside it would collide with the retry about to happen.
+    if (err instanceof RunRunningError) return failure(409, 'hima/run-running', err.message);
+    // A Run waiting at a workshop node is the same collision a restart away: the node's next attempt
+    // is the resume's to open, and this route would take its number (#62).
+    if (err instanceof WorkshopNodeError) return failure(409, 'hima/workshop-node', err.message);
+    if (err instanceof MomentTurnError) return failure(502, 'hima/moment-failed', err.message);
+    throw err;
+  }
+  return ok({ sessionId: moment.sessionId, model: moment.model, tools: moment.tools, text: moment.text } satisfies MomentAnswer);
 }
 
 /**
@@ -1193,6 +1371,14 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     return cancelOperation(ops, decoded(cancel[1]!, 'run id'));
   }
 
+  // Before the run read below, for the reason the two above are: `/runs/<id>/moment` would otherwise
+  // be claimed by nothing and answered as a route that does not exist.
+  const moment = /^\/runs\/([^/]+)\/moment$/.exec(rest);
+  if (moment) {
+    if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
+    return momentOperation(ops, decoded(moment[1]!, 'run id'), req);
+  }
+
   // Before the run read below, which claims `/runs/<id>` and `/runs/<id>/records` alone: this pair is
   // the one place in the namespace that reaches a Site to answer a read.
   const experience = /^\/runs\/([^/]+)\/experience(\.md)?$/.exec(rest);
@@ -1259,14 +1445,30 @@ function sendPage(res: ServerResponse, status: number, html: string): void {
  */
 function startChoices(ops: RemoteOperations, askedPack: string | null, askedSite: string | null): StartChoices {
   const installed = ops.installed();
-  const pack = askedPack ?? installed.packs[0];
+  const stagesOf = ops.packStages();
+  const marked = Object.entries(stagesOf).flatMap(([id, stage]) => {
+    const mark = packStageMark(stage);
+    return mark === undefined ? [] : [[id, mark] as const];
+  });
+  const cannotStart = Object.entries(stagesOf).filter(([, stage]) => typeof stage !== 'string').map(([id]) => id);
+  const startable = installed.packs.filter((id) => !cannotStart.includes(id));
+  const pack = askedPack ?? startable[0];
   const site = askedSite ?? installed.sites[0];
-  const selected = { ...installed, ...(pack === undefined ? {} : { pack }), ...(site === undefined ? {} : { site }) };
+  const selected: StartChoices = {
+    ...installed,
+    ...(marked.length === 0 ? {} : { marks: Object.fromEntries(marked) }),
+    ...(cannotStart.length === 0 ? {} : { cannotStart }),
+    ...(pack === undefined ? {} : { pack }),
+    ...(site === undefined ? {} : { site }),
+  };
   if (pack !== undefined && !installed.packs.includes(pack)) {
     return { ...selected, preparation: { kind: 'request', message: 'Select an installed Pack; this selection is no longer installed.' } };
   }
   if (site !== undefined && !installed.sites.includes(site)) {
     return { ...selected, preparation: { kind: 'request', message: 'Select a configured Site; this selection is no longer available.' } };
+  }
+  if (pack !== undefined && cannotStart.includes(pack)) {
+    return { ...selected, preparation: { kind: 'pack', message: `Pack owner: repair Pack ${pack}: ${selected.marks?.[pack] ?? 'folder is unreadable'}` } };
   }
   return pack === undefined ? selected : { ...selected, ...ops.startPreparation(pack, site) };
 }

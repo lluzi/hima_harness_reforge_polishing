@@ -2,20 +2,26 @@
 // deterministic predicate over one of them. Rules ship as YAML under `rules/` beside the built
 // bundle so a person can read and review a rule without reading TypeScript. D6: every PASS or FAIL
 // comes from a rule like this, applied to typed ledger values.
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
-import { analysisMode, pathScope, semanticUnit, semanticValueType } from './semantics.js';
+import { analysisMode, pathScope, semanticSlug } from './semantics.js';
+import { dataOnDisk, placesLooked, readDataFile, type DataPlace } from './pack-data.js';
 import { RuleReferenceError } from './errors.js';
 
 /**
  * One semantic value a rule needs, named the way an observation carries it: a value type, narrowed
  * by analysis mode and path scope where those apply. An omitted `mode` or `scope` does not narrow.
+ *
+ * The type is a slug and not one of a fixed list since #61: a value type is declared in a
+ * `semantics.yml` — the pack's own ahead of the bundle's — so the list this file could hold would be
+ * the wrong one for every pack that brings a method of its own. That a rule's `type` and `unit` are
+ * a pair the resolved semantics actually declare is `/hima pack check`'s to hold, where the pack's
+ * file and the bundle's are both open; the Judge compares literally, as it always has, and a
+ * requirement nothing in the observation matches goes UNDETERMINED naming it.
  */
 export const requirement = z.strictObject({
-  type: semanticValueType,
+  type: semanticSlug,
   mode: analysisMode.optional(),
   scope: pathScope.optional(),
 });
@@ -30,7 +36,7 @@ export type PredicateOp = z.infer<typeof predicateOp>;
  * `--param <name>=<value>`, and the unit that value is measured in. A rule with no `parameter`
  * takes its threshold from its own file alone.
  */
-export const ruleParameter = z.strictObject({ name: z.string(), unit: semanticUnit });
+export const ruleParameter = z.strictObject({ name: z.string(), unit: semanticSlug });
 export type RuleParameter = z.infer<typeof ruleParameter>;
 
 /** A predicate's threshold references the rule's declared parameter, resolved at judge time. */
@@ -50,7 +56,7 @@ export const rule = z
      * `threshold` is either a fixed number the rule file states outright, or `{ parameter: <name> }`
      * naming the rule's declared parameter — the value a caller binds at judge time takes its place.
      */
-    predicate: z.strictObject({ op: predicateOp, threshold: z.union([z.number(), parameterRef]), unit: semanticUnit }),
+    predicate: z.strictObject({ op: predicateOp, threshold: z.union([z.number(), parameterRef]), unit: semanticSlug }),
   })
   .superRefine((r, ctx) => {
     if (!r.requires.some((q) => sameRequirement(q, r.subject))) {
@@ -90,24 +96,53 @@ export const shippedRulesDir: string = fileURLToPath(new URL('../rules/', import
 export { RuleReferenceError };
 
 /**
- * Load one rule by reference: `<id>` or `<id>@<version>`. An unknown id, a file that declares a
- * different id, a rule that fails its schema, or a version that does not match all throw — a rule
- * the harness cannot produce is an error, never a silent pass.
+ * One rule as it was loaded, and **which of the directories asked it came out of** (#57).
+ *
+ * The directory is carried out of the lookup rather than worked out again afterwards, because the
+ * two answers can differ: a file appearing, disappearing or refusing to open between the read and a
+ * second look would have a caller report one file and a Campaign run another. Whether that directory
+ * makes the rule the pack's or the bundle's is `originOf`'s to say, in `packs.ts`, which is where the
+ * ordered list was composed.
  */
-export function loadRule(ref: string, dir: string = shippedRulesDir): Rule {
+export interface LoadedRule {
+  readonly rule: Rule;
+  /** The directory of the place the file was read from. */
+  readonly dir: string;
+  /** The file itself. */
+  readonly at: string;
+}
+
+/**
+ * Load one rule by reference, and say where it was read from: `<id>` or `<id>@<version>`. An unknown
+ * id, a file that declares a different id, a rule that fails its schema, or a version that does not
+ * match all throw — a rule the harness cannot produce is an error, never a silent pass.
+ *
+ * `places` is an ordered list and the first of them holding `<id>.yml` wins (#57): a Run resolves
+ * through its pack, which puts the pack's own `rules/` first and the bundle's second, so a pack that
+ * brings a rule of its own runs on that rule and one that brings none runs on the bundle's. An id
+ * neither place holds is refused naming **both**, because a person told only about the bundle would
+ * go on editing the wrong folder.
+ *
+ * @param ref - `<id>` or `<id>@<version>`.
+ * @param places - where to look, in order, each saying which instant its bytes are from (#64). The
+ *                 bundle's own rules read off the disk, when nothing says otherwise.
+ */
+export function loadRuleFrom(ref: string, places: readonly DataPlace[] = [dataOnDisk(shippedRulesDir)]): LoadedRule {
   const [id = '', wantVersion, ...extra] = ref.split('@');
   if (extra.length > 0 || !RULE_ID.test(id)) throw new RuleReferenceError(`invalid rule reference "${ref}"; expected <id> or <id>@<version>`);
-  const file = path.join(dir, `${id}.yml`);
-  let text: string;
-  try {
-    text = readFileSync(file, 'utf8');
-  } catch {
-    throw new RuleReferenceError(`unknown rule "${id}": no rule file at ${file}`);
-  }
-  const loaded = rule.parse(parse(text));
+  const found = readDataFile(id, places);
+  if (!found.ok) throw new RuleReferenceError(`unknown rule "${id}": no rule file at ${placesLooked(found.looked)}`);
+  const file = found.at;
+  const loaded = rule.parse(parse(found.text));
   if (loaded.id !== id) throw new Error(`rule file ${file} declares id "${loaded.id}", not "${id}"`);
   if (wantVersion !== undefined && loaded.version !== wantVersion) {
     throw new RuleReferenceError(`rule "${id}" is at version ${loaded.version}, not ${wantVersion}`);
   }
-  return loaded;
+  return { rule: loaded, dir: found.dir, at: found.at };
+}
+
+/** The rule alone, for the callers that apply one and have no report to make about where it came
+ *  from. Everything else is `loadRuleFrom`'s. */
+export function loadRule(ref: string, places: readonly DataPlace[] = [dataOnDisk(shippedRulesDir)]): Rule {
+  return loadRuleFrom(ref, places).rule;
 }

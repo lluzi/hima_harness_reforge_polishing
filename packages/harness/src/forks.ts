@@ -29,9 +29,9 @@ import {
   appendNode,
   observeNode,
   progress,
+  resumeNode,
   stillDriving,
   toolNode,
-  waitForJob,
   type Driving,
   type Step,
 } from './node-turns.js';
@@ -186,7 +186,7 @@ async function driveBranch(ctx: Driving, branchId: string, from: RunBranch): Pro
       ? node.parameters.tool === undefined
         ? await observeNode(branch, node, attempt)
         : await toolNode(branch, existingRun(ctx.deps.ledger, ctx.runId), node, attempt)
-      : await waitForJob(branch, node, attempt, open.job.session);
+      : await resumeNode(branch, node, attempt, open.job.session);
     if (step.kind === 'stopped') return 'stopped';
     if (step.kind === 'budget-exhausted') return 'budget-exhausted';
     if (step.kind === 'retrying') continue;

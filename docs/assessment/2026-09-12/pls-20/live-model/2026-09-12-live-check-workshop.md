@@ -1,0 +1,240 @@
+# Live check: the workshop, 2026-09-12
+
+One real model writing one real script through the product, with a key from the launching environment (provided through launch environment; value and prefix omitted).
+HimaHarness on DeepSeek Harness 0.1.5-alpha.1 (Node v24.20.0), driven through the desktop shell in driver mode with **no replay overlay**: the host composed its own DeepSeek adapter.
+
+**PASS** — 12 of 12 checks passed.
+
+## What ran
+
+- Run `run-b8aab052-7baa-4f76-bf6c-9529a78eef0b` of the `workshop-probe` pack on site `local`, one generation; it ended `ended-goal-not-met`.
+- Workshop `mine`, writing into `hima-workshop/mine`, entry `miner.sh`, preset `hima-moment`.
+- The moment reached: ["hima_workshop_write","hima_workshop_read","hima_workshop_knowledge"].
+- What the reader took out of what the script produced: [{"type":"candidate_count","value":10,"unit":"count"},{"type":"candidate_slack","value":-0.1,"unit":"ns","mode":"setup","scope":"reg2reg"}].
+
+## What the model wrote
+
+```sh
+#!/bin/sh
+# mine-timing (opene902): state how many cell candidates post-synthesis left.
+#
+# Called as: sh miner.sh <root> <design>
+#   <root>   the campaign workspace root (the dir that holds flow/)
+#   <design> the design name, e.g. opene902
+#
+# Reads the post-synthesis qor report this flow writes
+#   <root>/flow/results/<design>/syn/report/qor.rpt
+# and writes the mining stage's candidates document to
+#   <root>/flow/results/<design>/mine-timing/candidates.json
+#
+# Count:  the whole number of thousands of square microns of the "Cell Area:" line.
+# Slack:  the "Critical Path Slack:" of the pass and path group the report names.
+
+set -eu
+
+PROG=$(basename "$0")
+ROOT=${1:-}
+DESIGN=${2:-}
+
+if [ -z "$ROOT" ] || [ -z "$DESIGN" ]; then
+    echo "usage: sh $PROG <root> <design>" >&2
+    exit 2
+fi
+
+# --- locate the post-synthesis report -------------------------------------
+RPT=${QOR_REPORT:-}
+if [ -z "$RPT" ]; then
+    for p in \
+        "$ROOT/flow/results/$DESIGN/syn/report/qor.rpt" \
+        "$ROOT/results/$DESIGN/syn/report/qor.rpt" \
+        "$ROOT/$DESIGN/syn/report/qor.rpt" \
+        "$ROOT/syn/report/qor.rpt"
+    do
+        if [ -f "$p" ]; then RPT=$p; break; fi
+    done
+fi
+
+if [ -z "$RPT" ] || [ ! -f "$RPT" ]; then
+    echo "$PROG: no qor report for design '$DESIGN' under '$ROOT'" >&2
+    exit 1
+fi
+
+# --- the output lives beside the results the report belongs to -------------
+# RPT is <results>/<design>/syn/report/qor.rpt
+RPT_DIR=$(dirname "$RPT")
+PASS_DIR=$(dirname "$RPT_DIR")            # <results>/<design>/syn
+DESIGN_DIR=$(dirname "$PASS_DIR")         # <results>/<design>
+PASS_NAME=$(basename "$PASS_DIR")         # e.g. syn
+OUTDIR="$DESIGN_DIR/mine-timing"
+
+# --- parse the report ------------------------------------------------------
+parsed=$(awk '
+    /Timing Path Group/ {
+        g = $0
+        sub(/.*Timing Path Group[ \t]*/, "", g)
+        gsub(/[^A-Za-z0-9_.-]/, "", g)
+        grp = g
+    }
+    /Critical Path Slack/ {
+        s = $0
+        sub(/.*Critical Path Slack[ \t]*:[ \t]*/, "", s)
+        sub(/[ \t\r]+$/, "", s)
+        slk = s
+        grp_at = grp
+    }
+    /Cell Area/ {
+        a = $0
+        sub(/.*Cell Area[ \t]*:[ \t]*/, "", a)
+        sub(/[ \t\r]+$/, "", a)
+        area = a
+    }
+    END { printf "%s\t%s\t%s\n", grp_at, slk, area }
+' "$RPT")
+
+PATH_GROUP=$(printf '%s' "$parsed" | cut -f1)
+SLACK=$(printf '%s' "$parsed" | cut -f2)
+AREA=$(printf '%s' "$parsed" | cut -f3)
+
+case "$AREA" in
+    '' | *[!0-9.]*)
+        echo "$PROG: no usable 'Cell Area:' line in $RPT" >&2
+        exit 1
+        ;;
+esac
+
+case "$SLACK" in
+    '' | *[!0-9eE.+-]*)
+        echo "$PROG: no usable 'Critical Path Slack:' line in $RPT" >&2
+        exit 1
+        ;;
+esac
+
+# whole number of thousands of square microns
+COUNT=$(awk -v a="$AREA" 'BEGIN { printf "%d", int(a / 1000) }')
+
+case "$COUNT" in
+    '' | *[!0-9]*)
+        echo "$PROG: could not derive a candidate count from Cell Area '$AREA'" >&2
+        exit 1
+        ;;
+esac
+
+# --- state it as the reader reads it ---------------------------------------
+mkdir -p "$OUTDIR"
+TMP="$OUTDIR/.candidates.json.$$"
+trap 'rm -f "$TMP"' EXIT HUP INT TERM
+
+{
+    printf '{\n'
+    printf '  "count": %s,\n' "$COUNT"
+    printf '  "candidate_count": %s,\n' "$COUNT"
+    printf '  "slack": %s,\n' "$SLACK"
+    printf '  "candidate_slack": %s,\n' "$SLACK"
+    printf '  "path_group": "%s",\n' "$PATH_GROUP"
+    printf '  "pass": "%s"\n' "$PASS_NAME"
+    printf '}\n'
+} > "$TMP"
+
+mv "$TMP" "$OUTDIR/candidates.json"
+trap - EXIT HUP INT TERM
+
+echo "$PROG: $DESIGN -> $OUTDIR/candidates.json (count=$COUNT, slack=$SLACK, pass=$PASS_NAME, path_group=$PATH_GROUP)"
+
+```
+
+## The records
+
+```json
+{
+  "sessions": [
+    {
+      "id": "run-b8aab052-7baa-4f76-bf6c-9529a78eef0b#000007",
+      "runId": "run-b8aab052-7baa-4f76-bf6c-9529a78eef0b",
+      "siteId": "local",
+      "seq": 7,
+      "at": "2026-09-12T15:03:12.889Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "session",
+      "preset": "hima-moment",
+      "sessionId": "session-daf1a3e2-f0e7-4d34-9049-90675bfdd64f",
+      "model": "deepseek-v4-flash",
+      "nodeId": "mine",
+      "attempt": 1,
+      "event": "opened",
+      "tools": [
+        "hima_workshop_write",
+        "hima_workshop_read",
+        "hima_workshop_knowledge"
+      ],
+      "workshop": {
+        "id": "mine",
+        "entry": "miner.sh",
+        "entryPath": "/private/tmp/hima-pls20-live-6nl50f5x/hima-home-VYIrnt/workspace/workshop-probe-20260912-150310-68c4/hima-workshop/mine/miner.sh"
+      }
+    },
+    {
+      "id": "run-b8aab052-7baa-4f76-bf6c-9529a78eef0b#000009",
+      "runId": "run-b8aab052-7baa-4f76-bf6c-9529a78eef0b",
+      "siteId": "local",
+      "seq": 9,
+      "at": "2026-09-12T15:03:50.120Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "session",
+      "preset": "hima-moment",
+      "sessionId": "session-daf1a3e2-f0e7-4d34-9049-90675bfdd64f",
+      "model": "deepseek-v4-flash",
+      "nodeId": "mine",
+      "attempt": 1,
+      "event": "closed",
+      "outcome": "completed"
+    }
+  ],
+  "code": [
+    {
+      "id": "run-b8aab052-7baa-4f76-bf6c-9529a78eef0b#000008",
+      "runId": "run-b8aab052-7baa-4f76-bf6c-9529a78eef0b",
+      "siteId": "local",
+      "seq": 8,
+      "at": "2026-09-12T15:03:46.897Z",
+      "writer": "executor",
+      "generation": 1,
+      "type": "code",
+      "nodeId": "mine",
+      "attempt": 1,
+      "sessionId": "session-daf1a3e2-f0e7-4d34-9049-90675bfdd64f",
+      "workshop": "mine",
+      "path": "/private/tmp/hima-pls20-live-6nl50f5x/hima-home-VYIrnt/workspace/workshop-probe-20260912-150310-68c4/hima-workshop/mine/miner.sh",
+      "sha256": "c75b0058627850970b46f91a1591237ef430b8382a3c685df7c3b1d079495393",
+      "bytes": 3643,
+      "language": "shell"
+    }
+  ]
+}
+```
+
+## The home, read afterwards
+
+- 118 files read under `$DSH_HOME`, the window's user-data directory and the workspace.
+- Files that could not be read: [].
+- Files holding the key: [].
+
+The key came from the launching environment. HimaHarness writes no credentials file and no env file, reads a key by no path of its own, and no record above carries one.
+
+## Checks
+
+| Claim | Predicate | Saw | |
+|---|---|---|---|
+| a model moment opened at the workshop node | `an opened session record at node mine` | `["opened@mine","closed@mine"]` | PASS |
+| the moment reached exactly the workshop's three tools | `tools === ["hima_workshop_write","hima_workshop_read","hima_workshop_knowledge"]` | `["hima_workshop_write","hima_workshop_read","hima_workshop_knowledge"]` | PASS |
+| the moment closed having done what it was opened for | `a closed record with outcome completed` | `["completed"]` | PASS |
+| the model wrote the entry inside the workshop directory | `a code record whose path ends hima-workshop/mine/miner.sh` | `["/private/tmp/hima-pls20-live-6nl50f5x/hima-home-VYIrnt/workspace/workshop-probe-20260912-150310-68c4/hima-workshop/mine/miner.sh"]` | PASS |
+| the record hashes the bytes that are really on the site | `sha256 === c75b0058627850970b46f91a1591237ef430b8382a3c685df7c3b1d079495393` | `c75b0058627850970b46f91a1591237ef430b8382a3c685df7c3b1d079495393` | PASS |
+| the fabric ran what the model wrote, within the allowance | `a launched and an ended job named workshop-mine that exited 0` | `["launched","finished:0"]` | PASS |
+| the node after it read what the script produced | `an observation holding candidate_count` | `[{"type":"candidate_count","value":10,"unit":"count"},{"type":"candidate_slack","value":-0.1,"unit":"ns","mode":"setup","scope":"reg2reg"}]` | PASS |
+| the workshop node is done, within the allowance | `the run's path holds the workshop node in state done` | `["done"]` | PASS |
+| the scan read the home rather than nothing | `more than fifty files were read` | `118 files` | PASS |
+| the scan read every file it found | `no file under the home was unreadable` | `[]` | PASS |
+| the key reached no file the run wrote | `no file under the home holds the key` | `[]` | PASS |
+| the harness wrote no env file | `no .env exists under the home` | `[]` | PASS |

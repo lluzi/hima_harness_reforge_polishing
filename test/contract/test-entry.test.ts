@@ -87,6 +87,31 @@ test('a swallowed SSH start attempt still fails the local entry without starting
   } finally { await f.dispose(); }
 });
 
+test('the SSH sentinel preserves execFile promise results and still refuses promisified SSH', async () => {
+  const f = await entryFixture();
+  try {
+    await writeFile(path.join(f.root, f.groups.local[0]!), `
+      import assert from 'node:assert/strict';
+      import { execFile } from 'node:child_process';
+      import { promisify } from 'node:util';
+      const run = promisify(execFile);
+      const result = await run(process.execPath, ['-e', 'process.stdout.write("out"); process.stderr.write("err")']);
+      assert.deepEqual(result, { stdout: 'out', stderr: 'err' });
+      await assert.rejects(run(process.execPath, ['-e', 'process.stderr.write("failed"); process.exit(7)']), { code: 7, stdout: '', stderr: 'failed' });
+    `);
+    const valid = f.run('local');
+    assert.equal(valid.status, 0, valid.stderr);
+    await writeFile(path.join(f.root, f.groups.local[0]!), `
+      import { execFile } from 'node:child_process';
+      import { promisify } from 'node:util';
+      try { await promisify(execFile)('ssh', ['unreachable.invalid', 'true']); } catch {}
+    `);
+    const refused = f.run('local');
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, /SSH subprocess attempts: 1/);
+  } finally { await f.dispose(); }
+});
+
 test('an explicit subset runs only named files in its group and rejects empty or foreign selections', async () => {
   const f = await entryFixture();
   try {

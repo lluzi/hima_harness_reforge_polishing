@@ -916,11 +916,10 @@ test('/hima pack check refuses a fork the engine could never drive: a judge node
       rules:
         - setup-wns-all-nonnegative
         - clock-period-at-most`));
-    await assert.rejects(
-      himaCommand(host, h.workspace, '/hima pack check branch-judges --site local'),
-      /has a judge node, "read-qor-b", inside the branch it forks to "synth-b": a branch is act nodes only, because a fork is judged where its branches converge and nowhere else/,
-      'the refusal names the node, the branch it is in, and what a branch may hold',
-    );
+    const refusedBranchJudges = await himaCommand(host, h.workspace, '/hima pack check branch-judges --site local');
+    assert.equal(refusedBranchJudges.kind, 'error', refusedBranchJudges.text);
+    assert.match(refusedBranchJudges.text, /has a judge node, "read-qor-b", inside the branch it forks to "synth-b": a branch is act nodes only, because a fork is judged where its branches converge and nowhere else/,
+      `the refusal names the node, the branch it is in, and what a branch may hold: ${refusedBranchJudges.text}`);
 
     // Branches converging into two different nodes. The run waits for every branch at one join, so a
     // fork whose branches end in two places is a run that could never be waited for. Both judge nodes
@@ -950,11 +949,10 @@ test('/hima pack check refuses a fork the engine could never drive: a judge node
   - id: blocked
     kind: wait`)
       .replace('  - { from: read-qor-b, to: judge }', '  - { from: read-qor-b, to: judge-b }\n  - { from: read-qor-c, to: judge }\n  - { from: read-qor-d, to: judge-b }'));
-    await assert.rejects(
-      himaCommand(host, h.workspace, '/hima pack check two-joins --site local'),
-      /has the branches of the fork at "start" converge into two different nodes, "judge" and "judge-b": every branch of one fork reaches one join/,
-      'the refusal names the fork and both nodes its branches ended at',
-    );
+    const refusedTwoJoins = await himaCommand(host, h.workspace, '/hima pack check two-joins --site local');
+    assert.equal(refusedTwoJoins.kind, 'error', refusedTwoJoins.text);
+    assert.match(refusedTwoJoins.text, /has the branches of the fork at "start" converge into two different nodes, "judge" and "judge-b": every branch of one fork reaches one join/,
+      `the refusal names the fork and both nodes its branches ended at: ${refusedTwoJoins.text}`);
 
     // An explore node the join leads to. A chooser weighs one reading; a fork leaves one per branch,
     // so a chooser after a join would choose from whichever branch appended last. Two act nodes
@@ -985,20 +983,18 @@ test('/hima pack check refuses a fork the engine could never drive: a judge node
   - { from: judge, to: settle, outcome: PASS }
   - { from: settle, to: next-period }
   - { from: next-period, to: start, revisit: true }`));
-    await assert.rejects(
-      himaCommand(host, h.workspace, '/hima pack check explores-after-the-join --site local'),
-      /has explore node "next-period" downstream of "judge", the join of the fork at "start": an explore node weighs one reading of its loop's latest generation, and a fork writes one reading per branch, so a chooser standing after a join would choose from whichever branch happened to append last/,
-      'the refusal names the explore node, the join it stands after, and what it would have been deciding on',
-    );
+    const refusedExploresAfterTheJoin = await himaCommand(host, h.workspace, '/hima pack check explores-after-the-join --site local');
+    assert.equal(refusedExploresAfterTheJoin.kind, 'error', refusedExploresAfterTheJoin.text);
+    assert.match(refusedExploresAfterTheJoin.text, /has explore node "next-period" downstream of "judge", the join of the fork at "start": an explore node weighs one reading of its loop's latest generation, and a fork writes one reading per branch, so a chooser standing after a join would choose from whichever branch happened to append last/,
+      `the refusal names the explore node, the join it stands after, and what it would have been deciding on: ${refusedExploresAfterTheJoin.text}`);
 
     // A fork inside a drill-down loop's graph. Fork and drill-down each go one level in step 3.
     await installFork(packsDir, 'fork-in-loop', 2.2);
     await writeFile(path.join(packsDir, 'fork-in-loop', 'graph.yml'), forkInsideALoop('fork-in-loop'));
-    await assert.rejects(
-      himaCommand(host, h.workspace, '/hima pack check fork-in-loop --site local'),
-      /forks at "start" in loop "push": a loop's graph holds no fork, because drill-down and fork each go one level in step 3 and neither is nested in the other/,
-      'the refusal names the node, its loop, and why neither nests in the other',
-    );
+    const refusedForkInLoop = await himaCommand(host, h.workspace, '/hima pack check fork-in-loop --site local');
+    assert.equal(refusedForkInLoop.kind, 'error', refusedForkInLoop.text);
+    assert.match(refusedForkInLoop.text, /forks at "start" in loop "push": a loop's graph holds no fork, because drill-down and fork each go one level in step 3 and neither is nested in the other/,
+      `the refusal names the node, its loop, and why neither nests in the other: ${refusedForkInLoop.text}`);
   } finally {
     await dispose();
   }

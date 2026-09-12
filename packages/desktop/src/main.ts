@@ -14,13 +14,13 @@
 // and from A the shape of the whole thing — one window, a local starting document, navigate when the
 // host is ready, no IPC for the remote page. The launch, readiness and stop patterns are in
 // `host-launch.ts`, which the contract suite boots hosts with too.
-import { app, BrowserWindow, Menu, nativeTheme, shell, type Session } from 'electron';
+import { app, BrowserWindow, Menu, nativeTheme, screen, shell, type Session } from 'electron';
 import type { ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkoutRoot, HIMA_PROFILE, prepareHimaHome, resolveDshHome } from './hima-home.js';
+import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
 import { launchHimaHost, HostLaunchError, stopChild, type LaunchedHost } from './host-launch.js';
 import { LOCAL_SITE_NAME, seedLocalSite } from './local-site.js';
 import { startDriver, type DriverSession } from './driver.js';
@@ -77,6 +77,53 @@ const theme = ((argv: readonly string[]): 'light' | 'dark' | undefined => {
   }
   return named;
 })(process.argv);
+/**
+ * `--replay <fixture> [--replay-override <sidecar>] [--replay-child <log> …]`: boot the host against dsh's keyless replay
+ * adapter instead of its DeepSeek one, so a driven window runs a real agent over a fixed model
+ * transcript with no API key anywhere (#59).
+ *
+ * **Driver mode only**, and refused outright otherwise: a person's window is the product, and a
+ * product that could be told to fake its model on the command line is a product that could be told
+ * to fake it by accident. The flag exists so the contract suite and the live check can drive the one
+ * mechanism in this harness a model takes part in; the live check itself passes neither flag, which
+ * is how it reaches the real model with the owner's key.
+ */
+const replay = ((argv: readonly string[]): { file: string; overrideFile?: string; childFiles?: string[] } | undefined => {
+  const named = (flag: string): string | undefined => {
+    const at = argv.indexOf(flag);
+    if (at === -1) return undefined;
+    const value = argv[at + 1];
+    if (value === undefined || value.startsWith('--')) { process.stderr.write(`hima-desktop: ${flag} needs a file\n`); process.exit(2); }
+    return value;
+  };
+  // Every occurrence, in the order they were given, because the adapter binds child scripts by that
+  // order (#62): a scenario with three model sessions in one host names two `--replay-child` files
+  // and the second of them is the third session's.
+  const eachNamed = (flag: string): string[] => {
+    const values: string[] = [];
+    for (let at = argv.indexOf(flag); at !== -1; at = argv.indexOf(flag, at + 1)) {
+      const value = argv[at + 1];
+      if (value === undefined || value.startsWith('--')) { process.stderr.write(`hima-desktop: ${flag} needs a file\n`); process.exit(2); }
+      values.push(value);
+    }
+    return values;
+  };
+  const file = named('--replay');
+  const overrideFile = named('--replay-override');
+  const childFiles = eachNamed('--replay-child');
+  if (file === undefined) {
+    if (overrideFile !== undefined) { process.stderr.write('hima-desktop: --replay-override needs --replay\n'); process.exit(2); }
+    if (childFiles.length > 0) { process.stderr.write('hima-desktop: --replay-child needs --replay\n'); process.exit(2); }
+    return undefined;
+  }
+  if (!driver) { process.stderr.write('hima-desktop: --replay is a driver-mode flag; a window a person opens runs the real model route\n'); process.exit(2); }
+  return {
+    file: path.resolve(file),
+    ...(overrideFile === undefined ? {} : { overrideFile: path.resolve(overrideFile) }),
+    ...(childFiles.length === 0 ? {} : { childFiles: childFiles.map((f) => path.resolve(f)) }),
+  };
+})(process.argv);
+
 const site = ((argv: readonly string[]): string | undefined => {
   const at = argv.indexOf('--site');
   if (at === -1) return undefined;
@@ -168,6 +215,37 @@ function hostEnvironment(): NodeJS.ProcessEnv {
 }
 
 const stateFile = (): string => path.join(app.getPath('userData'), 'window-state.json');
+
+/** Which display a driver's window opens on: a name from the environment, else the first display that is not the primary one. */
+const DRIVER_DISPLAY_VARIABLE = 'HIMA_DRIVER_DISPLAY';
+
+/**
+ * Where a driver's window goes. A suite opens a window per test, and a window that lands on the
+ * primary display lands on the person working there. So in driver mode the window is placed on a
+ * display of the person's choosing (`HIMA_DRIVER_DISPLAY`, matched against the display's label,
+ * case-insensitively) or, absent a choice, on the first display that is not the primary one; a
+ * machine with one display keeps the window where it was. The size is the remembered one; the
+ * position is the centre of the chosen display's work area, so a remembered position from another
+ * screen cannot put the window somewhere no display is.
+ */
+function driverBounds(remembered: WindowBounds): WindowBounds {
+  const displays = screen.getAllDisplays();
+  const primary = screen.getPrimaryDisplay();
+  const wanted = process.env[DRIVER_DISPLAY_VARIABLE]?.trim().toLowerCase();
+  const chosen = wanted !== undefined && wanted !== ''
+    ? displays.find((d) => d.label.toLowerCase().includes(wanted))
+    : displays.find((d) => d.id !== primary.id);
+  if (chosen === undefined) return remembered;
+  const area = chosen.workArea;
+  const width = Math.min(remembered.width, area.width);
+  const height = Math.min(remembered.height, area.height);
+  return {
+    width,
+    height,
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
+  };
+}
 
 function readBounds(): WindowBounds {
   try {
@@ -384,7 +462,7 @@ function stopHost(): Promise<number | null> {
 
 async function start(): Promise<void> {
   if (theme !== undefined) nativeTheme.themeSource = theme;
-  const bounds = readBounds();
+  const bounds = driver ? driverBounds(readBounds()) : readBounds();
   const win = new BrowserWindow({
     ...bounds,
     title: APP_NAME,
@@ -413,7 +491,7 @@ async function start(): Promise<void> {
   win.on('move', () => { writeBounds(win); });
   win.on('close', () => { writeBounds(win); });
   // Closing the window ends the app, on every platform including macOS: the host is this window's
-  // child, and a workbench with no window is a licence-holding dc_shell nobody can see.
+  // child, and a workbench with no window is a licence-holding job nobody can see.
   win.on('closed', () => { app.quit(); });
 
   await win.loadFile(localPage('starting.html', `${APP_NAME} — starting`, `<h1>Starting ${APP_NAME}…</h1><p>Booting the hima profile.</p>`));
@@ -433,6 +511,11 @@ async function start(): Promise<void> {
       const seeded = await seedLocalSite({ home: prepared.home, checkout: checkoutRoot() });
       for (const line of seeded.did) say(line);
     }
+    // The model stand-in, last, so it sits on top of everything the home was just given — and
+    // removed when this boot was given none, so a second boot of one home never runs against the
+    // transcript the boot before it left behind (#59).
+    if (replay === undefined) { const cleared = await clearReplayOverlay(prepared.home); if (cleared !== undefined) say(cleared); }
+    else say(await writeReplayOverlay(prepared.home, replay));
   } catch (err) {
     await showFailure(win, 'The hima profile could not be prepared', 'The window has nothing to boot. This is what went wrong:', String(err));
     return;

@@ -52,6 +52,15 @@ test('pnpm run desktop --site local on a machine that has never run it: the shel
     const flowRoot = path.join(d.home.home, 'hima/local/standin-flow');
     assert.equal(existsSync(path.join(flowRoot, 'Makefile')), true, 'the stand-in flow is in the home');
     assert.equal(existsSync(path.join(d.home.home, 'hima/packs/opene902-timing-probe/contract.yml')), true, 'and so is the pack');
+    // And the converging variant beside it (#57), carrying its own push rule in its own folder: the
+    // reference pack reaches no ending of its own on this flow (D45), so the pack a developer picks
+    // to *watch* a Loop converge has to be there before the window opens.
+    assert.match(said, /^hima-desktop: local site: installed the converging variant over-constraining-probe into .* which carries over-constraining-push in its own choosers\/$/m, said);
+    assert.match(said, /^hima-desktop: local site: pick over-constraining-probe on the start form to watch a campaign converge;/m, said);
+    const variant = path.join(d.home.home, 'hima/packs/over-constraining-probe');
+    assert.equal(existsSync(path.join(variant, 'choosers/over-constraining-push.yml')), true, 'the chooser is the variant\'s own file, not the bundle\'s');
+    const variantGraph = await readFile(path.join(variant, 'graph.yml'), 'utf8');
+    assert.match(variantGraph, /^ {6}chooser: over-constraining-push$/m, `and its explore node names it: ${variantGraph}`);
     const siteFile = await readFile(path.join(d.home.home, 'hima/sites/local.yml'), 'utf8');
     assert.match(siteFile, new RegExp(`^  flowRoot: ${flowRoot}$`, 'm'), `the site binds its flow root to the stand-in: ${siteFile}`);
     assert.match(siteFile, /^  workspaceRoot: .*\/hima\/local\/workspace$/m, `and its workspace root to the home: ${siteFile}`);

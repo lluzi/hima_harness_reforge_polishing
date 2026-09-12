@@ -1,0 +1,674 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-read-spec",
+          "name": "read",
+          "arguments": "{\"file_path\": \"SPEC.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-read-intent",
+          "name": "read",
+          "arguments": "{\"file_path\": \"INTENT.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-read-flow",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:the flow is at (\\S+)}}/Makefile\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-knowledge-1",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}knowledge/over-constrain-and-read-the-violation.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-knowledge-2",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}knowledge/end-honestly-in-more-than-one-way.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-knowledge-3",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}knowledge/assert-the-checker-options.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-knowledge-4",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}knowledge/one-checker-per-session.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-knowledge-5",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}knowledge/attribute-by-database-relation.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-knowledge-6",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}knowledge/what-a-golden-flow-is.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-anatomy",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}knowledge/pack-anatomy.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-sibling-pack",
+          "name": "read",
+          "arguments": "{\"file_path\": \"../opene902-timing-probe/PACK.md\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-sibling-contract",
+          "name": "read",
+          "arguments": "{\"file_path\": \"../opene902-timing-probe/contract.yml\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-sibling-graph",
+          "name": "read",
+          "arguments": "{\"file_path\": \"../opene902-timing-probe/graph.yml\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-sibling-tool",
+          "name": "read",
+          "arguments": "{\"file_path\": \"../opene902-timing-probe/tools/synth.sh\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-bundle-semantics",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}../semantics.yml\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-bundle-rule-setup",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}../rules/setup-wns-all-nonnegative.yml\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-bundle-rule-period",
+          "name": "read",
+          "arguments": "{\"file_path\": \"{{fromRequest:Base directory for this skill: (\\S+)}}../rules/clock-period-at-most.yml\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-write-contract",
+          "name": "write",
+          "arguments": "{\"file_path\": \"contract.yml\", \"content\": \"# The run contract of the authored timing probe, compiled from SPEC.md by /hima-fabric.\\n# Every input, wrapper and tool below is one the spec's Run contract section states, and the tool's\\n# command line is the one the Golden Flow's own makefile answers.\\nid: authored-probe\\nversion: '1'\\ntitle: authored timing probe\\n\\ninputs:\\n  - name: flowRoot\\n    description: >-\\n      The Golden Flow's root on the Site: the directory holding the makefile the flow is driven by.\\n      Read-only to a campaign — a generation runs in its own copy of it, never here.\\n  - name: design\\n    description: The design the flow builds, spelled as the flow's own manifests spell it.\\n  - name: workspaceRoot\\n    description: Where campaign workspaces are created; the Site's permit must allow writes under it.\\n\\noutputs:\\n  - name: qorReport\\n    path: flow/results/${design}/syn/report/qor.rpt\\n    reader: dc-qor-report\\n    description: The verification report of the generation just synthesized. The judged report.\\n\\nenvironment:\\n  wrappers:\\n    - make\\n\\nworkspace:\\n  copy:\\n    - Makefile\\n    - flows\\n    - manifests\\n    - tools\\n    - build/${design}\\n    - sources/${design}\\n\\ntools:\\n  - id: synth\\n    file: tools/synth.sh\\n    description: >-\\n      One synthesis generation at the clock period the strategy chose, inside the campaign's own copy\\n      of the flow, forced so that no generation is ever judged on another generation's netlist.\\n    inputs: [WORKSPACE, FLOW_ROOT, DESIGN, PERIOD_NS, CAMPAIGN]\\n    licences:\\n      Design-Compiler: 1\\n    argv:\\n      - make\\n      - -C\\n      - ${WORKSPACE}/flow\\n      - DESIGN=${DESIGN}\\n      - synth\\n      - CLOCK_PERIOD_NS=${PERIOD_NS}\\n      - FORCE_SYNTH=1\\n      - EDA_CONTAINER_NAME=hima-${CAMPAIGN}\\n\\nrules:\\n  - setup-wns-all-nonnegative\\n  - clock-period-at-most\\n\\nknowledge:\\n  - file: push-method.md\\n    purpose: >-\\n      Why this pack asks one step tighter than the period believed possible and reads the violation,\\n      rather than asking a met period how much margin it had.\\n\\nstrategy:\\n  periodNs: { type: number, unit: ns, min: 0.5, max: 10, default: 2.30 }\\n\\nwords:\\n  target_period_ns: { label: clock period at most, unit: ns }\\n  periodNs: { label: clock period, unit: ns }\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-write-graph",
+          "name": "write",
+          "arguments": "{\"file_path\": \"graph.yml\", \"content\": \"# The authored timing probe as a HimaFabric graph, compiled from SPEC.md by /hima-fabric.\\n# Synthesize at the strategy's clock period, read what it produced, judge it, choose the next\\n# strategy, and go round again — until the goal is met, the periods stop moving, or the campaign's\\n# generation limit is spent. The loop is the last edge, marked `revisit: true`.\\nid: authored-probe\\nversion: '1'\\nentry: synthesize\\n\\nnodes:\\n  - id: synthesize\\n    kind: act\\n    parameters:\\n      tool: synth\\n      arguments:\\n        PERIOD_NS: { from: strategy, name: periodNs }\\n\\n  - id: read-qor\\n    kind: act\\n    parameters:\\n      observes: qorReport\\n\\n  - id: judge\\n    kind: judge\\n    parameters:\\n      rules:\\n        - setup-wns-all-nonnegative\\n        - clock-period-at-most\\n      bind:\\n        target_period_ns: { from: goal, name: target_period_ns }\\n\\n  - id: next-period\\n    kind: explore\\n    parameters:\\n      chooser: over-constraining-push\\n      bind:\\n        stepNs: 0.05\\n      converge:\\n        read: period\\n        band: 0.05\\n        generations: 1\\n        generationLimit: 6\\n\\n  - id: blocked\\n    kind: wait\\n    parameters:\\n      blocker: hard-blocker\\n\\nedges:\\n  - { from: synthesize, to: read-qor }\\n  - { from: read-qor, to: judge }\\n  - { from: judge, to: next-period, outcome: PASS }\\n  - { from: judge, to: next-period, outcome: FAIL }\\n  - { from: next-period, to: synthesize, revisit: true }\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-write-chooser",
+          "name": "write",
+          "arguments": "{\"file_path\": \"choosers/over-constraining-push.yml\", \"content\": \"# This pack's own push rule, in its own choosers/ folder, compiled from the spec's Choosers section.\\n# The method never asks a met period what it had to spare, because this flow states no margin for a\\n# met period: it asks for less than it believes is possible and lets the flow say by how much it was\\n# wrong. `over-constrain-and-read-the-violation.md` is the knowledge behind the move.\\nid: over-constraining-push\\nversion: '1'\\ntitle: Over-constrain the clock period by one step and read the violation\\n\\nparameter:\\n  name: stepNs\\n  unit: ns\\n\\nreads:\\n  period: { type: clock_period, unit: ns }\\n  slack: { type: setup_wns, unit: ns }\\n\\ndecide:\\n  - when: { constraint: PASS, goal: PASS }\\n    goalMet: true\\n  - when: { constraint: PASS }\\n    next:\\n      periodNs: { sum: [period, { neg: stepNs }] }\\n  - when: { constraint: FAIL }\\n    next:\\n      periodNs: { sum: [period, { abs: slack }, { neg: stepNs }] }\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-write-knowledge",
+          "name": "write",
+          "arguments": "{\"file_path\": \"knowledge/push-method.md\", \"content\": \"# Why this pack pushes the period the way it does\\n\\nThe flow this pack drives states a setup slack of exactly zero whenever it meets the period it was\\nasked for: it stops optimizing the moment the constraint is satisfied. So a met period says nothing\\nat all about how much further the design could go, and a method that pushed by the reported margin\\nwould loosen the period a little every generation and converge on nothing.\\n\\nThis pack therefore asks for one step less than the period it believes possible and reads what comes\\nback. A pass means \\\"ask one step tighter\\\". A violation is the one answer that carries a size: the\\ndesign missed by that much, so the period it can actually close at is the period asked plus the size\\nof the violation, and the next generation asks one step below that. Two generations asking and\\nmeasuring the same period is what this pack's `converge:` calls having stopped learning.\\n\\nA model moment opened on this pack reads this file to know that a pass is not evidence of margin.\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-write-tool",
+          "name": "write",
+          "arguments": "{\"file_path\": \"tools/synth.sh\", \"content\": \"#!/bin/sh\\n# The `synth` tool of the authored timing probe: one synthesis generation at a chosen clock period.\\n#\\n# The command line below is the one `contract.yml` declares for this tool, so a person can reproduce\\n# a generation by hand exactly as HimaFabric runs it:\\n#\\n#   WORKSPACE=<the campaign workspace> FLOW_ROOT=<the site's flow root> \\\\\\n#   DESIGN=<the design> PERIOD_NS=2.20 CAMPAIGN=<the campaign> \\\\\\n#   sh tools/synth.sh\\n#\\n# Three things about that line are the whole point of it:\\n#   - `-C \\\"$WORKSPACE/flow\\\"` runs the campaign's own copy of the flow, so the site's own results are\\n#     never written.\\n#   - `FORCE_SYNTH=1` because the flow reuses an existing netlist otherwise, and a generation that\\n#     reused the previous one's netlist would be judged on a period it never ran at.\\n#   - `EDA_CONTAINER_NAME=hima-$CAMPAIGN` so the copy is bound into a container of this campaign's own.\\nset -eu\\n\\n: \\\"${WORKSPACE:?the campaign workspace on the site}\\\"\\n: \\\"${FLOW_ROOT:?the site's flow root, for the record: the generation runs in the workspace copy}\\\"\\n: \\\"${DESIGN:?the design to synthesize}\\\"\\n: \\\"${PERIOD_NS:?the clock period this generation is the strategy for}\\\"\\n: \\\"${CAMPAIGN:?the campaign this generation belongs to, which names its container}\\\"\\n\\nexec make -C \\\"$WORKSPACE/flow\\\" DESIGN=\\\"$DESIGN\\\" synth CLOCK_PERIOD_NS=\\\"$PERIOD_NS\\\" FORCE_SYNTH=1 EDA_CONTAINER_NAME=\\\"hima-$CAMPAIGN\\\"\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "text"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": "The spec holds together: every value its rules and its chooser read is one the shipped reader emits, every ending is reachable, and the one tool it names runs a wrapper the contract declares. I have written the pack's files.\n\nOne script of this pack is mine rather than yours, so it is yours to approve before I finish.\n\nReview tools/synth.sh: it runs the Golden Flow's own synthesis target inside this campaign's copy of the flow, at the clock period the strategy chose, forcing a fresh synthesis so no generation is judged on another generation's netlist — approve, or say what to change"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "stop"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-write-record",
+          "name": "write",
+          "arguments": "{\"file_path\": \"FABRIC.md\", \"content\": \"# Fabric record\\n\\n## Files written\\n\\n- `contract.yml` — the run contract: three inputs, one output read by the shipped `dc-qor-report` reader, the `make` wrapper, one tool, the two shipped judge rules, one knowledge file, and the clock-period knob with its bounds, default and words.\\n- `graph.yml` — synthesize, read, judge, explore with the pack's own chooser, and the wait node; the revisit edge closes the loop.\\n- `choosers/over-constraining-push.yml` — this pack's own push rule, written because the move is this pack's method and not this harness's.\\n- `knowledge/push-method.md` — the knowledge file the spec's Knowledge section names, written for the purpose it gives.\\n- `tools/synth.sh` — the command line the contract declares for the `synth` tool, as the Golden Flow's makefile answers it.\\n\\nNo `semantics.yml`: every value this pack measures is read by a reader this harness ships, so the\\npack declares no value type of its own.\\n\\n## Gaps\\n\\nnone\\n\\n## Reviews\\n\\n- `tools/synth.sh` — the author said: approved — keep it\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-fabric-check",
+          "name": "hima_pack_check",
+          "arguments": "{\"pack\": \"authored-probe\", \"site\": \"local\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "text"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": "FABRIC.md is written, and `hima_pack_check` says the folder stands at `compiled` and fits site local: three inputs bound, one tool whose wrapper the permit allows, two rules and one reader found in the bundle, this pack's own chooser found in the pack, and one knowledge file where the contract says it is.\n\nNothing the spec asked for is missing, so the gap list says none. Run /hima-test next."
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "stop"
+        }
+      }
+    ]
+  }
+]

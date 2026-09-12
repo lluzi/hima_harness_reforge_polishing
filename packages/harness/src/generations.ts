@@ -25,7 +25,6 @@
 import { chosenSaid } from './card-labels.js';
 import type { DecisionRecord, JobRecord, LedgerRecord, LoopOutcome, LoopRecord, NodeRecord, ObservationRecord, RunBranch, RunRecord, RunStrategy, VerdictOutcome, VerdictRecord } from './ledger.js';
 import { jobView, nodeView, observationView, type JobView, type NodeView, type ObservationView } from './record-views.js';
-import type { SemanticValueType } from './semantics.js';
 // Type-only, and erased: the pack's words for its own knobs, which the decision each row carries is
 // said in (#42, #58). Declared in `remote.ts` beside the rest of the run view, which this module is
 // part of composing.
@@ -201,12 +200,27 @@ export interface LoopView {
  * @returns one row per generation, generation one first.
  */
 export function generationsOf(run: RunRecord, all: readonly LedgerRecord[], words?: RunWords): GenerationView[] {
-  // The Campaign's technical report is a record about the whole Run and not about a turn of its Loop
-  // (#30): it is written once the Run has ended, out of these very rows. Folded into the generation
-  // the row happened to be standing in, it would put the time spent writing the report into that
-  // generation's wall time — and so make the report's own numbers differ from the card's the moment
-  // the report was written, which is the one thing a report of a Campaign must not do.
-  const records = all.filter((r) => r.type !== 'experience');
+  // Two record types are about the Run and not about a turn of its Loop, and folding either into the
+  // generation the row happened to be standing in would put time that generation did not spend into
+  // that generation's wall time — making the Campaign's own report disagree with the card about the
+  // same Campaign, which is the one thing a report of a Campaign must not do.
+  //
+  // The Campaign's technical report (#30) is the first: it is written once the Run has ended, out of
+  // these very rows, so the time spent writing it would land in the generation the report was written
+  // from. A Model moment (#59) is the second, for the same reason and one more: a moment is not a
+  // turn of the Loop at all — it is one isolated model session, opened at a node, which spends
+  // nothing of the Run's Budget and is bracketed by its own pair of records. A moment opened on a Run
+  // that has *ended* (the fenced route does exactly that, and so does the live check) would otherwise
+  // stretch the last generation's wall time by however long a model took, after the report had been
+  // written from the earlier number. An in-turn moment is not lost by this: the node's own records
+  // bracket the turn that opened it, and that turn's time is that generation's either way.
+  //
+  // A `code` record (#62) is the third, and it belongs with the moment that wrote it for the same
+  // reason: a file written inside a Model moment is not a turn of the Loop, it is something that
+  // happened inside one turn of one node, and the node's own records already bracket that turn. The
+  // workshop's own view is where a person reads what was written (`record-views.ts`), and it reads
+  // these records directly rather than through a generation row.
+  const records = all.filter((r) => r.type !== 'experience' && r.type !== 'session' && r.type !== 'code');
   const opened = run.generation;
   const first = run.firstStrategy;
   // Both are written by the one call that opens a Run HimaFabric started, so a row carrying one and
@@ -474,7 +488,7 @@ const openedWith = (opening: DecisionRecord | undefined): RunStrategy | undefine
 
 /** The clock period or setup slack this observation stated, or undefined where nothing read one: a
  *  value the reader marked unknown is absent here, never a zero standing in for a missing reading. */
-function measured(observation: ObservationRecord | undefined, type: SemanticValueType): number | undefined {
+function measured(observation: ObservationRecord | undefined, type: string): number | undefined {
   if (observation === undefined) return undefined;
   const value = observation.values.findLast((v) => v.type === type && v.value !== null);
   return value?.value ?? undefined;

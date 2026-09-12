@@ -1,6 +1,6 @@
 # Step 4 接收与接续开发
 
-日期：2026-09-12。状态：规格已编制；产品代码尚未整合。以已交付 PLS/UI 为起点，不重开已完成任务。GitHub 实时状态以对应 Issue 为准。
+日期：2026-09-12。状态：PLS-20 已在独立分支接收源码，独立验证见 [交付记录](../../assessment/2026-09-12/pls-20/README.md)。以已交付 PLS/UI 为起点，不重开已完成任务。GitHub 实时状态以对应 Issue 为准。
 
 [完整规格](spec.md) · [来源及重叠清单](baseline.json) · [上游任务承接](upstream-disposition.md) · [执行协议](../polishing-v1/node-intervention.md) · [父规格 #1](https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
@@ -32,7 +32,7 @@
 
 PLS-20 → PLS-21/22/13 → PLS-19 → PLS-23/24 → PLS-08/09 → PLS-25；增长、有效性和资产工作按表中依赖穿插，PLS-18 汇总完整 DTCO，PLS-26 真人验收。并行只适用于互不覆盖文件与已明确接口的工作，不同时改 Pack/注册/Ledger 等热点。
 
-PLS-01～07 与 UI-02 仍为已完成。本轮新增 7 项、修订 12 项后续任务；不把上游所有重构建议都列为 pilot 前置。PLS-20 是当前可以首先实施的任务。
+PLS-01～07 与 UI-02 仍为已完成。本轮新增 7 项、修订 12 项后续任务；不把上游所有重构建议都列为 pilot 前置。PLS-20 验证及 Git 同步完成后，下一开发前沿为 PLS-21、PLS-22、PLS-13。
 
 ## 规格发布验证
 

@@ -1,0 +1,20 @@
+# The `hima-moment` agent preset: the composition a Model moment's session is made of.
+#
+# An AGENT-PLANE composition, mounted once per process and joined by every moment's session. What
+# makes it the right composition for a moment is what is NOT in it: not one tool row. In the profile
+# HimaHarness ships (dsh's web app), every model-facing tool is disabled in the host composition and
+# mounted by the `standard` preset instead — so a session composed from this preset inherits none of
+# them, and the only tools it can reach are the ones HimaFabric registers into that one session's own
+# scope for the purpose it was opened for (`moments.ts`).
+#
+# The persona row is here for the one thing a preset can do that a scoped registration cannot: shadow
+# the deployment's own identity and turn off dsh's runtime-context snapshots for this agent. A moment
+# is told the instructions of its purpose and nothing else — no persona, no working directory, no
+# sandbox orientation — because everything else is a fact about a coding agent at a terminal, and a
+# moment is not one. The instructions themselves are registered per moment as a `complete` prompt
+# section, so they are the whole of the system prompt; an empty prefix here drops the deployment's.
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: ''
+    includeRuntimeContext: false

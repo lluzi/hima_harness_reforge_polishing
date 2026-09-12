@@ -48,7 +48,8 @@ import { bootDriver, waitForStartCheck, type BootedDriver } from '../test/contra
 import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { api as himaApi } from '../test/contract/support/hima-api.ts';
 import { requireOpene902Fixture } from '../test/contract/support/opene902-fixtures.ts';
-import { installPack, timingProbePackId } from '../test/contract/support/pack.ts';
+import { installOverConstraining, overConstrainingChooserId, timingProbePackId, installPack } from '../test/contract/support/pack.ts';
+import { CONVERGING_PACK_ID as convergingPackId } from '../packages/desktop/src/local-site.ts';
 import { installReferenceSite, writeLocalSite } from '../test/contract/support/site.ts';
 import { writeStandinFlow } from '../test/contract/support/standin-flow.ts';
 import {
@@ -68,6 +69,7 @@ import {
   remoteCommands,
   remoteCommandWindow,
   remoteCommandWindowFilled,
+  resolveChooser,
   roundNs,
   versionLine,
   type AuditView,
@@ -79,6 +81,7 @@ import {
   type LedgerRecord,
   type ObservationRecord,
   type Pack,
+  type PackDataOrigin,
   type PackNode,
   type RunStatus,
   type RunView,
@@ -93,8 +96,10 @@ import {
 // ---------------------------------------------------------------------------------------------
 
 const usage = [
-  'usage: node scripts/acceptance-step3.ts [--site <name>] [--target <ns>] [--time-box <minutes>] [--generations <n>] [--out <dir>]',
+  'usage: node scripts/acceptance-step3.ts [--site <name>] [--pack <id>] [--target <ns>] [--time-box <minutes>] [--generations <n>] [--out <dir>]',
   '  --site         linglong, the committed reference site, or local, the stand-in flow this repository generates. Default linglong.',
+  `  --pack         the pack to drive, as the packs directory holds it. Default ${timingProbePackId}, the reference pack.`,
+  `                 --site local also installs ${convergingPackId} beside it: the same pack with the over-constraining push in its own choosers/, which converges on this flow where the reference pack does not (D45).`,
   "  --target       the clock period the campaign is asked to close at, in ns. Default: the period the site's own qor report states, minus 0.2.",
   "  --time-box     the Campaign's budget in minutes, for the whole Loop and not one generation. Default 30.",
   "  --generations  how many generations the Loop may open. Default: the pack's own converge.generationLimit.",
@@ -164,7 +169,7 @@ const ENDED_ON_THE_CARD = 'ended — ';
 const setupRuleId = 'setup-wns-all-nonnegative';
 const goalRuleId = 'clock-period-at-most';
 /** The options this script's own site names. */
-const knownOptions = ['--site', '--target', '--time-box', '--generations', '--out'];
+const knownOptions = ['--site', '--pack', '--target', '--time-box', '--generations', '--out'];
 
 const argv = process.argv.slice(2);
 
@@ -198,6 +203,17 @@ const siteName = option('--site') ?? 'linglong';
 if (siteName !== 'linglong' && siteName !== 'local') {
   fail(`unknown site "${siteName}": this script knows the committed reference site "linglong" and the stand-in site "local"\n${usage}`);
 }
+/**
+ * The pack this run drives (#57). The reference pack by default, because that is the pack this
+ * repository ships and the one a record from the reference site is about.
+ *
+ * A dry run against the stand-in has a second choice, installed beside it by the seeding below: the
+ * reference pack's method with the over-constraining push in its own `choosers/` folder. The
+ * reference pack keeps the rule it ships with — what its chooser should be is the step-4 pack
+ * authors' to say (D45) — and that rule reaches no ending on a flow that reports no margin for a met
+ * period, so `--site local` is red on it by design and green on the variant.
+ */
+const packToDrive = option('--pack') ?? timingProbePackId;
 const targetOverrideNs = numeric('--target', option('--target'));
 const timeBoxMinutes = numeric('--time-box', option('--time-box')) ?? defaultTimeBoxMinutes;
 const generationsOverride = numeric('--generations', option('--generations'));
@@ -474,6 +490,10 @@ async function setUpHome(): Promise<{ h: HimaHome; sitesDir: string; packsDir: s
     const reference = await installReferenceSite(h);
     return { h, sitesDir: reference.sitesDir, packsDir: installed.packsDir };
   }
+  // The converging variant beside the reference pack (#57), so `--pack <variant>` is a dry run this
+  // script can pass: the reference pack's own chooser cannot converge on this flow, and that is the
+  // pack authors' question rather than this script's.
+  await installOverConstraining(installed.packsDir, convergingPackId);
   const flow = await writeStandinFlow(noSkip, h, { sleepSeconds: 3 });
   if (!flow) throw new Error('the stand-in flow could not be generated');
   const fixture = await requireOpene902Fixture(noSkip, 'syn/qor.rpt');
@@ -743,13 +763,44 @@ let reportHeading = '';
 
 const { h, sitesDir, packsDir } = await setUpHome();
 const site = loadSite(sitesDir, siteName);
-const pack = loadPack(packsDir, timingProbePackId);
+const pack = ((): Pack => {
+  try {
+    return loadPack(packsDir, packToDrive);
+  } catch (err) {
+    // A pack the caller named and this home does not hold, or one that does not hang together: the
+    // caller's to fix, and said as a sentence rather than as a stack.
+    return fail(`cannot drive pack "${packToDrive}": ${(err as Error).message}\n${usage}`);
+  }
+})();
 const bindings = boundInputs(pack, site);
 const flowRoot = bindings.flowRoot ?? '';
 const workspaceRoot = bindings.workspaceRoot ?? '';
 const design = bindings.design ?? '';
 const explore = pack.graph.nodes.find((n): n is Extract<PackNode, { kind: 'explore' }> => n.kind === 'explore');
-const stepNs = explore?.parameters.bind.stepNs;
+/** The chooser that node applies, by id, and where its file came from (#57) — the pack's own
+ *  `choosers/` or the bundle's, as the resolution that read it answered. */
+const chooserId = explore?.parameters.chooser;
+const chooserOrigin = ((): PackDataOrigin | undefined => {
+  if (chooserId === undefined) return undefined;
+  try {
+    // As the folder stands: this is the script reporting what a Campaign it is about to start will
+    // read, and a Campaign's Explore node reads its chooser as it runs (D46, `packDataAt`).
+    return resolveChooser(pack, chooserId, 'as it stands').origin;
+  } catch (err) {
+    // The pack named a chooser this home holds no file for, in neither place looked. The caller's to
+    // fix, and said as a sentence rather than as a stack, exactly as a pack that will not load is.
+    return fail(`pack "${pack.id}" names chooser "${chooserId}", which will not resolve: ${(err as Error).message}\n${usage}`);
+  }
+})();
+/**
+ * The one number this pack binds to its chooser's parameter, and what that parameter is called.
+ *
+ * A chooser declares at most one parameter and `/hima pack check` refuses a node that binds anything
+ * else, so the node's whole `bind:` is this pair. Taken off the pack rather than spelled here,
+ * because a guard band and a step are two packs' words for "the number the author chose" and this
+ * script drives whichever pack it was given.
+ */
+const [boundName, boundNs] = Object.entries(explore?.parameters.bind ?? {})[0] ?? [undefined, undefined];
 const converge: ExploreConverge | undefined = explore?.parameters.converge;
 const generationLimit = generationsOverride ?? converge?.generationLimit;
 if (generationLimit === undefined) {
@@ -770,7 +821,7 @@ record.site = {
   parallelJobs: site.capacity.parallelJobs,
   lastResultReport: lastResultAt,
 };
-record.pack = { id: pack.id, version: pack.contract.version, stepNs, converge };
+record.pack = { id: pack.id, version: pack.contract.version, chooser: chooserId, chooserOrigin, bound: explore?.parameters.bind, converge };
 record.home = h.home;
 
 if (site.kind === 'ssh' && site.ssh) {
@@ -1261,17 +1312,23 @@ check(
 
 /**
  * The chooser's three clauses and the pack's convergence rule, re-derived here from the two verdicts
- * and the measured numbers, so what is on the ledger is compared with what `over-constraining-push` and the
- * pack declare rather than with a guess.
+ * and the measured numbers, so what is on the ledger is compared with what the chooser and the pack
+ * declare rather than with a guess.
  *
- * This is the one place in this script that restates in TypeScript something the harness ships as
- * data (D38), and it is deliberate: an independent check is worth nothing if it is the same code
- * evaluating the same file, so the clauses are read off `choosers/over-constraining-push.yml` and the pack's
+ * This is the one place in this script that restates in TypeScript something a pack or the bundle
+ * ships as data (D38), and it is deliberate: an independent check is worth nothing if it is the same
+ * code evaluating the same file, so the clauses are read off the chooser's own YAML and the pack's
  * `converge:` by a person and written out here by hand. It is a check of the numbers the harness
  * produced, never a second implementation for the harness to use — nothing outside this script
  * imports it. The order is the chooser's own: the goal-met clause first, then convergence, then the
  * clause that computes a next period. The rounding is the one thing taken from the bundle
  * (`roundNs`): "three decimals" is a convention the two sides must share to be comparable at all.
+ *
+ * Two push rules are written out, because since #57 a pack brings its own (`--pack`): the bundle's
+ * `timing-push`, which pushes by the margin a met period reports, and `over-constraining-push`,
+ * which never asks a met period what it had to spare and reads the violation instead. A chooser
+ * this function has not been taught answers nothing derivable, which the check below reports as
+ * such rather than passing on a rule nobody wrote down.
  */
 function chooserWouldChoose(
   constraint: string,
@@ -1280,7 +1337,7 @@ function chooserWouldChoose(
   slackNs: number,
   earlier: readonly number[],
 ): { readonly chosen: unknown; readonly how: string } | undefined {
-  if (stepNs === undefined) return undefined;
+  if (boundNs === undefined) return undefined;
   if (constraint === 'PASS' && goal === 'PASS') {
     return { chosen: { goalMet: true }, how: 'the constraint and the goal both passed, so there is no next strategy' };
   }
@@ -1301,15 +1358,48 @@ function chooserWouldChoose(
       }
     }
   }
-  return constraint === 'PASS'
-    ? {
-        chosen: { strategy: { periodNs: roundNs(periodNs - stepNs) } },
-        how: `period − step = ${periodNs} − ${stepNs}`,
-      }
-    : {
-        chosen: { strategy: { periodNs: roundNs(periodNs + Math.abs(slackNs) - stepNs) } },
-        how: `period + |slack| − step = ${periodNs} + ${Math.abs(slackNs)} − ${stepNs}`,
-      };
+  // `timing-push`: take the margin a met period reported back, and leave the guard band on the
+  // table; back off by the violation on a failed one, and leave the same band.
+  if (chooserId === 'timing-push') {
+    return constraint === 'PASS'
+      ? {
+          chosen: { strategy: { periodNs: roundNs(periodNs - slackNs + boundNs) } },
+          how: `period − slack + ${boundName} = ${periodNs} − ${slackNs} + ${boundNs}`,
+        }
+      : {
+          chosen: { strategy: { periodNs: roundNs(periodNs + Math.abs(slackNs) + boundNs) } },
+          how: `period + |slack| + ${boundName} = ${periodNs} + ${Math.abs(slackNs)} + ${boundNs}`,
+        };
+  }
+  // `over-constraining-push`: one step tighter on a met period, the margin never read; one step
+  // below what the violation says the design actually closes at on a failed one.
+  if (chooserId === overConstrainingChooserId) {
+    return constraint === 'PASS'
+      ? {
+          chosen: { strategy: { periodNs: roundNs(periodNs - boundNs) } },
+          how: `period − ${boundName} = ${periodNs} − ${boundNs}`,
+        }
+      : {
+          chosen: { strategy: { periodNs: roundNs(periodNs + Math.abs(slackNs) - boundNs) } },
+          how: `period + |slack| − ${boundName} = ${periodNs} + ${Math.abs(slackNs)} − ${boundNs}`,
+        };
+  }
+  return undefined;
+}
+
+/**
+ * The next-period clauses of the chooser this run drives, in words, for the expectation the check
+ * states beside its verdict. A person reads that expectation against the chooser's own file, so it
+ * has to say which rule was expected and not merely that one was.
+ */
+function clausesInWords(): string {
+  if (chooserId === 'timing-push') {
+    return `\`period − slack + ${show(boundName)}\` when the constraint passed and the goal did not, and \`period + |slack| + ${show(boundName)}\` when the constraint failed`;
+  }
+  if (chooserId === overConstrainingChooserId) {
+    return `\`period − ${show(boundName)}\` when the constraint passed and the goal did not, and \`period + |slack| − ${show(boundName)}\` when the constraint failed`;
+  }
+  return 'clauses this script has not been taught, so it derives no next period and says so';
 }
 
 /** What one generation of the Loop was asked for, what it measured, what was concluded and decided. */
@@ -1416,17 +1506,19 @@ for (const g of generations) {
     : undefined;
   check(
     `${at}-decision-follows-the-chooser`,
-    `Generation ${g.n}'s decision is the one \`over-constraining-push\` and the pack's convergence rule declare for these two verdicts and these measured values, and it cites both verdicts and the observation.`,
-    'One decision, by chooser `over-constraining-push`, taken in the chooser\'s own order: `{goalMet: true}` when the constraint and the goal both passed; else `{converged: {read, band, generations, values}}` when the pack\'s `converge` block has enough generations to compare and each of the last `generations` moves of the measured period is strictly below the band; else `{strategy: {periodNs: period − step}}` when the constraint passed and the goal did not, and `{strategy: {periodNs: period + |slack| − step}}` when the constraint failed, each rounded to 3 decimals — with `period` and `slack` read from this generation\'s observation, `step` the exploration step the pack binds, and the earlier generations\' measured periods taken from this same record. Its `rationale` is those numbers, and its `cites` are the setup verdict, the goal verdict and the observation, in that order.',
+    `Generation ${g.n}'s decision is the one \`${show(chooserId)}\` and the pack's convergence rule declare for these two verdicts and these measured values, and it cites both verdicts and the observation.`,
+    `One decision, by chooser \`${show(chooserId)}\` read from the ${show(chooserOrigin)}, taken in the chooser's own order: \`{goalMet: true}\` when the constraint and the goal both passed; else \`{converged: {read, band, generations, values}}\` when the pack's \`converge\` block has enough generations to compare and each of the last \`generations\` moves of the measured period is strictly below the band; else the next period that chooser's own clauses compute — ${clausesInWords()} — rounded to 3 decimals, with \`period\` and \`slack\` read from this generation's observation, \`${show(boundName)}\` the number the pack binds, and the earlier generations' measured periods taken from this same record. Its \`rationale\` is those numbers, and its \`cites\` are the setup verdict, the goal verdict and the observation, in that order.`,
     g.decision !== undefined
       && g.expected !== undefined
       && citesWanted !== undefined
-      && g.decision.chooser === 'over-constraining-push'
+      && g.decision.chooser === chooserId
+      && g.decision.chooserOrigin === chooserOrigin
       && canonical(g.decision.chosen) === canonical(g.expected.chosen)
       && canonical(g.decision.cites) === canonical(citesWanted)
       && g.decision.rationale.period === g.observedPeriodNs
       && g.decision.rationale.slack === g.observedSlackNs
-      && g.decision.rationale.stepNs === stepNs,
+      && boundName !== undefined
+      && g.decision.rationale[boundName] === boundNs,
     g.decision === undefined
       ? `generation ${String(g.n)} recorded no decision`
       : `${g.decision.chooser} chose ${JSON.stringify(g.decision.chosen)}; the chooser's and the pack's own clauses give ${
@@ -1810,7 +1902,7 @@ function markdown(): string {
   const lines: string[] = [
     `# Step-3 acceptance run, ${date}`,
     '',
-    `One multi-generation Campaign of the \`${timingProbePackId}\` pack on site \`${site.name}\`${site.ssh ? ` (${site.ssh.destination})` : ''}. ${versionLine()}. Commit \`${commit}\`${commitDirty ? ' (working tree dirty)' : ''}.`,
+    `One multi-generation Campaign of the \`${pack.id}\` pack on site \`${site.name}\`${site.ssh ? ` (${site.ssh.destination})` : ''}. ${versionLine()}. Commit \`${commit}\`${commitDirty ? ' (working tree dirty)' : ''}.`,
     '',
     "Started from the window through the driver (D42, ADR-0004): the desktop shell's own Electron main process, started with `--driver` on an isolated home, which launched the real dsh host and exchanged its token in its own window's session. The Campaign was started by filling the workbench page's own start form and clicking `start`, watched on the card the window renders, and read over the routes with the session the shell established — `GET /hima/api/runs/<id>`, `/records` and `/experience` — then over a second shell booted on the same home.",
     '',
@@ -1819,7 +1911,7 @@ function markdown(): string {
     `- The site's own last result: \`${lastResultAt}\`, read read-only, states **${show(lastPeriodNs)} ns**.`,
     `- The target the Goal was set to, and the first Strategy's period: **${show(targetNs)} ns** — ${targetFrom}.`,
     `- The Budget: a time box of ${timeBoxMinutes} minutes for the whole Campaign, a retry allowance of ${retryAllowance} per node per generation, and at most ${generationLimit} generations${generationsOverride === undefined ? " — the pack's own `converge.generationLimit`" : ' — given by `--generations`'}. The site declares ${site.capacity.parallelJobs} parallel job(s).`,
-    `- The pack's convergence rule: ${converge === undefined ? 'none declared' : `\`${converge.read}\` moving by less than ${String(converge.band)} over ${counted(converge.generations, 'successive generation')}`}, and its exploration step is ${show(stepNs)} ns.`,
+    `- The pack's convergence rule: ${converge === undefined ? 'none declared' : `\`${converge.read}\` moving by less than ${String(converge.band)} over ${counted(converge.generations, 'successive generation')}`}, and its explore node applies chooser \`${show(chooserId)}\` from the ${show(chooserOrigin)}, binding \`${show(boundName)}\` to ${show(boundNs)}.`,
     '',
     'The window\'s own start form, filled control by control:',
     '',

@@ -12,7 +12,7 @@ import { channelFor, mustRun, quote, type Channel } from './channel.js';
 import { loadSite } from './sites.js';
 import { decideLaunch } from './shell.js';
 import { existingRun, runFor } from './runs.js';
-import type { JobIdentity, JobRecord, Ledger, RefusalRecord, RunRecord } from './ledger.js';
+import type { JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, RefusalRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError } from './errors.js';
 
 /** What a Job's name defaults to when the caller does not give one. */
@@ -36,16 +36,18 @@ const killPollMs = 100;
  * Stated here, beside the `jobStatus` each look is, because two things wait on this Site by it: a
  * node waiting for its own Job, and a node waiting for one of the Site's job slots to come free.
  *
- * The two intervals are on the bundle's surface because a test that holds a Site unreadable and then
+ * All three numbers are on the bundle's surface because a test that holds a Site unreadable and then
  * asserts the waiter kept asking has to hold it for longer than one of them, and an interval written
  * out again in the test is a number that goes stale the day this one is tuned — the test would then
  * pass while asserting nothing, which is the one failure a test cannot report (#18). How long the
- * fast phase lasts is nobody else's business: a test that holds a Site for two of the *slow*
- * interval has waited long enough whichever phase the waiter is in.
+ * fast phase lasts is on the surface for that reason and one more: a test that has to open a known
+ * gap between two looks — the cancel race of #61, where a reader's Job must finish inside one — waits
+ * the fast phase out first, because a gap the length of the slow interval is only a gap once the
+ * waiter has started asking at the slow interval.
  */
 export const jobPollFastMs = 500;
 export const jobPollSlowMs = 3_000;
-const jobPollFastForMs = 5_000;
+export const jobPollFastForMs = 5_000;
 
 /** How long to wait before the next look, given when the waiting began. */
 export const pollAfter = (waitingSince: number): number =>
@@ -301,7 +303,7 @@ async function tailLog(on: Channel, job: JobIdentity, lines: number): Promise<st
 async function killSession(on: Channel, job: JobIdentity): Promise<KillOutcome> {
   // Ticket #18: a Site that cannot be asked raises out of here rather than answering. There is no
   // outcome to report — nothing was seen to stop and nothing was seen to be already over — and a
-  // `killed` record written on a guess would say a licence was released while dc_shell still holds it.
+  // `killed` record written on a guess would say a licence was released while the tool still holds it.
   if (!(await sessionThere(on, job.session))) return { wasRunning: false, gone: true };
   // Exit 1 is tmux saying the session went away between the question and the kill — the outcome the
   // caller wanted, reached without us. Anything else is a fault.
@@ -355,6 +357,33 @@ export interface LaunchRequest {
    * none.
    */
   readonly branchId?: string;
+  /**
+   * What this Job was launched to **read**, when it is a pack reader's (#61): the reader as the
+   * observation will carry it, the file it was told to write, and the report it is a reading of.
+   *
+   * Recorded on the `launched` record, which is what lets a host that never launched it settle the
+   * node from the reading rather than from an exit code — see `launchedReading`. A tool's Job
+   * carries none, and a Job launched from the `/hima job` face reads nothing at all.
+   */
+  readonly reading?: LaunchedReading;
+  /**
+   * What this Job's wrapper is **given as its first operand**, when it is a workshop's (#62): the entry file and the hash it had when
+   * the launch held it against the `code` record of the moment that wrote it.
+   *
+   * Recorded on the `launched` record beside `reading`, and read by nobody in the settling path: a
+   * workshop's Job settles from its exit code exactly as a tool's does. It is there so that the Job
+   * on the audit and the bytes in the ledger are one story — the `code` record says a file was
+   * written and this says that very file, still hashing to that, is what started.
+   */
+  readonly workshop?: LaunchedWorkshop;
+  /**
+   * Which attempt at its node this Job is (#62), where the launching turn knows it.
+   *
+   * `/hima job launch` knows no attempt and passes none; every fabric launch does. What it is for is
+   * a host that never launched the Job: recovery reads the attempt off this record rather than off
+   * the node record carrying the Job's session, which is written after it and may never have been.
+   */
+  readonly attempt?: number;
 }
 
 export type LaunchResult =
@@ -379,7 +408,15 @@ export async function launchJob(deps: JobDeps, req: LaunchRequest): Promise<Laun
   const belongs = req.nodeId === undefined ? {} : { nodeId: req.nodeId };
   const inBranch = req.branchId === undefined ? {} : { branchId: req.branchId };
   const holds = req.licences === undefined || Object.keys(req.licences).length === 0 ? {} : { licences: { ...req.licences } };
-  return { kind: 'launched', run, record: await deps.ledger.appendJob(run.id, { event: 'launched', job, ...belongs, ...inBranch, ...holds }) };
+  // What a reader's launch decided, as the one nested block the record keeps it in: a read-back needs
+  // every member of it and has nowhere else to get one, which is why it is stored whole (#61).
+  const reads = req.reading === undefined ? {} : { reading: req.reading };
+  // And the same for a workshop's Job (#62): the entry it runs with the hash the launch verified, and
+  // the attempt it belongs to — both written here, where they are true, and both absent from a Job
+  // that is neither a workshop's nor a fabric node's.
+  const runs = req.workshop === undefined ? {} : { workshop: req.workshop };
+  const numbered = req.attempt === undefined ? {} : { attempt: req.attempt };
+  return { kind: 'launched', run, record: await deps.ledger.appendJob(run.id, { event: 'launched', job, ...belongs, ...inBranch, ...holds, ...reads, ...runs, ...numbered }) };
 }
 
 export interface JobStatusResult {

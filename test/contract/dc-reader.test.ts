@@ -15,6 +15,7 @@ import { himaCommand } from './support/command.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
 import { openSession, postObserve } from './support/hima-api.ts';
 import { requireOpene902Fixture } from './support/opene902-fixtures.ts';
+import { assertReadAsDeclared } from './support/readings.ts';
 // Also loads the `ctx.hima` declaration merge onto Context.
 import type { RunView } from '@hima/harness';
 import type {} from '@deepseek-ai/dsh-tools';
@@ -23,14 +24,9 @@ type Host = InProcessHost;
 
 interface Value { type: string; value: number | null; unit: string; mode?: string; scope?: string; group?: string; unknownReason?: string }
 
-/** The one unit each value type is bound to, restated here independently of `semantics.ts`. */
-const boundUnit: Record<string, string> = {
-  setup_wns: 'ns', setup_tns: 'ns', hold_wns: 'ns', clock_period: 'ns', cell_area: 'um2',
-};
-
-function assertUnitsBound(values: Value[]): void {
-  for (const v of values) assert.equal(v.unit, boundUnit[v.type], `${v.type} must be read in ${boundUnit[v.type] ?? '(an unknown type)'}`);
-}
+/** Every value the real qor report produced, held against what the bundled readers are known to read
+ *  each type in (`support/readings.ts`) — the unit, and the qualifiers. */
+const assertUnitsBound = assertReadAsDeclared;
 
 function find(values: Value[], type: string): Value | undefined {
   return values.find((v) => v.type === type);

@@ -1,0 +1,281 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/honest-standin.test.ts test/contract/moment.host.test.ts test/contract/pack-readers.host.test.ts test/contract/workshop.host.test.ts test/contract/pipeline-stages.host.test.ts
+local: 5 selected; 29 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: on a stand-in that reports no margin for a met period, timing-push loosens by its guard band every generation and ends at the limit, while over-constraining-push converges below the achievable period and ends goal-met when the goal is reachable
+ok 1 - on a stand-in that reports no margin for a met period, timing-push loosens by its guard band every generation and ends at the limit, while over-constraining-push converges below the achievable period and ends goal-met when the goal is reachable
+  ---
+  duration_ms: 26335.8075
+  type: 'test'
+  ...
+# Subtest: through the Host with the replay stand-in: a moment opens on a stand-in node, the replayed turn answers, and the ledger holds the pair that brackets it
+not ok 2 - through the Host with the replay stand-in: a moment opens on a stand-in node, the replayed turn answers, and the ledger holds the pair that brackets it
+  ---
+  duration_ms: 5704.992709
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:99:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    the moment route answered: 502 {"error":{"code":"hima/moment-failed","message":"the model answered nothing in session session-ba99467a-58b7-456f-b9e9-f7b9cf655f7e: llm-replay: script exhausted — session requested model call #1 but its script has only 0; re-record the scenario"}}
+    
+    502 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 502
+  operator: 'strictEqual'
+  stack: |-
+    answer (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:76:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:123:20)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: through the Host with the replay stand-in: a moment on a Run that has ended leaves the Generation rows the card and the report were written from exactly as they were
+not ok 3 - through the Host with the replay stand-in: a moment on a Run that has ended leaves the Generation rows the card and the report were written from exactly as they were
+  ---
+  duration_ms: 8022.371292
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:158:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    the moment route answered: 502 {"error":{"code":"hima/moment-failed","message":"the model answered nothing in session session-954e01a7-a25b-48a2-89b7-94a961a175f2: llm-replay: script exhausted — session requested model call #1 but its script has only 0; re-record the scenario"}}
+    
+    502 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 502
+  operator: 'strictEqual'
+  stack: |-
+    answer (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:76:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:192:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: through the Host with the replay stand-in: a host taken away mid-moment leaves one open record, the next host closes it interrupted exactly once, and the node takes another moment that completes
+not ok 4 - through the Host with the replay stand-in: a host taken away mid-moment leaves one open record, the next host closes it interrupted exactly once, and the node takes another moment that completes
+  ---
+  duration_ms: 96279.64275
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:212:1'
+  failureType: 'testCodeFailure'
+  error: 'waited 90000 ms and the hanging model call announced itself never happened'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    until (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:93:39)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:234:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: the scan reports a regular file it could not read, rather than passing over it
+ok 5 - the scan reports a regular file it could not read, rather than passing over it
+  ---
+  duration_ms: 6.450667
+  type: 'test'
+  ...
+# Subtest: the scan reports a directory it could not open, and passes over a link pointing at nothing
+ok 6 - the scan reports a directory it could not open, and passes over a link pointing at nothing
+  ---
+  duration_ms: 2.943083
+  type: 'test'
+  ...
+# Subtest: the moment route refuses what it cannot do, in the namespace's own words
+ok 7 - the moment route refuses what it cannot do, in the namespace's own words
+  ---
+  duration_ms: 5977.686875
+  type: 'test'
+  ...
+# Subtest: through the Host with a model that refuses: the turn answers nothing, the moment closes failed, and the route says why
+not ok 8 - through the Host with a model that refuses: the turn answers nothing, the moment closes failed, and the route says why
+  ---
+  duration_ms: 5285.206125
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:398:1'
+  failureType: 'testCodeFailure'
+  error: "and carries the route's own words: the model answered nothing in session session-6394066e-5641-4426-9981-7eed09f01a2f: llm-replay: script exhausted — session requested model call #1 but its script has only 0; re-record the scenario"
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: 'the model answered nothing in session session-6394066e-5641-4426-9981-7eed09f01a2f: llm-replay: script exhausted — session requested model call #1 but its script has only 0; re-record the scenario'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/moment.host.test.ts:421:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a moment refuses a governed tool name by construction: no session is composed and no record is written
+ok 9 - a moment refuses a governed tool name by construction: no session is composed and no record is written
+  ---
+  duration_ms: 712.562292
+  type: 'test'
+  ...
+# Subtest: a site whose permit will not run the wrapper a reader declares is unfit before a campaign exists, and the check names the wrapper and what the site does allow
+not ok 10 - a site whose permit will not run the wrapper a reader declares is unfit before a campaign exists, and the check names the wrapper and what the site does allow
+  ---
+  duration_ms: 897.038
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack-readers.host.test.ts:19:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    the refusal names the reader, the wrapper it wanted and what this site allows: pack pack-reader-unpermitted on site local: unfit — pack pack-reader-unpermitted: graph.yml is version 1 while contract.yml is version 2
+    stage: none; next: intent — INTENT.md, written by /hima-grill
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    pack pack-reader-unpermitted on site local: unfit — pack pack-reader-unpermitted: graph.yml is version 1 while contract.yml is version 2
+    stage: none; next: intent — INTENT.md, written by /hima-grill
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack-readers.host.test.ts:41:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# pack pack-reader-unpermitted on site local: unfit — pack pack-reader-unpermitted: graph.yml is version 1 while contract.yml is version 2
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# Subtest: `/hima status` names the reader of the run's latest reading, in the words both card mounts say it in
+not ok 11 - `/hima status` names the reader of the run's latest reading, in the words both card mounts say it in
+  ---
+  duration_ms: 322.604208
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack-readers.host.test.ts:54:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    /hima run pack-reader-said: pack pack-reader-said cannot be run: pack pack-reader-said: graph.yml is version 1 while contract.yml is version 2
+    
+    'error' !== 'success'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'success'
+  actual: 'error'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack-readers.host.test.ts:76:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# /hima run pack-reader-said: pack pack-reader-said cannot be run: pack pack-reader-said: graph.yml is version 1 while contract.yml is version 2
+# Subtest: through a booted host with the replay stand-in: /hima-fabric reads every source its body names before it writes, compiles the spec into a pack that loads and fits, and records the author's review in their own words
+ok 12 - through a booted host with the replay stand-in: /hima-fabric reads every source its body names before it writes, compiles the spec into a pack that loads and fits, and records the author's review in their own words
+  ---
+  duration_ms: 1806.595916
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-fabric refuses a spec that contradicts itself, naming the section and quoting the line, and writes nothing at all
+ok 13 - through a booted host with the replay stand-in: /hima-fabric refuses a spec that contradicts itself, naming the section and quoting the line, and writes nothing at all
+  ---
+  duration_ms: 503.756333
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-test runs the compiled pack as a run marked a test and writes the record from what that run recorded, /hima-release seals the folder, and a file changed afterwards is named by the check and refused by a campaign
+ok 14 - through a booted host with the replay stand-in: /hima-test runs the compiled pack as a run marked a test and writes the record from what that run recorded, /hima-release seals the folder, and a file changed afterwards is named by the check and refused by a campaign
+  ---
+  duration_ms: 8574.756667
+  type: 'test'
+  ...
+# Subtest: in process over the same home: a write that landed and verified but that the ledger would not record is named in the tool's answer, in the host log and in the node the run blocks at
+not ok 15 - in process over the same home: a write that landed and verified but that the ledger would not record is named in the tool's answer, in the host log and in the node the run blocks at
+  ---
+  duration_ms: 973.430667
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:24:1'
+  failureType: 'testCodeFailure'
+  error: 'the answer names the run: /hima run workshop-probe: pack workshop-probe cannot be run: pack workshop-probe: graph.yml is version 1 while contract.yml is version 2'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:57:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: in process over the same home: a host log that throws where the landed byte is reported stops neither the tool's answer nor the fault the node blocks on
+not ok 16 - in process over the same home: a host log that throws where the landed byte is reported stops neither the tool's answer nor the fault the node blocks on
+  ---
+  duration_ms: 262.764334
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:112:1'
+  failureType: 'testCodeFailure'
+  error: 'the answer names the run: /hima run workshop-probe: pack workshop-probe cannot be run: pack workshop-probe: graph.yml is version 1 while contract.yml is version 2'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:142:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a workshop declaration this harness will not run is refused before a campaign exists, naming the field
+not ok 17 - a workshop declaration this harness will not run is refused before a campaign exists, naming the field
+  ---
+  duration_ms: 297.147167
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:183:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    pack check prints the workshops line: pack workshop-check-ok on site local: unfit — pack workshop-check-ok: graph.yml is version 1 while contract.yml is version 2
+    stage: none; next: intent — INTENT.md, written by /hima-grill
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:198:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: at the ledger object: a job whose launch record names its attempt is that attempt, whether or not a node record ever named its session
+not ok 18 - at the ledger object: a job whose launch record names its attempt is that attempt, whether or not a node record ever named its session
+  ---
+  duration_ms: 280.760375
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:267:1'
+  failureType: 'testCodeFailure'
+  error: 'the answer names the run: /hima run workshop-probe: pack workshop-probe cannot be run: pack workshop-probe: graph.yml is version 1 while contract.yml is version 2'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:295:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: in process over the same home: the moment of a retry is given the reason the attempt before it failed and the tail of that attempt's log
+not ok 19 - in process over the same home: the moment of a retry is given the reason the attempt before it failed and the tail of that attempt's log
+  ---
+  duration_ms: 297.404166
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:341:1'
+  failureType: 'testCodeFailure'
+  error: 'the answer names the run: /hima run workshop-probe: pack workshop-probe cannot be run: pack workshop-probe: graph.yml is version 1 while contract.yml is version 2'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/workshop.host.test.ts:367:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# /hima run workshop-probe: pack workshop-probe cannot be run: pack workshop-probe: graph.yml is version 1 while contract.yml is version 2
+1..19
+# tests 19
+# suites 0
+# pass 8
+# fail 11
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 164503.267459
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 164.558 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

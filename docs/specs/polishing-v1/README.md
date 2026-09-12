@@ -34,7 +34,7 @@ PLS-20 整合时必须保留上述产品行为与验证标准；同因上游修�
 
 ## 规格与状态
 
-[原产品规格](spec.md)继续承载产品目标与首轮背景；[执行协议](node-intervention.md)已按本轮细化 owner、节点接纳、暂停与迁移。具体运行实现尚未切换。PLS-20 是首先实施的代码整合任务；PLS-08 在基础/作者/正式 probe 交接齐备后验收，不再等待上游整体验收。
+[原产品规格](spec.md)继续承载产品目标与首轮背景；[执行协议](node-intervention.md)已按本轮细化 owner、节点接纳、暂停与迁移。具体运行实现尚未切换。PLS-20 的代码整合与验证见 [实施证据](../../assessment/2026-09-12/pls-20/README.md)；PLS-08 在基础/作者/正式 probe 交接齐备后验收，不再等待上游整体验收。
 
 本目录的 tasks.json、publication.json、remote-verification.json、validation.json 是首轮 18 项任务发布快照，不能用于推断当前依赖或状态。当前发布数据在 [step4-takeover](../step4-takeover/README.md)；实时任务状态以 GitHub 为准。
 

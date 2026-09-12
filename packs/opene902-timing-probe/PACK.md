@@ -161,7 +161,7 @@ goal verdict, `clock_period` and `setup_wns`:
   not evidence that the design closes at the inferred period.
 
 Goal-met is checked first, then the Pack's convergence rule, then a next Strategy.
-The chooser remains deterministic YAML in `packages/harness/choosers/over-constraining-push.yml`;
+The chooser remains deterministic YAML in `choosers/over-constraining-push.yml`;
 no model participates in this sample's strategy selection. The Ledger decision records its
 inputs, parameters and cited verdicts/observation. Broader AI research belongs to the later Pack.
 

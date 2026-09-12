@@ -1,0 +1,15 @@
+{
+  "command": "node scripts/live-check-workshop.ts --out <assessment>/live-model",
+  "returncode": 0,
+  "elapsedSeconds": 53.727,
+  "hardTimeoutSeconds": 780,
+  "timeout": false,
+  "bootAttempts": {
+    "host-process": 0,
+    "host-in-process": 0,
+    "electron": 1
+  },
+  "evidenceCredentialLeaks": [],
+  "sshAttempts": 0,
+  "realSiteJobs": 0
+}

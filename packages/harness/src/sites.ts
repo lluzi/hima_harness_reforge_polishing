@@ -47,9 +47,10 @@ export type SshTarget = z.infer<typeof sshSchema>;
 
 /**
  * What a licence is called. One shape for both the file that declares seats of it and the pack whose
- * tool asks for them, because the two are matched by exact string: `Design-Compiler` in a site file
- * and `Design-Compiler` in a run contract are one seat, and nothing else is. Dashes and dots are
- * allowed because that is how the tools are actually named (`Design-Compiler`, `Innovus_Impl_System`).
+ * tool asks for them, because the two are matched by exact string: one name in a site file and that
+ * same name in a run contract are one seat, and nothing else is. Dashes, dots and underscores are
+ * allowed because that is how a vendor spells a licence feature, and the Site owner copies it as it
+ * is rather than transliterating it into something this harness would rather read.
  */
 export const licenceName = z
   .string()
@@ -82,7 +83,7 @@ export const siteSchema = z
        * `parallelJobs` is, because a licence is the Site's and not a Campaign's.
        *
        * A count of **0** is a licence the Site owner reserves nothing of — the reference site's
-       * node-locked Innovus line — so a tool that holds one can never launch here, and
+       * node-locked implementation licence — so a tool that holds one can never launch here, and
        * `/hima pack check` says so rather than letting a Run wait for a seat that will never come
        * free. A licence **absent** from the map is one this Site does not declare at all, which is
        * the same refusal said the other way: a Site cannot be held to a count it never stated.

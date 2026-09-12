@@ -36,6 +36,10 @@ export const runPath = (runId: string): string => `${HIMA_RUNS_PATH}/${encodeURI
 /** Where a control acts on a Run: stop it, or carry a waiting one on. */
 export const runActionPath = (runId: string, action: 'cancel' | 'resume'): string => `${runPath(runId)}/${action}`;
 
+/** Where a Model moment is opened on a Run (#59): the mechanism's one route, on the Run it belongs
+ *  to, because a moment happens at a node of a Run and nowhere else. */
+export const runMomentPath = (runId: string): string => `${runPath(runId)}/moment`;
+
 /** The Markdown of a Run's technical report, as the Site has it: the `.md` route, read back and held
  *  against its recorded hash on the way through (#30). */
 export const experienceMarkdownPath = (runId: string): string => `${runPath(runId)}/experience.md`;

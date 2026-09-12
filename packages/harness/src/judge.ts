@@ -6,6 +6,8 @@
 import type { Ledger, ObservationRecord, VerdictOutcome, VerdictRecord, VerdictWriter } from './ledger.js';
 import type { SemanticValue } from './semantics.js';
 import { describeRequirement, loadRule, sameRequirement, type PredicateOp, type Requirement, type Rule } from './rules.js';
+import { loadPack } from './packs.js';
+import { dataOnDisk, type DataPlace } from './pack-data.js';
 
 /**
  * One branch of a fork as the join judges it (#29): which branch, and the one reading its verdicts
@@ -104,10 +106,46 @@ function resolveThreshold(rule: Rule, params: Readonly<Record<string, number>> |
 export class Judge {
   readonly #ledger: Ledger;
   readonly #writer: VerdictWriter;
+  readonly #packsDir: string;
 
-  constructor(ledger: Ledger, writer: VerdictWriter) {
+  constructor(ledger: Ledger, writer: VerdictWriter, packsDir: string) {
     this.#ledger = ledger;
     this.#writer = writer;
+    this.#packsDir = packsDir;
+  }
+
+  /**
+   * Where this Run's rule ids resolve from, in order (#57): the pack's own `rules/` first, the
+   * bundle's second.
+   *
+   * Read here, off the run row, rather than taken from each caller: a rule is resolved for a Run,
+   * the run row names the pack, and `loadPack` is how a Run's pack is known. The three faces that
+   * ask for a verdict — a judge node of a Campaign, `/hima judge`, and the observe tool's `judge`
+   * argument — would otherwise each have to remember to pass the list, and one that forgot would
+   * quietly judge a Campaign on the bundle's copy of a rule its pack had replaced.
+   *
+   * Undefined for a Run that names no pack at all — a Probe-campaign observation is judged against
+   * the bundle's rules, there being no pack to have an opinion.
+   *
+   * A Run that *does* name a pack resolves through that pack or is refused: a pack this machine
+   * cannot load is a pack whose `rules/` cannot be consulted, and falling back to the bundle there
+   * would append a verdict from a rule the Run's pack never selected — two different rules share one
+   * id precisely because a pack may replace the bundle's. The refusal names the pack and carries the
+   * loader's own words about why, which is what a person acts on; nothing is written.
+   */
+  #rulePlaces(runId: string): readonly DataPlace[] | undefined {
+    const packId = this.#ledger.run(runId)?.packId;
+    if (packId === undefined) return undefined;
+    try {
+      // Read off the disk as the judgement is made (#64), not out of the reading the pack was
+      // parsed from: judging is a node running, and a pack edited between two generations means the
+      // correction (D46). `packDataAt` in `packs.ts` sets the two instants beside each other.
+      return loadPack(this.#packsDir, packId).ruleDirs.map(dataOnDisk);
+    } catch (err) {
+      throw new Error(
+        `run ${runId} runs pack "${packId}", whose own rules/ is where its rule ids are looked for first, and this machine cannot load that pack: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -118,7 +156,8 @@ export class Judge {
    */
   async evaluate(request: JudgeRequest): Promise<VerdictRecord[]> {
     if (!this.#ledger.run(request.runId)) throw new Error(`unknown run ${request.runId}`);
-    const rules = request.ruleIds.map((ref) => loadRule(ref));
+    const rulePlaces = this.#rulePlaces(request.runId);
+    const rules = request.ruleIds.map((ref) => loadRule(ref, rulePlaces));
     // One branch's own reading, or everything this Run has read: the narrowing is the caller's, and
     // it is the whole of what makes a join a join.
     const observations = request.over === undefined
@@ -182,7 +221,13 @@ export class Judge {
   }
 }
 
-/** Build the judge, taking the ledger's one verdict-writer capability with it. */
-export function createJudge(ledger: Ledger): Judge {
-  return new Judge(ledger, ledger.takeVerdictWriter());
+/**
+ * Build the judge, taking the ledger's one verdict-writer capability with it.
+ *
+ * @param ledger - the ledger a Run lives in and the only data a rule is applied to.
+ * @param packsDir - where the installed packs are, so a rule id resolves through the Run's own pack
+ *                   before the bundle (#57).
+ */
+export function createJudge(ledger: Ledger, packsDir: string): Judge {
+  return new Judge(ledger, ledger.takeVerdictWriter(), packsDir);
 }

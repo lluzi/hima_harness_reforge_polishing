@@ -6,7 +6,7 @@
 // in `dc-reader.test.ts`, which owns the dc-qor-report reader it needs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
@@ -14,6 +14,7 @@ import { bootInProcess, createRootAgent, type InProcessHost } from './support/bo
 import { himaCommand } from './support/command.ts';
 import { writeLocalSite, writeSampleReport } from './support/site.ts';
 import { requireOpene902Fixture } from './support/opene902-fixtures.ts';
+import { installPack, writePackFiles } from './support/pack.ts';
 // Loads the `ctx.hima` declaration merge onto Context.
 import type {} from '@hima/harness';
 import type {} from '@deepseek-ai/dsh-tools';
@@ -125,15 +126,18 @@ test('verdicts survive a host restart and read back unchanged, PASS and UNDETERM
   } finally { await second.dispose(); await h.dispose(); }
 });
 
-test('a rule requiring a value the run never observed is UNDETERMINED naming the requirement, never PASS', async (t) => {
+test('a rule about an analysis pass the report does not state is UNDETERMINED carrying the reader\'s own words for why, and one about a value type nothing read at all is UNDETERMINED with nothing to cite', async (t) => {
   const fixture = await requireOpene902Fixture(t, 'postroute.summary.gz');
   if (fixture === undefined) return;
   const h = await createHimaHome();
   await writeLocalSite(h, { allowedReadRoots: [h.workspace, path.dirname(fixture)] });
   const host = await bootInProcess(h);
   try {
-    // A setup summary carries no hold-mode values at all.
-    const { runId } = await observeSummary(host, h.workspace, fixture);
+    // A setup summary states no hold-mode numbers — and since #61 the reader says so rather than
+    // leaving the hold types out: it declares it emits them, and the one validator holds the set of
+    // types produced against the set declared, so an unknown carrying the report's own reason is the
+    // only honest thing a reading of a setup summary can say about hold timing.
+    const { runId, observationId } = await observeSummary(host, h.workspace, fixture);
     const judged = await himaCommand(host, h.workspace, `/hima judge ${runId} --rules hold-wns-all-nonnegative`);
     assert.equal(judged.kind, 'success', judged.text);
     assert.match(judged.text, /UNDETERMINED hold-wns-all-nonnegative@1/);
@@ -141,11 +145,34 @@ test('a rule requiring a value the run never observed is UNDETERMINED naming the
     assert.ok(verdict);
     assert.equal(verdict.outcome, 'UNDETERMINED');
     assert.notEqual(verdict.outcome, 'PASS');
-    assert.match(verdict.reason ?? '', /hold_wns/, 'the reason names the missing requirement');
+    assert.match(verdict.reason ?? '', /hold_wns/, 'the reason names the requirement it could not settle');
     assert.match(verdict.reason ?? '', /mode hold, scope all/);
+    assert.match(verdict.reason ?? '', /states the setup mode timing table/, 'and carries the reader\'s own words for why it is unknown');
+    assert.deepEqual(verdict.cites, [observationId], 'it cites the observation it read the unknown from');
+    assert.deepEqual(verdict.valuesAsRead, [
+      { type: 'hold_wns', value: null, unit: 'ns', mode: 'hold', scope: 'all', unknownReason: 'this report states the setup mode timing table, so it says nothing about hold timing' },
+    ]);
+  } finally { await host.dispose(); await h.dispose(); }
+
+  // And the other case, which no reading of a summary reaches any more: a rule over a value type the
+  // reading holds nothing of at all. The raw reader records a file's identity and reads no semantics
+  // from it, so every rule is UNDETERMINED over it with nothing read and nothing to cite — which is
+  // the branch of the judge that answers before it has any value to look at.
+  const bare = await createHimaHome();
+  await writeLocalSite(bare, { allowedReadRoots: [bare.workspace, path.dirname(fixture)] });
+  const host2 = await bootInProcess(bare);
+  try {
+    const observed = await himaCommand(host2, bare.workspace, `/hima observe local ${fixture} --reader raw`);
+    assert.equal(observed.kind, 'success', observed.text);
+    const judged = await himaCommand(host2, bare.workspace, `/hima judge ${observed.runId!} --rules hold-wns-all-nonnegative`);
+    assert.equal(judged.kind, 'success', judged.text);
+    const [verdict] = verdicts(host2, observed.runId!);
+    assert.ok(verdict);
+    assert.equal(verdict.outcome, 'UNDETERMINED');
+    assert.match(verdict.reason ?? '', /hold_wns/, 'the reason names the requirement nothing read');
     assert.deepEqual(verdict.valuesAsRead, [], 'nothing was read');
     assert.deepEqual(verdict.cites, [], 'nothing to cite');
-  } finally { await host.dispose(); await h.dispose(); }
+  } finally { await host2.dispose(); await bare.dispose(); }
 });
 
 test('a summary truncated inside its timing table is UNDETERMINED with the reader\'s own reason, never PASS', async (t) => {
@@ -367,5 +394,61 @@ test('a rule that declares no parameter ignores an unrelated --param entirely: s
     assert.ok(verdict);
     assert.equal(verdict.outcome, 'PASS');
     assert.equal(verdict.boundParameters, undefined, 'this rule has no declared parameter, so nothing is bound onto its verdict');
+  } finally { await host.dispose(); await h.dispose(); }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Which file a rule id answers to is the Run's pack's to say (#57)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The bundle's own goal rule again, at a version only this file carries, for a pack to hold in its
+ * own `rules/`.
+ *
+ * The same predicate, so a Campaign of that pack judges the same thing; a different version, because
+ * that is what makes the two files distinguishable in a verdict — a verdict at `@1` could only have
+ * come from the bundle.
+ */
+const packsOwnGoalRule = `id: clock-period-at-most
+version: '2'
+title: Clock period is at most the bound target period, in the pack's own copy of the rule
+parameter:
+  name: target_period_ns
+  unit: ns
+requires:
+  - type: clock_period
+subject:
+  type: clock_period
+predicate:
+  op: lte
+  threshold:
+    parameter: target_period_ns
+  unit: ns
+`;
+
+test('a run whose pack this machine cannot load is refused by /hima judge, naming the pack and why, rather than judged on the bundle\'s copy of the rule', async (t) => {
+  const h = await createHimaHome();
+  await writeLocalSite(h);
+  // A pack carrying its own copy of the goal rule, which is the whole reason a Run resolves through
+  // its pack at all: judged through this pack the verdict is at `@2`, judged through the bundle it is
+  // at `@1`, and those are two different rules with one id.
+  const installed = await installPack(h);
+  await writePackFiles(installed.dir, { 'rules/clock-period-at-most.yml': packsOwnGoalRule });
+  const host = await bootInProcess(h);
+  try {
+    const run = await host.ctx.hima.ledger.createRun({ campaignId: 'campaign-unloadable-pack', siteId: 'local', packId: installed.id });
+    // ...and then the pack stops loading, which is what an editing mistake, a half-finished install or
+    // a removed folder looks like to this host.
+    await rm(path.join(installed.dir, 'contract.yml'));
+    const judged = await himaCommand(host, h.workspace, `/hima judge ${run.id} --rules clock-period-at-most`);
+    for (const line of judged.text.split('\n')) t.diagnostic(line);
+    assert.equal(judged.kind, 'error', judged.text);
+    assert.ok(judged.text.includes(installed.id), `the refusal names the pack whose rules could not be reached: ${judged.text}`);
+    assert.match(judged.text, /contract\.yml/, `and says why it would not load, in the loader's own words: ${judged.text}`);
+    assert.deepEqual(
+      verdicts(host, run.id),
+      [],
+      'and writes nothing: a verdict from a rule this Run\'s pack never selected is worse than no verdict at all',
+    );
   } finally { await host.dispose(); await h.dispose(); }
 });

@@ -1,6 +1,6 @@
 # Polishing 工作单与 Step 4 接续
 
-当前顺序（2026-09-12）：[接收 ca47fa0 并在 polishing 完成 Step 4](specs/step4-takeover/README.md)。PLS-01～07 与 UI-02 保持已完成；新建 PLS-20～26，调整 PLS-08～19 的依赖。先 PLS-20 集成，再按 Agent/输入/作者/方法身份→正式 probe→挖掘→资产/完整验收推进，不继续等待上游整体验收。以下 b4ac9d9 分析作为首轮背景，当前开工范围与模块以接续规格为准。
+当前顺序（2026-09-12）：[接收 ca47fa0 并在 polishing 完成 Step 4](specs/step4-takeover/README.md)。PLS-01～07 与 UI-02 保持已完成；新建 PLS-20～26，调整 PLS-08～19 的依赖。PLS-20 集成结果见 [实施证据](assessment/2026-09-12/pls-20/README.md)，后续按 Agent/输入/作者/方法身份→正式 probe→挖掘→资产/完整验收推进，不继续等待上游整体验收。以下 b4ac9d9 分析作为首轮背景，当前开工范围与模块以接续规格为准。
 
 日期：2026-09-11。产品目标以 [已确认定义](product-definition.md) 为准；批次与测试层级沿用 [pilot 方案](pilot-plan.md) 和 [测试方案](testing-strategy.md)。本表保留原规划与产品动机；PLS-01～07 的实际实现、测试及边界见 [批次交付记录](assessment/2026-09-11/pls02-07/README.md)。后续任务仍按其依赖和 Step 4 交接条件开展。
 

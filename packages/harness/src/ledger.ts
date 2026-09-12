@@ -5,24 +5,130 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain';
 import { cancelSessions } from './record-views.js';
-import { semanticValue, semanticValueType } from './semantics.js';
+import { semanticSlug, semanticValue } from './semantics.js';
 import { licenceName } from './sites.js';
 
 /**
- * What a HimaGadget reader declares about itself, copied into every observation it produces: its
- * identity and version, the report kind it accepts, and the value types it can emit. A record
- * therefore says not only what was read but what its reader was capable of reading, so a pack can
- * list the readers a goal needs and a later verdict can be re-read against the reader that made it.
+ * What a reader declares about itself, copied into every observation it produces: its identity and
+ * version, the report kind it accepts, and the value types it can emit. A record therefore says not
+ * only what was read but what its reader was capable of reading, so a pack can list the readers a
+ * goal needs and a later verdict can be re-read against the reader that made it.
+ *
+ * Since #61 a reader is either one this bundle ships or **a script in a pack's tools folder**, and
+ * the two are told apart on the record by `file` and `sha256`: which file of the pack folder ran, and
+ * the hash of the very bytes that were shipped to the Site and launched. Both present exactly for a
+ * pack script, both absent for a bundled reader — a bundled reader is code inside this bundle and has
+ * no pack-relative file to name, and inventing one would make a record claim a file nobody wrote.
+ * They are what lets a person, a year later, say which script produced a number: a pack folder is
+ * plain files a person edits, so its id and version alone do not identify what ran.
  */
-export const readerRef = z.object({
-  id: z.string(),
-  version: z.string(),
-  /** The report kind this reader accepts, e.g. `innovus-optdesign-summary`, `innovus-verify-drc`, `raw`. */
-  reportKind: z.string(),
-  /** Every semantic value type this reader can emit; empty for a reader that records identity alone. */
-  emits: z.array(semanticValueType),
+/**
+ * **The script a pack reader is**, as its declaration writes it and as every observation it produces
+ * carries it: a path under the pack's own `tools/` (#61).
+ *
+ * Under `tools/` and nowhere else, because that is where a pack keeps what it runs and where a person
+ * reviewing a pack looks for it — a reader is a pack tool, and a declaration free to point at any
+ * file under the folder would be a pack running bytes from wherever it liked. The shape refuses `..`,
+ * an absolute path and a hidden segment before anything is joined; it is the first of two defences,
+ * and `packReaderScript` resolves the file for real against that same folder because a segment that
+ * is itself a symlink passes every shape a name can have.
+ *
+ * Declared here, beside `readerRef`, and read back by `packs.ts` for the declaration — the same way
+ * that file reads `packDataOrigin` and `verdictOutcome` back out of this module — so the path a
+ * record claims and the path a pack may declare are one shape and cannot come to disagree.
+ */
+export const packReaderFilePath = z.string().superRefine((file, ctx) => {
+  if (!/^tools\/[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/.test(file)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `the file "${file}" is not one: a reader's script is a file under the pack's own tools/, as in "tools/count-candidates.sh"`,
+    });
+  }
 });
+
+/** A sha256 as this ledger records one: the 64 lower-case hex digits of the digest, and nothing that
+ *  merely looks like one. A record carrying half a hash, or one in another case, would be evidence
+ *  nobody could compare against the bytes it claims to be of. */
+const sha256Hex = z.string().regex(/^[0-9a-f]{64}$/, 'a sha256 is 64 lower-case hex digits');
+
+/**
+ * A slug this ledger records as a word and reads as nothing else: a workshop's id, and the language a
+ * pack says its files are written in. Held to a shape rather than trusted, exactly as a sha256 is,
+ * because both land on a card and in a report and neither is ever parsed.
+ */
+const ledgerSlug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'a workshop id and a language are lowercase letters, digits and dashes');
+
+/**
+ * A path this ledger records as a place on a Site: absolute, always.
+ *
+ * Held in the schema and not only by the callers that join one, because a relative path in a record
+ * is a path nothing can resolve afterwards — a later host reads these records from another process
+ * with another working directory, and a Job's own workspace is not this harness's. Every path in this
+ * harness that names a place on a Site is one the Permit resolved, and a Permit resolves nothing
+ * relative; a record carrying `results/x.json` would be a claim about a file nobody could find.
+ */
+const absoluteSitePath = z.string().startsWith('/', 'a path on a site is the absolute one the permit resolved, never a relative one');
+
+/**
+ * The one file of a workshop the fabric runs, as the launch found it (#62): where it is on the Site
+ * and the hash of the bytes that were there when the Job was launched.
+ *
+ * Nested and strict, as `launchedReading` is and for the same reason: this is the tie between a Job
+ * and the bytes that stood at its entry path when it was launched, and half of it would tie nothing. The hash is the one the `code` record
+ * carries, re-read from the Site and held against that record immediately before the launch — so a
+ * `launched` record saying this is saying "these bytes, verified, are what started".
+ *
+ * **What it claims, exactly**: the file the wrapper was given as its **first operand**, at the hash
+ * it had when the Job was launched. The declaration's schema is what makes that true of every
+ * workshop — `argv[1]` is the entry and no other word references it (`packs.ts`) — so this block
+ * names a real word of the command line on the audit beside it. It is not a claim about what the
+ * wrapper *does* with that operand: a wrapper that read its first operand and ran something else
+ * would be the Site owner's business, settled when they put that wrapper in their Permit.
+ */
+export const launchedWorkshop = z.strictObject({
+  /** The workshop, as the contract declares it. */
+  id: ledgerSlug,
+  entry: z.strictObject({ path: absoluteSitePath, sha256: sha256Hex }),
+});
+export type LaunchedWorkshop = z.infer<typeof launchedWorkshop>;
+
+export const readerRef = z
+  .strictObject({
+    id: z.string(),
+    version: z.string(),
+    /** The report kind this reader accepts: a word for the record, declared and never sniffed. */
+    reportKind: z.string(),
+    /** Every semantic value type this reader can emit; empty for a reader that records identity alone. */
+    emits: z.array(semanticSlug),
+    /** The script this reader is, relative to the pack folder; absent for a reader this bundle ships. */
+    file: packReaderFilePath.optional(),
+    /** The sha256 of that script's bytes, as they were shipped and run; absent for a bundled reader. */
+    sha256: sha256Hex.optional(),
+  })
+  .superRefine((r, ctx) => {
+    // Both or neither, enforced and not merely documented: a record carrying a file and no hash says
+    // which script was meant and not which bytes ran, and one carrying a hash and no file says the
+    // opposite — and `readerSaid`, which decides from the pair, would present either of them as a
+    // reader this bundle ships, which is the one thing they are not.
+    if ((r.file === undefined) === (r.sha256 === undefined)) return;
+    ctx.addIssue({
+      code: 'custom',
+      message: 'a pack reader records the script it is and the hash of the bytes that ran; a bundled reader records neither, and one without the other identifies nothing',
+      path: [r.file === undefined ? 'file' : 'sha256'],
+    });
+  });
 export type ReaderRef = z.infer<typeof readerRef>;
+
+/**
+ * Which of the two places a rule, a chooser or a reader a pack names was resolved from (#57): the
+ * pack's own folder, or the bundle's.
+ *
+ * Declared here because a decision record carries it and this file imports nothing of the pack
+ * anatomy — the same reason `verdictOutcome` is here and not in `rules.ts`. `packs.ts` reads it back
+ * out of this module, as it already reads `verdictOutcome` for a graph's edge labels.
+ */
+export const packDataOrigin = z.enum(['pack', 'bundle']);
+export type PackDataOrigin = z.infer<typeof packDataOrigin>;
 
 /**
  * Who appended a record. Only the judge may write verdicts; the shell writes refusals; `person` is
@@ -134,7 +240,48 @@ export const verdictRecord = z
  * put its output in the log and its status in the exit file. Recorded so a later process can find
  * the same Job again from the ledger alone, rather than from a handle it no longer holds.
  */
-export const jobIdentity = z.object({
+/**
+ * A report as the harness read it, at the moment it read it: where the Permit resolved it, the hash
+ * of the bytes that were there, and how many there were (#61).
+ *
+ * The evidence half of an observation, taken **before** a reader is launched rather than after it
+ * ends — so the record says what was read and not what happens to be there when the reading comes
+ * back, and a report the flow overwrote in between does not take the reading with it.
+ */
+export const reportSeen = z.strictObject({
+  path: z.string(),
+  contentSha256: sha256Hex,
+  bytes: z.number().int().nonnegative(),
+});
+export type ReportSeen = z.infer<typeof reportSeen>;
+
+/**
+ * **Everything the read-back of a pack reader's Job needs, as that Job's own launch recorded it**
+ * (#61): who read, where the answer will be, and what was read.
+ *
+ * A Job outlives its host (#14), so the turn that reads a reader's answer is very often not the turn
+ * that launched it — and a pack folder is plain files a person edits while a Run is between hosts.
+ * Everything the read-back would otherwise resolve again is therefore settled here, at the launch,
+ * and carried on the `launched` record: the reader as it will appear on the observation, the file
+ * the script was told to write, and the report as it stood. A resume that re-read the folder would
+ * hash bytes no Job ever ran, hold the answer to an `emits` the script it launched never promised,
+ * and — where the declaration had since been deleted — settle the node from an exit code with no
+ * observation in the Run at all.
+ */
+export const launchedReading = z.strictObject({
+  /** The reader, exactly as the observation this Job's answer becomes will carry it. */
+  reader: readerRef,
+  /** `${OUT}`: the file this Job was told to write, as the Permit resolved it. */
+  out: z.string(),
+  /** The report this reading is of, as it stood when the Job was launched. */
+  report: reportSeen,
+});
+export type LaunchedReading = z.infer<typeof launchedReading>;
+
+/** Strict, as every shape this ledger stores is: a launch writes exactly these six facts about a
+ *  Job, and a seventh dropped in silence would be a Job a later process could not find the same
+ *  way twice. */
+export const jobIdentity = z.strictObject({
   session: z.string(),
   pid: z.number().int().positive(),
   workspace: z.string(),
@@ -151,7 +298,7 @@ export type JobIdentity = z.infer<typeof jobIdentity>;
  * a fabric to name one; a Job launched from the `/hima job` face carries none.
  */
 export const jobRecord = z
-  .object({
+  .strictObject({
     ...base,
     ...inBranch,
     type: z.literal('job'),
@@ -175,6 +322,44 @@ export const jobRecord = z
      * describes and which therefore reserves nothing.
      */
     licences: z.record(licenceName, z.number().int().positive()).optional(),
+    /**
+     * What a **reader's** Job was launched to do, when this Job is one (#61): the reader as the
+     * observation will carry it, the file it was told to write, and the report it is a reading of.
+     *
+     * **One nested member and not three flat ones**, strict inside as well as out. This block is the
+     * discriminator a host that never launched the Job decides the whole read-back branch on, so
+     * `reading !== undefined` is one question about one object rather than three questions that can
+     * disagree, and a key nothing declares here is a refusal rather than a field dropped in silence.
+     * It sits on the `launched` record for the same reason `licences` does: the launch is where it
+     * was true. A Job with none is a tool's, which a node settles from its exit code alone; a Job
+     * with one is a reader's, which no node may be called `done` over until its answer has been
+     * read, validated and written down.
+     */
+    reading: launchedReading.optional(),
+    /**
+     * **What a workshop's Job was launched with as the wrapper's first operand** (#62): the workshop, and the entry file with the
+     * hash it had when this Job started.
+     *
+     * The same shape and the same reason as `reading` beside it. A workshop's Job runs bytes a model
+     * wrote, and the `code` record is this ledger's claim that those bytes landed; this block is the
+     * claim that *these* bytes are what ran, written from a re-read of the file taken immediately
+     * before the launch and held against that record. Without it the ledger would prove one set of
+     * bytes was written and leave what the Job executed unstated — which, for the one place in this
+     * product where a model's own code runs, is the fact an audit is for.
+     */
+    workshop: launchedWorkshop.optional(),
+    /**
+     * **Which attempt at its node this Job is** (#62), on the `launched` record where the attempt is
+     * known.
+     *
+     * The durable answer to a question a process that never launched the Job has to ask. Recovery
+     * numbers the records it writes for a Job it picked up from the attempt that Job belonged to, and
+     * read that off the node record carrying the Job's session — which is written *after* the launch
+     * record, so a host that died between the two left the attempt unknowable and the next one
+     * numbered the same turn twice (`attemptOfSession`). The launch is where the attempt is in hand,
+     * so the launch is where it is written down.
+     */
+    attempt: z.number().int().positive().optional(),
   })
   .superRefine((r, ctx) => {
     if (r.event !== 'finished' && r.exitCode !== undefined) {
@@ -183,6 +368,18 @@ export const jobRecord = z
     if (r.event !== 'launched' && r.licences !== undefined) {
       ctx.addIssue({ code: 'custom', message: 'only a launched job says what it holds; the licences of a job are recorded once, where it took them', path: ['licences'] });
     }
+    if (r.event !== 'launched' && r.reading !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'only a launched job says what it was launched to read; a reader\'s job records that once, where it was decided', path: ['reading'] });
+    }
+    if (r.event !== 'launched' && r.workshop !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'only a launched job says which bytes of which workshop it ran; a workshop\'s job records that once, where the entry was verified', path: ['workshop'] });
+    }
+    if (r.event !== 'launched' && r.attempt !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'only a launched job says which attempt it is; the end of a job is numbered by the launch it belongs to', path: ['attempt'] });
+    }
+    // What used to be said here — all three of the reading's fields or none of them — is said by
+    // `launchedReading` itself now: one strict object, every member required, so two of three is a
+    // shape that cannot be written rather than a rule this refinement has to remember.
   });
 
 /**
@@ -397,6 +594,12 @@ export const decisionRecord = z.object({
   type: z.literal('decision'),
   nodeId: z.string(),
   chooser: z.string(),
+  /**
+   * Where that chooser's file was read from (#57). A chooser id resolves in the pack's own
+   * `choosers/` before the bundle's, so the id alone no longer says which file was applied — and a
+   * decision a person cannot re-derive from the record and one file is not a decision on record.
+   */
+  chooserOrigin: packDataOrigin,
   chosen: decisionChoice,
   rationale: z.record(z.string(), z.number()),
   /** The verdict record ids the chooser weighed, then the observation record id it read. */
@@ -552,6 +755,138 @@ export const experienceRecord = z.object({
   json: experienceFile,
 });
 
+/** How a Model moment ended (#59): the turn ran, the turn failed, or the host went away mid-moment. */
+export const momentOutcome = z.enum(['completed', 'failed', 'interrupted']);
+export type MomentOutcome = z.infer<typeof momentOutcome>;
+
+/**
+ * That a Model moment opened, and that it closed (#59) — the pair of records that brackets one
+ * isolated model session, as the `loop` pair brackets a nested Loop.
+ *
+ * A moment is the one thing in this harness that a model takes part in, so what the pair says is
+ * what an auditor of a Campaign has to be able to ask: which purpose the session was composed for
+ * (`preset`), which session it was (`sessionId`, dsh's own id, so the session log on this machine
+ * can be found from the ledger alone), which model answered (`model`, read off the session and never
+ * assumed), where in the graph it happened (`nodeId` and `attempt`, with the Generation on the
+ * header as on every record), and what the model could reach (`tools`, the names dsh itself reports
+ * for that session's scope — a claim about the session and not about what a caller meant to give
+ * it).
+ *
+ * `tools` is on the `opened` record alone and `outcome` on the `closed` one, and the schema below
+ * says so: what a session could reach is settled when it is composed, and how it ended is not known
+ * until it ends. A key standing empty until then would be a fact this ledger claimed before it had
+ * it — the rule `loopRecord` states for `outcome` and `generations`.
+ *
+ * An `opened` with no `closed` is a host that went away with a moment open. It is not left that way:
+ * the next boot's reconciliation appends the one `closed` it is missing, `interrupted`, and the
+ * moment is opened again as the next attempt at that node.
+ */
+export const sessionRecord = z
+  .object({
+    ...base,
+    type: z.literal('session'),
+    event: z.enum(['opened', 'closed']),
+    /** The purpose this session was composed for: the Hima agent preset it was mounted from. */
+    preset: z.string().min(1),
+    /** dsh's own session id, which is also the agent's: what finds this session's log on this machine. */
+    sessionId: z.string().min(1),
+    /** The model that answered, read off the session dsh composed and never off a configuration. */
+    model: z.string().min(1),
+    /** The node this moment belongs to, and which attempt at it. */
+    nodeId: z.string().min(1),
+    attempt: z.number().int().positive(),
+    /** Every tool the session could reach, as dsh reports them for that session's own scope. */
+    tools: z.array(z.string()).optional(),
+    /**
+     * **The workshop this moment was opened for** (#62), on the `opened` record alone: which workshop
+     * of the pack's contract, the one file of it the fabric runs, and where that file is on the Site.
+     *
+     * Here rather than looked up in the pack folder, because this is what makes a workshop readable
+     * off the ledger alone. Which node of a graph opens a workshop, and which file of it runs, are
+     * two facts a Run's own records otherwise never carry — a `code` record names the workshop only
+     * once something has been written, and nothing anywhere names the entry. A face that resolved
+     * them by loading the pack would show nothing at all for a pack since uninstalled or edited into
+     * something that will not load, which is exactly the Campaign whose card a person most needs.
+     *
+     * Nested and strict, as `reading` and `workshop` are on a Job: the pair is one fact about one
+     * moment, and a record carrying half of it would name a workshop whose entry nothing could say.
+     * A moment opened for anything else — the `/hima/api/runs/<id>/moment` route's own — carries none.
+     */
+    workshop: z.strictObject({
+      id: ledgerSlug,
+      entry: z.string().min(1),
+      /**
+       * The entry's own absolute path on the Site: `<the resolved workshop root>/<entry>`, the path
+       * the turn launches on.
+       *
+       * Here because the fold that says whether the entry was written has no other way to ask the
+       * question the turn asks. The turn holds a `code` record's `path` against this exact string;
+       * a face left with the file *name* alone can only compare name to name, and `sub/miner.sh` is
+       * then a moment that "wrote the entry" while the turn correctly finds none and fails the
+       * attempt — two answers to one question. Deriving the root from the `code` records' own common
+       * directory does not close it either: a moment that wrote nothing but `sub/miner.sh` has that
+       * subdirectory as its common directory, and the namesake passes again. So the path is written
+       * down where it is known, by the one thing that knows it.
+       */
+      entryPath: absoluteSitePath,
+    }).optional(),
+    outcome: momentOutcome.optional(),
+  })
+  .superRefine((r, ctx) => {
+    if (r.event !== 'opened' && r.tools !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'tools are written where a session is composed; only an opened moment says what it could reach', path: ['tools'] });
+    }
+    if (r.event === 'opened' && r.tools === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'tools are required when a moment opens; a session with none says so with an empty list', path: ['tools'] });
+    }
+    if (r.event !== 'opened' && r.workshop !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'the workshop a moment was opened for is written where it is composed; only an opened moment says which one it is', path: ['workshop'] });
+    }
+    if (r.event !== 'closed' && r.outcome !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'outcome is written only when a moment closes', path: ['outcome'] });
+    }
+    if (r.event === 'closed' && r.outcome === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'outcome is required when a moment closes', path: ['outcome'] });
+    }
+  });
+
+/**
+ * One file a Model moment wrote inside its workshop (#62): where it landed on the Site, what it
+ * hashes to, how big it is, what the pack calls the language it is in, and the node, attempt and
+ * session that wrote it.
+ *
+ * **Written after the bytes are on the Site and never before**, exactly as the `experience` record
+ * is: this record is the claim that the file is there, and a claim written first would survive a
+ * channel that failed between the two. A write the Permit or the containment rule refused writes no
+ * record of this kind at all — it writes a `refusal`, which is where every other thing this harness
+ * was not allowed to do is written.
+ *
+ * `sessionId` is what makes the pair of `session` records and this one readable as one act: a moment
+ * opened, these files were written in it, and it closed. Nothing here says what the file *contains* —
+ * that is on the Site, where a person and the Job both read it — and the hash is what says the file
+ * on the Site is still the file that was written.
+ *
+ * Strict, because every field of it is settled at the moment it is written and a key this ledger did
+ * not mean to store is a fault rather than a field to keep.
+ */
+export const codeRecord = z.strictObject({
+  ...base,
+  ...inBranch,
+  type: z.literal('code'),
+  nodeId: z.string().min(1),
+  attempt: z.number().int().positive(),
+  /** dsh's own session id of the Model moment that wrote it; the `session` pair carries the same one. */
+  sessionId: z.string().min(1),
+  /** The workshop it was written in, as the contract declares it. */
+  workshop: ledgerSlug,
+  /** Where it is on the Site: the absolute path the Permit resolved. */
+  path: absoluteSitePath,
+  sha256: sha256Hex,
+  bytes: z.number().int().nonnegative(),
+  /** What the pack calls the language of every file of this workshop. */
+  language: ledgerSlug,
+});
+
 export const ledgerRecord = z.discriminatedUnion('type', [
   observationRecord,
   refusalRecord,
@@ -565,6 +900,8 @@ export const ledgerRecord = z.discriminatedUnion('type', [
   cancelRecord,
   loopRecord,
   experienceRecord,
+  sessionRecord,
+  codeRecord,
 ]);
 export type ObservationRecord = z.infer<typeof observationRecord>;
 export type RefusalRecord = z.infer<typeof refusalRecord>;
@@ -578,6 +915,8 @@ export type DecisionRecord = z.infer<typeof decisionRecord>;
 export type CancelRecord = z.infer<typeof cancelRecord>;
 export type LoopRecord = z.infer<typeof loopRecord>;
 export type ExperienceRecord = z.infer<typeof experienceRecord>;
+export type SessionRecord = z.infer<typeof sessionRecord>;
+export type CodeRecord = z.infer<typeof codeRecord>;
 export type LedgerRecord = z.infer<typeof ledgerRecord>;
 
 /** What a caller states about a verdict; the ledger owns identity, sequence, time, and writer. */
@@ -894,6 +1233,28 @@ export interface MeterCount { readonly jobs?: number; readonly attempts?: number
  * `strategy`, `generation` and `meters` are what moves. All nine are absent on a Run no fabric
  * started.
  */
+/**
+ * A run id as this ledger mints one: `run-` and a UUID (`createRun`).
+ *
+ * Stated here, beside the call that mints them, because two other places have to *recognise* one
+ * written down by a person or by a stage — the pack authoring pipeline's test record, whose `run:`
+ * line names the Run a pack was tested by (#64), and the contract suite, which reads a run id off
+ * the page's own run list. Unanchored, because both of those look for one inside a longer text; a
+ * caller that wants the whole string to be one anchors it.
+ */
+export const runIdPattern = /run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
+
+/**
+ * What a Run is for (#64): an ordinary Campaign, or the test run of a pack the authoring pipeline is
+ * still carrying an author through.
+ *
+ * A fact about the Run and not about the pack, because the same pack folder is tested and then
+ * released, and the Runs that tested it stay what they were. The pipeline's test stage marks its own
+ * Run, and the test record of a pack rests on finding a Run marked this way.
+ */
+export const runPurpose = z.enum(['campaign', 'test']);
+export type RunPurpose = z.infer<typeof runPurpose>;
+
 export const runRecord = z.object({
   id: z.string(),
   campaignId: z.string(),
@@ -907,6 +1268,32 @@ export const runRecord = z.object({
    * for even when it never got as far as a workspace — which is exactly the Run that needs saying.
    */
   packId: z.string().optional(),
+  /**
+   * What this Run is for (#64): an ordinary Campaign, or the test run the pipeline's test stage
+   * opened to write a pack's test record from.
+   *
+   * Optional, and an absent value reads `campaign`: every Run written before this field existed was
+   * an ordinary Campaign, and a row that says nothing is not thereby a test of anything. Written when
+   * the Run is opened and never again — what a Run was for is a fact about its start, exactly as its
+   * Goal and its Budget are.
+   */
+  purpose: runPurpose.optional(),
+  /**
+   * What the pack folder hashed to when this Run started (#64): the digest over every regular file in
+   * it but the pipeline's own records (`hashPackFiles`).
+   *
+   * On the row because a pack folder is plain files a person edits, and "which files did this
+   * Campaign actually run" is otherwise unanswerable a day later — the pack id and its declared
+   * version both stay the same when a rule is corrected. The test record rests on exactly this: a
+   * folder whose digest no longer matches the Run its record names has not been tested as it now
+   * stands.
+   *
+   * Optional for the reason `purpose` is: a row written before this field existed recorded no digest,
+   * and a check that treated an absent one as a match would pass every old Run. A sha256 and not any
+   * string: the whole of what the test record rests on is this value being comparable, and a row
+   * carrying something that is not a digest would be a Run nothing could ever be held against.
+   */
+  packDigest: sha256Hex.optional(),
   /** The Goal as bound parameters: `target_period_ns` for the first pack. Typed, checkable, fixed (D3). */
   goal: z.record(z.string(), z.number()).optional(),
   budget: runBudget.optional(),
@@ -945,7 +1332,7 @@ export type RunRecord = z.infer<typeof runRecord>;
 
 /** What a caller states about a Run when it opens one; the ledger owns the id, the time, and the sequence.
  *  Not `loop`: a Run opens in its pack's own graph, and drills down only once an Explore node says so. */
-export type RunOpening = Pick<RunRecord, 'campaignId' | 'siteId'> & Partial<Pick<RunRecord, 'status' | 'packId' | 'goal' | 'budget' | 'currentNode' | 'strategy' | 'firstStrategy' | 'generation' | 'meters'>>;
+export type RunOpening = Pick<RunRecord, 'campaignId' | 'siteId'> & Partial<Pick<RunRecord, 'status' | 'packId' | 'purpose' | 'packDigest' | 'goal' | 'budget' | 'currentNode' | 'strategy' | 'firstStrategy' | 'generation' | 'meters'>>;
 
 /** What HimaFabric may change about a Run as it moves. Never its identity, its Goal, its Budget, the
  *  Strategy it started with, or its sequence — a field this type does not name is one no advance can
@@ -1065,7 +1452,86 @@ export const ledgerSpec = defineDomain({
   // schema, so a version-13 spec would refuse every row of a Campaign whose pack declares a knob it
   // has never heard of, and a Run it could no longer name what it was set to is a Run nothing about
   // this ledger is worth reading.
-  version: 14,
+  // 15: the Model moment (#59). The record union grew `session`, the pair that brackets one isolated
+  // model session — which purpose it was composed for, which session and which model, where in the
+  // graph, what it could reach, and how it ended. It is the direction a version gate exists for and
+  // needs no argument beyond the union's own shape, exactly as 13 did: `ledgerRecord` is a
+  // discriminated union, so a version-14 spec reading this ledger refuses a `session` record
+  // outright, `session` being none of its twelve arms — and this is the first record in this harness
+  // that says a model took part in a Campaign at all, so a ledger that dropped it would be a
+  // Campaign whose one model turn had never happened.
+  // 16: a pack folder carries its own choosers (#57). The decision record carries `chooserOrigin`,
+  // which of the two places the chooser it applied was read from — the pack's own `choosers/`, or
+  // the bundle's. It is the direction a version gate exists for: `decisionRecord` is a plain object,
+  // so a version-15 spec reading this ledger would hand back decisions that still named a chooser id
+  // and no longer said which file that id resolved to, and since this ticket two files may answer to
+  // one id. A decision is re-derivable from its own record (D43) only if the record says which
+  // clauses were applied, so dropping the origin is the same silent loss the header's `loopId` was
+  // under 11 — and the field is required rather than optional because every decision written from
+  // here on resolved through a pack, and a decision that could not say where its chooser came from
+  // is one nothing wrote.
+  // 17: readers are pack tools (#61). Two shapes grow together. `readerRef` — and so every
+  // observation's `reader` — carries the optional `file` and `sha256` of the script a pack reader is,
+  // present exactly for a reader that is a script in a pack folder; and a `semanticValue`'s `type`
+  // and `unit` are no longer two enums this bundle owns but slugs declared in a `semantics.yml`, the
+  // pack's own ahead of the bundle's. The second earns the bump on its own and in the direction a
+  // version gate exists for: `semanticValue` is parsed by that widened schema, so a version-16 spec
+  // reading this ledger would refuse every observation, verdict and decision of a Campaign whose pack
+  // declared a value type it has never heard of — and a candidate count is exactly such a type. The
+  // first is the readable direction, and the same silent-loss case `group` was under 7: a version-16
+  // spec would hand back readings that still named a reader id and no longer said which script of
+  // which pack folder produced them, which for a reader that is a plain file a person edits is the
+  // whole of what identifies it. A third shape grows with them, and is part of the same ticket
+  // rather than a bump of its own: a `launched` job record carries the optional `reading` — the reader,
+  // the file its script writes and the report it reads, as one strict block. That is what makes a reader's Job
+  // settleable by a host that never launched it (#14) without re-reading a pack folder a person may
+  // have edited in between — and it is the readable direction for the same reason `licences` was
+  // under 8: a version-16 spec would hand back a `launched` record that no longer said the Job was a
+  // reader's at all, which is the one fact a reconciliation decides the whole branch on. That block
+  // is nested rather than spread over three members of the record, and `jobRecord`, `jobIdentity`
+  // and `readerRef` are strict, so the fact is one object a stored record carries whole or does not
+  // carry: a boundary a Job is picked up again across is no place for a key dropped in silence, and
+  // a record written in the flat shape this ticket first had is refused at open rather than read as
+  // a tool's Job.
+  // 18: the workshop (#62). The record union grew `code`, one per file a Model moment wrote inside
+  // its workshop: where it is on the Site, what it hashes to, how big it is, the language the pack
+  // says it is in, and the node, attempt and session that wrote it. It is the direction a version
+  // gate exists for and needs no argument beyond the union's own shape, exactly as 13 and 15 did:
+  // `ledgerRecord` is a discriminated union, so a version-17 spec reading this ledger refuses a
+  // `code` record outright, `code` being none of its thirteen arms — and this is the first record in
+  // this harness that says a model *wrote* something rather than merely answered, so a ledger that
+  // dropped it would be a Campaign whose one piece of generated code had no author, no session and no
+  // hash to hold the file on the Site against. Three shapes grow with it, in the same ticket and by
+  // the same argument as 17's third: an `opened` session record carries the optional nested
+  // `workshop` — which workshop of the contract the moment was opened for, the one file of it the
+  // fabric runs, and that file's own absolute path on the Site, which is what a face holds a `code`
+  // record against to say whether the entry itself was written — and a `launched` job record carries
+  // the optional nested `workshop` (the entry it
+  // ran, with the hash it had at the launch) and the optional `attempt` it belongs to. The first is
+  // what makes a workshop readable off the ledger alone, so a Campaign whose pack has since been
+  // uninstalled or edited still says on its card which node wrote code and what ran; the second ties
+  // the Job to the very bytes the `code` record hashed; the third is what lets a host that never
+  // launched a Job number the records it writes for it. All three are the readable direction and the
+  // silent-loss case `licences` was under 8 and `reading` under 17: a version-17 spec would hand back
+  // an `opened` record that no longer said which workshop it was, and a `launched` record that no
+  // longer said which bytes ran or which attempt it was — each of them the one fact the reader of
+  // that record decides on.
+  // 19: a Run says what it is for and which files it ran (#64). The run row carries `purpose` — an
+  // ordinary Campaign, or the test run the pack authoring pipeline's test stage opened — and
+  // `packDigest`, the hash of every regular file of the pack folder but the pipeline's own records,
+  // taken when the Run was opened. Both are the readable direction on their own — optional, on a
+  // plain object — and together they are the same silent-loss case `group` was under 7, one level up:
+  // a version-18 spec reading this ledger would hand back a test run that no longer said it was one,
+  // and a Campaign that no longer said which bytes of a pack folder it ran. That matters more here
+  // than it did there, because a *pack* rests on it: the test record of a pack folder is valid
+  // exactly while the Run it names is a `test` whose `packDigest` is the folder's digest now, so a
+  // reader that dropped either field would report every tested pack as untested — or, if it dropped
+  // only the digest and read the rest, would report a pack whose rules had been rewritten since the
+  // test as tested. A version gate exists to make that a refusal at open rather than a quiet blank.
+  // `packDigest` is a sha256 and not any string, within this same version: nothing has ever written
+  // one that is not, and a row carrying something a check could never match is a Run that would read
+  // as untestable rather than as wrong.
+  version: 19,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -1331,6 +1797,30 @@ export class Ledger {
    */
   async appendExperience(runId: string, data: Omit<ExperienceRecord, keyof typeof base | 'type'>): Promise<ExperienceRecord> {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'experience', ...data }));
+  }
+
+  /**
+   * That a Model moment opened, and that it closed (#59), appended by the executor.
+   *
+   * The `opened` record is appended once the session exists and before the model is asked anything,
+   * and the `closed` one once the session is disposed: a record written the other way round would
+   * claim a session that was never composed, or a session still running under a ledger that says it
+   * is over. A host that goes away between the two leaves an `opened` with no `closed`, which is
+   * exactly what it should leave — the next boot's reconciliation is what closes it `interrupted`.
+   */
+  async appendSession(runId: string, data: Omit<SessionRecord, keyof typeof base | 'type'>): Promise<SessionRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'session', ...data }));
+  }
+
+  /**
+   * That a Model moment wrote one file inside its workshop (#62), appended by the executor.
+   *
+   * Appended after the bytes are on the Site and never before, for the reason `appendExperience` is:
+   * the record is the claim that the file is there, and a claim written first would survive a channel
+   * that failed between the two and tell a person a file exists that does not.
+   */
+  async appendCode(runId: string, data: Omit<CodeRecord, keyof typeof base | 'type'>): Promise<CodeRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'code', ...data }));
   }
 
   /** Who refused: the shell for a permit decision (the default), the executor for a reader refusing a report kind. */

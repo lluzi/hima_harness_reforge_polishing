@@ -22,7 +22,8 @@ nodes:
     parameters:
       tool: synth
       # Only the strategy knob is chosen per generation. WORKSPACE, FLOW_ROOT, DESIGN and CAMPAIGN
-      # are the Run's own workspace and the Site's bindings, which the fabric already holds.
+      # are the Run's own workspace and the Site's bindings, which the fabric already holds — and
+      # which a node may not bind: a pack that named one here would not load.
       arguments:
         PERIOD_NS: { from: strategy, name: periodNs }
 
