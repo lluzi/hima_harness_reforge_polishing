@@ -12,6 +12,8 @@ import { DecisionRow, ExperienceSection, GenerationsTable, ObservationRow, Repor
 /** The public tab-info hook is supplied by the installed dsh sidebar slot. */
 export interface WorkbenchProps {
   sessionId: string;
+  openOwner(id: string): void;
+  sendToOwner(id: string, text: string): Promise<void>;
   useTabInfo(): { tab: { visible: boolean; navigation: { revision: number; params: unknown } } };
   openFiles(): void;
 }
@@ -48,12 +50,13 @@ const stateGlyph = (state: string): string => {
   return '○';
 };
 
-export function HimaWorkbench({ sessionId, useTabInfo, openFiles }: WorkbenchProps): ReactElement {
+export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sendToOwner }: WorkbenchProps): ReactElement {
   const { tab } = useTabInfo();
   const params = tab.navigation.params as { runId?: unknown } | undefined;
   const requested = typeof params?.runId === 'string' ? params.runId : undefined;
   const [selected, setSelected] = useState<string | undefined>(requested);
   const [creating, setCreating] = useState(false);
+  const [notice, setNotice] = useState<string>();
   const [starting, setStarting] = useState(false);
   const startPending = useRef(false);
   const startBusy = useCallback((busy: boolean) => { startPending.current = busy; setStarting(busy); }, []);
@@ -64,7 +67,12 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles }: WorkbenchPro
   const read = useCallback((signal: AbortSignal) => fetchRun(selected!, signal), [selected]);
   const snapshot = usePollingRead(selected ?? '', read, selected !== undefined && tab.visible && !creating);
   const view = snapshot.value;
-  const acting = useRunActions(selected, () => { snapshot.refresh(); list.refresh(); });
+  const acting = useRunActions(selected, (updated, action, nodeId) => {
+    snapshot.refresh(); list.refresh();
+    if (updated.run.control) void sendToOwner(updated.run.control.owner,
+      `I requested ${action} for Hima Run ${updated.run.id}${nodeId ? `, node ${nodeId}` : ''} in Live Run. The control request was accepted; read hima_context for its actual effect and any in-flight Jobs. ${action === 'continue' ? 'Continue the authorized work in this conversation from current facts.' : 'Honor the recorded control state before starting any new work.'}`,
+    ).catch((error: unknown) => setNotice(`The control request was accepted, but its conversation notification failed: ${(error as Error).message}. The Run's recorded control state still applies.`));
+  }, sessionId, view);
 
   useEffect(() => {
     if (requested !== undefined && !startPending.current) { setSelected(requested); setCreating(false); setSection('live'); }
@@ -102,7 +110,9 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles }: WorkbenchPro
       <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); }}>↻</button>
     </div>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
-    {creating ? <StartRunForm onBusy={startBusy} onClose={() => { if (!startPending.current) setCreating(false); }} onStarted={(run) => { setSelected(run.run.id); setCreating(false); setSection('live'); list.refresh(); snapshot.refresh(); }} />
+    {notice ? <p role='alert' className='hima-error'>{notice}</p> : null}
+    {view?.run.control && view.run.control.owner !== sessionId ? <button type='button' className='hima-button' data-hima-control='open-owner' onClick={() => openOwner(view.run.control!.owner)}>Open owning conversation</button> : null}
+    {creating ? <StartRunForm key={sessionId} sessionId={sessionId} onBusy={startBusy} onClose={() => { if (!startPending.current) setCreating(false); }} onStarted={(run) => { setSelected(run.run.id); setCreating(false); setSection('live'); list.refresh(); snapshot.refresh(); setNotice(undefined); void sendToOwner(sessionId, `Start the prepared Hima Run ${run.run.id} in this conversation. Read hima_context, inspect the Pack reference nodes and current facts, then use hima_execute to admit and perform each authorized node. You are the execution owner; choose the next step from actual evidence. Keep this conversation available during Jobs and honor pause/stop instructions. Do not create another Run or hidden execution Agent.`).catch((error: unknown) => setNotice(`Run ${run.run.id} is prepared, but the conversation message was not delivered: ${(error as Error).message}. Ask this conversation to inspect the Run; do not start a duplicate.`)); }} />
       : selected === undefined ? <div className='hima-empty'><div className='hima-empty-glyph'>⌘</div><h3>Explore. Experiment. Build evidence.</h3><p>Keep the engineering conversation here while Hima tracks each experiment beside it.</p><button className='hima-button hima-primary' onClick={() => setCreating(true)}>Start a research run</button><p className='hima-small'>Choose an existing run above, or start from an installed Pack.</p></div>
         : <>
           {snapshot.error ? <div className='hima-notice' role='alert'>Updates unavailable. {snapshot.at ? `Showing the last successful read at ${shortTime(snapshot.at)}.` : 'No Run data has been read.'} {snapshot.error}</div> : null}
@@ -186,7 +196,7 @@ function EvidenceTrail({ view }: { view: RunView }): ReactElement {
   </div>;
 }
 
-function StartRunForm({ onStarted, onClose, onBusy }: { onStarted(view: RunView): void; onClose(): void; onBusy(busy: boolean): void }): ReactElement {
+function StartRunForm({ sessionId, onStarted, onClose, onBusy }: { sessionId: string; onStarted(view: RunView): void; onClose(): void; onBusy(busy: boolean): void }): ReactElement {
   const [selection, setSelection] = useState<{ pack?: string; site?: string }>({});
   const [prepared, setPrepared] = useState<StartChoices>();
   const [values, setValues] = useState<Record<string, string>>({});
@@ -227,7 +237,7 @@ function StartRunForm({ onStarted, onClose, onBusy }: { onStarted(view: RunView)
     if (request.current || checkPending.current || prepared?.check?.fit !== true) return;
     const own = new AbortController(); request.current = own; setSubmitting(true); onBusy(true); setError(undefined);
     const strategy = Object.fromEntries(Object.entries(prepared.strategy ?? {}).map(([name, knob]) => [name, knobs[name]]));
-    const result = await startCampaign({ pack: prepared.pack, site: prepared.site, goal: goals, strategy, timeBox: numeric(values.timeBox), retries: numeric(values.retries), generations: numeric(values.generations) }, own.signal);
+    const result = await startCampaign({ sessionId, pack: prepared.pack, site: prepared.site, goal: goals, strategy, timeBox: numeric(values.timeBox), retries: numeric(values.retries), generations: numeric(values.generations) }, own.signal);
     if (own.signal.aborted) return;
     request.current = undefined; setSubmitting(false); onBusy(false);
     if (result.ok) onStarted(result.value); else setError(result.error.message);

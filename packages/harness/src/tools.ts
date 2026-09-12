@@ -13,13 +13,17 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { VerdictRecord } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
+import { executionAction, executionContext, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
 import { checkInstalledPack, loadPack, packWords } from './packs.js';
 import { releasePack } from './release.js';
 import { runView, type RunWords } from './remote.js';
 import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyValue } from './run-arguments.js';
+
+type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]: ToolJson };
+/** Shared execution context crosses the same JSON boundary as the HTTP view. */
+function toolJson(value: object): Record<string, ToolJson> { return JSON.parse(JSON.stringify(value)) as Record<string, ToolJson>; }
 
 /** One tool as `ctx.tools.register` takes it: whatever `defineTool` makes of a definition. */
 type ToolDefinition = ReturnType<typeof defineTool>;
@@ -180,6 +184,45 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       execute: (args, execution) => author(args, execution.agent),
     })] : [],
     defineTool({
+      name: 'hima_context',
+      description: 'Read current Run execution facts, owner/epoch/revision, reference nodes, available node ids and admitted executions, plus recorded Jobs, code, observations and verdicts. This read starts no business work. Inspect before every new action and after any stale/refused request. A different selected Run does not change its owner.',
+      parameters: { run: { type: 'string', required: true, description: 'Exact Run id.' } },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      execute: async (args) => {
+        const context = executionContext(deps, args.run);
+        return toolJson({ runId: args.run, ...context, facts: runView(deps.ledger, context.run) });
+      },
+    }),
+    defineTool({
+      name: 'hima_execute',
+      description: 'Request one controlled node or Run action as this actual conversational Agent. begin admits a node; work performs its mechanical operation and returns a Job identity promptly; read/write/knowledge work inside the admitted node; complete validates actual evidence. You choose the next action from context; no action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; cancel requests real stop. revise/grow return unsupported until implemented. Preserve requestId when retrying identical requests; re-read context after refusals.',
+      parameters: {
+        run: { type: 'string', required: true, description: 'Exact Run id.' },
+        action: { type: 'string', required: true, enum: ['begin', 'work', 'complete', 'pause', 'continue', 'cancel', 'handoff', 'revise', 'grow', 'read', 'write', 'knowledge', 'recommend'] },
+        expectedEpoch: { type: 'integer', required: true, description: 'Owner epoch from the latest context.' },
+        expectedRevision: { type: 'integer', required: true, description: 'Control revision from the latest context.' },
+        requestId: { type: 'string', required: true, description: 'Unique bounded request identity, reused only for an identical retry.' },
+        nodeId: { type: 'string', description: 'Exact reference node for begin, or optional pause scope.' },
+        executionId: { type: 'string', description: 'Admitted execution identity for node work and completion.' },
+        targetOwner: { type: 'string', description: 'Explicit handoff target; must be a real Host conversation.' },
+        path: { type: 'string', description: 'Controlled node file path for read or write.' },
+        content: { type: 'string', description: 'Exact code/file content for write.' },
+        output: { type: 'string', description: 'Declared output name.' },
+        file: { type: 'string', description: 'Declared knowledge file.' },
+        decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy'] },
+        strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values for an explicit exploration decision.' },
+        rationale: { type: 'string', description: 'Reason for the decision, grounded in cited facts.' },
+        cites: { type: 'array', items: { type: 'string' }, description: 'Evidence record ids for the decision.' },
+      },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      execute: async (args, execution) => {
+        if (!execution.agent) throw new Error('this operation requires a live conversational Agent');
+        const { run, strategy, ...fields } = args;
+        const request: ExecutionActionRequest = { ...fields, runId: run, actor: String(execution.agent.id), origin: 'agent', ...(strategy === undefined ? {} : { strategy: strategyArgument(strategy) }) };
+        return toolJson({ runId: run, ...await executionAction(deps, request) });
+      },
+    }),
+    defineTool({
       name: 'hima_observe',
       description: 'Observe one file on a named Site: read it under the site permit, hash it, and append an observation record to the HimaLedger. Refusals are recorded too. With `judge`, HimaJudge then rules on the observation and appends its verdicts.',
       parameters: {
@@ -231,6 +274,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         // no verdict behind, the same as a malformed `--param` on the command line.
         const parsedParams = numericParams(args.params as Record<string, unknown> | undefined);
         if ('error' in parsedParams) throw new Error(parsedParams.error);
+        if (args.run && deps.ledger.run(args.run)?.control) throw new Error('Agent-owned Run observations require hima_execute with an admitted execution; direct observation is refused');
         const result = await observe(deps, args as ObserveRequest);
         const value = toolResult(result);
         if (result.kind === 'observed' && args.judge?.length) {
@@ -241,7 +285,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     }),
     defineTool({
       name: 'hima_run',
-      description: 'Start a Campaign of a HimaPack on a named Site toward a Goal, and let HimaFabric execute the pack\'s graph: launch the tool as a Job in the Campaign workspace, read what it produced into the HimaLedger, judge it, choose the next strategy, and end. Answers when the run stops. The verdicts are HimaJudge\'s and the next strategy is the pack\'s chooser: this tool decides neither.',
+      description: 'Prepare a Campaign on the named Site and bind it to this actual conversational Agent. Returns promptly with the Run and execution context; starts no business node or hidden Agent. You remain the execution owner: use hima_context and hima_execute to choose and perform each node, inspect real evidence, and decide the next action. Goal and total budget remain fixed.',
       parameters: {
         pack: { type: 'string', required: true, description: 'Pack id, as the packs directory holds it.' },
         site: { type: 'string', required: true, description: 'Site name, as in the site file.' },
@@ -272,6 +316,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
             kind: { type: 'string', required: true, enum: ['ran', 'unfit', 'unprepared'] },
             runId: { type: 'string' },
             campaignId: { type: 'string' },
+            context: { type: 'object', additionalProperties: true, description: 'Current reference and execution facts for this same Agent.' },
             status: { type: 'string' },
             currentNode: { type: 'string' },
             strategy: { type: 'object', additionalProperties: true, description: 'The strategy the run now stands at: the next one to try, or the one that met the goal.' },
@@ -280,12 +325,14 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: async (args) => {
+      execute: async (args, execution) => {
+        if (!execution.agent) throw new Error('hima_run requires a live conversational Agent');
         const goal = strategyArgument(args.goal, 'goal') ?? {};
         // The same checks the command face and the route make, from the same tables: a tool call is
         // a caller like any other, and a time box no person could type must not be one a model can.
         const timeBox = toolNumber('timeBox', args.timeBox);
         const result = await startRun(deps, {
+          ownerSessionId: String(execution.agent.id),
           pack: args.pack,
           site: args.site,
           goal,
@@ -298,14 +345,14 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
           retryAllowance: toolNumber('retries', args.retries),
           generationLimit: toolNumber('generations', args.generations),
         });
-        return runToolValue(result);
+        return { ...runToolValue(result), ...(result.kind === 'ran' ? { context: toolJson(executionContext(deps, result.run.id)) } : {}) };
       },
     }),
     // The resume face as a tool, beside the run face: a waiting Run is cleared the same way from
     // an agent as from the command line.
     defineTool({
       name: 'hima_resume',
-      description: 'Clear a waiting HimaHarness run and carry it on: re-enter the node its blocker names with a fresh retry allowance, and let HimaFabric execute the rest of the pack\'s graph. Only a run that is waiting can be resumed; a running or ended run is answered and nothing is written. The resume is recorded in the HimaLedger as a person\'s action.',
+      description: 'Legacy compatibility only. Agent-owned Runs refuse this operation: read hima_context and use hima_execute continue with current owner epoch/revision. No automatic continuation is available in production.',
       parameters: {
         run: { type: 'string', required: true, description: 'The run id to resume, as /hima status names it.' },
       },
@@ -480,7 +527,10 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: async (args) => cancelToolValue(await cancelRun(deps, args.run)),
+      execute: async (args) => {
+        if (deps.ledger.run(args.run)?.control) throw new Error('use hima_context then hima_execute cancel with the current owner epoch and control revision');
+        return cancelToolValue(await cancelRun(deps, args.run));
+      },
     }),
   ];
 }

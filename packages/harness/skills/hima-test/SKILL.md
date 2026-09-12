@@ -41,8 +41,26 @@ Call `hima_run` with:
   defaults. A knob they said nothing about is left at the default the pack declares, which is a value
   the pack states and not one you picked.
 
-The tool answers when the Run stops. A Campaign is generations of real work, so this takes as long as
-it takes; do not start a second one, and do not cancel the first.
+The tool prepares the Run and returns promptly with its execution context. This same conversation is
+the Run's owner; no hidden Agent or automatic graph driver continues it. Keep the returned Run id.
+
+Read `hima_context`, then use `hima_execute` with its current owner epoch and control revision to:
+
+1. `begin` one available reference node and retain the admitted execution id.
+2. Perform the node's work. Use controlled `read`, `write`, and `knowledge` for research/code nodes;
+   use `work` for the declared mechanical operation. A Job starts asynchronously and its identity
+   returns before completion. Do not wait in a long foreground tool or start a second Run.
+3. Inspect new context and actual Job/output facts. A notification only says new facts were saved;
+   it does not mean the node succeeded or give permission to ignore a pause.
+4. Request `complete` only with actual required evidence. At an exploration node, state the decision,
+   strategy where needed, rationale and citations yourself; Judge remains the verdict authority.
+5. Choose the next available node only after completion is accepted. Repeat within the fixed budget.
+
+Use a unique request id for each new action; an identical retry keeps its id and arguments. After a
+stale/refused response read context again before deciding. Respect the author's mid-run instructions:
+`pause` blocks new work while Jobs may still run, `cancel` requests actual stop, and `continue` requires
+authorization. Never claim a Job stopped or a node completed from the request alone. `revise`/`grow`
+may be unsupported; report that response rather than substituting a hidden automatic driver.
 
 Then call `hima_status` with the run id it answered, and write the record from that. Every fact about
 the Run — its status, its generations, the code it wrote, what it refused, its blockers — comes out of

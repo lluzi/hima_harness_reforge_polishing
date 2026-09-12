@@ -286,6 +286,11 @@ function describeRun(deps: FabricDeps, run: RunRecord): string {
   const purpose = runPurposeMark(run.purpose);
   const marked = purpose === undefined ? '' : `, ${purpose}`;
   const lines = [`run ${run.id} of campaign ${run.campaignId} on site ${run.siteId}: ${run.status ?? 'no fabric state; HimaFabric never started this run'}${marked}${generation}${loop}${fork}`];
+  if (run.control) {
+    lines.push(`  conversational owner: ${run.control.owner}; epoch ${run.control.epoch}; revision ${run.control.revision}`);
+    lines.push(`  new work: ${run.control.paused.length ? `paused (${run.control.paused.join(', ')}); existing Jobs may still run` : 'requires an explicit Agent action'}`);
+    for (const execution of Object.values(run.control.executions)) lines.push(`  execution ${execution.id}: ${execution.nodeId}, ${execution.phase}, generation ${execution.generation}, attempt ${execution.attempt}`);
+  }
   const workspace = records.findLast((r): r is WorkspaceRecord => r.type === 'workspace')?.workspace;
   if (workspace !== undefined) lines.push(`  workspace: ${workspace}`);
   // What the Campaign is for and what it is set to, in the very words the card says them in
@@ -579,6 +584,7 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
     if ('error' in parsedParams) return { kind: 'error', text: `${usage}\n${parsedParams.error}` };
     let result: ObserveResult;
     try {
+      if (run && deps.ledger.run(run)?.control) return { kind: 'error', text: 'Agent-owned Run observations require hima_execute with an admitted execution' };
       result = await observe(deps, { site, path, reader, run });
     } catch (err) {
       // A run reference the caller got wrong is theirs to fix and nothing was written; every other
@@ -604,25 +610,15 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
   }
   if (sub === 'job') return handleJob(deps, rest);
   if (sub === 'pack') return handlePack(deps, rest);
-  if (sub === 'run') return handleRun(deps, rest);
+  if (sub === 'run') return handleRun(deps, rest, String(agent.id));
   if (sub === 'resume') return handleResume(deps, rest, String(agent.id));
   if (sub === 'status') return handleStatus(deps, rest);
   if (sub === 'cancel') return handleCancel(deps, rest);
   return { kind: 'error', text: `unknown hima command "${sub}"; try /hima version, /hima observe <site> <path>, /hima judge <runId> --rules <id,...>, /hima job launch|status|tail|kill, /hima pack check|prepare|release, /hima run <pack> --site <site> --goal <name>=<value>, /hima resume <runId>, /hima status <runId>, or /hima cancel <runId>` };
 }
 
-/**
- * The `/hima run` face: start a Campaign of a pack on a Site toward a Goal, and let HimaFabric
- * execute its graph. The command answers when the Run stops, with the Run as `/hima status` would
- * show it — every generation of the Loop, one after another, and one generation of the first pack is
- * two and a half minutes of synthesis on the reference Site, so the Budget's time box and its
- * generation limit are what bound the wait.
- *
- * A Run that ended is a success whichever way it ended: `ended-goal-not-met` and `ended-converged`
- * are real results, and so is a spent meter. What is an error is a Run that could not start, or one
- * that stopped needing a person.
- */
-async function handleRun(deps: FabricDeps, rest: readonly string[]): Promise<CommandResult> {
+/** Prepare a Campaign for this actual command conversation; business nodes remain Agent-owned. */
+async function handleRun(deps: FabricDeps, rest: readonly string[], ownerSessionId: string): Promise<CommandResult> {
   const [pack = '', ...flags] = rest;
   const usage = 'usage: /hima run <pack> --site <site> --goal <name>=<value>... [--set <knob>=<value>]... [--test] [--time-box <minutes>] [--retries <n>] [--generations <n>]';
   const wrong = { kind: 'error', text: usage } as const;
@@ -649,6 +645,7 @@ async function handleRun(deps: FabricDeps, rest: readonly string[]): Promise<Com
   let result: StartRunResult;
   try {
     result = await startRun(deps, {
+      ownerSessionId,
       pack,
       site,
       goal: goal.params,
@@ -688,7 +685,7 @@ async function handleRun(deps: FabricDeps, rest: readonly string[]): Promise<Com
   // A Run that reached a final state is a success, whichever one: `ended-goal-not-met` is a real
   // result, so is a spent time box, and so is a Run a person cancelled from another face while this
   // command waited for it. What is an error is a Run that stopped needing a person.
-  return { kind: hasEnded(result.run.status) ? 'success' : 'error', text };
+  return { kind: result.run.control || hasEnded(result.run.status) ? 'success' : 'error', text };
 }
 
 /**
@@ -731,7 +728,7 @@ async function handleResume(deps: FabricDeps, rest: readonly string[], who: stri
   // now reachable from a drive this command is waiting on — a person resumes a blocked Run and then
   // stops it from another face — and answering that as an error would have one event told two ways
   // by two faces of one harness.
-  return { kind: hasEnded(result.run.status) ? 'success' : 'error', text };
+  return { kind: result.run.control || hasEnded(result.run.status) ? 'success' : 'error', text };
 }
 
 /** The `/hima status` face: where a Run stands, read from its records and nothing else. */
@@ -755,6 +752,7 @@ async function handleCancel(deps: FabricDeps, rest: readonly string[]): Promise<
   const [runId] = rest;
   if (!runId || rest.length > 1) return { kind: 'error', text: 'usage: /hima cancel <runId>' };
   try {
+    if (deps.ledger.run(runId)?.control) return { kind: 'error', text: 'use hima_context then hima_execute cancel with current owner epoch and revision' };
     const result = await cancelRun(deps, runId);
     const text = describeCancel(deps, result);
     return { kind: result.kind === 'cancelled' || result.kind === 'ended' ? 'success' : 'error', text };
@@ -858,6 +856,7 @@ async function handleJob(deps: FabricDeps, rest: readonly string[]): Promise<Com
       const argv = args.slice(at + 1);
       if (!siteName || !workspace || argv.length === 0) return wrong;
       const run = flagValue(flags, '--run');
+      if (run && deps.ledger.run(run)?.control) return { kind: 'error', text: 'Agent-owned Run Jobs require hima_execute with an admitted execution' };
       const name = flagValue(flags, '--name');
       // A flag typed with no value must never read as "not given".
       if (flagPresent(flags, '--run') && !run) return wrong;
@@ -890,6 +889,7 @@ async function handleJob(deps: FabricDeps, rest: readonly string[]): Promise<Com
       if (verb === 'status') {
         return { kind: 'success', text: describeJobStatus(session, await jobStatus(deps, { run: runId, session })) };
       }
+      if (deps.ledger.run(runId)?.control) return { kind: 'error', text: 'Agent-owned Run Job stopping requires hima_execute cancel' };
       const killed = await jobKill(deps, { run: runId, session });
       // A kill that did not take is not a success. `jobKill` waited for the session to be observed
       // gone and it is still there, so the Job is still running and nothing was recorded — the
@@ -922,6 +922,7 @@ async function handleJob(deps: FabricDeps, rest: readonly string[]): Promise<Com
 
 /** Ask HimaJudge for a verdict per rule and report them; an unknown rule or run is an error, never a pass. */
 async function judged(deps: FabricDeps, runId: string, rules: string, params?: Readonly<Record<string, number>>): Promise<CommandResult> {
+  if (deps.ledger.run(runId)?.control) return { kind: 'error', text: 'Agent-owned Run judgment requires hima_execute with an admitted execution' };
   const ruleIds = ruleList(rules);
   if (ruleIds.length === 0) return { kind: 'error', text: 'no rule ids given; expected --rules <id,id,...>' };
   try {

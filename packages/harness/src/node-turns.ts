@@ -118,6 +118,7 @@ export interface FabricDeps {
    * (the acceptance script, a test) has no host log to write to, and the Run is unaffected either way.
    */
   readonly log?: (line: string) => void;
+  readonly notify?: (owner: string, runId: string, executionId: string) => void;
 }
 
 /**

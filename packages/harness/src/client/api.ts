@@ -1,6 +1,7 @@
 // The browser side of the Hima remote interface: one fetch wrapper over the `/hima/api/` namespace,
 // and the only place the HimaGuide module talks to the host. The wire contract lives in
 // `../remote.ts`; this file imports it as types alone, so nothing host-side reaches the bundle.
+import type { ExecutionContext } from '../fabric.js';
 import type { HimaErrorBody, HimaErrorCode, RunHeadView, RunView } from '../remote.js';
 import type { StartChoices } from '../workbench.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
@@ -45,6 +46,20 @@ export function fetchStartChoices(pack?: string, site?: string, signal?: AbortSi
 
 export const startCampaign = (body: Record<string, unknown>, signal?: AbortSignal): Promise<HimaResult<RunView>> =>
   runRequest(HIMA_RUNS_START_PATH, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+
+export const fetchExecutionContext = (runId: string, signal?: AbortSignal): Promise<HimaResult<ExecutionContext>> =>
+  runRequest(`${runPath(runId)}/context`, { signal });
+
+export function controlRun(view: RunView, sessionId: string, action: 'pause' | 'continue' | 'cancel', nodeId?: string, signal?: AbortSignal): Promise<HimaResult<RunView>> {
+  const control = view.run.control;
+  if (!control) return Promise.resolve({ ok: false, error: { code: 'hima/run-not-in-state', message: 'This Run has no conversational owner.' } });
+  return runRequest(`${runPath(view.run.id)}/control`, { method: 'POST', signal,
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, action,
+      expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: `ui-${crypto.randomUUID()}`,
+      ...(nodeId === undefined ? {} : { nodeId }),
+    }),
+  });
+}
 
 /**
  * Act on one Run from the card: stop it, or carry a waiting one on. Both answer with the Run in the

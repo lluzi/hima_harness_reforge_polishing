@@ -37,7 +37,8 @@
     "test/contract/pipeline-stages.host.test.ts",
     "test/contract/input-admission.host.test.ts",
     "test/contract/agent-execution.host.test.ts",
-    "test/contract/node-jobs.host.test.ts"
+    "test/contract/node-jobs.host.test.ts",
+    "test/contract/conversation-execution.host.test.ts"
   ],
   "desktop": [
     "test/contract/budget.test.ts",

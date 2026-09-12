@@ -1,0 +1,39 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/conversation-execution.host.test.ts
+local: 1 selected; 36 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: hima_run prepares for the actual calling Agent and returns the same conversation context
+not ok 1 - hima_run prepares for the actual calling Agent and returns the same conversation context
+  ---
+  duration_ms: 4833.007583
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-conversation/test/contract/conversation-execution.host.test.ts:8:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + undefined
+    - 'session-d2cf3e10-ae86-4c2e-a0f8-b6714d96300d'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'session-d2cf3e10-ae86-4c2e-a0f8-b6714d96300d'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-conversation/test/contract/conversation-execution.host.test.ts:17:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5448.468625
+Test boot attempts: {"host-process":0,"host-in-process":1,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 5.549 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

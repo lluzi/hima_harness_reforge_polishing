@@ -1,3 +1,4 @@
+// @hima-seam agent wrapped
 // @hima-seam plugin-module direct
 // @hima-seam commands direct
 // @hima-seam tools direct
@@ -15,6 +16,7 @@
 //
 // It is also the bundle's surface: everything a caller outside `packages/harness/src` imports from
 // `@hima/harness` is exported or re-exported here, whichever module it now lives in.
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { Service, type Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 // Type-only: these take the `ctx.commands` and `ctx.tools` declaration merges the registrations below
@@ -103,7 +105,7 @@ export type { PrepareRequest, PrepareResult, WorkspaceFile } from './workspace.j
 // HimaFabric and the choosers an Explore node picks a next strategy with: part of the surface
 // because the acceptance script and the contract suite start runs the same way the faces do.
 export { versionLine, packStageSaid } from './commands.js';
-export { startRun, resumeRun } from './fabric.js';
+export { startRun, resumeRun, executionAction, executionContext } from './fabric.js';
 export { cancelRun, reconcileRuns } from './recovery.js';
 // Model moments (#59): the one generic element a model needs, on the surface because the contract
 // suite and the live check both open one, and because the acceptance record names the preset.
@@ -116,7 +118,7 @@ export type { WriteExperienceResult, ReadExperienceResult } from './experience.j
 // attempt a Job belongs to when the host that launched it died before the node record naming its
 // session was written. The contract suite asserts that reading at the ledger object (#62).
 export { defaultTimeBoxMs, defaultRetryAllowance, attemptOfSession } from './budget.js';
-export type { FabricDeps, StartRunRequest, StartRunResult, ResumeResult } from './fabric.js';
+export type { FabricDeps, StartRunRequest, StartRunResult, ResumeResult, ExecutionActionRequest, ExecutionActionResult, ExecutionContext } from './fabric.js';
 export type { CancelResult, ReconcileOutcome } from './recovery.js';
 export { runArguments, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason } from './run-arguments.js';
 export type { RunArgumentName } from './run-arguments.js';
@@ -291,6 +293,7 @@ export default class Hima extends Service {
    * It never rejects — a Run this machine cannot rebuild is reported, not thrown.
    */
   reconciled!: Promise<ReconcileOutcome[]>;
+  private notificationsActive = false;
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'hima');
@@ -299,6 +302,7 @@ export default class Hima extends Service {
   async [Service.init](): Promise<void> {
     const domain = await this.ctx.storageDomain.open(ledgerSpec);
     this.ledger = new Ledger(domain);
+    this.ctx.effect(() => { this.notificationsActive = true; return () => { this.notificationsActive = false; }; });
     // The judge takes the ledger's one verdict-writer capability here; nothing else can obtain it.
     this.judge = createJudge(this.ledger, this.config.packsDir);
     this.ctx.effect(() => () => domain.close());
@@ -308,6 +312,9 @@ export default class Hima extends Service {
       webCtx.effect(
         () => registerHimaRoutes(webCtx, {
           ledger: this.ledger,
+          validateSession: (id) => this.ctx.get('agents')?.list().some((agent) => String(agent.id) === id) === true,
+          executionContext: (runId) => this.executionContext(runId),
+          executionAction: (request) => this.executionAction(request),
           observe: (req) => this.observe(req),
           judge: (runId, ruleIds, params) => this.judge.evaluate({ runId, ruleIds, params }),
           startRun: (req) => this.startRun(req),
@@ -457,6 +464,12 @@ export default class Hima extends Service {
       // moment is composed out of this context, and every other operation reaches no host at all.
       host: this.ctx,
       log: (line) => this.ctx.logger.info(line),
+      notify: (owner, runId, executionId) => {
+        if (!this.notificationsActive || (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_SILENT_AGENT === '1')) return;
+        const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === owner);
+        if (!agent) return;
+        agent.followup(createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `Hima recorded new execution facts for Run ${runId}, execution ${executionId}. Read hima_context to inspect the actual Job and evidence. You remain this Run's conversational owner. Respect pause and user instructions; this notification grants no new authority or budget.` }] }));
+      },
     };
   }
 }

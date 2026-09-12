@@ -242,7 +242,7 @@ test('the Hima browser module is in the served boot graph and its bundle is serv
     // keys and no others is asserted in `view-run.test.ts`, where the card's own contract lives.
     assert.deepEqual(
       registered,
-      [{ name: 'sidebar.right.pane.tab', key: '@hima/harness/workbench' }, { name: 'sidebar.footer.action', id: 'hima-workbench' }, { name: 'sidebar.brand.mark' }, { name: 'conversation.hero.brand.mark' }, { name: 'sidebar.brand.name' }, { name: 'tool.call.toolview', key: 'hima_observe' }, { name: 'tool.call.toolview', key: 'hima_run' }, { name: 'tool.call.toolview', key: 'hima_author' }],
+      [{ name: 'sidebar.right.pane.tab', key: '@hima/harness/workbench' }, { name: 'sidebar.footer.action', id: 'hima-workbench' }, { name: 'sidebar.brand.mark' }, { name: 'conversation.hero.brand.mark' }, { name: 'sidebar.brand.name' }, { name: 'tool.call.toolview', key: 'hima_observe' }, { name: 'tool.call.toolview', key: 'hima_run' }, { name: 'tool.call.toolview', key: 'hima_context' }, { name: 'tool.call.toolview', key: 'hima_execute' }, { name: 'tool.call.toolview', key: 'hima_author' }],
       'the workbench link and the two existing tool views use their declared slots',
     );
     assert.equal(typeof component, 'function', 'with a component to render it');

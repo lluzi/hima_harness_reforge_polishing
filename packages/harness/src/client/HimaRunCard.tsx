@@ -21,7 +21,7 @@ import type { BlockerView, Citation, DecisionView, ExperienceView, NodeView, Obs
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
 import { bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, good, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, outcomeColour, askedObservedSaid, plain, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, warn, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
-import { actOnRun, fetchRun, type HimaFailure } from './api.js';
+import { actOnRun, controlRun, fetchRun, type HimaFailure } from './api.js';
 
 /** The slice of the tool block this card reads. The owner passes the frozen call or result node. */
 export interface ToolBlock {
@@ -402,17 +402,18 @@ function BlockerRow({ blocker, latest }: { blocker: BlockerView; latest: boolean
 
 /** What the card's controls need: which one is in flight, why the last one was refused, and how to act. */
 export interface Acting {
-  readonly inFlight?: 'cancel' | 'resume';
+  readonly inFlight?: 'cancel' | 'resume' | 'pause' | 'continue';
+  readonly sessionId?: string;
   readonly refusal?: HimaFailure;
-  act(action: 'cancel' | 'resume'): void;
+  act(action: 'cancel' | 'resume' | 'pause' | 'continue', nodeId?: string): void;
 }
 
 /** One action owner for both presentations. Cancel may supersede a long-running Resume reply. */
-export function useRunActions(runId: string | undefined, onChanged: (view: RunView) => void): Acting {
-  const [state, setState] = useState<{ runId?: string; inFlight?: 'cancel' | 'resume'; refusal?: HimaFailure }>({ runId });
-  const pending = useRef<{ runId: string; kind: 'cancel' | 'resume'; controller: AbortController } | undefined>(undefined);
-  const latest = useRef({ runId, onChanged });
-  latest.current = { runId, onChanged };
+export function useRunActions(runId: string | undefined, onChanged: (view: RunView, action: NonNullable<Acting['inFlight']>, nodeId?: string) => void, sessionId?: string, view?: RunView): Acting {
+  const [state, setState] = useState<{ runId?: string; inFlight?: Acting['inFlight']; refusal?: HimaFailure }>({ runId });
+  const pending = useRef<{ runId: string; kind: NonNullable<Acting['inFlight']>; controller: AbortController } | undefined>(undefined);
+  const latest = useRef({ runId, onChanged, view, sessionId });
+  latest.current = { runId, onChanged, view, sessionId };
   useEffect(() => {
     setState({ runId });
     return () => {
@@ -422,18 +423,25 @@ export function useRunActions(runId: string | undefined, onChanged: (view: RunVi
   }, [runId]);
   return {
     ...(state.runId === runId ? state : {}),
-    act: (kind) => {
+    sessionId,
+    act: (kind, nodeId) => {
       if (runId === undefined) return;
       const prior = pending.current;
       if (prior && !(prior.kind === 'resume' && kind === 'cancel')) return;
       prior?.controller.abort();
       const own = { runId, kind, controller: new AbortController() };
       pending.current = own; setState({ runId, inFlight: kind });
-      void actOnRun(runId, kind, own.controller.signal).then((result) => {
+      const current = latest.current;
+      const action = current.view?.run.control
+        ? current.sessionId ? controlRun(current.view, current.sessionId, kind === 'resume' ? 'continue' : kind, nodeId, own.controller.signal)
+          : Promise.resolve({ ok: false as const, error: { code: 'hima/not-authorized' as const, message: 'Open the owning conversation in Live Run to control this Run.' } })
+        : kind === 'pause' || kind === 'continue' ? Promise.resolve({ ok: false as const, error: { code: 'hima/run-not-in-state' as const, message: 'This historical Run requires explicit ownership migration.' } })
+          : actOnRun(runId, kind, own.controller.signal);
+      void action.then((result) => {
         if (own.controller.signal.aborted || pending.current !== own || latest.current.runId !== runId) return;
         pending.current = undefined;
         setState(result.ok ? { runId } : { runId, refusal: result.error });
-        if (result.ok) latest.current.onChanged(result.value);
+        if (result.ok) latest.current.onChanged(result.value, kind, nodeId);
       });
     },
   };
@@ -449,6 +457,26 @@ export function useRunActions(runId: string | undefined, onChanged: (view: RunVi
  * does (CONTEXT.md, *HimaGuide*).
  */
 export function RunControls({ view, acting }: { view: RunView; acting: Acting }): ReactElement {
+  const control = view.run.control;
+  if (control) {
+    const owner = control.owner === acting.sessionId;
+    const active = view.run.status === 'running' || view.run.status === 'waiting';
+    return <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-hima-region='execution-control' data-hima-state-owner={control.owner} data-hima-state-epoch={control.epoch} data-hima-state-revision={control.revision}>
+      <span style={muted}>Owner {control.owner} · epoch {control.epoch} · revision {control.revision}</span>
+      <span>{control.paused.length ? `New work paused: ${control.paused.join(', ')}. Existing Jobs may still be running.` : 'New work requires this conversation’s explicit Agent action.'}</span>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {active && owner ? <button type='button' data-hima-control='pause' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause')}>Pause Run</button> : null}
+        {active && owner && view.run.currentNode ? <button type='button' data-hima-control='pause-node' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause', view.run.currentNode)}>Pause {view.run.currentNode}</button> : null}
+        {active && owner && control.paused.length ? <button type='button' data-hima-control='continue' disabled={acting.inFlight !== undefined} onClick={() => acting.act('continue')}>Continue</button> : null}
+        {active && acting.sessionId ? <button type='button' data-hima-control='cancel' disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>Stop Run</button> : null}
+      </div>
+      {!owner ? <span style={muted}>Viewing this Run does not transfer execution ownership. Enter its owning conversation to continue.</span> : null}
+      {Object.values(control.executions).map((execution) => <div key={execution.id} data-hima-region='node-execution' data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>
+        {execution.nodeId} · {execution.phase} · generation {execution.generation} · attempt {execution.attempt}<br /><span style={mono}>{execution.id}</span>
+      </div>)}
+      <span data-hima-region='run-error' style={{ color: bad }}>{acting.refusal?.message ?? ''}</span>
+    </div>;
+  }
   const shown: ('cancel' | 'resume')[] = [
     ...(showsCancel(view.run.status) ? ['cancel' as const] : []),
     ...(showsResume(view.run.status) ? ['resume' as const] : []),
@@ -755,10 +783,10 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
  * @param props - the keyed toolview payload; only the frozen call/result block is read.
  * @returns the Hima run card.
  */
-export function HimaRunCard({ block: toolBlock, openRun }: { block: ToolBlock; openRun?: (runId: string) => void }): ReactElement {
+export function HimaRunCard({ block: toolBlock, openRun, sessionId }: { block: ToolBlock; openRun?: (runId: string) => void; sessionId?: string }): ReactElement {
   const runId = runIdOf(toolBlock);
   const [state, setState] = useState<{ view?: RunView; error?: HimaFailure }>({});
-  const acting = useRunActions(runId, (view) => setState({ view }));
+  const acting = useRunActions(runId, (view) => setState({ view }), sessionId, state.view);
 
   useEffect(() => {
     if (runId === undefined) return;
