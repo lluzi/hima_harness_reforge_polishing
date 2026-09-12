@@ -12,6 +12,7 @@
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { VerdictRecord } from './ledger.js';
+import { legacyAutomaticAllowed } from './runs.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { executionAction, executionContext, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
@@ -335,7 +336,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         // a caller like any other, and a time box no person could type must not be one a model can.
         const timeBox = toolNumber('timeBox', args.timeBox);
         const result = await startRun(deps, {
-          ownerSessionId: String(execution.agent.id),
+          ownerSessionId: legacyAutomaticAllowed() ? undefined : String(execution.agent.id),
           pack: args.pack,
           site: args.site,
           goal,

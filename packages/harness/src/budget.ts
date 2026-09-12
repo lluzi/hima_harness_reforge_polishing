@@ -4,8 +4,8 @@
 // seats is the job cap's, beside the other scarcity of the Site; what a Run held of them is here,
 // with every other meter.)
 //
-// The Budget meters the design and the EDA environment, never the person (CONTEXT.md): a wait on a
-// person widens the box, and a Hard blocker a person clears grants the node a fresh allowance. Every
+// Agent-owned Runs keep charging their total time box while paused. Historical human waits retain
+// their old allowance only through a fixed adoption offset; subsequent pauses do not enlarge it. Every
 // number here is computed from what the ledger already holds and never from a driving process's
 // memory, which is what lets a second host pick a Run up and compute the same deadline, the same
 // attempt number and the same allowance the first one would have.
@@ -33,8 +33,9 @@ export const defaultRetryAllowance = 3;
 export const defaultGenerationLimit = 6;
 
 /**
- * When this Run's time box runs out, as a moment: opened, plus the box, plus however long it has
- * spent waiting on a person. `undefined` for a Run with no Budget, which spends nothing.
+ * When the original time box runs out. Owned Runs retain only the historical wait allowance
+ * verified at adoption; new pauses keep counting. Unowned regression Runs use their old wait term.
+ * `undefined` for a Run with no Budget, which spends nothing.
  *
  * **The deadline, stated once.** Everything that asks whether a Run may go on asks it here — the loop
  * at the top of every turn, the poll waiting on a Job, the wait for one of the Site's job slots, and
@@ -42,7 +43,8 @@ export const defaultGenerationLimit = 6;
  * different deadlines by two of those is a Run whose Budget means nothing.
  */
 const deadlineOf = (run: RunRecord, waitedMs: number): number | undefined =>
-  run.budget === undefined ? undefined : Date.parse(run.createdAt) + run.budget.timeBoxMs + waitedMs;
+  run.budget === undefined ? undefined : Date.parse(run.createdAt) + run.budget.timeBoxMs
+    + (run.control === undefined ? waitedMs : run.control.adoption?.legacyWaitedMs ?? 0);
 
 /** Had this Run's time box been spent at that moment? What the resume asks about the moment the Run
  *  stopped, which is the last moment it was actually running. */
@@ -242,7 +244,7 @@ export async function advance(ledger: Ledger, runId: string, delta: MeterDelta, 
   // taking it from a drive's term would have those two write the wait away. The two can never
   // disagree — only a resume closes a wait, and a resume is what starts a drive — so this is the
   // drive's own deadline term, computed where every other number a Run carries is.
-  const waited = waitedMsOf(ledger, runId);
+  const waited = Math.max(waitedMsOf(ledger, runId), run.control?.adoption?.legacyWaitedMs ?? 0);
   const withWait = waited === 0 ? meters : { ...meters, waitedMs: waited };
   // Read out of the records for the same reason `waitedMs` is, and it matters more here: the cancel
   // and the reconciliation write meters too, and neither of them holds a drive that could have been

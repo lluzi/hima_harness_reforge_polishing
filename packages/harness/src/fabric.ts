@@ -39,7 +39,7 @@ import { loadRunPack, preservePackMethod } from './release.js';
 import { campaignIdFor, prepareWorkspace, type PrepareResult } from './workspace.js';
 import { writeExperience } from './experience.js';
 import { loadSite } from './sites.js';
-import { driving, existingRun } from './runs.js';
+import { driving, existingRun, legacyAutomaticAllowed } from './runs.js';
 import { recordNode, launchIntent as launchIntentSchema } from './ledger.js';
 import { jobStatus, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
 import type {
@@ -67,6 +67,7 @@ import { PackNotFoundError, RunFaultError, RunStartError, SiteUnreadableError } 
 import {
   advance,
   attemptOf,
+  attemptOfSession,
   currentAttemptOf,
   defaultGenerationLimit,
   defaultRetryAllowance,
@@ -99,6 +100,7 @@ import {
   type FabricDeps,
   type Step,
 } from './node-turns.js';
+import { adoptHistoricalRun } from './recovery.js';
 
 /** The dependencies every fabric operation takes, declared with the turn that is handed them and
  *  named again here so a caller finds them beside `startRun`. */
@@ -197,6 +199,7 @@ export type StartRunResult =
  *         turn threw, after the fault has been recorded against the Run.
  */
 export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<StartRunResult> {
+  if (req.ownerSessionId === undefined && !legacyAutomaticAllowed()) throw new RunStartError('preparing a Run requires a live conversational owner');
   if (req.ownerSessionId !== undefined && !deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.ownerSessionId)) {
     throw new RunStartError('the execution owner must be a live conversation on this Host');
   }
@@ -413,6 +416,7 @@ export type ResumeResult =
 export async function resumeRun(deps: FabricDeps, req: { readonly runId: string; readonly who: string }): Promise<ResumeResult> {
   const owned = existingRun(deps.ledger, req.runId);
   if (owned.control !== undefined) return { kind: 'unresumable', run: owned, reason: 'this Run belongs to its conversational Agent; inspect its execution context and use its control protocol' };
+  if (!legacyAutomaticAllowed()) return { kind: 'unresumable', run: owned, reason: 'historical Runs require explicit safe adoption by a live conversational owner; automatic continuation is disabled' };
   // Serialize only admission, never the potentially long-running Job. The next caller then reads
   // the ledger state the admitted caller wrote and receives the existing not-waiting answer.
   const chains = resumesPerRun.get(deps.ledger) ?? new Map<string, Promise<unknown>>();
@@ -539,6 +543,7 @@ export interface Resumption {
  * ending, and the throw carries on to the caller exactly as it did.
  */
 export async function drive(ctx: Driving, resume?: Resumption): Promise<void> {
+  if (!legacyAutomaticAllowed()) throw new RunStartError('automatic drive is disabled outside the isolated legacy regression fixture');
   if (existingRun(ctx.deps.ledger, ctx.runId).control !== undefined) throw new RunStartError('automatic drive cannot advance an Agent-owned Run');
   await driveOn(ctx, resume);
   await writeExperience(ctx.deps, ctx.runId);
@@ -555,6 +560,7 @@ async function driveOn(ctx: Driving, resume?: Resumption): Promise<void> {
   let resuming = resume;
   for (;;) {
     const run = existingRun(ctx.deps.ledger, ctx.runId);
+    if (!legacyAutomaticAllowed() || run.control !== undefined) return;
     if (run.status !== 'running') return;
     // Which node, and which graph it is routed in: a Run inside a drill-down Loop stands at one of
     // that Loop's nodes and is routed by that Loop's edges (#28). Node ids are unique across a pack,
@@ -1048,7 +1054,7 @@ async function blockAtEntry(deps: FabricDeps, run: RunRecord, pack: Pack, reason
 export interface ExecutionActionRequest {
   readonly runId: string; readonly actor: string;
   readonly expectedEpoch: number; readonly expectedRevision: number; readonly requestId: string;
-  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend';
+  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'adopt' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend';
   readonly nodeId?: string; readonly executionId?: string; readonly targetOwner?: string;
   readonly path?: string; readonly content?: string; readonly output?: string; readonly file?: string;
   readonly decision?: 'goal-met' | 'converged' | 'next-strategy';
@@ -1067,7 +1073,7 @@ export interface ExecutionActionResult {
 
 // A live queue serializes admission, never holds a Job's lifetime or replaces durable state.
 const controlsPerRun = new WeakMap<Ledger, Map<string, Promise<unknown>>>();
-function controlling<T>(deps: FabricDeps, runId: string, act: () => Promise<T>): Promise<T> {
+export function controlling<T>(deps: FabricDeps, runId: string, act: () => Promise<T>): Promise<T> {
   const chains = controlsPerRun.get(deps.ledger) ?? new Map<string, Promise<unknown>>();
   controlsPerRun.set(deps.ledger, chains);
   const pending = (chains.get(runId) ?? Promise.resolve()).then(act);
@@ -1077,7 +1083,7 @@ function controlling<T>(deps: FabricDeps, runId: string, act: () => Promise<T>):
   return pending;
 }
 
-function identityOf(value: unknown): string {
+export function identityOf(value: unknown): string {
   const stable = (item: unknown): unknown => {
     if (Array.isArray(item)) return item.map(stable);
     if (item !== null && typeof item === 'object') return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)).map(([key, field]) => [key, stable(field)]));
@@ -1153,6 +1159,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const run = existingRun(deps.ledger, req.runId);
     const control = run.control;
     if (deps.stopSignal?.aborted) return no('the Host is stopping; no new business action was admitted');
+    if (req.action === 'adopt') return adoptHistoricalRun(deps, req);
     if (control === undefined) return no('this historical Run has no conversational owner');
     if (control.owner !== req.actor || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
     if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
@@ -1238,7 +1245,7 @@ function executionAnswer(deps: FabricDeps, runId: string, kind: ExecutionActionR
 }
 
 /** Must be called under the Run's admission queue; it preserves intervening facts. */
-async function updateExecution(deps: FabricDeps, runId: string, executionId: string, change: Partial<NodeExecution>, requestId?: string, requestState: 'done' | 'uncertain' = 'done'): Promise<void> {
+export async function updateExecution(deps: FabricDeps, runId: string, executionId: string, change: Partial<NodeExecution>, requestId?: string, requestState: 'done' | 'uncertain' = 'done'): Promise<void> {
   const run = existingRun(deps.ledger, runId);
   const control = run.control!;
   const execution = control.executions[executionId];
@@ -1250,12 +1257,14 @@ async function updateExecution(deps: FabricDeps, runId: string, executionId: str
   } });
 }
 
-function executionDriving(deps: FabricDeps, run: RunRecord, execution: NodeExecution): Driving {
+export function executionDriving(deps: FabricDeps, run: RunRecord, execution: NodeExecution): Driving {
   const site = loadSite(deps.sitesDir, run.siteId);
   if (run.control?.siteDigest !== identityOf(site)) throw new RunStartError('the Site declaration changed or its original identity is unavailable; do not reinterpret this execution on another Site');
   const pack = executionPack(deps, run);
   const prepared = deps.ledger.records({ runId: run.id, type: 'workspace' }).findLast((record): record is WorkspaceRecord => record.type === 'workspace' && record.seq <= (execution.inputThroughSeq ?? -1));
-  if (prepared === undefined || prepared.packDigest !== run.packDigest) throw new RunStartError('this execution has no verified original workspace/method identity');
+  const adoption = run.control?.adoption;
+  const adoptedWorkspace = prepared !== undefined && adoption?.workspaceSeq === prepared.seq && adoption.methodDigest === run.packDigest;
+  if (prepared === undefined || (prepared.packDigest !== run.packDigest && !adoptedWorkspace)) throw new RunStartError('this execution has no verified original workspace/method identity');
   return {
     deps: { ...deps, beforeSlotClaim: (siteName) => reconcileExecutionIntents(deps, siteName) },
     runId: run.id, site, pack, bindings: boundInputs(pack, site), workspace: prepared.workspace,
@@ -1290,25 +1299,26 @@ export async function drainExecutionObservers(ledger: Ledger): Promise<void> {
   while (observers !== undefined && observers.size > 0) await Promise.allSettled([...observers.values()]);
   await Promise.allSettled([...(controlsPerRun.get(ledger)?.values() ?? [])]);
 }
-function observeExecution(ctx: Driving, node: PackNode, execution: NodeExecution, session: string): void {
+export function observeExecution(ctx: Driving, node: PackNode, execution: NodeExecution | undefined, session: string): void {
   const observers = executionObservers.get(ctx.deps.ledger) ?? new Map<string, Promise<void>>();
   executionObservers.set(ctx.deps.ledger, observers);
-  if (observers.has(execution.id) || ctx.deps.stopSignal?.aborted) return;
+  const identity = execution?.id ?? `historical:${ctx.runId}:${session}`;
+  if (observers.has(identity) || ctx.deps.stopSignal?.aborted) return;
   const task = (async () => {
     try {
-      const result = await resumeNode(ctx, node, execution.attempt, session);
+      const result = await resumeNode(ctx, node, execution?.attempt ?? attemptOfSession(ctx.deps.ledger, ctx.runId, node.id, session), session);
       if (ctx.deps.stopSignal?.aborted) return;
-      await controlling(ctx.deps, ctx.runId, () => recordExecutionResult(ctx, execution, result));
+      if (execution !== undefined) await controlling(ctx.deps, ctx.runId, () => recordExecutionResult(ctx, execution, result));
     } catch (error) {
       if (ctx.deps.stopSignal?.aborted) return;
-      await controlling(ctx.deps, ctx.runId, () => updateExecution(ctx.deps, ctx.runId, execution.id, { phase: 'uncertain', reason: (error as Error).message }));
-      ctx.deps.log?.(`execution ${execution.id} could not collect its Job facts: ${(error as Error).message}`);
+      if (execution !== undefined) await controlling(ctx.deps, ctx.runId, () => updateExecution(ctx.deps, ctx.runId, execution.id, { phase: 'uncertain', reason: (error as Error).message }));
+      ctx.deps.log?.(`execution ${identity} could not collect its Job facts: ${(error as Error).message}`);
     }
   })();
-  observers.set(execution.id, task);
-  void task.finally(() => { if (observers.get(execution.id) === task) observers.delete(execution.id); }).catch((error: unknown) => ctx.deps.log?.(`execution observer failed: ${String(error)}`));
+  observers.set(identity, task);
+  void task.finally(() => { if (observers.get(identity) === task) observers.delete(identity); }).catch((error: unknown) => ctx.deps.log?.(`execution observer failed: ${String(error)}`));
 }
-async function recordExecutionResult(ctx: Driving, execution: NodeExecution, result: Step, requestId?: string): Promise<void> {
+export async function recordExecutionResult(ctx: Driving, execution: NodeExecution, result: Step, requestId?: string): Promise<void> {
   const phase = result.kind === 'settled' || result.kind === 'moved' ? 'ready' : result.kind === 'pending' ? 'working' : result.kind === 'at-cap' ? 'begun' : 'failed';
   await updateExecution(ctx.deps, ctx.runId, execution.id, { phase, result, ...(result.kind === 'pending' ? { jobSession: result.session } : {}) }, requestId);
   if (result.kind === 'budget-exhausted') await endBudgetExhausted(ctx.deps.ledger, ctx.runId);

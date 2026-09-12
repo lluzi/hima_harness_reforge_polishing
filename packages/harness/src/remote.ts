@@ -18,6 +18,7 @@
 // never ownership merely by selecting or reading a Run.
 import type { ExecutionContext, ExecutionActionRequest, ExecutionActionResult } from './fabric.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { legacyAutomaticAllowed } from './runs.js';
 import type { Context } from '@deepseek-ai/cordis';
 // Type-only: these load the `ctx.webServer` and `ctx.connection` declaration merges onto Context.
 // Nothing is imported at runtime, so a host composed without a browser surface never loads them.
@@ -963,7 +964,7 @@ async function readStartBody(req: IncomingMessage): Promise<StartRunBody> {
 /** That request as HimaFabric takes it: the flags' spelling turned into the operation's, with the
  *  time box converted from the minutes every face spells it in to the milliseconds it is stored in. */
 const startRequestOf = (request: StartRunBody): StartRunRequest => ({
-  ownerSessionId: request.sessionId,
+  ownerSessionId: legacyAutomaticAllowed() ? undefined : request.sessionId,
   pack: request.pack,
   site: request.site,
   goal: request.goal,
@@ -1025,6 +1026,7 @@ function startedNothing(request: StartRunBody, result: Exclude<StartRunResult, {
 }
 
 function validateStartSession(ops: RemoteOperations, request: StartRunBody): void {
+  if (legacyAutomaticAllowed()) return;
   if (!request.sessionId || !ops.validateSession?.(request.sessionId)) throw new BadRequest('select a live conversation on this Host before preparing a Run');
 }
 

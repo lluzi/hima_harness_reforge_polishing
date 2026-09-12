@@ -1,0 +1,134 @@
+local: 3 selected; 38 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 1 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 2929.181833
+  type: 'test'
+  ...
+# Subtest: the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+ok 2 - the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+  ---
+  duration_ms: 3723.403375
+  type: 'test'
+  ...
+# Subtest: pause and an explicit handoff fence old owners without changing Goal or budget
+ok 3 - pause and an explicit handoff fence old owners without changing Goal or budget
+  ---
+  duration_ms: 803.236792
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 4 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 844.684583
+  type: 'test'
+  ...
+# Subtest: production preparation refuses an unowned Run before any Job or Run is created
+ok 5 - production preparation refuses an unowned Run before any Job or Run is created
+  ---
+  duration_ms: 1597.444458
+  type: 'test'
+  ...
+# Subtest: an interrupted completion remains fenced even when its prior Job has a successful exit
+ok 6 - an interrupted completion remains fenced even when its prior Job has a successful exit
+  ---
+  duration_ms: 1783.631958
+  type: 'test'
+  ...
+# Subtest: adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+ok 7 - adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+  ---
+  duration_ms: 2710.554833
+  type: 'test'
+  ...
+# Subtest: adoption carries an open historical human wait once and new pauses continue to spend the original time box
+ok 8 - adoption carries an open historical human wait once and new pauses continue to spend the original time box
+  ---
+  duration_ms: 3692.36675
+  type: 'test'
+  ...
+# Subtest: historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+ok 9 - historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+  ---
+  duration_ms: 5203.955291
+  type: 'test'
+  ...
+# Subtest: an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+ok 10 - an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+  ---
+  duration_ms: 1384.154834
+  type: 'test'
+  ...
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+ok 11 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 5418.471208
+  type: 'test'
+  ...
+# Subtest: explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+ok 12 - explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+  ---
+  duration_ms: 2848.951167
+  type: 'test'
+  ...
+# Subtest: opening the original v19 home still fails the version gate without rewriting it
+ok 13 - opening the original v19 home still fails the version gate without rewriting it
+  ---
+  duration_ms: 243.770875
+  type: 'test'
+  ...
+# Subtest: wrong formats, future controls and unknown fields cannot be silently dropped during import
+ok 14 - wrong formats, future controls and unknown fields cannot be silently dropped during import
+  ---
+  duration_ms: 52.962583
+  type: 'test'
+  ...
+# Subtest: Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+ok 15 - Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+  ---
+  duration_ms: 54.2385
+  type: 'test'
+  ...
+# Subtest: v20-only Job, workspace and decision facts are refused even with a v19 header
+ok 16 - v20-only Job, workspace and decision facts are refused even with a v19 header
+  ---
+  duration_ms: 20.798
+  type: 'test'
+  ...
+# Subtest: symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+ok 17 - symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+  ---
+  duration_ms: 9.528833
+  type: 'test'
+  ...
+# Subtest: mid-write failure and process death cannot publish a partial import or alter the source
+ok 18 - mid-write failure and process death cannot publish a partial import or alter the source
+  ---
+  duration_ms: 759.861375
+  type: 'test'
+  ...
+# Subtest: the offline CLI requires both explicit paths and never defaults to DSH_HOME
+ok 19 - the offline CLI requires both explicit paths and never defaults to DSH_HOME
+  ---
+  duration_ms: 82.119875
+  type: 'test'
+  ...
+# Subtest: two simultaneous imports cannot replace the first complete destination
+ok 20 - two simultaneous imports cannot replace the first complete destination
+  ---
+  duration_ms: 51.296791
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 35898.446166
+Test boot attempts: {"host-process":0,"host-in-process":18,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 35.979 s; pass/fail/skip counts are in the TAP summary above

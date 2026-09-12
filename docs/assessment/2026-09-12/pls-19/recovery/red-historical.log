@@ -1,0 +1,56 @@
+local: 1 selected; 40 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: production preparation refuses an unowned Run before any Job or Run is created
+ok 1 - production preparation refuses an unowned Run before any Job or Run is created
+  ---
+  duration_ms: 3240.106417
+  type: 'test'
+  ...
+# Subtest: historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+not ok 2 - historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+  ---
+  duration_ms: 1148.189625
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-recovery/test/contract/agent-recovery.host.test.ts:49:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'waiting'
+    - 'running'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'running'
+  actual: 'waiting'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-recovery/test/contract/agent-recovery.host.test.ts:59:12)
+    async Test.run (node:internal/test_runner/test:1313:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:897:7)
+  ...
+# Subtest: an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+ok 3 - an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+  ---
+  duration_ms: 1463.142
+  type: 'test'
+  ...
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+ok 4 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 5305.364
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 3
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11912.7985
+Test boot attempts: {"host-process":0,"host-in-process":7,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 12.014 s; pass/fail/skip counts are in the TAP summary above
