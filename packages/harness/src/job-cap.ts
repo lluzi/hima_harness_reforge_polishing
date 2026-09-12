@@ -10,7 +10,7 @@
 // jobs and sites and not with the fabric: this module imports the Job operations, the Site and the
 // ledger, and nothing of the driver — a Run's graph is nothing to do with how much of its Site is
 // free, and both faces that launch reach this the same way.
-import { jobSessionThere, jobStatus, launchJob, pollAfter, type JobDeps, type LaunchResult } from './jobs.js';
+import { jobSessionThere, jobStatus, launchJob, waitForNextPoll, type JobDeps, type LaunchResult, type LaunchRequest } from './jobs.js';
 import { recordNode, type JobRecord, type LaunchedReading, type LaunchedWorkshop, type Ledger, type NodeKind, type RunRecord, givesUpLaunch } from './ledger.js';
 import { driving, existingRun } from './runs.js';
 import { advance, timeBoxSpent } from './budget.js';
@@ -333,6 +333,7 @@ export function claimSlot(
   req: { readonly site: SiteSlots; readonly holds: Readonly<Record<string, number>>; readonly launch: () => Promise<LaunchResult> },
 ): Promise<SlotClaim> {
   return claimingSlotOn(deps.ledger, req.site.name, async (): Promise<SlotClaim> => {
+    await deps.beforeSlotClaim?.(req.site.name);
     let holding: JobRecord[];
     try {
       holding = await heldJobSlots(deps, req.site.name);
@@ -353,7 +354,9 @@ export function claimSlot(
  *  ran out while the Site was full. */
 export type Claim =
   | { readonly kind: 'claimed'; readonly launched: LaunchResult }
-  | { readonly kind: 'budget-exhausted' };
+  | { readonly kind: 'budget-exhausted' }
+  | { readonly kind: 'at-cap'; readonly reason: string }
+  | { readonly kind: 'stopped' };
 
 /**
  * Take one of the Site's Job slots for a node and launch in it, waiting for one while the Site is
@@ -395,6 +398,9 @@ export async function claimSlotAndLaunch(
     readonly argv: readonly string[];
     readonly licences: Readonly<Record<string, number>>;
     readonly waitedMs: number;
+    readonly nonblocking?: boolean;
+    readonly beforeLaunch?: LaunchRequest['beforeLaunch'];
+    readonly stopSignal?: AbortSignal;
     /**
      * What the Job is called, when it is not called after the node it belongs to (#61).
      *
@@ -438,6 +444,7 @@ export async function claimSlotAndLaunch(
    *  (#18). One line for the stretch and one when it clears, as the Job poll logs it. */
   let unreadableSince: number | undefined;
   for (;;) {
+    if (req.stopSignal?.aborted) return { kind: 'stopped' };
     const claimed = await claimSlot(deps, {
       site: slots,
       holds: req.licences,
@@ -457,8 +464,17 @@ export async function claimSlotAndLaunch(
           // (#62): a host that picks the Job up after a restart numbers the records it writes for it
           // from here, rather than inferring it from a node record the launch may have outlived.
           attempt,
+          beforeLaunch: async (intent) => {
+            req.stopSignal?.throwIfAborted();
+            await req.beforeLaunch?.(intent);
+          },
         }),
     });
+    if (req.nonblocking && claimed.kind !== 'claimed') {
+      return { kind: 'at-cap', reason: claimed.kind === 'unreadable'
+        ? `site ${site.name} cannot be counted: ${claimed.error.message}; nothing was launched`
+        : `site ${site.name} ${fullSaid(claimed.full)}; nothing was launched` };
+    }
     if (claimed.kind === 'unreadable') {
       // The cap could not be counted, so no launch is attempted. The count is fail-closed either way
       // — no launch onto a Site that may already be at its cap, or already holding every seat of a
@@ -514,6 +530,6 @@ export async function claimSlotAndLaunch(
       });
       return { kind: 'budget-exhausted' };
     }
-    await new Promise((r) => setTimeout(r, pollAfter(waitingSince)));
+    await waitForNextPoll(waitingSince, req.stopSignal);
   }
 }

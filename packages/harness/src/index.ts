@@ -239,6 +239,13 @@ export type {
 // the day this one is tuned (#18). A test that has to act **between** two looks needs the third for
 // the same reason: how long it has is which interval the waiter has settled into (#61).
 export { jobPollFastForMs, jobPollFastMs, jobPollSlowMs } from './jobs.js';
+export { launchJob, reconcileLaunchIntent, jobStatus } from './jobs.js';
+export type { LaunchIntent, JobDeps, LaunchRequest, LaunchResult, ReconciledLaunch } from './jobs.js';
+export { claimSlotAndLaunch } from './job-cap.js';
+export { toolNode, observeNode, resumeNode, buildWorkshopScope, resolveWorkshop, launchWrittenWorkshop, exploreRecommendation } from './node-turns.js';
+export type { Driving, ResolvedWorkshop, ExploreRecommendation } from './node-turns.js';
+export { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop } from './workshop.js';
+export type { WorkshopScope, WriteAnswer, ReadAnswer, KnowledgeAnswer } from './workshop.js';
 export type { JobState, KillOutcome } from './jobs.js';
 export type { AnalysisMode, PathScope, SemanticDeclaration, Semantics, SemanticsFile, SemanticValue } from './semantics.js';
 // The value types a reading is held to, and the one validator every reader's output passes through

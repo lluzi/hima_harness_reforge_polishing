@@ -53,6 +53,17 @@ export const jobPollFastForMs = 5_000;
 export const pollAfter = (waitingSince: number): number =>
   (Date.now() - waitingSince < jobPollFastForMs ? jobPollFastMs : jobPollSlowMs);
 
+/** An interruptible Host wait: stopping observation never kills the detached Site Job. */
+export async function waitForNextPoll(waitingSince: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return;
+  await new Promise<void>((resolve) => {
+    const done = (): void => { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); };
+    const timer = setTimeout(done, pollAfter(waitingSince));
+    signal?.addEventListener('abort', done, { once: true });
+    if (signal?.aborted) done();
+  });
+}
+
 /** How many lines of a Job's log a tail shows when the caller does not say. */
 const defaultTailLines = 40;
 
@@ -222,7 +233,7 @@ const exitFileExists = (on: Channel, job: JobIdentity): Promise<boolean> =>
  */
 async function launchInSession(
   on: Channel,
-  req: { readonly runId: string; readonly workspace: string; readonly argv: readonly string[]; readonly name: string },
+  req: { readonly runId: string; readonly workspace: string; readonly argv: readonly string[]; readonly name: string; readonly beforeLaunch?: (job: Omit<JobIdentity, 'pid'>) => Promise<void> },
 ): Promise<JobIdentity> {
   const { workspace, name } = req;
   // The session is chosen first because the log and the exit file are named after it: this launch's
@@ -240,6 +251,10 @@ async function launchInSession(
   if (session === '') throw new Error(`no free tmux session name for job "${name}" of ${req.runId} on this site`);
   const wire = wrapperScript(req.argv, logPath({ workspace, session }), exitPath({ workspace, session }));
   const startedAt = new Date().toISOString();
+  const intent = { session, workspace, name, startedAt, wire };
+  // Durable identity must exist before the only command that can create this Job. A failed append
+  // leaves no session; a lost launch response can later be reconciled by this exact identity.
+  await req.beforeLaunch?.(intent);
   // `-P -F` prints the new session's pane pid as the launch itself answers, rather than asking for it
   // in a second command: a Job that finishes in milliseconds would already be gone by then, and a Job
   // with no identity could never be found again.
@@ -252,7 +267,7 @@ async function launchInSession(
   if (!Number.isInteger(pid) || pid <= 0) {
     throw new Error(`tmux launched job "${name}" as session ${session} but reported "${printed.trim()}" as its pane pid, not a process id`);
   }
-  return { session, pid, workspace, name, startedAt, wire };
+  return { ...intent, pid };
 }
 
 /**
@@ -324,9 +339,30 @@ async function killSession(on: Channel, job: JobIdentity): Promise<KillOutcome> 
 // The operations: site → run → permit → channel → tmux → ledger. One path, every layer, as observe.
 // ---------------------------------------------------------------------------------------------
 
-export interface JobDeps { readonly ledger: Ledger; readonly sitesDir: string }
+export interface JobDeps {
+  readonly ledger: Ledger;
+  readonly sitesDir: string;
+  /** Reconcile every durable intent on this Site before its serialized capacity count. An uncertain
+   * launch must reject here so another Run cannot spend a slot whose receipt was lost. */
+  readonly beforeSlotClaim?: (siteName: string) => Promise<void>;
+}
+
+/** The exact command and ownership offered before tmux is allowed to launch. No PID exists yet. */
+export interface LaunchIntent {
+  readonly runId: string;
+  readonly siteId: string;
+  readonly job: Omit<JobIdentity, 'pid'>;
+  readonly nodeId?: string;
+  readonly branchId?: string;
+  readonly licences?: Readonly<Record<string, number>>;
+  readonly reading?: LaunchedReading;
+  readonly workshop?: LaunchedWorkshop;
+  readonly attempt?: number;
+}
 
 export interface LaunchRequest {
+  /** The owner persists this intent before any process can start; a rejection prevents launch. */
+  readonly beforeLaunch?: (intent: LaunchIntent) => Promise<void>;
   readonly site: string;
   readonly workspace: string;
   readonly argv: readonly string[];
@@ -402,7 +438,6 @@ export async function launchJob(deps: JobDeps, req: LaunchRequest): Promise<Laun
   if (!decision.ok) {
     return { kind: 'refused', run, record: await deps.ledger.appendRefusal(run.id, { path: decision.refused, reason: decision.reason }) };
   }
-  const job = await launchInSession(channel, { runId: run.id, workspace: decision.workspace, argv: req.argv, name });
   // An absent key, never an undefined one: a Job belonging to no node, or holding no licence of the
   // Site, says so by omission.
   const belongs = req.nodeId === undefined ? {} : { nodeId: req.nodeId };
@@ -416,7 +451,38 @@ export async function launchJob(deps: JobDeps, req: LaunchRequest): Promise<Laun
   // that is neither a workshop's nor a fabric node's.
   const runs = req.workshop === undefined ? {} : { workshop: req.workshop };
   const numbered = req.attempt === undefined ? {} : { attempt: req.attempt };
-  return { kind: 'launched', run, record: await deps.ledger.appendJob(run.id, { event: 'launched', job, ...belongs, ...inBranch, ...holds, ...reads, ...runs, ...numbered }) };
+  const metadata = { ...belongs, ...inBranch, ...holds, ...reads, ...runs, ...numbered };
+  const job = await launchInSession(channel, {
+    runId: run.id, workspace: decision.workspace, argv: req.argv, name,
+    ...(req.beforeLaunch === undefined ? {} : {
+      beforeLaunch: (job: Omit<JobIdentity, 'pid'>) => req.beforeLaunch!({ runId: run.id, siteId: site.name, job, ...metadata }),
+    }),
+  });
+  return { kind: 'launched', run, record: await deps.ledger.appendJob(run.id, { event: 'launched', job, ...metadata }) };
+}
+
+export type ReconciledLaunch =
+  | { readonly kind: 'existing' | 'reconciled'; readonly run: RunRecord; readonly record: JobRecord }
+  | { readonly kind: 'uncertain'; readonly run: RunRecord; readonly reason: string };
+
+/** Recover a missing launch receipt only from the exact session or its valid exit file.
+ * Absence is ambiguous: the host may have died before launch, or the Job may have vanished. Neither
+ * permits a second launch. The pane PID from a lost response stays absent rather than invented. */
+export async function reconcileLaunchIntent(deps: JobDeps, intent: LaunchIntent): Promise<ReconciledLaunch> {
+  const run = existingRun(deps.ledger, intent.runId);
+  if (run.siteId !== intent.siteId) throw new RunReferenceError(`launch intent site ${intent.siteId} does not belong to run ${run.id}`);
+  const previous = launchedRecord(deps, run, intent.job.session);
+  if (previous) return { kind: 'existing', run, record: previous };
+  let state: JobState;
+  try {
+    state = await jobState(channelFor(loadSite(deps.sitesDir, intent.siteId)), intent.job);
+  } catch (err) {
+    return { kind: 'uncertain', run, reason: `cannot confirm launch ${intent.job.session}: ${(err as Error).message}` };
+  }
+  if (state.state === 'gone') return { kind: 'uncertain', run, reason: `session ${intent.job.session} has no live session or valid exit file; whether it launched is unknown` };
+  const { runId: _runId, siteId: _siteId, ...launch } = intent;
+  const record = await deps.ledger.appendJob(run.id, { event: 'launched', ...launch });
+  return { kind: 'reconciled', run, record };
 }
 
 export interface JobStatusResult {

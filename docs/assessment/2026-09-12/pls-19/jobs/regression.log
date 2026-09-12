@@ -1,0 +1,122 @@
+local: 2 selected; 34 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a local job is launched detached, runs, and its exit code comes back from the exit file it wrote
+ok 1 - a local job is launched detached, runs, and its exit code comes back from the exit file it wrote
+  ---
+  duration_ms: 7286.383708
+  type: 'test'
+  ...
+# Subtest: a job that exits three records exit code three, not a failure of its own
+ok 2 - a job that exits three records exit code three, not a failure of its own
+  ---
+  duration_ms: 596.370875
+  type: 'test'
+  ...
+# Subtest: two launches of one job name in one workspace keep their own log and their own exit code
+ok 3 - two launches of one job name in one workspace keep their own log and their own exit code
+  ---
+  duration_ms: 4908.890416
+  type: 'test'
+  ...
+# Subtest: killing a running job leaves no session behind and records the stop that was observed
+ok 4 - killing a running job leaves no session behind and records the stop that was observed
+  ---
+  duration_ms: 600.52775
+  type: 'test'
+  ...
+# Subtest: a launch into a workspace outside the permit's write roots is refused before any command is run
+ok 5 - a launch into a workspace outside the permit's write roots is refused before any command is run
+  ---
+  duration_ms: 484.560666
+  type: 'test'
+  ...
+# Subtest: a launch whose first word is not an allowed wrapper is refused, and nothing is run at all
+ok 6 - a launch whose first word is not an allowed wrapper is refused, and nothing is run at all
+  ---
+  duration_ms: 392.00325
+  type: 'test'
+  ...
+# Subtest: a job name that would climb out of the workspace is made safe before it names anything
+ok 7 - a job name that would climb out of the workspace is made safe before it names anything
+  ---
+  duration_ms: 452.940417
+  type: 'test'
+  ...
+# Subtest: status on a session the run never launched answers gone rather than inventing a job
+ok 8 - status on a session the run never launched answers gone rather than inventing a job
+  ---
+  duration_ms: 432.343541
+  type: 'test'
+  ...
+# Subtest: the job plumbing the channel admits is exactly the plumbing the job operations run
+ok 9 - the job plumbing the channel admits is exactly the plumbing the job operations run
+  ---
+  duration_ms: 0.389042
+  type: 'test'
+  ...
+# Subtest: the channel runs its own verbs and refuses everything else, on a local site as on a remote one
+ok 10 - the channel runs its own verbs and refuses everything else, on a local site as on a remote one
+  ---
+  duration_ms: 14.822792
+  type: 'test'
+  ...
+# Subtest: in process over the same home: a write that landed and verified but that the ledger would not record is named in the tool's answer, in the host log and in the node the run blocks at
+ok 11 - in process over the same home: a write that landed and verified but that the ledger would not record is named in the tool's answer, in the host log and in the node the run blocks at
+  ---
+  duration_ms: 2615.847291
+  type: 'test'
+  ...
+# Subtest: in process over the same home: a host log that throws where the landed byte is reported stops neither the tool's answer nor the fault the node blocks on
+ok 12 - in process over the same home: a host log that throws where the landed byte is reported stops neither the tool's answer nor the fault the node blocks on
+  ---
+  duration_ms: 1626.871042
+  type: 'test'
+  ...
+# Subtest: a workshop declaration this harness will not run is refused before a campaign exists, naming the field
+ok 13 - a workshop declaration this harness will not run is refused before a campaign exists, naming the field
+  ---
+  duration_ms: 1585.536833
+  type: 'test'
+  ...
+# Subtest: at the ledger object: a job whose launch record names its attempt is that attempt, whether or not a node record ever named its session
+ok 14 - at the ledger object: a job whose launch record names its attempt is that attempt, whether or not a node record ever named its session
+  ---
+  duration_ms: 2742.408625
+  type: 'test'
+  ...
+# Subtest: in process over the same home: the moment of a retry is given the reason the attempt before it failed and the tail of that attempt's log
+ok 15 - in process over the same home: the moment of a retry is given the reason the attempt before it failed and the tail of that attempt's log
+  ---
+  duration_ms: 2518.054042
+  type: 'test'
+  ...
+# run run-c7b2fc8e-0d3e-4ef0-80e1-ed6465580cb5 of campaign workshop-probe-20260912-163851-1d12 on site local: waiting, generation 1 of at most 1
+#   workspace: /private/tmp/hima-tests-dadHH9/hima-home-cnDXRC/workspace/workshop-probe-20260912-163851-1d12
+#   goal: target_period_ns=2
+#   strategy: clock period 2 ns
+#   budget: time box 10 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+#   current node: blocked
+#   meters:
+#     elapsed 2.1 s of a time box of 10.0 min
+#     generation 1 of at most 1, 1.9 s
+#     4 jobs launched, at most 1 job at a time
+#     mine: attempt 3 of a retry allowance of 3, and 5 attempts in the campaign so far
+#     Design-Compiler 0 seats of 1 declared, held for 582 ms
+#   nodes:
+#     synthesize (act): done, attempt 1, session hima-c7b2fc8e-synthesize-ab893f holding Design-Compiler 1
+#     mine (act): blocked, attempt 3, session hima-c7b2fc8e-workshop-mine-93015d, job "mine" in tmux session hima-c7b2fc8e-workshop-mine-93015d exited 3; node mine has now failed 3 times and spent its retry allowance of 3
+#     blocked (wait): blocked, attempt 1, this pack routes a hard-blocker here; the Run waits for a person to clear it
+#   workshop mine: blocked · 1 file
+#   blocker: mine after 3 attempts, last exit 3, 1 line of log on record run-c7b2fc8e-0d3e-4ef0-80e1-ed6465580cb5\#000029: job "mine" in tmux session hima-c7b2fc8e-workshop-mine-93015d exited 3; node mine has now failed 3 times and spent its retry allowance of 3
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27285.454833
+Test boot attempts: {"host-process":0,"host-in-process":13,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 27.347 s; pass/fail/skip counts are in the TAP summary above

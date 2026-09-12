@@ -1,0 +1,93 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/node-jobs.host.test.ts test/contract/agent-execution.host.test.ts
+local: 2 selected; 36 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 1 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 5123.880959
+  type: 'test'
+  ...
+# Subtest: pause and an explicit handoff fence old owners without changing Goal or budget
+ok 2 - pause and an explicit handoff fence old owners without changing Goal or budget
+  ---
+  duration_ms: 2388.799917
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 3 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 1108.282791
+  type: 'test'
+  ...
+# Subtest: a durable launch intent must succeed before an actual Job can start
+ok 4 - a durable launch intent must succeed before an actual Job can start
+  ---
+  duration_ms: 3520.997083
+  type: 'test'
+  ...
+# Subtest: nonblocking capacity admission returns once and never launches when a slot later frees
+ok 5 - nonblocking capacity admission returns once and never launches when a slot later frees
+  ---
+  duration_ms: 2993.2855
+  type: 'test'
+  ...
+# Subtest: a nonblocking tool returns its real session; stopping the Host observer leaves that Job running
+ok 6 - a nonblocking tool returns its real session; stopping the Host observer leaves that Job running
+  ---
+  duration_ms: 968.562167
+  type: 'test'
+  ...
+# Subtest: the conversational Agent writes isolated Workshop versions, and launch verifies every recorded file without a model moment
+ok 7 - the conversational Agent writes isolated Workshop versions, and launch verifies every recorded file without a model moment
+  ---
+  duration_ms: 1166.823459
+  type: 'test'
+  ...
+# Subtest: a killed Host at before-launch reconciles the exact durable intent without relaunch
+ok 8 - a killed Host at before-launch reconciles the exact durable intent without relaunch
+  ---
+  duration_ms: 3890.351166
+  type: 'test'
+  ...
+# Subtest: a killed Host at running-without-receipt reconciles the exact durable intent without relaunch
+ok 9 - a killed Host at running-without-receipt reconciles the exact durable intent without relaunch
+  ---
+  duration_ms: 4696.91075
+  type: 'test'
+  ...
+# Subtest: a killed Host at finished-without-receipt reconciles the exact durable intent without relaunch
+ok 10 - a killed Host at finished-without-receipt reconciles the exact durable intent without relaunch
+  ---
+  duration_ms: 5334.378125
+  type: 'test'
+  ...
+# Subtest: a nonblocking Pack reader returns its Job and only read-back can settle the observation
+ok 11 - a nonblocking Pack reader returns its Job and only read-back can settle the observation
+  ---
+  duration_ms: 1879.250625
+  type: 'test'
+  ...
+# Subtest: the Pack chooser is readonly advice and does not accept its recommendation as an Agent decision
+ok 12 - the Pack chooser is readonly advice and does not accept its recommendation as an Agent decision
+  ---
+  duration_ms: 956.668083
+  type: 'test'
+  ...
+# Subtest: an unresolved launch intent vetoes another Run inside the Site capacity claim before any Job starts
+ok 13 - an unresolved launch intent vetoes another Run inside the Site capacity claim before any Job starts
+  ---
+  duration_ms: 691.835
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 35928.281167
+Test boot attempts: {"host-process":0,"host-in-process":16,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 36.007 s; pass/fail/skip counts are in the TAP summary above

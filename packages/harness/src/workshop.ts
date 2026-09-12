@@ -239,9 +239,9 @@ export async function readBack(site: Site, channel: Channel, at: string, expecte
  * and a schema and an answer that had drifted apart would be a model told one thing and handed
  * another.
  */
-interface WriteAnswer { wrote: boolean; path?: string; sha256?: string; bytes?: number; refused?: string; reason?: string }
-interface ReadAnswer { read?: boolean; output?: string; path?: string; bytes?: number; text?: string; truncated?: boolean; reason?: string }
-interface KnowledgeAnswer { read?: boolean; file?: string; purpose?: string; text?: string; reason?: string }
+export interface WriteAnswer { wrote: boolean; path?: string; sha256?: string; bytes?: number; refused?: string; reason?: string }
+export interface ReadAnswer { read?: boolean; output?: string; path?: string; bytes?: number; text?: string; truncated?: boolean; reason?: string }
+export interface KnowledgeAnswer { read?: boolean; file?: string; purpose?: string; text?: string; reason?: string }
 
 /**
  * The three tools of one workshop, built for one moment.
@@ -254,8 +254,6 @@ interface KnowledgeAnswer { read?: boolean; file?: string; purpose?: string; tex
  * list — so a test asserting which three tools a moment reached is asserting dsh's own answer.
  */
 export function workshopTools(scope: WorkshopScope): ToolDefinition[] {
-  const p = pathsOf(scope.site);
-  const channel = channelFor(scope.site);
   return [
     defineTool({
       name: WORKSHOP_WRITE_TOOL,
@@ -279,7 +277,7 @@ export function workshopTools(scope: WorkshopScope): ToolDefinition[] {
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: async (args) => writeIntoWorkshop(scope, channel, String(args.path), String(args.content)),
+      execute: async (args) => writeIntoWorkshop(scope, String(args.path), String(args.content)),
     }),
     defineTool({
       name: WORKSHOP_READ_TOOL,
@@ -303,7 +301,7 @@ export function workshopTools(scope: WorkshopScope): ToolDefinition[] {
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: async (args) => readForWorkshop(scope, channel, String(args.output)),
+      execute: async (args) => readForWorkshop(scope, String(args.output)),
     }),
     defineTool({
       name: WORKSHOP_KNOWLEDGE_TOOL,
@@ -329,209 +327,213 @@ export function workshopTools(scope: WorkshopScope): ToolDefinition[] {
     }),
   ];
 
-  /**
-   * Write one file inside the workshop directory, in the order that makes every refusal free.
-   *
-   * The grammar first, on this side of the wire, so a path that could never be allowed costs the Site
-   * nothing and sends it nothing. Then the Permit, which decides where the harness may write at all.
-   * Then the **second containment**: the path the Permit resolved must lie inside the realpath'd
-   * workshop directory. That last one is not a repetition of the Permit's — the Permit's write roots
-   * are the whole Campaign workspace, which holds the copy of the Golden Flow and every report the
-   * flow wrote — and it is the one that a symlink an earlier script of the model's own left inside the
-   * workshop would otherwise walk through, because `decideWrite` resolves the deepest existing
-   * ancestor for real and would hand back a path in whatever the link points at.
-   *
-   * Only then is anything sent. The bytes travel on standard input to `tee`, never on the command
-   * line, exactly as a reader's script and a workspace's `workspace.json` do: the wire carries the
-   * command, not its payload, so no content a model wrote is ever a word of a shell line.
-   */
-  async function writeIntoWorkshop(scope: WorkshopScope, channel: Channel, asked: string, content: string): Promise<WriteAnswer> {
-    const refused = async (reason: string): Promise<WriteAnswer> => {
-      await refuse(scope, asked, reason);
-      return { wrote: false, refused: asked, reason };
-    };
-    const sessionId = scope.session.id;
-    if (sessionId === undefined) {
-      return refused('this workshop\'s session is not open yet, so nothing written in it could be recorded against a session');
-    }
-    const bad = badWritePath(asked);
-    if (bad !== undefined) return refused(`a workshop writes only inside its own directory: ${bad}`);
+}
 
-    const target = p.join(scope.workshopAbs, asked);
-    const decided = await decideWrite(scope.site, target, channel);
-    if (!decided.ok) return refused(decided.reason);
-    if (!within(decided.absPath, scope.workshopAbs, scope.site)) {
-      return refused(`${decided.absPath} is outside the workshop directory ${scope.workshopAbs}: a path that resolves out of it is not a path this workshop may write, however it was spelled`);
-    }
+/**
+ * Write one file inside the workshop directory, in the order that makes every refusal free.
+ *
+ * The grammar first, on this side of the wire, so a path that could never be allowed costs the Site
+ * nothing and sends it nothing. Then the Permit, which decides where the harness may write at all.
+ * Then the **second containment**: the path the Permit resolved must lie inside the realpath'd
+ * workshop directory. That last one is not a repetition of the Permit's — the Permit's write roots
+ * are the whole Campaign workspace, which holds the copy of the Golden Flow and every report the
+ * flow wrote — and it is the one that a symlink an earlier script of the model's own left inside the
+ * workshop would otherwise walk through, because `decideWrite` resolves the deepest existing
+ * ancestor for real and would hand back a path in whatever the link points at.
+ *
+ * Only then is anything sent. The bytes travel on standard input to `tee`, never on the command
+ * line, exactly as a reader's script and a workspace's `workspace.json` do: the wire carries the
+ * command, not its payload, so no content a model wrote is ever a word of a shell line.
+ */
+export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, content: string): Promise<WriteAnswer> {
+  const channel = channelFor(scope.site);
+  const p = pathsOf(scope.site);
+  const refused = async (reason: string): Promise<WriteAnswer> => {
+    await refuse(scope, asked, reason);
+    return { wrote: false, refused: asked, reason };
+  };
+  const sessionId = scope.session.id;
+  if (sessionId === undefined) {
+    return refused('this workshop\'s session is not open yet, so nothing written in it could be recorded against a session');
+  }
+  const bad = badWritePath(asked);
+  if (bad !== undefined) return refused(`a workshop writes only inside its own directory: ${bad}`);
 
-    // The parent, where the model asked for a file inside a subdirectory of its own. Its own write
-    // decision, because making a directory is a write like any other and the Permit decides each one.
-    const parent = p.dirname(decided.absPath);
-    if (parent !== scope.workshopAbs) {
-      const dir = await decideWrite(scope.site, parent, channel);
-      if (!dir.ok) return refused(dir.reason);
-      if (!within(dir.absPath, scope.workshopAbs, scope.site)) {
-        return refused(`${dir.absPath} is outside the workshop directory ${scope.workshopAbs}`);
-      }
-      try {
-        await mustRun(channel, ['mkdir', '-p', '--', dir.absPath], `create ${dir.absPath} on site ${scope.site.name}`);
-      } catch (err) {
-        return refused(messageOf(err));
-      }
-    }
+  const target = p.join(scope.workshopAbs, asked);
+  const decided = await decideWrite(scope.site, target, channel);
+  if (!decided.ok) return refused(decided.reason);
+  if (!within(decided.absPath, scope.workshopAbs, scope.site)) {
+    return refused(`${decided.absPath} is outside the workshop directory ${scope.workshopAbs}: a path that resolves out of it is not a path this workshop may write, however it was spelled`);
+  }
 
-    const bytes = Buffer.from(content, 'utf8');
-    const sha256 = createHash('sha256').update(bytes).digest('hex');
+  // The parent, where the model asked for a file inside a subdirectory of its own. Its own write
+  // decision, because making a directory is a write like any other and the Permit decides each one.
+  const parent = p.dirname(decided.absPath);
+  if (parent !== scope.workshopAbs) {
+    const dir = await decideWrite(scope.site, parent, channel);
+    if (!dir.ok) return refused(dir.reason);
+    if (!within(dir.absPath, scope.workshopAbs, scope.site)) {
+      return refused(`${dir.absPath} is outside the workshop directory ${scope.workshopAbs}`);
+    }
     try {
-      await mustRun(channel, ['tee', '--', decided.absPath], `write ${decided.absPath} on site ${scope.site.name}`, { stdin: bytes });
+      await mustRun(channel, ['mkdir', '-p', '--', dir.absPath], `create ${dir.absPath} on site ${scope.site.name}`);
     } catch (err) {
-      // The bytes may have landed anyway — a partial file behind an ENOSPC, a whole one behind an ssh
-      // response that never came back — so the refusal is written and the read-back below is not
-      // reached. What this harness promises is not "nothing landed": it is that no landed byte goes
-      // unrecorded, as a `code` record when it verified what is there and as a refusal naming the
-      // path when it could not. (README, the workshop's write section.)
       return refused(messageOf(err));
     }
-
-    // **What is recorded is what was read back.** The hash above is of what was *sent*; a record is
-    // evidence only if it is of what is actually on the Site. So the file is read back through the
-    // same channel, under the Permit, and three things are held before anything is written down: the
-    // path still resolves to itself (a component swapped for a link between the decision and now
-    // would resolve elsewhere), the bytes come back, and they hash to what was sent. Any of the three
-    // failing is a refusal naming the path — never a `code` record, and never a silent pass.
-    const landed = await readBack(scope.site, channel, decided.absPath, sha256, 'sent');
-    if (landed !== undefined) return refused(landed);
-
-    // The record after the bytes are on the Site, verified, and never before: it is the claim that
-    // the file is there, and a claim written first would survive a channel that failed between the two.
-    //
-    // A record **per version**, and a second write to a path this attempt already recorded is not
-    // refused: a model that writes its entry, thinks again and writes it over is doing the ordinary
-    // thing, the launch runs the bytes the *latest* record hashes, and a person reads the history in
-    // the order it happened. What a face counts is files — distinct paths — and never records.
-    const inBranch = scope.branchId === undefined ? {} : { branchId: scope.branchId };
-    try {
-      await scope.ledger.appendCode(scope.runId, {
-        ...inBranch,
-        nodeId: scope.nodeId,
-        attempt: scope.attempt,
-        sessionId,
-        workshop: scope.declaration.id,
-        path: decided.absPath,
-        sha256,
-        bytes: bytes.byteLength,
-        language: scope.declaration.language,
-      });
-    } catch (err) {
-      // **The one failure this promise cannot be kept through.** The bytes are there, verified, and
-      // the one thing that would have said so has just failed. They stay there: nothing in this
-      // harness removes a path on a Site — not a stale workspace, not a failed copy, and not this —
-      // because a removing verb admitted for this case is permission to remove things on a
-      // customer's machine, and a Site owner's `forbidden: deletions` is about their Site's content
-      // rather than about which of the harness's writes went wrong. So what is left to do is to say
-      // where the bytes are, in every channel that still works, and to stop the Campaign.
-      //
-      // Three tellings, none of them a record — the ledger is what failed, and an append made to say
-      // that an append failed is an assumption about which of its writes are working:
-      //
-      //  1. the model's own answer, `{ wrote: false, reason }`, so the moment is not written on as
-      //     though the file were recorded;
-      //  2. the **host log**, at this instant, because it is the operator's channel and the one that
-      //     does not depend on this turn reaching its end;
-      //  3. the fault box, which the turn reads after the moment closes and blocks the node with —
-      //     best effort by nature (see {@link WorkshopFault}), which is why it is not the only one.
-      //
-      // **And in that order, reversed: the fault first.** Two of the three are this module's own
-      // objects and cannot fail; the log is a callback handed down from the host (`ctx.logger.info`),
-      // and a logger has its own ways to fail. Called first, a throwing one took everything after it:
-      // the model got a thrown tool instead of an answer, the fault box stayed empty, and the turn
-      // then read the ordinary "wrote no <entry>" failure and spent a retry — a second moment landing
-      // a second unrecorded file. So the fault is set before anything that can throw, the answer is
-      // composed, and the log goes last inside its own `try`. Best effort is what the log is; it is
-      // not licence to pre-empt the two that are not.
-      const why = messageOf(err);
-      const said = `${decided.absPath} was written and verified, and the ledger would not record it (${why}): this run cannot account for the bytes at that path, and nothing has been removed from the site`;
-      scope.fault.why = said;
-      let reason = said;
-      try {
-        // Without a `hima:` of its own: the turn hands this down as its own host-log writer, which is
-        // the one place that prefix is written (`toHostLog`, `node-turns.ts`).
-        scope.log?.(`workshop ${scope.declaration.id} landed ${decided.absPath} and the ledger would not record it: ${why}`);
-      } catch (logErr) {
-        // Swallowed here and nowhere else: the one channel left that still works is the answer the
-        // model is about to read, so the failure of the operator's channel is said in it. Not a
-        // record — the ledger is what failed — and not a rethrow, which would throw away the answer
-        // to save the report of it.
-        reason = `${said}; and the host log would not take that either (${messageOf(logErr)})`;
-      }
-      return { wrote: false, reason };
-    }
-    return { wrote: true, path: decided.absPath, sha256, bytes: bytes.byteLength };
   }
 
-  /** Read one of the declared outputs, under the Permit, capped. */
-  async function readForWorkshop(scope: WorkshopScope, channel: Channel, asked: string): Promise<ReadAnswer> {
-    const refused = async (path: string, reason: string): Promise<ReadAnswer> => {
-      await refuse(scope, path, reason);
-      return { read: false, reason };
-    };
-    const readable = scope.reads.find((r) => r.name === asked);
-    if (!readable) {
-      const allowed = scope.reads.map((r) => `"${r.name}"`).join(', ');
-      return refused(asked, `this workshop may read ${allowed === '' ? 'no output at all' : allowed}, and "${asked}" is not one of them`);
-    }
-    const decided = await decideRead(scope.site, readable.path, channel);
-    if (!decided.ok) return refused(readable.path, decided.reason);
-    let bytes: Uint8Array;
-    try {
-      bytes = await channel.readFile(decided.absPath);
-    } catch (err) {
-      return refused(decided.absPath, `${decided.absPath} cannot be read: ${messageOf(err)}`);
-    }
-    const whole = Buffer.from(bytes).toString('utf8');
-    const truncated = whole.length > WORKSHOP_READ_CAP;
-    // `truncated` always, both ways round — the one answer in this harness that states its false.
-    // Everywhere else an absent key is how a fact is not claimed; here the fact is *about the answer
-    // the model is reading*, and a model that has to infer "I saw all of it" from a missing key is
-    // being asked to reason about a JSON shape instead of about the file. It costs one word.
-    return {
-      output: readable.name,
+  const bytes = Buffer.from(content, 'utf8');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  try {
+    await mustRun(channel, ['tee', '--', decided.absPath], `write ${decided.absPath} on site ${scope.site.name}`, { stdin: bytes });
+  } catch (err) {
+    // The bytes may have landed anyway — a partial file behind an ENOSPC, a whole one behind an ssh
+    // response that never came back — so the refusal is written and the read-back below is not
+    // reached. What this harness promises is not "nothing landed": it is that no landed byte goes
+    // unrecorded, as a `code` record when it verified what is there and as a refusal naming the
+    // path when it could not. (README, the workshop's write section.)
+    return refused(messageOf(err));
+  }
+
+  // **What is recorded is what was read back.** The hash above is of what was *sent*; a record is
+  // evidence only if it is of what is actually on the Site. So the file is read back through the
+  // same channel, under the Permit, and three things are held before anything is written down: the
+  // path still resolves to itself (a component swapped for a link between the decision and now
+  // would resolve elsewhere), the bytes come back, and they hash to what was sent. Any of the three
+  // failing is a refusal naming the path — never a `code` record, and never a silent pass.
+  const landed = await readBack(scope.site, channel, decided.absPath, sha256, 'sent');
+  if (landed !== undefined) return refused(landed);
+
+  // The record after the bytes are on the Site, verified, and never before: it is the claim that
+  // the file is there, and a claim written first would survive a channel that failed between the two.
+  //
+  // A record **per version**, and a second write to a path this attempt already recorded is not
+  // refused: a model that writes its entry, thinks again and writes it over is doing the ordinary
+  // thing, the launch runs the bytes the *latest* record hashes, and a person reads the history in
+  // the order it happened. What a face counts is files — distinct paths — and never records.
+  const inBranch = scope.branchId === undefined ? {} : { branchId: scope.branchId };
+  try {
+    await scope.ledger.appendCode(scope.runId, {
+      ...inBranch,
+      nodeId: scope.nodeId,
+      attempt: scope.attempt,
+      sessionId,
+      workshop: scope.declaration.id,
       path: decided.absPath,
+      sha256,
       bytes: bytes.byteLength,
-      text: truncated ? whole.slice(0, WORKSHOP_READ_CAP) : whole,
-      truncated,
-    };
-  }
-
-  /**
-   * Read one of the pack's own knowledge files, from this machine.
-   *
-   * Never from a Site: a pack folder is installed where the harness runs, and a workshop reading its
-   * own pack's knowledge over a channel would be reading a file that is not there. No refusal record
-   * either, for the same reason — a `refusal` is what this harness writes when a *Site* would not let
-   * it do something, and this never asks a Site anything.
-   */
-  async function knowledgeForWorkshop(scope: WorkshopScope, asked: string): Promise<KnowledgeAnswer> {
-    const known = scope.knowledge.find((k) => k.file === asked);
-    if (!known) {
-      const allowed = scope.knowledge.map((k) => `"${k.file}"`).join(', ');
-      return { read: false, reason: `this workshop may read ${allowed === '' ? 'no knowledge file at all' : allowed}, and "${asked}" is not one of them` };
-    }
-    // Held again here, and not only where the moment was composed. A pack folder is plain files a
-    // person edits, and the window between resolution and this call is a whole model turn wide: a
-    // file replaced in it by a symlink would be followed by `readFile` into whatever it names, and a
-    // knowledge tool is the one tool of a workshop that reads this machine rather than a Site. So the
-    // entry is looked at without following a link and must still be a plain file. `throwIfNoEntry`
-    // is false because absence is an answer here; every other failure throws and is caught below,
-    // which is the difference between "it is not there" and "this could not be looked at".
+      language: scope.declaration.language,
+    });
+  } catch (err) {
+    // **The one failure this promise cannot be kept through.** The bytes are there, verified, and
+    // the one thing that would have said so has just failed. They stay there: nothing in this
+    // harness removes a path on a Site — not a stale workspace, not a failed copy, and not this —
+    // because a removing verb admitted for this case is permission to remove things on a
+    // customer's machine, and a Site owner's `forbidden: deletions` is about their Site's content
+    // rather than about which of the harness's writes went wrong. So what is left to do is to say
+    // where the bytes are, in every channel that still works, and to stop the Campaign.
+    //
+    // Three tellings, none of them a record — the ledger is what failed, and an append made to say
+    // that an append failed is an assumption about which of its writes are working:
+    //
+    //  1. the model's own answer, `{ wrote: false, reason }`, so the moment is not written on as
+    //     though the file were recorded;
+    //  2. the **host log**, at this instant, because it is the operator's channel and the one that
+    //     does not depend on this turn reaching its end;
+    //  3. the fault box, which the turn reads after the moment closes and blocks the node with —
+    //     best effort by nature (see {@link WorkshopFault}), which is why it is not the only one.
+    //
+    // **And in that order, reversed: the fault first.** Two of the three are this module's own
+    // objects and cannot fail; the log is a callback handed down from the host (`ctx.logger.info`),
+    // and a logger has its own ways to fail. Called first, a throwing one took everything after it:
+    // the model got a thrown tool instead of an answer, the fault box stayed empty, and the turn
+    // then read the ordinary "wrote no <entry>" failure and spent a retry — a second moment landing
+    // a second unrecorded file. So the fault is set before anything that can throw, the answer is
+    // composed, and the log goes last inside its own `try`. Best effort is what the log is; it is
+    // not licence to pre-empt the two that are not.
+    const why = messageOf(err);
+    const said = `${decided.absPath} was written and verified, and the ledger would not record it (${why}): this run cannot account for the bytes at that path, and nothing has been removed from the site`;
+    scope.fault.why = said;
+    let reason = said;
     try {
-      const there = lstatSync(known.at, { throwIfNoEntry: false });
-      if (there === undefined) return { read: false, reason: `the knowledge file "${known.file}" is not at ${known.at}` };
-      if (!there.isFile()) return { read: false, reason: `the knowledge file "${known.file}" at ${known.at} is not a plain file, so nothing was read` };
-      return { file: known.file, purpose: known.purpose, text: await readFile(known.at, 'utf8') };
-    } catch (err) {
-      return { read: false, reason: `the knowledge file "${known.file}" at ${known.at} cannot be read: ${messageOf(err)}` };
+      // Without a `hima:` of its own: the turn hands this down as its own host-log writer, which is
+      // the one place that prefix is written (`toHostLog`, `node-turns.ts`).
+      scope.log?.(`workshop ${scope.declaration.id} landed ${decided.absPath} and the ledger would not record it: ${why}`);
+    } catch (logErr) {
+      // Swallowed here and nowhere else: the one channel left that still works is the answer the
+      // model is about to read, so the failure of the operator's channel is said in it. Not a
+      // record — the ledger is what failed — and not a rethrow, which would throw away the answer
+      // to save the report of it.
+      reason = `${said}; and the host log would not take that either (${messageOf(logErr)})`;
     }
+    return { wrote: false, reason };
+  }
+  return { wrote: true, path: decided.absPath, sha256, bytes: bytes.byteLength };
+}
+
+/** Read one of the declared outputs, under the Permit, capped. */
+export async function readForWorkshop(scope: WorkshopScope, asked: string): Promise<ReadAnswer> {
+  const channel = channelFor(scope.site);
+  const refused = async (path: string, reason: string): Promise<ReadAnswer> => {
+    await refuse(scope, path, reason);
+    return { read: false, reason };
+  };
+  const readable = scope.reads.find((r) => r.name === asked);
+  if (!readable) {
+    const allowed = scope.reads.map((r) => `"${r.name}"`).join(', ');
+    return refused(asked, `this workshop may read ${allowed === '' ? 'no output at all' : allowed}, and "${asked}" is not one of them`);
+  }
+  const decided = await decideRead(scope.site, readable.path, channel);
+  if (!decided.ok) return refused(readable.path, decided.reason);
+  let bytes: Uint8Array;
+  try {
+    bytes = await channel.readFile(decided.absPath);
+  } catch (err) {
+    return refused(decided.absPath, `${decided.absPath} cannot be read: ${messageOf(err)}`);
+  }
+  const whole = Buffer.from(bytes).toString('utf8');
+  const truncated = whole.length > WORKSHOP_READ_CAP;
+  // `truncated` always, both ways round — the one answer in this harness that states its false.
+  // Everywhere else an absent key is how a fact is not claimed; here the fact is *about the answer
+  // the model is reading*, and a model that has to infer "I saw all of it" from a missing key is
+  // being asked to reason about a JSON shape instead of about the file. It costs one word.
+  return {
+    output: readable.name,
+    path: decided.absPath,
+    bytes: bytes.byteLength,
+    text: truncated ? whole.slice(0, WORKSHOP_READ_CAP) : whole,
+    truncated,
+  };
+}
+
+/**
+ * Read one of the pack's own knowledge files, from this machine.
+ *
+ * Never from a Site: a pack folder is installed where the harness runs, and a workshop reading its
+ * own pack's knowledge over a channel would be reading a file that is not there. No refusal record
+ * either, for the same reason — a `refusal` is what this harness writes when a *Site* would not let
+ * it do something, and this never asks a Site anything.
+ */
+export async function knowledgeForWorkshop(scope: WorkshopScope, asked: string): Promise<KnowledgeAnswer> {
+  const known = scope.knowledge.find((k) => k.file === asked);
+  if (!known) {
+    const allowed = scope.knowledge.map((k) => `"${k.file}"`).join(', ');
+    return { read: false, reason: `this workshop may read ${allowed === '' ? 'no knowledge file at all' : allowed}, and "${asked}" is not one of them` };
+  }
+  // Held again here, and not only where the moment was composed. A pack folder is plain files a
+  // person edits, and the window between resolution and this call is a whole model turn wide: a
+  // file replaced in it by a symlink would be followed by `readFile` into whatever it names, and a
+  // knowledge tool is the one tool of a workshop that reads this machine rather than a Site. So the
+  // entry is looked at without following a link and must still be a plain file. `throwIfNoEntry`
+  // is false because absence is an answer here; every other failure throws and is caught below,
+  // which is the difference between "it is not there" and "this could not be looked at".
+  try {
+    const there = lstatSync(known.at, { throwIfNoEntry: false });
+    if (there === undefined) return { read: false, reason: `the knowledge file "${known.file}" is not at ${known.at}` };
+    if (!there.isFile()) return { read: false, reason: `the knowledge file "${known.file}" at ${known.at} is not a plain file, so nothing was read` };
+    return { file: known.file, purpose: known.purpose, text: await readFile(known.at, 'utf8') };
+  } catch (err) {
+    return { read: false, reason: `the knowledge file "${known.file}" at ${known.at} cannot be read: ${messageOf(err)}` };
   }
 }
 
