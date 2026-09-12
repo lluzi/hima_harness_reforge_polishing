@@ -1,0 +1,19 @@
+{
+  "recordedAt": "2026-09-12T16:42:27.878609+00:00",
+  "baseline": "ad84d2f6411cf9876a12d21752f5521fa2953ff7",
+  "branch": "codex/pls19-node-jobs",
+  "sourceSha256": {
+    "packages/harness/src/jobs.ts": "81ee1ac8972d99bc2ca64aa5dd127db40267f04d75cf549c971645bfc4ba2cc8",
+    "packages/harness/src/job-cap.ts": "88d26310eeb44f8ddda3cf7d6dc2c53c44032622555a8816536490123da78a0a",
+    "packages/harness/src/node-turns.ts": "f571ce8bb7b449335bf3207f70cf85ffbd2ec29609b2d5fb6452a16a057d8e82",
+    "packages/harness/src/workshop.ts": "abb6682113008117b32014a74233236b3da884295a162957269bca0f093d099d",
+    "packages/harness/src/ledger.ts": "8d32ecae5015e40a264883dada5a8796fc826117c23b97aa2a13093b798324fb",
+    "packages/harness/src/fabric.ts": "ac8366241e6aa992c3952aa07dd3b6dbf57f54f6775a074e1ea1e583050dc219",
+    "packages/harness/src/index.ts": "2f01ef1a5c9a6f16c4370d5070f96b8901e829a7751aac7e788a78f90aae955f",
+    "test/contract/node-jobs.host.test.ts": "94d1c8191f7196a878ce13c0eca3a21a2a545ab4f271aa1ecfd4cc8505830931",
+    "test/contract/support/node-launch-crash.ts": "2c61149eef04beec25f5c263e7d36eb792aa25ae6d2ad559708bec89d7984b3d",
+    "test/contract-groups.json": "0249d6a18529ad9dc1a1d2a3c50820d7362d2306487a6938c2eda63e761532b3",
+    "test/contract/jobs.test.ts": "7ccf47c8095936e9eeea6a58283a57a01e6dc06da01dee0610672e12d2befbab",
+    "test/contract/jobs.live.test.ts": "77e89c3d3de0cdad4186cfdd5908eff1e90aeefdf79f4aa97703524438b74dda"
+  }
+}

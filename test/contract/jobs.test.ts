@@ -72,7 +72,7 @@ test('a local job is launched detached, runs, and its exit code comes back from 
     const identity = jobRecords(host, runId)[0]!.job;
     assert.equal(identity.name, 'slow');
     assert.equal(identity.workspace, await realpath(h.workspace));
-    assert.ok(identity.pid > 0, `the launch read the pane pid: ${JSON.stringify(identity)}`);
+    assert.ok(identity.pid !== undefined && identity.pid > 0, `the launch read the pane pid: ${JSON.stringify(identity)}`);
     assert.match(identity.startedAt, /^\d{4}-\d{2}-\d{2}T/, 'the identity carries when it started');
     assert.ok(identity.wire.includes(posixQuote(scriptPath)), `the identity carries the command as sent: ${identity.wire}`);
 

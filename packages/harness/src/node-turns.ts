@@ -37,7 +37,7 @@ import {
   type PackWorkshop,
   type RunReference,
 } from './packs.js';
-import { jobKill, jobStatus, jobTail, pollAfter, type JobKillResult, type JobStatusResult } from './jobs.js';
+import { jobKill, jobStatus, jobTail, waitForNextPoll, type LaunchRequest, type JobDeps, type JobKillResult, type JobStatusResult } from './jobs.js';
 import { appendReading, observeForPack } from './observe.js';
 import { pathsOf, type Site } from './sites.js';
 import { channelFor, mustRun } from './channel.js';
@@ -78,6 +78,7 @@ import {
   type WorkshopProduces,
   type WorkshopReadable,
   type WorkshopSession,
+  type WorkshopScope,
 } from './workshop.js';
 import path from 'node:path';
 import { counted } from './words.js';
@@ -89,6 +90,7 @@ import { SiteUnreadableError } from './errors.js';
  *  and packs this machine holds are installed. Declared here, with the turn that is handed it, and
  *  re-exported from `fabric.ts` so a caller finds it beside `startRun`. */
 export interface FabricDeps {
+  readonly beforeSlotClaim?: JobDeps['beforeSlotClaim'];
   readonly ledger: Ledger;
   readonly judge: Judge;
   readonly sitesDir: string;
@@ -107,6 +109,8 @@ export interface FabricDeps {
    * does (`moments.ts`, ADR-0001).
    */
   readonly host?: MomentDeps['ctx'];
+  /** Stop Host observers without terminating detached Site Jobs. */
+  readonly stopSignal?: AbortSignal;
   /**
    * Where a line goes that belongs to the operator and not to the ledger (#18): a stretch of polls
    * during which a Site could not be asked, which is a fact about a machine rather than about a Run
@@ -133,6 +137,12 @@ const blockerTailChars = 16 * 1024;
  * is what lets #14 rebuild this from the ledger and carry a Run on.
  */
 export interface Driving {
+  /** Agent-controlled launches return identity immediately; capacity never queues business work. */
+  readonly nonblocking?: boolean;
+  readonly beforeLaunch?: LaunchRequest['beforeLaunch'];
+  /** Private script directory beneath the Pack's declared Workshop root. */
+  readonly executionId?: string;
+  readonly stopSignal?: AbortSignal;
   readonly deps: FabricDeps;
   readonly runId: string;
   readonly site: Site;
@@ -170,6 +180,8 @@ export interface Driving {
  * over that ending.
  */
 export type Step =
+  | { readonly kind: 'pending'; readonly session: string }
+  | { readonly kind: 'at-cap'; readonly reason: string }
   | { readonly kind: 'settled'; readonly outcome?: VerdictOutcome }
   | { readonly kind: 'blocked' }
   | { readonly kind: 'retrying' }
@@ -231,7 +243,7 @@ export async function toolNode(ctx: Driving, run: RunRecord, node: Extract<PackN
 
   // Every argument is resolved and nothing has been sent anywhere: the last moment at which not
   // launching is free, and therefore where the Site's cap is asked about.
-  return launchAndWait(ctx, run, node, attempt, { argv, licences: tool.licences, meters: { jobs: 1, attempts: 1 } });
+  return launchAndWait(ctx, run, node, attempt, { argv, licences: tool.licences, meters: ctx.nonblocking ? { jobs: 1 } : { jobs: 1, attempts: 1 } });
 }
 
 /** What one node's Job is, beyond the command line: what it holds of the Site, what it is called, what
@@ -297,6 +309,9 @@ async function launchAndWait(
     argv: launch.argv,
     licences: launch.licences,
     waitedMs: ctx.waitedMs,
+    ...(ctx.nonblocking === undefined ? {} : { nonblocking: ctx.nonblocking }),
+    ...(ctx.beforeLaunch === undefined ? {} : { beforeLaunch: ctx.beforeLaunch }),
+    ...((ctx.stopSignal ?? ctx.deps.stopSignal) === undefined ? {} : { stopSignal: ctx.stopSignal ?? ctx.deps.stopSignal }),
     ...(launch.jobName === undefined ? {} : { jobName: launch.jobName }),
     ...(launch.reads === undefined ? {} : { reading: launch.reads.reading }),
     ...(launch.workshop === undefined ? {} : { workshop: launch.workshop }),
@@ -307,7 +322,7 @@ async function launchAndWait(
     // stay out of (#18); the framing is `toHostLog`'s, so both waits say it the one way.
     log: (line) => toHostLog(ctx, line),
   });
-  if (claimed.kind === 'budget-exhausted') return { kind: 'budget-exhausted' };
+  if (claimed.kind !== 'claimed') return claimed;
 
   const launched = claimed.launched;
   if (launched.kind !== 'launched') {
@@ -329,6 +344,7 @@ async function launchAndWait(
     ? {}
     : { branch: { id: ctx.branchId, currentNode: node.id, state: 'running' as const } };
   await progress(ctx, launch.meters, running);
+  if (ctx.nonblocking) return { kind: 'pending', session };
   return waitForJob(ctx, node, attempt, session, launch.reads?.finish);
 }
 
@@ -353,11 +369,13 @@ type FinishJob = (ctx: Driving, node: PackNode, attempt: number, session: string
  */
 export async function waitForJob(ctx: Driving, node: PackNode, attempt: number, session: string, finish: FinishJob = settleFinished): Promise<Step> {
   const waitingSince = Date.now();
+  const stopSignal = ctx.stopSignal ?? ctx.deps.stopSignal;
   /** When the current stretch of unreadable looks began, and undefined while the Site is answering
    *  (#18). One line for the stretch and one when it clears — a Loop polling for hours must not fill
    *  the host log with a line per look. */
   let unreadableSince: number | undefined;
   for (;;) {
+    if (stopSignal?.aborted) return { kind: 'stopped' };
     // Asked before each look and again after it, because the answer can change while the look is in
     // flight: a Run being stopped from another face is that face's to finish writing, and a Job that
     // disappears because someone killed it deliberately must not be recorded here as one that vanished.
@@ -381,11 +399,13 @@ export async function waitForJob(ctx: Driving, node: PackNode, attempt: number, 
         unreadableSince = Date.now();
         toHostLog(ctx, `run ${ctx.runId} at node ${node.id}: site ${ctx.site.name} cannot be asked about tmux session ${session}; nothing is written and the poll keeps asking — ${err.message}`);
       }
+      if (stopSignal?.aborted) return { kind: 'stopped' };
       if (stoppedElsewhere(ctx, session)) return stoppedWithJob(ctx, node, attempt, session, finish);
       if (timeBoxSpent(existingRun(ctx.deps.ledger, ctx.runId), ctx.waitedMs)) return timeBoxReached(ctx, node, attempt, session, finish);
-      await new Promise((r) => setTimeout(r, pollAfter(waitingSince)));
+      await waitForNextPoll(waitingSince, stopSignal);
       continue;
     }
+    if (stopSignal?.aborted) return { kind: 'stopped' };
     if (unreadableSince !== undefined) {
       toHostLog(ctx, `run ${ctx.runId} at node ${node.id}: site ${ctx.site.name} is answering again about tmux session ${session} after ${Date.now() - unreadableSince} ms`);
       unreadableSince = undefined;
@@ -414,7 +434,7 @@ export async function waitForJob(ctx: Driving, node: PackNode, attempt: number, 
     // Asked on every look, before the wait rather than after it, so a spent box is acted on within
     // one interval however long that interval has grown.
     if (timeBoxSpent(existingRun(ctx.deps.ledger, ctx.runId), ctx.waitedMs)) return timeBoxReached(ctx, node, attempt, session, finish);
-    await new Promise((r) => setTimeout(r, pollAfter(waitingSince)));
+    await waitForNextPoll(waitingSince, stopSignal);
   }
 }
 
@@ -723,7 +743,7 @@ async function timeBoxReached(ctx: Driving, node: PackNode, attempt: number, ses
 /** Read one of the contract's outputs, inside the Campaign workspace, through the reader it names. */
 export async function observeNode(ctx: Driving, node: Extract<PackNode, { kind: 'act' }>, attempt: number): Promise<Step> {
   await appendNode(ctx, node, 'running', attempt);
-  await progress(ctx, { attempts: 1 });
+  if (!ctx.nonblocking) await progress(ctx, { attempts: 1 });
   const blocked = (reason: string): Promise<Step> => blockNode(ctx, node, attempt, reason);
   const output = ctx.pack.contract.outputs.find((o) => o.name === node.parameters.observes);
   if (!output) {
@@ -833,6 +853,7 @@ export async function workshopNode(ctx: Driving, node: Extract<PackNode, { kind:
   await appendNode(ctx, node, 'running', attempt);
   await progress(ctx, { attempts: 1 });
 
+  if (ctx.deps.host === undefined) return blocked(`node ${node.id} opens a workshop, which is a model moment, and this drive was given no host to compose one on`);
   const resolved = await resolveWorkshop(ctx, node);
   if (!resolved.ok) return blocked(resolved.reason);
   const { declaration, workshopAbs, entryAbs, reads, knowledge, produces, values, argv } = resolved;
@@ -883,7 +904,7 @@ export async function workshopNode(ctx: Driving, node: Extract<PackNode, { kind:
   // records and the node records number the same thing and a person reading either reads one story.
   let moment;
   try {
-    moment = await openMoment({ ledger: ctx.deps.ledger, ctx: resolved.host }, {
+    moment = await openMoment({ ledger: ctx.deps.ledger, ctx: ctx.deps.host }, {
       runId: ctx.runId,
       nodeId: node.id,
       attempt,
@@ -944,36 +965,49 @@ export async function workshopNode(ctx: Driving, node: Extract<PackNode, { kind:
     });
   }
 
-  // **What is launched is what was recorded.** The record above is a claim about bytes, made when
-  // they landed; between then and now the moment has closed, records have been written and — on a
-  // Site with anything else running on it — the file could have been replaced. So it is read back and
-  // held against the hash the record carries immediately before the launch, and the `launched` record
-  // then carries the entry and that hash, which is what ties the Job on the audit to the bytes in the
-  // ledger. A file that no longer answers for itself is a failed attempt and not a Job: running it
-  // would be running something this Run cannot say the provenance of.
-  const stale = await readBack(ctx.site, channelFor(ctx.site), entryRecord.path, entryRecord.sha256, 'recorded');
-  if (stale !== undefined) return settleFailedAttempt(ctx, node, attempt, { reason: stale });
+  return launchWrittenWorkshop(ctx, node, attempt, moment.sessionId);
+}
 
-  // And then it is a Job like any other tool's: the exit code is the whole answer, so a non-zero exit
-  // is `retrying` inside the allowance and a Hard blocker with the log tail when it is spent, and a
-  // restart mid-Job resumes through `resumeNode` untouched.
-  //
-  // The row is read again rather than the one this turn opened with, exactly as an observe node reads
-  // it again before its reader's launch: a moment is the one turn of this harness that can take
-  // minutes, and everything above has been writing records of its own.
+/** Resolve the existing controlled Workshop tools for the owning conversational Agent. */
+export async function buildWorkshopScope(ctx: Driving, node: Extract<PackNode, { kind: 'act' }>, attempt: number, sessionId: string): Promise<
+  { readonly ok: true; readonly scope: WorkshopScope; readonly resolved: ResolvedWorkshop } | { readonly ok: false; readonly reason: string }
+> {
+  const resolved = await resolveWorkshop(ctx, node);
+  if (!resolved.ok) return resolved;
+  return { ok: true, resolved, scope: {
+    ledger: ctx.deps.ledger, runId: ctx.runId, site: ctx.site, nodeId: node.id, attempt,
+    session: { id: sessionId }, fault: { why: undefined }, log: (line) => toHostLog(ctx, line),
+    declaration: resolved.declaration, workshopAbs: resolved.workshopAbs,
+    reads: resolved.reads, knowledge: resolved.knowledge,
+    ...(ctx.branchId === undefined ? {} : { branchId: ctx.branchId }),
+  } };
+}
+
+/** Launch recorded Workshop bytes through the common Job path, without opening a model session. */
+export async function launchWrittenWorkshop(ctx: Driving, node: Extract<PackNode, { kind: 'act' }>, attempt: number, sessionId: string): Promise<Step> {
+  const resolved = await resolveWorkshop(ctx, node);
+  if (!resolved.ok) return blockNode(ctx, node, attempt, resolved.reason);
+  const { declaration, workshopAbs, entryAbs, argv } = resolved;
+  const latest = new Map<string, CodeRecord>();
+  for (const record of ctx.deps.ledger.records({ runId: ctx.runId, type: 'code' })) {
+    if (record.type === 'code' && record.sessionId === sessionId && record.nodeId === node.id &&
+        record.attempt === attempt && record.branchId === ctx.branchId && within(record.path, workshopAbs, ctx.site)) latest.set(record.path, record);
+  }
+  const entry = latest.get(entryAbs);
+  if (!entry) return settleFailedAttempt(ctx, node, attempt, { reason: `no recorded ${declaration.entry} in workshop "${declaration.id}" for this execution` });
+  for (const record of latest.values()) {
+    const stale = await readBack(ctx.site, channelFor(ctx.site), record.path, record.sha256, 'recorded');
+    if (stale !== undefined) return settleFailedAttempt(ctx, node, attempt, { reason: stale });
+  }
   return launchAndWait(ctx, existingRun(ctx.deps.ledger, ctx.runId), node, attempt, {
-    argv,
-    licences: declaration.licences,
-    jobName: `workshop-${declaration.id}`,
-    meters: { jobs: 1 },
-    workshop: { id: declaration.id, entry: { path: entryRecord.path, sha256: entryRecord.sha256 } },
+    argv, licences: declaration.licences, jobName: `workshop-${declaration.id}`, meters: { jobs: 1 },
+    workshop: { id: declaration.id, entry: { path: entry.path, sha256: entry.sha256 } },
   });
 }
 
 /** Everything a workshop's moment is composed from, once every piece of it has been resolved. */
-interface ResolvedWorkshop {
+export interface ResolvedWorkshop {
   readonly ok: true;
-  readonly host: MomentDeps['ctx'];
   readonly declaration: PackWorkshop;
   readonly workshopAbs: string;
   readonly entryAbs: string;
@@ -993,7 +1027,7 @@ interface ResolvedWorkshop {
  * reader nobody could find. The directory is last, because it is the only step that asks the Site for
  * anything, and a refusal there is a `refusal` record like every other thing the Permit stopped.
  */
-async function resolveWorkshop(
+export async function resolveWorkshop(
   ctx: Driving,
   node: Extract<PackNode, { kind: 'act' }>,
 ): Promise<ResolvedWorkshop | { readonly ok: false; readonly reason: string }> {
@@ -1001,10 +1035,6 @@ async function resolveWorkshop(
   const named = node.parameters.workshop!;
   const declaration = ctx.pack.contract.workshops.find((w) => w.id === named);
   if (!declaration) return no(`node ${node.id} opens workshop "${named}", which this pack's contract does not declare`);
-  const host = ctx.deps.host;
-  if (host === undefined) {
-    return no(`node ${node.id} opens workshop "${declaration.id}", which is a model moment, and this drive was given no host to compose one on`);
-  }
 
   const output = ctx.pack.contract.outputs.find((o) => o.name === declaration.produces);
   if (!output) return no(`workshop "${declaration.id}" produces "${declaration.produces}", which this pack's contract does not declare`);
@@ -1128,6 +1158,18 @@ async function resolveWorkshop(
     return no(`workshop "${declaration.id}" will not open: ${why}`);
   }
 
+  if (ctx.executionId !== undefined) {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(ctx.executionId)) return no('a Workshop execution id must be a plain identifier');
+    const privateRoot = p.join(workshopAbs, '.executions', ctx.executionId);
+    const privateDecision = await decideWrite(ctx.site, privateRoot, channel);
+    if (!privateDecision.ok || privateDecision.absPath !== privateRoot) {
+      return no(`private Workshop directory ${privateRoot} is not writable as itself`);
+    }
+    await mustRun(channel, ['mkdir', '-p', '--', privateRoot], `create Workshop execution ${ctx.executionId}`);
+    if (await channel.realpath(privateRoot) !== privateRoot) return no(`private Workshop directory ${privateRoot} does not resolve to itself`);
+    workshopAbs = privateRoot;
+  }
+
   const entryAbs = p.join(workshopAbs, declaration.entry);
   let argv: string[];
   try {
@@ -1167,7 +1209,6 @@ async function resolveWorkshop(
 
   return {
     ok: true,
-    host,
     declaration,
     workshopAbs,
     entryAbs,
@@ -1209,7 +1250,7 @@ async function resolveWorkshop(
  * @param attempt - the attempt about to be made; the one before it is the subject.
  * @returns `{ previous }` when there is something to say, and `{}` when there is not.
  */
-async function previousAttemptOf(ctx: Driving, nodeId: string, attempt: number): Promise<{ readonly previous?: WorkshopAttemptBefore }> {
+export async function previousAttemptOf(ctx: Driving, nodeId: string, attempt: number): Promise<{ readonly previous?: WorkshopAttemptBefore }> {
   if (attempt <= 1) return {};
   const before = nodeRecordsOfGeneration(ctx.deps.ledger, ctx.runId)
     .findLast((r) => r.nodeId === nodeId && r.attempt === attempt - 1 && (r.state === 'retrying' || r.state === 'blocked'));
@@ -1552,7 +1593,7 @@ export async function resumeNode(ctx: Driving, node: PackNode, attempt: number, 
  * a command line the pack meant something else, and a Job launched with it would run at a period
  * nobody chose.
  */
-function nodeArguments(
+export function nodeArguments(
   node: Extract<PackNode, { kind: 'act' }>,
   run: RunRecord,
 ): { readonly ok: true; readonly values: Record<string, string> } | { readonly ok: false; readonly reason: string } {
@@ -1686,17 +1727,24 @@ function runValue(run: RunRecord, reference: RunReference): number | string | un
  * weighs the graph's. Nested records carry the Loop they were written in, so this is one narrowing
  * and not a second lookup.
  */
-export async function exploreNode(ctx: Driving, node: Extract<PackNode, { kind: 'explore' }>, attempt: number): Promise<Step> {
-  const blocked = async (reason: string): Promise<Step> => {
-    await appendNode(ctx, node, 'blocked', attempt, { reason });
-    return { kind: 'blocked' };
-  };
+export interface ExploreRecommendation {
+  readonly ok: true;
+  readonly chooser: string;
+  readonly chooserOrigin: PackDataOrigin;
+  readonly chosen: DecisionRecord['chosen'];
+  readonly rationale: DecisionRecord['rationale'];
+  readonly cites: string[];
+}
+
+/** Read the Pack chooser's advice without accepting a decision or changing any Run fact. */
+export function exploreRecommendation(ctx: Driving, node: Extract<PackNode, { kind: 'explore' }>): ExploreRecommendation | { readonly ok: false; readonly reason: string } {
+  const no = (reason: string): { readonly ok: false; readonly reason: string } => ({ ok: false, reason });
   const named = node.parameters.chooser;
   if (named === undefined) {
     // The pack is validated at load: an Explore node names a chooser or opens a Loop, exactly one,
     // and the driver takes an opening one somewhere else. Reaching this is a pack that changed under
     // a Run, and it is the pack's fault said as such rather than a chooser id invented for it.
-    return blocked(`node ${node.id} names no chooser, so there is nothing for it to decide with`);
+    return no(`node ${node.id} names no chooser, so there is nothing for it to decide with`);
   }
   let chooser: Chooser;
   let chooserOrigin: PackDataOrigin;
@@ -1714,7 +1762,7 @@ export async function exploreNode(ctx: Driving, node: Extract<PackNode, { kind: 
   } catch (err) {
     // `/hima pack check` resolves every chooser id before a Campaign starts, so reaching this means
     // the pack's own folder or the bundle's choosers changed under an installed pack.
-    return blocked((err as Error).message);
+    return no((err as Error).message);
   }
 
   const run = existingRun(ctx.deps.ledger, ctx.runId);
@@ -1723,11 +1771,11 @@ export async function exploreNode(ctx: Driving, node: Extract<PackNode, { kind: 
   const lastJudge = nodeRecordsOf(ctx).findLast((r) => r.kind === 'judge' && r.state === 'done' && here(r));
   const judgeNodeOfRun = positionOf(ctx.pack, lastJudge?.nodeId)?.node;
   if (!judgeNodeOfRun || judgeNodeOfRun.kind !== 'judge') {
-    return blocked(`node ${node.id} runs chooser ${chooser.id}, but this run has completed no judge node for it to weigh`);
+    return no(`node ${node.id} runs chooser ${chooser.id}, but this run has completed no judge node for it to weigh`);
   }
   const [constraintRule, goalRule] = judgeNodeOfRun.parameters.rules;
   if (constraintRule === undefined || goalRule === undefined) {
-    return blocked(`judge node ${judgeNodeOfRun.id} lists fewer than two rules, so ${chooser.id} has no constraint and goal to weigh`);
+    return no(`judge node ${judgeNodeOfRun.id} lists fewer than two rules, so ${chooser.id} has no constraint and goal to weigh`);
   }
 
   const verdicts = ctx.deps.ledger.records({ runId: ctx.runId, type: 'verdict' }).filter((r): r is VerdictRecord => r.type === 'verdict' && here(r));
@@ -1738,7 +1786,7 @@ export async function exploreNode(ctx: Driving, node: Extract<PackNode, { kind: 
     .findLast((r): r is ObservationRecord => r.type === 'observation' && here(r));
   if (!constraint || !goal || !observation) {
     const missing = [!constraint && `a verdict of ${constraintRule}`, !goal && `a verdict of ${goalRule}`, !observation && 'an observation'].filter(Boolean);
-    return blocked(`run ${ctx.runId} holds no ${missing.join(' and no ')}, which ${chooser.id} needs to choose`);
+    return no(`run ${ctx.runId} holds no ${missing.join(' and no ')}, which ${chooser.id} needs to choose`);
   }
 
   const converge = node.parameters.converge;
@@ -1753,18 +1801,19 @@ export async function exploreNode(ctx: Driving, node: Extract<PackNode, { kind: 
     observation,
     ...(converge === undefined ? {} : { converge, earlier: earlierGenerations(ctx, chooser, converge.read) }),
   });
-  if (!chosen.ok) return blocked(chosen.reason);
-  await ctx.deps.ledger.appendDecision(ctx.runId, {
-    nodeId: node.id,
-    chooser: chooser.id,
-    // Which of the two files that id answered to (#57), as the resolution above answered it. Two
-    // packs may name one chooser and mean two different clauses, so a decision that said only the id
-    // would not be re-derivable from its own record.
-    chooserOrigin,
-    chosen: chosen.chosen,
-    rationale: chosen.rationale,
-    cites: [constraint.id, goal.id, observation.id],
-  });
+  if (!chosen.ok) return no(chosen.reason);
+  return { ok: true, chooser: chooser.id, chooserOrigin, chosen: chosen.chosen, rationale: chosen.rationale, cites: [constraint.id, goal.id, observation.id] };
+}
+
+/** Legacy driver adapter; Agent execution reads the recommendation and explicitly chooses. */
+export async function exploreNode(ctx: Driving, node: Extract<PackNode, { kind: 'explore' }>, attempt: number): Promise<Step> {
+  const advice = exploreRecommendation(ctx, node);
+  if (!advice.ok) {
+    await appendNode(ctx, node, 'blocked', attempt, { reason: advice.reason });
+    return { kind: 'blocked' };
+  }
+  const { ok: _ok, ...decision } = advice;
+  await ctx.deps.ledger.appendDecision(ctx.runId, { nodeId: node.id, ...decision });
   await appendNode(ctx, node, 'done', attempt);
   return { kind: 'settled' };
 }

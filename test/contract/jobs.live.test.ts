@@ -116,7 +116,7 @@ describe('jobs on the reference site', { skip: probeSite() }, () => {
         const session = launchedSession(host, runId);
         const identity = jobRecords(host, runId)[0]!.job;
         assert.equal(identity.workspace, workspace, 'the job runs in the workspace the permit resolved');
-        assert.ok(identity.pid > 0, `the launch read the pane pid on the site: ${JSON.stringify(identity)}`);
+        assert.ok(identity.pid !== undefined && identity.pid > 0, `the launch read the pane pid on the site: ${JSON.stringify(identity)}`);
 
         const settled = await statusUntilSettled(host, h, runId, session, 60_000, siteCommandTimeoutMs);
         assert.equal(settled.kind, 'success', settled.text);

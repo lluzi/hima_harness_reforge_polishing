@@ -283,7 +283,8 @@ export type LaunchedReading = z.infer<typeof launchedReading>;
  *  way twice. */
 export const jobIdentity = z.strictObject({
   session: z.string(),
-  pid: z.number().int().positive(),
+  /** Absent only when recovery confirmed a launch whose original response and pane PID were lost. */
+  pid: z.number().int().positive().optional(),
   workspace: z.string(),
   name: z.string(),
   startedAt: z.string(),

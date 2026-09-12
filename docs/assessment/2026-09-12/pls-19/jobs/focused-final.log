@@ -1,0 +1,74 @@
+local: 1 selected; 35 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a durable launch intent must succeed before an actual Job can start
+ok 1 - a durable launch intent must succeed before an actual Job can start
+  ---
+  duration_ms: 5108.471625
+  type: 'test'
+  ...
+# Subtest: nonblocking capacity admission returns once and never launches when a slot later frees
+ok 2 - nonblocking capacity admission returns once and never launches when a slot later frees
+  ---
+  duration_ms: 2882.189
+  type: 'test'
+  ...
+# Subtest: a nonblocking tool returns its real session; stopping the Host observer leaves that Job running
+ok 3 - a nonblocking tool returns its real session; stopping the Host observer leaves that Job running
+  ---
+  duration_ms: 1135.82225
+  type: 'test'
+  ...
+# Subtest: the conversational Agent writes isolated Workshop versions, and launch verifies every recorded file without a model moment
+ok 4 - the conversational Agent writes isolated Workshop versions, and launch verifies every recorded file without a model moment
+  ---
+  duration_ms: 1406.611417
+  type: 'test'
+  ...
+# Subtest: a killed Host at before-launch reconciles the exact durable intent without relaunch
+ok 5 - a killed Host at before-launch reconciles the exact durable intent without relaunch
+  ---
+  duration_ms: 2574.366416
+  type: 'test'
+  ...
+# Subtest: a killed Host at running-without-receipt reconciles the exact durable intent without relaunch
+ok 6 - a killed Host at running-without-receipt reconciles the exact durable intent without relaunch
+  ---
+  duration_ms: 3358.829417
+  type: 'test'
+  ...
+# Subtest: a killed Host at finished-without-receipt reconciles the exact durable intent without relaunch
+ok 7 - a killed Host at finished-without-receipt reconciles the exact durable intent without relaunch
+  ---
+  duration_ms: 4946.876167
+  type: 'test'
+  ...
+# Subtest: a nonblocking Pack reader returns its Job and only read-back can settle the observation
+ok 8 - a nonblocking Pack reader returns its Job and only read-back can settle the observation
+  ---
+  duration_ms: 1963.519834
+  type: 'test'
+  ...
+# Subtest: the Pack chooser is readonly advice and does not accept its recommendation as an Agent decision
+ok 9 - the Pack chooser is readonly advice and does not accept its recommendation as an Agent decision
+  ---
+  duration_ms: 1229.158708
+  type: 'test'
+  ...
+# Subtest: an unresolved launch intent vetoes another Run inside the Site capacity claim before any Job starts
+ok 10 - an unresolved launch intent vetoes another Run inside the Site capacity claim before any Job starts
+  ---
+  duration_ms: 661.263209
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 25742.411458
+Test boot attempts: {"host-process":0,"host-in-process":13,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 25.814 s; pass/fail/skip counts are in the TAP summary above

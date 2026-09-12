@@ -614,6 +614,7 @@ async function driveOn(ctx: Driving, resume?: Resumption): Promise<void> {
       await progress(ctx, {}, { status: 'waiting' });
       return;
     }
+    if (step.kind === 'pending' || step.kind === 'at-cap') throw new Error('nonblocking node result reached the legacy driver');
     if (step.kind === 'budget-exhausted') {
       await endBudgetExhausted(ctx.deps.ledger, ctx.runId);
       return;
