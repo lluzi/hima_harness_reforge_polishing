@@ -1737,8 +1737,19 @@ export interface ExploreRecommendation {
   readonly cites: string[];
 }
 
-/** Read the Pack chooser's advice without accepting a decision or changing any Run fact. */
-export function exploreRecommendation(ctx: Driving, node: Extract<PackNode, { kind: 'explore' }>): ExploreRecommendation | { readonly ok: false; readonly reason: string } {
+export interface ExploreEvidence {
+  readonly ok: true;
+  readonly chooser: Chooser;
+  readonly chooserOrigin: PackDataOrigin;
+  readonly constraint: VerdictRecord;
+  readonly goal: VerdictRecord;
+  readonly observation: ObservationRecord;
+  readonly verdicts: readonly VerdictRecord[];
+  readonly cites: string[];
+}
+
+/** Current evidence is independent of whether the Pack's recommended arithmetic is valid. */
+export function exploreEvidence(ctx: Driving, node: Extract<PackNode, { kind: 'explore' }>): ExploreEvidence | { readonly ok: false; readonly reason: string } {
   const no = (reason: string): { readonly ok: false; readonly reason: string } => ({ ok: false, reason });
   const named = node.parameters.chooser;
   if (named === undefined) {
@@ -1768,7 +1779,8 @@ export function exploreRecommendation(ctx: Driving, node: Extract<PackNode, { ki
 
   const run = existingRun(ctx.deps.ledger, ctx.runId);
   const loopId = run.loop?.id;
-  const here = <R extends { readonly loopId?: string }>(r: R): boolean => r.loopId === loopId;
+  const generation = run.loop?.generation ?? run.generation ?? 1;
+  const here = <R extends { readonly loopId?: string; readonly generation?: number }>(r: R): boolean => r.loopId === loopId && r.generation === generation;
   const lastJudge = nodeRecordsOf(ctx).findLast((r) => r.kind === 'judge' && r.state === 'done' && here(r));
   const judgeNodeOfRun = positionOf(ctx.pack, lastJudge?.nodeId)?.node;
   if (!judgeNodeOfRun || judgeNodeOfRun.kind !== 'judge') {
@@ -1779,17 +1791,35 @@ export function exploreRecommendation(ctx: Driving, node: Extract<PackNode, { ki
     return no(`judge node ${judgeNodeOfRun.id} lists fewer than two rules, so ${chooser.id} has no constraint and goal to weigh`);
   }
 
-  const verdicts = ctx.deps.ledger.records({ runId: ctx.runId, type: 'verdict' }).filter((r): r is VerdictRecord => r.type === 'verdict' && here(r));
-  const constraint = verdicts.findLast((v) => matchesRule(v, constraintRule));
-  const goal = verdicts.findLast((v) => matchesRule(v, goalRule));
-  const observation = ctx.deps.ledger
-    .records({ runId: ctx.runId, type: 'observation' })
-    .findLast((r): r is ObservationRecord => r.type === 'observation' && here(r));
-  if (!constraint || !goal || !observation) {
-    const missing = [!constraint && `a verdict of ${constraintRule}`, !goal && `a verdict of ${goalRule}`, !observation && 'an observation'].filter(Boolean);
-    return no(`run ${ctx.runId} holds no ${missing.join(' and no ')}, which ${chooser.id} needs to choose`);
+  const records = ctx.deps.ledger.records({ runId: ctx.runId });
+  const verdicts = records.filter((r): r is VerdictRecord => r.type === 'verdict' && here(r) && r.seq < lastJudge!.seq);
+  const observations = records.filter((r): r is ObservationRecord => r.type === 'observation' && here(r) && r.seq < lastJudge!.seq);
+  const graph = positionOf(ctx.pack, judgeNodeOfRun.id)!.graph;
+  const branches = forkJoinedAt(graph, judgeNodeOfRun.id)?.branches.map((branch) => branch.id) ?? [undefined];
+  const required: VerdictRecord[] = [];
+  const citedObservations: ObservationRecord[] = [];
+  for (const branchId of branches) {
+    const observation = observations.findLast((r) => r.branchId === branchId);
+    if (observation === undefined) return no(`node ${node.id} has no current observation for ${branchId ?? 'this generation'}`);
+    citedObservations.push(observation);
+    for (const rule of judgeNodeOfRun.parameters.rules) {
+      const verdict = verdicts.findLast((r) => r.branchId === branchId && matchesRule(r, rule));
+      if (verdict === undefined || !verdict.cites.includes(observation.id) || verdict.cites.some((id) => !observations.some((r) => r.id === id && r.branchId === branchId))) return no(`node ${node.id} needs a current verdict of ${rule} citing observation ${observation.id}`);
+      required.push(verdict);
+    }
   }
+  const constraint = required.findLast((r) => matchesRule(r, constraintRule))!;
+  const goal = required.findLast((r) => matchesRule(r, goalRule))!;
+  const observation = citedObservations.at(-1)!;
+  return { ok: true, chooser, chooserOrigin, constraint, goal, observation, verdicts: required, cites: [...new Set([...required.map((r) => r.id), ...citedObservations.map((r) => r.id)])] };
+}
 
+/** Read the Pack chooser's advice without accepting a decision or changing any Run fact. */
+export function exploreRecommendation(ctx: Driving, node: Extract<PackNode, { kind: 'explore' }>): ExploreRecommendation | { readonly ok: false; readonly reason: string } {
+  const evidence = exploreEvidence(ctx, node);
+  if (!evidence.ok) return evidence;
+  const { chooser, chooserOrigin, constraint, goal, observation, cites } = evidence;
+  const run = existingRun(ctx.deps.ledger, ctx.runId);
   const converge = node.parameters.converge;
   const chosen = choose(chooser, {
     bound: node.parameters.bind,
@@ -1802,8 +1832,8 @@ export function exploreRecommendation(ctx: Driving, node: Extract<PackNode, { ki
     observation,
     ...(converge === undefined ? {} : { converge, earlier: earlierGenerations(ctx, chooser, converge.read) }),
   });
-  if (!chosen.ok) return no(chosen.reason);
-  return { ok: true, chooser: chooser.id, chooserOrigin, chosen: chosen.chosen, rationale: chosen.rationale, cites: [constraint.id, goal.id, observation.id] };
+  if (!chosen.ok) return { ok: false, reason: chosen.reason };
+  return { ok: true, chooser: chooser.id, chooserOrigin, chosen: chosen.chosen, rationale: chosen.rationale, cites };
 }
 
 /** Legacy driver adapter; Agent execution reads the recommendation and explicitly chooses. */

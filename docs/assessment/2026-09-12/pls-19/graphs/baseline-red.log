@@ -1,0 +1,127 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-graph.host.test.ts
+local: 1 selected; 39 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+not ok 1 - explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+  ---
+  duration_ms: 9931.076125
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:112:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    explicit work for synthesize: {"kind":"refused","context":{"run":{"id":"run-af08bfb3-5d58-4875-b52a-f7e90f7cac03","campaignId":"opene902-timing-probe-20260912-170716-d53f","siteId":"local","packId":"opene902-timing-probe","purpose":"campaign","packDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","goal":{"target_period_ns":2.3},"budget":{"timeBoxMs":3600000,"retryAllowance":3,"jobCap":2,"licences":{"Design-Compiler":2},"generationLimit":3},"firstStrategy":{"periodNs":2.4},"generation":1,"control":{"mode":"agent","owner":"session-0f56dde0-b299-4abe-b84a-925c6f7949ad","epoch":1,"revision":1,"paused":[],"executions":{"execution-f92851a3-77a7-42e3-ad45-6655269064b1":{"id":"execution-f92851a3-77a7-42e3-ad45-6655269064b1","nodeId":"synthesize","kind":"act","generation":1,"attempt":1,"methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","inputDigest":"aab6927b6367ae85c477dfaa24126b133c7d8046890a217bf31a9f88fe6e3456","phase":"begun"}},"requests":{"graph-1":{"digest":"f98c4d531e0f0a52820e2e7963b5cf9de613c4619be6c611f3089b0583ee6f5c","actor":"session-0f56dde0-b299-4abe-b84a-925c6f7949ad","epoch":1,"revision":0,"origin":"agent","at":"2026-09-12T17:07:18.296Z","state":"done","receipt":{"requestId":"graph-1","action":"begin","executionId":"execution-f92851a3-77a7-42e3-ad45-6655269064b1"}}}},"createdAt":"2026-09-12T17:07:16.738Z","nextSeq":2,"status":"running","currentNode":"synthesize","strategy":{"periodNs":2.4},"meters":{"elapsedMs":1558,"jobsLaunched":0,"attempts":1,"generationMs":[95]}},"nodes":[{"id":"synthesize","kind":"act","parameters":{"tool":"synth","arguments":{"PERIOD_NS":{"from":"strategy","name":"periodNs"}}}},{"id":"read-qor","kind":"act","parameters":{"observes":"qorReport","arguments":{}}},{"id":"judge","kind":"judge","parameters":{"rules":["setup-wns-all-nonnegative","clock-period-at-most"],"bind":{"target_period_ns":{"from":"goal","name":"target_period_ns"}}}},{"id":"next-period","kind":"explore","parameters":{"chooser":"over-constraining-push","bind":{"stepNs":0.05},"converge":{"read":"period","band":0.05,"generations":1,"generationLimit":6}}},{"id":"blocked","kind":"wait","parameters":{"blocker":"hard-blocker"}}],"available":["synthesize"],"executions":[{"id":"execution-f92851a3-77a7-42e3-ad45-6655269064b1","nodeId":"synthesize","kind":"act","generation":1,"attempt":1,"methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","inputDigest":"aab6927b6367ae85c477dfaa24126b133c7d8046890a217bf31a9f88fe6e3456","phase":"begun"}]},"reason":"this execution operation is not implemented"}
+    + actual - expected
+
+    + 'refused'
+    - 'accepted'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'accepted'
+  actual: 'refused'
+  operator: 'strictEqual'
+  stack: |-
+    ready (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:46:12)
+    async Object.node (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:62:59)
+    async file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:114:5
+    async campaign (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:102:5)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:113:3)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: a valid next-strategy request at the generation budget records an honest ending without another Job
+not ok 2 - a valid next-strategy request at the generation budget records an honest ending without another Job
+  ---
+  duration_ms: 1199.849208
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:164:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    explicit work for synthesize: {"kind":"refused","context":{"run":{"id":"run-f8277776-3366-40a7-b096-23f479cc95f6","campaignId":"opene902-timing-probe-20260912-170719-2332","siteId":"local","packId":"opene902-timing-probe","purpose":"campaign","packDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","goal":{"target_period_ns":2},"budget":{"timeBoxMs":3600000,"retryAllowance":3,"jobCap":2,"licences":{"Design-Compiler":2},"generationLimit":1},"firstStrategy":{"periodNs":2.3},"generation":1,"control":{"mode":"agent","owner":"session-c083e54b-510b-4d5b-b663-dce24dfff1a6","epoch":1,"revision":1,"paused":[],"executions":{"execution-bfe09abf-4c4b-41c1-9f9d-480f3017f595":{"id":"execution-bfe09abf-4c4b-41c1-9f9d-480f3017f595","nodeId":"synthesize","kind":"act","generation":1,"attempt":1,"methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","inputDigest":"1a072bd78897cbad44029c6cdf6b8066a89b944e6a029632ae46a1ab104d4256","phase":"begun"}},"requests":{"graph-1":{"digest":"2f4485dd3cdd109f85a532ffcc130e7864506b95158455a7394fe931dc37e7e2","actor":"session-c083e54b-510b-4d5b-b663-dce24dfff1a6","epoch":1,"revision":0,"origin":"agent","at":"2026-09-12T17:07:19.380Z","state":"done","receipt":{"requestId":"graph-1","action":"begin","executionId":"execution-bfe09abf-4c4b-41c1-9f9d-480f3017f595"}}}},"createdAt":"2026-09-12T17:07:19.032Z","nextSeq":2,"status":"running","currentNode":"synthesize","strategy":{"periodNs":2.3},"meters":{"elapsedMs":348,"jobsLaunched":0,"attempts":1,"generationMs":[129]}},"nodes":[{"id":"synthesize","kind":"act","parameters":{"tool":"synth","arguments":{"PERIOD_NS":{"from":"strategy","name":"periodNs"}}}},{"id":"read-qor","kind":"act","parameters":{"observes":"qorReport","arguments":{}}},{"id":"judge","kind":"judge","parameters":{"rules":["setup-wns-all-nonnegative","clock-period-at-most"],"bind":{"target_period_ns":{"from":"goal","name":"target_period_ns"}}}},{"id":"next-period","kind":"explore","parameters":{"chooser":"over-constraining-push","bind":{"stepNs":0.05},"converge":{"read":"period","band":0.05,"generations":1,"generationLimit":6}}},{"id":"blocked","kind":"wait","parameters":{"blocker":"hard-blocker"}}],"available":["synthesize"],"executions":[{"id":"execution-bfe09abf-4c4b-41c1-9f9d-480f3017f595","nodeId":"synthesize","kind":"act","generation":1,"attempt":1,"methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","inputDigest":"1a072bd78897cbad44029c6cdf6b8066a89b944e6a029632ae46a1ab104d4256","phase":"begun"}]},"reason":"this execution operation is not implemented"}
+    + actual - expected
+
+    + 'refused'
+    - 'accepted'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'accepted'
+  actual: 'refused'
+  operator: 'strictEqual'
+  stack: |-
+    ready (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:46:12)
+    async Object.node (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:62:59)
+    async file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:166:5
+    async campaign (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:102:5)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:165:3)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+not ok 3 - fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+  ---
+  duration_ms: 1057.327709
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:188:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    explicit work for start: {"kind":"refused","context":{"run":{"id":"run-9bc388d1-d9f8-4ab5-8272-6e5eaabc6f88","campaignId":"agent-graph-fork-20260912-170720-8358","siteId":"local","packId":"agent-graph-fork","purpose":"campaign","packDigest":"c951c50f4f33a9f7189e77a4ae8018becadf28ddef82bb5601cd62de018afd67","goal":{"target_period_ns":2},"budget":{"timeBoxMs":3600000,"retryAllowance":3,"jobCap":2,"licences":{"Design-Compiler":2},"generationLimit":3},"firstStrategy":{"periodNs":2},"generation":1,"control":{"mode":"agent","owner":"session-3480e4f0-d41c-4411-abb2-1bce33f08035","epoch":1,"revision":1,"paused":[],"executions":{"execution-5d7a2ad4-86a2-4c40-b61f-d4ffec44f465":{"id":"execution-5d7a2ad4-86a2-4c40-b61f-d4ffec44f465","nodeId":"start","kind":"act","generation":1,"attempt":1,"methodDigest":"c951c50f4f33a9f7189e77a4ae8018becadf28ddef82bb5601cd62de018afd67","inputDigest":"1923d3109817bf10ba77d97a1b4e36117697002526bb6b076a1add0268da8bda","phase":"begun"}},"requests":{"graph-1":{"digest":"58641216ad09f3adb86453bfd6499cb6ab517e0fb3c3dfe9907c2fda89672b5d","actor":"session-3480e4f0-d41c-4411-abb2-1bce33f08035","epoch":1,"revision":0,"origin":"agent","at":"2026-09-12T17:07:20.529Z","state":"done","receipt":{"requestId":"graph-1","action":"begin","executionId":"execution-5d7a2ad4-86a2-4c40-b61f-d4ffec44f465"}}}},"createdAt":"2026-09-12T17:07:20.288Z","nextSeq":2,"status":"running","currentNode":"start","strategy":{"periodNs":2},"meters":{"elapsedMs":241,"jobsLaunched":0,"attempts":1,"generationMs":[83]}},"nodes":[{"id":"start","kind":"act","parameters":{"observes":"flowSummary","arguments":{}}},{"id":"synthesize","kind":"act","parameters":{"tool":"synth","arguments":{"PERIOD_NS":{"from":"strategy","name":"periodNs"}}}},{"id":"read-qor","kind":"act","parameters":{"observes":"qorReport","arguments":{}}},{"id":"synth-b","kind":"act","parameters":{"tool":"synth-b","arguments":{"PERIOD_NS":2.2}}},{"id":"read-qor-b","kind":"act","parameters":{"observes":"qorReportB","arguments":{}}},{"id":"judge","kind":"judge","parameters":{"rules":["setup-wns-all-nonnegative","clock-period-at-most"],"bind":{"target_period_ns":{"from":"goal","name":"target_period_ns"}}}},{"id":"blocked","kind":"wait","parameters":{"blocker":"hard-blocker"}}],"available":["start"],"executions":[{"id":"execution-5d7a2ad4-86a2-4c40-b61f-d4ffec44f465","nodeId":"start","kind":"act","generation":1,"attempt":1,"methodDigest":"c951c50f4f33a9f7189e77a4ae8018becadf28ddef82bb5601cd62de018afd67","inputDigest":"1923d3109817bf10ba77d97a1b4e36117697002526bb6b076a1add0268da8bda","phase":"begun"}]},"reason":"this execution operation is not implemented"}
+    + actual - expected
+
+    + 'refused'
+    - 'accepted'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'accepted'
+  actual: 'refused'
+  operator: 'strictEqual'
+  stack: |-
+    ready (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:46:12)
+    async Object.node (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:62:59)
+    async file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:190:5
+    async campaign (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:102:5)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:189:3)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+not ok 4 - a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+  ---
+  duration_ms: 1126.547625
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:243:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    explicit work for probe: {"kind":"refused","context":{"run":{"id":"run-f9cad65a-ff88-4288-8529-1d6e7378c88e","campaignId":"agent-graph-loop-20260912-170721-1340","siteId":"local","packId":"agent-graph-loop","purpose":"campaign","packDigest":"e20737aac1a959b5b1c3ea51a300d756f3fc49ad4e7316f4a8517a28a7ccbec8","goal":{"target_period_ns":2},"budget":{"timeBoxMs":3600000,"retryAllowance":3,"jobCap":2,"licences":{"Design-Compiler":2},"generationLimit":3},"firstStrategy":{"periodNs":2.3},"generation":1,"control":{"mode":"agent","owner":"session-605d6697-a195-46e4-9afc-7b5eee65b8be","epoch":1,"revision":1,"paused":[],"executions":{"execution-2cef0f89-1865-4e33-8e17-ed3ee28de62c":{"id":"execution-2cef0f89-1865-4e33-8e17-ed3ee28de62c","nodeId":"probe","kind":"explore","generation":1,"attempt":1,"methodDigest":"e20737aac1a959b5b1c3ea51a300d756f3fc49ad4e7316f4a8517a28a7ccbec8","inputDigest":"5107b3522f8b85a26b0b81e0df5098d4f974987498e1acd44611f6a4b6339655","phase":"begun"}},"requests":{"graph-1":{"digest":"9a9b9c61d4b2f4127832998f07d0ec70f409365291a44b33ce4d823be687cf79","actor":"session-605d6697-a195-46e4-9afc-7b5eee65b8be","epoch":1,"revision":0,"origin":"agent","at":"2026-09-12T17:07:21.678Z","state":"done","receipt":{"requestId":"graph-1","action":"begin","executionId":"execution-2cef0f89-1865-4e33-8e17-ed3ee28de62c"}}}},"createdAt":"2026-09-12T17:07:21.417Z","nextSeq":2,"status":"running","currentNode":"probe","strategy":{"periodNs":2.3},"meters":{"elapsedMs":261,"jobsLaunched":0,"attempts":0,"generationMs":[91]}},"nodes":[{"id":"probe","kind":"explore","parameters":{"opens":"push","bind":{}}},{"id":"final-read","kind":"act","parameters":{"observes":"qorReport","arguments":{}}},{"id":"blocked","kind":"wait","parameters":{"blocker":"hard-blocker"}},{"id":"synthesize","kind":"act","parameters":{"tool":"synth","arguments":{"PERIOD_NS":{"from":"strategy","name":"periodNs"}}}},{"id":"read-qor","kind":"act","parameters":{"observes":"qorReport","arguments":{}}},{"id":"judge","kind":"judge","parameters":{"rules":["setup-wns-all-nonnegative","clock-period-at-most"],"bind":{"target_period_ns":{"from":"goal","name":"target_period_ns"}}}},{"id":"next-period","kind":"explore","parameters":{"chooser":"over-constraining-push","bind":{"stepNs":0.05},"converge":{"read":"period","band":0.05,"generations":1,"generationLimit":2}}}],"available":["probe"],"executions":[{"id":"execution-2cef0f89-1865-4e33-8e17-ed3ee28de62c","nodeId":"probe","kind":"explore","generation":1,"attempt":1,"methodDigest":"e20737aac1a959b5b1c3ea51a300d756f3fc49ad4e7316f4a8517a28a7ccbec8","inputDigest":"5107b3522f8b85a26b0b81e0df5098d4f974987498e1acd44611f6a4b6339655","phase":"begun"}]},"reason":"this execution operation is not implemented"}
+    + actual - expected
+
+    + 'refused'
+    - 'accepted'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'accepted'
+  actual: 'refused'
+  operator: 'strictEqual'
+  stack: |-
+    Object.ready (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:46:12)
+    async file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:245:19
+    async campaign (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:102:5)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-tests/test/contract/agent-graph.host.test.ts:244:3)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 0
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14429.580375
+Test boot attempts: {"host-process":0,"host-in-process":4,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 14.588 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.
