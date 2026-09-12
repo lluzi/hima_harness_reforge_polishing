@@ -1,0 +1,13 @@
+{
+  "status": "failed",
+  "exitCode": 1,
+  "elapsedSeconds": 4.894,
+  "agentRequestEvents": 1,
+  "providerRequests": 0,
+  "providerCountBasis": "Original copied-session public snapshot and native source: missing provider/model failed before request context/provider invocation.",
+  "packFilesChanged": false,
+  "runsCreated": 0,
+  "originalEvidenceStatus": "in-progress because cleanup crashed before finish could rewrite status",
+  "evidencePreserved": true,
+  "scan": "post-cleanup-scan.json"
+}

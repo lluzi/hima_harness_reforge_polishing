@@ -1,0 +1,16 @@
+file:///Users/lluzi/code/hima_harness_reforge_polishing/node_modules/.pnpm/@deepseek-ai+dsh-agent-loop@0.1.5-alpha.1_3d62ae7d0bb4adb238d8dfb4da37e073/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js:178
+		if (state === void 0) throw new Error(`agent "${this.session.id}" cannot read inbox state: its projection registration is not active`);
+		                            ^
+
+Error: agent "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf" cannot read inbox state: its projection registration is not active
+    at ReactLoopInbox.current (file:///Users/lluzi/code/hima_harness_reforge_polishing/node_modules/.pnpm/@deepseek-ai+dsh-agent-loop@0.1.5-alpha.1_3d62ae7d0bb4adb238d8dfb4da37e073/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js:178:31)
+    at get nextStep (file:///Users/lluzi/code/hima_harness_reforge_polishing/node_modules/.pnpm/@deepseek-ai+dsh-agent-loop@0.1.5-alpha.1_3d62ae7d0bb4adb238d8dfb4da37e073/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js:86:15)
+    at ReactLoopInbox.clear (file:///Users/lluzi/code/hima_harness_reforge_polishing/node_modules/.pnpm/@deepseek-ai+dsh-agent-loop@0.1.5-alpha.1_3d62ae7d0bb4adb238d8dfb4da37e073/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js:95:36)
+    at ReactLoopAgent.cancel (file:///Users/lluzi/code/hima_harness_reforge_polishing/node_modules/.pnpm/@deepseek-ai+dsh-agent-loop@0.1.5-alpha.1_3d62ae7d0bb4adb238d8dfb4da37e073/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js:800:15)
+    at cancelTestAgent (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/support/boot-inprocess.ts:107:9)
+    at LiveCheck.stopAgents (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:181:57)
+    at LiveCheck.finish (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:184:10)
+    at runLive (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:388:25)
+    at async file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-pipeline-checkpoint.ts:339:7
+
+Node.js v24.20.0

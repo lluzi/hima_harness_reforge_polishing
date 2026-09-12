@@ -86,12 +86,12 @@ the folder does not stand at `tested`.
 
 - `## Site` — the Site this was run on, and the Golden Flow it was checked against, by the pointer
   `INTENT.md` gives.
-- `## Run` — one line, exactly `run: <run id>`, and beside it the Goal and the Strategy the Run
-  started at. The run id is what everything else in this record is evidence from, and the harness
-  reads this line: a record without it does not validate.
-- `## Ending` — one line, exactly `status: <the run's status>`, in the ledger's own word for it and
-  not a paraphrase of it, and beside it whether that ending is one the spec's `Endings` section
-  declares. Say plainly when it is not.
+- `## Run` — a standalone line containing only `run: <run id>`. Put the Goal and initial Strategy
+  in a following paragraph. The harness reads the complete identifier line; the Run is the source
+  of every later fact in this record.
+- `## Ending` — a standalone line containing only `status: <the run's status>`, using the exact
+  ledger status. In a following paragraph, state whether the spec's `Endings` declares this ending,
+  and clearly identify any disagreement.
 - `## Generations` — one line per generation: what it asked for, what was measured, and the verdicts.
 - `## Code` — one line per code record, each carrying that record's sha256, and beside it the path,
   the node it was written at and the attempt. Exactly `none`, and nothing else, when the Run wrote

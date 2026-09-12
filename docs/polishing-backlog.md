@@ -4,13 +4,13 @@
 
 日期：2026-09-11。产品目标以 [已确认定义](product-definition.md) 为准；批次与测试层级沿用 [pilot 方案](pilot-plan.md) 和 [测试方案](testing-strategy.md)。本表保留原规划与产品动机；PLS-01～07 的实际实现、测试及边界见 [批次交付记录](assessment/2026-09-11/pls02-07/README.md)。后续任务仍按其依赖和 Step 4 交接条件开展。
 
-实施任务已细化为 [Polishing v1 规格与 18 个子任务](specs/polishing-v1/README.md)，其中明确模块、验收、分级测试和依赖；本工作单保留原 POL 编号和产品动机。
+实施任务已细化为 [Polishing v1 首轮规格与子任务](specs/polishing-v1/README.md)，其中明确模块、验收、分级测试和依赖；本工作单保留原 POL 编号和产品动机。
 
 用户新增的 DeepSeek Harness UI 对标工作见 [UI-01 #20](https://github.com/lluzi/hima_harness_reforge_polishing/issues/20) 与 [对标/验证记录](assessment/2026-09-11/ui-benchmark/README.md)。首轮打磨现有导航、输入和报告阅读层级；后续聊天摘要与证据侧栏继续按现有架构及 Step 4 能力切片。
 
 用户随后否定 UI-01 的分离页面与视觉方向，明确以旧版 himaharness 的视觉系统构建统一工程桌面。新的现行方向及实现见 [UI-02 #21](https://github.com/lluzi/hima_harness_reforge_polishing/issues/21) 和 [同屏工作区验证](assessment/2026-09-11/unified-ui/README.md)；UI-01 记录保留为历史，不是产品体验已获认可的证明。
 
-用户最新明确：由同一个对话 Agent 执行节点内业务并决定后续动作，Fabric 提供约束与事实。已据 [ADR-0006](adr/0006-conversational-agent-owns-business-execution.md) 改写[执行补充规格](specs/polishing-v1/node-intervention.md)和 [PLS-19](specs/polishing-v1/tasks/PLS-19.md)，替代此前仅增加外部介入接口的方案，并调整 PLS-08～12 的职责衔接。以下原 POL 动机仍可参考，但执行归属以最新规格为准；运行代码尚未迁移。
+用户最新明确：由同一个对话 Agent 执行节点内业务并决定后续动作，Fabric 提供约束与事实。已据 [ADR-0006](adr/0006-conversational-agent-owns-business-execution.md) 改写[执行补充规格](specs/polishing-v1/node-intervention.md)和 [PLS-19](specs/polishing-v1/tasks/PLS-19.md)，替代此前仅增加外部介入接口的方案，并调整 PLS-08～12 的职责衔接。以下原 POL 动机仍可参考，但执行归属以最新规格为准；运行代码已按该职责迁移；当前批次的实际验证和剩余边界见 [验收记录](assessment/2026-09-12/pls-next/README.md)。
 
 ## 起点与判断
 

@@ -1,0 +1,12 @@
+{
+  "kind": "post-failed-cleanup-local-scan",
+  "files": 207,
+  "holding": [],
+  "unreadable": [],
+  "roots": [
+    "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w",
+    "/private/tmp/hima-l4-U7qrfi",
+    "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-continuation-1"
+  ],
+  "passed": true
+}

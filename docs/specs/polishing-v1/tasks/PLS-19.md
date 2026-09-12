@@ -6,7 +6,7 @@ GitHub: https://github.com/lluzi/hima_harness_reforge_polishing/issues/22
 
 用户最新决定：同一个对话 AI Agent 是业务执行主体，它依据参考路线和状态实际执行节点工作并决定下一步。此前仅给自动 Fabric 添加外部介入接口的方案已被替代。
 
-方向已接受，见 [ADR-0006](https://github.com/lluzi/hima_harness_reforge_polishing/blob/main/docs/adr/0006-conversational-agent-owns-business-execution.md)。本轮已在执行补充规格中细化节点协议、所有者/在途任务迁移和暂停的工程默认；实现阶段先验证 dsh 接口，不声称代码已经实现。完整规格见 [Agent 执行与 Fabric 约束](https://github.com/lluzi/hima_harness_reforge_polishing/blob/main/docs/specs/polishing-v1/node-intervention.md)。
+方向已接受，见 [ADR-0006](https://github.com/lluzi/hima_harness_reforge_polishing/blob/main/docs/adr/0006-conversational-agent-owns-business-execution.md)。本轮已在执行补充规格中细化节点协议、所有者/在途任务迁移和暂停的工程默认；开工时先验证 dsh 接口的要求已落实，实际实现和验证以 [本轮记录](../../../assessment/2026-09-12/pls-next/README.md) 为准。完整规格见 [Agent 执行与 Fabric 约束](https://github.com/lluzi/hima_harness_reforge_polishing/blob/main/docs/specs/polishing-v1/node-intervention.md)。
 
 Blocked by: [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23), [PLS-21 / #24](https://github.com/lluzi/hima_harness_reforge_polishing/issues/24)
 
