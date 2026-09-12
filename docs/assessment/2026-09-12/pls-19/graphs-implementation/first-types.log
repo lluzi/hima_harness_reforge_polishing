@@ -1,0 +1,5 @@
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+src/fabric.ts(1391,5): error TS2739: Type '{ nodeId: string; chooser: string; chooserOrigin: "pack" | "bundle"; chosen: { strategy: Record<string, string | number>; } | { goalMet: true; } | { converged: { read: string; band: number; generations: number; values: number[]; }; }; rationale: Record<...>; cites: string[]; agent: { ...; }; }' is missing the following properties from type 'Omit<{ type: "decision"; nodeId: string; chooser: string; chooserOrigin: "pack" | "bundle"; chosen: { strategy: Record<string, string | number>; } | { goalMet: true; } | { converged: { ...; }; }; ... 10 more ...; loopId?: string | undefined; }, "at" | ... 3 more ... | "seq">': siteId, writer
+/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-graph-implementation/packages/harness:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @hima/harness@0.1.0 typecheck: `tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json`
+Exit status 2

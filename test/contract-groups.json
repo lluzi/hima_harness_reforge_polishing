@@ -39,7 +39,8 @@
     "test/contract/agent-execution.host.test.ts",
     "test/contract/node-jobs.host.test.ts",
     "test/contract/conversation-execution.host.test.ts",
-    "test/contract/ledger-import.test.ts"
+    "test/contract/ledger-import.test.ts",
+    "test/contract/agent-graph.host.test.ts"
   ],
   "desktop": [
     "test/contract/budget.test.ts",

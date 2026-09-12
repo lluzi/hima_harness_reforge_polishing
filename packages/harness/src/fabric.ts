@@ -94,6 +94,7 @@ import {
   buildWorkshopScope,
   launchWrittenWorkshop,
   exploreRecommendation,
+  exploreEvidence,
   type Driving,
   type FabricDeps,
   type Step,
@@ -1056,6 +1057,7 @@ export interface ExecutionActionRequest {
 }
 export interface ExecutionContext {
   readonly run: RunRecord; readonly nodes: readonly PackNode[];
+  readonly method?: { readonly id: string; readonly version: string; readonly digest: string; readonly dir: string; readonly contract: Pack['contract']; readonly reference: Pack['graph'] };
   readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly reason?: string;
 }
 export interface ExecutionActionResult {
@@ -1095,6 +1097,30 @@ function inputIdentity(deps: FabricDeps, run: RunRecord, throughSeq = run.nextSe
     evidence: deps.ledger.records({ runId: run.id }).filter((record) => record.seq <= throughSeq && (record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id),
   });
 }
+/** Pause follows dependency edges, including Loop entry/return, but never a future revisit. */
+function executionPauseReason(pack: Pack, run: RunRecord, nodeId: string): string | undefined {
+  const paused = run.control?.paused ?? [];
+  if (paused.includes('*')) return 'business admission is paused for this Run';
+  const graphs = [pack.graph, ...Object.values(pack.graph.loops)];
+  const dependent = new Set(paused);
+  const edges = graphs.flatMap((graph) => graph.edges.filter((edge) => edge.revisit !== true).map((edge) => [edge.from, edge.to] as const));
+  for (const opener of pack.graph.nodes.filter(opensALoop)) {
+    const loop = pack.graph.loops[opener.parameters.opens];
+    if (loop === undefined) continue;
+    edges.push([opener.id, loop.entry]);
+    const continuations = pack.graph.edges.filter((edge) => edge.from === opener.id).map((edge) => edge.to);
+    for (const decision of loop.nodes.filter((node) => node.kind === 'explore')) {
+      for (const to of continuations) edges.push([decision.id, to]);
+    }
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [from, to] of edges) if (dependent.has(from) && !dependent.has(to)) { dependent.add(to); changed = true; }
+  }
+  return dependent.has(nodeId) ? 'business admission is paused for this node or an upstream dependency' : undefined;
+}
+
 export function executionContext(deps: FabricDeps, runId: string): ExecutionContext {
   const run = existingRun(deps.ledger, runId);
   const executions = Object.values(run.control?.executions ?? {});
@@ -1102,8 +1128,18 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
   try {
     const pack = executionPack(deps, run);
     const nodes = [...pack.graph.nodes, ...Object.values(pack.graph.loops).flatMap((loop) => loop.nodes)];
-    const available = run.status === 'running' && run.currentNode !== undefined && run.control.paused.length === 0 ? [run.currentNode] : [];
-    return { run, nodes, available, executions };
+    const candidates = run.fork === undefined
+      ? run.currentNode === undefined ? [] : [run.currentNode]
+      : Object.values(run.fork.branches).every((branch) => branch.state === 'done')
+        ? [run.fork.join]
+        : Object.values(run.fork.branches).filter((branch) => branch.state !== 'done').map((branch) => branch.currentNode);
+    const incomplete = Object.values(run.control.requests).some((request) => request.receipt.action === 'complete' && request.state !== 'done');
+    const available = run.status !== 'running' || incomplete ? [] : candidates.filter((nodeId) =>
+      executionPauseReason(pack, run, nodeId) === undefined && !executions.some((execution) =>
+        execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
+        && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
+        && execution.phase !== 'failed'));
+    return { run, nodes, available, executions, ...(incomplete ? { reason: 'an admitted completion has not finished recording its route; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
     return { run, nodes: [], available: [], executions, reason: (error as Error).message };
   }
@@ -1142,7 +1178,16 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       } else if (req.action === 'pause') changed = { paused: [...new Set([...control.paused, scope])] };
       else {
         if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted; continuing does not reset it');
-        changed = { paused: control.paused.filter((paused) => paused !== scope) };
+        const waiting = Object.values(control.executions).find((execution) =>
+          execution.kind === 'wait' && execution.phase === 'ready' && execution.nodeId === run.currentNode
+          && execution.generation === run.generation && execution.loopId === run.loop?.id
+          && execution.loopGeneration === run.loop?.generation && (scope === '*' || scope === execution.nodeId));
+        if (waiting !== undefined && waiting.humanClearance === undefined) {
+          if (req.origin !== 'human') return no('the Pack wait blocker needs a human clearance; an Agent continue is not that clearance');
+          await deps.ledger.appendResumed(run.id, { nodeId: waiting.nodeId, who: `human in conversation ${req.actor}` });
+          changed = { paused: control.paused.filter((paused) => paused !== scope && paused !== waiting.nodeId),
+            executions: { ...control.executions, [waiting.id]: { ...waiting, humanClearance: { actor: req.actor, requestId: req.requestId } } } };
+        } else changed = { paused: control.paused.filter((paused) => paused !== scope) };
       }
       await recordExecutionAction(deps, run, req, digest, changed, receipt);
       return answer('accepted', { receipt });
@@ -1150,18 +1195,22 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (req.action === 'work' || req.action === 'complete') return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');
     if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted');
-    if (control.paused.length > 0) return no('business admission is paused');
+    if (req.nodeId !== undefined) {
+      const paused = executionPauseReason(executionPack(deps, run), run, req.nodeId);
+      if (paused !== undefined) return no(paused);
+    }
     const context = executionContext(deps, req.runId);
     if (context.reason !== undefined) return no(context.reason);
     if (req.nodeId === undefined || !context.available.includes(req.nodeId)) return no('this node is not currently available from the reference graph and execution facts');
     const node = context.nodes.find((item) => item.id === req.nodeId);
     if (node === undefined || run.packDigest === undefined) return no('the node or its method identity is unavailable');
-    if (context.executions.some((execution) => execution.nodeId === node.id && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.phase !== 'completed' && execution.phase !== 'failed')) return no('this node already has an admitted execution');
+    if (context.executions.some((execution) => execution.nodeId === node.id && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation && execution.phase !== 'completed' && execution.phase !== 'failed')) return no('this node already has an admitted execution');
     const execution: NodeExecution = {
       id: `execution-${randomUUID()}`, nodeId: node.id, kind: node.kind,
       generation: run.generation ?? 1, attempt: attemptOf(deps.ledger, run.id, node.id),
       methodDigest: run.packDigest, inputDigest: inputIdentity(deps, run), phase: 'begun',
       inputThroughSeq: run.nextSeq - 1,
+      ...(run.fork === undefined ? {} : { branchId: Object.entries(run.fork.branches).find(([, branch]) => branch.state !== 'done' && branch.currentNode === node.id)?.[0] }),
       ...(run.loop === undefined ? {} : { loopId: run.loop.id, loopGeneration: run.loop.generation }),
     };
     const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
@@ -1276,7 +1325,8 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   if (execution === undefined) return no('name the execution identity returned by begin');
   if (req.nodeId !== undefined && req.nodeId !== execution.nodeId) return no('node and execution identities disagree');
   if (execution.generation !== run.generation || execution.loopId !== run.loop?.id || execution.loopGeneration !== run.loop?.generation) return no('this execution belongs to an earlier generation or Loop');
-  if (control.paused.length > 0) return no('business admission is paused; existing Job facts remain readable');
+  const paused = executionPauseReason(executionPack(deps, run), run, execution.nodeId);
+  if (paused !== undefined) return no(paused);
   if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted');
   if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq)) return no('the execution input version no longer matches the Run');
   let ctx: Driving;
@@ -1294,7 +1344,12 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
         ? await launchWrittenWorkshop(ctx, node, execution.attempt, req.actor)
         : node.parameters.tool !== undefined ? await toolNode(ctx, run, node, execution.attempt) : await observeNode(ctx, node, execution.attempt);
       else if (node.kind === 'judge') result = await judgeNode(ctx, run, node, execution.attempt);
-      else result = { kind: 'settled' };
+      else if (node.kind === 'wait') {
+        await appendNode(ctx, node, 'blocked', execution.attempt, { reason: `this Pack requires human clearance of ${node.parameters.blocker}` });
+        const latest = existingRun(deps.ledger, run.id).control!;
+        await deps.ledger.advanceRun(run.id, { control: { ...latest, paused: [...new Set([...latest.paused, node.id])] } });
+        result = { kind: 'settled' };
+      } else result = { kind: 'settled' };
       await recordExecutionResult(ctx, execution, result, req.requestId);
       if (result.kind === 'pending') observeExecution(ctx, node, execution, result.session);
       return executionAnswer(deps, run.id, 'accepted', { receipt });
@@ -1303,20 +1358,87 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
       return executionAnswer(deps, run.id, 'accepted', { receipt, reason: `work was admitted but its effect is uncertain; do not repeat the launch: ${(error as Error).message}` });
     }
   }
+  return completeAdmittedNode(ctx, req, execution, digest);
+}
+
+/** Validate one explicit completion and route facts; this function never begins successor work. */
+async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, execution: NodeExecution, digest: string): Promise<ExecutionActionResult> {
+  const { deps, runId } = ctx;
+  const run = existingRun(deps.ledger, runId);
+  const control = run.control!;
+  const no = (reason: string) => executionAnswer(deps, runId, 'refused', { reason });
+  const { node, graph } = positionOf(ctx.pack, execution.nodeId)!;
+  const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
   if (execution.phase !== 'ready' || execution.result === undefined || (execution.result.kind !== 'settled' && execution.result.kind !== 'moved')) return no('completion needs the actual successful operation result; an Agent statement is not evidence');
-  if (node.kind === 'explore' || node.kind === 'wait') return no('this node requires its explicit exploration or human decision');
+  if (node.kind === 'wait' && execution.humanClearance === undefined) return no('this node requires an explicit human clearance of its blocker');
   if (execution.jobSession !== undefined) {
     const actual = await jobStatus(deps, { run: run.id, session: execution.jobSession });
     if (actual.state.state !== 'finished' || actual.state.exitCode !== 0) return no('the Job has no confirmed successful exit');
   }
-  await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: { ...execution, phase: 'completed' } } }, receipt);
-  const forked = await openForkAt(ctx, graph, node);
-  if (forked === undefined) {
-    const to = edgeFrom(ctx, graph, node, execution.result.outcome);
-    if (to !== undefined) await progress(ctx, {}, { currentNode: to });
-    else if (execution.result.outcome === 'UNDETERMINED') await progress(ctx, {}, { status: 'waiting' });
-    else await endRun(ctx);
+  let decision: Parameters<Ledger['appendDecision']>[1] | undefined;
+  if (node.kind === 'explore' && !opensALoop(node)) {
+    if (req.decision === undefined || typeof req.rationale !== 'string' || req.rationale.trim().length === 0) return no('exploration completion needs the owner decision and its rationale');
+    const evidence = exploreEvidence(ctx, node);
+    if (!evidence.ok) return no(evidence.reason);
+    const current = deps.ledger.records({ runId }).filter((record) =>
+      (record.type === 'observation' || record.type === 'verdict')
+      && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id);
+    const cites = req.cites ?? [];
+    if (cites.length === 0 || new Set(cites).size !== cites.length || cites.some((id) => !current.some((record) => record.id === id)) || evidence.cites.some((id) => !cites.includes(id))) return no('the decision must cite its actual current-generation observations and required Judge verdicts; stale or invented evidence is refused');
+    let chosen: DecisionRecord['chosen'];
+    let rationale: DecisionRecord['rationale'] = {};
+    if (req.decision === 'next-strategy') {
+      if (req.strategy === undefined || Object.keys(req.strategy).length === 0) return no('next-strategy needs the actual Strategy to try');
+      const admitted = strategyFrom(ctx.pack.contract.strategy, { ...run.strategy, ...req.strategy });
+      if ('error' in admitted) return no(admitted.error);
+      chosen = { strategy: admitted.strategy };
+    } else if (req.decision === 'goal-met') {
+      if (req.strategy !== undefined) return no('a goal-met decision cannot also choose a Strategy');
+      if (evidence.verdicts.some((verdict) => verdict.outcome !== 'PASS')) return no('goal-met requires actual PASS verdicts for every required constraint and goal rule');
+      chosen = { goalMet: true };
+    } else if (req.decision === 'converged') {
+      if (req.strategy !== undefined) return no('a converged decision cannot also choose a Strategy');
+      const advice = exploreRecommendation(ctx, node);
+      if (!advice.ok || !('converged' in advice.chosen)) return no('the current measured generations do not verify the Pack declared convergence condition');
+      chosen = advice.chosen;
+      rationale = advice.rationale;
+    } else return no('the exploration decision is not one of the supported choices');
+    decision = { nodeId: node.id, chooser: evidence.chooser.id, chooserOrigin: evidence.chooserOrigin,
+      chosen, rationale, cites: [...cites], agent: { sessionId: req.actor, executionId: execution.id, rationale: req.rationale.trim() } };
   }
-  if (existingRun(deps.ledger, run.id).status !== 'running') await writeExperience(deps, run.id);
-  return executionAnswer(deps, run.id, 'accepted', { receipt });
+  // Persist the request before a decision or route. An interrupted completion must be inspected,
+  // never retried as an unrecorded decision or treated as permission to run a successor.
+  await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: { ...execution, phase: 'uncertain', reason: 'completion admitted; recording its decision and route' } } }, receipt, {}, 'admitted');
+  try {
+    if (decision !== undefined) await deps.ledger.appendDecision(runId, decision);
+    if (node.kind === 'explore' || node.kind === 'wait') await appendNode(ctx, node, opensALoop(node) ? 'running' : 'done', execution.attempt);
+    if (opensALoop(node)) {
+      await openLoop(ctx, node, execution.attempt);
+    } else if (node.kind === 'explore') {
+      if (run.loop === undefined) await followDecision(ctx, node, graph);
+      else await followLoopDecision(ctx, node, graph, run.loop);
+    } else if (execution.branchId !== undefined) {
+      const fork = existingRun(deps.ledger, runId).fork;
+      if (fork === undefined) throw new RunStartError('the execution branch lost its admitted fork');
+      const to = edgeFrom(ctx, graph, node, execution.result.outcome);
+      if (to === undefined) throw new RunStartError('the execution branch has no route to its declared join');
+      await progress(ctx, {}, { branch: { id: execution.branchId, currentNode: to, state: to === fork.join ? 'done' : 'running' } });
+      const updated = existingRun(deps.ledger, runId).fork!;
+      if (Object.values(updated.branches).every((branch) => branch.state === 'done')) await progress(ctx, {}, { fork: null, onlyWhileRunning: true });
+    } else {
+      const forked = await openForkAt(ctx, graph, node);
+      if (forked === undefined) {
+        const to = edgeFrom(ctx, graph, node, execution.result.outcome);
+        if (to !== undefined) await progress(ctx, {}, { currentNode: to });
+        else if (execution.result.outcome === 'UNDETERMINED') await progress(ctx, {}, { status: 'waiting' });
+        else await endRun(ctx);
+      } else if (forked.kind === 'blocked') await progress(ctx, {}, { status: 'waiting' });
+    }
+    await updateExecution(deps, runId, execution.id, { phase: 'completed', reason: undefined }, req.requestId);
+  } catch (error) {
+    await updateExecution(deps, runId, execution.id, { phase: 'uncertain', reason: `completion recording was interrupted: ${(error as Error).message}` }, req.requestId, 'uncertain');
+    return executionAnswer(deps, runId, 'accepted', { receipt, reason: 'completion was admitted but its recorded route is uncertain; inspect the existing facts instead of repeating it' });
+  }
+  if (existingRun(deps.ledger, runId).status !== 'running') await writeExperience(deps, runId);
+  return executionAnswer(deps, runId, 'accepted', { receipt });
 }

@@ -588,10 +588,13 @@ export const decisionChoice = z.union([
 export type DecisionChoice = z.infer<typeof decisionChoice>;
 
 /**
- * What an Explore node's chooser decided, written by the executor. The chooser is pack data and
- * deterministic (D6): no model takes part, and the same ledger always yields the same choice.
+ * An accepted Explore decision, written by the executor. Historical records carry a deterministic
+ * Pack choice. An `agent` provenance identifies the conversational owner's explicit choice and
+ * rationale; the named chooser remains the Pack reference, not a claim that it chose this strategy.
  *
- * `rationale` is the named numbers the chooser used, enough for a person to re-derive the choice
+ * `rationale` holds only verified numeric evidence used by the decision. It is empty when the
+ * owner's strategy differs from the advice; `agent.rationale` records that owner's explanation.
+ * Historical records carry the numbers the chooser used, enough to re-derive the choice
  * with nothing but this record — for `timing-push`, the clock period the report stated, the setup
  * slack, and the pack's guard band. The outcomes it weighed are not copied here: they are in the
  * verdicts it `cites`, which also carry the values as read and the rule that produced each one.
@@ -607,6 +610,8 @@ export const decisionRecord = z.object({
    * decision a person cannot re-derive from the record and one file is not a decision on record.
    */
   chooserOrigin: packDataOrigin,
+  /** Explicit owner choice; absent on historical deterministic chooser decisions. */
+  agent: z.strictObject({ sessionId: z.string().min(1), executionId: z.string().min(1), rationale: z.string().min(1) }).optional(),
   chosen: decisionChoice,
   rationale: z.record(z.string(), z.number()),
   /** The verdict record ids the chooser weighed, then the observation record id it read. */
@@ -1276,6 +1281,7 @@ export const nodeExecution = z.strictObject({
   attempt: z.number().int().positive(), methodDigest: sha256Hex, inputDigest: sha256Hex,
   phase: z.enum(['begun', 'working', 'ready', 'completed', 'failed', 'uncertain']),
   inputThroughSeq: z.number().int().nonnegative().optional(),
+  humanClearance: z.strictObject({ actor: z.string().min(1), requestId: z.string().min(1) }).optional(),
   intent: launchIntent.optional(), jobSession: z.string().optional(),
   result: z.strictObject({
     kind: z.enum(['settled', 'blocked', 'retrying', 'hard-blocker', 'budget-exhausted', 'moved', 'stopped', 'pending', 'at-cap']),
