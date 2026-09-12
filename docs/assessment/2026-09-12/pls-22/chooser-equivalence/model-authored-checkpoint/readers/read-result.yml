@@ -1,0 +1,12 @@
+# The declared custom reader of this pack: it turns the Workshop's result.txt — the integer sum
+# alone — into the one value type this method speaks, or refuses to make a numeric claim at all.
+id: read-result
+version: '1'
+file: tools/read-result.sh
+argv:
+  - sh
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+reportKind: numeric-sum-result
+emits: [numeric_sum]

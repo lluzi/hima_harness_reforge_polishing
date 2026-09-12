@@ -1,0 +1,11 @@
+file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/judge.js:85
+            throw new Error(`run ${runId} runs pack "${packId}", whose own rules/ is where its rule ids are looked for first, and this machine cannot load that pack: ${err.message}`);
+                  ^
+
+Error: run run-c83fbdbe-13ef-463e-936d-82f78b59fb2f runs pack "authored-numeric", whose own rules/ is where its rule ids are looked for first, and this machine cannot load that pack: Run of pack authored-numeric has no recorded method digest; its original method cannot be verified
+    at #rulePlaces (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/judge.js:85:19)
+    at Judge.evaluate (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/judge.js:97:44)
+    at evaluate (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/docs/assessment/2026-09-12/pls-22/chooser-equivalence/probe.mjs:47:58)
+    at async file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/docs/assessment/2026-09-12/pls-22/chooser-equivalence/probe.mjs:58:17
+
+Node.js v24.20.0

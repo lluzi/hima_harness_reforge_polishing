@@ -1,0 +1,114 @@
+# The run contract of the authored-numeric pack: what a Site must bind before this pack can run,
+# what a generation produces inside the Campaign workspace, and what the pack runs on the Site.
+#
+# The method is the tiny numeric one the author approved: prepare the measured input, let a Workshop
+# write its own script that sums the values strictly greater than LIMIT, read that integer into
+# numeric_sum, judge it against a validity constraint and the goal minimum, and choose the next
+# strategy. No EDA and no licences are involved anywhere in it.
+id: authored-numeric
+version: '1'
+title: Authored numeric strict-bound sum
+
+# What a Site binds, in its site file under `bindings:`. The same pack runs on another Site by
+# editing that file, never this one.
+inputs:
+  - name: flowRoot
+    description: >-
+      The Golden Flow's root on the Site: the directory holding prepare.sh and numbers.txt.
+      Read-only to a Campaign — a generation runs in its own copy of it, never here.
+  - name: workspaceRoot
+    description: >-
+      Where Campaign workspaces are created. The Site's Permit must allow writes under it; nothing
+      the pack does writes anywhere else.
+
+# What a generation leaves in its Campaign workspace. Paths are relative to the workspace.
+outputs:
+  - name: measuredInput
+    path: flow/measured.txt
+    description: >-
+      The actual measured input of this generation, one nonnegative integer per line. The prepare
+      tool writes it from flow/numbers.txt inside the Campaign's copy of the flow, and the Workshop
+      reads it. No reader: it is the Workshop's input, not a judged value.
+  - name: analysis
+    path: result.txt
+    reader: read-result
+    description: >-
+      The integer sum alone, written by the Workshop. Read by the declared custom reader into
+      numeric_sum, and judged. The judged output.
+
+# What the Site must let this pack run: the first word of every tool's and every reader's command
+# line. The Permit's `allowedWrappers` decides it, so a pack cannot introduce a command a Site owner
+# never allowed.
+environment:
+  wrappers:
+    - sh
+
+# How a Campaign workspace is prepared from the bound flow root, once per Campaign. The copy lands in
+# `<workspace>/flow/`, which is the pack anatomy's fixed place for it. Only the two files this method
+# needs are copied; the Golden Flow itself stays read-only.
+workspace:
+  copy:
+    - prepare.sh
+    - numbers.txt
+
+# The pack's tools. Each names the file a person reads and runs by hand, and the command line the
+# fabric launches on the Site. `${NAME}` in `argv` is one of the tool's declared `inputs`, which are
+# the environment variables the tool's own script reads.
+tools:
+  - id: prepare
+    file: tools/prepare.sh
+    description: >-
+      The Golden Flow's one preparation stage, run inside the Campaign's own copy of the flow: it
+      copies numbers.txt to measured.txt. It is the only command line the Golden Flow shows, and it
+      takes the flow directory as its one argument.
+    inputs: [WORKSPACE]
+    argv:
+      - sh
+      - ${WORKSPACE}/flow/prepare.sh
+      - ${WORKSPACE}/flow
+
+# This pack's own domain knowledge, named by the Workshop below.
+knowledge:
+  - file: numeric-strict-sum.md
+    purpose: >-
+      the symbolic strict-bound sum rule, and the exact input/output interface the Workshop's
+      generated script must implement
+
+# The one real Workshop: it writes its own script at run time from the actual input and this pack's
+# declared knowledge, and produces the result the reader reads. The approved argv is exactly
+# `sh ${ENTRY} ${WORKSPACE} ${LIMIT}`, so shell `$1` is the Campaign root and `$2` is LIMIT.
+workshops:
+  - id: analyze
+    purpose: >-
+      Read the measured input and write its own shell script deriving the requested strict-bound sum
+      from the actual data, then write the integer sum alone as the result.
+    directory: research
+    entry: entry.sh
+    language: sh
+    inputs: [LIMIT]
+    reads: [measuredInput]
+    knowledge: [numeric-strict-sum.md]
+    produces: analysis
+    argv: [sh, '${ENTRY}', '${WORKSPACE}', '${LIMIT}']
+
+# Every rule this pack's judge node applies, by id: this folder's `rules/` first, the bundle's second.
+rules:
+  - numeric-sum-nonnegative
+  - numeric-sum-meets-minimum
+
+# What a run of this pack is set to for one generation, and what it may be set to. One knob: the
+# threshold handed to the Workshop's LIMIT. Its bounds are what a person could plausibly ask for, and
+# the default is where a run that sets nothing starts.
+strategy:
+  limit: { type: number, unit: count, min: 0, max: 100, default: 16 }
+
+# The one number a Campaign binds when it starts: the acceptance bound on the measured sum. It is the
+# goal's own parameter, never the strategy's, and it is never fabricated into the output.
+goal:
+  minimum: { type: number, unit: count, min: 0, max: 10000, default: 1 }
+
+# What this pack's numbers are called, for the faces a person reads: one entry per goal parameter the
+# graph binds and one per knob the strategy declares.
+words:
+  minimum: { label: goal minimum, unit: count }
+  limit: { label: limit, unit: count }

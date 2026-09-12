@@ -1,0 +1,14 @@
+# The validity constraint: a generation has a numeric claim only if one could be read at all, and a
+# numeric sum is never negative. A malformed or unreadable result produces no numeric_sum at all, so
+# this rule has no opinion and the Run does not continue as if a number had been read.
+id: numeric-sum-nonnegative
+version: '1'
+title: The numeric sum is not negative
+requires:
+  - type: numeric_sum
+subject:
+  type: numeric_sum
+predicate:
+  op: gte
+  threshold: 0
+  unit: count

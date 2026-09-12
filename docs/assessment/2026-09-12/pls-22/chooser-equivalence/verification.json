@@ -1,0 +1,17 @@
+{
+  "base": "17c431ca9eb46a5a41de68b730a54a2fff5e341c",
+  "checkerDiff": "permit omitted goal condition on second ordered fallback only",
+  "boundCases": 6,
+  "counterexamples": 2,
+  "excludedDomainChecks": [
+    "unknown reading",
+    "unbound Goal"
+  ],
+  "host": 1,
+  "agents": 0,
+  "jobs": 0,
+  "probeBodySeconds": 3.59,
+  "checkerTypecheck": "PASS",
+  "originalCheckpointFiles": "all 13 byte hashes unchanged",
+  "liveModel": "NOT RUN"
+}

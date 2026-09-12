@@ -1,0 +1,18 @@
+# The goal rule: the measured sum reaches the acceptance bound the Run bound. The bound is the goal
+# parameter `minimum`, bound at judge time, so one rule serves every minimum and the bound lands on
+# the verdict where a person can read what was actually asked for.
+id: numeric-sum-meets-minimum
+version: '1'
+title: The numeric sum reaches the goal minimum
+parameter:
+  name: minimum
+  unit: count
+requires:
+  - type: numeric_sum
+subject:
+  type: numeric_sum
+predicate:
+  op: gte
+  threshold:
+    parameter: minimum
+  unit: count

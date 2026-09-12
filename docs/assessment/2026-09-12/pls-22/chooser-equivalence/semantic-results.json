@@ -1,0 +1,372 @@
+[
+  {
+    "label": "zero-bound",
+    "value": 0,
+    "minimum": 0,
+    "constraint": "PASS",
+    "goal": "PASS",
+    "original": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 0,
+        "fallbackLimit": 0
+      }
+    },
+    "explicit": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 0,
+        "fallbackLimit": 0
+      }
+    },
+    "reordered": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 0,
+        "fallbackLimit": 0
+      }
+    },
+    "overclaims": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 0,
+        "fallbackLimit": 0
+      }
+    }
+  },
+  {
+    "label": "below-minimum",
+    "value": 0,
+    "minimum": 1,
+    "constraint": "PASS",
+    "goal": "FAIL",
+    "original": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 0,
+        "fallbackLimit": 0
+      }
+    },
+    "explicit": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 0,
+        "fallbackLimit": 0
+      }
+    },
+    "reordered": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 0,
+        "fallbackLimit": 0
+      }
+    },
+    "overclaims": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 0,
+        "fallbackLimit": 0
+      }
+    }
+  },
+  {
+    "label": "at-minimum",
+    "value": 1,
+    "minimum": 1,
+    "constraint": "PASS",
+    "goal": "PASS",
+    "original": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 1,
+        "fallbackLimit": 0
+      }
+    },
+    "explicit": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 1,
+        "fallbackLimit": 0
+      }
+    },
+    "reordered": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 1,
+        "fallbackLimit": 0
+      }
+    },
+    "overclaims": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 1,
+        "fallbackLimit": 0
+      }
+    }
+  },
+  {
+    "label": "above-minimum",
+    "value": 2,
+    "minimum": 1,
+    "constraint": "PASS",
+    "goal": "PASS",
+    "original": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 2,
+        "fallbackLimit": 0
+      }
+    },
+    "explicit": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 2,
+        "fallbackLimit": 0
+      }
+    },
+    "reordered": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 2,
+        "fallbackLimit": 0
+      }
+    },
+    "overclaims": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 2,
+        "fallbackLimit": 0
+      }
+    }
+  },
+  {
+    "label": "below-max-bound",
+    "value": 9999,
+    "minimum": 10000,
+    "constraint": "PASS",
+    "goal": "FAIL",
+    "original": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 9999,
+        "fallbackLimit": 0
+      }
+    },
+    "explicit": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 9999,
+        "fallbackLimit": 0
+      }
+    },
+    "reordered": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 9999,
+        "fallbackLimit": 0
+      }
+    },
+    "overclaims": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 9999,
+        "fallbackLimit": 0
+      }
+    }
+  },
+  {
+    "label": "at-max-bound",
+    "value": 10000,
+    "minimum": 10000,
+    "constraint": "PASS",
+    "goal": "PASS",
+    "original": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 10000,
+        "fallbackLimit": 0
+      }
+    },
+    "explicit": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 10000,
+        "fallbackLimit": 0
+      }
+    },
+    "reordered": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 10000,
+        "fallbackLimit": 0
+      }
+    },
+    "overclaims": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 10000,
+        "fallbackLimit": 0
+      }
+    }
+  },
+  {
+    "label": "unknown-reading",
+    "value": null,
+    "minimum": 1,
+    "constraint": "UNDETERMINED",
+    "goal": "UNDETERMINED",
+    "original": {
+      "ok": false,
+      "reason": "chooser limit-down-to-zero reads \"sum\" (numeric_sum), which is unknown in observation run-83af1952-1398-468b-9273-b2af02ea87fd#000001: deliberately unknown semantic test input"
+    },
+    "explicit": {
+      "ok": false,
+      "reason": "chooser limit-down-to-zero reads \"sum\" (numeric_sum), which is unknown in observation run-83af1952-1398-468b-9273-b2af02ea87fd#000001: deliberately unknown semantic test input"
+    },
+    "reordered": {
+      "ok": false,
+      "reason": "chooser limit-down-to-zero reads \"sum\" (numeric_sum), which is unknown in observation run-83af1952-1398-468b-9273-b2af02ea87fd#000001: deliberately unknown semantic test input"
+    },
+    "overclaims": {
+      "ok": false,
+      "reason": "chooser limit-down-to-zero reads \"sum\" (numeric_sum), which is unknown in observation run-83af1952-1398-468b-9273-b2af02ea87fd#000001: deliberately unknown semantic test input"
+    }
+  },
+  {
+    "label": "unbound-goal",
+    "value": 1,
+    "minimum": "unbound",
+    "constraint": "PASS",
+    "goal": "UNDETERMINED",
+    "original": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 1,
+        "fallbackLimit": 0
+      }
+    },
+    "explicit": {
+      "ok": false,
+      "reason": "chooser limit-down-to-zero has no clause for a PASS constraint (numeric-sum-nonnegative) with a UNDETERMINED goal (numeric-sum-meets-minimum): rule numeric-sum-meets-minimum requires parameter \"minimum\" to be bound, e.g. --param minimum=<value>"
+    },
+    "reordered": {
+      "ok": true,
+      "chosen": {
+        "strategy": {
+          "limit": 0
+        }
+      },
+      "rationale": {
+        "sum": 1,
+        "fallbackLimit": 0
+      }
+    },
+    "overclaims": {
+      "ok": true,
+      "chosen": {
+        "goalMet": true
+      },
+      "rationale": {
+        "sum": 1,
+        "fallbackLimit": 0
+      }
+    }
+  }
+]
