@@ -1,367 +1,318 @@
-// The live check for the workshop (#62): one real model writing one real script, with the owner's
-// own key, through the product.
-//
-// Everything about a workshop that the contract suite can prove, it proves against dsh's keyless
-// replay adapter: the session is real, the loop is real, the three tools are real, the Permit and the
-// Job are real — the model's words are recorded. What no keyless run can prove is that a *model*,
-// given the instructions this harness composes and the three tools it hands over, writes a script
-// that the pack's own reader can then read. That is what this script is, and it is the reason it is a
-// script rather than a test: the contract suite has no key and must never need one, and this is run
-// once, by hand, by whoever has it, before a merge (D48: any merge that touches a moment).
-//
-// It is `live-check-moment.ts`'s shape — a record beside the run, every claim a check with its own
-// predicate, a failed check writing the record and exiting non-zero — over the smallest Campaign that
-// has a workshop in it: one isolated home, the stand-in flow and the workshop pack variant on the
-// local Site, one generation, one moment, one Job, one reading.
-//
-// **The key.** It comes from the environment this script is launched with and from nowhere else. This
-// product writes no key, reads none from a file of its own, and puts none in a record: what the
-// record carries is the key's *shape* — its length and its first four characters — which is enough to
-// tell one key from another when a check fails and is not enough to be one. Run without a key, this
-// refuses in words, says where a key comes from, and exits non-zero without booting anything.
-//
-// Run it as:
-//   DEEPSEEK_API_KEY=… node scripts/live-check-workshop.ts [--out <dir>]
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+// @hima-seam agent wrapped
+// @hima-seam tools direct
+// Bounded L4: one native conversational Agent, real private local Jobs, no replay or Electron.
+// Exported utilities are shared only with the adjacent authoring live check.
+import { createHash, randomInt } from 'node:crypto';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { TestContext } from 'node:test';
-import { bootDriver, type BootedDriver } from '../test/contract/support/driver.ts';
-import { repoRoot } from '../test/contract/support/dsh-home.ts';
-import { localHome } from '../test/contract/support/fabric.ts';
-import { api } from '../test/contract/support/hima-api.ts';
-import { cell } from '../test/contract/support/markdown.ts';
+import { pathToFileURL } from 'node:url';
+import type { Agent } from '@deepseek-ai/dsh-agent';
+import { loadPack } from '@hima/harness';
+import { bootInProcess, cancelTestAgent, createRootAgent, injectedSkills, sayAsUser, saidByModel, steerAsUser, toolCalls, toolResults, type InProcessHost } from '../test/contract/support/boot-inprocess.ts';
+import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
+import { digestTrees } from '../test/contract/support/pipeline.ts';
+import { tmuxHasSession } from '../test/contract/support/tmux.ts';
 import { scanForSecret } from '../test/contract/support/moments.ts';
-import {
-  candidateCountType,
-  installWorkshopPack,
-  packsDirOf,
-  workshopDirectory,
-  workshopEntry,
-  workshopId,
-} from '../test/contract/support/pack.ts';
-import {
-  HIMA_MOMENT_PRESET,
-  WORKSHOP_KNOWLEDGE_TOOL,
-  WORKSHOP_READ_TOOL,
-  WORKSHOP_WRITE_TOOL,
-  type CodeRecord,
-  type RecordsView,
-  type RunView,
-  type SessionRecord,
-} from '@hima/harness';
+import { writeLocalSite } from '../test/contract/support/site.ts';
+import { installPack, packsDirOf } from '../test/contract/support/pack.ts';
+import { prepareHimaHome, homePatchFile } from '../packages/desktop/src/hima-home.ts';
 
-/** The environment variable dsh's own DeepSeek adapter reads a key from; this script reads the same one. */
-const KEY_VARIABLE = 'DEEPSEEK_API_KEY';
+export const sha256 = (bytes: string | Buffer): string => createHash('sha256').update(bytes).digest('hex');
+export const within = (candidate: string, root: string): boolean => candidate === root || candidate.startsWith(root + path.sep);
+export interface Check { claim: string; passed: boolean; saw: unknown }
 
-/** The three tools a workshop's moment is given, in the order dsh reports them for its scope. */
-const WORKSHOP_TOOLS = [WORKSHOP_WRITE_TOOL, WORKSHOP_READ_TOOL, WORKSHOP_KNOWLEDGE_TOOL];
-
-/** How long the whole Campaign is given: one real model session writing one script, then two Jobs. */
-const CAMPAIGN_TIMEOUT_MS = 600_000;
-
-const usage = [
-  'usage: DEEPSEEK_API_KEY=… node scripts/live-check-workshop.ts [--out <dir>]',
-  '',
-  '  --out   the directory the record is written into. Default docs/validation/ in this repository.',
-].join('\n');
-
-// ---------------------------------------------------------------------------------------------
-// The refusal, before anything at all is prepared.
-// ---------------------------------------------------------------------------------------------
-
-const key = process.env[KEY_VARIABLE];
-if (key === undefined || key.trim() === '') {
-  process.stderr.write([
-    `live-check-workshop: there is no ${KEY_VARIABLE} in this environment, and this check is one of the things in HimaHarness that needs one.`,
-    '',
-    'A DeepSeek key reaches this product through DeepSeek Harness\'s own three doors, and through no door of this harness\'s:',
-    `  - the launching environment: ${KEY_VARIABLE} exported in the shell that starts the harness, which is what this check wants;`,
-    '  - dsh\'s own credentials store, $DSH_HOME/.credentials.yaml, which the window\'s Models page writes and nothing here does;',
-    '  - an env file dsh loads, $DSH_HOME/.env or the invoking directory\'s.',
-    '',
-    'HimaHarness writes none of those files, reads a key by no other path, and puts no key in any record it writes.',
-    'Nothing was prepared and nothing was booted. Export a key and run this again:',
-    `  ${KEY_VARIABLE}=… node scripts/live-check-workshop.ts`,
-    '',
-  ].join('\n'));
-  process.exit(2);
-}
-
-const argv = process.argv.slice(2);
-if (argv.includes('--help') || argv.includes('-h')) { process.stdout.write(`${usage}\n`); process.exit(0); }
-const option = (name: string): string | undefined => {
-  const at = argv.indexOf(name);
-  return at === -1 ? undefined : argv[at + 1];
-};
-for (const given of argv) {
-  if (given.startsWith('--') && given !== '--out') { process.stderr.write(`live-check-workshop: unknown option ${given}\n${usage}\n`); process.exit(2); }
-}
-const outDir = path.resolve(option('--out') ?? path.join(repoRoot, 'docs/validation'));
-
-const startedAt = new Date();
-const stamp = startedAt.toISOString().slice(0, 10);
-const base = `${stamp}-live-check-workshop`;
-const jsonAt = path.join(outDir, `${base}.json`);
-const markdownAt = path.join(outDir, `${base}.md`);
-
-// Beside the key check and not beside the write, for the reason `live-check-moment.ts` states: by the
-// time a record could be written, a shell has booted and one real DeepSeek session has been paid for
-// with the owner's key, and a refusal at that point would throw that away rather than prevent it.
-if (existsSync(jsonAt) || existsSync(markdownAt)) {
-  process.stderr.write(`live-check-workshop: ${base}.{md,json} already exists in ${outDir}; move the earlier record aside first\n`);
-  process.exit(2);
-}
-
-// ---------------------------------------------------------------------------------------------
-// The record.
-// ---------------------------------------------------------------------------------------------
-
-/** One claim this run makes, with the predicate it was judged by and what was actually seen. */
-interface Check {
-  readonly claim: string;
-  readonly predicate: string;
-  readonly saw: string;
-  readonly passed: boolean;
-}
-
-const checks: Check[] = [];
-const check = (claim: string, predicate: string, saw: string, passed: boolean): boolean => {
-  checks.push({ claim, predicate, saw, passed });
-  return passed;
-};
-
-/** The key's shape, which is what a record may carry: never the key. */
-const keyShape = `${String(key.length)} characters, beginning "${key.slice(0, 4)}"`;
-
-/** A skip is not available to a script: what a driver test skips on, this reports as a refusal. */
-const noSkip = {
-  skip: (reason?: string) => {
-    throw new Error(`this check needs what a driver test needs, and this machine has not got it: ${reason ?? 'no reason given'}`);
-  },
-} as unknown as TestContext;
-
-interface Observed {
-  packId?: string;
-  runId?: string;
-  status?: string;
-  sessions?: SessionRecord[];
-  code?: CodeRecord[];
-  script?: string;
-  values?: unknown;
-  scanned?: number;
-  holding?: readonly string[];
-  unreadable?: readonly string[];
-}
-const observed: Observed = {};
-let refusal: string | undefined;
-
-/** Poll until something is true, or fail saying what never happened. */
-async function until(what: string, ready: () => boolean | Promise<boolean>, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    if (await ready()) return;
-    if (Date.now() >= deadline) throw new Error(`waited ${String(timeoutMs)} ms and ${what} never happened`);
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-}
-
-async function run(): Promise<void> {
-  const home = await localHome(noSkip, { sleepSeconds: 1 });
-  if (!home) throw new Error('the local stand-in flow could not be written');
-  let d: BootedDriver | undefined;
-  try {
-    const packId = await installWorkshopPack(packsDirOf(home.h));
-    observed.packId = packId;
-    // **No `model` option**: this boot gets no replay overlay, so the host composes the product's own
-    // DeepSeek adapter and the key below is the only reason a moment can answer at all.
-    d = await bootDriver(noSkip, { existing: home.h, env: { [KEY_VARIABLE]: key! } });
-    if (!d) throw new Error('the shell did not boot');
-    const host = await d.host();
-    if (!host.ok) throw new Error(`the shell refused host: ${host.error}`);
-    const cookie = await d.cookie();
-
-    const started = await api(host, cookie, '/hima/api/runs', {
-      method: 'POST',
-      // No `retries` here on purpose, so the Run takes the **default** Retry allowance — three
-      // attempts (`defaultRetryAllowance`, `budget.ts`) — which is what an ordinary Campaign of this
-      // product runs under.
-      //
-      // The live check of 2026-09-12 is why. It ran with an allowance of one, the real model's first
-      // script exited 1 because nothing on the flow said what to count, and that single failure was a
-      // Hard blocker — so what the check measured was whether a model gets it right first time. What
-      // #62 promises is narrower and truer: that a workshop reaches an observation *within its
-      // allowance*, a retry being given the reason and the log tail of the attempt before it. So the
-      // allowance is left at the default and the checks below say "within the allowance".
-      body: JSON.stringify({ pack: packId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: 2.0 }, generations: 1, timeBox: 10 }),
-      headers: { 'content-type': 'application/json' },
-    });
-    const startedText = await started.text();
-    if (started.status !== 200) throw new Error(`the run did not start: ${String(started.status)} ${startedText}`);
-    const view = JSON.parse(startedText) as RunView;
-    observed.runId = view.run.id;
-    observed.status = view.run.status;
-
-    const runView = async (): Promise<RunView> => {
-      const answered = await api(host, cookie, `/hima/api/runs/${view.run.id}`);
-      const text = await answered.text();
-      if (answered.status !== 200) throw new Error(`the run view did not answer: ${String(answered.status)} ${text}`);
-      return JSON.parse(text) as RunView;
-    };
-    // The start route answers when the Run stops, so this is already over; the wait is here for the
-    // one case where it is not — a Run the host is still carrying when the route answered.
-    await until('the campaign stopped', async () => (await runView()).run.status !== 'running', CAMPAIGN_TIMEOUT_MS);
-    const final = await runView();
-    observed.status = final.run.status;
-
-    const listed = await api(host, cookie, `/hima/api/runs/${view.run.id}/records?type=session`);
-    const listedText = await listed.text();
-    if (listed.status !== 200) throw new Error(`the records route did not answer: ${String(listed.status)} ${listedText}`);
-    const sessions = (JSON.parse(listedText) as RecordsView).records.filter((r): r is SessionRecord => r.type === 'session');
-    observed.sessions = sessions;
-
-    const opened = sessions.find((r) => r.event === 'opened');
-    check('a model moment opened at the workshop node', `an opened session record at node ${workshopId}`,
-      JSON.stringify(sessions.map((r) => `${r.event}@${r.nodeId}`)),
-      opened !== undefined && opened.nodeId === workshopId);
-    check('the moment reached exactly the workshop\'s three tools', `tools === ${JSON.stringify(WORKSHOP_TOOLS)}`,
-      JSON.stringify(opened?.tools ?? null),
-      JSON.stringify(opened?.tools ?? null) === JSON.stringify(WORKSHOP_TOOLS));
-    check('the moment closed having done what it was opened for', 'a closed record with outcome completed',
-      JSON.stringify(sessions.filter((r) => r.event === 'closed').map((r) => r.outcome)),
-      sessions.some((r) => r.event === 'closed' && r.outcome === 'completed'));
-
-    const codeAnswer = await api(host, cookie, `/hima/api/runs/${view.run.id}/records?type=code`);
-    const codeText = await codeAnswer.text();
-    if (codeAnswer.status !== 200) throw new Error(`the records route did not answer: ${String(codeAnswer.status)} ${codeText}`);
-    const code = (JSON.parse(codeText) as RecordsView).records.filter((r): r is CodeRecord => r.type === 'code');
-    observed.code = code;
-
-    const entry = code.find((r) => r.path.endsWith(path.join(workshopDirectory, workshopEntry)));
-    check('the model wrote the entry inside the workshop directory', `a code record whose path ends ${path.join(workshopDirectory, workshopEntry)}`,
-      JSON.stringify(code.map((r) => r.path)), entry !== undefined);
-    if (entry !== undefined) {
-      // The hash on the record, held against the bytes that are really on the Site. This is the whole
-      // of what a code record claims, and the local Site is a directory this process can read.
-      let onDisk: string | undefined;
-      try {
-        const bytes = await readFile(entry.path);
-        observed.script = bytes.toString('utf8');
-        onDisk = createHash('sha256').update(bytes).digest('hex');
-      } catch (err) {
-        onDisk = `could not read ${entry.path}: ${err instanceof Error ? err.message : String(err)}`;
-      }
-      check('the record hashes the bytes that are really on the site', `sha256 === ${entry.sha256}`, String(onDisk), onDisk === entry.sha256);
+/** Real-host evidence and budgets for these two opt-in scripts; no product execution decisions. */
+export class LiveCheck {
+  readonly startedAt = new Date().toISOString();
+  readonly checks: Check[] = [];
+  readonly observed: Record<string, unknown> = {};
+  readonly agents: Agent[] = [];
+  readonly toolSequence: unknown[] = [];
+  readonly requestSessions = new Set<string>();
+  readonly userMessages: unknown[] = [];
+  readonly limits: { timeoutMs: number; maxTurns: number; maxSteps: number };
+  readonly out: string;
+  readonly key: string;
+  readonly temporary: string;
+  readonly deadline: number;
+  host?: InProcessHost;
+  home?: HimaHome;
+  steps = 0;
+  turns = 0;
+  failure?: string;
+  hardTimer: NodeJS.Timeout;
+  readonly name: string;
+  constructor(name: string, defaultTurns: number) {
+    this.name = name;
+    const args = process.argv.slice(2);
+    const help = `usage: node scripts/${name}.ts --out <fresh-directory> [--timeout-ms 600000] [--max-turns ${defaultTurns}] [--max-steps 160]\nRequires DEEPSEEK_API_KEY in the inherited environment; never pass a credential as an argument.\n`;
+    if (args.includes('--help') || args.includes('-h')) { process.stdout.write(help); process.exit(0); }
+    const options = new Map<string, string>();
+    for (let i = 0; i < args.length; i += 2) {
+      if (!['--out', '--timeout-ms', '--max-turns', '--max-steps'].includes(args[i]!) || !args[i + 1] || args[i + 1]!.startsWith('--')) throw new Error(help);
+      options.set(args[i]!, args[i + 1]!);
     }
-
-    const job = final.jobs.filter((j) => j.job.name === `workshop-${workshopId}`);
-    check('the fabric ran what the model wrote, within the allowance', `a launched and an ended job named workshop-${workshopId} that exited 0`,
-      JSON.stringify(job.map((j) => `${j.event}${j.exitCode === undefined ? '' : `:${String(j.exitCode)}`}`)),
-      job.some((j) => j.event === 'launched') && job.some((j) => j.exitCode === 0));
-
-    const reading = final.observations.at(-1);
-    observed.values = reading?.values ?? null;
-    check('the node after it read what the script produced', `an observation holding ${candidateCountType}`,
-      JSON.stringify(reading?.values ?? null),
-      reading?.values.some((v) => v.type === candidateCountType) === true);
-    check('the workshop node is done, within the allowance', 'the run\'s path holds the workshop node in state done',
-      JSON.stringify(final.nodes.filter((n) => n.nodeId === workshopId).map((n) => n.state)),
-      final.nodes.some((n) => n.nodeId === workshopId && n.state === 'done'));
-
-    // Everything is flushed once the window and its host are gone; only then is the home read.
-    const stopped = await d.quit();
-    if (!stopped.ok) throw new Error(`the shell refused quit: ${stopped.error}`);
-    await d.exit();
-
-    const scan = await scanForSecret([home.h.home, home.h.workspace, path.join(home.h.home, 'electron-user-data')], key!);
-    observed.scanned = scan.files.length;
-    observed.holding = scan.holding;
-    observed.unreadable = scan.unreadable.map((file) => `${file.path} (${file.error})`);
-    check('the scan read the home rather than nothing', 'more than fifty files were read', `${String(scan.files.length)} files`, scan.files.length > 50);
-    check('the scan read every file it found', 'no file under the home was unreadable', JSON.stringify(observed.unreadable), scan.unreadable.length === 0);
-    check('the key reached no file the run wrote', 'no file under the home holds the key', JSON.stringify(scan.holding), scan.holding.length === 0);
-    const envFiles = scan.credentialFiles.filter((at) => path.basename(at) === '.env');
-    check('the harness wrote no env file', 'no .env exists under the home', JSON.stringify(envFiles), envFiles.length === 0);
-  } finally {
-    if (d) await d.dispose();
-    await home.h.dispose();
+    this.key = process.env.DEEPSEEK_API_KEY ?? '';
+    if (!this.key.trim()) { process.stderr.write(`${name}: missing DEEPSEEK_API_KEY; nothing prepared, no Host or model started.\n`); process.exit(2); }
+    // Native Host diagnostics share these streams. Scrub the known supplied secret before any
+    // library output leaves this process, in addition to scanning retained bytes at finalization.
+    for (const stream of [process.stdout, process.stderr]) {
+      const write = stream.write.bind(stream);
+      stream.write = ((chunk: unknown, ...rest: unknown[]) => {
+        const text = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+        return Reflect.apply(write, stream, [text.split(this.key).join('[REDACTED]'), ...rest]) as boolean;
+      }) as typeof stream.write;
+    }
+    const bounded = (name: string, fallback: number, max: number) => {
+      const value = Number(options.get(name) ?? fallback);
+      if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`${name} must be an integer from 1 to ${max}`);
+      return value;
+    };
+    this.limits = { timeoutMs: bounded('--timeout-ms', 600_000, 600_000), maxTurns: bounded('--max-turns', defaultTurns, 32), maxSteps: bounded('--max-steps', 160, 200) };
+    this.out = path.resolve(options.get('--out') ?? path.join(repoRoot, 'docs/assessment/2026-09-12/pls-19/live-harness', `${name}-${Date.now()}`));
+    if (existsSync(this.out)) throw new Error('the evidence directory already exists; use a fresh --out directory');
+    mkdirSync(this.out, { recursive: true });
+    this.temporary = realpathSync(mkdtempSync('/tmp/hima-l4-'));
+    process.env.TMPDIR = this.temporary;
+    process.env.TMUX_TMPDIR = this.temporary;
+    delete process.env.TMUX;
+    delete process.env.SSH_AUTH_SOCK;
+    delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+    delete process.env.HIMA_TEST_SILENT_AGENT;
+    process.env.DSH_TELEMETRY_DISABLED = '1';
+    this.deadline = Date.now() + this.limits.timeoutMs;
+    this.observed.sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+    this.observed.privateRoot = this.temporary;
+    this.observed.node = process.version;
+    this.observed.dirtyFiles = execFileSync('git', ['status', '--short'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+    this.observed.model = 'native configured DeepSeek adapter; no replay';
+    // A stuck provider/disposal cannot make the advertised ten-minute bound unbounded. Snapshot and
+    // terminate only this private tmux server. The finally path normally cancels Agents first.
+    this.hardTimer = setTimeout(() => {
+      this.failure = 'hard deadline exceeded';
+      this.stopAgents();
+      this.stopJobs();
+      this.checkpoint();
+      this.emergencyScan();
+      process.stderr.write(`${name}: hard deadline; diagnostic checkpoint: ${this.out}\n`);
+      process.exit(124);
+    }, this.limits.timeoutMs);
+  }
+  emergencyScan(): void {
+    const scan = { files: 0, redacted: [] as string[], unreadable: [] as string[] };
+    const walk = (dir: string): void => {
+      let entries;
+      try { entries = readdirSync(dir, { withFileTypes: true }); } catch { scan.unreadable.push(dir); return; }
+      for (const entry of entries) {
+        const at = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(at);
+        else if (entry.isFile()) {
+          try { const bytes = readFileSync(at); scan.files++; if (bytes.includes(Buffer.from(this.key))) { writeFileSync(at, bytes.toString('utf8').split(this.key).join('[REDACTED]')); scan.redacted.push(at); } }
+          catch { scan.unreadable.push(at); }
+        }
+      }
+    };
+    walk(this.temporary); walk(this.out);
+    this.observed.deadlineSecretScan = scan; this.checkpoint();
+  }
+  clean<T>(value: T): T { return JSON.parse(JSON.stringify(value).split(this.key).join('[REDACTED]')) as T; }
+  check(claim: string, passed: boolean, saw: unknown): void { this.checks.push({ claim, passed, saw: this.clean(saw ?? null) }); this.checkpoint(); }
+  require(claim: string, passed: boolean, saw: unknown): void { this.check(claim, passed, saw); if (!passed) throw new Error(claim); }
+  track(agent: Agent): Agent { if (!this.agents.includes(agent)) this.agents.push(agent); return agent; }
+  async say(agent: Agent, text: string): Promise<void> {
+    this.admitMessage(agent, 'followup', text);
+    await this.wait(sayAsUser(agent, text));
+    this.checkpoint();
+  }
+  steer(agent: Agent, text: string): void { this.admitMessage(agent, 'steer', text); steerAsUser(agent, text); }
+  private admitMessage(agent: Agent, delivery: string, text: string): void {
+    if (++this.turns > this.limits.maxTurns) throw new Error('user-message turn budget exceeded');
+    this.userMessages.push({ at: new Date().toISOString(), session: String(agent.id), source: 'user', delivery, text });
+    this.checkpoint();
+  }
+  async wait<T>(promise: Promise<T>): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try { return await Promise.race([promise, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('live-check deadline reached')), Math.max(1, this.deadline - Date.now() - 5000)); })]); }
+    finally { clearTimeout(timer); }
+  }
+  async until(why: string, ready: () => boolean, maxMs = 120_000): Promise<void> {
+    const until = Math.min(this.deadline - 5000, Date.now() + maxMs);
+    while (!ready()) { if (Date.now() >= until) throw new Error(`timed out: ${why}`); await new Promise((r) => setTimeout(r, 150)); }
+  }
+  attach(host: InProcessHost): void {
+    this.host = host;
+    host.ctx.on('agent/request', async ({ agent }, next) => {
+      this.requestSessions.add(String(agent.id));
+      if (++this.steps > this.limits.maxSteps) { cancelTestAgent(agent, 'live-check model-step budget exceeded'); throw new Error('model-step budget exceeded'); }
+      this.checkpoint();
+      return next();
+    });
+    host.ctx.on('tools/result', (execution, result) => {
+      this.toolSequence.push(this.clean({ at: new Date().toISOString(), agent: execution.agent?.id, callId: execution.callId, name: execution.name, args: execution.arguments, result }));
+      this.checkpoint();
+      return undefined;
+    });
+  }
+  checkpoint(): void {
+    try {
+      const runs = this.host?.ctx.hima.ledger.runs() ?? [];
+      const record = this.clean({ check: this.name, startedAt: this.startedAt, checkpointAt: new Date().toISOString(), limits: this.limits,
+        passed: false, status: this.failure ? 'failed' : 'in-progress', failure: this.failure ?? null,
+        costs: { hosts: this.host ? 1 : 0, electron: 0, nativeSessionsCreated: this.agents.length, modelSessions: this.requestSessions.size,
+          modelRequestSteps: this.steps, apiRequests: 'unmeasured; request steps exclude adapter retries', tokens: 'unmeasured', userMessages: this.turns },
+        observed: this.observed, userMessages: this.userMessages, toolSequence: this.toolSequence,
+        agents: this.agents.map((agent) => ({ id: agent.id, session: agent.session.id, cwd: agent.session.header.cwd, options: agent.options, skills: injectedSkills(agent), toolCalls: toolCalls(agent), toolResults: toolResults(agent), said: saidByModel(agent) })),
+        runs: runs.map((run) => ({ run, records: this.host!.ctx.hima.ledger.records({ runId: run.id }) })), checks: this.checks });
+      writeFileSync(path.join(this.out, 'evidence.json'), JSON.stringify(record, null, 2) + '\n');
+    } catch { /* Preserve the preceding checkpoint if the Host has already disposed. */ }
+  }
+  stopAgents(): void { for (const agent of this.agents) cancelTestAgent(agent, 'bounded live check finished'); }
+  stopJobs(): void { spawnSync('tmux', ['-S', path.join(this.temporary, `tmux-${process.getuid!()}`, 'default'), 'kill-server'], { stdio: 'ignore', timeout: 2000 }); }
+  async finish(): Promise<void> {
+    this.stopAgents();
+    // Snapshot actual product facts before cleanup changes them. Private Job termination is cleanup,
+    // never evidence that an Agent cancel/pause succeeded.
+    this.checkpoint();
+    this.stopJobs();
+    if (this.host) { try { await this.wait(this.host.dispose()); } catch (error) { this.failure ??= String(error); } }
+    const scan = await scanForSecret([this.temporary, this.out], this.key);
+    this.observed.secretScan = { files: scan.files.length, holding: scan.holding, unreadable: scan.unreadable };
+    // Retained diagnostics must be safe even on failures. Exact matching bytes are removed before
+    // publication; the original presence still fails the check. No key prefix/length is recorded.
+    for (const at of scan.holding) writeFileSync(at, readFileSync(at).toString('utf8').split(this.key).join('[REDACTED]'));
+    this.check('retained private home and evidence were scanned', scan.files.length > 0 && scan.unreadable.length === 0 && scan.holding.length === 0, this.observed.secretScan);
+    const at = path.join(this.out, 'evidence.json');
+    const existing = JSON.parse(readFileSync(at, 'utf8')) as Record<string, unknown>;
+    const passed = !this.failure && this.checks.every((c) => c.passed);
+    writeFileSync(at, JSON.stringify(this.clean({ ...existing, finishedAt: new Date().toISOString(), passed, status: passed ? 'passed' : 'failed', failure: this.failure ?? null, observed: this.observed, checks: this.checks }), null, 2) + '\n');
+    writeFileSync(path.join(this.out, 'README.md'), `# ${this.name}\n\n${passed ? 'PASS' : 'FAIL'} — ${this.failure ?? 'see factual checks in evidence.json'}.\n\nOne headless real Host; no Electron, replay, EDA or hidden research moment. Native model sessions: ${this.requestSessions.size}; request steps: ${this.steps}; API request count and token use unmeasured. Private diagnostic home retained at ${this.temporary}. Private tmux Jobs stopped for cleanup.\n\n${this.checks.map((c) => `- ${c.passed ? 'PASS' : 'FAIL'}: ${c.claim}`).join('\n')}\n`);
+    clearTimeout(this.hardTimer);
+    process.stdout.write(`${this.name}: ${passed ? 'PASS' : 'FAIL'}; evidence ${this.out}\n`);
+    process.exitCode = passed ? 0 : 1;
   }
 }
 
-function markdown(): string {
-  const failed = checks.filter((c) => !c.passed);
-  const lines = [
-    `# Live check: the workshop, ${stamp}`,
-    '',
-    `One real model writing one real script through the product, with a key from the launching environment (${keyShape}).`,
-    `HimaHarness on DeepSeek Harness 0.1.5-alpha.1 (Node ${process.version}), driven through the desktop shell in driver mode with **no replay overlay**: the host composed its own DeepSeek adapter.`,
-    '',
-    `**${failed.length === 0 && refusal === undefined ? 'PASS' : 'FAIL'}** — ${String(checks.filter((c) => c.passed).length)} of ${String(checks.length)} checks passed.`,
-    ...(refusal === undefined ? [] : ['', `The run did not finish: ${refusal}`]),
-    '',
-    '## What ran',
-    '',
-    `- Run \`${observed.runId ?? '—'}\` of the \`${observed.packId ?? '—'}\` pack on site \`local\`, one generation; it ended \`${observed.status ?? '—'}\`.`,
-    `- Workshop \`${workshopId}\`, writing into \`${workshopDirectory}\`, entry \`${workshopEntry}\`, preset \`${HIMA_MOMENT_PRESET}\`.`,
-    `- The moment reached: ${JSON.stringify(observed.sessions?.find((r) => r.event === 'opened')?.tools ?? [])}.`,
-    `- What the reader took out of what the script produced: ${JSON.stringify(observed.values ?? null)}.`,
-    '',
-    '## What the model wrote',
-    '',
-    '```sh',
-    observed.script ?? '(nothing was written)',
-    '```',
-    '',
-    '## The records',
-    '',
-    '```json',
-    JSON.stringify({ sessions: observed.sessions ?? [], code: observed.code ?? [] }, null, 2),
-    '```',
-    '',
-    '## The home, read afterwards',
-    '',
-    `- ${String(observed.scanned ?? 0)} files read under \`$DSH_HOME\`, the window's user-data directory and the workspace.`,
-    `- Files that could not be read: ${JSON.stringify(observed.unreadable ?? [])}.`,
-    `- Files holding the key: ${JSON.stringify(observed.holding ?? [])}.`,
-    '',
-    'The key came from the launching environment. HimaHarness writes no credentials file and no env file, reads a key by no path of its own, and no record above carries one.',
-    '',
-    '## Checks',
-    '',
-    '| Claim | Predicate | Saw | |',
-    '|---|---|---|---|',
-    ...checks.map((c) => `| ${c.claim} | ${cell(c.predicate)} | ${cell(c.saw)} | ${c.passed ? 'PASS' : '**FAIL**'} |`),
-    '',
-  ];
-  return `${lines.join('\n')}\n`;
+/** Resolve real paths, including symlinks; reads have four declared data roots, writes one Pack. */
+export function guardInstalled(check: LiveCheck, host: InProcessHost, readRoots: string[], packFolder: string): void {
+  const allowed = readRoots.map((at) => realpathSync(at));
+  const pack = realpathSync(packFolder);
+  const denied: unknown[] = [];
+  check.observed.allowedReadRoots = allowed;
+  check.observed.allowedWriteRoot = pack;
+  check.observed.deniedTools = denied;
+  host.ctx.tools.guard((execution) => {
+    const name = execution.name;
+    const refuse = (reason: string) => { denied.push({ name, reason }); return reason; };
+    if (!['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'skill'].includes(name) && !name.startsWith('hima_')) return refuse('bounded live check permits file inspection, Pack authoring and Hima tools only');
+    if (name.startsWith('hima_') || name === 'skill') return undefined;
+    const args = execution.arguments as { file_path?: string; path?: string };
+    const cwd = execution.agent?.session.header.cwd;
+    const requested = args.file_path ?? args.path ?? cwd;
+    if (!requested || !cwd) return refuse('a declared path and session workspace are required');
+    const candidate = path.resolve(cwd, requested);
+    let real: string;
+    try { real = realpathSync(candidate); }
+    catch {
+      if (!['write', 'edit'].includes(name)) return refuse(`cannot resolve read path ${candidate}`);
+      let ancestor = candidate;
+      const tail: string[] = [];
+      while (!existsSync(ancestor)) { if (lstatSync(ancestor, { throwIfNoEntry: false })) return refuse('dangling symlink write refused'); tail.unshift(path.basename(ancestor)); const next = path.dirname(ancestor); if (next === ancestor) return refuse('write parent unresolved'); ancestor = next; }
+      real = path.join(realpathSync(ancestor), ...tail);
+    }
+    const roots = ['write', 'edit'].includes(name) ? [pack] : allowed;
+    return roots.some((root) => within(real, root)) ? undefined : refuse(`outside declared ${name} roots: ${candidate}`);
+  });
 }
 
-try {
-  await run();
-} catch (err) {
-  refusal = err instanceof Error ? err.message : String(err);
-  check('the check ran to its end', 'no refusal on the way', refusal, false);
+export async function numericHome(check: LiveCheck): Promise<{ h: HimaHome; flow: string; bundle: string; numbers: number[]; limit: number }> {
+  const h = await createHimaHome(); check.home = h;
+  await prepareHimaHome({ home: h.home, bundleMode: 'installed' });
+  await installPack(h);
+  const bundle = realpathSync(path.join(h.profileDir, 'node_modules/@hima/harness'));
+  const flow = path.join(h.home, 'numeric-flow'); mkdirSync(flow);
+  const numbers = [39, ...Array.from({ length: 11 }, () => randomInt(1, 40))];
+  const limit = randomInt(8, 22);
+  writeFileSync(path.join(flow, 'numbers.txt'), numbers.join('\n') + '\n');
+  writeFileSync(path.join(flow, 'prepare.sh'), '#!/bin/sh\nset -eu\ncd "$1"\ncp numbers.txt measured.txt\n');
+  writeFileSync(path.join(flow, 'README.md'), '# Numeric Golden Flow\n\nRun `sh prepare.sh <flow-directory>` in a private copy. It copies numbers.txt to measured.txt. Both contain one nonnegative integer per line. Analysis must sum only numbers strictly greater than the requested LIMIT. A Workshop writes its own shell script from these actual inputs and the declared analysis knowledge; result.txt contains the integer sum alone. There is no EDA or licence use.\n');
+  await writeLocalSite(h, { allowedReadRoots: [h.workspace, flow], allowedWriteRoots: [h.workspace], allowedWrappers: ['sh'], licences: {}, bindings: { flowRoot: flow, design: 'numeric', workspaceRoot: h.workspace } });
+  // Disable title generation only; all business requests still use the native real adapter.
+  writeFileSync(homePatchFile(h.home), '- id: session-title-llm\n  disabled: true\n');
+  check.observed.installedBundle = bundle;
+  check.observed.installedBuildHashes = Object.fromEntries([...(await digestTrees([bundle], path.join(bundle, 'node_modules')))].map(([at, hash]) => [path.relative(bundle, at), hash]));
+  check.observed.input = { path: path.join(flow, 'numbers.txt'), sha256: sha256(readFileSync(path.join(flow, 'numbers.txt'))), numbers, limit };
+  // The native Host's fallback cwd is private too; installed authoring never starts in checkout.
+  process.chdir(h.workspace);
+  return { h, flow, bundle, numbers, limit };
 }
 
-mkdirSync(outDir, { recursive: true });
-writeFileSync(jsonAt, `${JSON.stringify({
-  check: 'live-check-workshop',
-  startedAt: startedAt.toISOString(),
-  finishedAt: new Date().toISOString(),
-  node: process.version,
-  keyShape,
-  run: { id: observed.runId, pack: observed.packId, site: 'local', status: observed.status },
-  workshop: { id: workshopId, directory: workshopDirectory, entry: workshopEntry, preset: HIMA_MOMENT_PRESET },
-  sessions: observed.sessions ?? [],
-  code: observed.code ?? [],
-  script: observed.script ?? null,
-  values: observed.values ?? null,
-  home: { filesRead: observed.scanned ?? 0, unreadable: observed.unreadable ?? [], holdingTheKey: observed.holding ?? [] },
-  refusal: refusal ?? null,
-  checks,
-  passed: refusal === undefined && checks.every((c) => c.passed),
-}, null, 2)}\n`);
-writeFileSync(markdownAt, markdown());
-process.stdout.write(`${markdown()}\nrecord: ${jsonAt}\n`);
-process.exit(refusal === undefined && checks.every((c) => c.passed) ? 0 : 1);
+export function installNumericPack(folder: string): void {
+  const files: Record<string, string> = {
+    'contract.yml': `id: live-numeric\nversion: '1'\ntitle: Bounded numeric analysis\ninputs:\n  - { name: flowRoot, description: Declared numeric Golden Flow }\n  - { name: design, description: Numeric dataset }\n  - { name: workspaceRoot, description: Private workspace }\noutputs:\n  - { name: measured, path: flow/measured.txt, description: Actual numeric input }\n  - { name: analysis, path: result.txt, reader: numeric-sum, description: Sum above LIMIT }\nenvironment: { wrappers: [sh] }\nworkspace: { copy: [prepare.sh, numbers.txt, README.md] }\ntools:\n  - id: prepare\n    file: tools/prepare.sh\n    description: Copy the actual input in the private flow\n    inputs: [WORKSPACE]\n    argv: [sh, '\${WORKSPACE}/flow/prepare.sh', '\${WORKSPACE}/flow']\nknowledge:\n  - { file: sum.md, purpose: Exact numeric analysis and timing contract }\nworkshops:\n  - id: analyze\n    purpose: Read actual measured values and knowledge; write and run a shell script summing values strictly greater than LIMIT. Sleep 60 seconds in the script before writing result.txt so the engineer can intervene while the Job is active.\n    directory: research/analysis\n    entry: analyze.sh\n    language: shell\n    inputs: [LIMIT]\n    reads: [measured]\n    knowledge: [sum.md]\n    produces: analysis\n    argv: [sh, '\${ENTRY}', '\${WORKSPACE}', '\${LIMIT}']\nrules: [positive-sum]\nstrategy:\n  limit: { type: number, unit: count, min: 0, max: 100, default: 10 }\ngoal:\n  minimum: { type: number, unit: count, min: 0, max: 10000, default: 1 }\nwords:\n  limit: { label: Strict lower cutoff, unit: count }\n  minimum: { label: Minimum acceptable sum, unit: count }\n`,
+    'graph.yml': `id: live-numeric\nversion: '1'\nentry: prepare\nnodes:\n  - { id: prepare, kind: act, parameters: { tool: prepare } }\n  - id: analyze\n    kind: act\n    parameters:\n      workshop: analyze\n      arguments: { LIMIT: { from: strategy, name: limit } }\n  - { id: read-analysis, kind: act, parameters: { observes: analysis } }\n  - id: judge\n    kind: judge\n    parameters:\n      rules: [positive-sum]\n      bind: { minimum: { from: goal, name: minimum } }\n  - { id: blocked, kind: wait, parameters: { blocker: hard-blocker } }\nedges:\n  - { from: prepare, to: analyze }\n  - { from: analyze, to: read-analysis }\n  - { from: read-analysis, to: judge }\n`,
+    'semantics.yml': 'values:\n  numeric_sum: { unit: count, description: Sum of actual numbers above LIMIT }\n',
+    'rules/positive-sum.yml': "id: positive-sum\nversion: '1'\ntitle: Numeric sum meets the requested minimum\nparameter: { name: minimum, unit: count }\nrequires: [{ type: numeric_sum }]\nsubject: { type: numeric_sum }\npredicate: { op: gte, threshold: { parameter: minimum }, unit: count }\n",
+    'readers/numeric-sum.yml': "id: numeric-sum\nversion: '1'\nfile: tools/read-sum.sh\nargv: [sh, '${READER}', '${REPORT}', '${OUT}']\nreportKind: numeric-sum\nemits: [numeric_sum]\n",
+    'tools/read-sum.sh': '#!/bin/sh\nset -eu\nv=$(cat "$1")\ncase "$v" in ""|*[!0-9]*) exit 3;; esac\nprintf \'{"values":[{"type":"numeric_sum","unit":"count","value":%s}]}\\n\' "$v" > "$2"\n',
+    'tools/prepare.sh': '#!/bin/sh\nset -eu\nsh "$WORKSPACE/flow/prepare.sh" "$WORKSPACE/flow"\n',
+    'knowledge/sum.md': '# Exact analysis\n\nRead measured.txt: one integer per line. Sum only values strictly greater than LIMIT. Entry argv gives WORKSPACE as $1 and LIMIT as $2. Read $1/flow/measured.txt and write the integer alone to $1/result.txt. The script must sleep 60 seconds before publishing its result, providing a bounded active Job interval for human intervention. Compute from the file; hard-coded sample values do not establish input dependence.\n',
+  };
+  for (const [name, content] of Object.entries(files)) { const at = path.join(folder, name); mkdirSync(path.dirname(at), { recursive: true }); writeFileSync(at, content); }
+}
+
+async function workshop(check: LiveCheck): Promise<void> {
+  const { h, flow, bundle, numbers, limit } = await numericHome(check);
+  const pack = path.join(packsDirOf(h), 'live-numeric'); installNumericPack(pack);
+  loadPack(packsDirOf(h), 'live-numeric');
+  check.observed.hostBootAttempts = 1;
+  const host = await bootInProcess(h); check.attach(host);
+  guardInstalled(check, host, [bundle, packsDirOf(h), flow, h.workspace], pack);
+  const agent = check.track(await createRootAgent(host.ctx, h.workspace));
+  let startingError: unknown;
+  const starting = check.say(agent, `Run the installed live-numeric Pack on local with goal minimum=1, strategy limit=${limit}, generations=1, retries=2, timeBox=8. You are the same execution owner. Use hima_run, hima_context and hima_execute. Begin and work each node, complete only when ready. At analyze use recommend, read the declared measured output and knowledge, write the actual executable through controlled write, then work. The script sleeps 60 seconds as declared; read the knowledge for exact arguments/output. Let the real Job run asynchronously. Inspect its facts; finish your current response while it runs so I can intervene. Do not complete analyze or begin any successor until I explicitly continue. No shell or alternate Agent.`).catch((error: unknown) => { startingError = error; });
+  await check.until('real Workshop Job launched', () => host.ctx.hima.ledger.runs().some((run) => host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).some((r) => r.type === 'job' && r.event === 'launched' && r.job.name === 'workshop-analyze')), 360_000);
+  const workshopJobs = () => host.ctx.hima.ledger.runs().flatMap((r) => host.ctx.hima.ledger.records({ runId: r.id, type: 'job' })).filter((r) => r.type === 'job' && r.event === 'launched' && r.job.name === 'workshop-analyze');
+  const activeWorkshopJob = workshopJobs().at(-1);
+  check.require('the Workshop tmux Job actually exists at intervention', activeWorkshopJob?.type === 'job' && tmuxHasSession(activeWorkshopJob.job.session), activeWorkshopJob);
+  const run = host.ctx.hima.ledger.runs().find((r) => r.packId === 'live-numeric')!;
+  check.observed.owner = String(agent.id);
+  check.observed.runId = run.id;
+  const before = host.ctx.hima.executionContext(run.id);
+  check.require('intervention was delivered while the Workshop execution was working', before.executions.some((e) => e.nodeId === 'analyze' && e.phase === 'working'), before);
+  check.steer(agent, `Pause Run ${run.id} now using hima_execute pause at Run scope. Inspect hima_context, report actual in-flight Job facts, and do not complete analyze or start successors. This is an immediate user intervention, not permission to cancel or continue.`);
+  await check.until('same Agent accepted the user pause while the Job was active', () => (host.ctx.hima.ledger.run(run.id)?.control?.paused ?? []).includes('*'), 90_000);
+  const paused = host.ctx.hima.executionContext(run.id);
+  check.observed.pauseContext = paused;
+  check.require('the actual Workshop Job remained active when pause was accepted', activeWorkshopJob?.type === 'job' && tmuxHasSession(activeWorkshopJob.job.session), activeWorkshopJob);
+  check.require('pause reached the owner before the Job completed', paused.executions.some((e) => e.nodeId === 'analyze' && e.phase === 'working'), paused.executions);
+  await starting;
+  if (startingError) throw startingError;
+  await check.until('paused Job completed mechanically', () => host.ctx.hima.executionContext(run.id).executions.some((e) => e.nodeId === 'analyze' && e.phase === 'ready'));
+  await check.wait(agent.whenIdle());
+  const held = host.ctx.hima.executionContext(run.id);
+  check.require('finished Job did not admit a successor while paused', held.available.length === 0 && !held.executions.some((e) => e.nodeId === 'read-analysis') && held.run.currentNode === 'analyze', held);
+  await check.say(agent, `Explicit authorization: continue Run ${run.id}. Use hima_execute continue, complete the ready analyze execution, then explicitly begin/work/complete its reader and Judge. Read actual context after each change. Continue to the terminal Run status and report actual evidence. Use this same owner and Run.`);
+  for (let round = 0; round < 3 && !host.ctx.hima.ledger.run(run.id)?.status?.startsWith('ended-'); round++) {
+    await check.say(agent, `Inspect hima_context for Run ${run.id} and finish the authorized remaining reference nodes using current identities and actual ready facts. If something is refused, inspect its reason. Keep the same Run.`);
+  }
+  const final = host.ctx.hima.executionContext(run.id);
+  const records = host.ctx.hima.ledger.records({ runId: run.id });
+  const expected = numbers.filter((n) => n > limit).reduce((sum, n) => sum + n, 0);
+  const readings = records.filter((r) => r.type === 'observation');
+  check.require('real reader measured the variable-input sum', readings.some((r) => r.values.some((v) => v.type === 'numeric_sum' && v.value === expected)), { expected, readings });
+  check.require('real Judge produced a PASS verdict', records.some((r) => r.type === 'verdict' && r.outcome === 'PASS'), records.filter((r) => r.type === 'verdict'));
+  check.require('Run finished with the original conversational owner', final.run.status?.startsWith('ended-') === true && final.run.control?.owner === String(agent.id), final.run);
+  const codes = records.filter((r) => r.type === 'code');
+  check.observed.code = codes.map((r) => ({ record: r, content: readFileSync(r.path, 'utf8'), actualSha256: sha256(readFileSync(r.path)) }));
+  check.require('code records hash the actual generated files', codes.length > 0 && codes.every((r) => sha256(readFileSync(r.path)) === r.sha256), check.observed.code);
+  check.require('same model used all controlled Workshop actions', ['recommend', 'read', 'knowledge', 'write', 'pause', 'continue'].every((action) => toolCalls(agent).some((call) => call.name === 'hima_execute' && call.args.action === action)), toolCalls(agent));
+  check.require('no separate research model moment opened', records.every((r) => r.type !== 'session') && check.requestSessions.size === 1, { momentRecords: records.filter((r) => r.type === 'session'), modelSessions: [...check.requestSessions] });
+}
+
+export async function runLive(name: string, maxTurns: number, task: (check: LiveCheck) => Promise<void>): Promise<void> {
+  const check = new LiveCheck(name, maxTurns);
+  try { await check.wait(task(check)); } catch (error) { check.failure = check.clean(error instanceof Error ? error.stack ?? error.message : String(error)); }
+  finally { await check.finish(); }
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) await runLive('live-check-workshop', 16, workshop);

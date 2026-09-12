@@ -3,9 +3,10 @@
 You run the compiled pack on a real Site, as a Campaign marked a test run, and write the test record
 from what that Run actually recorded.
 
-You write exactly one file: `TEST.md`, in the session's working directory. That directory is the pack
-folder, and it is the only place you write. Nothing else in it is created, edited or deleted — a
-stage that corrected a rule while testing it would be testing a pack nobody ran.
+Your ordinary file tools write exactly one file: `TEST.md`, in the session's working directory.
+That directory is the Pack folder; keep all method files unchanged during the test. A declared
+Workshop generates runtime code separately through `hima_execute write` in its admitted private
+execution directory. Runtime code is evidence of this Run; it does not change the Pack method.
 
 A pack without a test record is not releasable. That is what this stage is for, and it is why every
 line of the record is read back out of the Run rather than written from what you expected.
@@ -46,20 +47,28 @@ the Run's owner; no hidden Agent or automatic graph driver continues it. Keep th
 
 Read `hima_context`, then use `hima_execute` with its current owner epoch and control revision to:
 
-1. `begin` one available reference node and retain the admitted execution id.
-2. Perform the node's work. Use controlled `read`, `write`, and `knowledge` for research/code nodes;
-   use `work` for the declared mechanical operation. A Job starts asynchronously and its identity
+1. Read `run.control.epoch`, `run.control.revision`, `available`, `executions` and the method's
+   contract/reference graph. Each action carries `run`, `expectedEpoch`, `expectedRevision` and
+   `requestId`. `begin` names one available `nodeId`; retain its admitted `executionId` for node actions.
+2. For a Workshop, call `recommend` with its `executionId` to obtain the purpose, private entry path,
+   actual argv/values, declared reads, knowledge and output. Use `read` with the declared `output`,
+   `knowledge` with the declared `file`, and `write` with a relative private code `path` and exact
+   `content`. Derive the algorithm from actual inputs. Then call `work` for its real Job. For other
+   nodes, use `work` for the declared mechanical operation. A Job starts asynchronously and its identity
    returns before completion. Do not wait in a long foreground tool or start a second Run.
 3. Inspect new context and actual Job/output facts. A notification only says new facts were saved;
    it does not mean the node succeeded or give permission to ignore a pause.
-4. Request `complete` only with actual required evidence. At an exploration node, state the decision,
+4. Request `complete` only when that execution is `ready` with actual required evidence. A Workshop
+   still needs its declared reader and Judge nodes after its script exits. At an exploration node, state the decision,
    strategy where needed, rationale and citations yourself; Judge remains the verdict authority.
 5. Choose the next available node only after completion is accepted. Repeat within the fixed budget.
 
 Use a unique request id for each new action; an identical retry keeps its id and arguments. After a
 stale/refused response read context again before deciding. Respect the author's mid-run instructions:
 `pause` blocks new work while Jobs may still run, `cancel` requests actual stop, and `continue` requires
-authorization. Never claim a Job stopped or a node completed from the request alone. `revise`/`grow`
+authorization. Re-read owner/epoch/revision after every mutation. Job completion, notifications and
+reconnection do not authorize continuing a paused Run. Keep active code bytes unchanged while a Job
+uses them. Never claim a Job stopped or a node completed from the request alone. `revise`/`grow`
 may be unsupported; report that response rather than substituting a hidden automatic driver.
 
 Then call `hima_status` with the run id it answered, and write the record from that. Every fact about
@@ -108,15 +117,18 @@ ready for `/hima-release`.
 
 ## Rules that do not bend
 
-- **One file.** `TEST.md`, in this folder. Nothing else is created, edited or deleted.
+- **Immutable method.** Ordinary file writes create only `TEST.md` in this folder. Runtime Workshop
+  code uses the admitted execution's controlled write operation and is recorded by the Harness.
 - **Nothing invented.** Every line of the record is something `hima_status` answered. A generation you
   did not see, a verdict you expected, an ending you assumed — none of those goes in.
 - **The Run is marked.** `test: true`, always. A Campaign that was not marked a test is not evidence
   that this pack was tested, and the harness will say so when the folder is checked.
 - **One Run.** If the Run ends waiting for a person, say so and stop: a blocked Run is a fact about
   this pack that the author has to see, not a reason to start another.
-- **You compute nothing.** The hashes, the digest of this folder and the check against the ledger are
-  the harness's (`hima_pack_check`, and the release stage's own verb). Never write a hash yourself.
+- **Use recorded identities.** Code hashes, the method digest and the check against the ledger are
+  the Harness's (`hima_pack_check`, and the release stage's own verb). Copy those actual hashes into
+  the test record; never fabricate them. The Workshop's declared numerical analysis still computes
+  from actual inputs.
 - **The numbers are the author's, never yours.** Every value on the `goal`, and every override on the
   `strategy`, comes from the author's message or from the spec's `Goal template` recommending one, and
   from nowhere else. Not from the Golden Flow's own numbers, not from the contract's or the chooser's

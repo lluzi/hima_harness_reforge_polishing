@@ -97,6 +97,16 @@ export async function sayAsUser(agent: Agent, text: string): Promise<void> {
   await agent.whenIdle();
 }
 
+/** Deliver a real user's interruption at the next Agent step, without queuing behind the turn. */
+export function steerAsUser(agent: Agent, text: string): void {
+  agent.steer(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }));
+}
+
+/** Stop only this test-owned Agent when its live-check budget expires. */
+export function cancelTestAgent(agent: Agent, reason: string): void {
+  agent.cancel({ kind: 'hook', reason });
+}
+
 /**
  * The skills a session's own messages say were injected into it, in the order they were injected.
  *
