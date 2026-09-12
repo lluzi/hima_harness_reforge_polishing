@@ -1268,12 +1268,14 @@ export const nodeExecution = z.strictObject({
 export type NodeExecution = z.infer<typeof nodeExecution>;
 export const executionReceipt = z.strictObject({
   requestId: z.string(), action: z.string(), executionId: z.string().optional(),
+  owner: z.string().optional(), epoch: z.number().int().positive().optional(),
 });
 export type ExecutionReceipt = z.infer<typeof executionReceipt>;
 export const executionRequest = z.strictObject({
   digest: sha256Hex, actor: z.string(), epoch: z.number().int().positive(),
   revision: z.number().int().nonnegative(), at: z.string(),
   state: z.enum(['admitted', 'done', 'uncertain']), receipt: executionReceipt,
+  origin: z.enum(['agent', 'human']).optional(),
 });
 export const runControl = z.strictObject({
   mode: z.literal('agent'),

@@ -27,6 +27,37 @@ test('a conversational owner prepares a Run without executing its first business
   } finally { await host.dispose(); await home.h.dispose(); }
 });
 
+test('pause and an explicit handoff fence old owners without changing Goal or budget', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0.01 });
+  assert.ok(home);
+  const host = await bootInProcess(home.h);
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const next = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    const base = { runId: started.run.id, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0 };
+    const paused = await host.ctx.hima.executionAction({ ...base, requestId: 'pause-one', action: 'pause', nodeId: started.run.currentNode });
+    assert.equal(paused.kind, 'accepted');
+    assert.deepEqual(paused.context.available, []);
+    const blocked = await host.ctx.hima.executionAction({ ...base, expectedRevision: 1, requestId: 'blocked-begin', action: 'begin', nodeId: started.run.currentNode });
+    assert.equal(blocked.kind, 'refused');
+    const handed = await host.ctx.hima.executionAction({ ...base, expectedRevision: 1, requestId: 'handoff-one', action: 'handoff', targetOwner: String(next.id) });
+    assert.equal(handed.kind, 'accepted');
+    assert.equal(handed.context.run.control?.owner, String(next.id));
+    assert.equal(handed.context.run.control?.epoch, 2);
+    assert.deepEqual(handed.context.run.goal, started.run.goal);
+    assert.deepEqual(handed.context.run.budget, started.run.budget);
+    const old = await host.ctx.hima.executionAction({ ...base, requestId: 'pause-one', action: 'pause', nodeId: started.run.currentNode });
+    assert.equal(old.kind, 'refused');
+    const unsupported = await host.ctx.hima.executionAction({ ...base, actor: String(next.id), expectedEpoch: 2, expectedRevision: 2, requestId: 'revision-not-shipped', action: 'revise' });
+    assert.equal(unsupported.kind, 'unsupported');
+    assert.equal(unsupported.context.run.control?.revision, 2);
+    await host.ctx.hima.cancelRun(started.run.id);
+  } finally { await host.dispose(); await home.h.dispose(); }
+});
+
 test('node admission is owned, versioned and idempotent before any Job exists', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0.01 });
   assert.ok(home);

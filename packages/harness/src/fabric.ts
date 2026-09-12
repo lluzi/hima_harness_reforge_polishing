@@ -58,6 +58,7 @@ import type {
   WorkspaceRecord,
   NodeExecution,
   ExecutionReceipt,
+  RunControl,
 } from './ledger.js';
 import { chosenAs, chosenKind, type ChosenKind } from './record-views.js';
 import { allowsRunArgument, allowsTimeBoxMs, runArguments, goalFrom, strategyFrom, timeBoxMsBounds, type StrategyValue } from './run-arguments.js';
@@ -1041,15 +1042,20 @@ async function blockAtEntry(deps: FabricDeps, run: RunRecord, pack: Pack, reason
 export interface ExecutionActionRequest {
   readonly runId: string; readonly actor: string;
   readonly expectedEpoch: number; readonly expectedRevision: number; readonly requestId: string;
-  readonly action: 'begin'; readonly nodeId: string;
+  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend';
+  readonly nodeId?: string; readonly executionId?: string; readonly targetOwner?: string;
+  readonly path?: string; readonly content?: string; readonly output?: string; readonly file?: string;
+  readonly decision?: 'goal-met' | 'converged' | 'next-strategy';
+  readonly strategy?: Readonly<Record<string, StrategyValue>>; readonly rationale?: string;
+  readonly cites?: readonly string[]; readonly origin?: 'agent' | 'human';
 }
 export interface ExecutionContext {
   readonly run: RunRecord; readonly nodes: readonly PackNode[];
   readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly reason?: string;
 }
 export interface ExecutionActionResult {
-  readonly kind: 'accepted' | 'duplicate' | 'refused'; readonly context: ExecutionContext;
-  readonly receipt?: ExecutionReceipt; readonly reason?: string;
+  readonly kind: 'accepted' | 'duplicate' | 'refused' | 'unsupported'; readonly context: ExecutionContext;
+  readonly receipt?: ExecutionReceipt; readonly reason?: string; readonly data?: unknown;
 }
 
 // A live queue serializes admission, never holds a Job's lifetime or replaces durable state.
@@ -1105,7 +1111,6 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const no = (reason: string): ExecutionActionResult => answer('refused', { reason });
     const run = existingRun(deps.ledger, req.runId);
     const control = run.control;
-    if (req.action !== 'begin') return no('this execution operation is not implemented');
     if (control === undefined) return no('this historical Run has no conversational owner');
     if (control.owner !== req.actor || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
     if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
@@ -1114,12 +1119,34 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const before = Object.hasOwn(control.requests, req.requestId) ? control.requests[req.requestId] : undefined;
     if (before !== undefined) return before.digest === digest ? answer('duplicate', { receipt: before.receipt }) : no('this request identity was already used with different contents');
     if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
+    if (req.action === 'revise' || req.action === 'grow') return answer('unsupported', { reason: 'reference graph growth and algorithm revision are not implemented yet (PLS-10/11); no files, history or budget changed' });
     if (run.status !== 'running') return no('this Run is not active');
+    if (req.action === 'pause' || req.action === 'continue' || req.action === 'handoff') {
+      const scope = req.nodeId ?? '*';
+      const pack = executionPack(deps, run);
+      if (scope !== '*' && positionOf(pack, scope) === undefined) return no('this pause scope is not a node of the reference graph');
+      let changed: Partial<RunControl>;
+      let receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action };
+      if (req.action === 'handoff') {
+        const target = req.targetOwner;
+        if (target === undefined || target === control.owner || !deps.host?.get('agents')?.list().some((agent) => String(agent.id) === target)) return no('handoff needs a different live conversation on this Host');
+        if (Object.values(control.executions).some((execution) => execution.phase === 'working' || execution.phase === 'uncertain') || deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === run.id)) return no('handoff needs a safe boundary with no in-flight or uncertain Job');
+        changed = { owner: target, epoch: control.epoch + 1, paused: [...new Set([...control.paused, '*'])] };
+        receipt = { ...receipt, owner: target, epoch: control.epoch + 1 };
+      } else if (req.action === 'pause') changed = { paused: [...new Set([...control.paused, scope])] };
+      else {
+        if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted; continuing does not reset it');
+        changed = { paused: control.paused.filter((paused) => paused !== scope) };
+      }
+      await recordExecutionAction(deps, run, req, digest, changed, receipt);
+      return answer('accepted', { receipt });
+    }
+    if (req.action !== 'begin') return no('this execution operation is not implemented');
     if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted');
     if (control.paused.length > 0) return no('business admission is paused');
     const context = executionContext(deps, req.runId);
     if (context.reason !== undefined) return no(context.reason);
-    if (!context.available.includes(req.nodeId)) return no('this node is not currently available from the reference graph and execution facts');
+    if (req.nodeId === undefined || !context.available.includes(req.nodeId)) return no('this node is not currently available from the reference graph and execution facts');
     const node = context.nodes.find((item) => item.id === req.nodeId);
     if (node === undefined || run.packDigest === undefined) return no('the node or its method identity is unavailable');
     if (context.executions.some((execution) => execution.nodeId === node.id && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.phase !== 'completed' && execution.phase !== 'failed')) return no('this node already has an admitted execution');
@@ -1130,11 +1157,21 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       ...(run.loop === undefined ? {} : { loopId: run.loop.id, loopGeneration: run.loop.generation }),
     };
     const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
-    await deps.ledger.advanceRun(run.id, { control: {
-      ...control, revision: control.revision + 1,
-      executions: { ...control.executions, [execution.id]: execution },
-      requests: { ...control.requests, [req.requestId]: { digest, actor: req.actor, epoch: control.epoch, revision: control.revision, at: new Date().toISOString(), state: 'done', receipt } },
-    } });
+    await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: execution } }, receipt, node.kind === 'act' ? { attempts: 1 } : {});
     return answer('accepted', { receipt });
   });
+}
+
+async function recordExecutionAction(
+  deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest, digest: string,
+  change: Partial<RunControl>, receipt: ExecutionReceipt, delta: { attempts?: number } = {},
+): Promise<void> {
+  const control = run.control!;
+  await advance(deps.ledger, run.id, delta, { control: {
+    ...control, ...change, revision: control.revision + 1,
+    requests: { ...control.requests, [req.requestId]: {
+      digest, actor: req.actor, epoch: control.epoch, revision: control.revision,
+      origin: req.origin ?? 'agent', at: new Date().toISOString(), state: 'done', receipt,
+    } },
+  } });
 }
