@@ -84,7 +84,7 @@ export const workspaceFile = z.strictObject({
   campaign: z.string(),
   pack: z.strictObject({ id: z.string(), version: z.string(), digest: packSha256.optional() }),
   site: z.string(),
-  design: z.string(),
+  design: z.string().optional(),
   flowRoot: z.string(),
   workspace: z.string(),
   containerName: z.string(),
@@ -204,11 +204,11 @@ function belongsElsewhere(file: WorkspaceFile, asked: PreparationIdentity): stri
   if (file.campaign !== asked.campaign) differs.push(`campaign ${asked.campaign}`);
   if (file.pack.id !== asked.packId) differs.push(`pack ${asked.packId}`);
   if (file.site !== asked.site) differs.push(`site ${asked.site}`);
-  if (file.design !== asked.design) differs.push(`design ${asked.design}`);
+  if (file.design !== asked.design) differs.push(`design ${asked.design ?? '(not declared)'}`);
   if (file.flowRoot !== asked.flowRoot) differs.push(`flow root ${asked.flowRoot}`);
   if (differs.length > 0) {
     return (
-      `that workspace belongs to campaign ${file.campaign} of pack ${file.pack.id}@${file.pack.version}, design ${file.design}, `
+      `that workspace belongs to campaign ${file.campaign} of pack ${file.pack.id}@${file.pack.version}, design ${file.design ?? '(not declared)'}, `
       + `flow root ${file.flowRoot}, on site ${file.site}; this preparation asked for ${differs.join(', ')}. `
       + 'A flow copied for one pack, design and Site is not the flow another\'s tools run in. Nothing here removes a path '
       + 'on a Site — prepare under a campaign id of its own, or move or remove that workspace yourself'
@@ -237,7 +237,7 @@ interface PreparationIdentity {
   readonly packVersion: string;
   readonly packDigest: string;
   readonly site: string;
-  readonly design: string;
+  readonly design?: string;
   readonly flowRoot: string;
   /** The contract's copy list with this Site's bindings substituted: what a copy made now would be. */
   readonly copied: readonly string[];
@@ -315,7 +315,7 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
       packVersion: pack.contract.version,
       packDigest: folder.digest(packDigestExcludes),
       site: site.name,
-      design: bindings.design!,
+      ...(bindings.design === undefined ? {} : { design: bindings.design }),
       flowRoot: bindings.flowRoot!,
       copied: askedCopy,
     };
@@ -377,7 +377,7 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
       campaign: identity.campaign,
       pack: { id: identity.packId, version: identity.packVersion, digest: identity.packDigest },
       site: identity.site,
-      design: identity.design,
+      ...(identity.design === undefined ? {} : { design: identity.design }),
       flowRoot: identity.flowRoot,
       workspace,
       containerName,
@@ -413,7 +413,7 @@ function recordOf(file: WorkspaceFile): Omit<WorkspaceRecord, 'id' | 'runId' | '
     ...(file.pack.digest === undefined ? {} : { packDigest: file.pack.digest }),
     workspace: file.workspace,
     flowRoot: file.flowRoot,
-    design: file.design,
+    ...(file.design === undefined ? {} : { design: file.design }),
     containerName: file.containerName,
     copied: file.copied,
     preparedAt: file.preparedAt,
