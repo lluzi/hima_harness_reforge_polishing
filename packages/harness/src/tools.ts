@@ -10,6 +10,7 @@
 // The two sentences a tool answers a refusal with are the command face's own (`describePackCheck`,
 // `describePrepare`): one unfit pack told two ways by two faces of one harness is two products.
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { VerdictRecord } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
@@ -163,8 +164,21 @@ function resumeToolValue(result: ResumeResult): ResumeToolValue {
  * effect — a tool registration unwinds when the plugin unloads, the way dsh's own plugins do it —
  * and this module has nothing to say about that.
  */
-export function himaTools(deps: FabricDeps): ToolDefinition[] {
+export function himaTools(deps: FabricDeps, author?: (request: { pack: string; create?: boolean }, agent?: Agent) => Promise<{ pack: string; folder: string; sessionId: string; created: boolean }>): ToolDefinition[] {
   return [
+    ...author ? [defineTool({
+      name: 'hima_author',
+      description: 'Create or select a Pack folder and open its native authoring session. Returns the session identity for Open authoring session in this conversation. Invoke only for a user request to author a Pack; the new session uses the configured default model and writes only inside that Pack. No model turn or Site Job starts. Continue the five /hima-* skills in the returned session.',
+      parameters: {
+        pack: { type: 'string', required: true, description: 'Pack folder id: lowercase letters, digits and dashes.' },
+        create: { type: 'boolean', description: 'True explicitly allows creation of a new folder. Existing Pack files are retained.' },
+      },
+      output: { schema: { type: 'object', additionalProperties: false, properties: {
+        pack: { type: 'string', required: true }, folder: { type: 'string', required: true },
+        sessionId: { type: 'string', required: true }, created: { type: 'boolean', required: true },
+      } }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      execute: (args, execution) => author(args, execution.agent),
+    })] : [],
     defineTool({
       name: 'hima_observe',
       description: 'Observe one file on a named Site: read it under the site permit, hash it, and append an observation record to the HimaLedger. Refusals are recorded too. With `judge`, HimaJudge then rules on the observation and appends its verdicts.',

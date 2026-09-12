@@ -32,8 +32,8 @@
 //
 // Run it as:
 //   DEEPSEEK_API_KEY=… node scripts/live-check-pipeline.ts [--out <dir>]
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { TestContext } from 'node:test';
 import { bootInProcess, createRootAgent, injectedSkills, sayAsUser, saidByModel, toolCalls, type InProcessHost } from '../test/contract/support/boot-inprocess.ts';
@@ -41,7 +41,8 @@ import { repoRoot } from '../test/contract/support/dsh-home.ts';
 import { localHome } from '../test/contract/support/fabric.ts';
 import { cell } from '../test/contract/support/markdown.ts';
 import { scanForSecret } from '../test/contract/support/moments.ts';
-import { authoredPackFolder, authoredPackId, changedBetween, committedRecord, digestTrees, sectionsOf } from '../test/contract/support/pipeline.ts';
+import { authoredPackFolder, authoredPackId, changedBetween, GRILL_ANSWERS, GRILL_RESOLUTION, digestTrees, sectionsOf } from '../test/contract/support/pipeline.ts';
+import { prepareHimaHome } from '../packages/desktop/src/hima-home.ts';
 import { himaCommand } from '../test/contract/support/command.ts';
 import { packsDirOf } from '../test/contract/support/pack.ts';
 import { HIMA_FABRIC_SECTIONS, HIMA_INTENT_SECTIONS, HIMA_SPEC_SECTIONS, HIMA_TEST_SECTIONS, loadPack, packDigestOf, packStage, packVersionFile, pipelineFiles, runIdPattern } from '@hima/harness';
@@ -171,6 +172,9 @@ const noSkip = {
 } as unknown as TestContext;
 
 interface Observed {
+  installedBundle?: string;
+  allowedReadRoots?: string[];
+  deniedReads?: string[];
   flowRoot?: string;
   packFolder?: string;
   grillSaid?: string[];
@@ -222,6 +226,9 @@ async function run(): Promise<void> {
   const home = await localHome(noSkip, { sleepSeconds: 1 });
   if (!home) throw new Error('the local stand-in flow could not be written');
   const h = home.h;
+  await prepareHimaHome({ home: h.home, bundleMode: 'installed' });
+  const bundle = realpathSync(path.join(h.profileDir, 'node_modules/@hima/harness'));
+  observed.installedBundle = bundle;
   const packFolder = await authoredPackFolder(h);
   observed.flowRoot = home.flow.root;
   observed.packFolder = packFolder;
@@ -240,9 +247,31 @@ async function run(): Promise<void> {
     // **No replay overlay**: this boot composes the product's own DeepSeek adapter, and the key in
     // this process's environment is the only reason a turn can answer at all.
     host = await bootInProcess(h);
+    // This check gives the model only installed product assets, Pack data and the declared
+    // Golden Flow/Site inputs. Development source is not an undocumented sixth input.
+    const allowed = [bundle, packsDirOf(h), home.flow.root, h.workspace].map((at) => realpathSync(at));
+    observed.allowedReadRoots = allowed;
+    observed.deniedReads = [];
+    host.ctx.tools.guard((execution) => {
+      if (!['read', 'read_image', 'glob', 'grep'].includes(execution.name)) return undefined;
+      const args = execution.arguments as { file_path?: string; path?: string };
+      const requested = args.file_path ?? args.path ?? execution.agent?.session.header.cwd;
+      if (!requested) return 'installed authoring read needs a declared path';
+      const candidate = path.resolve(execution.agent?.session.header.cwd ?? '', requested);
+      let real: string;
+      try { real = realpathSync(candidate); } catch { return `installed authoring cannot resolve ${candidate}`; }
+      if (allowed.some((root) => real === root || real.startsWith(root + path.sep))) return undefined;
+      observed.deniedReads!.push(candidate);
+      return `installed authoring reads only its installed bundle, Packs and declared Golden Flow/Site data: ${candidate}`;
+    });
 
     // ---- The grill stage: it must ask, and it must not act. -----------------------------------
-    const grilling = await createRootAgent(host.ctx, packFolder);
+    const chat = await createRootAgent(host.ctx, h.workspace);
+    const opened = await host.ctx.tools.execute({ name: 'hima_author', arguments: { pack: authoredPackId }, agent: chat,
+      callId: 'call-live-author' as never, signal: AbortSignal.timeout(20_000) });
+    if (opened.isError) throw new Error(JSON.stringify(opened));
+    const openedValue = (opened as unknown as { value: { sessionId: string } }).value;
+    const grilling = host.ctx.agents.get(openedValue.sessionId as never)!;
     await sayAsUser(grilling, businessStatement(home.flow.root));
     const grillSaid = saidByModel(grilling);
     observed.grillSaid = grillSaid;
@@ -260,13 +289,13 @@ async function run(): Promise<void> {
     check('the grill stage wrote no record before the author had answered', 'the pack folder is still empty',
       JSON.stringify([...wroteNothing.keys()]), wroteNothing.size === 0);
 
-    // ---- The intent record, from the committed transcript, so the spec stage has one to read. ---
-    // Written here rather than by a second grill turn: what this check is for is the *spec* stage's
-    // own behaviour, and a record improvised by a second real turn would make every assertion below
-    // depend on what that turn happened to say.
-    const record = await committedRecord('grill', pipelineFiles.intent, home.flow.root);
-    await mkdir(packFolder, { recursive: true });
-    await writeFile(path.join(packFolder, pipelineFiles.intent), record);
+    // The author supplies the committed business answers, while the real model writes the intent.
+    // A missing record is a failed stage, never replaced with a fixture produced by this driver.
+    await sayAsUser(grilling, GRILL_ANSWERS);
+    await sayAsUser(grilling, `${GRILL_RESOLUTION}\nThese are the complete authorized answers. Write INTENT.md if the business is sufficiently defined; otherwise state the missing fact and stop.`);
+    const intentAt = path.join(packFolder, pipelineFiles.intent);
+    if (!existsSync(intentAt)) throw new Error('the real grill stage did not produce INTENT.md after the bounded author answers');
+    const record = await readFile(intentAt, 'utf8');
     // The pack folder as it stands the instant before the spec stage runs. `${packFolder}.none` is a
     // sibling path, so it is neither the folder nor under it and nothing is excluded: every file in
     // the folder is in this digest, and the only acceptable delta afterwards is one new `SPEC.md`.
@@ -488,6 +517,9 @@ function markdown(): string {
     '',
     '## What ran',
     '',
+    `- Installed Hima bundle: \`${observed.installedBundle ?? '—'}\`. Hima source and test directories are absent from that bundle; npm runtime dependencies are supplied by the installation.`,
+    `- Model-readable roots: ${JSON.stringify(observed.allowedReadRoots ?? [])}.`,
+    `- Read attempts refused outside those roots: ${JSON.stringify(observed.deniedReads ?? [])}.`,
     `- Golden Flow at \`${observed.flowRoot ?? '—'}\`, read where it lies.`,
     `- Pack folder \`${observed.packFolder ?? '—'}\` (\`${authoredPackId}\`), the session's own working directory.`,
     `- Tools the grill stage called: ${JSON.stringify(observed.grillTools ?? [])}.`,

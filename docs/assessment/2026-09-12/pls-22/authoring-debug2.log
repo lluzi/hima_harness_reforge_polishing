@@ -1,0 +1,29 @@
+✔ installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it (4595.252042ms)
+✖ from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding (720.589833ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6461.194
+
+✖ failing tests:
+
+test at test/contract/skills.test.ts:135:1
+✖ from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding (720.589833ms)
+  AssertionError [ERR_ASSERTION]: {"isError":true,"error":{"message":"invalid arguments: missing required property \"description\"","info":{"name":"ToolArgsError","code":"INVALID_ARGS"}},"content":[{"type":"text","text":"Error: invalid arguments: missing required property \"description\""}]}
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/skills.test.ts:168:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

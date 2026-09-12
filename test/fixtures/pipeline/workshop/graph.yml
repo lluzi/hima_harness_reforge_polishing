@@ -1,0 +1,22 @@
+id: authored-workshop
+version: '1'
+entry: analyze
+nodes:
+  - id: analyze
+    kind: act
+    parameters:
+      workshop: analyze
+      arguments:
+        SCALE: { from: strategy, name: scale }
+  - id: read-analysis
+    kind: act
+    parameters: { observes: analysis }
+  - id: judge
+    kind: judge
+    parameters: { rules: [sum-valid] }
+  - id: blocked
+    kind: wait
+    parameters: { blocker: hard-blocker }
+edges:
+  - { from: analyze, to: read-analysis }
+  - { from: read-analysis, to: judge }

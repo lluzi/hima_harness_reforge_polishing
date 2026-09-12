@@ -25,18 +25,18 @@ title: Example probe         # what a person reads the pack under
 inputs:                      # what a Site binds in its own site file; the pack binds none of them
   - name: flowRoot
     description: The Golden Flow's root on the Site. Read where it lies, never written.
-  - name: subject
+  - name: design
     description: What the flow is run over, spelled as the flow's own manifests spell it.
   - name: workspaceRoot
     description: Where campaign workspaces are made; the Site's permit must allow writes under it.
 
 outputs:                     # what a generation leaves in its own workspace
   - name: measurement
-    path: flow/out/${subject}/measurement.txt   # relative to the workspace; ${…} is an input above
+    path: flow/out/${design}/measurement.txt   # relative to the workspace; ${…} is an input above
     reader: measurement-file                    # the reader that turns it into typed values
     description: What this generation measured. The judged file.
   - name: toolLog
-    path: flow/logs/${subject}/tool.log         # no reader: a file a person reads after a failure
+    path: flow/logs/${design}/tool.log         # no reader: a file a person reads after a failure
     description: What the tool said while it ran.
 
 environment:
@@ -48,20 +48,20 @@ workspace:
   copy:                      # what is copied out of flowRoot into <workspace>/flow/, once per campaign
     - Makefile
     - tools
-    - inputs/${subject}
+    - inputs/${design}
 
 tools:
   - id: measure
     file: tools/measure.sh   # the script a person can run by hand, under this folder's tools/
     description: One generation of the flow's own measuring stage, in the campaign's copy of it.
-    inputs: [WORKSPACE, SUBJECT, STEP_MS]   # the variables the script reads, and the only names argv may use
+    inputs: [WORKSPACE, DESIGN, STEP_MS]   # the variables the script reads, and the only names argv may use
     licences:                # optional: what a job of this tool holds on the Site while it runs
       measuring-seat: 1      # the Site declares how many it has; a tool that holds none writes no block
     argv:                    # what the harness launches; argv[0] is the wrapper above
       - make
       - -C
       - ${WORKSPACE}/flow
-      - SUBJECT=${SUBJECT}
+      - DESIGN=${DESIGN}
       - measure
       - STEP_MS=${STEP_MS}
 
@@ -81,6 +81,67 @@ words:                       # what a person reads each number under: one entry 
   stepMs: { label: step, unit: ms }
   shape: { label: shape }    # a choice states no unit: a choice is measured in nothing
 ```
+
+## Workshop declaration and graph binding
+
+A Workshop is an existing `act` node variant. Its input reports are contract `outputs` produced by
+earlier nodes; scalar `inputs` are bound by the node. Knowledge files also appear in the contract's
+`knowledge`. The following is an additional block within `contract.yml`, not a separate file:
+
+```yaml
+outputs:
+  - name: measuredInput
+    path: flow/out/${design}/measurement.txt
+    reader: measurement-file
+    description: The preceding tool's measurement.
+  - name: analysis
+    path: research/analysis/result.txt
+    reader: measurement-file
+    description: The script's derived measurement, checked by the reader and Judge.
+environment:
+  wrappers: [sh]
+knowledge:
+  - file: analysis-method.md
+    purpose: How the measurements support the analysis.
+workshops:
+  - id: analyze
+    purpose: Read measuredInput and write a script deriving the requested measurement from its actual data.
+    directory: research/analysis
+    entry: entry.sh
+    language: sh
+    inputs: [LIMIT]
+    reads: [measuredInput]
+    knowledge: [analysis-method.md]
+    produces: analysis
+    argv: [sh, '${ENTRY}', '${WORKSHOP}', '${LIMIT}']
+    licences: {}             # omit when no licensed resource is needed
+```
+
+The corresponding graph node and downstream read are real nodes, connected after the input producer:
+
+```yaml
+- id: analyze
+  kind: act
+  parameters:
+    workshop: analyze
+    arguments:
+      LIMIT: { from: strategy, name: stepMs }
+- id: read-analysis
+  kind: act
+  parameters:
+    observes: analysis
+```
+
+`reads` are output names, not arbitrary paths. `produces` is an output name, not a value type.
+The output's reader emits types declared by `semantics.yml`; downstream Judge rules consume those
+types. `directory` is relative to the Campaign workspace and cannot be `flow` or the readers'
+reserved directory. `entry` is one filename. `argv[0]` is a declared Site wrapper, and `argv[1]`
+is exactly `${ENTRY}`. A script may produce a declared output elsewhere in the Campaign workspace;
+its code-writing tool is confined to `directory`. Neither may escape the Site permit.
+
+The script is called as `sh entry.sh <workshop> <limit>`, so shell `$1` is the workshop and `$2`
+is the limit. Reader scripts have their own argv: in the reader example below `$1` is `${REPORT}`
+and `$2` is `${OUT}`. These are argv arrays; do not put a shell command, pipe or redirection in them.
 
 ## `graph.yml` — the four node kinds, the outcomes the edges are taken on, and the one edge back
 
@@ -213,10 +274,10 @@ with the report and the output file as arguments:
 
 ```sh
 #!/bin/sh
-# tools/read-measurement.sh — reads $2 (the report) and writes the reading document to $3.
+# tools/read-measurement.sh — reads $1 (the report) and writes the reading document to $2.
 set -eu
 printf '{"values":[{"type":"measured_ms","unit":"ms","mode":"setup","scope":"all","value":%s}]}\n' \
-  "$(awk '/^measured/ { print $2 }' "$2")" > "$3"
+  "$(awk '/^measured/ { print $2 }' "$1")" > "$2"
 ```
 
 What it writes to `${OUT}` — one JSON document, and exit 0:

@@ -1,0 +1,6 @@
+id: sum-valid
+version: '1'
+title: The scaled sum matches the known input
+requires: [{ type: scaled_sum }]
+subject: { type: scaled_sum }
+predicate: { op: eq, threshold: 42, unit: count }

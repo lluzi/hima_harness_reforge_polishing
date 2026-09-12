@@ -112,7 +112,7 @@ In this folder and nowhere else, and only what the spec states:
 
 - `contract.yml` — the run contract: `inputs`, `outputs` (each with the reader that reads it, where
   the spec says one), `environment.wrappers`, `workspace.copy`, `tools`, `rules`, `knowledge`,
-  `strategy` with each knob's type, bounds and default, and `words` for every goal parameter the
+  optional `goal` with each numeric parameter's type, unit, bounds and author-approved default, `strategy` with each knob's type, bounds and default, and `words` for every goal parameter the
   graph binds and every knob the strategy declares.
 - `graph.yml` — the act, judge, explore and wait nodes the spec's method needs, the edges between
   them labelled with the outcomes they are taken on, and the revisit edge that closes the loop.
@@ -133,12 +133,28 @@ In this folder and nowhere else, and only what the spec states:
   so a person can run a generation by hand exactly as the harness runs it. Write one **only** where
   the Golden Flow shows you that command line.
 
-Two things the spec may hold that this stage does not compile yet. Where — and only where — the
-spec's `Workshops` section states a workshop, it is carried into `PACK.md` as prose saying what that
-workshop is for, what it is given and what it must produce; the contract block for it is not written.
-A spec whose `Workshops` section says this pack has none gets no such prose and no `PACK.md` for it:
-a file describing a workshop that does not exist is a pack describing itself wrongly. And the
-`Goal template` is the Run's, supplied when a campaign starts, so nothing in the contract fixes it.
+### Compile every Workshop
+
+For each actual Workshop in `SPEC.md`, write a `contract.workshops` entry using the Workshop
+block in `knowledge/pack-anatomy.md`. Preserve its `purpose`, `inputs`, `reads`, `knowledge`,
+`produces`, `directory`, `entry`, `language`, `argv` and any `licences`. The wrapper is `argv[0]`
+and must appear in `environment.wrappers`; `argv[1]` is exactly `${ENTRY}`. Bind each declared
+input at the graph node through `parameters.arguments` using the declared Goal or Strategy name.
+The reserved `ENTRY`, `WORKSHOP`, `WORKSPACE`, `FLOW_ROOT`, `DESIGN`, `CAMPAIGN` values are supplied
+by the Harness and are never declared as Workshop inputs or rebound at nodes.
+
+Create an act node with `parameters.workshop: <id>` and connect it into the real graph. Schedule
+producers of `reads` before it. Its `produces` names a contract output with a reader; write that
+reader and semantics when no shipped reader covers the output. Add an observing act node and the
+required Judge downstream so the produced file becomes checked evidence. A Workshop with an empty
+purpose, no graph binding, no declared reader, an undeclared wrapper or an output escaping the
+Campaign workspace is incomplete. Stop at the failed check; record the actual gap.
+
+The Workshop entry script is generated during the Run from actual inputs. Author the contract and
+reader now; do not fill the future research result with invented data. `PACK.md` may explain the
+method, but never substitutes for the executable declaration. A spec that says it has no Workshops
+gets no Workshop block. The Goal values themselves belong to each Run; the contract declares their
+shape and the graph binds them without fixing a Campaign's choice.
 
 ## The gaps, and the review
 

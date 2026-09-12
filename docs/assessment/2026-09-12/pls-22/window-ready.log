@@ -1,0 +1,19 @@
+✖ ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together (29051.96225ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 29709.128542
+
+✖ failing tests:
+
+test at test/contract/unified-workbench.test.ts:88:1
+✖ ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together (29051.96225ms)
+  Error: Window condition timed out: !!document.querySelector('[data-hima-region="studio"]') && document.querySelector('[data-hima-region="studio"]').getAttribute('data-hima-state-session') !== "session-77d4767d-926d-4ab7-adf8-9006f7d06ddb"
+      at Object.wait (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/support/inspect-window.ts:35:38)
+      at async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/unified-workbench.test.ts:115:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)

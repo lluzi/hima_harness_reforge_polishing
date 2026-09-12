@@ -1,0 +1,19 @@
+✖ ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together (16365.98925ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18466.894458
+
+✖ failing tests:
+
+test at test/contract/unified-workbench.test.ts:88:1
+✖ ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together (16365.98925ms)
+  Error: Uncaught
+      at evaluate (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/support/inspect-window.ts:29:40)
+      at async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/unified-workbench.test.ts:109:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)

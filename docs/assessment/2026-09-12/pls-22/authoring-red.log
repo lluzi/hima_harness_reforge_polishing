@@ -1,0 +1,28 @@
+✖ from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding (12399.383208ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12808.21775
+
+✖ failing tests:
+
+test at test/contract/skills.test.ts:63:1
+✖ from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding (12399.383208ms)
+  AssertionError [ERR_ASSERTION]: {"isError":true,"error":{"message":"unknown tool \"hima_author\"","info":{"name":"ToolNotFoundError","code":"UNKNOWN_TOOL"}},"content":[{"type":"text","text":"Error: unknown tool \"hima_author\""}]}
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/skills.test.ts:73:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

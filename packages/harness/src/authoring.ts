@@ -1,4 +1,6 @@
 // @hima-seam tools direct
+// @hima-seam agent wrapped
+// @hima-seam workspace direct
 // The authoring guard: what an authoring session of a pack folder may do, enforced rather than said
 // (#63).
 //
@@ -16,7 +18,8 @@
 // synchronous check run after every `tools/pre-execute` listener and before the tool body. A
 // returned string denies the call, and — this is why it is the right seam — guards have no allow
 // result, so no listener registered later can turn a denial back into permission. Registered once,
-// globally, as an effect of the bundle, so it unwinds with the plugin.
+// globally, as an effect of the bundle, so it unwinds with the plugin. Pack release is also held
+// to the current Pack; the create/select operation validates that same boundary before mkdir.
 //
 // **The rule.** A session whose working directory lies inside the bundle's packs directory is an
 // authoring session of the one pack folder `<packsDir>/<id>` it stands in. In such a session:
@@ -28,9 +31,9 @@
 //     `sh -c 'cat > …'` and the rest of this file is decoration.
 //
 // **The order it asks in**, because it is what makes the rule cheap and what decides who is touched:
-// the tool's name first, the session second. A call of anything but those three is answered
+// the tool's name first, the session second. File writes, the shell and Pack release are checked; other calls are answered
 // `undefined` with no path resolved at all — every `read`, `glob`, `grep`, `skill` and `hima_*` call
-// in the product is exactly what it was, wherever its session stands. Only for one of the three is
+// in the product retains its own behavior. Only for a governed call is
 // the session then placed, and one standing anywhere but inside the packs directory is left alone in
 // turn: an ordinary chat session and a Campaign's own work write and open shells as they always did.
 //
@@ -56,10 +59,53 @@
 // `skill`, the delegation tools and the four `hima_*`, and the two that take a `file_path` and
 // change what is at it are `write` and `edit`. `skills.test.ts` holds that list against the booted
 // host, so a dsh release that adds a third fails the suite instead of quietly opening a door.
-import { lstatSync, realpathSync, statSync } from 'node:fs';
+import { lstatSync, mkdirSync, realpathSync, statSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolExecution } from '@deepseek-ai/dsh-tools';
+import type { Agent } from '@deepseek-ai/dsh-agent';
+
+/** Create/select a Pack using the native session creation boundary. Cwd is immutable in dsh. */
+export async function openAuthoringSession(ctx: Context, packsDir: string, request: { pack: string; create?: boolean }, caller?: Agent) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(request.pack)) throw new Error('pack must be a folder id of lowercase letters, digits and dashes');
+  const selection = (ctx.get('agentDefaultModel') as { currentSelection(): { provider: string; model: string } } | undefined)?.currentSelection();
+  const agents = ctx.get('agents');
+  if (!selection || !agents) throw new Error('the native agent/default model service is unavailable');
+  const packs = path.resolve(packsDir);
+  const packsStat = lstatSync(packs, { throwIfNoEntry: false });
+  if (packsStat && (!packsStat.isDirectory() || packsStat.isSymbolicLink())) throw new Error('the packs directory must be a plain directory');
+  const folder = path.join(packs, request.pack);
+  const existing = lstatSync(folder, { throwIfNoEntry: false });
+  if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) throw new Error('the Pack folder must be a plain directory, not a symlink');
+  if (!existing && !request.create) throw new Error(`Pack ${request.pack} does not exist; create must be true to create it`);
+  // An author cannot use this management verb to write into a different Pack either.
+  const standing = standingOf(caller?.session.header.cwd, packsDir);
+  if (standing.kind === 'refuse') throw new Error(standing.why);
+  if (standing.kind === 'authoring' && path.basename(standing.folder) !== request.pack) throw new Error('an authoring session may create or select only its own Pack');
+  if (!existing) mkdirSync(folder, { recursive: true });
+  const realFolder = realpathSync(folder);
+  if (standing.kind === 'authoring' && standing.cwd === realFolder && caller) {
+    return { pack: request.pack, folder: realFolder, sessionId: caller.session.id, created: false };
+  }
+  // The web product's controller composes its configured ordinary preset and installs model
+  // selection. Reusing it is essential: agents.create alone has only global tools in that host.
+  const controller = ctx.get('sessionController') as { create(request: { workspaceId: string }): Promise<{ sessionId: string }> } | undefined;
+  if (controller) {
+    const workspaces = ctx.get('workspaceRegistry') as { create(folder: string, title?: string): Promise<{ id: string }> } | undefined;
+    if (!workspaces) throw new Error('the native workspace registry is unavailable');
+    const workspace = await workspaces.create(realFolder, request.pack);
+    const { sessionId } = await controller.create({ workspaceId: workspace.id });
+    return { pack: request.pack, folder: realFolder, sessionId, created: !existing };
+  }
+  const { agent } = await agents.create({
+    sessionId: `session-${randomUUID()}` as never,
+    meta: { cwd: realFolder },
+    agentOptions: { provider: selection.provider, model: selection.model },
+  });
+  await agent.whenIdle();
+  return { pack: request.pack, folder: realFolder, sessionId: agent.session.id, created: !existing };
+}
 
 /**
  * The tools that change what is at a path, by the `file_path` argument they take.
@@ -304,7 +350,8 @@ function standingOf(cwd: string | undefined, packsDir: string): Standing {
 function authoringDenial(execution: Readonly<ToolExecution>, packsDir: string): string | undefined {
   // Asked before the session is placed at all: a rule about `write`, `edit` and `bash` has no
   // business resolving two paths on every `read`, `glob` and `hima_observe` in the product.
-  if (!governed.has(execution.name)) return undefined;
+  const packMutation = execution.name === 'hima_pack_release';
+  if (!governed.has(execution.name) && !packMutation) return undefined;
   const standing = standingOf(execution.agent?.session.header.cwd, packsDir);
   if (standing.kind === 'elsewhere') return undefined;
   // Whatever went wrong above, it is only a reason to stop the calls this rule governs. A session
@@ -313,6 +360,10 @@ function authoringDenial(execution: Readonly<ToolExecution>, packsDir: string): 
   // could make.
   if (standing.kind === 'refuse') return `${execution.name} is refused: ${standing.why}`;
   const folder = standing.folder;
+  if (packMutation) {
+    const target = (execution.arguments as { pack?: unknown } | undefined)?.pack;
+    return target === path.basename(folder) ? undefined : `an authoring session in ${folder} may release only its own Pack`;
+  }
   if (execution.name === SHELL_TOOL) {
     return `a pack authoring session in ${folder} has no shell: read the Golden Flow where it lies with read, glob and grep, and write only inside the pack folder. "${SHELL_TOOL}" refused.`;
   }

@@ -1,0 +1,25 @@
+✖ ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together (21500.629167ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22322.893833
+
+✖ failing tests:
+
+test at test/contract/unified-workbench.test.ts:88:1
+✖ ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together (21500.629167ms)
+  Error: Object reference chain is too long
+      at WebSocket.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/support/inspect-window.ts:18:42)
+      at [nodejs.internal.kHybridDispatch] (node:internal/event_target:856:20)
+      at WebSocket.dispatchEvent (node:internal/event_target:789:26)
+      at fireEvent (node:internal/deps/undici/undici:14403:14)
+      at #onMessage (node:internal/deps/undici/undici:15726:9)
+      at Object.onMessage (node:internal/deps/undici/undici:15433:76)
+      at websocketMessageReceived (node:internal/deps/undici/undici:14407:15)
+      at node:internal/deps/undici/undici:15135:21
+      at node:internal/deps/undici/undici:14915:11
+      at afterWrite (node:internal/streams/writable:712:5)

@@ -361,7 +361,7 @@ test('the served HimaGuide bundle claims the tool-view key of both Hima tools an
     });
     assert.deepEqual(
       registered.filter((r) => r.name === 'tool.call.toolview').map((r) => r.key).sort(),
-      ['hima_observe', 'hima_run'],
+      ['hima_author', 'hima_observe', 'hima_run'],
       'the card renders a run wherever a Hima tool reported one, and claims no other key',
     );
 

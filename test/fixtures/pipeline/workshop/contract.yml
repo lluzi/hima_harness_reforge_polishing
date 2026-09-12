@@ -1,0 +1,32 @@
+id: authored-workshop
+version: '1'
+title: Installed numeric analysis
+inputs:
+  - { name: flowRoot, description: Read-only source numbers }
+  - { name: design, description: Input set }
+  - { name: workspaceRoot, description: Campaign workspaces }
+outputs:
+  - { name: numbers, path: flow/numbers.txt, description: Source measurements }
+  - { name: analysis, path: research/analysis/result.txt, reader: sum-file, description: Scaled sum }
+environment:
+  wrappers: [sh]
+workspace:
+  copy: [numbers.txt]
+workshops:
+  - id: analyze
+    purpose: Read the actual numbers, write a script to sum them, scale by SCALE and produce analysis.
+    directory: research/analysis
+    entry: entry.sh
+    language: sh
+    inputs: [SCALE]
+    reads: [numbers]
+    knowledge: [sum.md]
+    produces: analysis
+    argv: [sh, '${ENTRY}', '${WORKSHOP}', '${WORKSPACE}', '${SCALE}']
+rules: [sum-valid]
+knowledge:
+  - { file: sum.md, purpose: How to calculate the scaled sum }
+strategy:
+  scale: { type: number, unit: count, min: 1, max: 4, default: 2 }
+words:
+  scale: { label: scale factor, unit: count }

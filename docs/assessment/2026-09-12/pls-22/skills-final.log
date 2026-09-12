@@ -1,0 +1,90 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/skills.test.ts
+local: 1 selected; 33 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it
+ok 1 - installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it
+  ---
+  duration_ms: 19993.064875
+  type: 'test'
+  ...
+# Subtest: from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding
+ok 2 - from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding
+  ---
+  duration_ms: 1727.185042
+  type: 'test'
+  ...
+# Subtest: on a booted host: the bundle registers the pipeline's five skills from one provider — a person's to invoke, never the model's to choose
+ok 3 - on a booted host: the bundle registers the pipeline's five skills from one provider — a person's to invoke, never the model's to choose
+  ---
+  duration_ms: 810.360125
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-grill writes the pack intent record in the pack folder and nothing outside it, /hima-spec writes the pack spec beside it, and pack check says the folder is specified
+ok 4 - through a booted host with the replay stand-in: /hima-grill writes the pack intent record in the pack folder and nothing outside it, /hima-spec writes the pack spec beside it, and pack check says the folder is specified
+  ---
+  duration_ms: 5062.000083
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an authoring session may not write outside its pack folder and has no shell, and the same two calls go through in an ordinary session
+ok 5 - through a booted host with the replay stand-in: an authoring session may not write outside its pack folder and has no shell, and the same two calls go through in an ordinary session
+  ---
+  duration_ms: 1785.3515
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an authoring session's target is judged as the tool received it — a new file inside the folder goes through, and a dot segment, a link out of the folder and an edit outside do not
+ok 6 - through a booted host with the replay stand-in: an authoring session's target is judged as the tool received it — a new file inside the folder goes through, and a dot segment, a link out of the folder and an edit outside do not
+  ---
+  duration_ms: 2015.712708
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an absent packs directory leaves a session untouched, and a packs directory or a working directory that will not resolve stops the governed tools
+ok 7 - through a booted host with the replay stand-in: an absent packs directory leaves a session untouched, and a packs directory or a working directory that will not resolve stops the governed tools
+  ---
+  duration_ms: 4802.105958
+  type: 'test'
+  ...
+# Subtest: the intent record the live check authors its spec stage from is the one the contract suite runs the grill stage against
+ok 8 - the intent record the live check authors its spec stage from is the one the contract suite runs the grill stage against
+  ---
+  duration_ms: 106.699666
+  type: 'test'
+  ...
+# Subtest: every skeleton in the pack anatomy reference is a file this harness accepts: assembled into a folder they load as a pack and fit the local site
+ok 9 - every skeleton in the pack anatomy reference is a file this harness accepts: assembled into a folder they load as a pack and fit the local site
+  ---
+  duration_ms: 987.6015
+  type: 'test'
+  ...
+# pack example-probe@1 on site local: fit — 3 of 3 inputs bound, 1 tool, 1 rule, 1 reader, 1 chooser, 1 knowledge file, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-9TvWV4/hima-home-N1C8EP/standin-flow
+#   design = a-subject
+#   workspaceRoot = /private/tmp/hima-tests-9TvWV4/hima-home-N1C8EP/workspace
+# tools:
+#   measure (tools/measure.sh): "make" is an allowed wrapper of site local
+# rules:
+#   measurement-within-bound@1: found in the pack
+# readers:
+#   measurement-file@1 reads measurement: found in the pack
+# semantics:
+#   measured_ms: declared by this pack in /private/tmp/hima-tests-9TvWV4/hima-home-N1C8EP/hima/packs/example-probe/semantics.yml
+#   8 value types come from the bundle
+# choosers:
+#   step-back-off@1 chooses at next-step: found in the pack
+# knowledge:
+#   the-step-method.md (why this pack changes the step the way it does): found in the pack
+# licences:
+#   measure holds 1 of "measuring-seat": site local declares 1
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 38536.195209
+Test boot attempts: {"host-process":0,"host-in-process":14,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 38.744 s; pass/fail/skip counts are in the TAP summary above

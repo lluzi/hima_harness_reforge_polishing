@@ -1,0 +1,4 @@
+values:
+  scaled_sum:
+    unit: count
+    description: Sum of source integers multiplied by scale
