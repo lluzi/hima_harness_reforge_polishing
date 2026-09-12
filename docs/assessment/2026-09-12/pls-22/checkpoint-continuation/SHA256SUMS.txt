@@ -1,0 +1,6 @@
+c0c932dce220dbb48c2ee77983bcbf094771099261f404d63815fec29fcc61e0  scripts/live-check-pipeline-checkpoint.ts
+aef16e8e7a9959761f82d1ec2aa001772501c233046d7adb7310b7061a690392  scripts/live-check-workshop.ts
+199f0a62c28285554879660ab1d2fc90f5e00d2e4d2840e78ae25cf4ddc933d9  test/contract/support/boot-inprocess.ts
+2ae5a512ccb5ed08ae798b5f519b8ea905ac7ad27d1dbaf85840f3f6a4ae03fe  test/contract/pipeline-checkpoint.test.ts
+8ae55091c3d44460d966e45ef896fca381a4afd80cf521688bfad928a92e099f  test/contract-groups.json
+b724f2d8842b757badbc7bbf231228908d4602e2f9acc9b13fcbb064047603ee  docs/assessment/2026-09-12/pls-22/checkpoint-continuation/preflight/evidence.json

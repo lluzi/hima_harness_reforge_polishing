@@ -196,6 +196,13 @@ export function toolResults(agent: Agent): { failed: boolean; text: string }[] {
   return results;
 }
 
+/** Hold the native resumed handle through a bounded continuation; the caller owns disposal. */
+export async function resumeTestAgent(ctx: Context, sessionId: string) {
+  const agents = ctx.get('agents');
+  if (!agents) throw new Error('agents service missing');
+  return agents.resume({ resumeSessionId: sessionId as never });
+}
+
 /**
  * Reopen one **persisted** session by id and read it, through dsh's own agent registry.
  *
@@ -219,9 +226,7 @@ export function toolResults(agent: Agent): { failed: boolean; text: string }[] {
  * @returns whatever the reader answered.
  */
 export async function readPersistedSession<T>(ctx: Context, sessionId: string, read: (agent: Agent) => T): Promise<T> {
-  const agents = ctx.get('agents');
-  if (!agents) throw new Error('agents service missing');
-  const handle = await agents.resume({ resumeSessionId: sessionId as never });
+  const handle = await resumeTestAgent(ctx, sessionId);
   try {
     return read(handle.agent);
   } finally {

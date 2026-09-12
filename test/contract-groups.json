@@ -38,6 +38,7 @@
     "test/contract/workshop.host.test.ts",
     "test/contract/pack-readers.host.test.ts",
     "test/contract/pipeline-stages.host.test.ts",
+    "test/contract/pipeline-checkpoint.test.ts",
     "test/contract/input-admission.host.test.ts",
     "test/contract/agent-execution.host.test.ts",
     "test/contract/node-jobs.host.test.ts",

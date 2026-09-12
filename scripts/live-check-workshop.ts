@@ -22,12 +22,13 @@ export const sha256 = (bytes: string | Buffer): string => createHash('sha256').u
 export const within = (candidate: string, root: string): boolean => candidate === root || candidate.startsWith(root + path.sep);
 export interface Check { claim: string; passed: boolean; saw: unknown }
 
-/** Real-host evidence and budgets for these two opt-in scripts; no product execution decisions. */
+/** Real-host evidence and budgets for the opt-in live scripts; no product execution decisions. */
 export class LiveCheck {
   readonly startedAt = new Date().toISOString();
   readonly checks: Check[] = [];
   readonly observed: Record<string, unknown> = {};
   readonly agents: Agent[] = [];
+  readonly resumedSessions = new Set<string>();
   readonly toolSequence: unknown[] = [];
   readonly requestSessions = new Set<string>();
   readonly userMessages: unknown[] = [];
@@ -45,8 +46,9 @@ export class LiveCheck {
   readonly name: string;
   constructor(name: string, defaultTurns: number) {
     this.name = name;
+    const continuation = name === 'live-check-pipeline-checkpoint';
     const args = process.argv.slice(2);
-    const help = `usage: node scripts/${name}.ts --out <fresh-directory> [--timeout-ms 600000] [--max-turns ${defaultTurns}] [--max-steps 160]\nRequires DEEPSEEK_API_KEY in the inherited environment; never pass a credential as an argument.\n`;
+    const help = `usage: node scripts/${name}.ts --out <fresh-directory> [--timeout-ms 600000] [--max-turns ${defaultTurns}] [--max-steps ${continuation ? 100 : 160}]\nRequires DEEPSEEK_API_KEY in the inherited environment; never pass a credential as an argument.\n`;
     if (args.includes('--help') || args.includes('-h')) { process.stdout.write(help); process.exit(0); }
     const options = new Map<string, string>();
     for (let i = 0; i < args.length; i += 2) {
@@ -73,8 +75,8 @@ export class LiveCheck {
     // reaching test alone. The two-generation Workshop check reached its second Job after 507s,
     // then exhausted its 9m Run while that Job was active. Keep the default at 10m; permit explicit
     // estimated budgets of 20m for the pipeline or 15m for Workshop, including result collection.
-    const maximumMs = name === 'live-check-pipeline' ? 1_200_000 : 900_000;
-    this.limits = { timeoutMs: bounded('--timeout-ms', 600_000, maximumMs), maxTurns: bounded('--max-turns', defaultTurns, 32), maxSteps: bounded('--max-steps', 160, 200) };
+    const maximumMs = continuation ? 720_000 : name === 'live-check-pipeline' ? 1_200_000 : 900_000;
+    this.limits = { timeoutMs: bounded('--timeout-ms', 600_000, maximumMs), maxTurns: bounded('--max-turns', defaultTurns, continuation ? 12 : 32), maxSteps: bounded('--max-steps', continuation ? 100 : 160, continuation ? 100 : 200) };
     this.out = path.resolve(options.get('--out') ?? path.join(repoRoot, 'docs/assessment/2026-09-12/pls-19/live-harness', `${name}-${Date.now()}`));
     if (existsSync(this.out)) throw new Error('the evidence directory already exists; use a fresh --out directory');
     mkdirSync(this.out, { recursive: true });
@@ -118,13 +120,17 @@ export class LiveCheck {
         }
       }
     };
-    walk(this.temporary); walk(this.out);
+    for (const root of this.retainedRoots()) walk(root);
     this.observed.deadlineSecretScan = scan; this.checkpoint();
   }
   clean<T>(value: T): T { return JSON.parse(JSON.stringify(value).split(this.key).join('[REDACTED]')) as T; }
   check(claim: string, passed: boolean, saw: unknown): void { this.checks.push({ claim, passed, saw: this.clean(saw ?? null) }); this.checkpoint(); }
   require(claim: string, passed: boolean, saw: unknown): void { this.check(claim, passed, saw); if (!passed) throw new Error(claim); }
   track(agent: Agent): Agent { if (!this.agents.includes(agent)) this.agents.push(agent); return agent; }
+  trackResumed(agent: Agent): Agent { this.resumedSessions.add(String(agent.id)); return this.track(agent); }
+  retainedRoots(): string[] {
+    return [this.temporary, this.out, ...(this.home && !within(this.home.home, this.temporary) ? [this.home.home] : [])];
+  }
   async say(agent: Agent, text: string): Promise<void> {
     this.admitMessage(agent, 'followup', text);
     await this.wait(sayAsUser(agent, text));
@@ -164,7 +170,7 @@ export class LiveCheck {
       const runs = this.host?.ctx.hima.ledger.runs() ?? [];
       const record = this.clean({ check: this.name, startedAt: this.startedAt, checkpointAt: new Date().toISOString(), limits: this.limits,
         passed: false, status: this.failure ? 'failed' : 'in-progress', failure: this.failure ?? null,
-        costs: { hosts: this.host ? 1 : 0, electron: 0, nativeSessionsCreated: this.agents.length, modelSessions: this.requestSessions.size,
+        costs: { hosts: this.host ? 1 : 0, electron: 0, nativeSessionsCreated: this.agents.length - this.resumedSessions.size, nativeSessionsResumed: this.resumedSessions.size, modelSessions: this.requestSessions.size,
           modelRequestSteps: this.steps, apiRequests: 'unmeasured; request steps exclude adapter retries', tokens: 'unmeasured', userMessages: this.turns },
         observed: this.observed, userMessages: this.userMessages, toolSequence: this.toolSequence,
         agents: this.agents.map((agent) => ({ id: agent.id, session: agent.session.id, cwd: agent.session.header.cwd, options: agent.options, skills: injectedSkills(agent), toolCalls: toolCalls(agent), toolResults: toolResults(agent), said: saidByModel(agent) })),
@@ -181,7 +187,7 @@ export class LiveCheck {
     this.checkpoint();
     this.stopJobs();
     if (this.host) { try { await this.wait(this.host.dispose()); } catch (error) { this.failure ??= String(error); } }
-    const scan = await scanForSecret([this.temporary, this.out], this.key);
+    const scan = await scanForSecret(this.retainedRoots(), this.key);
     this.observed.secretScan = { files: scan.files.length, holding: scan.holding, unreadable: scan.unreadable };
     // Retained diagnostics must be safe even on failures. Exact matching bytes are removed before
     // publication; the original presence still fails the check. No key prefix/length is recorded.
