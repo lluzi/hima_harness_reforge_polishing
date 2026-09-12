@@ -225,7 +225,7 @@ export function guardInstalled(check: LiveCheck, host: InProcessHost, readRoots:
   });
 }
 
-export async function numericHome(check: LiveCheck): Promise<{ h: HimaHome; flow: string; bundle: string; numbers: number[]; limit: number }> {
+export async function numericHome(check: LiveCheck, options: { feedback?: boolean } = {}): Promise<{ h: HimaHome; flow: string; bundle: string; numbers: number[]; limit: number }> {
   const h = await createHimaHome(); check.home = h;
   await prepareHimaHome({ home: h.home, bundleMode: 'installed' });
   await installPack(h);
@@ -233,6 +233,9 @@ export async function numericHome(check: LiveCheck): Promise<{ h: HimaHome; flow
   const flow = path.join(h.home, 'numeric-flow'); mkdirSync(flow);
   const numbers = [39, ...Array.from({ length: 11 }, () => randomInt(1, 40))];
   const limit = randomInt(8, 22);
+  // Workshop-only: a strictly positive excluded value makes the first valid trial miss the full
+  // sum Goal for every random draw. The authoring pipeline keeps its original input distribution.
+  if (options.feedback) numbers[1] = randomInt(1, limit + 1);
   writeFileSync(path.join(flow, 'numbers.txt'), numbers.join('\n') + '\n');
   writeFileSync(path.join(flow, 'prepare.sh'), '#!/bin/sh\nset -eu\ncd "$1"\ncp numbers.txt measured.txt\n');
   writeFileSync(path.join(flow, 'README.md'), '# Numeric Golden Flow\n\nRun `sh prepare.sh <flow-directory>` in a private copy. It copies numbers.txt to measured.txt. Both contain one nonnegative integer per line. Analysis must sum only numbers strictly greater than the requested LIMIT. A Workshop writes its own shell script from these actual inputs and the declared analysis knowledge; result.txt contains the integer sum alone. There is no EDA or licence use.\n');
@@ -249,20 +252,23 @@ export async function numericHome(check: LiveCheck): Promise<{ h: HimaHome; flow
 
 export function installNumericPack(folder: string): void {
   const files: Record<string, string> = {
-    'contract.yml': `id: live-numeric\nversion: '1'\ntitle: Bounded numeric analysis\ninputs:\n  - { name: flowRoot, description: Declared numeric Golden Flow }\n  - { name: design, description: Numeric dataset }\n  - { name: workspaceRoot, description: Private workspace }\noutputs:\n  - { name: measured, path: flow/measured.txt, description: Actual numeric input }\n  - { name: analysis, path: result.txt, reader: numeric-sum, description: Sum above LIMIT }\nenvironment: { wrappers: [sh] }\nworkspace: { copy: [prepare.sh, numbers.txt, README.md] }\ntools:\n  - id: prepare\n    file: tools/prepare.sh\n    description: Copy the actual input in the private flow\n    inputs: [WORKSPACE]\n    argv: [sh, '\${WORKSPACE}/flow/prepare.sh', '\${WORKSPACE}/flow']\nknowledge:\n  - { file: sum.md, purpose: Exact numeric analysis and timing contract }\nworkshops:\n  - id: analyze\n    purpose: Read actual measured values and knowledge; write and run a shell script summing values strictly greater than LIMIT. Sleep 60 seconds in the script before writing result.txt so the engineer can intervene while the Job is active.\n    directory: research/analysis\n    entry: analyze.sh\n    language: shell\n    inputs: [LIMIT]\n    reads: [measured]\n    knowledge: [sum.md]\n    produces: analysis\n    argv: [sh, '\${ENTRY}', '\${WORKSPACE}', '\${LIMIT}']\nrules: [positive-sum]\nstrategy:\n  limit: { type: number, unit: count, min: 0, max: 100, default: 10 }\ngoal:\n  minimum: { type: number, unit: count, min: 0, max: 10000, default: 1 }\nwords:\n  limit: { label: Strict lower cutoff, unit: count }\n  minimum: { label: Minimum acceptable sum, unit: count }\n`,
-    'graph.yml': `id: live-numeric\nversion: '1'\nentry: prepare\nnodes:\n  - { id: prepare, kind: act, parameters: { tool: prepare } }\n  - id: analyze\n    kind: act\n    parameters:\n      workshop: analyze\n      arguments: { LIMIT: { from: strategy, name: limit } }\n  - { id: read-analysis, kind: act, parameters: { observes: analysis } }\n  - id: judge\n    kind: judge\n    parameters:\n      rules: [positive-sum]\n      bind: { minimum: { from: goal, name: minimum } }\n  - { id: blocked, kind: wait, parameters: { blocker: hard-blocker } }\nedges:\n  - { from: prepare, to: analyze }\n  - { from: analyze, to: read-analysis }\n  - { from: read-analysis, to: judge }\n`,
+    'contract.yml': `id: live-numeric\nversion: '2'\ntitle: Bounded numeric analysis\ninputs:\n  - { name: flowRoot, description: Declared numeric Golden Flow }\n  - { name: design, description: Numeric dataset }\n  - { name: workspaceRoot, description: Private workspace }\noutputs:\n  - { name: measured, path: flow/measured.txt, description: Actual numeric input }\n  - { name: analysis, path: result.txt, reader: numeric-sum, description: Sum above LIMIT }\nenvironment: { wrappers: [sh] }\nworkspace: { copy: [prepare.sh, numbers.txt, README.md] }\ntools:\n  - id: prepare\n    file: tools/prepare.sh\n    description: Copy the actual input in the private flow\n    inputs: [WORKSPACE]\n    argv: [sh, '\${WORKSPACE}/flow/prepare.sh', '\${WORKSPACE}/flow']\nknowledge:\n  - { file: sum.md, purpose: Exact numeric analysis and timing contract }\nworkshops:\n  - id: analyze\n    purpose: Read actual measured values and knowledge; write and run a shell script summing values strictly greater than LIMIT. Sleep 60 seconds in the script before writing result.txt so the engineer can intervene while the Job is active.\n    directory: research/analysis\n    entry: analyze.sh\n    language: shell\n    inputs: [LIMIT]\n    reads: [measured]\n    knowledge: [sum.md]\n    produces: analysis\n    argv: [sh, '\${ENTRY}', '\${WORKSPACE}', '\${LIMIT}']\nrules: [positive-sum, minimum-sum]\nstrategy:\n  limit: { type: number, unit: count, min: 0, max: 100, default: 10 }\ngoal:\n  minimum: { type: number, unit: count, min: 0, max: 10000, default: 1 }\nwords:\n  limit: { label: Strict lower cutoff, unit: count }\n  minimum: { label: Minimum acceptable sum, unit: count }\n`,
+    'graph.yml': `id: live-numeric\nversion: '2'\nentry: prepare\nnodes:\n  - { id: prepare, kind: act, parameters: { tool: prepare } }\n  - id: analyze\n    kind: act\n    parameters:\n      workshop: analyze\n      arguments: { LIMIT: { from: strategy, name: limit } }\n  - { id: read-analysis, kind: act, parameters: { observes: analysis } }\n  - id: judge\n    kind: judge\n    parameters:\n      rules: [positive-sum, minimum-sum]\n      bind: { minimum: { from: goal, name: minimum } }\n  - id: next-cutoff\n    kind: explore\n    parameters:\n      chooser: recover-full-sum\n      bind: { fallbackCutoff: 0 }\n  - { id: blocked, kind: wait, parameters: { blocker: hard-blocker } }\nedges:\n  - { from: prepare, to: analyze }\n  - { from: analyze, to: read-analysis }\n  - { from: read-analysis, to: judge }\n  - { from: judge, to: next-cutoff, outcome: PASS }\n  - { from: judge, to: next-cutoff, outcome: FAIL }\n  - { from: next-cutoff, to: analyze, revisit: true }\n`,
     'semantics.yml': 'values:\n  numeric_sum: { unit: count, description: Sum of actual numbers above LIMIT }\n',
-    'rules/positive-sum.yml': "id: positive-sum\nversion: '1'\ntitle: Numeric sum meets the requested minimum\nparameter: { name: minimum, unit: count }\nrequires: [{ type: numeric_sum }]\nsubject: { type: numeric_sum }\npredicate: { op: gte, threshold: { parameter: minimum }, unit: count }\n",
+    'rules/positive-sum.yml': "id: positive-sum\nversion: '2'\ntitle: Numeric analysis has a positive measured sum\nrequires: [{ type: numeric_sum }]\nsubject: { type: numeric_sum }\npredicate: { op: gte, threshold: 1, unit: count }\n",
+    'rules/minimum-sum.yml': "id: minimum-sum\nversion: '1'\ntitle: Numeric sum meets the requested Goal\nparameter: { name: minimum, unit: count }\nrequires: [{ type: numeric_sum }]\nsubject: { type: numeric_sum }\npredicate: { op: gte, threshold: { parameter: minimum }, unit: count }\n",
+    'choosers/recover-full-sum.yml': "id: recover-full-sum\nversion: '1'\ntitle: Recover excluded positive values after a valid trial misses its Goal\nparameter: { name: fallbackCutoff, unit: count }\nreads:\n  sum: { type: numeric_sum, unit: count }\ndecide:\n  - when: { constraint: PASS, goal: PASS }\n    goalMet: true\n  - when: { constraint: PASS, goal: FAIL }\n    next: { limit: fallbackCutoff }\n",
     'readers/numeric-sum.yml': "id: numeric-sum\nversion: '1'\nfile: tools/read-sum.sh\nargv: [sh, '${READER}', '${REPORT}', '${OUT}']\nreportKind: numeric-sum\nemits: [numeric_sum]\n",
     'tools/read-sum.sh': '#!/bin/sh\nset -eu\nv=$(cat "$1")\ncase "$v" in ""|*[!0-9]*) exit 3;; esac\nprintf \'{"values":[{"type":"numeric_sum","unit":"count","value":%s}]}\\n\' "$v" > "$2"\n',
     'tools/prepare.sh': '#!/bin/sh\nset -eu\nsh "$WORKSPACE/flow/prepare.sh" "$WORKSPACE/flow"\n',
-    'knowledge/sum.md': '# Exact analysis\n\nRead measured.txt: one integer per line. Sum only values strictly greater than LIMIT. Entry argv gives WORKSPACE as $1 and LIMIT as $2. Read $1/flow/measured.txt and write the integer alone to $1/result.txt. The script must sleep 60 seconds before publishing its result, providing a bounded active Job interval for human intervention. Compute from the file; hard-coded sample values do not establish input dependence.\n',
+    'knowledge/sum.md': '# Exact analysis\n\nRead measured.txt: one integer per line. Sum only values strictly greater than LIMIT. Entry argv gives WORKSPACE as $1 and LIMIT as $2. Read $1/flow/measured.txt and write the integer alone to $1/result.txt. The script must sleep 60 seconds before publishing its result, providing a bounded active Job interval for human intervention. Compute from the file; hard-coded sample values do not establish input dependence.\n\nFeedback method: after a valid measured trial misses Goal, compare the actual included and excluded positive values with the current cutoff and Goal. The declared chooser recommends a fallback cutoff that includes all positive values. It is advice: the same owner must explicitly decide next-strategy with current observation and both verdict citations. Revisit analyze, read its actual input again, and write a new executable under that execution identity; never modify the historical executable. Reuse the still-valid measured input from prepare. Once both current rules PASS, explicitly decide goal-met at next-cutoff with current citations. Two generations are the complete trial budget, never a reason to fabricate success.\n',
   };
   for (const [name, content] of Object.entries(files)) { const at = path.join(folder, name); mkdirSync(path.dirname(at), { recursive: true }); writeFileSync(at, content); }
 }
 
 async function workshop(check: LiveCheck): Promise<void> {
-  const { h, flow, bundle, numbers, limit } = await numericHome(check);
+  const { h, flow, bundle, numbers, limit } = await numericHome(check, { feedback: true });
+  const minimum = numbers.reduce((sum, n) => sum + n, 0);
   const pack = path.join(packsDirOf(h), 'live-numeric'); installNumericPack(pack);
   loadPack(packsDirOf(h), 'live-numeric');
   check.observed.hostBootAttempts = 1;
@@ -270,7 +276,7 @@ async function workshop(check: LiveCheck): Promise<void> {
   guardInstalled(check, host, [bundle, packsDirOf(h), flow, h.workspace], pack);
   const agent = check.track(await createRootAgent(host.ctx, h.workspace));
   let startingError: unknown;
-  const starting = check.say(agent, `Run the installed live-numeric Pack on local with goal minimum=1, strategy limit=${limit}, generations=1, retries=2, timeBox=8. You are the same execution owner. Use hima_run, hima_context and hima_execute. Begin and work each node, complete only when ready. At analyze use recommend, read the declared measured output and knowledge, write the actual executable through controlled write, then work. The script sleeps 60 seconds as declared; read the knowledge for exact arguments/output. Let the real Job run asynchronously. Inspect its facts; finish your current response while it runs so I can intervene. Do not complete analyze or begin any successor until I explicitly continue. No shell or alternate Agent.`).catch((error: unknown) => { startingError = error; });
+  const starting = check.say(agent, `Run the installed live-numeric Pack on local with goal minimum=${minimum}, strategy limit=${limit}, generations=2, retries=2, timeBox=9. You are the same execution owner. Use hima_run, hima_context and hima_execute. Begin and work each node, complete only when ready. At analyze use recommend, read the declared measured output and knowledge, write the actual executable through controlled write, then work. The script sleeps 60 seconds as declared; read the knowledge for exact arguments/output. Let the real Job run asynchronously. Inspect its facts; finish your current response while it runs so I can intervene. Do not complete analyze or begin any successor until I explicitly continue. No shell or alternate Agent.`).catch((error: unknown) => { startingError = error; });
   await check.until('real Workshop Job launched', () => host.ctx.hima.ledger.runs().some((run) => host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).some((r) => r.type === 'job' && r.event === 'launched' && r.job.name === 'workshop-analyze')), 360_000);
   const workshopJobs = () => host.ctx.hima.ledger.runs().flatMap((r) => host.ctx.hima.ledger.records({ runId: r.id, type: 'job' })).filter((r) => r.type === 'job' && r.event === 'launched' && r.job.name === 'workshop-analyze');
   const activeWorkshopJob = workshopJobs().at(-1);
@@ -278,6 +284,9 @@ async function workshop(check: LiveCheck): Promise<void> {
   const run = host.ctx.hima.ledger.runs().find((r) => r.packId === 'live-numeric')!;
   check.observed.owner = String(agent.id);
   check.observed.runId = run.id;
+  const initialRun = structuredClone(run);
+  check.observed.initialRun = initialRun;
+  check.require('Run admitted the exact fixed Goal and two-generation budget', run.goal?.minimum === minimum && run.strategy?.limit === limit && run.budget?.generationLimit === 2 && run.budget.timeBoxMs === 540_000, initialRun);
   const before = host.ctx.hima.executionContext(run.id);
   check.require('intervention was delivered while the Workshop execution was working', before.executions.some((e) => e.nodeId === 'analyze' && e.phase === 'working'), before);
   check.steer(agent, `Pause Run ${run.id} now using hima_execute pause at Run scope. Inspect hima_context, report actual in-flight Job facts, and do not complete analyze or start successors. This is an immediate user intervention, not permission to cancel or continue.`);
@@ -292,21 +301,65 @@ async function workshop(check: LiveCheck): Promise<void> {
   await check.wait(agent.whenIdle());
   const held = host.ctx.hima.executionContext(run.id);
   check.require('finished Job did not admit a successor while paused', held.available.length === 0 && !held.executions.some((e) => e.nodeId === 'read-analysis') && held.run.currentNode === 'analyze', held);
-  await check.say(agent, `Explicit authorization: continue Run ${run.id}. Use hima_execute continue, complete the ready analyze execution, then explicitly begin/work/complete its reader and Judge. Read actual context after each change. Continue to the terminal Run status and report actual evidence. Use this same owner and Run.`);
+  await check.say(agent, `Explicit authorization: continue Run ${run.id}. Use hima_execute continue, complete the ready analyze execution, then explicitly begin/work/complete its reader, Judge and Explore. Read actual context after each change. At Explore make your own explicit decision from the current observation and both verdicts, cite those record identities and explain the rationale. If you choose another trial, follow the declared revisit and prepare the new analyze execution using its actual inputs and knowledge. Stay within the original two-generation budget and fixed Goal. Continue to the terminal Run status and report actual evidence. Use this same owner and Run.`);
   for (let round = 0; round < 3 && !host.ctx.hima.ledger.run(run.id)?.status?.startsWith('ended-'); round++) {
+    // Returning a response while a real Job runs is expected. Wait only for its mechanical facts;
+    // this checker neither completes that execution nor picks the next business node.
+    await check.until('remaining asynchronous node work settles', () => !host.ctx.hima.executionContext(run.id).executions.some((e) => e.phase === 'working'));
+    await check.wait(agent.whenIdle());
+    if (host.ctx.hima.ledger.run(run.id)?.status?.startsWith('ended-')) break;
     await check.say(agent, `Inspect hima_context for Run ${run.id} and finish the authorized remaining reference nodes using current identities and actual ready facts. If something is refused, inspect its reason. Keep the same Run.`);
   }
   const final = host.ctx.hima.executionContext(run.id);
   const records = host.ctx.hima.ledger.records({ runId: run.id });
-  const expected = numbers.filter((n) => n > limit).reduce((sum, n) => sum + n, 0);
+  const expectedFirst = numbers.filter((n) => n > limit).reduce((sum, n) => sum + n, 0);
   const readings = records.filter((r) => r.type === 'observation');
-  check.require('real reader measured the variable-input sum', readings.some((r) => r.values.some((v) => v.type === 'numeric_sum' && v.value === expected)), { expected, readings });
-  check.require('real Judge produced a PASS verdict', records.some((r) => r.type === 'verdict' && r.outcome === 'PASS'), records.filter((r) => r.type === 'verdict'));
-  check.require('Run finished with the original conversational owner', final.run.status?.startsWith('ended-') === true && final.run.control?.owner === String(agent.id), final.run);
+  const verdicts = records.filter((r) => r.type === 'verdict');
+  const decisions = records.filter((r) => r.type === 'decision');
+  const next = decisions.find((r) => r.generation === 1);
+  const success = decisions.find((r) => r.generation === 2);
+  const cutoff = next && 'strategy' in next.chosen ? next.chosen.strategy.limit : undefined;
+  const measured = (generation: number, expected: number) => readings.some((r) => r.generation === generation
+    && r.values.some((v) => v.type === 'numeric_sum' && v.unit === 'count' && v.value === expected));
+  const judged = (generation: number, rule: string, outcome: string) => verdicts.some((r) => r.generation === generation && r.ruleId === rule && r.outcome === outcome
+    && (rule !== 'minimum-sum' || r.boundParameters?.minimum === minimum));
+  check.require('first real trial was valid but missed the fixed full-sum Goal', expectedFirst > 0 && expectedFirst < minimum && measured(1, expectedFirst)
+    && judged(1, 'positive-sum', 'PASS') && judged(1, 'minimum-sum', 'FAIL'), { expectedFirst, minimum, readings, verdicts });
+  check.require('owner explicitly lowered the cutoff after the failed Goal reading', typeof cutoff === 'number' && cutoff >= 0 && cutoff < limit
+    && next?.agent?.sessionId === String(agent.id) && Boolean(next.agent.rationale.trim()), { limit, next });
+  check.require('second real reader measured the full sum and both Judge rules passed', measured(2, minimum)
+    && judged(2, 'positive-sum', 'PASS') && judged(2, 'minimum-sum', 'PASS'), { minimum, readings, verdicts });
+  check.require('each owner decision cites that generation actual reading and both verdicts', decisions.length === 2 && decisions.every((decision) => {
+    const current = [...readings, ...verdicts].filter((r) => r.generation === decision.generation && r.seq < decision.seq);
+    return decision.agent?.sessionId === String(agent.id) && Boolean(decision.agent.rationale.trim())
+      && decision.cites.length >= 3 && decision.cites.every((id) => current.some((r) => r.id === id))
+      && ['positive-sum', 'minimum-sum'].every((rule) => verdicts.some((r) => r.generation === decision.generation && r.ruleId === rule && decision.cites.includes(r.id)))
+      && readings.some((r) => r.generation === decision.generation && decision.cites.includes(r.id));
+  }), decisions);
+  check.require('Run ended goal-met only after the original owner explicit success decision', final.run.status === 'ended-goal-met'
+    && final.run.control?.owner === String(agent.id) && success?.chosen !== undefined && 'goalMet' in success.chosen && success.chosen.goalMet, { run: final.run, success });
+  const launched = records.filter((r) => r.type === 'job').filter((r) => r.event === 'launched');
+  const analyze = final.executions.filter((e) => e.nodeId === 'analyze');
+  check.require('one Run retained its Goal, method, original budget and cumulative Job meter across two generations', host.ctx.hima.ledger.runs().length === 1
+    && final.run.generation === 2 && final.run.createdAt === initialRun.createdAt && final.run.packDigest === initialRun.packDigest
+    && JSON.stringify(final.run.goal) === JSON.stringify(initialRun.goal) && JSON.stringify(final.run.budget) === JSON.stringify(initialRun.budget)
+    && final.run.budget?.generationLimit === 2 && final.run.meters?.jobsLaunched === launched.length
+    && final.run.meters.jobsLaunched > (initialRun.meters?.jobsLaunched ?? 0)
+    && final.run.meters.elapsedMs >= (initialRun.meters?.elapsedMs ?? 0), { initialRun, finalRun: final.run, launched });
+  check.require('declared revisit reran analyze twice and reused the valid prepare result', analyze.length === 2
+    && analyze.every((e) => e.phase === 'completed') && final.executions.filter((e) => e.nodeId === 'prepare').length === 1
+    && launched.filter((r) => r.job.name === 'workshop-analyze').length === 2
+    && [1, 2].every((g) => launched.some((r) => r.generation === g && r.job.name === 'workshop-analyze')), final.executions);
   const codes = records.filter((r) => r.type === 'code');
   check.observed.code = codes.map((r) => ({ record: r, content: readFileSync(r.path, 'utf8'), actualSha256: sha256(readFileSync(r.path)) }));
   check.require('code records hash the actual generated files', codes.length > 0 && codes.every((r) => sha256(readFileSync(r.path)) === r.sha256), check.observed.code);
+  check.require('same owner wrote an executable in each distinct execution directory', analyze.every((execution) => codes.some((r) => r.path === execution.workshop?.entryPath
+    && r.path.includes(`/.executions/${execution.id}/`) && r.sessionId === String(agent.id)))
+    && new Set(analyze.map((e) => e.workshop?.directory)).size === 2
+    && codes.every((r) => r.sessionId === String(agent.id)), check.observed.code);
   check.require('same model used all controlled Workshop actions', ['recommend', 'read', 'knowledge', 'write', 'pause', 'continue'].every((action) => toolCalls(agent).some((call) => call.name === 'hima_execute' && call.args.action === action)), toolCalls(agent));
+  check.require('same model explicitly submitted both feedback decisions', ['next-strategy', 'goal-met'].every((decision) => toolCalls(agent).some((call) => call.name === 'hima_execute'
+    && call.args.action === 'complete' && call.args.decision === decision && Array.isArray(call.args.cites) && call.args.cites.length >= 3)), toolCalls(agent));
   check.require('no separate research model moment opened', records.every((r) => r.type !== 'session') && check.requestSessions.size === 1, { momentRecords: records.filter((r) => r.type === 'session'), modelSessions: [...check.requestSessions] });
 }
 

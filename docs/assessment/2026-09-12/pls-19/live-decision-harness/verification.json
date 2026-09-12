@@ -1,0 +1,45 @@
+{
+  "scope": "Checker L0/L2 only; L4 not run",
+  "baseSha": "40f5afa3fe792622f52eff21bad3e85809b32780",
+  "checkerSha256": "766726198a97b4a0ac9e1276de4e2f6f01c93d467b80abed67e0ab863f6dfe3a",
+  "probeSha256": "b09e543a49b327cf58f7c2a967e271736e5123997fed592cfce736a3597435ed",
+  "checks": {
+    "build": {
+      "exitCode": 0
+    },
+    "repositoryTypecheck": {
+      "exitCode": 0
+    },
+    "probeTypecheck": {
+      "exitCode": 0
+    },
+    "seams": {
+      "exitCode": 0
+    },
+    "cliHelp": {
+      "exitCode": 0
+    },
+    "cliWithoutKey": {
+      "exitCode": 2,
+      "requestedOutputCreated": false
+    },
+    "hostProtocol": {
+      "exitCode": 0,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "elapsedMs": 133568.872875,
+      "actualJobs": 5,
+      "modelRequestEvents": 0
+    }
+  },
+  "notRun": [
+    "real model",
+    "SSH",
+    "EDA",
+    "Electron",
+    "full local regression",
+    "L5 pilot"
+  ],
+  "preservedFirstProbe": "First protocol probe reached goal-met but failed a test-side Job-count expectation; nine request events were blocked before provider access. See first-host files."
+}

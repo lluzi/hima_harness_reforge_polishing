@@ -1,0 +1,2 @@
+usage: node scripts/live-check-workshop.ts --out <fresh-directory> [--timeout-ms 600000] [--max-turns 16] [--max-steps 160]
+Requires DEEPSEEK_API_KEY in the inherited environment; never pass a credential as an argument.
