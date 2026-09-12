@@ -1,5 +1,6 @@
 {
   "local": [
+    "test/contract/generic-workspace.host.test.ts",
     "test/contract/agent-controls.host.test.ts",
     "test/contract/agent-recovery.host.test.ts",
     "test/contract/boot.test.ts",

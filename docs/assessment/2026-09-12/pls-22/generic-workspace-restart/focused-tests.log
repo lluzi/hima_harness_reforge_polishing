@@ -1,0 +1,159 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/generic-workspace.host.test.ts test/contract/ledger-import.test.ts test/contract/agent-recovery.host.test.ts
+local: 3 selected; 46 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: production preparation refuses an unowned Run before any Job or Run is created
+ok 1 - production preparation refuses an unowned Run before any Job or Run is created
+  ---
+  duration_ms: 3145.27375
+  type: 'test'
+  ...
+# Subtest: a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+ok 2 - a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+  ---
+  duration_ms: 3363.759792
+  type: 'test'
+  ...
+# Subtest: an interrupted completion remains fenced even when its prior Job has a successful exit
+ok 3 - an interrupted completion remains fenced even when its prior Job has a successful exit
+  ---
+  duration_ms: 2991.536792
+  type: 'test'
+  ...
+# Subtest: adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+ok 4 - adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+  ---
+  duration_ms: 3592.343291
+  type: 'test'
+  ...
+# Subtest: adoption carries an open historical human wait once and new pauses continue to spend the original time box
+ok 5 - adoption carries an open historical human wait once and new pauses continue to spend the original time box
+  ---
+  duration_ms: 3991.921125
+  type: 'test'
+  ...
+# Subtest: historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+ok 6 - historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+  ---
+  duration_ms: 5245.930083
+  type: 'test'
+  ...
+# Subtest: an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+ok 7 - an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+  ---
+  duration_ms: 1696.966041
+  type: 'test'
+  ...
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+ok 8 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 5362.068708
+  type: 'test'
+  ...
+# Subtest: restart repairs an owed report of an ended owned Run after a real Site write fault without advancing it
+ok 9 - restart repairs an owed report of an ended owned Run after a real Site write fault without advancing it
+  ---
+  duration_ms: 1851.152292
+  type: 'test'
+  ...
+# Subtest: restart repairs an owed report of an ended historical Run after a real Site write fault without advancing it
+ok 10 - restart repairs an owed report of an ended historical Run after a real Site write fault without advancing it
+  ---
+  duration_ms: 1379.868083
+  type: 'test'
+  ...
+# Subtest: a generic Pack without design reopens its completed Run without rewriting workspace facts
+ok 11 - a generic Pack without design reopens its completed Run without rewriting workspace facts
+  ---
+  duration_ms: 3204.884208
+  type: 'test'
+  ...
+# Subtest: an undeclared Site design is neither bound nor invented when generic workspace metadata is reused
+ok 12 - an undeclared Site design is neither bound nor invented when generic workspace metadata is reused
+  ---
+  duration_ms: 670.196584
+  type: 'test'
+  ...
+# Subtest: a Pack declaring design refuses its missing binding before a Run
+ok 13 - a Pack declaring design refuses its missing binding before a Run
+  ---
+  duration_ms: 525.352125
+  type: 'test'
+  ...
+# Subtest: a Pack declaring design preserves its binding across cold restart
+ok 14 - a Pack declaring design preserves its binding across cold restart
+  ---
+  duration_ms: 888.74425
+  type: 'test'
+  ...
+# Subtest: generic recovery and explicit adoption preserve absent design while rejecting changed metadata and invalid v19 input
+ok 15 - generic recovery and explicit adoption preserve absent design while rejecting changed metadata and invalid v19 input
+  ---
+  duration_ms: 1308.179792
+  type: 'test'
+  ...
+# Subtest: explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+ok 16 - explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+  ---
+  duration_ms: 3698.864875
+  type: 'test'
+  ...
+# Subtest: opening the original v19 home still fails the version gate without rewriting it
+ok 17 - opening the original v19 home still fails the version gate without rewriting it
+  ---
+  duration_ms: 220.2415
+  type: 'test'
+  ...
+# Subtest: wrong formats, future controls and unknown fields cannot be silently dropped during import
+ok 18 - wrong formats, future controls and unknown fields cannot be silently dropped during import
+  ---
+  duration_ms: 60.229458
+  type: 'test'
+  ...
+# Subtest: Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+ok 19 - Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+  ---
+  duration_ms: 48.583291
+  type: 'test'
+  ...
+# Subtest: v20-only Job, workspace and decision facts are refused even with a v19 header
+ok 20 - v20-only Job, workspace and decision facts are refused even with a v19 header
+  ---
+  duration_ms: 20.796833
+  type: 'test'
+  ...
+# Subtest: symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+ok 21 - symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+  ---
+  duration_ms: 6.388625
+  type: 'test'
+  ...
+# Subtest: mid-write failure and process death cannot publish a partial import or alter the source
+ok 22 - mid-write failure and process death cannot publish a partial import or alter the source
+  ---
+  duration_ms: 806.666333
+  type: 'test'
+  ...
+# Subtest: the offline CLI requires both explicit paths and never defaults to DSH_HOME
+ok 23 - the offline CLI requires both explicit paths and never defaults to DSH_HOME
+  ---
+  duration_ms: 74.488458
+  type: 'test'
+  ...
+# Subtest: two simultaneous imports cannot replace the first complete destination
+ok 24 - two simultaneous imports cannot replace the first complete destination
+  ---
+  duration_ms: 52.316
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 46021.335834
+Test boot attempts: {"host-process":0,"host-in-process":30,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 46.126 s; pass/fail/skip counts are in the TAP summary above

@@ -335,7 +335,7 @@ export interface RunHeadView {
 export interface RunView {
   readonly run: RunHeadView;
   /** Workspace declarations, not an observed runtime/tool-version inventory. */
-  readonly workspace?: { readonly design: string; readonly flowRoot: string; readonly containerName: string };
+  readonly workspace?: { readonly design?: string; readonly flowRoot: string; readonly containerName: string };
   readonly observations: readonly ObservationView[];
   readonly refusals: readonly RefusalView[];
   readonly verdicts: readonly VerdictView[];
@@ -709,7 +709,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
   const workshop = standingWorkshop(run, records);
   return {
     run: runHeadView(run, prepared?.packVersion, words),
-    ...(prepared === undefined ? {} : { workspace: { design: prepared.design, flowRoot: prepared.flowRoot, containerName: prepared.containerName } }),
+    ...(prepared === undefined ? {} : { workspace: { ...(prepared.design === undefined ? {} : { design: prepared.design }), flowRoot: prepared.flowRoot, containerName: prepared.containerName } }),
     observations,
     refusals: records.filter((r): r is RefusalRecord => r.type === 'refusal').map(refusalView),
     verdicts: records.filter((r): r is VerdictRecord => r.type === 'verdict').map((v) => verdictView(v, byId)),

@@ -413,7 +413,8 @@ export const workspaceRecord = z.object({
   workspace: z.string(),
   /** The Site's own flow, read to make the copy and never written. */
   flowRoot: z.string(),
-  design: z.string(),
+  /** Present only when the Pack declares a design input; generic Packs have none. */
+  design: z.string().optional(),
   /** The container the pack's tools bind the copy into: `hima-<campaign>`, never the Site's own. */
   containerName: z.string(),
   /** What the run contract named, copied into `<workspace>/flow/`, in the order it was copied. */
@@ -1601,7 +1602,11 @@ export const ledgerSpec = defineDomain({
   // `packDigest` is a sha256 and not any string, within this same version: nothing has ever written
   // one that is not, and a row carrying something a check could never match is a Run that would read
   // as untestable rather than as wrong.
-  // Older builds must reject this domain rather than strip ownership and re-enter drive.
+  // 20: conversational ownership and execution receipts. Older builds must reject this domain
+  // rather than strip ownership and re-enter drive. Within this unreleased version, workspace
+  // design is optional: generic Packs already wrote its absence (JSON omitted undefined), so this
+  // repairs the reader without rewriting those facts or inventing an input. Earlier v20 readers
+  // refuse that absence; v19 still fails the version gate and its import schema stays unchanged.
   version: 20,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
@@ -1974,7 +1979,7 @@ const legacyRunRecord = runRecord.pick({
 const legacyLedgerRecord = z.discriminatedUnion('type', [
   observationRecord, refusalRecord, verdictRecord,
   jobRecord.safeExtend({ job: jobIdentity.extend({ pid: z.number().int().positive() }) }),
-  workspaceRecord.omit({ packDigest: true }), nodeRecord, blockerRecord, resumedRecord,
+  workspaceRecord.omit({ packDigest: true }).extend({ design: z.string() }), nodeRecord, blockerRecord, resumedRecord,
   // v20 decisions can name the conversational agent. These are the complete v19 fields.
   decisionRecord.pick({ id: true, runId: true, siteId: true, seq: true, at: true, writer: true,
     generation: true, loopId: true, type: true, nodeId: true, chooser: true,
