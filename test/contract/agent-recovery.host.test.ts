@@ -7,7 +7,7 @@ import { timingProbePackId } from './support/pack.ts';
 import { tmuxHasSession } from './support/tmux.ts';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { cp, readFile, writeFile } from 'node:fs/promises';
+import { cp, readFile, rm, writeFile } from 'node:fs/promises';
 import type { InProcessHost } from './support/boot-inprocess.ts';
 import type { LocalHome } from './support/fabric.ts';
 import { repoRoot } from './support/dsh-home.ts';
@@ -329,5 +329,57 @@ test('a restarted Host observes the exact Job after its launch receipt was lost 
   } finally {
     if (runId) await host.ctx.hima.cancelRun(runId);
     await host.dispose(); await home.h.dispose();
+  }
+});
+
+
+for (const owned of [true, false]) test(`restart repairs an owed report of an ended ${owned ? 'owned' : 'historical'} Run after a real Site write fault without advancing it`, async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  let host = await bootInProcess(home.h);
+  const legacyMode = process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+  process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const prepared = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id), timeBoxMs: 60_000 });
+    assert.equal(prepared.kind, 'ran');
+    if (prepared.kind !== 'ran') return;
+    const runId = prepared.run.id;
+    if (!owned) await host.ctx.hima.ledger.advanceRun(runId, { control: undefined });
+    const obstruction = path.join(prepared.workspace, 'hima-experience');
+    await writeFile(obstruction, 'a file prevents the Site from making its report directory');
+    // Cancellation commits its ending before the genuine mkdir failure. No report can be claimed.
+    await host.ctx.hima.cancelRun(runId).catch(() => undefined);
+    const ended = host.ctx.hima.ledger.run(runId)!;
+    assert.equal(ended.status, 'cancelled');
+    const before = host.ctx.hima.ledger.records({ runId });
+    assert.equal(before.filter((record) => record.type === 'experience').length, 0);
+    await host.dispose();
+    await rm(obstruction);
+    host = await bootInProcess(home.h);
+    await host.ctx.hima.reconciled;
+    const reports = host.ctx.hima.ledger.records({ runId, type: 'experience' });
+    assert.equal(reports.length, 1, 'a boot repairs the report even without an automatic business driver');
+    const report = reports[0]!;
+    assert.equal(report.type, 'experience');
+    if (report.type !== 'experience') return;
+    assert.match(await readFile(report.markdown.path, 'utf8'), new RegExp(runId));
+    const json = JSON.parse(await readFile(report.json.path, 'utf8'));
+    assert.equal(json.ending.status, 'cancelled');
+    assert.deepEqual(json.budget, ended.budget);
+    const { nextSeq: beforeSeq, ...beforeFacts } = ended;
+    const { nextSeq: afterSeq, ...afterFacts } = host.ctx.hima.ledger.run(runId)!;
+    assert.equal(afterSeq, beforeSeq + 1, 'only the new report consumes a record sequence');
+    assert.deepEqual(JSON.parse(JSON.stringify(afterFacts)), JSON.parse(JSON.stringify(beforeFacts)), 'owner, ending, budget, node and meters are unchanged');
+    assert.deepEqual(host.ctx.hima.ledger.records({ runId }).filter((record) => record.type !== 'experience'), before);
+    assert.equal(host.ctx.get('agents')!.list().length, 0, 'report repair never opens an Agent');
+    await host.dispose();
+    host = await bootInProcess(home.h);
+    await host.ctx.hima.reconciled;
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'experience' }).length, 1, 'later boots do not duplicate the repaired report');
+  } finally {
+    await host.dispose(); await home.h.dispose();
+    if (legacyMode === undefined) delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+    else process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = legacyMode;
   }
 });

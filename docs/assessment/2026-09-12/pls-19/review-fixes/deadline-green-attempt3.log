@@ -1,0 +1,82 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-execution.host.test.ts
+local: 1 selected; 45 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 1 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 4755.669375
+  type: 'test'
+  ...
+# Subtest: the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+ok 2 - the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+  ---
+  duration_ms: 4531.048042
+  type: 'test'
+  ...
+# Subtest: pause and an explicit handoff fence old owners without changing Goal or budget
+ok 3 - pause and an explicit handoff fence old owners without changing Goal or budget
+  ---
+  duration_ms: 1374.658458
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 4 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 867.474417
+  type: 'test'
+  ...
+# Subtest: an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+ok 5 - an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+  ---
+  duration_ms: 543.512042
+  type: 'test'
+  ...
+# Subtest: a delayed actual Site probe that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+not ok 6 - a delayed actual Site probe that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+  ---
+  duration_ms: 3989.9565
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-execution.host.test.ts:174:71'
+  failureType: 'testCodeFailure'
+  error: 'the work reached the I/O boundary inside its admitted budget'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-execution.host.test.ts:236:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a delayed actual intent persistence that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+not ok 7 - a delayed actual intent persistence that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+  ---
+  duration_ms: 4342.569084
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-execution.host.test.ts:174:71'
+  failureType: 'testCodeFailure'
+  error: 'work never reached the intended external boundary: {"kind":"accepted","context":{"run":{"id":"run-c758c5c7-be80-4252-9bd2-2ccc658ea373","campaignId":"opene902-timing-probe-20260912-192621-7793","siteId":"local","packId":"opene902-timing-probe","purpose":"campaign","packDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","goal":{"target_period_ns":2},"budget":{"timeBoxMs":2500,"retryAllowance":3,"jobCap":1,"licences":{"Design-Compiler":1},"generationLimit":6},"firstStrategy":{"periodNs":2.3},"generation":1,"control":{"mode":"agent","owner":"session-0cb7dba0-cee8-4c23-9703-26f96d77d216","epoch":1,"revision":3,"paused":["*"],"executions":{"execution-eed2d3ca-ca0d-492c-b449-04dbb815c662":{"id":"execution-eed2d3ca-ca0d-492c-b449-04dbb815c662","nodeId":"synthesize","kind":"act","generation":1,"attempt":1,"methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","inputDigest":"8bb857e702875b8d6dec47d80f40127e5525b1d43ca61760f154d1aa04d53d97","phase":"failed","inputThroughSeq":1,"result":{"kind":"budget-exhausted","reason":"Job was not dispatched: the Campaign time box expired before this Job was launched"},"reason":"Job was not dispatched: the Campaign time box expired before this Job was launched"}},"requests":{"delayed-begin":{"digest":"9ceb53bb08e61b1c38872f1d5387e71b624fabec5a23092d1406ddb502110cb9","actor":"session-0cb7dba0-cee8-4c23-9703-26f96d77d216","epoch":1,"revision":0,"origin":"agent","at":"2026-09-12T19:26:21.917Z","state":"done","receipt":{"requestId":"delayed-begin","action":"begin","executionId":"execution-eed2d3ca-ca0d-492c-b449-04dbb815c662"}},"delayed-work":{"digest":"521793ece352a6b56c5ab0b0285465e6636c16f78692cb389b562e2736cf33c9","actor":"session-0cb7dba0-cee8-4c23-9703-26f96d77d216","epoch":1,"revision":1,"origin":"agent","at":"2026-09-12T19:26:21.954Z","state":"done","receipt":{"requestId":"delayed-work","action":"work","executionId":"execution-eed2d3ca-ca0d-492c-b449-04dbb815c662"}}},"siteDigest":"964f862c7aac450cfec29d27021292b682d57b0e30131c1ea6910320416dcd0a","stop":{"reason":"budget","status":"requested"}},"createdAt":"2026-09-12T19:26:21.626Z","nextSeq":2,"status":"running","currentNode":"synthesize","strategy":{"periodNs":2.3},"meters":{"elapsedMs":328,"jobsLaunched":0,"attempts":1,"generationMs":[87]}},"nodes":[{"id":"synthesize","kind":"act","parameters":{"tool":"synth","arguments":{"PERIOD_NS":{"from":"strategy","name":"periodNs"}}}},{"id":"read-qor","kind":"act","parameters":{"observes":"qorReport","arguments":{}}},{"id":"judge","kind":"judge","parameters":{"rules":["setup-wns-all-nonnegative","clock-period-at-most"],"bind":{"target_period_ns":{"from":"goal","name":"target_period_ns"}}}},{"id":"next-period","kind":"explore","parameters":{"chooser":"over-constraining-push","bind":{"stepNs":0.05},"converge":{"read":"period","band":0.05,"generations":1,"generationLimit":6}}},{"id":"blocked","kind":"wait","parameters":{"blocker":"hard-blocker"}}],"available":[],"executions":[{"id":"execution-eed2d3ca-ca0d-492c-b449-04dbb815c662","nodeId":"synthesize","kind":"act","generation":1,"attempt":1,"methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","inputDigest":"8bb857e702875b8d6dec47d80f40127e5525b1d43ca61760f154d1aa04d53d97","phase":"failed","inputThroughSeq":1,"result":{"kind":"budget-exhausted","reason":"Job was not dispatched: the Campaign time box expired before this Job was launched"},"reason":"Job was not dispatched: the Campaign time box expired before this Job was launched"}],"method":{"id":"opene902-timing-probe","version":"2","digest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","dir":"/private/tmp/hima-tests-zIvo0D/hima-home-6PfDyz/hima/packs/opene902-timing-probe/.hima-method-history/4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d/opene902-timing-probe","contract":{"id":"opene902-timing-probe","version":"2","title":"opene902 timing probe","inputs":[{"name":"flowRoot","description":"The Golden Flow\'s root on the Site: the directory holding the makefile the flow is driven by. Read-only to a Campaign — a generation runs in its own copy of it, never here."},{"name":"design","description":"The design the flow builds, spelled as the flow\'s own manifests spell it."},{"name":"workspaceRoot","description":"Where Campaign workspaces are created. The Site\'s Permit must allow writes under it; nothing the pack does writes anywhere else."}],"outputs":[{"name":"qorReport","path":"flow/results/${design}/syn/report/qor.rpt","reader":"dc-qor-report","description":"The Design Compiler qor report of the generation just synthesized. The judged report."},{"name":"synthesisLog","path":"flow/logs/${design}/dc_shell.log","description":"What dc_shell said while it ran. Read by a person after a failure, not by a reader."}],"environment":{"wrappers":["make"]},"workspace":{"copy":["Makefile","flows","manifests","tools","build/${design}","sources/${design}"]},"tools":[{"id":"synth","file":"tools/synth.sh","description":"One synthesis generation at a chosen clock period, inside the Campaign\'s own copy of the flow. `FORCE_SYNTH=1` so no generation ever reuses another\'s netlist, and `EDA_CONTAINER_NAME` so the copy is bound into a container of this Campaign\'s own — running it under the Site\'s container name would write the Site\'s own results.","inputs":["WORKSPACE","FLOW_ROOT","DESIGN","PERIOD_NS","CAMPAIGN"],"licences":{"Design-Compiler":1},"argv":["make","-C","${WORKSPACE}/flow","DESIGN=${DESIGN}","synth","CLOCK_PERIOD_NS=${PERIOD_NS}","FORCE_SYNTH=1","EDA_CONTAINER_NAME=hima-${CAMPAIGN}"]}],"workshops":[],"rules":["setup-wns-all-nonnegative","clock-period-at-most"],"knowledge":[],"strategy":{"periodNs":{"type":"number","unit":"ns","min":0.5,"max":10,"default":2.3}},"words":{"target_period_ns":{"label":"clock period at most","unit":"ns"},"periodNs":{"label":"clock period","unit":"ns"}}},"reference":{"id":"opene902-timing-probe","version":"2","entry":"synthesize","nodes":[{"id":"synthesize","kind":"act","parameters":{"tool":"synth","arguments":{"PERIOD_NS":{"from":"strategy","name":"periodNs"}}}},{"id":"read-qor","kind":"act","parameters":{"observes":"qorReport","arguments":{}}},{"id":"judge","kind":"judge","parameters":{"rules":["setup-wns-all-nonnegative","clock-period-at-most"],"bind":{"target_period_ns":{"from":"goal","name":"target_period_ns"}}}},{"id":"next-period","kind":"explore","parameters":{"chooser":"over-constraining-push","bind":{"stepNs":0.05},"converge":{"read":"period","band":0.05,"generations":1,"generationLimit":6}}},{"id":"blocked","kind":"wait","parameters":{"blocker":"hard-blocker"}}],"edges":[{"from":"synthesize","to":"read-qor"},{"from":"read-qor","to":"judge"},{"from":"judge","to":"next-period","outcome":"PASS"},{"from":"judge","to":"next-period","outcome":"FAIL"},{"from":"next-period","to":"synthesize","revisit":true}],"loops":{}}}},"receipt":{"requestId":"delayed-work","action":"work","executionId":"execution-eed2d3ca-ca0d-492c-b449-04dbb815c662"},"reason":"Job was not dispatched: the Campaign time box expired before this Job was launched"}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-execution.host.test.ts:234:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 5
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21062.434625
+Test boot attempts: {"host-process":0,"host-in-process":7,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 21.175 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

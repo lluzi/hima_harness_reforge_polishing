@@ -56,7 +56,7 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
 import { randomUUID } from 'node:crypto';
 import type { Ledger, MomentOutcome, SessionRecord } from './ledger.js';
 // The two refusals a moment can arrive with, in the leaf every face recognises errors by type from.
-import { MomentTurnError, NoCurrentNodeError, RunRunningError, WorkshopNodeError } from './errors.js';
+import { MomentTurnError, NoCurrentNodeError, RunRunningError, RunStartError, WorkshopNodeError } from './errors.js';
 // The tool names the pack authoring guard governs, which are also the names no moment may be opened
 // with (D48). One list, in the file that states the rule about them; see `openMoment` for why.
 import { GOVERNED_TOOLS } from './authoring.js';
@@ -512,6 +512,9 @@ export async function momentOnCurrentNode(deps: MomentDeps, runId: string, instr
   await momentReconciliation;
   const run = deps.ledger.run(runId);
   if (!run) throw new Error(`unknown run ${runId}`);
+  if (run.control !== undefined) {
+    throw new RunStartError(`run ${runId} is controlled by its conversation Agent; separate model moments are unavailable in every Run state`);
+  }
   // Never while somebody is driving this Run (#62). The drive opens its own moments at the node it
   // is standing on, numbered by that node's attempt; a moment opened here at the same time would
   // take the number the next retry is about to take, and the node's session records would stop being

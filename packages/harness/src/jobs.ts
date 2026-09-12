@@ -13,7 +13,7 @@ import { loadSite } from './sites.js';
 import { decideLaunch } from './shell.js';
 import { existingRun, runFor } from './runs.js';
 import type { JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, RefusalRecord, RunRecord } from './ledger.js';
-import { RunReferenceError, SiteUnreadableError } from './errors.js';
+import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
 
 /** What a Job's name defaults to when the caller does not give one. */
 const defaultJobName = 'job';
@@ -254,7 +254,10 @@ async function launchInSession(
   const intent = { session, workspace, name, startedAt, wire };
   // Durable identity must exist before the only command that can create this Job. A failed append
   // leaves no session; a lost launch response can later be reconciled by this exact identity.
-  await req.beforeLaunch?.(intent);
+  try { await req.beforeLaunch?.(intent); }
+  catch (error) {
+    throw new LaunchNotDispatchedError(`Job was not dispatched: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
   // `-P -F` prints the new session's pane pid as the launch itself answers, rather than asking for it
   // in a second command: a Job that finishes in milliseconds would already be gone by then, and a Job
   // with no identity could never be found again.

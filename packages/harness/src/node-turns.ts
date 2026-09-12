@@ -994,9 +994,15 @@ export async function launchWrittenWorkshop(ctx: Driving, node: Extract<PackNode
   const resolved = await resolveWorkshop(ctx, node);
   if (!resolved.ok) return blockNode(ctx, node, attempt, resolved.reason);
   const { declaration, workshopAbs, entryAbs, argv } = resolved;
+  const run = existingRun(ctx.deps.ledger, ctx.runId);
   const latest = new Map<string, CodeRecord>();
   for (const record of ctx.deps.ledger.records({ runId: ctx.runId, type: 'code' })) {
-    if (record.type === 'code' && record.sessionId === sessionId && record.nodeId === node.id &&
+    if (record.type !== 'code') continue;
+    // Private execution code survives an explicit owner handoff; sessionId remains its author.
+    // Legacy moments still own only their own files within the shared Workshop directory.
+    const inScope = ctx.executionId === undefined ? record.sessionId === sessionId
+      : record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id;
+    if (inScope && record.nodeId === node.id && record.workshop === declaration.id &&
         record.attempt === attempt && record.branchId === ctx.branchId && within(record.path, workshopAbs, ctx.site)) latest.set(record.path, record);
   }
   const entry = latest.get(entryAbs);

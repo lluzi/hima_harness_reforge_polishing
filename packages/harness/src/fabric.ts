@@ -65,7 +65,7 @@ import type {
 } from './ledger.js';
 import { chosenAs, chosenKind, type ChosenKind } from './record-views.js';
 import { allowsRunArgument, allowsTimeBoxMs, runArguments, goalFrom, strategyFrom, timeBoxMsBounds, type StrategyValue } from './run-arguments.js';
-import { PackNotFoundError, RunFaultError, RunStartError, SiteUnreadableError } from './errors.js';
+import { PackNotFoundError, RunFaultError, RunStartError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
 import {
   advance,
   attemptOf,
@@ -1322,10 +1322,17 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
     campaignId: run.campaignId, waitedMs: 0, nonblocking: true, executionId: execution.id,
     ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
     beforeLaunch: async (offered: LaunchIntent) => {
-      if (deps.stopSignal?.aborted) throw new RunStartError('the Host stopped before this Job was launched');
+      const revalidate = () => {
+        if (deps.stopSignal?.aborted) throw new RunStartError('the Host stopped before this Job was launched');
+        if (timeBoxSpent(existingRun(deps.ledger, run.id), 0)) throw new RunStartError('the Campaign time box expired before this Job was launched');
+      };
+      revalidate();
       const intent = launchIntentSchema.parse(offered);
       if (intent.runId !== run.id || intent.siteId !== run.siteId || intent.nodeId !== execution.nodeId || intent.attempt !== execution.attempt || intent.branchId !== execution.branchId) throw new RunStartError('launch identity does not match the admitted node execution');
       await updateExecution(deps, run.id, execution.id, { intent });
+      // Site/Permit probes and the durable write can each outlive the deadline while this action
+      // holds admission. Recheck here; the queued deadline task cannot run until this work returns.
+      revalidate();
     },
   };
 }
@@ -1477,6 +1484,15 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
       if (result.kind === 'pending') observeExecution(ctx, node, execution, result.session);
       return executionAnswer(deps, run.id, 'accepted', { receipt });
     } catch (error) {
+      if (error instanceof LaunchNotDispatchedError) {
+        const exhausted = timeBoxSpent(existingRun(deps.ledger, run.id), 0);
+        // Only Jobs' pre-dispatch boundary can establish this fact. Errors after sending the
+        // launch command keep their intent below, even when no launch receipt was persisted.
+        await updateExecution(deps, run.id, execution.id, { phase: 'failed', intent: undefined,
+          result: { kind: exhausted ? 'budget-exhausted' : 'stopped', reason: error.message }, reason: error.message }, req.requestId);
+        if (exhausted) await requestExecutionBudgetStop(deps, run.id);
+        return executionAnswer(deps, run.id, 'accepted', { receipt, reason: error.message });
+      }
       await updateExecution(deps, run.id, execution.id, { phase: 'uncertain', reason: (error as Error).message }, req.requestId, 'uncertain');
       return executionAnswer(deps, run.id, 'accepted', { receipt, reason: `work was admitted but its effect is uncertain; do not repeat the launch: ${(error as Error).message}` });
     }

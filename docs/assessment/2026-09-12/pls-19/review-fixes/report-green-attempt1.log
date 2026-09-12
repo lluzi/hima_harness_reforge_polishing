@@ -1,0 +1,296 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-recovery.host.test.ts
+local: 1 selected; 45 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: production preparation refuses an unowned Run before any Job or Run is created
+ok 1 - production preparation refuses an unowned Run before any Job or Run is created
+  ---
+  duration_ms: 5924.608875
+  type: 'test'
+  ...
+# Subtest: a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+ok 2 - a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+  ---
+  duration_ms: 3759.810333
+  type: 'test'
+  ...
+# Subtest: an interrupted completion remains fenced even when its prior Job has a successful exit
+ok 3 - an interrupted completion remains fenced even when its prior Job has a successful exit
+  ---
+  duration_ms: 2617.523708
+  type: 'test'
+  ...
+# Subtest: adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+ok 4 - adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+  ---
+  duration_ms: 3707.622917
+  type: 'test'
+  ...
+# Subtest: adoption carries an open historical human wait once and new pauses continue to spend the original time box
+ok 5 - adoption carries an open historical human wait once and new pauses continue to spend the original time box
+  ---
+  duration_ms: 4245.021959
+  type: 'test'
+  ...
+# Subtest: historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+ok 6 - historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+  ---
+  duration_ms: 6728.718125
+  type: 'test'
+  ...
+# Subtest: an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+ok 7 - an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+  ---
+  duration_ms: 1864.543875
+  type: 'test'
+  ...
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+ok 8 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 5785.65075
+  type: 'test'
+  ...
+# Subtest: restart repairs an owed report of an ended owned Run after a real Site write fault without advancing it
+not ok 9 - restart repairs an owed report of an ended owned Run after a real Site write fault without advancing it
+  ---
+  duration_ms: 1656.737583
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-recovery.host.test.ts:336:36'
+  failureType: 'testCodeFailure'
+  error: |-
+    owner, ending, budget, node and meters are unchanged
+    + actual - expected
+    ... Skipped lines
+    
+      {
+        budget: {
+          generationLimit: 6,
+          jobCap: 1,
+          licences: {
+    ...
+        },
+    +   nextSeq: 5,
+    -   nextSeq: 4,
+        packDigest: '4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d',
+        packId: 'opene902-timing-probe',
+        purpose: 'campaign',
+        siteId: 'local',
+        status: 'cancelled',
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    id: 'run-b8040fbe-fe24-4900-b450-2cbd5c8e7c47'
+    campaignId: 'opene902-timing-probe-20260912-191437-6378'
+    siteId: 'local'
+    packId: 'opene902-timing-probe'
+    purpose: 'campaign'
+    packDigest: '4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d'
+    goal:
+      target_period_ns: 2
+    budget:
+      timeBoxMs: 60000
+      retryAllowance: 3
+      jobCap: 1
+      licences:
+        Design-Compiler: 1
+      generationLimit: 6
+    firstStrategy:
+      periodNs: 2.3
+    generation: 1
+    control:
+      mode: 'agent'
+      owner: 'session-f7da4ee1-143d-43ee-aca0-6d54adc9e8fb'
+      epoch: 1
+      revision: 1
+      paused:
+        0: '*'
+      executions:
+      requests:
+      siteDigest: '752a717bcf55711393b3dd28a8e37979e9e21f2e82ee23046f2eac74abb7d41b'
+      stop:
+        reason: 'cancel'
+        status: 'confirmed'
+        detail: 'Error: cannot create /private/tmp/hima-tests-hTMoh5/hima-home-rczxcY/workspace/opene902-timing-probe-20260912-191437-6378/hima-experience on site local: mkdir exited 1: mkdir: /private/tmp/hima-tests-hTMoh5/hima-home-rczxcY/workspace/opene902-timing-probe-20260912-191437-6378/hima-experience: File exists'
+    createdAt: '2026-09-12T19:14:37.302Z'
+    nextSeq: 4
+    status: 'cancelled'
+    currentNode: 'synthesize'
+    strategy: <Circular>
+    meters:
+      elapsedMs: 225
+      jobsLaunched: 0
+      attempts: 0
+      generationMs:
+        0: 71
+      endedBy: 'cancel'
+  actual:
+    id: 'run-b8040fbe-fe24-4900-b450-2cbd5c8e7c47'
+    campaignId: 'opene902-timing-probe-20260912-191437-6378'
+    siteId: 'local'
+    createdAt: '2026-09-12T19:14:37.302Z'
+    nextSeq: 5
+    control:
+      mode: 'agent'
+      owner: 'session-f7da4ee1-143d-43ee-aca0-6d54adc9e8fb'
+      epoch: 1
+      revision: 1
+      paused:
+        0: '*'
+      stop:
+        reason: 'cancel'
+        status: 'confirmed'
+        detail: 'Error: cannot create /private/tmp/hima-tests-hTMoh5/hima-home-rczxcY/workspace/opene902-timing-probe-20260912-191437-6378/hima-experience on site local: mkdir exited 1: mkdir: /private/tmp/hima-tests-hTMoh5/hima-home-rczxcY/workspace/opene902-timing-probe-20260912-191437-6378/hima-experience: File exists'
+      executions:
+      requests:
+      siteDigest: '752a717bcf55711393b3dd28a8e37979e9e21f2e82ee23046f2eac74abb7d41b'
+    status: 'cancelled'
+    packId: 'opene902-timing-probe'
+    purpose: 'campaign'
+    packDigest: '4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d'
+    goal:
+      target_period_ns: 2
+    budget:
+      timeBoxMs: 60000
+      retryAllowance: 3
+      jobCap: 1
+      licences:
+        Design-Compiler: 1
+      generationLimit: 6
+    currentNode: 'synthesize'
+    strategy:
+      periodNs: 2.3
+    firstStrategy:
+      periodNs: 2.3
+    generation: 1
+    meters:
+      elapsedMs: 225
+      jobsLaunched: 0
+      attempts: 0
+      generationMs:
+        0: 71
+      endedBy: 'cancel'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-recovery.host.test.ts:370:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: restart repairs an owed report of an ended historical Run after a real Site write fault without advancing it
+not ok 10 - restart repairs an owed report of an ended historical Run after a real Site write fault without advancing it
+  ---
+  duration_ms: 1639.736666
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-recovery.host.test.ts:336:36'
+  failureType: 'testCodeFailure'
+  error: |-
+    owner, ending, budget, node and meters are unchanged
+    + actual - expected
+    ... Skipped lines
+    
+      {
+        budget: {
+          generationLimit: 6,
+          jobCap: 1,
+          licences: {
+    ...
+        campaignId: 'opene902-timing-probe-20260912-191439-372d',
+    -   control: undefined,
+        createdAt: '2026-09-12T19:14:39.218Z',
+        currentNode: 'synthesize',
+        firstStrategy: {
+          periodNs: 2.3
+        },
+    ...
+        },
+    +   nextSeq: 5,
+    -   nextSeq: 4,
+        packDigest: '4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d',
+        packId: 'opene902-timing-probe',
+        purpose: 'campaign',
+        siteId: 'local',
+        status: 'cancelled',
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    id: 'run-16d8709f-e869-4480-a5ec-f6feded744b9'
+    campaignId: 'opene902-timing-probe-20260912-191439-372d'
+    siteId: 'local'
+    packId: 'opene902-timing-probe'
+    purpose: 'campaign'
+    packDigest: '4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d'
+    goal:
+      target_period_ns: 2
+    budget:
+      timeBoxMs: 60000
+      retryAllowance: 3
+      jobCap: 1
+      licences:
+        Design-Compiler: 1
+      generationLimit: 6
+    firstStrategy:
+      periodNs: 2.3
+    generation: 1
+    createdAt: '2026-09-12T19:14:39.218Z'
+    nextSeq: 4
+    status: 'cancelled'
+    currentNode: 'synthesize'
+    strategy: <Circular>
+    meters:
+      elapsedMs: 243
+      jobsLaunched: 0
+      attempts: 0
+      generationMs:
+        0: 73
+      endedBy: 'cancel'
+  actual:
+    id: 'run-16d8709f-e869-4480-a5ec-f6feded744b9'
+    campaignId: 'opene902-timing-probe-20260912-191439-372d'
+    siteId: 'local'
+    createdAt: '2026-09-12T19:14:39.218Z'
+    nextSeq: 5
+    status: 'cancelled'
+    packId: 'opene902-timing-probe'
+    purpose: 'campaign'
+    packDigest: '4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d'
+    goal:
+      target_period_ns: 2
+    budget:
+      timeBoxMs: 60000
+      retryAllowance: 3
+      jobCap: 1
+      licences:
+        Design-Compiler: 1
+      generationLimit: 6
+    currentNode: 'synthesize'
+    strategy:
+      periodNs: 2.3
+    firstStrategy:
+      periodNs: 2.3
+    generation: 1
+    meters:
+      elapsedMs: 243
+      jobsLaunched: 0
+      attempts: 0
+      generationMs:
+        0: 73
+      endedBy: 'cancel'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-recovery.host.test.ts:370:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 8
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 38637.495
+Test boot attempts: {"host-process":0,"host-in-process":17,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 38.733 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

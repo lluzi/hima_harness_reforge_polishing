@@ -104,3 +104,67 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     await host.dispose(); await home.h.dispose();
   }
 });
+
+
+for (const tamperHelper of [false, true]) test(`a begun Workshop draft retains its original author's code across handoff${tamperHelper ? ' and refuses a changed helper even when the new owner rewrites only entry' : ' and launches unchanged'}`, async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  const packDir = path.join(home.h.home, 'hima/packs/authored-workshop');
+  await mkdir(packDir, { recursive: true });
+  for (const file of ['contract.yml', 'graph.yml', 'semantics.yml', 'readers', 'rules', 'tools', 'knowledge']) {
+    await cp(path.join(repoRoot, 'test/fixtures/pipeline/workshop', file), path.join(packDir, file), { recursive: true });
+  }
+  await writeFile(path.join(packDir, 'PACK.md'), '# Numeric analysis handoff fixture\n');
+  await writeFile(path.join(home.flow.root, 'numbers.txt'), '3\n7\n11\n');
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const original = await createRootAgent(host.ctx, home.h.workspace);
+    const successor = await createRootAgent(host.ctx, home.h.workspace);
+    let actor = String(original.id);
+    const prepared = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: actor });
+    assert.equal(prepared.kind, 'ran');
+    if (prepared.kind !== 'ran') return;
+    runId = prepared.run.id;
+    let sequence = 0;
+    const act = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => {
+      const control = host.ctx.hima.ledger.run(runId!)!.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor, expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: `handoff-${++sequence}`, action, ...fields });
+    };
+    const begun = await act('begin', { nodeId: 'analyze' });
+    const executionId = begun.receipt?.executionId;
+    assert.ok(executionId);
+    const entry = 'set -eu\n. "$1/helper.sh"\nmkdir -p "$2/research/analysis"\nprintf "%s\\n" "$answer" > "$2/research/analysis/result.txt"\n';
+    assert.equal((await act('write', { executionId, path: 'entry.sh', content: entry })).kind, 'accepted');
+    assert.equal((await act('write', { executionId, path: 'helper.sh', content: 'answer=42\n' })).kind, 'accepted');
+    const oldCode = host.ctx.hima.ledger.records({ runId, type: 'code' });
+    assert.equal(oldCode.length, 2);
+    const helper = oldCode.find((record) => record.type === 'code' && record.path.endsWith('/helper.sh'));
+    assert.ok(helper?.type === 'code');
+    const handoff = await act('handoff', { targetOwner: String(successor.id) });
+    assert.equal(handoff.kind, 'accepted', handoff.reason);
+    actor = String(successor.id);
+    assert.equal((await act('continue')).kind, 'accepted');
+    if (tamperHelper) {
+      await writeFile(helper.path, 'answer=999\n');
+      assert.equal((await act('write', { executionId, path: 'entry.sh', content: entry })).kind, 'accepted');
+    }
+    const work = await act('work', { executionId });
+    assert.equal(work.kind, 'accepted');
+    const launches = host.ctx.hima.ledger.records({ runId, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched');
+    if (tamperHelper) {
+      assert.equal(launches.length, 0, "rewriting entry never drops another author's helper hash from this execution");
+      assert.equal(work.context.executions.find((execution) => execution.id === executionId)?.phase, 'failed');
+      assert.match(JSON.stringify(host.ctx.hima.ledger.records({ runId, type: 'node' })), /helper.sh.*recorded|recorded.*helper.sh/);
+    } else {
+      assert.equal(launches.length, 1, 'the admitted execution owns the unchanged draft after explicit handoff');
+      await waitUntil('the unchanged handed-off code finishes', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === executionId && execution.phase === 'ready'));
+      assert.equal(await readFile(path.join(prepared.workspace, 'research/analysis/result.txt'), 'utf8'), '42\n');
+    }
+    assert.deepEqual(host.ctx.hima.ledger.records({ runId, type: 'code' }).slice(0, 2), oldCode, 'handoff preserves the original code records and authors');
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'session' }).length, 0);
+  } finally {
+    if (runId) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});

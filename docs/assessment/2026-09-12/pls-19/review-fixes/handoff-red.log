@@ -1,0 +1,66 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-workshop.host.test.ts
+local: 1 selected; 45 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+ok 1 - the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+  ---
+  duration_ms: 12200.338166
+  type: 'test'
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and launches unchanged
+not ok 2 - a begun Workshop draft retains its original author's code across handoff and launches unchanged
+  ---
+  duration_ms: 2683.914166
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-workshop.host.test.ts:109:43'
+  failureType: 'testCodeFailure'
+  error: |-
+    the admitted execution owns the unchanged draft after explicit handoff
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-workshop.host.test.ts:160:14)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+not ok 3 - a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+  ---
+  duration_ms: 2399.868833
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-workshop.host.test.ts:109:43'
+  failureType: 'testCodeFailure'
+  error: |-
+    rewriting entry never drops another author's helper hash from this execution
+    
+    1 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 1
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-workshop.host.test.ts:156:14)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 1
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18139.972458
+Test boot attempts: {"host-process":0,"host-in-process":3,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 18.237 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

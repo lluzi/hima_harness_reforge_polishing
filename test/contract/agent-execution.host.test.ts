@@ -1,8 +1,15 @@
 // PLS-19: real Host and private local Jobs, no model replay or Electron.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import path from 'node:path';
+import { findOnPath } from './support/tmux.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
+import { writeMomentFixture } from './support/moments.ts';
+import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { timingProbePackId } from './support/pack.ts';
 
 // These deterministic protocol calls do not ask an external model to react to Job notifications.
@@ -137,4 +144,127 @@ test('node admission is owned, versioned and idempotent before any Job exists', 
     assert.equal(Object.keys(host.ctx.hima.ledger.run(started.run.id)?.control?.executions ?? {}).length, 1);
     await host.ctx.hima.cancelRun(started.run.id);
   } finally { await host.dispose(); await home.h.dispose(); }
+});
+
+
+test('an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  // A regression can only reach the local one-turn replay, never an external model.
+  const replay = await writeMomentFixture(home.h, 'one-turn');
+  await writeReplayOverlay(home.h.home, { file: replay.file, overrideFile: replay.override });
+  const host = await bootInProcess(home.h);
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    for (const status of ['waiting', 'cancelled', 'ended-budget-exhausted'] as const) {
+      await host.ctx.hima.ledger.advanceRun(started.run.id, { status });
+      const before = host.ctx.hima.ledger.records({ runId: started.run.id });
+      const agents = host.ctx.get('agents')!.list().map((agent) => agent.id);
+      await assert.rejects(host.ctx.hima.openMoment(started.run.id, 'inspect this node'), /controlled.*conversation|conversation.*controlled/i);
+      assert.deepEqual(host.ctx.hima.ledger.records({ runId: started.run.id }), before, 'the refused request opens no model-moment session');
+      assert.deepEqual(host.ctx.get('agents')!.list().map((agent) => agent.id), agents, 'the owner remains the only Agent');
+    }
+  } finally { await host.dispose(); await home.h.dispose(); }
+});
+
+
+for (const boundary of ['Site probe', 'intent persistence'] as const) test(`a delayed actual ${boundary} that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation`, async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  let host = await bootInProcess(home.h);
+  const savedPath = process.env.PATH!;
+  const realTmux = findOnPath('tmux', savedPath);
+  assert.ok(realTmux);
+  const bin = path.join(home.h.home, 'delayed-site-bin');
+  const entered = path.join(home.h.home, 'prelaunch-entered');
+  const release = path.join(home.h.home, 'prelaunch-release');
+  const dispatches = path.join(home.h.home, 'tmux-dispatches');
+  const quoted = (word: string) => "'" + word.replaceAll("'", "'\\''") + "'";
+  await fs.mkdir(bin);
+  // Real process boundary: delay one actual name probe; log and pass through any launch command.
+  await fs.writeFile(path.join(bin, 'tmux'), `#!/bin/sh
+if [ "$1" = has-session ] && [ '${boundary}' = 'Site probe' ] && [ ! -f ${quoted(entered)} ]; then
+  printf entered > ${quoted(entered)}
+  while [ ! -f ${quoted(release)} ]; do sleep 0.02; done
+fi
+if [ "$1" = new-session ]; then printf '%s\\n' "$*" >> ${quoted(dispatches)}; fi
+exec ${quoted(realTmux)} "$@"
+`, { mode: 0o755 });
+  let restoreDisk = () => {};
+  let working: Promise<unknown> | undefined;
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const prepared = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id), timeBoxMs: 8000 });
+    assert.equal(prepared.kind, 'ran');
+    if (prepared.kind !== 'ran') return;
+    runId = prepared.run.id;
+    const begun = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0, requestId: 'delayed-begin', action: 'begin', nodeId: prepared.run.currentNode });
+    const executionId = begun.receipt?.executionId;
+    assert.ok(executionId);
+    if (boundary === 'intent persistence') {
+      // Only delay the external filesystem's real atomic replacement carrying the launch intent.
+      // Ledger admission, serialization, write/fsync and recovery all retain their real semantics.
+      const rename = fs.rename;
+      let delayed = false;
+      const interception = t.mock.method(fs, 'rename', async (...args: Parameters<typeof fs.rename>) => {
+        let hold = false;
+        if (!delayed && String(args[1]) === path.join(home.h.home, 'storages/hima_ledger.json')) {
+          const data = JSON.parse(await fs.readFile(args[0], 'utf8'));
+          hold = data.tables?.runs?.[runId!]?.control?.executions?.[executionId]?.intent !== undefined;
+        }
+        await rename(...args);
+        if (hold) {
+          delayed = true;
+          await fs.writeFile(entered, 'the actual intent replacement landed');
+          await waitUntil('the test releases delayed filesystem I/O', () => existsSync(release), 10_000, 20);
+        }
+      });
+      syncBuiltinESMExports();
+      restoreDisk = () => { interception.mock.restore(); syncBuiltinESMExports(); };
+    }
+    process.env.PATH = `${bin}:${savedPath}`;
+    const request = { runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 1, requestId: 'delayed-work', action: 'work' as const, executionId };
+    let response: Awaited<ReturnType<typeof host.ctx.hima.executionAction>> | undefined;
+    working = host.ctx.hima.executionAction(request).then((answer) => { response = answer; return answer; });
+    await waitUntil('the actual prelaunch boundary is blocked or work answers', () => existsSync(entered) || response !== undefined, 6000, 20);
+    assert.ok(existsSync(entered), `work never reached the intended external boundary: ${JSON.stringify({ kind: response?.kind, reason: response?.reason, state: response?.context.run.status })}`);
+    const deadline = Date.parse(prepared.run.createdAt) + prepared.run.budget!.timeBoxMs!;
+    assert.ok(Date.now() < deadline, 'the work reached the I/O boundary inside its admitted budget');
+    await waitUntil('the original budget expires during prelaunch I/O', () => Date.now() > deadline + 30, 10_000, 20);
+    await fs.writeFile(release, 'release');
+    await working;
+    restoreDisk();
+    assert.equal(existsSync(dispatches), false, 'even a tmux new-session dispatch after the deadline is forbidden');
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).length, 0);
+    await waitUntil('the budget stop records a definite no-launch ending', () => host.ctx.hima.executionContext(runId!).run.status === 'ended-budget-exhausted', 4000);
+    const ended = host.ctx.hima.executionContext(runId);
+    assert.equal(ended.executions.find((execution) => execution.id === executionId)?.intent, undefined, 'a veto before dispatch must not reserve a phantom Site job');
+    assert.equal(ended.run.control?.requests['delayed-work']?.state, 'done');
+    assert.equal(ended.run.meters?.jobsLaunched ?? 0, 0);
+    assert.equal((await host.ctx.hima.executionAction(request)).kind, 'duplicate', 'the known no-launch request is settled rather than replayed');
+    await host.dispose();
+    host = await bootInProcess(home.h);
+    await host.ctx.hima.reconciled;
+    assert.equal(existsSync(dispatches), false, 'restart does not automatically launch expired work');
+    assert.equal(host.ctx.hima.executionContext(runId).executions.find((execution) => execution.id === executionId)?.intent, undefined);
+    const nextOwner = await createRootAgent(host.ctx, home.h.workspace);
+    const next = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(nextOwner.id) });
+    assert.equal(next.kind, 'ran');
+    if (next.kind !== 'ran') return;
+    const nextBegin = await host.ctx.hima.executionAction({ runId: next.run.id, actor: String(nextOwner.id), expectedEpoch: 1, expectedRevision: 0, requestId: 'free-site-begin', action: 'begin', nodeId: next.run.currentNode });
+    await host.ctx.hima.executionAction({ runId: next.run.id, actor: String(nextOwner.id), expectedEpoch: 1, expectedRevision: 1, requestId: 'free-site-work', action: 'work', executionId: nextBegin.receipt?.executionId });
+    assert.equal(host.ctx.hima.ledger.records({ runId: next.run.id, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched').length, 1, 'a later explicit Run can use the Site');
+    await waitUntil('the later explicitly launched Job finishes before test cleanup', () => host.ctx.hima.executionContext(next.run.id).executions.some((execution) => execution.id === nextBegin.receipt?.executionId && execution.phase === 'ready'));
+    await host.ctx.hima.cancelRun(next.run.id);
+  } finally {
+    await fs.writeFile(release, 'release');
+    await working?.catch(() => undefined);
+    restoreDisk(); process.env.PATH = savedPath;
+    if (runId) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
 });

@@ -107,6 +107,16 @@ export async function reconcileRuns(deps: FabricDeps): Promise<ReconcileOutcome[
     // A Run HimaFabric opened is one carrying the pack it runs; anything else in this ledger is an
     // observation's own Probe-campaign Run, which no fabric ever started and none may end.
     if (run.packId === undefined) continue;
+    // An ending owes the same mechanical report in every execution mode. Do this before mode
+    // dispatch, which deliberately never sends owned/historical Runs into the automatic driver.
+    if (owesAnExperience(deps.ledger, run)) {
+      try { out.push(await reportExperience(deps, run)); }
+      catch (error) {
+        out.push({ runId: run.id, found: error instanceof SiteUnreadableError ? 'site-unreadable' : 'unreadable',
+          detail: `this run has ended and its campaign's experience could not be written: ${(error as Error).message}` });
+      }
+      continue;
+    }
     if (run.control !== undefined) {
       try { out.push(await controlling(deps, run.id, () => reconcileControlledRun(deps, run))); }
       catch (error) { out.push({ runId: run.id, found: 'unreadable', detail: (error as Error).message }); }
