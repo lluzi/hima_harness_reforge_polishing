@@ -186,7 +186,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     })] : [],
     defineTool({
       name: 'hima_context',
-      description: 'Read current Run execution facts, owner/epoch/revision, reference nodes, available node ids and admitted executions, plus recorded Jobs, code, observations and verdicts. This read starts no business work. Inspect before every new action and after any stale/refused request. A different selected Run does not change its owner.',
+      description: 'Read current Run execution facts, owner/epoch/revision, reference nodes, available node ids and admitted executions, plus recorded Jobs, code, observations and verdicts. This read starts no business work. Use the current context already returned by hima_run or hima_execute for the next action; refresh here when asynchronous facts change or that context is missing or stale. A different selected Run does not change its owner.',
       parameters: { run: { type: 'string', required: true, description: 'Exact Run id.' } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args) => {
@@ -199,7 +199,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     }),
     defineTool({
       name: 'hima_execute',
-      description: 'Request one controlled node or Run action as this actual conversational Agent. adopt verifies an unowned historical Run at epoch/revision 0 before binding this conversation; begin admits a node; work performs its mechanical operation and returns a Job identity promptly; read/write/knowledge work inside the admitted node; complete validates actual evidence. You choose the next action from context; no action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; cancel requests real stop. revise/grow return unsupported until implemented. Preserve requestId when retrying identical requests; re-read context after refusals.',
+      description: 'Request one controlled node or Run action as this actual conversational Agent. adopt verifies an unowned historical Run at epoch/revision 0 before binding this conversation; begin admits a node. For a Workshop, first use recommend with its executionId to obtain the actual private directory, entry, argv, inputs and knowledge; read/write/knowledge operate within that admitted scope. work performs the mechanical operation and returns a Job identity promptly; complete validates actual evidence. Submit an Explore strategy decision, rationale, cites and any next strategy together on complete; work does not commit that decision. Use each response context for the next action and its epoch/revision; refresh with hima_context for asynchronous changes or missing/stale facts. No action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; cancel requests real stop. revise/grow return unsupported until implemented. Preserve requestId only for an identical retry; inspect refused responses before deciding again.',
       parameters: {
         run: { type: 'string', required: true, description: 'Exact Run id.' },
         action: { type: 'string', required: true, enum: ['adopt', 'begin', 'work', 'complete', 'pause', 'continue', 'cancel', 'handoff', 'revise', 'grow', 'read', 'write', 'knowledge', 'recommend'] },
@@ -209,14 +209,14 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         nodeId: { type: 'string', description: 'Exact reference node for begin, or optional pause scope.' },
         executionId: { type: 'string', description: 'Admitted execution identity for node work and completion.' },
         targetOwner: { type: 'string', description: 'Explicit handoff target; must be a real Host conversation.' },
-        path: { type: 'string', description: 'Controlled node file path for read or write.' },
+        path: { type: 'string', description: 'Workshop code path relative to this execution\'s private workshop.directory returned by recommend, not the Campaign workspace. For the executable use the returned entry exactly, e.g. analyze.sh, without prepending research/analysis or the absolute entryPath. Helper paths use the same private base.' },
         content: { type: 'string', description: 'Exact code/file content for write.' },
         output: { type: 'string', description: 'Declared output name, or @job-log for this execution’s actual Job log.' },
         file: { type: 'string', description: 'Declared knowledge file.' },
-        decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy'] },
-        strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values for an explicit exploration decision.' },
-        rationale: { type: 'string', description: 'Reason for the decision, grounded in cited facts.' },
-        cites: { type: 'array', items: { type: 'string' }, description: 'Evidence record ids for the decision.' },
+        decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy'], description: 'For an Explore strategy decision, submit this on complete together with rationale and cites. work does not submit a decision.' },
+        strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values supplied with decision next-strategy on Explore complete; omit for goal-met or converged.' },
+        rationale: { type: 'string', description: 'Reason for the Explore decision, grounded in cited facts; submit with decision on complete.' },
+        cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete.' },
       },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args, execution) => {

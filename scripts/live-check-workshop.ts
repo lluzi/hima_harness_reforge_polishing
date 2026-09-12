@@ -70,8 +70,10 @@ export class LiveCheck {
       return value;
     };
     // A full authoring run includes five stages; the first installed-model check spent 528s
-    // reaching test alone. Keep the default bounded at 10m and permit an explicit 20m pipeline.
-    const maximumMs = name === 'live-check-pipeline' ? 1_200_000 : 600_000;
+    // reaching test alone. The two-generation Workshop check reached its second Job after 507s,
+    // then exhausted its 9m Run while that Job was active. Keep the default at 10m; permit explicit
+    // estimated budgets of 20m for the pipeline or 15m for Workshop, including result collection.
+    const maximumMs = name === 'live-check-pipeline' ? 1_200_000 : 900_000;
     this.limits = { timeoutMs: bounded('--timeout-ms', 600_000, maximumMs), maxTurns: bounded('--max-turns', defaultTurns, 32), maxSteps: bounded('--max-steps', 160, 200) };
     this.out = path.resolve(options.get('--out') ?? path.join(repoRoot, 'docs/assessment/2026-09-12/pls-19/live-harness', `${name}-${Date.now()}`));
     if (existsSync(this.out)) throw new Error('the evidence directory already exists; use a fresh --out directory');
@@ -279,7 +281,7 @@ async function workshop(check: LiveCheck): Promise<void> {
   guardInstalled(check, host, [bundle, packsDirOf(h), flow, h.workspace], pack);
   const agent = check.track(await createRootAgent(host.ctx, h.workspace));
   let startingError: unknown;
-  const starting = check.say(agent, `Run the installed live-numeric Pack on local with goal minimum=${minimum}, strategy limit=${limit}, generations=2, retries=2, timeBox=9. You are the same execution owner. Use hima_run, hima_context and hima_execute. Begin and work each node, complete only when ready. At analyze use recommend, read the declared measured output and knowledge, write the actual executable through controlled write, then work. The script sleeps 60 seconds as declared; read the knowledge for exact arguments/output. Let the real Job run asynchronously. Inspect its facts; finish your current response while it runs so I can intervene. Do not complete analyze or begin any successor until I explicitly continue. No shell or alternate Agent.`).catch((error: unknown) => { startingError = error; });
+  const starting = check.say(agent, `Run the installed live-numeric Pack on local with goal minimum=${minimum}, strategy limit=${limit}, generations=2, retries=2, timeBox=13. You are the same execution owner. Use hima_run, hima_context and hima_execute. Begin and work each node, complete only when ready. At analyze use recommend, read the declared measured output and knowledge, write the actual executable through controlled write, then work. The script sleeps 60 seconds as declared; read the knowledge for exact arguments/output. Let the real Job run asynchronously. Inspect its facts; finish your current response while it runs so I can intervene. Do not complete analyze or begin any successor until I explicitly continue. No shell or alternate Agent.`).catch((error: unknown) => { startingError = error; });
   await check.until('real Workshop Job launched', () => host.ctx.hima.ledger.runs().some((run) => host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }).some((r) => r.type === 'job' && r.event === 'launched' && r.job.name === 'workshop-analyze')), 360_000);
   const workshopJobs = () => host.ctx.hima.ledger.runs().flatMap((r) => host.ctx.hima.ledger.records({ runId: r.id, type: 'job' })).filter((r) => r.type === 'job' && r.event === 'launched' && r.job.name === 'workshop-analyze');
   const activeWorkshopJob = workshopJobs().at(-1);
@@ -289,7 +291,7 @@ async function workshop(check: LiveCheck): Promise<void> {
   check.observed.runId = run.id;
   const initialRun = structuredClone(run);
   check.observed.initialRun = initialRun;
-  check.require('Run admitted the exact fixed Goal and two-generation budget', run.goal?.minimum === minimum && run.strategy?.limit === limit && run.budget?.generationLimit === 2 && run.budget.timeBoxMs === 540_000, initialRun);
+  check.require('Run admitted the exact fixed Goal and two-generation budget', run.goal?.minimum === minimum && run.strategy?.limit === limit && run.budget?.generationLimit === 2 && run.budget.retryAllowance === 2 && run.budget.timeBoxMs === 780_000, initialRun);
   const before = host.ctx.hima.executionContext(run.id);
   check.require('intervention was delivered while the Workshop execution was working', before.executions.some((e) => e.nodeId === 'analyze' && e.phase === 'working'), before);
   check.steer(agent, `Pause Run ${run.id} now using hima_execute pause at Run scope. Inspect hima_context, report actual in-flight Job facts, and do not complete analyze or start successors. This is an immediate user intervention, not permission to cancel or continue.`);
@@ -343,23 +345,31 @@ async function workshop(check: LiveCheck): Promise<void> {
     && final.run.control?.owner === String(agent.id) && success?.chosen !== undefined && 'goalMet' in success.chosen && success.chosen.goalMet, { run: final.run, success });
   const launched = records.filter((r) => r.type === 'job').filter((r) => r.event === 'launched');
   const analyze = final.executions.filter((e) => e.nodeId === 'analyze');
+  const completedAnalyze = analyze.filter((e) => e.phase === 'completed');
+  const workshopLaunched = launched.filter((r) => r.job.name === 'workshop-analyze');
   check.require('one Run retained its Goal, method, original budget and cumulative Job meter across two generations', host.ctx.hima.ledger.runs().length === 1
     && final.run.generation === 2 && final.run.createdAt === initialRun.createdAt && final.run.packDigest === initialRun.packDigest
     && JSON.stringify(final.run.goal) === JSON.stringify(initialRun.goal) && JSON.stringify(final.run.budget) === JSON.stringify(initialRun.budget)
     && final.run.budget?.generationLimit === 2 && final.run.meters?.jobsLaunched === launched.length
     && final.run.meters.jobsLaunched > (initialRun.meters?.jobsLaunched ?? 0)
-    && final.run.meters.elapsedMs >= (initialRun.meters?.elapsedMs ?? 0), { initialRun, finalRun: final.run, launched });
-  check.require('declared revisit reran analyze twice and reused the valid prepare result', analyze.length === 2
-    && analyze.every((e) => e.phase === 'completed') && final.executions.filter((e) => e.nodeId === 'prepare').length === 1
-    && launched.filter((r) => r.job.name === 'workshop-analyze').length === 2
-    && [1, 2].every((g) => launched.some((r) => r.generation === g && r.job.name === 'workshop-analyze')), final.executions);
+    && final.run.meters.elapsedMs >= (initialRun.meters?.elapsedMs ?? 0) && final.run.meters.elapsedMs <= final.run.budget.timeBoxMs,
+  { initialRun, finalRun: final.run, launched });
+  check.require('declared revisit completed one analyze per generation within retries and reused the valid prepare result', completedAnalyze.length === 2
+    && [1, 2].every((generation) => completedAnalyze.filter((e) => e.generation === generation).length === 1
+      && analyze.filter((e) => e.generation === generation).length <= (final.run.budget?.retryAllowance ?? 0))
+    && analyze.every((e) => [1, 2].includes(e.generation) && ['completed', 'failed'].includes(e.phase))
+    && final.executions.filter((e) => e.nodeId === 'prepare').length === 1
+    && completedAnalyze.every((e) => workshopLaunched.some((r) => r.generation === e.generation && r.job.session === e.jobSession))
+    && workshopLaunched.every((r) => analyze.some((e) => e.generation === r.generation && e.jobSession === r.job.session)),
+  { executions: final.executions, workshopLaunched });
   const codes = records.filter((r) => r.type === 'code');
   check.observed.code = codes.map((r) => ({ record: r, content: readFileSync(r.path, 'utf8'), actualSha256: sha256(readFileSync(r.path)) }));
   check.require('code records hash the actual generated files', codes.length > 0 && codes.every((r) => sha256(readFileSync(r.path)) === r.sha256), check.observed.code);
-  check.require('same owner wrote an executable in each distinct execution directory', analyze.every((execution) => codes.some((r) => r.path === execution.workshop?.entryPath
+  check.require('same owner wrote each completed executable in a distinct execution directory and retained all attempt code', completedAnalyze.every((execution) => codes.some((r) => r.path === execution.workshop?.entryPath
     && r.path.includes(`/.executions/${execution.id}/`) && r.sessionId === String(agent.id)))
-    && new Set(analyze.map((e) => e.workshop?.directory)).size === 2
-    && codes.every((r) => r.sessionId === String(agent.id)), check.observed.code);
+    && new Set(completedAnalyze.map((e) => e.workshop?.directory)).size === 2
+    && codes.every((r) => r.sessionId === String(agent.id) && analyze.some((e) => e.workshop !== undefined
+      && within(r.path, e.workshop.directory) && r.path.includes(`/.executions/${e.id}/`))), check.observed.code);
   check.require('same model used all controlled Workshop actions', ['recommend', 'read', 'knowledge', 'write', 'pause', 'continue'].every((action) => toolCalls(agent).some((call) => call.name === 'hima_execute' && call.args.action === action)), toolCalls(agent));
   check.require('same model explicitly submitted both feedback decisions', ['next-strategy', 'goal-met'].every((decision) => toolCalls(agent).some((call) => call.name === 'hima_execute'
     && call.args.action === 'complete' && call.args.decision === decision && Array.isArray(call.args.cites) && call.args.cites.length >= 3)), toolCalls(agent));
