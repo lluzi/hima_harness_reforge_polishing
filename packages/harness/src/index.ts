@@ -26,7 +26,7 @@ import type {} from '@deepseek-ai/dsh-commands';
 import { Ledger, ledgerSpec } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
-import { executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
+import { drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { readExperience, type ReadExperienceResult } from './experience.js';
 import { handleHimaCommand, himaCommandDescription } from './commands.js';
@@ -295,6 +295,7 @@ export default class Hima extends Service {
    */
   reconciled!: Promise<ReconcileOutcome[]>;
   private notificationsActive = false;
+  private readonly factStop = new AbortController();
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'hima');
@@ -306,7 +307,13 @@ export default class Hima extends Service {
     this.ctx.effect(() => { this.notificationsActive = true; return () => { this.notificationsActive = false; }; });
     // The judge takes the ledger's one verdict-writer capability here; nothing else can obtain it.
     this.judge = createJudge(this.ledger, this.config.packsDir);
-    this.ctx.effect(() => () => domain.close());
+    this.ctx.effect(() => async () => {
+      this.notificationsActive = false;
+      this.factStop.abort();
+      await drainExecutionObservers(this.ledger);
+      await this.reconciled?.catch(() => undefined);
+      await domain.close();
+    });
     // The HimaGuide face: the Hima namespace, mounted only where a browser surface is composed.
     // A headless host has no web server and no browser session to guard it with, and still works.
     this.ctx.inject(['webServer', 'connection'], (webCtx) => {
@@ -464,6 +471,8 @@ export default class Hima extends Service {
       // file or a record, handed in for the same reason the moment route is handed `openMoment`: a
       // moment is composed out of this context, and every other operation reaches no host at all.
       host: this.ctx,
+      stopSignal: this.factStop.signal,
+      beforeSlotClaim: (siteName) => reconcileExecutionIntents(this.deps(), siteName),
       log: (line) => this.ctx.logger.info(line),
       notify: (owner, runId, executionId) => {
         if (!this.notificationsActive || (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_SILENT_AGENT === '1')) return;

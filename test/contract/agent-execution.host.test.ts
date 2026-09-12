@@ -1,9 +1,12 @@
 // PLS-19: real Host and private local Jobs, no model replay or Electron.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { localHome } from './support/fabric.ts';
+import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { timingProbePackId } from './support/pack.ts';
+
+// These deterministic protocol calls do not ask an external model to react to Job notifications.
+process.env.HIMA_TEST_SILENT_AGENT = '1';
 
 test('a conversational owner prepares a Run without executing its first business node', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0.01 });
@@ -25,6 +28,55 @@ test('a conversational owner prepares a Run without executing its first business
     const stopped = await host.ctx.hima.cancelRun(result.run.id);
     assert.equal(stopped.kind, 'cancelled');
   } finally { await host.dispose(); await home.h.dispose(); }
+});
+
+test('the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 2 });
+  assert.ok(home);
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    let nextRequest = 0;
+    const act = (action: 'begin' | 'work' | 'complete' | 'pause' | 'continue', executionId?: string, nodeId?: string) => {
+      const control = host.ctx.hima.ledger.run(runId!)!.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: `act-${++nextRequest}`, action, executionId, nodeId });
+    };
+    const begun = await act('begin', undefined, started.run.currentNode);
+    const executionId = begun.receipt?.executionId;
+    assert.ok(executionId);
+    assert.equal((await act('complete', executionId)).kind, 'refused', 'words cannot finish a node that ran no tool');
+    const worked = await act('work', executionId);
+    assert.equal(worked.kind, 'accepted');
+    assert.equal(worked.context.executions.find((execution) => execution.id === executionId)?.phase, 'working');
+    const paused = await act('pause');
+    assert.equal(paused.kind, 'accepted');
+    assert.deepEqual(paused.context.available, []);
+    await waitUntil('the Job result is available while business advancement stays paused', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === executionId && execution.phase === 'ready'));
+    assert.equal(host.ctx.hima.ledger.run(runId)?.currentNode, started.run.currentNode);
+    assert.equal((await act('complete', executionId)).kind, 'refused');
+    assert.equal((await act('continue')).kind, 'accepted');
+    const complete = await act('complete', executionId);
+    assert.equal(complete.kind, 'accepted');
+    assert.notEqual(complete.context.run.currentNode, started.run.currentNode);
+    const launches = () => host.ctx.hima.ledger.records({ runId: runId!, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched');
+    assert.equal(launches().length, 1, 'completing a node does not launch its successor');
+    const reading = await act('begin', undefined, complete.context.run.currentNode);
+    const readId = reading.receipt?.executionId;
+    assert.ok(readId);
+    assert.equal((await act('work', readId)).kind, 'accepted');
+    await waitUntil('the requested observation is ready', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === readId && execution.phase === 'ready'));
+    assert.equal((await act('complete', readId)).kind, 'accepted');
+    assert.equal(launches().length, 1);
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'observation' }).length, 1);
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
 });
 
 test('pause and an explicit handoff fence old owners without changing Goal or budget', async (t) => {

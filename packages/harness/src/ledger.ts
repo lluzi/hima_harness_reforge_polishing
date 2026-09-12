@@ -1263,12 +1263,25 @@ export const runPurpose = z.enum(['campaign', 'test']);
 export type RunPurpose = z.infer<typeof runPurpose>;
 
 /** Business ownership is durable Run state, obtained from the Host's actual conversation. */
+export const launchIntent = z.strictObject({
+  runId: z.string(), siteId: z.string(), job: jobIdentity.omit({ pid: true }),
+  nodeId: z.string().optional(), branchId: z.string().optional(),
+  licences: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  reading: launchedReading.optional(), workshop: launchedWorkshop.optional(), attempt: z.number().int().positive().optional(),
+});
 export const nodeExecution = z.strictObject({
   id: z.string(), nodeId: z.string(), kind: nodeKind,
   generation: z.number().int().positive(), loopId: z.string().optional(),
   loopGeneration: z.number().int().positive().optional(), branchId: z.string().optional(),
   attempt: z.number().int().positive(), methodDigest: sha256Hex, inputDigest: sha256Hex,
   phase: z.enum(['begun', 'working', 'ready', 'completed', 'failed', 'uncertain']),
+  inputThroughSeq: z.number().int().nonnegative().optional(),
+  intent: launchIntent.optional(), jobSession: z.string().optional(),
+  result: z.strictObject({
+    kind: z.enum(['settled', 'blocked', 'retrying', 'hard-blocker', 'budget-exhausted', 'moved', 'stopped', 'pending', 'at-cap']),
+    outcome: verdictOutcome.optional(), session: z.string().optional(), reason: z.string().optional(),
+  }).optional(),
+  reason: z.string().optional(),
 });
 export type NodeExecution = z.infer<typeof nodeExecution>;
 export const executionReceipt = z.strictObject({
@@ -1290,6 +1303,7 @@ export const runControl = z.strictObject({
   paused: z.array(z.string()),
   executions: z.record(z.string(), nodeExecution),
   requests: z.record(z.string(), executionRequest),
+  siteDigest: sha256Hex.optional(),
 });
 export type RunControl = z.infer<typeof runControl>;
 

@@ -40,7 +40,8 @@ import { campaignIdFor, prepareWorkspace, type PrepareResult } from './workspace
 import { writeExperience } from './experience.js';
 import { loadSite } from './sites.js';
 import { driving, existingRun } from './runs.js';
-import { recordNode } from './ledger.js';
+import { recordNode, launchIntent as launchIntentSchema } from './ledger.js';
+import { jobStatus, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
 import type {
   BlockerRecord,
   DecisionRecord,
@@ -90,6 +91,9 @@ import {
   stillDriving,
   toolNode,
   workshopNode,
+  buildWorkshopScope,
+  launchWrittenWorkshop,
+  exploreRecommendation,
   type Driving,
   type FabricDeps,
   type Step,
@@ -296,7 +300,7 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   } catch (err) {
     throw new RunStartError(`pack ${req.pack} cannot preserve its method for this Run: ${(err as Error).message}`);
   }
-  const control = req.ownerSessionId === undefined ? {} : { control: { mode: 'agent' as const, owner: req.ownerSessionId, epoch: 1, revision: 0, paused: [], executions: {}, requests: {} } };
+  const control = req.ownerSessionId === undefined ? {} : { control: { mode: 'agent' as const, owner: req.ownerSessionId, epoch: 1, revision: 0, paused: [], executions: {}, requests: {}, siteDigest: identityOf(site) } };
   const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1, ...control });
   // Said as soon as it is true, and before the preparation below can take seconds over a 56 MB copy:
   // a caller that answers on the Run's existence must have the Run before anything else can happen
@@ -1083,12 +1087,12 @@ function executionPack(deps: FabricDeps, run: RunRecord): Pack {
   if (run.packId === undefined || run.packDigest === undefined) throw new RunStartError('the original Pack method identity is unavailable');
   return loadRunPack(deps.packsDir, run.packId, run.packDigest);
 }
-function inputIdentity(deps: FabricDeps, run: RunRecord): string {
+function inputIdentity(deps: FabricDeps, run: RunRecord, throughSeq = run.nextSeq - 1): string {
   return identityOf({
     method: run.packDigest, site: run.siteId, goal: run.goal, strategy: run.strategy,
     generation: run.generation, loop: run.loop,
-    workspace: deps.ledger.records({ runId: run.id, type: 'workspace' }).findLast((record) => record.type === 'workspace'),
-    evidence: deps.ledger.records({ runId: run.id }).filter((record) => (record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id),
+    workspace: deps.ledger.records({ runId: run.id, type: 'workspace' }).findLast((record) => record.type === 'workspace' && record.seq <= throughSeq),
+    evidence: deps.ledger.records({ runId: run.id }).filter((record) => record.seq <= throughSeq && (record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id),
   });
 }
 export function executionContext(deps: FabricDeps, runId: string): ExecutionContext {
@@ -1112,6 +1116,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const no = (reason: string): ExecutionActionResult => answer('refused', { reason });
     const run = existingRun(deps.ledger, req.runId);
     const control = run.control;
+    if (deps.stopSignal?.aborted) return no('the Host is stopping; no new business action was admitted');
     if (control === undefined) return no('this historical Run has no conversational owner');
     if (control.owner !== req.actor || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
     if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
@@ -1142,6 +1147,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       await recordExecutionAction(deps, run, req, digest, changed, receipt);
       return answer('accepted', { receipt });
     }
+    if (req.action === 'work' || req.action === 'complete') return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');
     if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted');
     if (control.paused.length > 0) return no('business admission is paused');
@@ -1155,6 +1161,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       id: `execution-${randomUUID()}`, nodeId: node.id, kind: node.kind,
       generation: run.generation ?? 1, attempt: attemptOf(deps.ledger, run.id, node.id),
       methodDigest: run.packDigest, inputDigest: inputIdentity(deps, run), phase: 'begun',
+      inputThroughSeq: run.nextSeq - 1,
       ...(run.loop === undefined ? {} : { loopId: run.loop.id, loopGeneration: run.loop.generation }),
     };
     const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
@@ -1165,14 +1172,151 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
 
 async function recordExecutionAction(
   deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest, digest: string,
-  change: Partial<RunControl>, receipt: ExecutionReceipt, delta: { attempts?: number } = {},
+  change: Partial<RunControl>, receipt: ExecutionReceipt, delta: { attempts?: number } = {}, state: 'admitted' | 'done' | 'uncertain' = 'done',
 ): Promise<void> {
   const control = run.control!;
   await advance(deps.ledger, run.id, delta, { control: {
     ...control, ...change, revision: control.revision + 1,
     requests: { ...control.requests, [req.requestId]: {
       digest, actor: req.actor, epoch: control.epoch, revision: control.revision,
-      origin: req.origin ?? 'agent', at: new Date().toISOString(), state: 'done', receipt,
+      origin: req.origin ?? 'agent', at: new Date().toISOString(), state, receipt,
     } },
   } });
+}
+
+function executionAnswer(deps: FabricDeps, runId: string, kind: ExecutionActionResult['kind'], extra: Omit<ExecutionActionResult, 'kind' | 'context'> = {}): ExecutionActionResult {
+  return { kind, context: executionContext(deps, runId), ...extra };
+}
+
+/** Must be called under the Run's admission queue; it preserves intervening facts. */
+async function updateExecution(deps: FabricDeps, runId: string, executionId: string, change: Partial<NodeExecution>, requestId?: string, requestState: 'done' | 'uncertain' = 'done'): Promise<void> {
+  const run = existingRun(deps.ledger, runId);
+  const control = run.control!;
+  const execution = control.executions[executionId];
+  if (execution === undefined) throw new RunStartError('the admitted execution disappeared');
+  const request = requestId === undefined ? undefined : control.requests[requestId];
+  await deps.ledger.advanceRun(runId, { control: {
+    ...control, executions: { ...control.executions, [executionId]: { ...execution, ...change } },
+    ...(requestId === undefined || request === undefined ? {} : { requests: { ...control.requests, [requestId]: { ...request, state: requestState } } }),
+  } });
+}
+
+function executionDriving(deps: FabricDeps, run: RunRecord, execution: NodeExecution): Driving {
+  const site = loadSite(deps.sitesDir, run.siteId);
+  if (run.control?.siteDigest !== identityOf(site)) throw new RunStartError('the Site declaration changed or its original identity is unavailable; do not reinterpret this execution on another Site');
+  const pack = executionPack(deps, run);
+  const prepared = deps.ledger.records({ runId: run.id, type: 'workspace' }).findLast((record): record is WorkspaceRecord => record.type === 'workspace' && record.seq <= (execution.inputThroughSeq ?? -1));
+  if (prepared === undefined || prepared.packDigest !== run.packDigest) throw new RunStartError('this execution has no verified original workspace/method identity');
+  return {
+    deps: { ...deps, beforeSlotClaim: (siteName) => reconcileExecutionIntents(deps, siteName) },
+    runId: run.id, site, pack, bindings: boundInputs(pack, site), workspace: prepared.workspace,
+    campaignId: run.campaignId, waitedMs: 0, nonblocking: true, executionId: execution.id,
+    ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
+    beforeLaunch: async (offered: LaunchIntent) => {
+      if (deps.stopSignal?.aborted) throw new RunStartError('the Host stopped before this Job was launched');
+      const intent = launchIntentSchema.parse(offered);
+      if (intent.runId !== run.id || intent.siteId !== run.siteId || intent.nodeId !== execution.nodeId || intent.attempt !== execution.attempt || intent.branchId !== execution.branchId) throw new RunStartError('launch identity does not match the admitted node execution');
+      await updateExecution(deps, run.id, execution.id, { intent });
+    },
+  };
+}
+
+/** Called inside the existing Site claim lock. An uncertain earlier launch reserves that Site. */
+export async function reconcileExecutionIntents(deps: FabricDeps, siteName: string): Promise<void> {
+  for (const run of deps.ledger.runs()) {
+    if (run.siteId !== siteName) continue;
+    for (const execution of Object.values(run.control?.executions ?? {})) {
+      if (execution.intent === undefined) continue;
+      const known = deps.ledger.records({ runId: run.id, type: 'job' }).some((record) => record.type === 'job' && record.event === 'launched' && record.job.session === execution.intent!.job.session);
+      if (known) continue;
+      const recovered = await reconcileLaunchIntent(deps, execution.intent);
+      if (recovered.kind === 'uncertain') throw new RunStartError(`site ${siteName} has an unresolved launch ${execution.intent.job.session}; ${recovered.reason}`);
+    }
+  }
+}
+
+const executionObservers = new WeakMap<Ledger, Map<string, Promise<void>>>();
+export async function drainExecutionObservers(ledger: Ledger): Promise<void> {
+  const observers = executionObservers.get(ledger);
+  while (observers !== undefined && observers.size > 0) await Promise.allSettled([...observers.values()]);
+  await Promise.allSettled([...(controlsPerRun.get(ledger)?.values() ?? [])]);
+}
+function observeExecution(ctx: Driving, node: PackNode, execution: NodeExecution, session: string): void {
+  const observers = executionObservers.get(ctx.deps.ledger) ?? new Map<string, Promise<void>>();
+  executionObservers.set(ctx.deps.ledger, observers);
+  if (observers.has(execution.id) || ctx.deps.stopSignal?.aborted) return;
+  const task = (async () => {
+    try {
+      const result = await resumeNode(ctx, node, execution.attempt, session);
+      if (ctx.deps.stopSignal?.aborted) return;
+      await controlling(ctx.deps, ctx.runId, () => recordExecutionResult(ctx, execution, result));
+    } catch (error) {
+      if (ctx.deps.stopSignal?.aborted) return;
+      await controlling(ctx.deps, ctx.runId, () => updateExecution(ctx.deps, ctx.runId, execution.id, { phase: 'uncertain', reason: (error as Error).message }));
+      ctx.deps.log?.(`execution ${execution.id} could not collect its Job facts: ${(error as Error).message}`);
+    }
+  })();
+  observers.set(execution.id, task);
+  void task.finally(() => { if (observers.get(execution.id) === task) observers.delete(execution.id); }).catch((error: unknown) => ctx.deps.log?.(`execution observer failed: ${String(error)}`));
+}
+async function recordExecutionResult(ctx: Driving, execution: NodeExecution, result: Step, requestId?: string): Promise<void> {
+  const phase = result.kind === 'settled' || result.kind === 'moved' ? 'ready' : result.kind === 'pending' ? 'working' : result.kind === 'at-cap' ? 'begun' : 'failed';
+  await updateExecution(ctx.deps, ctx.runId, execution.id, { phase, result, ...(result.kind === 'pending' ? { jobSession: result.session } : {}) }, requestId);
+  if (result.kind === 'budget-exhausted') await endBudgetExhausted(ctx.deps.ledger, ctx.runId);
+  if (phase === 'ready' || phase === 'failed') {
+    const owner = existingRun(ctx.deps.ledger, ctx.runId).control?.owner;
+    if (owner !== undefined) ctx.deps.notify?.(owner, ctx.runId, execution.id);
+  }
+}
+
+async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest, digest: string): Promise<ExecutionActionResult> {
+  const no = (reason: string) => executionAnswer(deps, run.id, 'refused', { reason });
+  const control = run.control!;
+  const execution = req.executionId === undefined ? undefined : control.executions[req.executionId];
+  if (execution === undefined) return no('name the execution identity returned by begin');
+  if (req.nodeId !== undefined && req.nodeId !== execution.nodeId) return no('node and execution identities disagree');
+  if (execution.generation !== run.generation || execution.loopId !== run.loop?.id || execution.loopGeneration !== run.loop?.generation) return no('this execution belongs to an earlier generation or Loop');
+  if (control.paused.length > 0) return no('business admission is paused; existing Job facts remain readable');
+  if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted');
+  if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq)) return no('the execution input version no longer matches the Run');
+  let ctx: Driving;
+  try { ctx = executionDriving(deps, run, execution); } catch (error) { return no((error as Error).message); }
+  const position = positionOf(ctx.pack, execution.nodeId);
+  if (position === undefined) return no('the retained reference graph has no such node');
+  const { node, graph } = position;
+  const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
+  if (req.action === 'work') {
+    if (execution.phase !== 'begun') return no('this execution is already working or has a result; no second Job was admitted');
+    await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: { ...execution, phase: 'working' } } }, receipt, {}, 'admitted');
+    try {
+      let result: Step;
+      if (node.kind === 'act') result = node.parameters.workshop !== undefined
+        ? await launchWrittenWorkshop(ctx, node, execution.attempt, req.actor)
+        : node.parameters.tool !== undefined ? await toolNode(ctx, run, node, execution.attempt) : await observeNode(ctx, node, execution.attempt);
+      else if (node.kind === 'judge') result = await judgeNode(ctx, run, node, execution.attempt);
+      else result = { kind: 'settled' };
+      await recordExecutionResult(ctx, execution, result, req.requestId);
+      if (result.kind === 'pending') observeExecution(ctx, node, execution, result.session);
+      return executionAnswer(deps, run.id, 'accepted', { receipt });
+    } catch (error) {
+      await updateExecution(deps, run.id, execution.id, { phase: 'uncertain', reason: (error as Error).message }, req.requestId, 'uncertain');
+      return executionAnswer(deps, run.id, 'accepted', { receipt, reason: `work was admitted but its effect is uncertain; do not repeat the launch: ${(error as Error).message}` });
+    }
+  }
+  if (execution.phase !== 'ready' || execution.result === undefined || (execution.result.kind !== 'settled' && execution.result.kind !== 'moved')) return no('completion needs the actual successful operation result; an Agent statement is not evidence');
+  if (node.kind === 'explore' || node.kind === 'wait') return no('this node requires its explicit exploration or human decision');
+  if (execution.jobSession !== undefined) {
+    const actual = await jobStatus(deps, { run: run.id, session: execution.jobSession });
+    if (actual.state.state !== 'finished' || actual.state.exitCode !== 0) return no('the Job has no confirmed successful exit');
+  }
+  await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: { ...execution, phase: 'completed' } } }, receipt);
+  const forked = await openForkAt(ctx, graph, node);
+  if (forked === undefined) {
+    const to = edgeFrom(ctx, graph, node, execution.result.outcome);
+    if (to !== undefined) await progress(ctx, {}, { currentNode: to });
+    else if (execution.result.outcome === 'UNDETERMINED') await progress(ctx, {}, { status: 'waiting' });
+    else await endRun(ctx);
+  }
+  if (existingRun(deps.ledger, run.id).status !== 'running') await writeExperience(deps, run.id);
+  return executionAnswer(deps, run.id, 'accepted', { receipt });
 }
