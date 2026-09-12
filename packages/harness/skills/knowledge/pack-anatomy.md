@@ -113,7 +113,7 @@ workshops:
     reads: [measuredInput]
     knowledge: [analysis-method.md]
     produces: analysis
-    argv: [sh, '${ENTRY}', '${WORKSHOP}', '${LIMIT}']
+    argv: [sh, '${ENTRY}', '${WORKSPACE}', '${LIMIT}']
     licences: {}             # omit when no licensed resource is needed
 ```
 
@@ -132,18 +132,35 @@ The corresponding graph node and downstream read are real nodes, connected after
     observes: analysis
 ```
 
-`reads` are output names, not arbitrary paths. `produces` is an output name, not a value type.
+`reads` and `produces` are exact `contract.outputs[].name` values. The model's read tool takes that
+same output name. `@workshop-input:<name>` is an internal diagnostic label; it is not a declared
+output, path, or read argument. `produces` names an output, not the value type its reader emits.
 The output's reader emits types declared by `semantics.yml`; downstream Judge rules consume those
 types. `directory` is relative to the Campaign workspace and cannot be `flow` or the readers'
 reserved directory. `entry` is one filename. `argv[0]` is a declared Site wrapper, and `argv[1]`
 is exactly `${ENTRY}`. A script may produce a declared output elsewhere in the Campaign workspace;
-its code-writing tool is confined to `directory`. Neither may escape the Site permit.
+its code-writing tool is confined to the admitted code directory. Neither may escape the Site permit.
 
-The script is called as `sh entry.sh <workshop> <limit>`, so shell `$1` is the workshop and `$2`
-is the limit. Reader scripts have their own argv: in the reader example below `$1` is `${REPORT}`
-and `$2` is `${OUT}`. These are argv arrays; do not put a shell command, pipe or redirection in them.
+| Operand | Meaning for a controlled execution |
+| --- | --- |
+| `${ENTRY}` | The generated entry script inside this execution's private code directory. |
+| `${WORKSPACE}` | The Campaign root containing `flow/` and the declared output paths. |
+| `${WORKSHOP}` | This execution's private code directory beneath the declared `directory`, including its execution identity. |
+
+This example passes `WORKSPACE`, so shell `$1` is the Campaign root and `$2` is LIMIT. Its input
+and output paths start from `$1`. A script needing helper files in its private code directory may
+also need a `WORKSHOP` operand; use the approved spec's exact operand order and document each shell
+position. Obtain the Campaign root from `WORKSPACE`, never by assuming a number of parent directories
+above `WORKSHOP`. The example supplies file shape, not permission to replace the spec's argv.
+
+Reader scripts have their own argv: below `$1` is `${REPORT}` and `$2` is `${OUT}`. These are argv
+arrays; shell commands, pipes and redirections belong inside scripts.
 
 ## `graph.yml` — the four node kinds, the outcomes the edges are taken on, and the one edge back
+
+The block illustrates node and edge syntax. For an executable Explore method, supply the actual
+constraint and Goal rules from the spec: the preceding Judge needs at least two ordered rules,
+constraint first and Goal second. The single rule skeleton here does not supply that whole method.
 
 ```yaml
 id: example-probe            # the contract's id
@@ -194,6 +211,13 @@ edges:
   - { from: judge, to: next-step, outcome: FAIL }
   - { from: next-step, to: measure, revisit: true }    # the loop: the only edge that goes back
 ```
+
+Read actual edges to audit endings. Judge routing uses the first rule's outcome, while an Explore
+owner decision uses the current required Judge evidence. A goal-met decision ends the Run before a
+revisit; a next-strategy decision follows the revisit only if the original generation budget allows
+it. A terminal Judge PASS alone supplies no Campaign goal-met decision. Waits remain legitimate
+where the approved spec calls for human clearance; compare each actual outcome path with that spec.
+Comments such as "PASS is terminal" cannot override a PASS edge whose destination is a wait node.
 
 ## `semantics.yml` — what the value types this pack's own readers emit mean
 
@@ -296,7 +320,10 @@ becomes an observation.
 ## `knowledge/<file>.md` — one piece of this pack's domain knowledge
 
 A plain Markdown file, one per entry of the contract's `knowledge:`, written for the purpose that
-entry gives it. Nothing reads it as data; it is what a model moment of this pack is given.
+entry gives it. It guides the executing Agent; it does not establish measured facts. Explain the
+method symbolically. Include a worked numeric result only with the exact input and parameters and
+an observed calculation or checked result that produced it; otherwise leave the result unverified.
+An example value copied from another dataset cannot serve as this dataset's expected answer.
 
 ```markdown
 # Why this pack changes the step the way it does

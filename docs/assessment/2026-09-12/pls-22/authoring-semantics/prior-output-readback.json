@@ -1,0 +1,9 @@
+[
+  {
+    "observationId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000021",
+    "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/result.txt",
+    "actual": "227",
+    "hashMatches": true,
+    "expected": 227
+  }
+]
