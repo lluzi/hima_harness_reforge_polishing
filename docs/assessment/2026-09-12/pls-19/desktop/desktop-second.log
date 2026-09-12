@@ -1,0 +1,33 @@
+$ node scripts/run-contract-tests.mjs desktop --files test/contract/agent-execution.desktop.test.ts
+desktop: 1 selected; 17 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: native selected conversation runs one explicit Job, accepts typed steering and human Continue without losing draft or Files
+not ok 1 - native selected conversation runs one explicit Job, accepts typed steering and human Continue without losing draft or Files
+  ---
+  duration_ms: 49940.767125
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/test/contract/agent-execution.desktop.test.ts:19:1'
+  failureType: 'testCodeFailure'
+  error: 'Window condition timed out: document.body.innerText.includes("Replay: the local Job has started. This conversation is available for your instruction.")'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Object.wait (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/test/contract/support/inspect-window.ts:35:38)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/test/contract/agent-execution.desktop.test.ts:62:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Into the Unknown\\nPreview\\nworkspace\\nStandard mode\\n\\nKeep the existing research question and evidence in view. Unsent desktop test draft.\\n\\nWorkspace Write\\ndeepseek-v4-flash\\nStart\\nLive Run\\nResearch workspace\\nFiles & code\\n＋ New run\\nVIEWED RUN\\nSelect a run on this host\\nopene902-timing-probe · 11:29:05 AM · fe9fc6\\n↻\\nLive Run\\nExperiments\\nEvidence\\nReport\\nopene902-timing-probe\\n◉ running\\n\\nopene902 · local · Pack v2\\n\\nRESEARCH GOAL\\n\\ngoal: clock period at most 2 ns\\n\\nCURRENT STEP\\n\\nsynthesize\\n\\nGeneration\\n1 / 2\\nElapsed\\n0 ms\\nObservations\\n0\\nBudget and resource use\\nOwner session-518d0aa5-c9d6-4098-9604-689e0a39d90a · epoch 1 · revision 0\\nNew work requires this conversation’s explicit Agent action.\\nPause Run\\nPause synthesize\\nStop Run\\nExecution trace\\nRecorded order · 0 / 0 done\\n\\nNo node transition has been recorded.\\n\\n✓ Done\\n◉ Running\\n◇ Waiting\\n× Stopped / blocked\\n▤ Job activity\\nLedger events\\nWaiting for the first recorded Job event.\\nJob lifecycle events from the Run record.\\n✓ Read 11:29:33 AM\\nrun-25adf84c-f2ae-4b72-aa7a-8339ddfe9fc6\\nFabric / Ledger
+# \\nDevTools listening on ws://127.0.0.1:63305/devtools/browser/2eff6147-2037-4d54-9752-e0db01f7fb13\\nhima-desktop: DSH_HOME is /private/tmp/hima-tests-XrWaF3/hima-home-2aNTk7\\nhima-desktop: the hima profile is already at /private/tmp/hima-tests-XrWaF3/hima-home-2aNTk7/profiles/hima\\nhima-desktop: linked @hima/harness → /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/packages/harness\\nhima-desktop: installed the hima-moment agent preset into /private/tmp/hima-tests-XrWaF3/hima-home-2aNTk7/.agent-presets/hima-moment\\nhima-desktop: wrote the model stand-in overlay into /private/tmp/hima-tests-XrWaF3/hima-home-2aNTk7/cordis.patch.yml: @deepseek-ai/dsh-llm-replay replaying /private/tmp/hima-tests-XrWaF3/hima-home-2aNTk7/execution-replay/session.jsonl\\n
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 50533.443375
+Test boot attempts: {"host-process":0,"host-in-process":0,"electron":1}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+desktop command exit code: 1; elapsed: 50.630 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

@@ -1,0 +1,34 @@
+$ node scripts/run-contract-tests.mjs desktop --files test/contract/agent-execution.desktop.test.ts
+desktop: 1 selected; 17 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: native selected conversation runs one explicit Job, accepts typed steering and human Continue without losing draft or Files
+not ok 1 - native selected conversation runs one explicit Job, accepts typed steering and human Continue without losing draft or Files
+  ---
+  duration_ms: 47089.200833
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/test/contract/agent-execution.desktop.test.ts:19:1'
+  failureType: 'testCodeFailure'
+  error: 'Window condition timed out: document.body.innerText.includes("Replay: the local Job has started. This conversation is available for your instruction.")'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Object.wait (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/test/contract/support/inspect-window.ts:35:38)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/test/contract/agent-execution.desktop.test.ts:74:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Into the Unknown\\nPreview\\nworkspace\\nStandard mode\\n\\nKeep the existing research question and evidence in view. Unsent desktop test draft.\\n\\nWorkspace Write\\ndeepseek-v4-flash\\nStart\\nLive Run\\nResearch workspace\\nFiles & code\\n＋ New run\\nVIEWED RUN\\nSelect a run on this host\\nopene902-timing-probe · 11:35:56 AM · 5dd288\\n↻\\n\\nRun run-043df2e9-7904-41df-ae59-2255535dd288 is prepared, but the conversation message was not delivered: cannot get property "conversation" without inject. Ask this conversation to inspect the Run; do not start a duplicate.\\n\\nLive Run\\nExperiments\\nEvidence\\nReport\\nopene902-timing-probe\\n◉ running\\n\\nopene902 · local · Pack v2\\n\\nRESEARCH GOAL\\n\\ngoal: clock period at most 2 ns\\n\\nCURRENT STEP\\n\\nsynthesize\\n\\nGeneration\\n1 / 2\\nElapsed\\n0 ms\\nObservations\\n0\\nBudget and resource use\\nOwner session-0fa017ff-b8fe-4afa-b987-97f620f0ce58 · epoch 1 · revision 0\\nNew work requires this conversation’s explicit Agent action.\\nPause Run\\nPause synthesize\\nStop Run\\nExecution trace\\nRecorded order · 0 / 0 done\\n\\nNo node transition has been recorded.\\n\\n✓ Done\\n◉ Running\\n◇ Waiting\\n× Stopped / blocked\\n▤ Job activity\\nLedger events\\nWaiting for the first recorded Job event.\\nJob lifecycle events from the Run record.\\n✓ Read 11:36:25 AM\\nrun-043df2e9-7904-41df-ae59-2255535dd288\\nFabric / Ledger
+# \\nDevTools listening on ws://127.0.0.1:63781/devtools/browser/1d3e7ab8-f14e-4f88-9e36-b2fc8425cde6\\nhima-desktop: DSH_HOME is /private/tmp/hima-tests-kJNmzS/hima-home-GdJnGz\\nhima-desktop: the hima profile is already at /private/tmp/hima-tests-kJNmzS/hima-home-GdJnGz/profiles/hima\\nhima-desktop: linked @hima/harness → /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/packages/harness\\nhima-desktop: installed the hima-moment agent preset into /private/tmp/hima-tests-kJNmzS/hima-home-GdJnGz/.agent-presets/hima-moment\\nhima-desktop: wrote the model stand-in overlay into /private/tmp/hima-tests-kJNmzS/hima-home-GdJnGz/cordis.patch.yml: @deepseek-ai/dsh-llm-replay replaying /private/tmp/hima-tests-kJNmzS/hima-home-GdJnGz/execution-replay/session.jsonl\\n
+# [\\n  {\\n    "url": "/hima/api/runs/start",\\n    "body": "{\\"run\\":{\\"id\\":\\"run-043df2e9-7904-41df-ae59-2255535dd288\\",\\"campaignId\\":\\"opene902-timing-probe-20260912-183556-a066\\",\\"siteId\\":\\"local\\",\\"createdAt\\":\\"2026-09-12T18:35:56.916Z\\",\\"status\\":\\"running\\",\\"packId\\":\\"opene902-timing-probe\\",\\"purpose\\":\\"campaign\\",\\"packVersion\\":\\"2\\",\\"words\\":{\\"goal\\":{\\"target_period_ns\\":{\\"label\\":\\"clock period at most\\",\\"unit\\":\\"ns\\"}},\\"strategy\\":{\\"periodNs\\":{\\"label\\":\\"clock period\\",\\"unit\\":\\"ns\\"}}},\\"goal\\":{\\"target_period_ns\\":2},\\"budget\\":{\\"timeBoxMs\\":120000,\\"retryAllowance\\":3,\\"jobCap\\":1,\\"licences\\":{\\"Design-Compiler\\":1},\\"generationLimit\\":2},\\"currentNode\\":\\"synthesize\\",\\"strategy\\":{\\"periodNs\\":2.3},\\"generation\\":1,\\"meters\\":{\\"elapsedMs\\":0,\\"jobsLaunched\\":0,\\"attempts\\":0},\\"control\\":{\\"mode\\":\\"agent\\",\\"owner\\":\\"session-0fa017ff-b8fe-4afa-b987-97f620f0ce58\\",\\"epoch\\":1,\\"revision\\":0,\\"paused\\":[],\\"executions\\":{},\\"requests\\":{},\\"siteDigest\\":\\"5635e92e2222e315f54c48b44e8d7dd6336c2ef6d9094d5efd151eedee0c4b9f\\"}},\\"workspace\\":{\\"design\\":\\"opene902\\",\\"flowRoot\\":\\"/private/tmp/hima-tests-kJNmzS/hima-home-GdJnGz/standin-flow\\",\\"containerName\\":\\"hima-opene902-timing-probe-20260912-183556-a066\\"},\\"observations\\":[],\\"refusals\\":[],\\"verdicts\\":[],\\"nodes\\":[],\\"generations\\":[{\\"generation\\":1,\\"strategy\\":{\\"periodNs\\":2.3},\\"nodes\\":[],\\"verdicts\\":[],\\"wallMs\\":50,\\"state\\":\\"running\\"}],\\"jobs\\":[],\\"blockers\\":[],\\"cancels\\":[],\\"decision\\":null,\\"code\\":[]}"\\n  }\\n]
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 47888.242583
+Test boot attempts: {"host-process":0,"host-in-process":0,"electron":1}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+desktop command exit code: 1; elapsed: 47.979 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

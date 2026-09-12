@@ -24,11 +24,11 @@ export interface ClientContext {
   readonly sidebarRight: { openTab(kind: string, options?: { params?: { runId?: string } }): void };
   readonly sidebarRightTabs: { register(definition: { id: string; kind: string; title(address: string): string; guide: { order: number; title(): string; description(): string }[] }): () => void };
   readonly layout: { toggleSidebar(): void };
-  readonly sessions: { open(id: string): void; scope(id: string): { conversation: { send(text: string): Promise<void> } } };
+  readonly sessions: { open(id: string): void; scope(id: string): { get(name: 'conversation'): { send(text: string): Promise<void> } | undefined } | undefined };
   effect(callback: () => (() => void)): unknown;
 }
 
-export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions'];
+export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions', 'conversation'];
 export const name = 'hima-guide';
 
 /** Hima's own mark, composed through the shell's brand seats. */
@@ -91,7 +91,7 @@ export function apply(ctx: ClientContext): void {
   const openRun = (runId?: string) => ctx.sidebarRight.openTab(WORKBENCH_KIND, runId === undefined ? undefined : { params: { runId } });
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: WORKBENCH_ID,
-    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id), sendToOwner: (id: string, text: string) => ctx.sessions.scope(id).conversation.send(text) }),
+    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id), sendToOwner: async (id: string, text: string) => { const owner = ctx.sessions.scope(id); if (owner === undefined) throw new Error(`The owning conversation ${id} is unavailable in this window.`); const conversation = owner.get('conversation'); if (conversation === undefined) throw new Error('The native conversation service is unavailable.'); await conversation.send(text); } }),
   }, HimaWorkbench));
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'hima-workbench',

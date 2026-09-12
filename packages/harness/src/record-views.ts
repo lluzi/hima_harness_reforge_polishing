@@ -15,7 +15,7 @@
 // browser bundle carries it through `generations.ts`, so a runtime import of the ledger's own module
 // here would pull `node:crypto` and `node:fs` into the client build. The ledger's *types* are
 // imported, and types are erased.
-import type { CodeRecord, DecisionChoice, JobIdentity, JobRecord, LedgerRecord, NodeKind, NodeRecord, NodeState, ObservationRecord, ReaderRef, RunStrategy, SessionRecord, VerdictRecord } from './ledger.js';
+import type { CodeRecord, DecisionChoice, JobIdentity, JobRecord, LedgerRecord, NodeExecution, NodeKind, NodeRecord, NodeState, ObservationRecord, ReaderRef, RunStrategy, SessionRecord, VerdictRecord } from './ledger.js';
 import type { SemanticValue } from './semantics.js';
 
 /** One observation as HimaGuide shows it: what was read, from where, by which reader, when. */
@@ -153,16 +153,17 @@ export function codeView(record: CodeRecord): CodeView {
 /**
  * Where a workshop node stands, in one word (#62).
  *
- * Eight, and every one of them a different thing for a person to do about it: `writing` is a model
+ * Historical moment states and one explicit completion boundary: `writing` is a model
  * session that is still open, `written` is a moment that closed with the entry on record and no Job
  * yet, `no-entry` is a moment that closed having written something other than the entry — so there is
  * nothing for the fabric to run and the attempt is about to be settled as failed — `running` is the
  * Job, `done` is the node settled, `failed` is an attempt that failed with the allowance still
  * standing, `blocked` is one that failed without it — the one a person has to clear — and
  * `interrupted` is a host that went away mid-moment, which is the one state nothing is currently
- * doing anything about.
+ * doing anything about. Controlled work uses `awaiting-completion` when the operation succeeded
+ * and the conversational Agent has not yet completed its node.
  */
-export type WorkshopState = 'writing' | 'written' | 'no-entry' | 'running' | 'done' | 'failed' | 'blocked' | 'interrupted';
+export type WorkshopState = 'writing' | 'written' | 'no-entry' | 'running' | 'done' | 'failed' | 'blocked' | 'interrupted' | 'awaiting-completion';
 
 /** One workshop node as HimaGuide shows it: which workshop, where it stands, and what it wrote. */
 export interface WorkshopView {
@@ -170,8 +171,12 @@ export interface WorkshopView {
   readonly workshop: string;
   readonly attempt: number;
   readonly state: WorkshopState;
-  /** The session of this attempt's moment, once there is one. */
+  /** Actual code-author session for controlled work; historical moment session otherwise. */
   readonly sessionId?: string;
+  /** Present for work performed by the conversational Agent, without a separate model moment. */
+  readonly executionId?: string;
+  readonly jobSession?: string;
+  readonly codeRecordIds?: readonly string[];
   /**
    * How many **files** this attempt wrote: distinct paths, never records.
    *
@@ -278,6 +283,7 @@ export interface WorkshopRun {
   readonly currentNode?: string;
   readonly generation?: number;
   readonly loop?: { readonly id: string; readonly generation: number };
+  readonly control?: { readonly executions: Readonly<Record<string, NodeExecution>> };
 }
 
 /**
@@ -304,11 +310,38 @@ export interface WorkshopRun {
  *
  * @param run - the Run's row: where it stands, and which Generation and Loop it is in.
  * @param records - every record of that Run, in sequence.
- * @returns the view, or undefined for a Run no moment of a workshop has opened on.
+ * @returns the view, or undefined before any controlled Workshop context or historical moment exists.
  */
 export function standingWorkshop(run: WorkshopRun, records: readonly LedgerRecord[]): WorkshopView | undefined {
   const generation = run.loop?.generation ?? run.generation;
   const here = records.filter((r) => r.generation === generation && r.loopId === run.loop?.id);
+  // Controlled execution has no hidden model moment. Its resolved declaration and actual code /
+  // Job records carry the identity; never infer it from today's Pack folder or model profile.
+  const executions = Object.values(run.control?.executions ?? {}).filter((execution) =>
+    execution.generation === run.generation && execution.loopId === run.loop?.id
+    && execution.loopGeneration === run.loop?.generation && (execution.workshop !== undefined || execution.intent?.workshop !== undefined));
+  const execution = executions.findLast((item) => item.nodeId === run.currentNode) ?? executions.at(-1);
+  if (execution !== undefined) {
+    const launched = execution.intent?.workshop;
+    const declared = execution.workshop ?? (launched === undefined ? undefined : { id: launched.id, entry: launched.entry.path, entryPath: launched.entry.path });
+    if (declared !== undefined) {
+      const code = here.filter((record): record is CodeRecord => record.type === 'code' && record.nodeId === execution.nodeId
+        && record.attempt === execution.attempt && record.branchId === execution.branchId
+        && record.seq > (execution.inputThroughSeq ?? 0));
+      const files = new Map(code.map((record) => [record.path, record]));
+      const state: WorkshopState = execution.phase === 'completed' ? 'done'
+        : execution.phase === 'ready' ? 'awaiting-completion'
+        : execution.phase === 'uncertain' ? 'interrupted'
+        : execution.phase === 'failed' ? execution.result?.kind === 'hard-blocker' ? 'blocked' : 'failed'
+        : execution.phase === 'working' ? 'running'
+        : files.has(declared.entryPath) ? 'written' : 'writing';
+      const sessionId = code.at(-1)?.sessionId;
+      const jobSession = execution.jobSession ?? execution.intent?.job.session;
+      return { nodeId: execution.nodeId, workshop: declared.id, attempt: execution.attempt, state,
+        entry: declared.entry, files: files.size, executionId: execution.id, codeRecordIds: [...files.values()].map((record) => record.id),
+        ...(sessionId === undefined ? {} : { sessionId }), ...(jobSession === undefined ? {} : { jobSession }) };
+    }
+  }
   // Which node is a workshop node, and what it opens: the `opened` records of this Generation say so,
   // and the latest of them per node wins — a pack edited between two Generations is a pack whose
   // later moment carries the later declaration.

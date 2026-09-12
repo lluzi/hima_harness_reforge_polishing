@@ -1,0 +1,11 @@
+packages/harness/src/channel.ts(185,15): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/channel.ts(329,5): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/channel.ts(330,5): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/errors.ts(90,15): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/errors.ts(112,15): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/workspace.ts(144,15): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/workspace.ts(144,41): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+test/contract/agent-desktop-replay.host.test.ts(5,53): error TS2305: Module '"./support/boot-inprocess.ts"' has no exported member 'calledTools'.
+test/contract/agent-desktop-replay.host.test.ts(45,46): error TS7006: Parameter 'call' implicitly has an 'any' type.
+test/contract/support/agent-execution-replay.ts(26,64): error TS2322: Type 'string' is not assignable to type 'ToolCallId'.
+  Type 'string' is not assignable to type '{ readonly [BRAND]: "ToolCallId"; }'.

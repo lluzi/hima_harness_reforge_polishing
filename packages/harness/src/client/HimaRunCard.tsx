@@ -467,7 +467,7 @@ export function RunControls({ view, acting }: { view: RunView; acting: Acting })
       <div style={{ display: 'flex', gap: 8 }}>
         {active && owner ? <button type='button' data-hima-control='pause' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause')}>Pause Run</button> : null}
         {active && owner && view.run.currentNode ? <button type='button' data-hima-control='pause-node' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause', view.run.currentNode)}>Pause {view.run.currentNode}</button> : null}
-        {active && owner && control.paused.length ? <button type='button' data-hima-control='continue' disabled={acting.inFlight !== undefined} onClick={() => acting.act('continue')}>Continue</button> : null}
+        {active && owner ? control.paused.map((scope) => <button key={scope} type='button' data-hima-control={scope === '*' ? 'continue' : `continue-node-${scope}`} disabled={acting.inFlight !== undefined} onClick={() => acting.act('continue', scope === '*' ? undefined : scope)}>Continue {scope === '*' ? 'Run' : scope}</button>) : null}
         {active && acting.sessionId ? <button type='button' data-hima-control='cancel' disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>Stop Run</button> : null}
       </div>
       {!owner ? <span style={muted}>Viewing this Run does not transfer execution ownership. Enter its owning conversation to continue.</span> : null}
@@ -509,9 +509,10 @@ export function DecisionRow({ decision, view }: { decision: DecisionView; view: 
     <div style={block}>
       <div>
         <span style={{ color: decisionColour(decision), fontWeight: 500 }}>{chosenSaid(decision, view.run.words)}</span>{' '}
-        <span style={muted}>by {decision.chooser} at {decision.nodeId}</span>
+        <span style={muted}>{decision.agent ? `by the conversational Agent at ${decision.nodeId}` : `by ${decision.chooser} at ${decision.nodeId}`}</span>
       </div>
-      <div style={muted}>from {Object.entries(decision.rationale).map(([name, value]) => `${name} ${value}`).join(', ')}</div>
+      {decision.agent ? <div data-hima-region='decision-agent-rationale'><p>{decision.agent.rationale}</p><div style={muted}>session {decision.agent.sessionId} · execution {decision.agent.executionId} · Pack reference {decision.chooser}</div></div> : null}
+      {Object.keys(decision.rationale).length ? <div style={muted}>from {Object.entries(decision.rationale).map(([name, value]) => `${name} ${value}`).join(', ')}</div> : null}
       {decision.cites.map((recordId) => <div key={recordId} style={muted}>cites {citedSaid(view, recordId)}</div>)}
     </div>
   );
@@ -567,6 +568,7 @@ export function ObservationRow({ observation }: { observation: ObservationView }
 export function WorkshopSection({ view, workshop }: { view: RunView; workshop: WorkshopView }): ReactElement {
   const label = labelled(workshopStateLabel, workshop.state);
   const files = codeOfWorkshop(view);
+  const job = workshop.jobSession === undefined ? undefined : view.jobs.findLast((record) => record.job.session === workshop.jobSession);
   return (
     <Section title="workshop" region="run-workshop" state={workshopState(workshop)}>
       <div style={block}>
@@ -575,9 +577,11 @@ export function WorkshopSection({ view, workshop }: { view: RunView; workshop: W
           node {workshop.nodeId}, attempt {workshop.attempt}, entry {workshop.entry}
           {workshop.sessionId === undefined ? '' : `, session ${workshop.sessionId}`}
         </div>
+        {workshop.executionId ? <div style={muted}>Conversational Agent · execution {workshop.executionId}<br />Model identity not recorded for this execution.</div> : null}
+        {job ? <div style={muted}>Job {job.job.session} · {job.event}{job.exitCode === undefined ? '' : ` · exit ${job.exitCode}`}</div> : null}
         {files.length === 0
           ? <div style={muted}>nothing written yet — {label.said}</div>
-          : files.map((code) => <div key={code.recordId} style={mono}>{codeSaid(code)}</div>)}
+          : files.map((code) => <div key={code.recordId} style={mono}>{codeSaid(code)}{workshop.executionId ? <span style={muted}> · author session {code.sessionId}</span> : null}</div>)}
       </div>
     </Section>
   );

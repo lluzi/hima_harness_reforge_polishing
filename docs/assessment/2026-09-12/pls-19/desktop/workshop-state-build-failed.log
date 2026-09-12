@@ -1,0 +1,8 @@
+$ pnpm -r run build
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json && node scripts/build-client.mjs
+src/workbench.ts(229,7): error TS2741: Property '"awaiting-completion"' is missing in type '{ writing: "running"; written: "pending"; 'no-entry': "missed"; running: "running"; done: "done"; failed: "waiting"; blocked: "blocked"; interrupted: "waiting"; }' but required in type 'Readonly<Record<WorkshopState, Glyph>>'.
+/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/packages/harness:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @hima/harness@0.1.0 build: `tsc -p tsconfig.json && node scripts/build-client.mjs`
+Exit status 2
+[ELIFECYCLE] Command failed with exit code 2.

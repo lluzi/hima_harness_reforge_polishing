@@ -1,0 +1,22 @@
+{
+  "initialBase": "9614b78650382c0d580350638b84e456a4bf219d",
+  "finalParent": "4d9a601eabeb2e19d8dfd9d85f3035e687d69c77",
+  "node": "24.20.0",
+  "sources": {
+    "packages/harness/src/client/index.ts": "9b4ade922aaffada447064089441582f76e616e9e09adde302a343c4999b9e7e",
+    "packages/harness/src/client/HimaWorkbench.tsx": "8b34147b55d75301037bc2902dd34f1e99bdfc6ecd996985f1fcd26eeb34418b",
+    "packages/harness/src/client/HimaRunCard.tsx": "37fb33ada95645bbdcc064de16e25ebbbaf088c774766e800415090a034355b7",
+    "packages/harness/src/record-views.ts": "831c5662397f6aaa182f8bb30eb1b153692b2ed23e992ac0eb4e7d646864adb1",
+    "packages/harness/src/remote.ts": "c354b082ad810664a4ba395a992e6eeadea88a9ed8bc5dfc6ce258be7a081dd6",
+    "packages/harness/src/card-labels.ts": "23f4c253526d0fe9c7e7639aef8ae03ab1027bc159250f69eb999167ef5905c5",
+    "packages/harness/src/workbench.ts": "c1ce6950ee648398dc7b4d917dc0eeec38359512607cc109995c3a1c8e3bc1d2",
+    "packages/harness/lib/client.js": "9f053e320906e2d44ceb38516f1ec62098659377259838790b7100d4f0339256",
+    "test/contract/support/agent-execution-replay.ts": "e7b4371237b6949102ace694dcd61fa3d598e70779ffccbf38bff9e3608bc65f",
+    "test/contract/agent-desktop-replay.host.test.ts": "8762adb99e81c4e895ef51d5b92302bda2ecfe90e9a344d6f323a8d804cfa42c",
+    "test/contract/agent-execution.desktop.test.ts": "485495cb41e729d7079e2a7415fe6c161e9dfbd364d1592500a8d8e5afe200c2",
+    "test/contract/agent-workshop.host.test.ts": "9b0139a09b8fbf45314c9e601b9536610a3d4d2411d77847108e114fa615193b",
+    "test/contract/agent-graph.host.test.ts": "2674a8b4668069f6a3b1762ca6cc49d3f95e4bccf17d722b5078494b5a2143a5",
+    "test/contract-groups.json": "f14db4ef7a10e3a8c56bb6beaa645ee850b366c7f791140f12f79a3d2960a5de",
+    "pnpm-lock.yaml": "c90ee6de238349ebace1529959c6d7be0aa7662d0557e8fcc830c6ead0ed3b25"
+  }
+}
