@@ -3,7 +3,7 @@
 Part of #1 (https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
 Backlog: POL-06
-Blocked by: #9, #14, #22
+Blocked by: [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23), [PLS-13 / #14](https://github.com/lluzi/hima_harness_reforge_polishing/issues/14), [PLS-19 / #22](https://github.com/lluzi/hima_harness_reforge_polishing/issues/22)
 
 ## 目标与开工条件
 
@@ -13,7 +13,7 @@ Blocked by: #9, #14, #22
 
 ## 代码基线与修改模块
 
-基线为 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的本地 polishing 导入。实施前核对导入清单和当前差异；仅 GitHub clone 尚不保证已含本地源码。Prototype 与旧 himaharness 保持只读。路径为本仓库相对路径。
+实施基线：先由 PLS-20 把上游 `ca47fa0` 与已交付 polishing `263a073` 整合，再以其已验证的集成提交开工。下列上游新增路径在导入前尚不属于本地运行代码；实施时核对真实符号。源项目与旧 himaharness 保持只读。
 
 | 路径 | 修改或核对的接口/职责 |
 | --- | --- |

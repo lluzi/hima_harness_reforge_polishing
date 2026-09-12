@@ -3,20 +3,22 @@
 Part of #1 (https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
 Backlog: POL-07
-Blocked by: #9
+Blocked by: [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23)
 
 ## 目标与开工条件
 
-PLS-08 已核对上游 release/安装身份，若未交接则此任务不可进入实现。
+PLS-20 已接收并核对 release/安装模块后可实施；不再依赖尚需正式 probe 的 PLS-08，以免形成发布与交接循环依赖。
 
 完成本任务应达到下列验收行为；ready-for-agent 不解除依赖或外部资源前置条件。
 
 ## 代码基线与修改模块
 
-基线为 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的本地 polishing 导入。实施前核对导入清单和当前差异；仅 GitHub clone 尚不保证已含本地源码。Prototype 与旧 himaharness 保持只读。路径为本仓库相对路径。
+实施基线：先由 PLS-20 把上游 `ca47fa0` 与已交付 polishing `263a073` 整合，再以其已验证的集成提交开工。下列上游新增路径在导入前尚不属于本地运行代码；实施时核对真实符号。源项目与旧 himaharness 保持只读。
 
 | 路径 | 修改或核对的接口/职责 |
 | --- | --- |
+| `packages/harness/src/pack-folder.ts` | snapshotPackFolder / packDigestExcludes / 方法与资产唯一文件集合 |
+| `packages/harness/src/release.ts` | releasePack / releaseIssue 与方法身份、旧 seal 兼容 |
 | `packages/harness/src/packs.ts` | loadPack / Pack identity 与 release 文件边界 |
 | `packages/desktop/src/local-site.ts` | seedLocalSite 中 rm(packDir)/cp 更新 |
 | `packages/desktop/src/hima-home.ts` | prepareHimaHome 现有安装职责 |
@@ -25,7 +27,7 @@ PLS-08 已核对上游 release/安装身份，若未交接则此任务不可进�
 
 ## 修改内容
 
-1. 复用上游已实现的 release 身份；明确哪些文件属于不可变参考方法，哪些是客户运行资产。加入新资产不能悄悄改变方法身份。
+1. 统一 Run packDigest、loader/check、test record、release seal、安装更新使用的文件集合；上游当前只排除五个 pipeline record，需显式处理 run-assets，而不能只改一个消费者。复用上游已实现的 release 身份；明确哪些文件属于不可变参考方法，哪些是客户运行资产。加入新资产不能悄悄改变方法身份。
 2. 本规格将运行资产固定在已安装 Pack 的 run-assets/<runId>/；若快照已有同义且满足要求的位置，由本任务记录唯一兼容映射再更新规格，不能同时维护第二归档树。
 3. 修正 local seeding 和 Pack 更新的覆盖策略：仅替换版本声明中的方法文件，保留客户资产；无法验证归属/半更新目录时拒绝覆盖并说明。
 4. 保护目录穿越和符号链接边界；对外方法发布使用显式方法文件清单，不依赖“整个目录复制后再删敏感文件”。

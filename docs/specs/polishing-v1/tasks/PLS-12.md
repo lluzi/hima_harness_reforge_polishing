@@ -3,7 +3,7 @@
 Part of #1 (https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
 Backlog: POL-06, POL-04
-Blocked by: #8, #10, #12
+Blocked by: [PLS-07 / #8](https://github.com/lluzi/hima_harness_reforge_polishing/issues/8), [PLS-09 / #10](https://github.com/lluzi/hima_harness_reforge_polishing/issues/10), [PLS-11 / #12](https://github.com/lluzi/hima_harness_reforge_polishing/issues/12)
 
 ## 目标与开工条件
 
@@ -15,7 +15,7 @@ Blocked by: #8, #10, #12
 
 ## 代码基线与修改模块
 
-基线为 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的本地 polishing 导入。实施前核对导入清单和当前差异；仅 GitHub clone 尚不保证已含本地源码。Prototype 与旧 himaharness 保持只读。路径为本仓库相对路径。
+实施基线：先由 PLS-20 把上游 `ca47fa0` 与已交付 polishing `263a073` 整合，再以其已验证的集成提交开工。下列上游新增路径在导入前尚不属于本地运行代码；实施时核对真实符号。源项目与旧 himaharness 保持只读。
 
 | 路径 | 修改或核对的接口/职责 |
 | --- | --- |
@@ -58,3 +58,7 @@ Blocked by: #8, #10, #12
 ## 回滚
 
 旧 Budget 默认兼容；新字段/记录保留，恢复到旧版本前检查语义是否可读取。
+
+## 研究写入边界
+
+承接上游 lluzi/hima_harness_reforge_claude#81 的实际需求：Pack 为研究代码/材料声明有界文件数和字节额度，所有写入尝试按同一 Run/节点身份累计；重写、重试、附加节点不得刷新额度。达到边界拒绝后续写入并保留已落盘内容与真实记录。L2 验证临界值、重复写与失败回执；不新增预算服务。

@@ -3,7 +3,7 @@
 Part of #1 (https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
 Backlog: POL-04, POL-05
-Blocked by: #10, #15
+Blocked by: [PLS-09 / #10](https://github.com/lluzi/hima_harness_reforge_polishing/issues/10), [PLS-14 / #15](https://github.com/lluzi/hima_harness_reforge_polishing/issues/15), [PLS-24 / #27](https://github.com/lluzi/hima_harness_reforge_polishing/issues/27)
 
 ## 目标与开工条件
 
@@ -13,7 +13,7 @@ Blocked by: #10, #15
 
 ## 代码基线与修改模块
 
-基线为 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的本地 polishing 导入。实施前核对导入清单和当前差异；仅 GitHub clone 尚不保证已含本地源码。Prototype 与旧 himaharness 保持只读。路径为本仓库相对路径。
+实施基线：先由 PLS-20 把上游 `ca47fa0` 与已交付 polishing `263a073` 整合，再以其已验证的集成提交开工。下列上游新增路径在导入前尚不属于本地运行代码；实施时核对真实符号。源项目与旧 himaharness 保持只读。
 
 | 路径 | 修改或核对的接口/职责 |
 | --- | --- |
@@ -57,3 +57,7 @@ Blocked by: #10, #15
 ## 回滚
 
 还原新增投影与材料要求；保留已归档研究内容和 schema 身份，允许只读。
+
+## 与 PLS-24 的分工
+
+PLS-24 负责同屏代码/知识的事实投影与 hash 阅读入口；本任务负责研究问题、分析解释、比较条件、因果主张边界与下一次实验。复用同一 Experience schema、记录和 UI，不再新增第二份 code drawer 或报告模型。新增模型文本不能绕过 PLS-07 的证据有效性。

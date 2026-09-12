@@ -1,5 +1,7 @@
 # Pilot 进度方案
 
+2026-09-12 更新：本文件保留原 pilot 分级思路；“跟随上游完成 Step 4”的开发安排由 [接续计划](specs/step4-takeover/README.md) 和 [ADR-0007](adr/0007-complete-step4-on-polishing-mainline.md)更新。当前先接收 ca47fa0，在 polishing 完成剩余能力，统一 L5，不重复两套验收。源快照已存在，正式 Pack 未完成不阻止 PLS-20 集成；也不等于 PLS-08 完整交接已完成。
+
 日期：2026-09-11。状态：用户已授权导入代码；P0 已完成源码导入、独立安装、构建及部分本地/桌面验证，测试分组与完整覆盖对账仍待完成。产品目标已经确认；本方案不把未来能力或测试预算目标写成现有结果。
 
 当前行动入口是 [基于实际代码的具体工作单](polishing-backlog.md)，已执行结果见 [本地基线](assessment/2026-09-11/local-baseline/README.md)。

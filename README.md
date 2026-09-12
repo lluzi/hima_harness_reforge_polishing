@@ -4,11 +4,14 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 
 用户已于 2026-09-11 确认产品定义。以 prototype 提交 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的固定导入为基线，已完成 PLS-01～07 的实现、分级验证与独立审查，见 [本批交付记录](docs/assessment/2026-09-11/pls02-07/README.md)。Polishing 以当前 prototype 架构为基础，非万不得已不新增组件；旧版架构仅供参考。
 
-- [Polishing v1 规格与 18 个实施任务](docs/specs/polishing-v1/README.md)
+- [当前开发计划：接收上游快照并完成 Step 4](docs/specs/step4-takeover/README.md)
+- [Polishing v1 规格与任务索引](docs/specs/polishing-v1/README.md)
 - [具体工作顺序与验收要求](docs/polishing-backlog.md)
 - [本地基线结果及未验证范围](docs/assessment/2026-09-11/local-baseline/README.md)
 - [代码导入清单](docs/assessment/2026-09-11/source-import.json)
 - [Prototype 的版本化参考材料](docs/upstream/README.md)
+
+2026-09-12 已决定以 polishing 作为 Step 4 后续开发主线，接收点固定为 `ca47fa0`。当前仅完成接续规格，源码尚未导入；首个实施任务为 PLS-20。统一工作区 UI-02 和 PLS-01～07 是本轮必须保留的已交付成果。
 
 ## 本地准备
 

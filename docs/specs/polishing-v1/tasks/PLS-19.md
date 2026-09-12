@@ -6,7 +6,9 @@ GitHub: https://github.com/lluzi/hima_harness_reforge_polishing/issues/22
 
 用户最新决定：同一个对话 AI Agent 是业务执行主体，它依据参考路线和状态实际执行节点工作并决定下一步。此前仅给自动 Fabric 添加外部介入接口的方案已被替代。
 
-方向已接受，见 [ADR-0006](https://github.com/lluzi/hima_harness_reforge_polishing/blob/main/docs/adr/0006-conversational-agent-owns-business-execution.md)。具体节点协议、所有者/在途任务迁移和暂停策略仍需细化；本任务不声称代码已经实现。完整规格见 [Agent 执行与 Fabric 约束](https://github.com/lluzi/hima_harness_reforge_polishing/blob/main/docs/specs/polishing-v1/node-intervention.md)。
+方向已接受，见 [ADR-0006](https://github.com/lluzi/hima_harness_reforge_polishing/blob/main/docs/adr/0006-conversational-agent-owns-business-execution.md)。本轮已在执行补充规格中细化节点协议、所有者/在途任务迁移和暂停的工程默认；实现阶段先验证 dsh 接口，不声称代码已经实现。完整规格见 [Agent 执行与 Fabric 约束](https://github.com/lluzi/hima_harness_reforge_polishing/blob/main/docs/specs/polishing-v1/node-intervention.md)。
+
+Blocked by: [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23), [PLS-21 / #24](https://github.com/lluzi/hima_harness_reforge_polishing/issues/24)
 
 ## 目标
 
@@ -33,9 +35,9 @@ GitHub: https://github.com/lluzi/hima_harness_reforge_polishing/issues/22
 - [ ] 节点上下文完整，合法动作可查询；权限、输入版本、依赖与总预算在执行层生效。
 - [ ] 节点完成由真实产物、观测和必需判断验证，模型伪报成功无效。
 - [ ] 同一节点的重复/过时请求不会重复启动；控制交接后旧所有者无法继续推进。
-- [ ] 长 Job 期间对话 Agent 可以处理工程师暂停、检查和修订指令；不仅是输入框可打字。
+- [ ] 长 Job 期间同一对话 Agent 能落实暂停和检查指令；修订未实现时明确回执而非阻塞或假成功。完整修订由 PLS-11 联合验收，不仅检查输入框可打字。
 - [ ] Agent 中断后在途 Job 仍被如实追踪；新业务动作等待 Agent 恢复，重启不偷偷进入旧 `drive`。
-- [ ] 修订历史保留，按 PLS-11 只重跑受影响下游；参考图及必需判断不被绕过。
+- [ ] 提供与 PLS-10/11 共用的执行版本/修订接口；尚未实现的增长或修订明确拒绝，参考图与历史不被绕过或删除。完整受影响下游重跑在 PLS-11 联合验收，避免循环依赖。
 - [ ] 当前旧模式在途 Run 有明确迁移/隔离方案，不出现两个推进者。
 
 ## 分级测试和依赖衔接
@@ -46,4 +48,14 @@ PLS-08 交接时必须核对新职责；PLS-09 的研究工具/知识继续复�
 
 ## 回滚和边界
 
-不新建第二图引擎、模型驱动器或预算服务。旧代码不得忽略新模式所有者/暂停后继续执行；迁移方案需说明旧模式 Run 如何保留历史或完成收束。具体暂停默认策略仍是待定项，不影响已经接受的 Agent 主导方向。
+不新建第二图引擎、模型驱动器或预算服务。旧代码不得忽略新模式所有者/暂停后继续执行；迁移方案需说明旧模式 Run 如何保留历史或完成收束。暂停默认采用停止新接纳并允许当前 Job 落下事实；显式立即停止才终止 Job。范围和状态见执行补充规格。
+
+## 本轮有界实施顺序
+
+1. 先固定生产者/消费者：Host 真实会话取得 owner，Ledger 持久化 owner epoch、control revision、node execution 与 request identity；所有突变入口复用同一接纳规则。
+2. 完成两个普通节点的纵向场景：prepare 不调用 drive，Agent 显式开始节点、提交实际 Job、检查并完成，再显式选择下一节点；没有下一调用就没有下一启动。
+3. 把 Workshop 的输入读取、知识读取、代码落盘/回读/hash、Job launch 能力交给同一个对话 Agent 使用；保留通用 Coding，受控 Run 的产物由实际记录确认。
+4. 覆盖全部既有节点种类与 Loop/fork/join 的合法动作，确认不会在 helper 内隐式推进业务。增长和算法修订的完整语义由 PLS-10/11 实现，本任务必须提供版本接口并在未实现时明确拒绝；不得为赶本任务另写一份修订引擎。
+5. 测试暂停/取消、owner 交接、重启、旧 Run 只读/收束与安全边界迁移；再做同屏 L3 和 V4 Flash 的小 L4 场景。
+
+ready-for-agent 表示规格充分；PLS-20/21 依赖仍必须完成。每个阶段可独立提交并立即同步 GitHub，但两个普通节点的演示不等于整个 PLS-19 完成。

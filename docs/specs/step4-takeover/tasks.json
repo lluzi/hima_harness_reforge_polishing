@@ -1,0 +1,224 @@
+[
+  {
+    "id": "PLS-08",
+    "title": "验收 Step 4 基础接收与正式 probe 交接",
+    "issue": 9,
+    "dependsOn": [
+      "PLS-20",
+      "PLS-22",
+      "PLS-23"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-08.md"
+  },
+  {
+    "id": "PLS-09",
+    "title": "证明 AI 在研究节点生成并验证有意义的算法",
+    "issue": 10,
+    "dependsOn": [
+      "PLS-08",
+      "PLS-19"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-09.md"
+  },
+  {
+    "id": "PLS-10",
+    "title": "在声明位置追加研究节点而保持参考图不变",
+    "issue": 11,
+    "dependsOn": [
+      "PLS-20",
+      "PLS-13",
+      "PLS-19"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-10.md"
+  },
+  {
+    "id": "PLS-11",
+    "title": "回溯时保留历史并只重跑受影响的下游",
+    "issue": 12,
+    "dependsOn": [
+      "PLS-10"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-11.md"
+  },
+  {
+    "id": "PLS-12",
+    "title": "让扩展研究遵守总预算并留出诚实收尾",
+    "issue": 13,
+    "dependsOn": [
+      "PLS-07",
+      "PLS-09",
+      "PLS-11"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-12.md"
+  },
+  {
+    "id": "PLS-13",
+    "title": "分开方法身份与运行资产并保护 Pack 更新",
+    "issue": 14,
+    "dependsOn": [
+      "PLS-20"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-13.md"
+  },
+  {
+    "id": "PLS-14",
+    "title": "把 Campaign 知识材料可靠归档到 Pack 内",
+    "issue": 15,
+    "dependsOn": [
+      "PLS-07",
+      "PLS-13"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-14.md"
+  },
+  {
+    "id": "PLS-15",
+    "title": "把 AI 研究过程、环境和算法纳入技术报告",
+    "issue": 16,
+    "dependsOn": [
+      "PLS-09",
+      "PLS-14",
+      "PLS-24"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-15.md"
+  },
+  {
+    "id": "PLS-16",
+    "title": "下一次研究主动引用相关且获准的历史资产",
+    "issue": 17,
+    "dependsOn": [
+      "PLS-09",
+      "PLS-14",
+      "PLS-15"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-16.md"
+  },
+  {
+    "id": "PLS-17",
+    "title": "Pack 升级和分享由 owner 控制并保留客户资产",
+    "issue": 18,
+    "dependsOn": [
+      "PLS-13",
+      "PLS-14"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-17.md"
+  },
+  {
+    "id": "PLS-18",
+    "title": "完成真实 DTCO 研究 pilot 与第二次知识复用",
+    "issue": 19,
+    "dependsOn": [
+      "PLS-03",
+      "PLS-04",
+      "PLS-05",
+      "PLS-06",
+      "PLS-12",
+      "PLS-15",
+      "PLS-16",
+      "PLS-17",
+      "PLS-25"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-18.md"
+  },
+  {
+    "id": "PLS-19",
+    "title": "由对话 Agent 执行节点，Fabric 提供约束与事实",
+    "issue": 22,
+    "dependsOn": [
+      "PLS-20",
+      "PLS-21"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-19.md"
+  },
+  {
+    "id": "PLS-20",
+    "title": "整合 ca47fa0 快照并保留已交付的 PLS 与统一工作区",
+    "issue": 23,
+    "dependsOn": [
+      "PLS-02",
+      "PLS-04",
+      "PLS-05",
+      "PLS-06",
+      "PLS-07",
+      "UI-02"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-20.md"
+  },
+  {
+    "id": "PLS-21",
+    "title": "打通正式 Pack 的 Goal 与参数声明并约束 Job 启动输入",
+    "issue": 24,
+    "dependsOn": [
+      "PLS-20"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-21.md"
+  },
+  {
+    "id": "PLS-22",
+    "title": "让 Pack 编写流程生成可执行 Workshop 并在安装环境独立完成",
+    "issue": 25,
+    "dependsOn": [
+      "PLS-20"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-22.md"
+  },
+  {
+    "id": "PLS-23",
+    "title": "通过编写流程交付 AES 的真实 Fmax probe Pack",
+    "issue": 26,
+    "dependsOn": [
+      "PLS-19",
+      "PLS-21",
+      "PLS-22",
+      "PLS-13"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-23.md"
+  },
+  {
+    "id": "PLS-24",
+    "title": "在统一工作区展示代码版本、知识引用和 Pack 结束依据",
+    "issue": 27,
+    "dependsOn": [
+      "PLS-19"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-24.md"
+  },
+  {
+    "id": "PLS-25",
+    "title": "在同一 Agent 执行方式下完成 AES 定制 Cell 挖掘全链路",
+    "issue": 28,
+    "dependsOn": [
+      "PLS-09",
+      "PLS-24",
+      "PLS-22"
+    ],
+    "triage": "ready-for-agent",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-25.md"
+  },
+  {
+    "id": "PLS-26",
+    "title": "由未参与开发的工程师验证正式 Pack 的独立使用",
+    "issue": 29,
+    "dependsOn": [
+      "PLS-18"
+    ],
+    "triage": "ready-for-human",
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-26.md"
+  }
+]

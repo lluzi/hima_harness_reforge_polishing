@@ -3,7 +3,7 @@
 Part of #1 (https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
 Backlog: POL-05
-Blocked by: #9, #22
+Blocked by: [PLS-08 / #9](https://github.com/lluzi/hima_harness_reforge_polishing/issues/9), [PLS-19 / #22](https://github.com/lluzi/hima_harness_reforge_polishing/issues/22)
 
 ## 目标与开工条件
 
@@ -13,7 +13,7 @@ PLS-08 已交接模型/Workshop 能力，PLS-19 已建立对话 Agent 的节点�
 
 ## 代码基线与修改模块
 
-基线为 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的本地 polishing 导入。实施前核对导入清单和当前差异；仅 GitHub clone 尚不保证已含本地源码。Prototype 与旧 himaharness 保持只读。路径为本仓库相对路径。
+实施基线：先由 PLS-20 把上游 `ca47fa0` 与已交付 polishing `263a073` 整合，再以其已验证的集成提交开工。下列上游新增路径在导入前尚不属于本地运行代码；实施时核对真实符号。源项目与旧 himaharness 保持只读。
 
 | 路径 | 修改或核对的接口/职责 |
 | --- | --- |
@@ -55,3 +55,7 @@ PLS-08 已交接模型/Workshop 能力，PLS-19 已建立对话 Agent 的节点�
 ## 回滚
 
 恢复 Pack prompt/知识/工具声明和局部实现；已有代码记录、输入与输出保留。
+
+## 本轮正式输入与成功边界
+
+输入由 PLS-23/08 的真实 probe 提供，可选有来源的有限 timing/结构样本；算法任务须有独立人工标注、小规模穷举或已有可信工具的 oracle。至少验证一个非平凡结果以及失败反馈后的修正，不以 READY 应答、复制固定脚本、面积除常数得到“候选数”认证研究价值。PLS-25 复用这些产物推进实际挖掘，不由此推断 Fmax 提升。

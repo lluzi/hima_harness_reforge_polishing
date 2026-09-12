@@ -1,0 +1,329 @@
+{
+  "schema": "hima-spec-validation/1",
+  "date": "2026-09-12",
+  "status": "pass",
+  "scope": "Documentation, dependency DAG, path provenance and local links only",
+  "taskCount": 19,
+  "newTaskCount": 7,
+  "userStoryCount": 40,
+  "dependencyCount": 51,
+  "acyclic": true,
+  "topologicalOrder": [
+    "PLS-02",
+    "PLS-04",
+    "PLS-05",
+    "PLS-06",
+    "PLS-07",
+    "UI-02",
+    "PLS-20",
+    "PLS-22",
+    "PLS-21",
+    "PLS-19",
+    "PLS-13",
+    "PLS-23",
+    "PLS-08",
+    "PLS-09",
+    "PLS-10",
+    "PLS-11",
+    "PLS-12",
+    "PLS-14",
+    "PLS-24",
+    "PLS-15",
+    "PLS-16",
+    "PLS-17",
+    "PLS-03",
+    "PLS-25",
+    "PLS-18",
+    "PLS-26"
+  ],
+  "localLinksChecked": 139,
+  "modulePaths": [
+    {
+      "task": "PLS-20",
+      "path": "docs/assessment/2026-09-11/source-import.json",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "package.json",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "pnpm-lock.yaml",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "packages/desktop/src/main.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "packages/desktop/src/driver.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "packages/desktop/src/local-site.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "packages/harness/src/fabric.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "packages/harness/src/remote.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "packages/harness/src/client/HimaRunCard.tsx",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "packages/harness/src/client/HimaWorkbench.tsx",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "packages/harness/src/experience-report.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "scripts/run-contract-tests.mjs",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-20",
+      "path": "test/contract-groups.json",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-21",
+      "path": "packages/harness/src/packs.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-21",
+      "path": "packages/harness/src/run-arguments.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-21",
+      "path": "packages/harness/src/node-turns.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-21",
+      "path": "packages/harness/src/observe.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-21",
+      "path": "packages/harness/src/paths.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-21",
+      "path": "packages/harness/src/card-labels.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-21",
+      "path": "packages/harness/src/client/HimaWorkbench.tsx",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-21",
+      "path": "packages/harness/src/remote.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-21",
+      "path": "test/contract/strategy.test.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-22",
+      "path": "packages/harness/skills/hima-fabric/SKILL.md",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-22",
+      "path": "packages/harness/skills/knowledge/pack-anatomy.md",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-22",
+      "path": "packages/harness/skills/hima-grill/SKILL.md",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-22",
+      "path": "packages/harness/skills/hima-test/SKILL.md",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-22",
+      "path": "packages/harness/skills/hima-release/SKILL.md",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-22",
+      "path": "packages/harness/src/authoring.ts",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-22",
+      "path": "packages/harness/src/tools.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-22",
+      "path": "packages/desktop/src/hima-home.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-22",
+      "path": "scripts/live-check-pipeline.ts",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-22",
+      "path": "test/fixtures/pipeline/README.md",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-22",
+      "path": "test/contract/skills.test.ts",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-23",
+      "path": "packs/aes-tsmc28-dtco/",
+      "status": "planned-explicitly"
+    },
+    {
+      "task": "PLS-23",
+      "path": "sites/",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-23",
+      "path": "packages/harness/skills/",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-23",
+      "path": "scripts/acceptance-step3.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-23",
+      "path": "docs/validation/",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-24",
+      "path": "packages/harness/src/client/HimaWorkbench.tsx",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-24",
+      "path": "packages/harness/src/client/HimaRunCard.tsx",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-24",
+      "path": "packages/harness/src/client/api.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-24",
+      "path": "packages/harness/src/remote.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-24",
+      "path": "packages/harness/src/card-labels.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-24",
+      "path": "packages/harness/src/experience-report.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-24",
+      "path": "packages/harness/src/experience.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-24",
+      "path": "packages/harness/src/generations.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-25",
+      "path": "packs/aes-tsmc28-dtco/",
+      "status": "planned-explicitly"
+    },
+    {
+      "task": "PLS-25",
+      "path": "packages/harness/src/node-turns.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-25",
+      "path": "packages/harness/src/forks.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-25",
+      "path": "packages/harness/src/readers.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-25",
+      "path": "packages/desktop/src/local-site.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-25",
+      "path": "test/contract/standin-stages.test.ts",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-25",
+      "path": "scripts/acceptance-step3.ts",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-26",
+      "path": "docs/validation/",
+      "status": "upstream-ca47fa0"
+    },
+    {
+      "task": "PLS-26",
+      "path": "README.md",
+      "status": "polishing-existing"
+    },
+    {
+      "task": "PLS-26",
+      "path": "docs/product-definition.md",
+      "status": "polishing-existing"
+    }
+  ],
+  "errors": [],
+  "productBuildRun": false,
+  "productTestsRun": false,
+  "desktopBoots": 0,
+  "realModelCalls": 0,
+  "siteJobs": 0,
+  "sourceProductWrites": 0
+}

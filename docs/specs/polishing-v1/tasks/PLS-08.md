@@ -1,62 +1,56 @@
-# [PLS-08] 接收 Step 4 完整快照并核对模型、Pack 与作者流程
+# [PLS-08] 验收 Step 4 基础接收与正式 probe 交接
 
-Part of #1 (https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
+Part of [#1](https://github.com/lluzi/hima_harness_reforge_polishing/issues/1) · [接续规格](../../step4-takeover/spec.md)
 
-Backlog: POL-05, POL-07, POL-09
-Blocked by: #3
+GitHub: [PLS-08 / #9](https://github.com/lluzi/hima_harness_reforge_polishing/issues/9)
+
+Blocked by: [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23), [PLS-22 / #25](https://github.com/lluzi/hima_harness_reforge_polishing/issues/25), [PLS-23 / #26](https://github.com/lluzi/hima_harness_reforge_polishing/issues/26)
 
 ## 目标与开工条件
 
-外部前置：prototype 提供包含所需能力的明确已提交快照；未到来时保持依赖未满足，不拼接进行中的工作树。
-
-完成本任务应达到下列验收行为；ready-for-agent 不解除依赖或外部资源前置条件。
+本任务从“等待上游完整 Step 4”改为 polishing 的递进交接验收。PLS-20 可以立即整合固定快照；PLS-22 补齐作者流程，PLS-23 提供正式 probe 后，本任务才可关闭。它不包含第二份导入实现，也不要求 Claude Code 恢复额度。
 
 ## 代码基线与修改模块
 
-基线为 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的本地 polishing 导入。实施前核对导入清单和当前差异；仅 GitHub clone 尚不保证已含本地源码。Prototype 与旧 himaharness 保持只读。路径为本仓库相对路径。
+实施基线：先由 PLS-20 把上游 `ca47fa0` 与已交付 polishing `263a073` 整合，再以其已验证的集成提交开工。下列上游新增路径在导入前尚不属于本地运行代码；实施时核对真实符号。源项目与旧 himaharness 保持只读。
 
-| 路径 | 修改或核对的接口/职责 |
+| 路径 | 核对内容 |
 | --- | --- |
-| `packages/harness/src/index.ts` | 当前服务/工具/视图的注册，接上游真实实现 |
-| `packages/harness/src/tools.ts` | 现有模型可调用生产工具入口 |
-| `packages/harness/src/packs.ts` | Pack 工具/知识/语义及 release 相关契约 |
-| `packages/harness/src/node-turns.ts` | 现有 act/explore 执行入口 |
-| `profiles/hima/cordis.patch.yml` | profile 能力与隐私配置 |
-| `package.json` | 依赖和测试入口 |
-| `pnpm-lock.yaml` | 导入快照锁定依赖 |
-| `docs/assessment/2026-09-11/source-import.json` | 基线来源与逐文件 diff 的起点 |
+| `docs/specs/step4-takeover/baseline.json` | 计划中的 B/P/U，不当作已完成导入清单 |
+| `docs/assessment/2026-09-11/source-import.json` | 原映射；本轮由 PLS-20 新建独立证据，不覆盖此文件 |
+| `packages/harness/src/moments.ts`、`node-turns.ts`、`authoring.ts` | 导入后模型/Workshop/作者能力与 PLS-19 执行所有权的实际接口 |
+| `packages/harness/src/pack-folder.ts`、`release.ts`、`packs.ts` | 方法身份、安装/发布与运行资产边界 |
+| `packages/harness/src/tools.ts`、`remote.ts` | 从实际对话进入作者/Run/节点工具的生产路径 |
+| `packs/aes-tsmc28-dtco/` | PLS-23 计划创建的正式 probe、分析样本与版本身份 |
 
 ## 修改内容
 
-1. 以只读导出接收整个可验证快照，记录源 SHA、依赖锁、本地修改和重叠修复归属；保持 polishing 文档权威。
-2. 清点模型会话、Workshop、Pack 自带工具/reader/rule/知识、作者流程及正式 DTCO Pack 的实际完成度。缺少哪个环节就记录缺口，不能用临近功能替代。
-3. 把上游实际新增文件/接口写入本任务的交接表，并刷新后续任务模块映射；当前基线没有这些实现，因此不预造 model-moment 文件名。
-4. 核对正式 Pack 的 Goal、运行图与 release 文件身份能否由现有表单和执行入口表达；若有通用缺口，给出最小反例及本模块内修正，不迁入旧架构。
-5. 按 ADR-0006 核对执行主导权：哪些能力可交给同一个对话 Agent 使用，哪些上游入口仍自动调用 `drive` 或另启默认模型执行者。复用工具、知识、记录与作业能力，但不能把旧整图驱动直接作为新产品执行模式交付；刷新 PLS-19 的接口/迁移清单。
+1. 对账 PLS-20 的导入来源、保留成果、重叠处理、覆盖迁移和兼容记录；不把导入完成写成 Step 4 完成。
+2. 按真实生产入口清点模型、Pack reader/知识、Workshop、五阶段作者、安装自足性和正式 probe；记录模块、符号、输入输出、样本与测试 SHA。
+3. 核对同一 Agent 的执行方式已由 PLS-19 接通，旧 drive/独立默认 moment 不冒充新主路径。
+4. 确认 PLS-09 可使用的有限分析输入、可执行分析路线、独立校验方法及来源。原先“正式 Pack 至少一条挖掘/分析路线”的要求在 probe 分析路线落实；完整挖掘由 PLS-25 承接，不能声称已完成。
 
 ## 验收标准
 
-- [ ] 导入 diff 可重建，产品代码与源只读目录无共享可写依赖/运行状态。
-- [ ] 相关既有本地集合及新增 replay 合同在 polishing 独立通过；机制样本注明手写或真实录制。
-- [ ] 模型可参与会话不被写成已完成 AI 研究；未完成作者/Pack 能力明确未验证并阻断依赖它的任务。
-- [ ] 提供后续任务可使用的能力清单、模块/符号、生产入口、版本与测试证据；冲突修复有根因和归属。
-- [ ] 正式 Pack 至少交接一条可独立运行的挖掘/分析路线、输入输出语义、一份有界小样本及独立校验方法，作为 PLS-09 的真实模型任务；缺失时不得将交接标为完整。
+- [ ] PLS-20/22/23 的独立证据完整，代码与源目录无共享可写运行依赖。
+- [ ] 已交付 PLS/UI 行为继续成立；外部真实模型/EDA 的来源证据和本地重新验证区分明确。
+- [ ] 正式 probe 的方法版本、test Run、release 和真实输入输出可复核，后续 AI 研究有可用样本及独立 oracle。
+- [ ] 接口清单说明已完成、未完成、未验证；完整挖掘、附加研究、资产交付和 L5 没有因本任务关闭而被暗示完成。
 
 ## 分级测试
 
-- L0–L2：受影响依赖、Pack 与模型工具/replay 机制。
-- L3：启动/会话/聊天到工作台等受影响连线的有限 smoke，不全套最高层。
-- L4 模型：仅当导入改变模型接口/工具协议时做有预算的小依赖检查；研究价值由 PLS-09。
-- L4 Site/L5：按真正改变的语义决定，不因每次快照自动跑完整研究。
+- L0–L3：审阅各依赖的适用证据及固定 SHA；不为关闭交接任务机械重跑同一套测试。
+- L4 模型/Site：复用 PLS-19/22/23 本轮实际执行的证据，遇接口或版本变化才补测。
+- L5：不在本任务运行；由 PLS-18/26 负责。
 
 ## 交付证据
 
-记录实际基线/本地 diff、复现与根因、测试命令及退出码、通过/失败/跳过/未跑、耗时和昂贵依赖投入。新增或迁移测试说明旧断言去向；只有当前实际执行的结果可称为本次通过。模型/EDA 未跑不得由 replay 或 stand-in 认证。
+记录实际 commit、构建/Pack/输入/环境身份、命令及退出码、通过/失败/跳过/未跑、耗时、Host/窗口启动数、模型调用与 Site 作业数、材料 hash 和原断言去向。每个本地提交立即推送并核对远端 SHA。
 
 ## 不在范围内
 
-不修改 prototype，不主动引入第二模型驱动器，不因工作树存在就认定上游已完成。
+不修改 prototype，不复制第二个模型驱动器，不把准备工作或已提交代码当作完整研究验收。
 
 ## 回滚
 
-保持前一快照与本地补丁清单；回退代码前先核对 Ledger/Pack 存储版本兼容，保留已生成资产。
+发现交接缺口时保留集成基线和事实，重开相应依赖；任何回退先核对新旧 Ledger/Pack/资产兼容，不删除客户材料。

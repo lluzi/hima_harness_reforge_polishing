@@ -3,7 +3,7 @@
 Part of #1 (https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)
 
 Backlog: POL-09
-Blocked by: #4, #5, #6, #7, #13, #16, #17, #18
+Blocked by: [PLS-03 / #4](https://github.com/lluzi/hima_harness_reforge_polishing/issues/4), [PLS-04 / #5](https://github.com/lluzi/hima_harness_reforge_polishing/issues/5), [PLS-05 / #6](https://github.com/lluzi/hima_harness_reforge_polishing/issues/6), [PLS-06 / #7](https://github.com/lluzi/hima_harness_reforge_polishing/issues/7), [PLS-12 / #13](https://github.com/lluzi/hima_harness_reforge_polishing/issues/13), [PLS-15 / #16](https://github.com/lluzi/hima_harness_reforge_polishing/issues/16), [PLS-16 / #17](https://github.com/lluzi/hima_harness_reforge_polishing/issues/17), [PLS-17 / #18](https://github.com/lluzi/hima_harness_reforge_polishing/issues/18), [PLS-25 / #28](https://github.com/lluzi/hima_harness_reforge_polishing/issues/28)
 
 ## 目标与开工条件
 
@@ -13,11 +13,11 @@ Blocked by: #4, #5, #6, #7, #13, #16, #17, #18
 
 ## 代码基线与修改模块
 
-基线为 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的本地 polishing 导入。实施前核对导入清单和当前差异；仅 GitHub clone 尚不保证已含本地源码。Prototype 与旧 himaharness 保持只读。路径为本仓库相对路径。
+实施基线：先由 PLS-20 把上游 `ca47fa0` 与已交付 polishing `263a073` 整合，再以其已验证的集成提交开工。下列上游新增路径在导入前尚不属于本地运行代码；实施时核对真实符号。源项目与旧 himaharness 保持只读。
 
 | 路径 | 修改或核对的接口/职责 |
 | --- | --- |
-| `packs/` | PLS-08 接收并独立验证的正式定制 Cell/Fmax Pack |
+| `packs/` | PLS-23/25 在 polishing 编写并验证的正式定制 Cell/Fmax Pack |
 | `sites/` | 指定 pilot Site 绑定与 Permit；仅在确有配置差异时修改 |
 | `scripts/acceptance-step3.ts` | 复用其证据清单/审计/重启结构，新增本地 pilot 验证脚本而非第二运行系统 |
 | `packages/desktop/src/main.ts` | 仅处理实际 pilot 暴露的部署/操作缺陷 |
@@ -55,3 +55,14 @@ Blocked by: #4, #5, #6, #7, #13, #16, #17, #18
 ## 回滚
 
 保留全部 Site workspace、方法版本与资产；代码修复按根因独立切片；终止 pilot 只停止本次拥有的作业。
+
+## 承接 Step 4 完整 Campaign 的统一验收
+
+本任务同时承接上游 lluzi/hima_harness_reforge_claude#68，不再另跑一份旧自动 drive 的 Step 4 全量验收。PLS-25 的正式方法在本任务形成候选发布：foundry 与定制库双臂的设计、工具/版本、约束、输入、测量定义及验证条件必须匹配；从真实报告计算效果，保留 asked、measured、inferred 的区别。
+
+- [ ] 同一对话 Agent 实际组织算法、作业和反馈；记录本次采用的脚本/方法/环境身份，不能用独立默认 moment 代替主执行者。
+- [ ] 双臂 probe、Library Compiler gate、采用关系、验证与 liveness、策略反馈和停止依据可查；无效或残缺支路不能支持收益数字。
+- [ ] 指标未提升但证据充分可形成有效负结果；预算截断只能给出覆盖范围内的结论，不能因此声称完整探索验收已通过。
+- [ ] 保存同屏启动/介入、重启回读、Job 审计、报告/资产和第二次有界知识引用；已有昂贵运行结果可以在身份和适用性一致时复用，不机械重复完整 Campaign。
+
+PLS-26 专门保留非开发者真人使用验收。PLS-18 的技术 pilot 完成不代表真人验收已通过；若真人尚未安排，最终产品使用门槛继续未满足。

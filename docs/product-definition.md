@@ -74,6 +74,8 @@ Fmax 未提升不能伪装为指标成功，但有证据的负结果可构成知
 
 ## 工程边界
 
+2026-09-12 接续决定：现在接收上游已提交快照 `ca47fa0`，在已交付 polishing 状态上完成剩余 Step 4；polishing 为唯一集成主线。固定快照、两个源目录只读和独立验证要求保持，原先等待上游完整 Step 4 的顺序更新。见 [ADR-0007](adr/0007-complete-step4-on-polishing-mainline.md) 和 [当前规格](specs/step4-takeover/spec.md)。本决定及规格发布不代表源码已整合。
+
 Polishing 在 `hima_harness_reforge_claude` 当前架构上进行，源项目保持只读。代码需要先复制到 polishing 工作区，按 Step 1–4 和明确快照与 prototype 衔接，整合前核对差异，整合后独立验证。
 
 非万不得已不新增组件。组件扩张的重要判据是迫使多个模块适配、增加边界测试与长期治理成本；优先改进现有职责中的函数、逻辑与行为。旧版架构仅供参考，能力对标不授权迁回旧架构。
