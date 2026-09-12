@@ -1,0 +1,6 @@
+seams: every dsh-facing source file declares its seam
+check-seams.mjs: exit 0
+boundary: nothing under packages/*/src, packages/harness/rules, packages/harness/choosers, packages/harness/skills names a design, a technology, a vendor tool, a mining route or a report of one, beyond 4 exemption(s) each naming its ticket
+check-boundary.mjs: exit 0
+contract inventory: 58 files, each assigned exactly once
+run-contract-tests.mjs: exit 0

@@ -45,7 +45,15 @@ DSH_TELEMETRY_DISABLED=1 \
 pnpm run desktop --site local
 ```
 
-Ledger 版本为 19；升级前的版本 14 home 会被明确拒绝，不会自动迁移。使用上面的独立 home，保留旧 home 给旧版本读取。Experience v1/v2 文件仍按已记录的原字节/hash 读取。
+Ledger 版本为 20；旧版本 home 仍会被明确拒绝，不会自动改写。仅版本 19 的完整离线 `storages/hima_ledger.json` 快照支持显式导入到新的空 home：先停止旧 Host、保存快照，再执行以下命令（两个路径均须明确指定，目标父目录须已存在且不能含符号链接）。
+
+```sh
+node packages/desktop/lib/hima-home.js \
+  --import-ledger /absolute/path/offline-v19.json \
+  --home /absolute/path/new-empty-home
+```
+
+命令保存原字节备份、SHA-256 回执和身份不变的 Ledger 后退出，不启动 Host 或绑定执行 owner。只导入 Ledger 历史；Site、Pack、工作文件与 Agent 会话不随之复制。导入不等于在途 Run 已安全接管，旧 Host 必须保持停止，后续接管仍须通过 PLS-19 的安全边界检查。操作和验证范围见 [导入证据](docs/assessment/2026-09-12/pls-19/ledger-import/README.md)。其他旧版本继续保留给对应旧构建读取；Experience v1/v2 文件仍按已记录的原字节/hash 读取。
 
 当前 `--site local` 每次启动会刷新样例 Pack 和生成的 flow；Campaign workspace 保留。Pack 内资产保留尚未实现，见 POL-07。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)，入口验证见 [PLS-02 记录](docs/assessment/2026-09-11/pls-02/README.md)。Git hooks 仍须显式 `pnpm run hooks:install` 安装；pre-commit 构建并检查静态类型，pre-push 执行一次 `check:local`。Hook 通过只认证所跑的本地范围，窗口、模型或 Site 检查由实际改动决定。
 
