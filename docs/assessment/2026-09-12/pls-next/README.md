@@ -1,6 +1,6 @@
 # PLS-21 / 22 / 13 / 19 批次验收
 
-状态：安装态作者编译检查点的真实续跑待验证，整合后定点回归已通过；四个任务尚未统一关闭。源项目保持只读，所有修改在 polishing 与其独立 worktree。每个提交均立即 push 并核对远端 SHA。
+状态：PLS-21、PLS-22、PLS-13、PLS-19 的实现与验收已完成。完整 local 377/377与安装态作者只读终检11/11通过；原始 finalization 的属性顺序比较失败原样保留，实际模型执行/发布与独立只读终检共同确认作者闭环。源项目保持只读，所有修改在 polishing 与其独立 worktree。每个提交均立即 push 并核对远端 SHA。
 
 ## 产品变化
 
@@ -26,11 +26,24 @@
 | 最终定点整合 | 9 文件60/60，0fail/skip，171.017s；1 subprocessHost +92 in-processHosts，0Electron/SSH。见 [TAP](final-verification/acceptance-local.tap)。 |
 | L3 整合版 | 同一原生对话中运行、正常输入暂停、Continue、Files 和草稿保留1/1，45.908s；1 Electron，0 SSH。见 [TAP](final-verification/desktop.tap) 与 [截图](final-desktop/owned-paused.png)。Goal/作者会话的其他关键路径及其开发失败见各任务记录。 |
 | L4 Workshop 最终样本be1bb76 | 19/19，536.880s；1 Host、1 model session、64 model request steps、3 用户消息。实际179→200，策略阈值11→0，Goal200不变，5真实 Jobs，明确goal-met；过程含实际在途暂停。两次脚本字节相同，策略变化，不能声称算法创新。 |
-| L4 作者 | 前两次失败分别是总预算不够，以及实际编译方法与批准的argv/结束路径不一致后耗尽预算；全部源文件、TEST、数据、代码与记录已归档。第三次通过实际argv/参数/图/Judge检查，但有序等价的chooser写法被语法过严的断言拒绝，尚未创建Run；已独立证明合法输入域内的等价关系并修正检查器。将保留原会话与编译检查点继续真实test/release。 |
+| 最终完整 local `93afd76` | 377/377，0fail/skip，1195.578s；47 subprocess Hosts +357 in-process Hosts，0 Electron/SSH。见 [原字节gzip TAP](final-verification/release-candidate-local.tap.gz) 与 [摘要/源SHA/hash](final-verification/release-candidate-local.json)；最终类型日志同目录。 |
+| 完整 local 后的检查器修正 | 仅将测试工具的属性顺序敏感比较改为结构比较；相关4/4通过，0fail/skip，3.262s，1 in-process Host、0 subprocess/Electron/SSH。见 [定点TAP](final-verification/property-order-integrated.tap.gz)。其中新增1个属性顺序反例；未把此后的378项当前全量声称为已跑。 |
+| L4 作者 | 原安装态原生作者会话经受控检查点续跑，已经实际产生 Goal-met 的数字 test Run 和 native release；finalization 的原始记录不变性断言因属性顺序失败，随后[独立只读终检](../pls-22/post-finalization-audit/README.md)11/11通过，另启1个实际安装态复制Host，0模型请求、0Run执行。各次失败与修正按下文独立保留。 |
+
+安装态作者验证的完整顺序如下。后续步骤不抹去先前的失败或成本：
+
+- [作者1](../pls-22/live-authoring-1/README.md)在总预算边界停止；[作者2](../pls-22/live-authoring-2/README.md)生成的方法与批准的 argv/结束路径不一致，修正期间用完预算，两次均为失败。
+- [作者3](../pls-22/live-authoring-3/README.md)的实际 argv、参数、图和 Judge 通过检查，但检查器过严地限定 chooser 写法，在创建 Run 前拒绝了有序等价 fallback。[独立等价验证](../pls-22/chooser-equivalence/README.md)使用实际 Judge/choose 在合法输入域证明关系后修正检查器。
+- [续跑1](../pls-22/live-continuation-1/README.md)的 driver 漏传 provider/model，实际为1个 agent/request事件、0次provider请求，清理又遇已释放句柄；[修正](../pls-22/checkpoint-continuation/resume-fix/README.md)显式恢复模型选择并保留清理所有权，不能称其为模型供应商无响应。
+- [续跑2](../pls-22/live-continuation-2/README.md)由原 Agent 修正 reader，并通过9个直接数值反例；实际 Run 在原预算内读取169、3个 Jobs、178891ms，结束为 `ended-goal-met`。随后 TEST 使用了错误的行内标记，末尾步骤到期而没有 VERSION。停滞根因未确立，不声称供应商失败，也不把这一轮整体记为通过。
+- [generic workspace 修正](../pls-22/generic-workspace-restart/README.md)从真实冷重启反例定位已写出的 absent-design v20 数据与读取 schema 不一致。当前读取器保留未声明 design 的事实；Ledger 仍为v20，v19离线导入仍使用原严格 schema。新构建通过真实 `prepareHimaHome` [升级原安装 bundle](../pls-22/runtime-upgrade/README.md)，旧 bundle 备份、新旧 hash 和61个受保护文件不变性由 [manifest](../pls-22/runtime-upgrade/manifest.json)记录。
+- [finalization1](../pls-22/live-finalization-1/README.md)恢复同一原 Agent，只修正两个 TEST 标记行并通过原生发布。实际 seal、原 Run/方法/文件 hash、原始输入和9个 reader反例通过检查；最后“不得创建/执行 Run、重置预算或改变科学记录”的检查失败。独立逐字段核对显示 Run/records 全部同值，原断言的 `JSON.stringify` 对 Zod 冷解码后的对象属性顺序敏感；原始失败不改写。修正结构比较后的[只读终检](../pls-22/post-finalization-audit/evidence.json)11/11通过，核对剩余 tail、实际 seal 和允许的文件变化，未调用模型或执行 Run。原会话104个持久化工具调用包含五个技能和 native release；14个seal文件hash全部一致，稳定文件树仅TEST.md和VERSION.yml变化。原Ledger字节hash仍为 `4b259e4938dc1961eb0525c4cb1b3b7906f9b4482fbcca92800756b13b79c444`，与升级前相同。
+
+作者1/2/3、续跑1/2和finalization1各自保留34/102/26/1/37/8个 agent/request 事件及对应 Host、会话、消息和耗时；续跑1的1个事件实际没有 provider 请求。检查点续跑和 finalization 的 provenance 指向原始尝试，不能只计最后成功收尾的成本。
 
 单次短子集和完整回归成本分别记录；未选择的桌面/真实 Site 组不是通过。手写 replay 只证明协议和机制；实际模型样本没有使用 replay。模型 token 与底层 API 重试/账单调用数未测量，request steps 不冒充这些指标。真实模型只运行小型数字方法，没有执行 EDA、SSH 或完整 DTCO。
 
-独立 Standards/Spec 审查发现的问题均有对应修复和红绿证据。原核心审查及后续关闭见 [Standards](final-verification/review-standards.md)、[Spec](final-verification/review-spec.md)；最终描述/作者指南/API拒绝与测试改动的两路独立增量审查均无新问题，见 [增量复核](final-verification/delta-review.md)。HTTP 的策略拒绝现返回409及真实原因，见 [消费者修正](final-verification/moment-http-refusal.md)。
+独立 Standards/Spec 审查发现的问题均有对应修复和红绿证据。原核心审查及后续问题关闭见 [Standards](final-verification/review-standards.md)、[Spec](final-verification/review-spec.md)；最终描述/作者指南/API拒绝与测试改动的两路独立增量审查均无新问题，见 [增量复核](final-verification/delta-review.md)。HTTP 的策略拒绝现返回409及真实原因，见 [消费者修正](final-verification/moment-http-refusal.md)。generic workspace读取器与finalization工具另经独立审查；最终只读终检11项通过，原始失败JSON的SHA未改变。
 
 ## 明确边界与回滚
 
@@ -38,4 +51,6 @@
 - inputDigest 绑定当前执行元数据与记录版本，不是整个物理工作区文件树的冻结或 SHA 证明。Run 原方法保留不等于冻结 Harness、Site、所有输入文件与外部工具环境。
 - `run-assets/<runId>/` 的身份隔离和更新保护已提供；完整知识归档/复用、正式 AES probe、EDA/Fmax、复杂 DTCO 与真人使用验收属于后续任务。
 - Ledger 导入是显式离线v19→新空v20 home，保留原字节备份和回执；不升级原 home、不复制Site/Pack/工作文件/Agent、不直接授予owner。参见 [导入](../pls-19/ledger-import/README.md)。
-- 回滚先停止新接纳，保留真实Job/Run、资产、方法历史和导入原件；不能让旧构建读取v20或恢复会删除客户资产的旧seeding。独立工作分支保留每个可追溯切片。
+- 回滚先停止新接纳，保留真实Job/Run、资产、方法历史和导入原件；不能让旧构建读取v20或恢复会删除客户资产的旧seeding。generic absent-design记录需要保留已修正的当前读取器；恢复升级前bundle会再次拒绝这些记录。独立工作分支保留每个可追溯切片。
+
+当前完成12/26个PLS（01～07、13、19、20、21、22）；下一依赖前沿为 PLS-23 #26、PLS-24 #27、PLS-10 #11、PLS-14 #15。本批不启动这些任务，实时Issue状态以GitHub为准。

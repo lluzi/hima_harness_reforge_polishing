@@ -39,10 +39,10 @@ Triage: `ready-for-agent`。标签不解除依赖与真实资源前置；真人�
 
 ## 验收标准
 
-- [ ] 旧 period Pack 和 AES 改善目标分别从 UI、工具、命令/HTTP 进入同一校验规则；显示单位/错误与真正绑定值一致。
-- [ ] 恶意或无效动态值在测试期不会留下逃逸文件、Job launched 记录或 reader 子进程；shell 引号包围 make 变量不作为安全证明。
-- [ ] 合法边界数值、命名和路径可往返传递；预检通过后若输入/方法改变，开始阶段仍重新校验。
-- [ ] 固定 Goal 在 Campaign 内不可改；策略候选不满足声明时不启动下一代。
+- [x] 旧 period Pack 和 AES 改善目标分别从 UI、工具、命令/HTTP 进入同一校验规则；显示单位/错误与真正绑定值一致。
+- [x] 恶意或无效动态值在测试期不会留下逃逸文件、Job launched 记录或 reader 子进程；shell 引号包围 make 变量不作为安全证明。
+- [x] 合法边界数值、命名和路径可往返传递；预检通过后若输入/方法改变，开始阶段仍重新校验。
+- [x] 固定 Goal 在 Campaign 内不可改；策略候选不满足声明时不启动下一代。
 
 ## 分级测试
 
@@ -54,6 +54,14 @@ Triage: `ready-for-agent`。标签不解除依赖与真实资源前置；真人�
 ## 交付证据
 
 记录实际 commit、构建/Pack/输入/环境身份、命令及退出码、通过/失败/跳过/未跑、耗时、Host/窗口启动数、模型调用与 Site 作业数、材料 hash 和原断言去向。每个本地提交立即推送并核对远端 SHA。
+
+## 本轮验收证据
+
+状态：本轮实现与验收已完成。完整 local 377/377、安装态作者只读终检11/11通过；原始模型 finalization 的属性顺序比较失败记录保留，闭环由实际模型执行/发布事实和独立只读终检共同确认。详见[本批验收](../../../assessment/2026-09-12/pls-next/README.md)。
+
+[PLS-21 证据](../../../assessment/2026-09-12/pls-21/README.md)记录旧 period 与声明式改善 Goal 经 HTTP、命令、工具和表单的真实接纳，以及重复键、数值原文、精度、动态 argv、路径和下一代策略拒绝。L3 原生改善 Goal 从非法 `1.001` 改为 `5.25` 后，显示单位和 Ledger 实值一致。真实本地 make/reader wrapper 的恶意值无逃逸文件或 Job 启动，合法带空格路径通过。
+
+[整合验收](../../../assessment/2026-09-12/pls-next/README.md)合并完整回归、L3 与独立 Standards/Spec 审查；[generic workspace 冷重启](../../../assessment/2026-09-12/pls-22/generic-workspace-restart/README.md)补齐不声明 design 的数值 Pack 从实际执行到重启读取，缺少已声明输入仍在开始前拒绝。改善 Goal fixture 只证明输入协议，不是正式 AES/Fmax 方法或真实 EDA 收益。
 
 ## 不在范围内
 

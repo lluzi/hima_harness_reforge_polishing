@@ -41,10 +41,10 @@ Triage: `ready-for-agent`。标签不解除依赖与真实资源前置；真人�
 
 ## 验收标准
 
-- [ ] 一个声明 Workshop 的最小业务经编写流程生成后，checkPack 通过，节点在执行时确实可读输入、写脚本、产生声明输出并被 reader 校验。
-- [ ] 缺少 reader、未声明 wrapper、越界输出、空 Workshop、矛盾 Goal/图均在有效检查点拒绝；失败不伪造 tested/released。
-- [ ] 离开原开发工作树后，安装态仍可发现五个 Skill 和知识材料；真实模型检查无开发源码访问，报告明确环境和访问范围。
-- [ ] 授权的普通 Coding 与 Pack authoring 分别正常；Pack authoring 写到 Golden Flow 或别的 Pack 被拒绝且没有落盘副作用。
+- [x] 一个声明 Workshop 的最小业务经编写流程生成后，checkPack 通过，节点在执行时确实可读输入、写脚本、产生声明输出并被 reader 校验。
+- [x] 缺少 reader、未声明 wrapper、越界输出、空 Workshop、矛盾 Goal/图均在有效检查点拒绝；失败不伪造 tested/released。
+- [x] 离开原开发工作树后，安装态仍可发现五个 Skill 和知识材料；真实模型检查无开发源码访问，报告明确环境和访问范围。
+- [x] 授权的普通 Coding 与 Pack authoring 分别正常；Pack authoring 写到 Golden Flow 或别的 Pack 被拒绝且没有落盘副作用。
 
 ## 分级测试
 
@@ -56,6 +56,14 @@ Triage: `ready-for-agent`。标签不解除依赖与真实资源前置；真人�
 ## 交付证据
 
 记录实际 commit、构建/Pack/输入/环境身份、命令及退出码、通过/失败/跳过/未跑、耗时、Host/窗口启动数、模型调用与 Site 作业数、材料 hash 和原断言去向。每个本地提交立即推送并核对远端 SHA。
+
+## 本轮验收证据
+
+状态：本轮实现与验收已完成。完整 local 377/377、安装态作者只读终检11/11通过；原始模型 finalization 的属性顺序比较失败记录保留，闭环由实际模型执行/发布事实和独立只读终检共同确认。详见[本批验收](../../../assessment/2026-09-12/pls-next/README.md)。
+
+[安装与作者会话](../../../assessment/2026-09-12/pls-22/README.md)保留普通 Coding、原生 Pack workspace、五个安装态 Skill、Golden Flow/跨 Pack 写入拒绝和 Workshop 真实文件/Job/reader 的 L2/L3 证据；[作者语义修正](../../../assessment/2026-09-12/pls-22/authoring-semantics/README.md)对齐实际目录、argv、图结束与数值判断。安装态资源复制已验证；测试环境的 npm/dsh 依赖仍由安装提供，不声称已有独立应用安装器。
+
+[本批验收](../../../assessment/2026-09-12/pls-next/README.md)保留真实模型五阶段原会话及各次失败、reader 修正、实际 test Run、TEST 格式和 release 的完整证据链。数字方法的实际输入、代码 hash、reader、Judge 与 Goal 独立检查；不能以 replay 或手写 TEST/VERSION 替代。真实 EDA、正式 AES probe、挖掘算法价值和非开发者独立使用由后续任务验收。
 
 ## 不在范围内
 
