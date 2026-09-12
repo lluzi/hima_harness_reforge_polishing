@@ -1,0 +1,11 @@
+42885ce5a2504de58b7b89d05a8e91e428e1e67c92b8d356a29fb233a1bc0129  scripts/live-check-pipeline-finalize.ts
+0c19537bd2b55f533de4647ba697fa9cc2e60a6a4a3d3a0b0bb9095c2e272cc9  scripts/live-check-pipeline-checkpoint.ts
+44f92ced834d389f8a10f65ddf17b1b1ec9ec0b2f90f98b392b60d5d56f3eac0  scripts/live-check-workshop.ts
+f57347d5908327e334b9700f41a92766fe3c6382ca124e638f83e56cf8ab4019  test/contract/pipeline-finalize.test.ts
+056c6db5f645771d7cc4cddecd788bae812eda13ca85f2b9a5fbf26ac5cb391f  docs/assessment/2026-09-12/pls-22/finalization-entry/native-tail.json
+7b37a9e1ed90835f823563eebb1d3323a479e90eed39463dbf5b2d47b28b19b8  docs/assessment/2026-09-12/pls-22/finalization-entry/guard-final.tap
+90a8e9ca55a77961b3b847a26c4aa128cc4a90fde46d7720d395620e6eacec34  docs/assessment/2026-09-12/pls-22/finalization-entry/targeted-final.tap
+ca106ba336d871de20376db24b0a22ae2e885de8f80fa0c0d9da7587635ce924  docs/assessment/2026-09-12/pls-22/finalization-entry/targeted-first.tap
+421477bb59a41953bc0abf45aab37b271bfa978c4708c2c63c8f80b3d7073971  docs/assessment/2026-09-12/pls-22/finalization-entry/typecheck-final.log
+ad116f4578fdb7558ff640fba5e1bdec044bd2a606c3693d82a2b692facd54fe  docs/assessment/2026-09-12/pls-22/finalization-entry/typecheck-first.log
+9edc602235a72e1e8e2a9626fb2002a67a8c52978ede2dd95b1c53d622f909aa  docs/assessment/2026-09-12/pls-22/finalization-entry/upgraded-home-preflight/evidence.json

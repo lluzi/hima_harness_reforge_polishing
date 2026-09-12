@@ -47,8 +47,11 @@ export class LiveCheck {
   constructor(name: string, defaultTurns: number) {
     this.name = name;
     const continuation = name === 'live-check-pipeline-checkpoint';
+    const finalization = name === 'live-check-pipeline-finalize';
+    const defaultMs = finalization ? 300_000 : 600_000;
+    const defaultSteps = finalization ? 30 : continuation ? 100 : 160;
     const args = process.argv.slice(2);
-    const help = `usage: node scripts/${name}.ts --out <fresh-directory> [--timeout-ms 600000] [--max-turns ${defaultTurns}] [--max-steps ${continuation ? 100 : 160}]\nRequires DEEPSEEK_API_KEY in the inherited environment; never pass a credential as an argument.\n`;
+    const help = `usage: node scripts/${name}.ts --out <fresh-directory> [--timeout-ms ${defaultMs}] [--max-turns ${defaultTurns}] [--max-steps ${defaultSteps}]\nRequires DEEPSEEK_API_KEY in the inherited environment; never pass a credential as an argument.\n`;
     if (args.includes('--help') || args.includes('-h')) { process.stdout.write(help); process.exit(0); }
     const options = new Map<string, string>();
     for (let i = 0; i < args.length; i += 2) {
@@ -75,8 +78,8 @@ export class LiveCheck {
     // reaching test alone. The two-generation Workshop check reached its second Job after 507s,
     // then exhausted its 9m Run while that Job was active. Keep the default at 10m; permit explicit
     // estimated budgets of 20m for the pipeline or 15m for Workshop, including result collection.
-    const maximumMs = continuation ? 720_000 : name === 'live-check-pipeline' ? 1_200_000 : 900_000;
-    this.limits = { timeoutMs: bounded('--timeout-ms', 600_000, maximumMs), maxTurns: bounded('--max-turns', defaultTurns, continuation ? 12 : 32), maxSteps: bounded('--max-steps', continuation ? 100 : 160, continuation ? 100 : 200) };
+    const maximumMs = finalization ? 300_000 : continuation ? 720_000 : name === 'live-check-pipeline' ? 1_200_000 : 900_000;
+    this.limits = { timeoutMs: bounded('--timeout-ms', defaultMs, maximumMs), maxTurns: bounded('--max-turns', defaultTurns, finalization ? 4 : continuation ? 12 : 32), maxSteps: bounded('--max-steps', defaultSteps, finalization ? 30 : continuation ? 100 : 200) };
     this.out = path.resolve(options.get('--out') ?? path.join(repoRoot, 'docs/assessment/2026-09-12/pls-19/live-harness', `${name}-${Date.now()}`));
     if (existsSync(this.out)) throw new Error('the evidence directory already exists; use a fresh --out directory');
     mkdirSync(this.out, { recursive: true });
