@@ -8,11 +8,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { seedLocalSite, writeConvergingVariant } from '../../packages/desktop/src/local-site.ts';
-import { exportPackMethod, installPackMethod, loadPack, loadRunPack, packDigestOf, releaseIssue, snapshotPackFolder } from '@hima/harness';
-import { versionFileFor } from './support/pack.ts';
+import { HIMA_TEST_SECTIONS, exportPackMethod, installPackMethod, loadPack, loadRunPack, packDigestOf, pipelineFiles, releaseIssue, releasePack, snapshotPackFolder } from '@hima/harness';
+import { packsDirOf, versionFileFor, writePackFiles } from './support/pack.ts';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess } from './support/boot-inprocess.ts';
-import { himaCommand } from './support/command.ts';
+import { killSessions, localHome, sessionsOf } from './support/fabric.ts';
+import { committedRecord } from './support/pipeline.ts';
 
 const checkout = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const packId = 'opene902-timing-probe';
@@ -35,6 +36,165 @@ async function setVersion(source: string, version: string): Promise<void> {
   }
 }
 
+function legacyDriveFixture(t: import('node:test').TestContext): void {
+  const legacy = process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+  process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '1';
+  t.after(() => { if (legacy === undefined) delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE; else process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = legacy; });
+}
+
+/** Real Host, installed method ownership, and actual local test Runs; no synthetic PASS record. */
+async function publicationFixture(t: import('node:test').TestContext) {
+  legacyDriveFixture(t);
+  const home = await localHome(t, { sleepSeconds: 0.01 });
+  assert.ok(home);
+  const { h, flow } = home;
+  const installed = path.join(packsDirOf(h), packId);
+  const source = path.join(h.home, 'author-source', packId);
+  await mkdir(path.dirname(source));
+  exportPackMethod({ from: installed, to: source });
+  await writePackFiles(source, {
+    'INTENT.md': await committedRecord('grill', pipelineFiles.intent, flow.root),
+    'SPEC.md': await committedRecord('spec', pipelineFiles.spec, flow.root),
+    'FABRIC.md': '## Files written\n\nthe declared method files\n\n## Gaps\n\nnone\n\n## Reviews\n\nnone\n',
+  });
+  // Replace only the raw test setup copy, before any Run or customer asset exists.
+  await rm(installed, { recursive: true });
+  installPackMethod({ from: source, to: installed });
+  const host = await bootInProcess(h);
+  const sessions: string[] = [];
+  t.after(async () => { killSessions(sessions); await host.dispose(); await h.dispose(); });
+  const deps = { packsDir: packsDirOf(h), ledger: host.ctx.hima.ledger };
+  const testMethod = async () => {
+    const ran = await host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_period_ns: 2.3 }, strategy: { periodNs: 2.2 }, test: true, generationLimit: 1 });
+    assert.equal(ran.kind, 'ran', JSON.stringify(ran));
+    assert.ok(ran.kind === 'ran');
+    sessions.push(...sessionsOf(host, ran.run.id));
+    const row = host.ctx.hima.ledger.run(ran.run.id)!;
+    assert.equal(row.purpose, 'test');
+    assert.equal(row.status, 'ended-goal-met');
+    assert.equal(row.packDigest, packDigestOf(installed));
+    const records = host.ctx.hima.ledger.records({ runId: row.id });
+    assert.deepEqual(records.filter((r) => r.type === 'code' || r.type === 'refusal'), []);
+    const bound: Readonly<Record<string, string>> = { Run: `run: ${row.id}`, Ending: `status: ${row.status}`, Code: 'none', Refusals: 'none' };
+    await writeFile(path.join(installed, pipelineFiles.test), HIMA_TEST_SECTIONS.map((section) => `## ${section}\n\n${bound[section] ?? 'Local stand-in mechanism test; no model or EDA claim.'}\n`).join('\n'));
+    t.diagnostic(JSON.stringify({ testRun: row.id, purpose: row.purpose, status: row.status, methodDigest: row.packDigest, testRecordSha256: createHash('sha256').update(await readFile(path.join(installed, pipelineFiles.test))).digest('hex'), localJobs: records.filter((r) => r.type === 'job' && r.event === 'launched').length }));
+    return row;
+  };
+  return { h, installed, deps, testMethod };
+}
+
+test('an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact', async (t) => {
+  const { h, installed, deps, testMethod } = await publicationFixture(t);
+  const row = await testMethod();
+  const asset = path.join(installed, 'run-assets', row.id, 'customer.md');
+  await mkdir(path.dirname(asset), { recursive: true });
+  await writeFile(asset, 'private customer result\n');
+  const initial = releasePack(deps, { pack: packId });
+  assert.equal(initial.kind, 'released', JSON.stringify(initial));
+  const oldSeal = await readFile(path.join(installed, pipelineFiles.version));
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  const repeated = releasePack(deps, { pack: packId });
+  assert.equal(repeated.kind, 'released', JSON.stringify(repeated));
+  assert.ok(repeated.kind === 'released' && repeated.rewritten);
+  assert.notDeepEqual(await readFile(path.join(installed, pipelineFiles.version)), oldSeal);
+  const publishedSeal = await readFile(path.join(installed, pipelineFiles.version));
+  const manifest = await readFile(path.join(installed, '.hima-method-install.json'));
+  const lock = path.join(path.dirname(installed), `.${packId}.hima-install-lock`);
+  await writeFile(lock, 'another installation owns this lock\n');
+  assert.equal(releasePack(deps, { pack: packId }).kind, 'refused');
+  await rm(lock);
+  const marker = path.join(installed, '.hima-method-update.json');
+  await writeFile(marker, 'an interrupted installation must remain refused\n');
+  const interrupted = releasePack(deps, { pack: packId });
+  assert.ok(interrupted.kind === 'refused');
+  assert.match(interrupted.reason, /interrupted method update/);
+  assert.deepEqual(await readFile(path.join(installed, pipelineFiles.version)), publishedSeal);
+  assert.deepEqual(await readFile(path.join(installed, '.hima-method-install.json')), manifest);
+  await rm(marker);
+  const shared = path.join(h.home, 'share', packId);
+  await mkdir(path.dirname(shared));
+  assert.equal(exportPackMethod({ from: installed, to: shared }).digest, row.packDigest);
+  assert.equal(installPackMethod({ from: shared, to: installed }).changed, false);
+  const elsewhere = path.join(h.home, 'elsewhere', packId);
+  assert.equal(installPackMethod({ from: shared, to: elsewhere }).digest, row.packDigest);
+  assert.equal(await readFile(asset, 'utf8'), 'private customer result\n');
+  await assert.rejects(readFile(path.join(shared, 'run-assets', row.id, 'customer.md')), { code: 'ENOENT' });
+});
+
+test('an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive', async (t) => {
+  const { h, installed, deps, testMethod } = await publicationFixture(t);
+  const oldRun = await testMethod();
+  assert.equal(releasePack(deps, { pack: packId }).kind, 'released');
+  const oldMethod = loadRunPack(packsDirOf(h), packId, oldRun.packDigest);
+  const oldScript = oldMethod.folder.text('tools/synth.sh');
+  const receiver = path.join(h.home, 'receiver', packId);
+  installPackMethod({ from: oldMethod.dir, to: receiver });
+  const assets = [installed, receiver].map((dir) => path.join(dir, 'run-assets', oldRun.id, 'private-algorithm.py'));
+  const customer = Buffer.from('customer algorithm\n\u0000\xff', 'utf8');
+  for (const asset of assets) { await mkdir(path.dirname(asset), { recursive: true }); await writeFile(asset, customer); }
+
+  await rm(path.join(installed, pipelineFiles.version));
+  await setVersion(installed, '3');
+  await writeFile(path.join(installed, 'tools/synth.sh'), `${oldScript}\n# Owner-authored method revision for version 3.\n`);
+  const newRun = await testMethod();
+  assert.notEqual(newRun.packDigest, oldRun.packDigest);
+  const release = releasePack(deps, { pack: packId });
+  assert.equal(release.kind, 'released', JSON.stringify(release));
+  assert.ok(release.kind === 'released');
+  assert.equal(release.sealed.test.run, newRun.id);
+  const shared = path.join(h.home, 'share', packId);
+  await mkdir(path.dirname(shared));
+  assert.equal(exportPackMethod({ from: installed, to: shared }).digest, newRun.packDigest);
+  assert.equal(installPackMethod({ from: shared, to: receiver }).digest, newRun.packDigest);
+  assert.equal(installPackMethod({ from: shared, to: installed }).changed, false);
+  for (const dir of [installed, receiver]) {
+    assert.equal(loadRunPack(path.dirname(dir), packId, oldRun.packDigest).folder.text('tools/synth.sh'), oldScript);
+    assert.equal(loadRunPack(path.dirname(dir), packId, oldRun.packDigest).contract.version, '2');
+    assert.equal(loadPack(path.dirname(dir), packId).contract.version, '3');
+  }
+  for (const asset of assets) assert.deepEqual(await readFile(asset), customer);
+});
+
+test('installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest', async (t) => {
+  const { installed, deps, testMethod } = await publicationFixture(t);
+  const oldRun = await testMethod();
+  assert.equal(releasePack(deps, { pack: packId }).kind, 'released');
+  const manifestFile = path.join(installed, '.hima-method-install.json');
+  const before = await readFile(manifestFile);
+  const scriptFile = path.join(installed, 'tools/synth.sh');
+  const oldScript = await readFile(scriptFile, 'utf8');
+  await rm(path.join(installed, pipelineFiles.version));
+  await writeFile(scriptFile, `${oldScript}\n# A tested method change still requires a new version.\n`);
+  const changedRun = await testMethod();
+  assert.notEqual(changedRun.packDigest, oldRun.packDigest);
+  const sameVersion = releasePack(deps, { pack: packId });
+  assert.equal(sameVersion.kind, 'refused', JSON.stringify(sameVersion));
+  assert.ok(sameVersion.kind === 'refused');
+  assert.match(sameVersion.reason, /different method content.*new version/);
+  assert.deepEqual(await readFile(manifestFile), before);
+  await assert.rejects(readFile(path.join(installed, pipelineFiles.version)), { code: 'ENOENT' });
+
+  await setVersion(installed, '3');
+  const unknown = path.join(installed, 'customer-private.py');
+  await writeFile(unknown, 'private customer algorithm\n');
+  await testMethod();
+  const unknownResult = releasePack(deps, { pack: packId });
+  assert.equal(unknownResult.kind, 'refused', JSON.stringify(unknownResult));
+  assert.ok(unknownResult.kind === 'refused');
+  assert.match(unknownResult.reason, /customer-private.py.*unknown ownership/);
+  assert.deepEqual(await readFile(manifestFile), before);
+  const forged = JSON.parse(before.toString('utf8'));
+  forged.files['customer-private.py'] = createHash('sha256').update(await readFile(unknown)).digest('hex');
+  await writeFile(manifestFile, JSON.stringify(forged));
+  const forgedBytes = await readFile(manifestFile);
+  const forgedResult = releasePack(deps, { pack: packId });
+  assert.equal(forgedResult.kind, 'refused', JSON.stringify(forgedResult));
+  assert.ok(forgedResult.kind === 'refused');
+  assert.match(forgedResult.reason, /original method ownership/);
+  assert.deepEqual(await readFile(manifestFile), forgedBytes);
+  assert.equal(await readFile(unknown, 'utf8'), 'private customer algorithm\n');
+});
+
 test('repeated local seeding preserves the installed Pack customer archive byte for byte', async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), 'pls13-seed-'));
   t.after(() => rm(home, { recursive: true, force: true }));
@@ -54,6 +214,7 @@ test('repeated local seeding preserves the installed Pack customer archive byte 
 });
 
 test('a real Host resumes the old Run against its original method after an installed version upgrade', async (t) => {
+  legacyDriveFixture(t);
   const h = await createHimaHome();
   let runningHost: Awaited<ReturnType<typeof bootInProcess>> | undefined;
   t.after(async () => { await runningHost?.dispose(); await h.dispose(); });
@@ -66,19 +227,20 @@ test('a real Host resumes the old Run against its original method after an insta
   const digest = packDigestOf(seeded.packDir);
   const host = await bootInProcess(h);
   runningHost = host;
-  const opened = await himaCommand(host, h.workspace, '/hima run opene902-timing-probe --site local --goal target_period_ns=2.0');
-  assert.match(opened.text, /current node: blocked\n/, opened.text);
-  assert.ok(opened.runId, opened.text);
+  const opened = await host.ctx.hima.startRun({ pack: packId, site: 'local', goal: { target_period_ns: 2 } });
+  assert.ok(opened.kind === 'ran', JSON.stringify(opened));
+  assert.equal(opened.run.currentNode, 'blocked');
   await writeFile(graphFile, (await readFile(graphFile, 'utf8')).replaceAll('blocked', 'blocked-new-version').replace("version: '2'", "version: '3'"));
   const contractFile = path.join(source, 'contract.yml');
   await writeFile(contractFile, (await readFile(contractFile, 'utf8')).replace("version: '2'", "version: '3'"));
   installPackMethod({ from: source, to: seeded.packDir });
   assert.notEqual(packDigestOf(seeded.packDir), digest);
   assert.equal(loadRunPack(path.dirname(seeded.packDir), 'opene902-timing-probe', digest).graph.entry, 'blocked');
-  const resumed = await himaCommand(host, h.workspace, `/hima resume ${opened.runId}`);
-  assert.match(resumed.text, /current node: blocked\n/, resumed.text);
-  assert.equal(host.ctx.hima.ledger.run(opened.runId)?.packDigest, digest);
-  const workspace = host.ctx.hima.ledger.records({ runId: opened.runId, type: 'workspace' }).find((row) => row.type === 'workspace');
+  const resumed = await host.ctx.hima.resumeRun(opened.run.id, 'method-resolution-test');
+  assert.ok(resumed.kind === 'resumed', JSON.stringify(resumed));
+  assert.equal(resumed.run.currentNode, 'blocked');
+  assert.equal(host.ctx.hima.ledger.run(opened.run.id)?.packDigest, digest);
+  const workspace = host.ctx.hima.ledger.records({ runId: opened.run.id, type: 'workspace' }).find((row) => row.type === 'workspace');
   assert.equal(workspace?.type === 'workspace' ? workspace.packDigest : undefined, digest);
 });
 

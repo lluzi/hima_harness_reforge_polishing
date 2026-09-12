@@ -1,0 +1,94 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/pack-method-assets.test.ts
+local: 1 selected; 39 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact
+ok 1 - an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact
+  ---
+  duration_ms: 7673.004084
+  type: 'test'
+  ...
+# Subtest: an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive
+ok 2 - an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive
+  ---
+  duration_ms: 3959.521791
+  type: 'test'
+  ...
+# Subtest: installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest
+ok 3 - installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest
+  ---
+  duration_ms: 5183.483542
+  type: 'test'
+  ...
+# Subtest: repeated local seeding preserves the installed Pack customer archive byte for byte
+ok 4 - repeated local seeding preserves the installed Pack customer archive byte for byte
+  ---
+  duration_ms: 214.274
+  type: 'test'
+  ...
+# Subtest: a real Host resumes the old Run against its original method after an installed version upgrade
+not ok 5 - a real Host resumes the old Run against its original method after an installed version upgrade
+  ---
+  duration_ms: 4728.296917
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-publication/test/contract/pack-method-assets.test.ts:198:1'
+  failureType: 'testCodeFailure'
+  error: 'cannot resume run-2a405deb-0630-4f02-bc5b-80df7f3b482e: this Run belongs to its conversational Agent; inspect its execution context and use its control protocol; nothing was written'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: 'cannot resume run-2a405deb-0630-4f02-bc5b-80df7f3b482e: this Run belongs to its conversational Agent; inspect its execution context and use its control protocol; nothing was written'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-publication/test/contract/pack-method-assets.test.ts:221:10)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+ok 6 - run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+  ---
+  duration_ms: 308.610542
+  type: 'test'
+  ...
+# Subtest: an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+ok 7 - an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+  ---
+  duration_ms: 190.718958
+  type: 'test'
+  ...
+# Subtest: asset symlinks and parent-directory links refuse installation and method export without changing their targets
+ok 8 - asset symlinks and parent-directory links refuse installation and method export without changing their targets
+  ---
+  duration_ms: 73.073292
+  type: 'test'
+  ...
+# Subtest: legacy installations are adopted only by exact bytes and missing historical identity is never invented
+ok 9 - legacy installations are adopted only by exact bytes and missing historical identity is never invented
+  ---
+  duration_ms: 104.564833
+  type: 'test'
+  ...
+# Subtest: a method-only export preserves executable method scripts
+ok 10 - a method-only export preserves executable method scripts
+  ---
+  duration_ms: 355.200292
+  type: 'test'
+  ...
+# Subtest: installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+ok 11 - installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+  ---
+  duration_ms: 162.041166
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 10
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 23960.644958
+Test boot attempts: {"host-process":0,"host-in-process":4,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 24.066 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

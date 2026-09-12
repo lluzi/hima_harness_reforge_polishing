@@ -191,9 +191,9 @@ function sealJustWritten(file: string): string {
  *
  * The version is the **contract's**. A pack declares its version once, in the file that also declares
  * what it runs, and the release seals whatever that says — so releasing again over the same version
- * is a rewrite of `VERSION.yml` and is allowed, which is what a pack author does after fixing a
- * script and re-running the test stage. What may not happen is a release over a folder whose test
- * record no longer holds, and that is the refusal below.
+ * is a rewrite of `VERSION.yml` and is allowed for unchanged method content. An installed method
+ * whose content changes needs a new version; its previous ownership and method remain verifiable.
+ * A folder whose test record no longer holds cannot be released.
  *
  * **One reading of the folder, at the top, and nothing here takes another** — the stage the folder
  * stands at, the pack that is sealed, the record the ledger is asked about, the hashes the seal
@@ -208,6 +208,26 @@ function sealJustWritten(file: string): string {
  * @throws {PackNotFoundError} when no folder of that name is installed, or the id is not a pack id.
  */
 export function releasePack(deps: ReleaseDeps, req: { readonly pack: string }): ReleaseResult {
+  if (!packId.safeParse(req.pack).success) throw new PackNotFoundError(`unknown pack "${req.pack}": not a pack id`);
+  const dir = path.resolve(deps.packsDir, req.pack);
+  const lock = path.join(path.dirname(dir), `.${req.pack}.hima-install-lock`);
+  try {
+    plainAncestors(dir);
+    if (lstatSync(dir, { throwIfNoEntry: false }) === undefined) throw new PackNotFoundError(`unknown pack "${req.pack}": no folder at ${dir}`);
+    // Installation and publication change the same ownership facts, under the same lock.
+    writeFileSync(lock, `${JSON.stringify({ pack: req.pack, operation: 'release' })}\n`, { flag: 'wx' });
+  } catch (err) {
+    if (err instanceof PackNotFoundError) throw err;
+    return { kind: 'refused', reason: `pack ${req.pack} cannot be sealed: ${(err as Error).message}` };
+  }
+  try {
+    return releaseLockedPack(deps, req);
+  } finally {
+    rmSync(lock);
+  }
+}
+
+function releaseLockedPack(deps: ReleaseDeps, req: { readonly pack: string }): ReleaseResult {
   // The one reading. A folder holding anything that is not a plain file, or a name no pack file can
   // have, stops the release here, naming it, rather than being sealed as though it were a file of
   // this pack or written into a YAML key that cannot mean it — and it stops *before* the ladder, the
@@ -240,6 +260,13 @@ export function releasePack(deps: ReleaseDeps, req: { readonly pack: string }): 
     return { kind: 'refused', reason: `pack ${req.pack} holds no ${pipelineFiles.test} naming a run, and a release rests on the test record` };
   }
   if (record.error !== undefined) return { kind: 'refused', reason: `pack ${req.pack} is not releasable: ${record.error}` };
+
+  let owned: MethodManifest | undefined;
+  try {
+    owned = publicationOwnership(folder, pack);
+  } catch (err) {
+    return { kind: 'refused', reason: `pack ${req.pack} cannot be sealed: ${(err as Error).message}` };
+  }
 
   const files = folder.sealFiles();
   const composed = {
@@ -285,12 +312,16 @@ export function releasePack(deps: ReleaseDeps, req: { readonly pack: string }): 
   // makes no folder unsealable; and `rename`, which replaces the entry rather than the bytes, so a
   // reader either sees the old seal whole or the new one whole and never half of either.
   const temporary = path.join(pack.dir, `.${pipelineFiles.version}.${randomUUID()}`);
+  const text = lines.join('\n');
+  const next: MethodManifest = { format: 1, pack: pack.id, version: sealed.version, digest: sealed.methodDigest!, files: { ...sealed.files, [pipelineFiles.version]: createMethodHash(Buffer.from(text)) } };
+  const marker = path.join(pack.dir, methodUpdateFile);
   try {
-    writeFileSync(temporary, lines.join('\n'), { flag: 'wx' });
+    // Two files cannot be renamed atomically. Keep the existing update marker until both agree;
+    // an interrupted publication stays refused, with the old manifest and method history intact.
+    if (owned !== undefined) writeFileSync(marker, `${JSON.stringify({ previous: owned, next }, null, 2)}\n`, { flag: 'wx' });
+    writeFileSync(temporary, text, { flag: 'wx' });
     renameSync(temporary, file);
   } catch (err) {
-    // Whatever stopped the write, the folder is left as it was found: the temporary name is this
-    // call's own and nothing else can be looking at it.
     rmSync(temporary, { force: true });
     return { kind: 'refused', reason: `pack ${req.pack} could not be sealed: ${(err as Error).message}` };
   }
@@ -304,6 +335,16 @@ export function releasePack(deps: ReleaseDeps, req: { readonly pack: string }): 
   const issue = sealWrittenIssue(file, sealed, files);
   if (issue !== undefined) {
     return { kind: 'refused', reason: `pack ${req.pack} was sealed and the seal does not verify: ${issue}; the folder changed while it was being released` };
+  }
+  if (owned !== undefined) {
+    try {
+      const tempManifest = path.join(pack.dir, `${methodInstallFile}.next`);
+      writeFileSync(tempManifest, `${JSON.stringify(next, null, 2)}\n`, { flag: 'wx' });
+      renameSync(tempManifest, path.join(pack.dir, methodInstallFile));
+      rmSync(marker);
+    } catch (err) {
+      return { kind: 'refused', reason: `pack ${req.pack} publication was interrupted while updating its method manifest: ${(err as Error).message}` };
+    }
   }
   return { kind: 'released', file, sealed, rewritten };
 }
@@ -383,17 +424,50 @@ function plainAncestors(at: string): void {
   if (entry !== undefined && !entry.isDirectory()) throw new PackFolderError(`${absolute} is not a plain directory; method installation cannot follow symlinks`);
 }
 
-function readManifest(folder: PackFolderSnapshot): MethodManifest | undefined {
+function declaredManifest(folder: PackFolderSnapshot): MethodManifest | undefined {
   const file = path.join(folder.dir, methodInstallFile);
   if (lstatSync(file, { throwIfNoEntry: false }) === undefined) return undefined;
   const parsed = methodManifest.safeParse(JSON.parse(sealJustWritten(file)));
   if (!parsed.success) throw new PackFolderError(`${file} is not a verified method manifest: ${parsed.error.message}`);
+  return parsed.data;
+}
+
+function readManifest(folder: PackFolderSnapshot): MethodManifest | undefined {
+  const declared = declaredManifest(folder);
+  if (declared === undefined) return undefined;
   const actual = manifestOf(folder);
-  if (JSON.stringify(Object.entries(parsed.data.files).sort()) !== JSON.stringify(Object.entries(actual.files).sort())
-      || parsed.data.pack !== actual.pack || parsed.data.version !== actual.version || parsed.data.digest !== actual.digest) {
+  if (JSON.stringify(Object.entries(declared.files).sort()) !== JSON.stringify(Object.entries(actual.files).sort())
+      || declared.pack !== actual.pack || declared.version !== actual.version || declared.digest !== actual.digest) {
     throw new PackFolderError(`${folder.dir} differs from its method manifest (unknown or changed method files); nothing was overwritten`);
   }
-  return parsed.data;
+  return declared;
+}
+
+/** A tested publication may update known method files, never adopt unknown customer files. */
+function publicationOwnership(folder: PackFolderSnapshot, pack: Pack): MethodManifest | undefined {
+  const owned = declaredManifest(folder);
+  if (owned === undefined) return undefined;
+  verifyInstallOwnership(folder);
+  const originalDir = path.join(folder.dir, methodHistoryDirectory, owned.digest, owned.pack);
+  const original = snapshotPackFolderIfThere(originalDir);
+  if (original === undefined) throw new PackFolderError(`${originalDir} has no verified original method; publication cannot infer ownership`);
+  const previous = readManifest(original);
+  const methodFiles = (files: Readonly<Record<string, string>>) => Object.entries(files).filter(([at]) => !packDigestExcludes.includes(at)).sort();
+  // Pipeline records can be regenerated for the same method. Every other ownership claim must
+  // agree with the already preserved method, so editing a manifest cannot adopt a customer file.
+  if (previous === undefined || owned.pack !== pack.id || previous.pack !== owned.pack || previous.version !== owned.version || previous.digest !== owned.digest
+      || JSON.stringify(methodFiles(previous.files)) !== JSON.stringify(methodFiles(owned.files))) {
+    throw new PackFolderError(`${folder.dir} has no verified original method ownership; nothing was overwritten`);
+  }
+  for (const at of folder.files.keys()) {
+    if (!Object.hasOwn(owned.files, at) && !packDigestExcludes.includes(at)) {
+      throw new PackFolderError(`${folder.dir}/${at} has unknown ownership; publish added method files from an explicitly authored source`);
+    }
+  }
+  if (owned.version === pack.contract.version && owned.digest !== folder.digest(packDigestExcludes)) {
+    throw new PackFolderError(`pack ${pack.id}@${owned.version} has different method content; declare a new version before publishing`);
+  }
+  return owned;
 }
 
 function verifyInstallOwnership(folder: PackFolderSnapshot, history = true): void {

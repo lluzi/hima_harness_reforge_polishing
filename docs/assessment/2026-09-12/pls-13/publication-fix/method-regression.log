@@ -1,0 +1,81 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/pack-method-assets.test.ts
+local: 1 selected; 39 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact
+ok 1 - an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact
+  ---
+  duration_ms: 7655.007541
+  type: 'test'
+  ...
+# Subtest: an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive
+ok 2 - an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive
+  ---
+  duration_ms: 4237.932042
+  type: 'test'
+  ...
+# Subtest: installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest
+ok 3 - installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest
+  ---
+  duration_ms: 4346.66025
+  type: 'test'
+  ...
+# Subtest: repeated local seeding preserves the installed Pack customer archive byte for byte
+ok 4 - repeated local seeding preserves the installed Pack customer archive byte for byte
+  ---
+  duration_ms: 174.631083
+  type: 'test'
+  ...
+# Subtest: a real Host resumes the old Run against its original method after an installed version upgrade
+ok 5 - a real Host resumes the old Run against its original method after an installed version upgrade
+  ---
+  duration_ms: 876.195791
+  type: 'test'
+  ...
+# Subtest: run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+ok 6 - run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+  ---
+  duration_ms: 100.910375
+  type: 'test'
+  ...
+# Subtest: an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+ok 7 - an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+  ---
+  duration_ms: 77.523667
+  type: 'test'
+  ...
+# Subtest: asset symlinks and parent-directory links refuse installation and method export without changing their targets
+ok 8 - asset symlinks and parent-directory links refuse installation and method export without changing their targets
+  ---
+  duration_ms: 34.155042
+  type: 'test'
+  ...
+# Subtest: legacy installations are adopted only by exact bytes and missing historical identity is never invented
+ok 9 - legacy installations are adopted only by exact bytes and missing historical identity is never invented
+  ---
+  duration_ms: 73.675334
+  type: 'test'
+  ...
+# Subtest: a method-only export preserves executable method scripts
+ok 10 - a method-only export preserves executable method scripts
+  ---
+  duration_ms: 3290.942167
+  type: 'test'
+  ...
+# Subtest: installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+ok 11 - installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+  ---
+  duration_ms: 156.635583
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22198.480542
+Test boot attempts: {"host-process":0,"host-in-process":4,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 22.295 s; pass/fail/skip counts are in the TAP summary above

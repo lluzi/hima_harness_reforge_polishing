@@ -1,0 +1,2 @@
+$ tsc -p tsconfig.json && node scripts/build-client.mjs
+client: lib/client.js (135555 bytes)

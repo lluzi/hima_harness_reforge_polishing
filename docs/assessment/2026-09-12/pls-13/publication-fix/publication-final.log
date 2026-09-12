@@ -1,0 +1,17 @@
+✔ an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact (5841.247167ms)
+ℹ {"testRun":"run-e6711ace-b1a7-4730-886c-d7521da1c538","purpose":"test","status":"ended-goal-met","methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","testRecordSha256":"48ea768ce88cf39d58967d5971dce18dfb46436b256a5e70cd37b13a349c4f29","localJobs":1}
+✔ an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive (5882.789041ms)
+ℹ {"testRun":"run-d14597a8-4b80-4964-a9fc-cb54e4cc97c8","purpose":"test","status":"ended-goal-met","methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","testRecordSha256":"e948c9c7247faf51adc894af27c1c23ce2a8726b673917909bb70f5b67a470cb","localJobs":1}
+ℹ {"testRun":"run-f5ffb565-4ef3-454f-8150-8607f1959bf0","purpose":"test","status":"ended-goal-met","methodDigest":"dc3a575ecc1a6ff650425bddbd78064f988f945caa135ce9bf7844ff73e0669b","testRecordSha256":"90f227214ae7b41ac7bce502048d0ce6e840130b4dc9002bfc86d25cd4a8582a","localJobs":1}
+✔ installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest (7953.239958ms)
+ℹ {"testRun":"run-b2f975dd-a2bc-4e75-9123-2cc17083cb43","purpose":"test","status":"ended-goal-met","methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","testRecordSha256":"4b47790d6807fde213e15b0ee0a9f360786a9a3e213da0d518cd01a7585e2a3c","localJobs":1}
+ℹ {"testRun":"run-404dd164-ab8e-4028-8ea8-8efde69c19c0","purpose":"test","status":"ended-goal-met","methodDigest":"3c46f1cc5745831699cd7f4cb7e3d43083a97831afc7476310e13746d5183279","testRecordSha256":"898822e5d3f778585fe5bb5555d7aae5e25c7510a870e1c549352a3dacb30f23","localJobs":1}
+ℹ {"testRun":"run-11d63deb-50b4-4157-a4f3-78586c007078","purpose":"test","status":"ended-goal-met","methodDigest":"22a812b3e8988a146af40b891fdf20d6968ba2d414709cee6aef513190701d76","testRecordSha256":"26e8095d7f306f0f1346d487027ceb6545eb334c787dc169a4c34a1b80c1f8b0","localJobs":1}
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20308.527417

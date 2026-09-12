@@ -1,0 +1,13 @@
+✔ the rungs above compiled are cumulative too, a released pack says there is nothing after it, and a test record this ledger cannot vouch for carries no folder past compiled (4757.256083ms)
+✔ a VERSION.yml that is a link is refused naming it rather than read through, by the check and by the release, and the file it points at is untouched (1307.582666ms)
+✔ a hidden entry that is not a plain file is refused naming it: the digest, the release and a campaign all stop at a link nobody reviewing the folder can see (1571.531458ms)
+✔ a link under a hidden directory is refused naming it: a namespace nobody may declare is not a namespace nobody has to look at (850.70375ms)
+✔ the one reading of a pack folder refuses a path whose second look is a different inode, and accepts the one whose two looks are the same file (68.652583ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9304.539875
