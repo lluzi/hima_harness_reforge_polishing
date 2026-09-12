@@ -1282,6 +1282,7 @@ export const nodeExecution = z.strictObject({
   phase: z.enum(['begun', 'working', 'ready', 'completed', 'failed', 'uncertain']),
   inputThroughSeq: z.number().int().nonnegative().optional(),
   humanClearance: z.strictObject({ actor: z.string().min(1), requestId: z.string().min(1) }).optional(),
+  workshop: z.strictObject({ id: z.string(), entry: z.string(), entryPath: z.string(), directory: z.string() }).optional(),
   intent: launchIntent.optional(), jobSession: z.string().optional(),
   result: z.strictObject({
     kind: z.enum(['settled', 'blocked', 'retrying', 'hard-blocker', 'budget-exhausted', 'moved', 'stopped', 'pending', 'at-cap']),
@@ -1293,6 +1294,7 @@ export type NodeExecution = z.infer<typeof nodeExecution>;
 export const executionReceipt = z.strictObject({
   requestId: z.string(), action: z.string(), executionId: z.string().optional(),
   owner: z.string().optional(), epoch: z.number().int().positive().optional(),
+  data: z.json().optional(),
 });
 export type ExecutionReceipt = z.infer<typeof executionReceipt>;
 export const executionRequest = z.strictObject({

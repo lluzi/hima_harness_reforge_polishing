@@ -6,7 +6,7 @@ import path from 'node:path';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
-import type { ExecutionActionRequest } from '../../packages/harness/src/fabric.js';
+import type { ExecutionActionRequest } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
@@ -50,6 +50,13 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const written = await act('write', { executionId, path: 'entry.sh', content: script });
     assert.equal(written.kind, 'accepted');
     assert.equal((written.data as { wrote?: boolean }).wrote, true);
+    assert.ok(written.receipt);
+    const admitted = host.ctx.hima.ledger.run(runId)!.control!.requests[written.receipt.requestId]!;
+    const duplicate = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: admitted.epoch,
+      expectedRevision: admitted.revision, requestId: written.receipt.requestId, action: 'write', executionId, path: 'entry.sh', content: script });
+    assert.equal(duplicate.kind, 'duplicate');
+    assert.deepEqual(duplicate.data, written.data);
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'code' }).length, 1);
     const code = host.ctx.hima.ledger.records({ runId, type: 'code' }).find((record) => record.type === 'code');
     assert.ok(code?.type === 'code');
     assert.equal(code.sessionId, String(owner.id));
@@ -58,6 +65,9 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const inspection = await act('read', { executionId, path: 'entry.sh' });
     assert.equal(inspection.kind, 'accepted');
     assert.match(JSON.stringify(inspection.data), /awk/);
+    assert.equal((await act('pause', { nodeId: 'analyze' })).kind, 'accepted');
+    assert.equal((await act('read', { executionId, output: 'numbers' })).kind, 'accepted', 'inspection remains available during a pause');
+    assert.equal((await act('continue', { nodeId: 'analyze' })).kind, 'accepted');
     const escape = await act('write', { executionId, path: '../escape.sh', content: 'bad' });
     assert.equal((escape.data as { wrote?: boolean } | undefined)?.wrote ?? false, false);
     assert.equal((await act('work', { executionId })).kind, 'accepted');

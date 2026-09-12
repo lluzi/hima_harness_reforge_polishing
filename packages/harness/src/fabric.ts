@@ -38,10 +38,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { loadRunPack, preservePackMethod } from './release.js';
 import { campaignIdFor, prepareWorkspace, type PrepareResult } from './workspace.js';
 import { writeExperience } from './experience.js';
-import { loadSite } from './sites.js';
+import { loadSite, pathsOf } from './sites.js';
 import { driving, existingRun, legacyAutomaticAllowed } from './runs.js';
-import { recordNode, launchIntent as launchIntentSchema } from './ledger.js';
-import { jobStatus, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
+import { recordNode, executionReceipt as receiptSchema, launchIntent as launchIntentSchema } from './ledger.js';
+import { jobStatus, jobTail, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
+import { channelFor } from './channel.js';
+import { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, readBack } from './workshop.js';
 import type {
   BlockerRecord,
   DecisionRecord,
@@ -1154,7 +1156,7 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
 /** Claiming runs no tool; repeated claims return the same durable execution. */
 export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): Promise<ExecutionActionResult> {
   return controlling(deps, req.runId, async () => {
-    const answer = (kind: ExecutionActionResult['kind'], extra: { receipt?: ExecutionReceipt; reason?: string } = {}): ExecutionActionResult => ({ kind, context: executionContext(deps, req.runId), ...extra });
+    const answer = (kind: ExecutionActionResult['kind'], extra: { receipt?: ExecutionReceipt; reason?: string; data?: unknown } = {}): ExecutionActionResult => ({ kind, context: executionContext(deps, req.runId), ...extra });
     const no = (reason: string): ExecutionActionResult => answer('refused', { reason });
     const run = existingRun(deps.ledger, req.runId);
     const control = run.control;
@@ -1166,10 +1168,11 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return no('request identity must be a bounded plain identifier');
     const digest = identityOf(req);
     const before = Object.hasOwn(control.requests, req.requestId) ? control.requests[req.requestId] : undefined;
-    if (before !== undefined) return before.digest === digest ? answer('duplicate', { receipt: before.receipt }) : no('this request identity was already used with different contents');
+    if (before !== undefined) return before.digest === digest ? answer('duplicate', { receipt: before.receipt, data: before.receipt.data }) : no('this request identity was already used with different contents');
     if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
     if (req.action === 'revise' || req.action === 'grow') return answer('unsupported', { reason: 'reference graph growth and algorithm revision are not implemented yet (PLS-10/11); no files, history or budget changed' });
-    if (run.status !== 'running') return no('this Run is not active');
+    const reading = req.action === 'read' || req.action === 'knowledge' || req.action === 'recommend';
+    if (run.status !== 'running' && !reading) return no('this Run is not active');
     if (req.action === 'pause' || req.action === 'continue' || req.action === 'handoff') {
       const scope = req.nodeId ?? '*';
       const pack = executionPack(deps, run);
@@ -1199,7 +1202,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       await recordExecutionAction(deps, run, req, digest, changed, receipt);
       return answer('accepted', { receipt });
     }
-    if (req.action === 'work' || req.action === 'complete') return actOnExecution(deps, run, req, digest);
+    if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || reading) return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');
     if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted');
     if (req.nodeId !== undefined) {
@@ -1334,10 +1337,15 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   const execution = req.executionId === undefined ? undefined : control.executions[req.executionId];
   if (execution === undefined) return no('name the execution identity returned by begin');
   if (req.nodeId !== undefined && req.nodeId !== execution.nodeId) return no('node and execution identities disagree');
+  if (req.action === 'read' && req.output === '@job-log') {
+    if (execution.jobSession === undefined) return no('this execution has launched no Job whose log can be read');
+    const tail = await jobTail(deps, { run: run.id, session: execution.jobSession, lines: 100 });
+    return executionAnswer(deps, run.id, 'accepted', { data: { session: execution.jobSession, text: tail.text, diagnostic: true } });
+  }
   if (execution.generation !== run.generation || execution.loopId !== run.loop?.id || execution.loopGeneration !== run.loop?.generation) return no('this execution belongs to an earlier generation or Loop');
   const paused = executionPauseReason(executionPack(deps, run), run, execution.nodeId);
-  if (paused !== undefined) return no(paused);
-  if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted');
+  if (paused !== undefined && (req.action === 'work' || req.action === 'complete')) return no(paused);
+  if (timeBoxSpent(run, 0) && (req.action === 'work' || req.action === 'complete' || req.action === 'write')) return no('the Campaign time box is exhausted');
   if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq)) return no('the execution input version no longer matches the Run');
   let ctx: Driving;
   try { ctx = executionDriving(deps, run, execution); } catch (error) { return no((error as Error).message); }
@@ -1345,6 +1353,8 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   if (position === undefined) return no('the retained reference graph has no such node');
   const { node, graph } = position;
   const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
+  if (req.action === 'recommend' && node.kind === 'explore') return executionAnswer(deps, run.id, 'accepted', { data: exploreRecommendation(ctx, node) });
+  if (req.action === 'read' || req.action === 'write' || req.action === 'knowledge' || req.action === 'recommend') return actInWorkshop(ctx, req, execution, digest);
   if (req.action === 'work') {
     if (execution.phase !== 'begun') return no('this execution is already working or has a result; no second Job was admitted');
     await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: { ...execution, phase: 'working' } } }, receipt, {}, 'admitted');
@@ -1451,4 +1461,73 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
   }
   if (existingRun(deps.ledger, runId).status !== 'running') await writeExperience(deps, runId);
   return executionAnswer(deps, runId, 'accepted', { receipt });
+}
+
+/** Same-Agent Workshop capabilities; only a draft of this admitted execution can be written. */
+async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, execution: NodeExecution, digest: string): Promise<ExecutionActionResult> {
+  const { deps, runId } = ctx;
+  const no = (reason: string) => executionAnswer(deps, runId, 'refused', { reason });
+  const node = positionOf(ctx.pack, execution.nodeId)?.node;
+  if (node?.kind !== 'act' || node.parameters.workshop === undefined) return no('this node declares no Workshop capability; use its declared work operation or @job-log');
+  const run = existingRun(deps.ledger, runId);
+  const writes = req.action === 'write';
+  const initializes = execution.workshop === undefined;
+  if (writes && execution.phase !== 'begun') return no('this executable version is already in use or has a result; changing an active or historical file is not an accepted revision');
+  if ((writes || initializes) && (run.status !== 'running' || timeBoxSpent(run, 0))) return no('the Run cannot prepare or write a new Workshop version after it has ended or spent its time box');
+  if (writes && (typeof req.path !== 'string' || typeof req.content !== 'string')) return no('write needs a relative path and the actual file content');
+  const mutates = writes || initializes;
+  const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
+  if (mutates) await recordExecutionAction(deps, run, req, digest, {}, receipt, {}, 'admitted');
+  try {
+    const built = await buildWorkshopScope(ctx, node, execution.attempt, req.actor);
+    if (!built.ok) {
+      if (mutates) await updateExecution(deps, runId, execution.id, {}, req.requestId);
+      return no(built.reason);
+    }
+    const { scope, resolved } = built;
+    const workshop = { id: resolved.declaration.id, entry: resolved.declaration.entry, entryPath: resolved.entryAbs, directory: resolved.workshopAbs };
+    if (execution.workshop !== undefined && identityOf(execution.workshop) !== identityOf(workshop)) throw new RunStartError('the resolved Workshop no longer matches the admitted version');
+    if (initializes) await updateExecution(deps, runId, execution.id, { workshop });
+    let data: unknown;
+    if (req.action === 'recommend') {
+      data = {
+        purpose: resolved.declaration.purpose, language: resolved.declaration.language,
+        entry: resolved.declaration.entry, entryPath: resolved.entryAbs, directory: resolved.workshopAbs,
+        argv: resolved.argv, reads: resolved.reads, knowledge: resolved.knowledge,
+        produces: resolved.produces, values: resolved.values,
+        instruction: 'Read declared inputs and knowledge with hima_execute. Write the executable entry using action write and a relative path. The entry and helpers belong to this execution version. Work verifies recorded hashes and returns its real Job. Inspect facts, then explicitly complete. Use read output @job-log to inspect a launched Job; no new node starts without your next request.',
+      };
+    } else if (req.action === 'write') {
+      data = await writeIntoWorkshop(scope, req.path!, req.content!);
+      if (scope.fault.why !== undefined) throw new RunStartError(scope.fault.why);
+    } else if (req.action === 'knowledge') {
+      if (typeof req.file !== 'string') throw new RunStartError('knowledge needs a declared file name');
+      data = await knowledgeForWorkshop(scope, req.file);
+    } else if (req.path !== undefined) {
+      // A code read names only an actual record inside this execution's private directory.
+      const target = pathsOf(ctx.site).join(scope.workshopAbs, req.path);
+      const record = deps.ledger.records({ runId, type: 'code' }).findLast((item) => item.type === 'code'
+        && item.nodeId === execution.nodeId && item.attempt === execution.attempt
+        && item.branchId === execution.branchId && item.path === target && item.path.startsWith(`${scope.workshopAbs}/`));
+      if (record?.type !== 'code') throw new RunStartError('that path is not a recorded file of this execution version');
+      const stale = await readBack(ctx.site, channelFor(ctx.site), record.path, record.sha256, 'recorded');
+      if (stale !== undefined) throw new RunStartError(stale);
+      data = await readForWorkshop({ ...scope, reads: [{ name: req.path, path: record.path }] }, req.path);
+    } else {
+      if (typeof req.output !== 'string') throw new RunStartError('read needs a declared output name or a recorded code path');
+      const reads = [...scope.reads, { name: resolved.produces.name, path: resolved.produces.path }];
+      data = await readForWorkshop({ ...scope, reads }, req.output);
+    }
+    if (mutates) {
+      const durable = receiptSchema.parse({ ...receipt, data: JSON.parse(JSON.stringify(data)) });
+      const current = existingRun(deps.ledger, runId).control!;
+      const admitted = current.requests[req.requestId]!;
+      await deps.ledger.advanceRun(runId, { control: { ...current, requests: { ...current.requests, [req.requestId]: { ...admitted, state: 'done', receipt: durable } } } });
+      return executionAnswer(deps, runId, 'accepted', { receipt: durable, data });
+    }
+    return executionAnswer(deps, runId, 'accepted', { data });
+  } catch (error) {
+    if (mutates) await updateExecution(deps, runId, execution.id, { phase: 'uncertain', reason: (error as Error).message }, req.requestId, 'uncertain');
+    return no((error as Error).message);
+  }
 }

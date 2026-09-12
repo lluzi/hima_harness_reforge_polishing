@@ -1,0 +1,81 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-workshop.host.test.ts test/contract/agent-execution.host.test.ts test/contract/agent-graph.host.test.ts
+local: 3 selected; 41 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 1 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 5978.588958
+  type: 'test'
+  ...
+# Subtest: the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+ok 2 - the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+  ---
+  duration_ms: 3245.999584
+  type: 'test'
+  ...
+# Subtest: pause and an explicit handoff fence old owners without changing Goal or budget
+ok 3 - pause and an explicit handoff fence old owners without changing Goal or budget
+  ---
+  duration_ms: 615.183958
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 4 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 642.853709
+  type: 'test'
+  ...
+# Subtest: explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+ok 5 - explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+  ---
+  duration_ms: 6353.604458
+  type: 'test'
+  ...
+# Subtest: a valid next-strategy request at the generation budget records an honest ending without another Job
+ok 6 - a valid next-strategy request at the generation budget records an honest ending without another Job
+  ---
+  duration_ms: 2511.491
+  type: 'test'
+  ...
+# Subtest: fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+ok 7 - fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+  ---
+  duration_ms: 3947.941708
+  type: 'test'
+  ...
+# Subtest: a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+ok 8 - a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+  ---
+  duration_ms: 4964.104709
+  type: 'test'
+  ...
+# Subtest: an invalid fixed chooser recommendation does not veto a valid owner strategy
+ok 9 - an invalid fixed chooser recommendation does not veto a valid owner strategy
+  ---
+  duration_ms: 2451.367875
+  type: 'test'
+  ...
+# Subtest: Pack wait needs a human clearance followed by explicit Agent completion
+ok 10 - Pack wait needs a human clearance followed by explicit Agent completion
+  ---
+  duration_ms: 1195.247084
+  type: 'test'
+  ...
+# Subtest: the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+ok 11 - the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+  ---
+  duration_ms: 5341.217083
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 39012.555416
+Test boot attempts: {"host-process":0,"host-in-process":11,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 39.106 s; pass/fail/skip counts are in the TAP summary above
