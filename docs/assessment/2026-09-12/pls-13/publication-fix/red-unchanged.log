@@ -1,0 +1,20 @@
+✖ an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact (7862.990833ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8340.779291
+
+✖ failing tests:
+
+test at test/contract/pack-method-assets.test.ts:82:1
+✖ an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact (7862.990833ms)
+  Error: /var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-EgeUGo/hima/packs/opene902-timing-probe differs from its method manifest (unknown or changed method files); nothing was overwritten
+      at readManifest (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-publication/packages/harness/lib/release.js:405:15)
+      at exportPackMethod (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-publication/packages/harness/lib/release.js:452:9)
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-publication/test/contract/pack-method-assets.test.ts:98:16)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)

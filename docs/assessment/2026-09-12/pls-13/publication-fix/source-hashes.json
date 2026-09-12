@@ -1,0 +1,4 @@
+{
+  "packages/harness/src/release.ts": "ebc6959b9d82051e7dd6919d87ead9037329d1e0ddbd62983765f7d298356702",
+  "test/contract/pack-method-assets.test.ts": "0046f935a65d2729a1b075fba2c6788cd103daab964544d4be278cdab092bb14"
+}

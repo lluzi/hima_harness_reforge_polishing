@@ -1,0 +1,41 @@
+✖ an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive (5127.754541ms)
+✖ installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest (3249.698292ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9184.163459
+
+✖ failing tests:
+
+test at test/contract/pack-method-assets.test.ts:106:1
+✖ an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive (5127.754541ms)
+  Error: /var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-zYjFnC/hima/packs/opene902-timing-probe differs from its method manifest (unknown or changed method files); nothing was overwritten
+      at readManifest (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-publication/packages/harness/lib/release.js:405:15)
+      at exportPackMethod (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-publication/packages/harness/lib/release.js:452:9)
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-publication/test/contract/pack-method-assets.test.ts:129:16)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at test/contract/pack-method-assets.test.ts:140:1
+✖ installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest (3249.698292ms)
+  AssertionError [ERR_ASSERTION]: {"kind":"released","file":"/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-V65w2H/hima/packs/opene902-timing-probe/VERSION.yml","sealed":{"pack":"opene902-timing-probe","version":"2","methodDigest":"3c46f1cc5745831699cd7f4cb7e3d43083a97831afc7476310e13746d5183279","released":"2026-09-12T17:15:35.202Z","test":{"record":"TEST.md","run":"run-3200f493-23c4-4637-82c1-15f5c0e5f05f"},"files":{"FABRIC.md":"df8901c32132185476fd03af08a9dee9a28f28d248366781a681ca1ef11311f7","INTENT.md":"a0b88b3cd88ac46ee831226761bf5d4bfe77ffd36a091aefea492cc6193302fe","PACK.md":"187f5c253219eb64fe89e95998b6c429f1c8875638156e5235c6a9b2f1d6bda6","SPEC.md":"7bdd2850a650509461b92f3added1659c480d3759fb1ee215237b5a3f148575f","TEST.md":"153224f48195c0e9eae3a0d41e7f2837d3312c7c14a539fc4d966900700cecf7","choosers/over-constraining-push.yml":"826be8bb61a4580ef6478023d67573f44ea1f850b48c4728b8283d1b6b1ecfb5","contract.yml":"185a52de20d8aac484025d9d3e211339df3e868d82ca704f54cf90d08d734418","graph.yml":"e58f0663712ac7d2431a0db5cab64c8ed7387e45a4fb342196fdc30526283d70","tools/synth.sh":"fa5c40f5d84d65b82287b5a34db2d97dc47350cdd341c036b4406acc6e034275"}},"rewritten":false}
+  + actual - expected
+  
+  + 'released'
+  - 'refused'
+       ^
+  
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-publication/test/contract/pack-method-assets.test.ts:153:10)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'released',
+    expected: 'refused',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
