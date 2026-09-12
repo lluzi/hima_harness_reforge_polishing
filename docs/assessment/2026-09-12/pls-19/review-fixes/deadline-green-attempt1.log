@@ -1,0 +1,195 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-execution.host.test.ts test/contract/agent-controls.host.test.ts test/contract/agent-recovery.host.test.ts
+local: 3 selected; 43 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a human in another live conversation can promptly cancel a long Job without taking ownership
+ok 1 - a human in another live conversation can promptly cancel a long Job without taking ownership
+  ---
+  duration_ms: 8666.664125
+  type: 'test'
+  ...
+# Subtest: retry allowance blocks the failed node until its human owner clears that node
+ok 2 - retry allowance blocks the failed node until its human owner clears that node
+  ---
+  duration_ms: 5889.31775
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused without any next Agent action
+ok 3 - the total time box expires while paused without any next Agent action
+  ---
+  duration_ms: 2525.147292
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused with the Agent offline after Host restart
+ok 4 - the total time box expires while paused with the Agent offline after Host restart
+  ---
+  duration_ms: 2257.231625
+  type: 'test'
+  ...
+# Subtest: cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+ok 5 - cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+  ---
+  duration_ms: 2033.711834
+  type: 'test'
+  ...
+# Subtest: hard deadline stops an existing long Job and records the time box as the cause
+ok 6 - hard deadline stops an existing long Job and records the time box as the cause
+  ---
+  duration_ms: 2506.57125
+  type: 'test'
+  ...
+# Subtest: an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+not ok 7 - an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+  ---
+  duration_ms: 790.021625
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-controls.host.test.ts:206:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'failed'
+    - 'uncertain'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'uncertain'
+  actual: 'failed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-controls.host.test.ts:230:14)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: pending stop I/O does not hold the conversational admission path
+ok 8 - pending stop I/O does not hold the conversational admission path
+  ---
+  duration_ms: 1127.786375
+  type: 'test'
+  ...
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 9 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 2135.785792
+  type: 'test'
+  ...
+# Subtest: the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+ok 10 - the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+  ---
+  duration_ms: 3618.914917
+  type: 'test'
+  ...
+# Subtest: pause and an explicit handoff fence old owners without changing Goal or budget
+ok 11 - pause and an explicit handoff fence old owners without changing Goal or budget
+  ---
+  duration_ms: 660.347041
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 12 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 967.215708
+  type: 'test'
+  ...
+# Subtest: an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+ok 13 - an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+  ---
+  duration_ms: 782.06525
+  type: 'test'
+  ...
+# Subtest: a delayed actual Site probe that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+ok 14 - a delayed actual Site probe that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+  ---
+  duration_ms: 5170.362875
+  type: 'test'
+  ...
+# Subtest: a delayed actual intent persistence that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+not ok 15 - a delayed actual intent persistence that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+  ---
+  duration_ms: 4717.8665
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-execution.host.test.ts:174:71'
+  failureType: 'testCodeFailure'
+  error: 'cannot tell whether tmux session hima-a11c58d0-synthesize-d389e6 is there on site local: tmux exited 1: server exited unexpectedly'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    sessionProbe (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/jobs.js:145:11)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async sessionThere (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/jobs.js:156:19)
+    async killSession (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/jobs.js:258:11)
+    async jobKill (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/jobs.js:394:21)
+    async cancelFencedRun (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/recovery.js:717:24)
+  ...
+# Subtest: production preparation refuses an unowned Run before any Job or Run is created
+ok 16 - production preparation refuses an unowned Run before any Job or Run is created
+  ---
+  duration_ms: 2610.642583
+  type: 'test'
+  ...
+# Subtest: a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+ok 17 - a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+  ---
+  duration_ms: 3747.275792
+  type: 'test'
+  ...
+# Subtest: an interrupted completion remains fenced even when its prior Job has a successful exit
+ok 18 - an interrupted completion remains fenced even when its prior Job has a successful exit
+  ---
+  duration_ms: 2329.13275
+  type: 'test'
+  ...
+# Subtest: adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+ok 19 - adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+  ---
+  duration_ms: 3763.544958
+  type: 'test'
+  ...
+# Subtest: adoption carries an open historical human wait once and new pauses continue to spend the original time box
+ok 20 - adoption carries an open historical human wait once and new pauses continue to spend the original time box
+  ---
+  duration_ms: 4188.00675
+  type: 'test'
+  ...
+# Subtest: historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+ok 21 - historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+  ---
+  duration_ms: 5041.636334
+  type: 'test'
+  ...
+# Subtest: an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+ok 22 - an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+  ---
+  duration_ms: 1180.923875
+  type: 'test'
+  ...
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+ok 23 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 5472.340209
+  type: 'test'
+  ...
+# Subtest: restart repairs an owed report of an ended owned Run after a real Site write fault without advancing it
+ok 24 - restart repairs an owed report of an ended owned Run after a real Site write fault without advancing it
+  ---
+  duration_ms: 1385.610542
+  type: 'test'
+  ...
+# Subtest: restart repairs an owed report of an ended historical Run after a real Site write fault without advancing it
+ok 25 - restart repairs an owed report of an ended historical Run after a real Site write fault without advancing it
+  ---
+  duration_ms: 2061.606542
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 23
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 77766.165542
+Test boot attempts: {"host-process":0,"host-in-process":38,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 77.894 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

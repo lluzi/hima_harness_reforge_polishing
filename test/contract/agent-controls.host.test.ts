@@ -1,6 +1,11 @@
 // PLS-19 controls: real Host, isolated local Jobs, no external model or desktop.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { findOnPath } from './support/tmux.ts';
 import { localHome, waitUntil, sessionsOf } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { timingProbePackId } from './support/pack.ts';
@@ -204,42 +209,62 @@ test('hard deadline stops an existing long Job and records the time box as the c
 });
 
 test('an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives', async (t) => {
-  const home = await localHome(t, { sleepSeconds: 0.01 });
+  const home = await localHome(t, { sleepSeconds: 8 });
   assert.ok(home);
   const host = await bootInProcess(home.h);
+  const savedPath = process.env.PATH!;
+  const realTmux = findOnPath('tmux', savedPath);
+  assert.ok(realTmux);
+  let runId: string | undefined;
   try {
     const owner = await createRootAgent(host.ctx, home.h.workspace);
     const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, timeBoxMs: 1500, ownerSessionId: String(owner.id) });
     assert.equal(started.kind, 'ran');
     if (started.kind !== 'ran') return;
-    const runId = started.run.id;
+    runId = started.run.id;
     const begun = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0, requestId: 'unknown-begin', action: 'begin', nodeId: started.run.currentNode });
-    const advance = host.ctx.hima.ledger.advanceRun.bind(host.ctx.hima.ledger);
-    let interrupted = false;
-    host.ctx.hima.ledger.advanceRun = async (...args) => {
-      const result = await advance(...args);
-      if (!interrupted && args[0] === runId && Object.values(args[1].control?.executions ?? {}).some((execution) => execution.intent !== undefined)) {
-        interrupted = true;
-        throw new Error('simulated Host interruption after durable intent, before any launch receipt');
-      }
-      return result;
-    };
-    try {
-      const work = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 1, requestId: 'unknown-work', action: 'work', executionId: begun.receipt?.executionId });
-      assert.equal(work.kind, 'accepted');
-      assert.equal(work.context.executions[0]?.phase, 'uncertain');
-    } finally { host.ctx.hima.ledger.advanceRun = advance; }
-    await waitUntil('the deadline exposes its unconfirmed stop', () => host.ctx.hima.executionContext(runId).run.control?.stop?.status === 'uncertain', 6000);
+    const bin = path.join(home.h.home, 'lost-launch-bin');
+    const launched = path.join(home.h.home, 'launch-was-dispatched');
+    const quoted = (word: string) => "'" + word.replaceAll("'", "'\\''") + "'";
+    await mkdir(bin);
+    // The real tmux server starts the private Job, but the acknowledgement is lost and subsequent
+    // probes are unreadable. A caught pre-dispatch storage exception cannot simulate this state.
+    await writeFile(path.join(bin, 'tmux'), `#!/bin/sh
+if [ "$1" = new-session ]; then
+  ${quoted(realTmux)} "$@" > ${quoted(launched)} || exit $?
+  echo 'private test lost launch acknowledgement' >&2
+  exit 75
+fi
+if [ "$1" = has-session ] && [ -f ${quoted(launched)} ]; then
+  echo 'private test cannot reach the launched session' >&2
+  exit 75
+fi
+exec ${quoted(realTmux)} "$@"
+`, { mode: 0o755 });
+    process.env.PATH = `${bin}:${savedPath}`;
+    const work = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 1, requestId: 'unknown-work', action: 'work', executionId: begun.receipt?.executionId });
+    assert.equal(work.kind, 'accepted');
+    assert.equal(work.context.executions[0]?.phase, 'uncertain');
+    assert.ok(existsSync(launched));
+    const intent = work.context.executions[0]!.intent!;
+    assert.ok(intent);
+    execFileSync(realTmux, ['has-session', '-t', `=${intent.job.session}`], { env: { ...process.env, PATH: savedPath } });
+    await waitUntil('the deadline exposes its unconfirmed stop', () => host.ctx.hima.executionContext(runId!).run.control?.stop?.status === 'uncertain', 6000);
     const context = host.ctx.hima.executionContext(runId);
     assert.notEqual(context.run.status, 'cancelled');
     assert.notEqual(context.run.status, 'ended-budget-exhausted');
     assert.equal(context.executions[0]?.phase, 'uncertain');
+    assert.deepEqual(context.executions[0]?.intent, intent, 'a dispatched but unreadable launch keeps its durable identity');
     assert.equal(context.run.control?.stop?.reason, 'budget');
-    assert.equal(sessionsOf(host, runId).length, 0);
+    assert.equal(sessionsOf(host, runId).length, 0, 'the lost receipt is not invented');
     const control = context.run.control!;
     const retry = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: 'unknown-retry', action: 'begin', nodeId: started.run.currentNode });
     assert.equal(retry.kind, 'refused');
-  } finally { await host.dispose(); await home.h.dispose(); }
+  } finally {
+    process.env.PATH = savedPath;
+    if (runId) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
 });
 
 test('pending stop I/O does not hold the conversational admission path', async (t) => {

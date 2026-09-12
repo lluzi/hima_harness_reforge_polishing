@@ -1,0 +1,71 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-execution.host.test.ts
+local: 1 selected; 45 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 1 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 5485.722792
+  type: 'test'
+  ...
+# Subtest: the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+ok 2 - the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+  ---
+  duration_ms: 4140.035833
+  type: 'test'
+  ...
+# Subtest: pause and an explicit handoff fence old owners without changing Goal or budget
+ok 3 - pause and an explicit handoff fence old owners without changing Goal or budget
+  ---
+  duration_ms: 1037.403583
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 4 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 935.4905
+  type: 'test'
+  ...
+# Subtest: an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+not ok 5 - an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+  ---
+  duration_ms: 859.712666
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-execution.host.test.ts:145:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /controlled.*conversation|conversation.*controlled/i. Input:
+    
+    'Error: the model answered nothing in session session-5991efea-392c-4491-90d7-bfb281fb3de7: llm-replay: script exhausted — session requested model call #1 but its script has only 0; re-record the scenario'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: 'the model answered nothing in session session-5991efea-392c-4491-90d7-bfb281fb3de7: llm-replay: script exhausted — session requested model call #1 but its script has only 0; re-record the scenario'
+  stack: |-
+    Object.ask (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/moments.js:208:23)
+    async momentOnCurrentNode (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/packages/harness/lib/moments.js:460:16)
+    async waitForActual (node:assert:646:5)
+    async strict.rejects (node:assert:769:25)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-execution.host.test.ts:161:7)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  operator: 'rejects'
+  stack: |-
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-review-fixes/test/contract/agent-execution.host.test.ts:161:7)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 4
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13416.344458
+Test boot attempts: {"host-process":0,"host-in-process":5,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 13.545 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

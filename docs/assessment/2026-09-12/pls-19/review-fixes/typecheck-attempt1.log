@@ -1,0 +1,6 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+$ tsc -p tsconfig.json --noEmit
+test/contract/agent-execution.host.test.ts(155,62): error TS2353: Object literal may only specify known properties, and 'override' does not exist in type 'ReplayStandIn'.
+[ELIFECYCLE] Command failed with exit code 2.

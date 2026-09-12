@@ -172,3 +172,6 @@ export class RunRunningError extends Error {}
  * loaded and no pack is opened, so a pack since edited or uninstalled changes none of it.
  */
 export class WorkshopNodeError extends Error {}
+
+/** A before-launch callback vetoed before tmux dispatch; unlike a lost response, no Job was sent. */
+export class LaunchNotDispatchedError extends Error {}
