@@ -69,7 +69,10 @@ export class LiveCheck {
       if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`${name} must be an integer from 1 to ${max}`);
       return value;
     };
-    this.limits = { timeoutMs: bounded('--timeout-ms', 600_000, 600_000), maxTurns: bounded('--max-turns', defaultTurns, 32), maxSteps: bounded('--max-steps', 160, 200) };
+    // A full authoring run includes five stages; the first installed-model check spent 528s
+    // reaching test alone. Keep the default bounded at 10m and permit an explicit 20m pipeline.
+    const maximumMs = name === 'live-check-pipeline' ? 1_200_000 : 600_000;
+    this.limits = { timeoutMs: bounded('--timeout-ms', 600_000, maximumMs), maxTurns: bounded('--max-turns', defaultTurns, 32), maxSteps: bounded('--max-steps', 160, 200) };
     this.out = path.resolve(options.get('--out') ?? path.join(repoRoot, 'docs/assessment/2026-09-12/pls-19/live-harness', `${name}-${Date.now()}`));
     if (existsSync(this.out)) throw new Error('the evidence directory already exists; use a fresh --out directory');
     mkdirSync(this.out, { recursive: true });
@@ -87,7 +90,7 @@ export class LiveCheck {
     this.observed.node = process.version;
     this.observed.dirtyFiles = execFileSync('git', ['status', '--short'], { cwd: repoRoot, encoding: 'utf8' }).trim();
     this.observed.model = 'native configured DeepSeek adapter; no replay';
-    // A stuck provider/disposal cannot make the advertised ten-minute bound unbounded. Snapshot and
+    // A stuck provider/disposal cannot make the configured time bound unbounded. Snapshot and
     // terminate only this private tmux server. The finally path normally cancels Agents first.
     this.hardTimer = setTimeout(() => {
       this.failure = 'hard deadline exceeded';

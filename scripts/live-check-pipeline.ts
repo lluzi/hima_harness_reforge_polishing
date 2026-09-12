@@ -71,7 +71,7 @@ await runLive('live-check-pipeline', 24, async (check: LiveCheck) => {
   check.observed.authoredFiles = Object.fromEntries(await digestTrees([folder], folder + '.excluded'));
 
   const testCallStart = toolCalls(author).length;
-  await check.say(author, `/hima-test ${packId} on site local; goal minimum=1, strategy limit=${limit}, generations=1, retries=2, timeBox=5. You are this test Run's execution owner. Keep the same native conversation. The Run requires actual Workshop read/knowledge/write/code, asynchronous work, reader and Judge. Use the installed skill's hima_context/hima_execute protocol until terminal, then write TEST.md from the true records. The declared method files are immutable during testing.`);
+  await check.say(author, `/hima-test ${packId} on site local; goal minimum=1, strategy limit=${limit}, generations=1, retries=2, timeBox=8. You are this test Run's execution owner. Keep the same native conversation. The Run requires actual Workshop read/knowledge/write/code, asynchronous work, reader and Judge. Use the installed skill's hima_context/hima_execute protocol until terminal, then write TEST.md from the true records. The declared method files are immutable during testing.`);
   for (let round = 0; round < 5 && packStage(folder).stage !== 'tested'; round++) {
     const runs = host.ctx.hima.ledger.runs().filter((run) => run.packId === packId);
     if (runs.some((run) => run.status === 'waiting')) break;
