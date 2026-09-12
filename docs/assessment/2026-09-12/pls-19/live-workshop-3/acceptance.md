@@ -1,0 +1,9 @@
+# PLS-19 live execution acceptance
+
+Source `be1bb766b74888749986a54cbf798e9d2978a508`; actual installed bundle/file hashes are in evidence.json. Final19/19 checks passed,536.880s outer elapsed,64 model request steps,3 user messages,1 native/model session and1 Host,0 Electron/EDA/SSH. Tokens and billable request/retry counts are unmeasured. The retained227 files were scanned with no credential or unreadable-file findings.
+
+One owner completed Run `run-d7b5d51b-764e-4fbc-9ee0-32d035349583`. Fixed Goal minimum200; initial cutoff11 produced179 with valid constraint and GoalFAIL. The engineer's pause was accepted while the real60s Workshop Job was active; no successor was admitted during pause. After explicit Continue, the owner cited current evidence to choose cutoff0. The second real reader measured200, Judge passed, and the owner explicitly chose goal-met. The Run ended `ended-goal-met` with5 real Jobs,5 act attempts and453854ms budget meter, inside its original780000ms/two-generation budget.
+
+The same data-dependent shell algorithm was written into two distinct execution directories. Both source hashes are `05f46cf2a314188f5e6afac447dfe16b3996bd002539ad4a87def7cc85fcc981`; the strategy parameter changed, not the algorithm text. Manual inspection confirms a loop over actual measured.txt and strict LIMIT comparison, with no hard-coded sample result. Both exact script copies are retained beside this note; code/history hashes and current evidence citations were verified by the checker.
+
+This proves the conversational execution/control/feedback mechanism with DeepSeek V4 Flash on a small numerical method. It does not prove a novel mining algorithm, real EDA/Fmax improvement, or full DTCO value. Prior attempts1/2 remain separately labeled mechanism-only and failed; they are not overwritten or counted as this pass.

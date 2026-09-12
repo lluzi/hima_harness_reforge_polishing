@@ -1,0 +1,398 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-controls.host.test.ts test/contract/agent-execution.host.test.ts test/contract/agent-recovery.host.test.ts test/contract/agent-workshop.host.test.ts test/contract/agent-graph.host.test.ts test/contract/conversation-execution.host.test.ts test/contract/ledger-import.test.ts test/contract/skills.test.ts test/contract/pipeline-stages.host.test.ts
+local: 9 selected; 37 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a human in another live conversation can promptly cancel a long Job without taking ownership
+ok 1 - a human in another live conversation can promptly cancel a long Job without taking ownership
+  ---
+  duration_ms: 5784.383208
+  type: 'test'
+  ...
+# Subtest: retry allowance blocks the failed node until its human owner clears that node
+ok 2 - retry allowance blocks the failed node until its human owner clears that node
+  ---
+  duration_ms: 4127.967667
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused without any next Agent action
+ok 3 - the total time box expires while paused without any next Agent action
+  ---
+  duration_ms: 1965.318208
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused with the Agent offline after Host restart
+ok 4 - the total time box expires while paused with the Agent offline after Host restart
+  ---
+  duration_ms: 1909.904917
+  type: 'test'
+  ...
+# Subtest: cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+ok 5 - cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+  ---
+  duration_ms: 2335.210959
+  type: 'test'
+  ...
+# Subtest: hard deadline stops an existing long Job and records the time box as the cause
+ok 6 - hard deadline stops an existing long Job and records the time box as the cause
+  ---
+  duration_ms: 2575.578625
+  type: 'test'
+  ...
+# Subtest: an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+ok 7 - an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+  ---
+  duration_ms: 8675.316792
+  type: 'test'
+  ...
+# actual tmux success was observed after the private slow probe; only the acknowledgement and subsequent probes are faulted
+# Subtest: pending stop I/O does not hold the conversational admission path
+ok 8 - pending stop I/O does not hold the conversational admission path
+  ---
+  duration_ms: 1030.97775
+  type: 'test'
+  ...
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 9 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 2722.582917
+  type: 'test'
+  ...
+# Subtest: the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+ok 10 - the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+  ---
+  duration_ms: 3857.913083
+  type: 'test'
+  ...
+# Subtest: pause and an explicit handoff fence old owners without changing Goal or budget
+ok 11 - pause and an explicit handoff fence old owners without changing Goal or budget
+  ---
+  duration_ms: 932.392334
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 12 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 925.305416
+  type: 'test'
+  ...
+# Subtest: an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+ok 13 - an owned Run refuses separate model moments while waiting, cancelled or budget-ended before opening any session
+  ---
+  duration_ms: 638.721167
+  type: 'test'
+  ...
+# Subtest: a delayed actual Site probe that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+ok 14 - a delayed actual Site probe that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+  ---
+  duration_ms: 11494.261334
+  type: 'test'
+  ...
+# Subtest: a delayed actual intent persistence that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+ok 15 - a delayed actual intent persistence that crosses the Campaign deadline dispatches no Job and leaves no phantom Site reservation
+  ---
+  duration_ms: 10488.029208
+  type: 'test'
+  ...
+# Subtest: production refuses a standalone moment on a historical waiting Run before any session is composed
+ok 16 - production refuses a standalone moment on a historical waiting Run before any session is composed
+  ---
+  duration_ms: 741.657792
+  type: 'test'
+  ...
+# Subtest: production refuses a standalone moment on a historical cancelled Run before any session is composed
+ok 17 - production refuses a standalone moment on a historical cancelled Run before any session is composed
+  ---
+  duration_ms: 583.625417
+  type: 'test'
+  ...
+# Subtest: explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+ok 18 - explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+  ---
+  duration_ms: 6447.332291
+  type: 'test'
+  ...
+# Subtest: a valid next-strategy request at the generation budget records an honest ending without another Job
+ok 19 - a valid next-strategy request at the generation budget records an honest ending without another Job
+  ---
+  duration_ms: 3308.297209
+  type: 'test'
+  ...
+# Subtest: fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+ok 20 - fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+  ---
+  duration_ms: 3754.589958
+  type: 'test'
+  ...
+# Subtest: a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+ok 21 - a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+  ---
+  duration_ms: 5086.231167
+  type: 'test'
+  ...
+# Subtest: an invalid fixed chooser recommendation does not veto a valid owner strategy
+ok 22 - an invalid fixed chooser recommendation does not veto a valid owner strategy
+  ---
+  duration_ms: 2499.758125
+  type: 'test'
+  ...
+# Subtest: Pack wait needs a human clearance followed by explicit Agent completion
+ok 23 - Pack wait needs a human clearance followed by explicit Agent completion
+  ---
+  duration_ms: 1557.548875
+  type: 'test'
+  ...
+# Subtest: production preparation refuses an unowned Run before any Job or Run is created
+ok 24 - production preparation refuses an unowned Run before any Job or Run is created
+  ---
+  duration_ms: 2527.918916
+  type: 'test'
+  ...
+# Subtest: a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+ok 25 - a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+  ---
+  duration_ms: 3492.05525
+  type: 'test'
+  ...
+# Subtest: an interrupted completion remains fenced even when its prior Job has a successful exit
+ok 26 - an interrupted completion remains fenced even when its prior Job has a successful exit
+  ---
+  duration_ms: 2313.531292
+  type: 'test'
+  ...
+# Subtest: adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+ok 27 - adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+  ---
+  duration_ms: 3132.352458
+  type: 'test'
+  ...
+# Subtest: adoption carries an open historical human wait once and new pauses continue to spend the original time box
+ok 28 - adoption carries an open historical human wait once and new pauses continue to spend the original time box
+  ---
+  duration_ms: 3918.199042
+  type: 'test'
+  ...
+# Subtest: historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+ok 29 - historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+  ---
+  duration_ms: 5117.954792
+  type: 'test'
+  ...
+# Subtest: an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+ok 30 - an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+  ---
+  duration_ms: 1660.521792
+  type: 'test'
+  ...
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+ok 31 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 5810.59375
+  type: 'test'
+  ...
+# Subtest: restart repairs an owed report of an ended owned Run after a real Site write fault without advancing it
+ok 32 - restart repairs an owed report of an ended owned Run after a real Site write fault without advancing it
+  ---
+  duration_ms: 1664.202541
+  type: 'test'
+  ...
+# Subtest: restart repairs an owed report of an ended historical Run after a real Site write fault without advancing it
+ok 33 - restart repairs an owed report of an ended historical Run after a real Site write fault without advancing it
+  ---
+  duration_ms: 1236.215125
+  type: 'test'
+  ...
+# Subtest: the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+ok 34 - the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+  ---
+  duration_ms: 5194.519417
+  type: 'test'
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and launches unchanged
+ok 35 - a begun Workshop draft retains its original author's code across handoff and launches unchanged
+  ---
+  duration_ms: 1187.480917
+  type: 'test'
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+ok 36 - a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+  ---
+  duration_ms: 1473.51325
+  type: 'test'
+  ...
+# Subtest: hima_run prepares for the actual calling Agent and returns the same conversation context
+ok 37 - hima_run prepares for the actual calling Agent and returns the same conversation context
+  ---
+  duration_ms: 2613.506958
+  type: 'test'
+  ...
+# Subtest: controlled tools derive ownership, deduplicate admission, and refuse legacy mutation bypasses
+ok 38 - controlled tools derive ownership, deduplicate admission, and refuse legacy mutation bypasses
+  ---
+  duration_ms: 1213.974375
+  type: 'test'
+  ...
+# Subtest: native preparation validates a live selected session and exposes durable control without rebinding on read
+ok 39 - native preparation validates a live selected session and exposes durable control without rebinding on read
+  ---
+  duration_ms: 6724.767416
+  type: 'test'
+  ...
+# Subtest: explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+ok 40 - explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+  ---
+  duration_ms: 1836.213708
+  type: 'test'
+  ...
+# Subtest: opening the original v19 home still fails the version gate without rewriting it
+ok 41 - opening the original v19 home still fails the version gate without rewriting it
+  ---
+  duration_ms: 241.564916
+  type: 'test'
+  ...
+# Subtest: wrong formats, future controls and unknown fields cannot be silently dropped during import
+ok 42 - wrong formats, future controls and unknown fields cannot be silently dropped during import
+  ---
+  duration_ms: 68.622541
+  type: 'test'
+  ...
+# Subtest: Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+ok 43 - Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+  ---
+  duration_ms: 54.029292
+  type: 'test'
+  ...
+# Subtest: v20-only Job, workspace and decision facts are refused even with a v19 header
+ok 44 - v20-only Job, workspace and decision facts are refused even with a v19 header
+  ---
+  duration_ms: 14.808125
+  type: 'test'
+  ...
+# Subtest: symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+ok 45 - symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+  ---
+  duration_ms: 6.919417
+  type: 'test'
+  ...
+# Subtest: mid-write failure and process death cannot publish a partial import or alter the source
+ok 46 - mid-write failure and process death cannot publish a partial import or alter the source
+  ---
+  duration_ms: 754.817125
+  type: 'test'
+  ...
+# Subtest: the offline CLI requires both explicit paths and never defaults to DSH_HOME
+ok 47 - the offline CLI requires both explicit paths and never defaults to DSH_HOME
+  ---
+  duration_ms: 74.449125
+  type: 'test'
+  ...
+# Subtest: two simultaneous imports cannot replace the first complete destination
+ok 48 - two simultaneous imports cannot replace the first complete destination
+  ---
+  duration_ms: 33.235541
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-fabric reads every source its body names before it writes, compiles the spec into a pack that loads and fits, and records the author's review in their own words
+ok 49 - through a booted host with the replay stand-in: /hima-fabric reads every source its body names before it writes, compiles the spec into a pack that loads and fits, and records the author's review in their own words
+  ---
+  duration_ms: 2989.05775
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-fabric refuses a spec that contradicts itself, naming the section and quoting the line, and writes nothing at all
+ok 50 - through a booted host with the replay stand-in: /hima-fabric refuses a spec that contradicts itself, naming the section and quoting the line, and writes nothing at all
+  ---
+  duration_ms: 832.741833
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-test runs the compiled pack as a run marked a test and writes the record from what that run recorded, /hima-release seals the folder, and a file changed afterwards is named by the check and refused by a campaign
+ok 51 - through a booted host with the replay stand-in: /hima-test runs the compiled pack as a run marked a test and writes the record from what that run recorded, /hima-release seals the folder, and a file changed afterwards is named by the check and refused by a campaign
+  ---
+  duration_ms: 13652.236041
+  type: 'test'
+  ...
+# Subtest: installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it
+ok 52 - installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it
+  ---
+  duration_ms: 4152.716
+  type: 'test'
+  ...
+# {"fixture":"pipeline/workshop (handwritten replay)","runId":"run-d649ec71-9a33-49ba-85de-a9e7e4702832","packDigest":"1b906357f52938bc1d3e3ea40aca2b1de2868776f7b840267c144c4ffdfbdc80","inputSha256":"222ff324016eea6ca5dee6cfc712664c37d43881960897bab91f5b5080b8e35b","code":[{"id":"run-d649ec71-9a33-49ba-85de-a9e7e4702832\#000004","runId":"run-d649ec71-9a33-49ba-85de-a9e7e4702832","siteId":"local","seq":4,"at":"2026-09-12T20:28:06.703Z","writer":"executor","generation":1,"type":"code","nodeId":"analyze","attempt":1,"sessionId":"session-be9d7e93-3305-4cee-a2cf-5f7173254c6b","workshop":"analyze","path":"/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis/entry.sh","sha256":"cc150e52dcbfa4dfb6cf4889af758525ad2e01c305163ab8ae05c2bb3600dd81","bytes":118,"language":"sh"}],"observations":[{"id":"run-d649ec71-9a33-49ba-85de-a9e7e4702832\#000014","runId":"run-d649ec71-9a33-49ba-85de-a9e7e4702832","siteId":"local","seq":14,"at":"2026-09-12T20:28:07.157Z","writer":"executor","generation":1,"type":"observation","path":"/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis/result.txt","contentSha256":"084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0","bytes":3,"reader":{"id":"sum-file","version":"1","reportKind":"scaled-sum","emits":["scaled_sum"],"file":"tools/read-sum.sh","sha256":"38c7913f3561d11a1e9572931f720ce8f22887cc0386263086a72b99f8552a0e"},"values":[{"type":"scaled_sum","value":42,"unit":"count"}]}],"jobs":[{"id":"run-d649ec71-9a33-49ba-85de-a9e7e4702832\#000006","runId":"run-d649ec71-9a33-49ba-85de-a9e7e4702832","siteId":"local","seq":6,"at":"2026-09-12T20:28:06.853Z","writer":"executor","generation":1,"type":"job","event":"launched","job":{"session":"hima-d649ec71-workshop-analyze-f39d5e","workspace":"/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc","name":"workshop-analyze","startedAt":"2026-09-12T20:28:06.808Z","wire":"'sh' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis/entry.sh' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc' '2' > '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-d649ec71-workshop-analyze-f39d5e.log' 2>&1; printf '%s\\\\n' \\"$?\\" > '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-d649ec71-workshop-analyze-f39d5e.exit'","pid":65252},"nodeId":"analyze","workshop":{"id":"analyze","entry":{"path":"/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis/entry.sh","sha256":"cc150e52dcbfa4dfb6cf4889af758525ad2e01c305163ab8ae05c2bb3600dd81"}},"attempt":1},{"id":"run-d649ec71-9a33-49ba-85de-a9e7e4702832\#000008","runId":"run-d649ec71-9a33-49ba-85de-a9e7e4702832","siteId":"local","seq":8,"at":"2026-09-12T20:28:06.921Z","writer":"executor","generation":1,"type":"job","event":"finished","job":{"session":"hima-d649ec71-workshop-analyze-f39d5e","workspace":"/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc","name":"workshop-analyze","startedAt":"2026-09-12T20:28:06.808Z","wire":"'sh' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis/entry.sh' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc' '2' > '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-d649ec71-workshop-analyze-f39d5e.log' 2>&1; printf '%s\\\\n' \\"$?\\" > '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-d649ec71-workshop-analyze-f39d5e.exit'","pid":65252},"exitCode":0,"nodeId":"analyze"},{"id":"run-d649ec71-9a33-49ba-85de-a9e7e4702832\#000011","runId":"run-d649ec71-9a33-49ba-85de-a9e7e4702832","siteId":"local","seq":11,"at":"2026-09-12T20:28:07.075Z","writer":"executor","generation":1,"type":"job","event":"launched","job":{"session":"hima-d649ec71-reader-sum-file-7e1254","workspace":"/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc","name":"reader-sum-file","startedAt":"2026-09-12T20:28:07.038Z","wire":"'sh' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-readers/sum-file/read-sum.sh' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis/result.txt' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-readers/sum-file/read-analysis-g1-a1.json' > '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-d649ec71-reader-sum-file-7e1254.log' 2>&1; printf '%s\\\\n' \\"$?\\" > '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-d649ec71-reader-sum-file-7e1254.exit'","pid":65350},"nodeId":"read-analysis","reading":{"reader":{"id":"sum-file","version":"1","reportKind":"scaled-sum","emits":["scaled_sum"],"file":"tools/read-sum.sh","sha256":"38c7913f3561d11a1e9572931f720ce8f22887cc0386263086a72b99f8552a0e"},"out":"/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-readers/sum-file/read-analysis-g1-a1.json","report":{"path":"/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis/result.txt","contentSha256":"084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0","bytes":3}},"attempt":1},{"id":"run-d649ec71-9a33-49ba-85de-a9e7e4702832\#000013","runId":"run-d649ec71-9a33-49ba-85de-a9e7e4702832","siteId":"local","seq":13,"at":"2026-09-12T20:28:07.137Z","writer":"executor","generation":1,"type":"job","event":"finished","job":{"session":"hima-d649ec71-reader-sum-file-7e1254","workspace":"/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc","name":"reader-sum-file","startedAt":"2026-09-12T20:28:07.038Z","wire":"'sh' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-readers/sum-file/read-sum.sh' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/research/analysis/result.txt' '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-readers/sum-file/read-analysis-g1-a1.json' > '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-d649ec71-reader-sum-file-7e1254.log' 2>&1; printf '%s\\\\n' \\"$?\\" > '/private/tmp/hima-tests-1G1o4D/hima-home-Mm5rOF/workspace/authored-workshop-20260912-202806-39fc/hima-d649ec71-reader-sum-file-7e1254.exit'","pid":65350},"exitCode":0,"nodeId":"read-analysis"}]}
+# Subtest: from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding
+ok 53 - from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding
+  ---
+  duration_ms: 650.711041
+  type: 'test'
+  ...
+# Subtest: on a booted host: the bundle registers the pipeline's five skills from one provider — a person's to invoke, never the model's to choose
+ok 54 - on a booted host: the bundle registers the pipeline's five skills from one provider — a person's to invoke, never the model's to choose
+  ---
+  duration_ms: 482.153625
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-grill writes the pack intent record in the pack folder and nothing outside it, /hima-spec writes the pack spec beside it, and pack check says the folder is specified
+ok 55 - through a booted host with the replay stand-in: /hima-grill writes the pack intent record in the pack folder and nothing outside it, /hima-spec writes the pack spec beside it, and pack check says the folder is specified
+  ---
+  duration_ms: 1679.570917
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an authoring session may not write outside its pack folder and has no shell, and the same two calls go through in an ordinary session
+ok 56 - through a booted host with the replay stand-in: an authoring session may not write outside its pack folder and has no shell, and the same two calls go through in an ordinary session
+  ---
+  duration_ms: 1684.7285
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an authoring session's target is judged as the tool received it — a new file inside the folder goes through, and a dot segment, a link out of the folder and an edit outside do not
+ok 57 - through a booted host with the replay stand-in: an authoring session's target is judged as the tool received it — a new file inside the folder goes through, and a dot segment, a link out of the folder and an edit outside do not
+  ---
+  duration_ms: 733.127875
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an absent packs directory leaves a session untouched, and a packs directory or a working directory that will not resolve stops the governed tools
+ok 58 - through a booted host with the replay stand-in: an absent packs directory leaves a session untouched, and a packs directory or a working directory that will not resolve stops the governed tools
+  ---
+  duration_ms: 1935.3035
+  type: 'test'
+  ...
+# Subtest: the intent record the live check authors its spec stage from is the one the contract suite runs the grill stage against
+ok 59 - the intent record the live check authors its spec stage from is the one the contract suite runs the grill stage against
+  ---
+  duration_ms: 30.145459
+  type: 'test'
+  ...
+# Subtest: every skeleton in the pack anatomy reference is a file this harness accepts: assembled into a folder they load as a pack and fit the local site
+ok 60 - every skeleton in the pack anatomy reference is a file this harness accepts: assembled into a folder they load as a pack and fit the local site
+  ---
+  duration_ms: 649.349916
+  type: 'test'
+  ...
+# pack example-probe@1 on site local: fit — 3 of 3 inputs bound, 1 tool, 1 rule, 1 reader, 1 chooser, 1 knowledge file, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-1G1o4D/hima-home-iCw8Qd/standin-flow
+#   design = a-subject
+#   workspaceRoot = /private/tmp/hima-tests-1G1o4D/hima-home-iCw8Qd/workspace
+# tools:
+#   measure (tools/measure.sh): "make" is an allowed wrapper of site local
+# rules:
+#   measurement-within-bound@1: found in the pack
+# readers:
+#   measurement-file@1 reads measurement: found in the pack
+# semantics:
+#   measured_ms: declared by this pack in /private/tmp/hima-tests-1G1o4D/hima-home-iCw8Qd/hima/packs/example-probe/semantics.yml
+#   8 value types come from the bundle
+# choosers:
+#   step-back-off@1 chooses at next-step: found in the pack
+# knowledge:
+#   the-step-method.md (why this pack changes the step the way it does): found in the pack
+# licences:
+#   measure holds 1 of "measuring-seat": site local declares 1
+1..60
+# tests 60
+# suites 0
+# pass 60
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 170936.5265
+Test boot attempts: {"host-process":1,"host-in-process":92,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 171.017 s; pass/fail/skip counts are in the TAP summary above

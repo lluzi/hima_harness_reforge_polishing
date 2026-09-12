@@ -1,0 +1,8 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+$ tsc -p tsconfig.json --noEmit
+test/contract/conversation-execution.host.test.ts(116,18): error TS18046: 'momentBody' is of type 'unknown'.
+test/contract/conversation-execution.host.test.ts(117,18): error TS18046: 'momentBody' is of type 'unknown'.
+test/contract/conversation-execution.host.test.ts(119,22): error TS2571: Object is of type 'unknown'.
+[ELIFECYCLE] Command failed with exit code 2.

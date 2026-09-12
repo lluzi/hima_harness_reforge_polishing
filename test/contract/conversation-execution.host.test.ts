@@ -1,6 +1,7 @@
 // PLS-19: actual Host tool context; no model call or Electron.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import type { HimaErrorBody, RecordsView } from '@hima/harness';
 import { localHome } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { timingProbePackId } from './support/pack.ts';
@@ -111,12 +112,12 @@ test('native preparation validates a live selected session and exposes durable c
     const contextBody = await context.json() as { run: { control: { owner: string; revision: number } } };
     assert.equal(contextBody.run.control.owner, owner);
     const moment = await post(`/runs/${view.run.id}/moment`, { instructions: 'inspect this Run' });
-    const momentBody = await moment.json();
+    const momentBody = await moment.json() as HimaErrorBody;
     assert.equal(moment.status, 409, JSON.stringify(momentBody));
     assert.equal(momentBody.error.code, 'hima/run-not-in-state');
     assert.match(momentBody.error.message, /controlled by its conversation Agent/);
     const sessions = await api(host, cookie, `/hima/api/runs/${view.run.id}/records?type=session`);
-    assert.deepEqual((await sessions.json()).records, [], 'a policy refusal opens no separate model session');
+    assert.deepEqual((await sessions.json() as RecordsView).records, [], 'a policy refusal opens no separate model session');
     assert.equal((await post(`/runs/${view.run.id}/cancel`, {})).status, 400);
     assert.equal((await post(`/runs/${view.run.id}/control`, { action: 'work', sessionId: owner, expectedEpoch: 1, expectedRevision: 0, requestId: 'human-work' })).status, 400);
     assert.equal(contextBody.run.control.revision, 0);
