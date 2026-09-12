@@ -1,0 +1,128 @@
+{
+  "capturedAt": "2026-09-12T20:11:04.875809+00:00",
+  "priorSourceSha": "59f15f3cfcd778d798055e8adbecc509501ddc40",
+  "priorEvidence": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-authoring-2/evidence.json",
+  "priorEvidenceSha256": "3b24a1f4d49552efe93a24414cb3865f5531444268c98092e11661c4b2bb250e",
+  "priorCheckerStatus": "failed",
+  "acceptance": "failed/not accepted regardless of PackStage or later TEST documentation",
+  "input": {
+    "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/numeric-flow/numbers.txt",
+    "sha256": "84e85e0e7da25f225369f69bc75733045b0fc2cce93ec9c6c6e7c9771d08b742",
+    "numbers": [
+      39,
+      20,
+      25,
+      29,
+      22,
+      1,
+      21,
+      16,
+      11,
+      2,
+      26,
+      29
+    ],
+    "limit": 11
+  },
+  "includedValues": [
+    39,
+    20,
+    25,
+    29,
+    22,
+    21,
+    16,
+    26,
+    29
+  ],
+  "independentlyComputedStrictSum": 227,
+  "archivedFiles": {
+    "INTENT.md": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/hima/packs/authored-numeric/INTENT.md",
+      "sha256": "87b57a7620d962c192d253f2bd9209fa2fd1a70a6878b07f7088f480b2c32c79"
+    },
+    "SPEC.md": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/hima/packs/authored-numeric/SPEC.md",
+      "sha256": "54f324b2dc98165e4fb61cf6e669db78197fb3f00d5506798f27d0f0fc1c4c2f"
+    },
+    "FABRIC.md": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/hima/packs/authored-numeric/FABRIC.md",
+      "sha256": "c324918499b2225df0df80d966d1019dc36dc18d657c126c0a00c1c13b005be8"
+    },
+    "TEST.md": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/hima/packs/authored-numeric/TEST.md",
+      "sha256": "9c75c80bbef7ee0d1ea2e643b2ce9cc3eb1a8b2002d4e5c074cf7157c2d55de2"
+    },
+    "graph.yml": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/hima/packs/authored-numeric/graph.yml",
+      "sha256": "1873376147fd62dfd2cf4e8cd6f07a087a8664cd833032ff355250d67a3e8ce5"
+    },
+    "contract.yml": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/hima/packs/authored-numeric/contract.yml",
+      "sha256": "d2bcc3084d8bba08669b40d8deba72156f0bf0a241af8213a90d954c2d5a7621"
+    },
+    "knowledge/analysis.md": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/hima/packs/authored-numeric/knowledge/analysis.md",
+      "sha256": "e90969d9aaa59372e66db09defb1a74eecd83899c7166fd11dcaab44657d88cf"
+    },
+    "attempt-code/01-entry.sh": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh",
+      "record": {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000007",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 7,
+        "at": "2026-09-12T19:46:07.522Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "code",
+        "nodeId": "analyze",
+        "attempt": 1,
+        "sessionId": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+        "workshop": "analyze",
+        "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh",
+        "sha256": "b492c43a02c90a20623898a68dacfceb01aebc9347119177a8cf8a0d716e7ae5",
+        "bytes": 1273,
+        "language": "sh"
+      },
+      "actualSha256": "b492c43a02c90a20623898a68dacfceb01aebc9347119177a8cf8a0d716e7ae5",
+      "matchesRecorded": true
+    },
+    "attempt-code/02-entry.sh": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh",
+      "record": {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000012",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 12,
+        "at": "2026-09-12T19:47:44.672Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "code",
+        "nodeId": "analyze",
+        "attempt": 2,
+        "sessionId": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+        "workshop": "analyze",
+        "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh",
+        "sha256": "3a7a4f301ece20c621aa499b64db7b032c416f092432bdd22acbffde2f28fae2",
+        "bytes": 1849,
+        "language": "sh"
+      },
+      "actualSha256": "3a7a4f301ece20c621aa499b64db7b032c416f092432bdd22acbffde2f28fae2",
+      "matchesRecorded": true
+    },
+    "data/numbers.txt": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/numeric-flow/numbers.txt",
+      "sha256": "84e85e0e7da25f225369f69bc75733045b0fc2cce93ec9c6c6e7c9771d08b742"
+    },
+    "data/result.txt": {
+      "source": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/result.txt",
+      "sha256": "b56797986dcb891ef0072c12ebc457b38e63b1e6d61be1547b04b88431df9465"
+    },
+    "run-records.json": {
+      "source": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-authoring-2/evidence.json#/runs",
+      "sha256": "056d83aec5ce5957c0172572f9c9b412e6ea9a5d4fc601f5415ec93c351ee20e"
+    }
+  },
+  "scope": "archived prior model-authored failure material only; never installed or used as the fresh Pack fixture"
+}

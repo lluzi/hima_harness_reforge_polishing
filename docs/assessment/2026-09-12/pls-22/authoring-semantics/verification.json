@@ -1,0 +1,35 @@
+{
+  "base": "a50449fd769860ce2b3931f3ecc37429e77ab139",
+  "branch": "codex/pls22-authoring-semantics",
+  "sourceSha256": {
+    "packages/harness/skills/hima-fabric/SKILL.md": "b2cb8ed1da3b6f35690b69b00f4bd0308a2f6586bc08ccca38ac447143838ca2",
+    "packages/harness/skills/knowledge/pack-anatomy.md": "a3a0e041b57608dba2318980a50207939dd23d919fd5b0bf28a503c93e01c50f",
+    "scripts/live-check-pipeline.ts": "2d97752ed061f899af48a41712fcf957fb8efda1bb3cdc7ea959dee0727f51d3"
+  },
+  "checks": {
+    "build": "PASS",
+    "fullTypecheck": "PASS",
+    "finalCheckerTypes": "PASS",
+    "seams": "PASS",
+    "boundary": "PASS",
+    "checkerHelpNoModel": "PASS",
+    "installedSkillsAndPipelineHost": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "elapsedSeconds": 32.137,
+      "hostInProcess": 38,
+      "electron": 0,
+      "ssh": 0
+    }
+  },
+  "freshL4": "NOT RUN; parent review and new real-model authoring required",
+  "oldAuthoringAttempts": "FAILED / NOT ACCEPTED; archived original artifacts and Run facts are unchanged",
+  "limits": {
+    "checkerMaximumMs": 1200000,
+    "runTimeBoxMs": 480000,
+    "generationLimit": 1,
+    "retryAllowance": 2
+  },
+  "independentExpectation": "sum of all n in actual input where n > initial limit, with Goal minimum=1"
+}

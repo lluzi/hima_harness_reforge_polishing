@@ -1,0 +1,69 @@
+# authored-numeric as a HimaFabric graph: one generation, one pass, no loop.
+#
+# The method is a single generation by design (see SPEC.md, "Choosers" and "Endings"): the input
+# numbers are fixed, the strategy's limit is fixed per Campaign, and the exact sum is knowable from
+# the input and the bound. There is therefore no next target to compute, no chooser, and no revisit
+# edge — the last edge here goes backwards to nothing. A Run of this pack reaches generation one and
+# ends where it stands, as the goal met or at the wait node.
+#
+# Four node kinds and no more: act, judge, explore, wait. This graph uses three of them; it declares
+# no explore node because it has no move to make.
+id: authored-numeric
+version: '1'
+entry: prepare
+
+nodes:
+  # Act: run the Golden Flow's own preparation stage in the Campaign's copy of the flow. It produces
+  # flow/measured.txt from flow/numbers.txt, and it is fed because the contract copies both of those
+  # files into the workspace.
+  - id: prepare
+    kind: act
+    parameters:
+      tool: prepare
+
+  # Act: the real Workshop. A model authors the analysis script during the Run from the measured
+  # input and the declared knowledge, then runs it. WORKSPACE and ENTRY are the Run's own and are
+  # supplied by the Harness; only the strategy knob is bound here.
+  - id: analyze
+    kind: act
+    parameters:
+      workshop: analyze
+      arguments:
+        LIMIT: { from: strategy, name: limit }
+
+  # Act: read what that generation produced into HimaLedger, through the contract's own reader. The
+  # judged file becomes the typed values the Judge rules below consume.
+  - id: read-analysis
+    kind: act
+    parameters:
+      observes: analysis
+
+  # Judge: the option assertion first, then correctness, then the acceptance bound. The outgoing edge
+  # is chosen by the outcome of the first rule listed, so a result obtained under options other than
+  # the declared ones is never read as a bounded pass — the assertion is checked before the count.
+  - id: judge
+    kind: judge
+    parameters:
+      rules:
+        - options-asserted
+        - sum-correct
+        - acceptance-bound
+      bind:
+        minimum: { from: goal, name: minimum }
+
+  # Wait: where a Run stops for a person when any rule above does not pass. The Judge's FAIL edge
+  # leads here, and the fabric routes a Hard blocker here itself, exactly as it routes an
+  # UNDETERMINED the pack labelled no edge for.
+  - id: blocked
+    kind: wait
+    parameters:
+      blocker: hard-blocker
+
+edges:
+  - { from: prepare, to: analyze }
+  - { from: analyze, to: read-analysis }
+  - { from: read-analysis, to: judge }
+  # PASS is the pack's terminal ending: the readable result satisfied the acceptance bound, and the
+  # option and correctness rules passed before it did. No edge out of it, so the Run ends here.
+  - { from: judge, to: blocked, outcome: PASS }
+  - { from: judge, to: blocked, outcome: FAIL }

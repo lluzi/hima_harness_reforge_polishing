@@ -1,0 +1,1234 @@
+[
+  {
+    "run": {
+      "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+      "campaignId": "authored-numeric-20260912-194344-750d",
+      "siteId": "local",
+      "packId": "authored-numeric",
+      "purpose": "test",
+      "packDigest": "7a9b1d02a7d20bc5e54594147f6a6f589032691c2f8140fdb7652fdf792924b1",
+      "goal": {
+        "minimum": 1
+      },
+      "budget": {
+        "timeBoxMs": 480000,
+        "retryAllowance": 2,
+        "jobCap": 1,
+        "licences": {},
+        "generationLimit": 1
+      },
+      "firstStrategy": {
+        "limit": 11
+      },
+      "generation": 1,
+      "control": {
+        "mode": "agent",
+        "owner": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+        "epoch": 1,
+        "revision": 20,
+        "paused": [
+          "blocked",
+          "*"
+        ],
+        "executions": {
+          "execution-688125d1-34d8-43b3-9e79-d4e16a8b5870": {
+            "id": "execution-688125d1-34d8-43b3-9e79-d4e16a8b5870",
+            "nodeId": "prepare",
+            "kind": "act",
+            "generation": 1,
+            "attempt": 1,
+            "methodDigest": "7a9b1d02a7d20bc5e54594147f6a6f589032691c2f8140fdb7652fdf792924b1",
+            "inputDigest": "3401cb3ce991ce29385823e63f9f3a67a863268f92fd5af6a7dde9565f340fb7",
+            "phase": "completed",
+            "inputThroughSeq": 1,
+            "intent": {
+              "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+              "siteId": "local",
+              "job": {
+                "session": "hima-a1041ae4-prepare-8f01a7",
+                "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+                "name": "prepare",
+                "startedAt": "2026-09-12T19:44:13.607Z",
+                "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/flow/prepare.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/flow' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-prepare-8f01a7.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-prepare-8f01a7.exit'"
+              },
+              "nodeId": "prepare",
+              "attempt": 1
+            },
+            "result": {
+              "kind": "settled"
+            },
+            "jobSession": "hima-a1041ae4-prepare-8f01a7"
+          },
+          "execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084": {
+            "id": "execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084",
+            "nodeId": "analyze",
+            "kind": "act",
+            "generation": 1,
+            "attempt": 1,
+            "methodDigest": "7a9b1d02a7d20bc5e54594147f6a6f589032691c2f8140fdb7652fdf792924b1",
+            "inputDigest": "3401cb3ce991ce29385823e63f9f3a67a863268f92fd5af6a7dde9565f340fb7",
+            "phase": "failed",
+            "inputThroughSeq": 5,
+            "workshop": {
+              "id": "analyze",
+              "entry": "entry.sh",
+              "entryPath": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh",
+              "directory": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084"
+            },
+            "intent": {
+              "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+              "siteId": "local",
+              "job": {
+                "session": "hima-a1041ae4-workshop-analyze-46bf8e",
+                "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+                "name": "workshop-analyze",
+                "startedAt": "2026-09-12T19:46:19.223Z",
+                "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084' '11' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-46bf8e.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-46bf8e.exit'"
+              },
+              "nodeId": "analyze",
+              "workshop": {
+                "id": "analyze",
+                "entry": {
+                  "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh",
+                  "sha256": "b492c43a02c90a20623898a68dacfceb01aebc9347119177a8cf8a0d716e7ae5"
+                }
+              },
+              "attempt": 1
+            },
+            "result": {
+              "kind": "retrying"
+            },
+            "jobSession": "hima-a1041ae4-workshop-analyze-46bf8e"
+          },
+          "execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d": {
+            "id": "execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d",
+            "nodeId": "analyze",
+            "kind": "act",
+            "generation": 1,
+            "attempt": 2,
+            "methodDigest": "7a9b1d02a7d20bc5e54594147f6a6f589032691c2f8140fdb7652fdf792924b1",
+            "inputDigest": "3401cb3ce991ce29385823e63f9f3a67a863268f92fd5af6a7dde9565f340fb7",
+            "phase": "completed",
+            "inputThroughSeq": 11,
+            "workshop": {
+              "id": "analyze",
+              "entry": "entry.sh",
+              "entryPath": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh",
+              "directory": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d"
+            },
+            "intent": {
+              "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+              "siteId": "local",
+              "job": {
+                "session": "hima-a1041ae4-workshop-analyze-cbf266",
+                "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+                "name": "workshop-analyze",
+                "startedAt": "2026-09-12T19:47:57.450Z",
+                "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d' '11' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-cbf266.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-cbf266.exit'"
+              },
+              "nodeId": "analyze",
+              "workshop": {
+                "id": "analyze",
+                "entry": {
+                  "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh",
+                  "sha256": "3a7a4f301ece20c621aa499b64db7b032c416f092432bdd22acbffde2f28fae2"
+                }
+              },
+              "attempt": 2
+            },
+            "result": {
+              "kind": "settled"
+            },
+            "jobSession": "hima-a1041ae4-workshop-analyze-cbf266"
+          },
+          "execution-e5d1da58-b68b-459b-837e-9e36e32109b5": {
+            "id": "execution-e5d1da58-b68b-459b-837e-9e36e32109b5",
+            "nodeId": "read-analysis",
+            "kind": "act",
+            "generation": 1,
+            "attempt": 1,
+            "methodDigest": "7a9b1d02a7d20bc5e54594147f6a6f589032691c2f8140fdb7652fdf792924b1",
+            "inputDigest": "3401cb3ce991ce29385823e63f9f3a67a863268f92fd5af6a7dde9565f340fb7",
+            "phase": "completed",
+            "inputThroughSeq": 16,
+            "intent": {
+              "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+              "siteId": "local",
+              "job": {
+                "session": "hima-a1041ae4-reader-analysis-result-7bcf03",
+                "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+                "name": "reader-analysis-result",
+                "startedAt": "2026-09-12T19:50:27.183Z",
+                "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-readers/analysis-result/read-analysis-result.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/result.txt' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-readers/analysis-result/read-analysis-g1-a1.json' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-reader-analysis-result-7bcf03.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-reader-analysis-result-7bcf03.exit'"
+              },
+              "nodeId": "read-analysis",
+              "reading": {
+                "reader": {
+                  "id": "analysis-result",
+                  "version": "1",
+                  "reportKind": "authored-numeric-analysis",
+                  "emits": [
+                    "numeric_sum",
+                    "result_readable",
+                    "sum_correct",
+                    "expected_sum",
+                    "options_asserted"
+                  ],
+                  "file": "tools/read-analysis-result.sh",
+                  "sha256": "7bd0400819844a7c31c9c61a4e05483a64786643058e60943cf44997c1dbd64b"
+                },
+                "out": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-readers/analysis-result/read-analysis-g1-a1.json",
+                "report": {
+                  "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/result.txt",
+                  "contentSha256": "b56797986dcb891ef0072c12ebc457b38e63b1e6d61be1547b04b88431df9465",
+                  "bytes": 4
+                }
+              },
+              "attempt": 1
+            },
+            "result": {
+              "kind": "settled"
+            },
+            "jobSession": "hima-a1041ae4-reader-analysis-result-7bcf03"
+          },
+          "execution-db659491-34fe-48f2-82a0-8fbb864439e2": {
+            "id": "execution-db659491-34fe-48f2-82a0-8fbb864439e2",
+            "nodeId": "judge",
+            "kind": "judge",
+            "generation": 1,
+            "attempt": 1,
+            "methodDigest": "7a9b1d02a7d20bc5e54594147f6a6f589032691c2f8140fdb7652fdf792924b1",
+            "inputDigest": "1c6dc33b03c074cc3b8cb7b3b7e965b64b0040bd38755b88e2c9f579f35094aa",
+            "phase": "completed",
+            "inputThroughSeq": 22,
+            "result": {
+              "kind": "settled",
+              "outcome": "PASS"
+            }
+          },
+          "execution-4cbf9f15-e4ff-4049-bb36-4879d347c230": {
+            "id": "execution-4cbf9f15-e4ff-4049-bb36-4879d347c230",
+            "nodeId": "blocked",
+            "kind": "wait",
+            "generation": 1,
+            "attempt": 1,
+            "methodDigest": "7a9b1d02a7d20bc5e54594147f6a6f589032691c2f8140fdb7652fdf792924b1",
+            "inputDigest": "939eaf1649a2eb926b070a31fec1edd614ef408c648b1acf2f1907a83fda7576",
+            "phase": "ready",
+            "inputThroughSeq": 26,
+            "result": {
+              "kind": "settled"
+            }
+          }
+        },
+        "requests": {
+          "req-begin-prepare-1": {
+            "digest": "1337bf2056a05ecbb882db75c819aecd09729a553605ae44c15a12812aea2c0a",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 0,
+            "origin": "agent",
+            "at": "2026-09-12T19:44:00.036Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-prepare-1",
+              "action": "begin",
+              "executionId": "execution-688125d1-34d8-43b3-9e79-d4e16a8b5870"
+            }
+          },
+          "req-work-prepare-1": {
+            "digest": "3bd3b6ce4739bde4dc99295ab0914fc6e7da0f8b587cf23bd9ed72cdcde170c2",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 1,
+            "origin": "agent",
+            "at": "2026-09-12T19:44:13.581Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-prepare-1",
+              "action": "work",
+              "executionId": "execution-688125d1-34d8-43b3-9e79-d4e16a8b5870"
+            }
+          },
+          "req-complete-prepare-1": {
+            "digest": "a459a5a4069f54cca932885796572000a406d2b50f5b35aa7f2673c126107e6f",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 2,
+            "origin": "agent",
+            "at": "2026-09-12T19:44:53.809Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-prepare-1",
+              "action": "complete",
+              "executionId": "execution-688125d1-34d8-43b3-9e79-d4e16a8b5870"
+            }
+          },
+          "req-begin-analyze-1": {
+            "digest": "0392db7e66692d2d84910e7eb9a385f2f4828db360a5549bb5e8f3fd3f64c444",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 3,
+            "origin": "agent",
+            "at": "2026-09-12T19:45:03.657Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-analyze-1",
+              "action": "begin",
+              "executionId": "execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084"
+            }
+          },
+          "req-recommend-analyze-1": {
+            "digest": "9796459cf73d6cff44e10d630ba111feb6552db791d7106fc057c9c7c9aad9b0",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 4,
+            "origin": "agent",
+            "at": "2026-09-12T19:45:11.426Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-recommend-analyze-1",
+              "action": "recommend",
+              "executionId": "execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084",
+              "data": {
+                "purpose": "Read the declared measured input, and write a shell script deriving the requested sum from its actual data \u2014 summing only the values strictly greater than LIMIT and writing that integer alone \u2014 then run it and leave both its result and the option record it applied.",
+                "language": "sh",
+                "entry": "entry.sh",
+                "entryPath": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh",
+                "directory": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084",
+                "argv": [
+                  "sh",
+                  "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh",
+                  "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084",
+                  "11"
+                ],
+                "reads": [
+                  {
+                    "name": "measuredInput",
+                    "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/flow/measured.txt"
+                  }
+                ],
+                "knowledge": [
+                  {
+                    "file": "analysis.md",
+                    "purpose": "the declared analysis knowledge \u2014 the strict-bound sum rule and the option contract",
+                    "at": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/hima/packs/authored-numeric/.hima-method-history/7a9b1d02a7d20bc5e54594147f6a6f589032691c2f8140fdb7652fdf792924b1/authored-numeric/knowledge/analysis.md"
+                  }
+                ],
+                "produces": {
+                  "name": "analysis",
+                  "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/result.txt",
+                  "reader": "analysis-result",
+                  "emits": [
+                    {
+                      "type": "numeric_sum",
+                      "declared": {
+                        "unit": "count",
+                        "description": "the integer sum the Workshop's authored script wrote alone in result.txt, over the measured values strictly greater than LIMIT \u2014 what this generation measured"
+                      }
+                    },
+                    {
+                      "type": "result_readable",
+                      "declared": {
+                        "unit": "count",
+                        "description": "1 when result.txt held exactly one integer and nothing else, so a number could be read at all; 0 when it was absent, empty or not one integer, in which case there is no count to judge"
+                      }
+                    },
+                    {
+                      "type": "sum_correct",
+                      "declared": {
+                        "unit": "count",
+                        "description": "1 when numeric_sum equals expected_sum, the exact sum this input and this bound require; 0 when it does not, which is the fabricated or mistaken result the business forbids"
+                      }
+                    },
+                    {
+                      "type": "expected_sum",
+                      "declared": {
+                        "unit": "count",
+                        "description": "the sum of the values in the measured input strictly greater than the declared limit, computed by the reader from the analysis rule rather than read from the result \u2014 the correctness companion to numeric_sum"
+                      }
+                    },
+                    {
+                      "type": "options_asserted",
+                      "declared": {
+                        "unit": "count",
+                        "description": "1 when the run's own option record held the declared bound and the strict comparison, on the declared input and output contract; 0 when it declared anything else, in which case the generation has no verdict however its sum compares"
+                      }
+                    }
+                  ]
+                },
+                "values": {
+                  "LIMIT": "11"
+                },
+                "instruction": "Read declared inputs and knowledge with hima_execute. Write the executable entry using action write and a relative path. The entry and helpers belong to this execution version. Work verifies recorded hashes and returns its real Job. Inspect facts, then explicitly complete. Use read output @job-log to inspect a launched Job; no new node starts without your next request."
+              }
+            }
+          },
+          "req-write-entry-1": {
+            "digest": "89a1cd31ab91570350f82182b8be15fa7fa843e59323d4ca16f2f8932cbb01ca",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 5,
+            "origin": "agent",
+            "at": "2026-09-12T19:46:07.457Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-write-entry-1",
+              "action": "write",
+              "executionId": "execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084",
+              "data": {
+                "wrote": true,
+                "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh",
+                "sha256": "b492c43a02c90a20623898a68dacfceb01aebc9347119177a8cf8a0d716e7ae5",
+                "bytes": 1273
+              }
+            }
+          },
+          "req-work-analyze-1": {
+            "digest": "9e0ce66347ddd42c10f6ef715cc648259e8fb5d610c80ac273463c7698388073",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 6,
+            "origin": "agent",
+            "at": "2026-09-12T19:46:19.178Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-analyze-1",
+              "action": "work",
+              "executionId": "execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084"
+            }
+          },
+          "req-begin-analyze-2": {
+            "digest": "2dcce18d690d33eba896b17ff089444ac75010d58e98b84cd1dcf66801d7a311",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 7,
+            "origin": "agent",
+            "at": "2026-09-12T19:47:24.951Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-analyze-2",
+              "action": "begin",
+              "executionId": "execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d"
+            }
+          },
+          "req-write-entry-3": {
+            "digest": "944960e25aa53a7c75f215e899c96c4503c363f26be75c30763799cf45d4456d",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 8,
+            "origin": "agent",
+            "at": "2026-09-12T19:47:44.576Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-write-entry-3",
+              "action": "write",
+              "executionId": "execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d",
+              "data": {
+                "wrote": true,
+                "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh",
+                "sha256": "3a7a4f301ece20c621aa499b64db7b032c416f092432bdd22acbffde2f28fae2",
+                "bytes": 1849
+              }
+            }
+          },
+          "req-work-analyze-2": {
+            "digest": "17be662d5358d170002c52745e148fcf67e11d63fedcf05fe11b74a8baa96d47",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 9,
+            "origin": "agent",
+            "at": "2026-09-12T19:47:57.369Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-analyze-2",
+              "action": "work",
+              "executionId": "execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d"
+            }
+          },
+          "req-complete-analyze-1": {
+            "digest": "3fc91aaa2f684de4a52e53debf891214957f27bc2f55951b0772bed89fc8b7ca",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 10,
+            "origin": "agent",
+            "at": "2026-09-12T19:50:05.265Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-analyze-1",
+              "action": "complete",
+              "executionId": "execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d"
+            }
+          },
+          "req-begin-read-1": {
+            "digest": "37c306ae32887effb77062356f7b87015811508306e9b87442eceee02d2a6dbb",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 11,
+            "origin": "agent",
+            "at": "2026-09-12T19:50:22.057Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-read-1",
+              "action": "begin",
+              "executionId": "execution-e5d1da58-b68b-459b-837e-9e36e32109b5"
+            }
+          },
+          "req-work-read-1": {
+            "digest": "50832ede51a51dc485fda425707d64cd17b3aa27480a33041e10dd3ceb71d9f9",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 12,
+            "origin": "agent",
+            "at": "2026-09-12T19:50:27.099Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-read-1",
+              "action": "work",
+              "executionId": "execution-e5d1da58-b68b-459b-837e-9e36e32109b5"
+            }
+          },
+          "req-complete-read-1": {
+            "digest": "29f28f395cd8fc5f1417168e2fd1de3ba6b12035d491b29414c18d381fbb94cc",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 13,
+            "origin": "agent",
+            "at": "2026-09-12T19:50:38.458Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-read-1",
+              "action": "complete",
+              "executionId": "execution-e5d1da58-b68b-459b-837e-9e36e32109b5"
+            }
+          },
+          "req-begin-judge-1": {
+            "digest": "4b39c5ba4ea0633dc64a9db908037db6e830a9b9d184ad222cb426ecbef3a3b4",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 14,
+            "origin": "agent",
+            "at": "2026-09-12T19:50:49.024Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-judge-1",
+              "action": "begin",
+              "executionId": "execution-db659491-34fe-48f2-82a0-8fbb864439e2"
+            }
+          },
+          "req-work-judge-1": {
+            "digest": "85611b21b1e4400d2cc6c0a42e8a4d1fa33938067948b10d38d67bc72d00fcdc",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 15,
+            "origin": "agent",
+            "at": "2026-09-12T19:50:54.110Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-judge-1",
+              "action": "work",
+              "executionId": "execution-db659491-34fe-48f2-82a0-8fbb864439e2"
+            }
+          },
+          "req-complete-judge-1": {
+            "digest": "c218667beced4d06eb28f46584ad9d962a9cf9cce65f7c16e26cb9b7ed4174f8",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 16,
+            "origin": "agent",
+            "at": "2026-09-12T19:50:58.390Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-judge-1",
+              "action": "complete",
+              "executionId": "execution-db659491-34fe-48f2-82a0-8fbb864439e2"
+            }
+          },
+          "req-begin-blocked-1": {
+            "digest": "f3587468ab438f463a19cd3cd469a8bcbf487781e02950b61371777d932bb2f6",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 17,
+            "origin": "agent",
+            "at": "2026-09-12T19:51:04.226Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-blocked-1",
+              "action": "begin",
+              "executionId": "execution-4cbf9f15-e4ff-4049-bb36-4879d347c230"
+            }
+          },
+          "req-work-blocked-1": {
+            "digest": "cfbd1947874b9626162782fa1e7f9504e44641377ef790ccc1e614ce61a54fab",
+            "actor": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+            "epoch": 1,
+            "revision": 18,
+            "origin": "agent",
+            "at": "2026-09-12T19:51:08.682Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-blocked-1",
+              "action": "work",
+              "executionId": "execution-4cbf9f15-e4ff-4049-bb36-4879d347c230"
+            }
+          }
+        },
+        "siteDigest": "2baf2ae9cdd207c5c8d70266d7d1f862a00be6a8aea9769da2f971bf0f467861",
+        "stop": {
+          "reason": "budget",
+          "status": "confirmed"
+        }
+      },
+      "createdAt": "2026-09-12T19:43:44.858Z",
+      "nextSeq": 31,
+      "status": "ended-budget-exhausted",
+      "currentNode": "blocked",
+      "strategy": {
+        "limit": 11
+      },
+      "meters": {
+        "elapsedMs": 480181,
+        "jobsLaunched": 4,
+        "attempts": 4,
+        "generationMs": [
+          480042
+        ],
+        "endedBy": "time-box"
+      }
+    },
+    "records": [
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000001",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 1,
+        "at": "2026-09-12T19:43:44.979Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "workspace",
+        "event": "prepared",
+        "campaignId": "authored-numeric-20260912-194344-750d",
+        "packId": "authored-numeric",
+        "packVersion": "1",
+        "packDigest": "7a9b1d02a7d20bc5e54594147f6a6f589032691c2f8140fdb7652fdf792924b1",
+        "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+        "flowRoot": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/numeric-flow",
+        "containerName": "hima-authored-numeric-20260912-194344-750d",
+        "copied": [
+          "prepare.sh",
+          "numbers.txt"
+        ],
+        "preparedAt": "2026-09-12T19:43:44.898Z"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000002",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 2,
+        "at": "2026-09-12T19:44:13.665Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "job",
+        "event": "launched",
+        "job": {
+          "session": "hima-a1041ae4-prepare-8f01a7",
+          "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+          "name": "prepare",
+          "startedAt": "2026-09-12T19:44:13.607Z",
+          "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/flow/prepare.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/flow' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-prepare-8f01a7.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-prepare-8f01a7.exit'",
+          "pid": 70316
+        },
+        "nodeId": "prepare",
+        "attempt": 1
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000003",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 3,
+        "at": "2026-09-12T19:44:13.688Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "prepare",
+        "kind": "act",
+        "state": "running",
+        "attempt": 1,
+        "jobSession": "hima-a1041ae4-prepare-8f01a7"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000004",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 4,
+        "at": "2026-09-12T19:44:13.851Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "job",
+        "event": "finished",
+        "job": {
+          "session": "hima-a1041ae4-prepare-8f01a7",
+          "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+          "name": "prepare",
+          "startedAt": "2026-09-12T19:44:13.607Z",
+          "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/flow/prepare.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/flow' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-prepare-8f01a7.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-prepare-8f01a7.exit'",
+          "pid": 70316
+        },
+        "exitCode": 0,
+        "nodeId": "prepare"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000005",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 5,
+        "at": "2026-09-12T19:44:13.889Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "prepare",
+        "kind": "act",
+        "state": "done",
+        "attempt": 1,
+        "jobSession": "hima-a1041ae4-prepare-8f01a7"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000006",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 6,
+        "at": "2026-09-12T19:45:18.940Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "refusal",
+        "path": "@workshop-input:measuredInput",
+        "reason": "this workshop may read \"measuredInput\", \"analysis\", and \"@workshop-input:measuredInput\" is not one of them"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000007",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 7,
+        "at": "2026-09-12T19:46:07.522Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "code",
+        "nodeId": "analyze",
+        "attempt": 1,
+        "sessionId": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+        "workshop": "analyze",
+        "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh",
+        "sha256": "b492c43a02c90a20623898a68dacfceb01aebc9347119177a8cf8a0d716e7ae5",
+        "bytes": 1273,
+        "language": "sh"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000008",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 8,
+        "at": "2026-09-12T19:46:19.274Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "job",
+        "event": "launched",
+        "job": {
+          "session": "hima-a1041ae4-workshop-analyze-46bf8e",
+          "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+          "name": "workshop-analyze",
+          "startedAt": "2026-09-12T19:46:19.223Z",
+          "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084' '11' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-46bf8e.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-46bf8e.exit'",
+          "pid": 81896
+        },
+        "nodeId": "analyze",
+        "workshop": {
+          "id": "analyze",
+          "entry": {
+            "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh",
+            "sha256": "b492c43a02c90a20623898a68dacfceb01aebc9347119177a8cf8a0d716e7ae5"
+          }
+        },
+        "attempt": 1
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000009",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 9,
+        "at": "2026-09-12T19:46:19.294Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "analyze",
+        "kind": "act",
+        "state": "running",
+        "attempt": 1,
+        "jobSession": "hima-a1041ae4-workshop-analyze-46bf8e"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000010",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 10,
+        "at": "2026-09-12T19:46:19.433Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "job",
+        "event": "finished",
+        "job": {
+          "session": "hima-a1041ae4-workshop-analyze-46bf8e",
+          "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+          "name": "workshop-analyze",
+          "startedAt": "2026-09-12T19:46:19.223Z",
+          "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084/entry.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-f16ea6bf-e7f0-46eb-b79f-23c7b7dcf084' '11' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-46bf8e.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-46bf8e.exit'",
+          "pid": 81896
+        },
+        "exitCode": 2,
+        "nodeId": "analyze"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000011",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 11,
+        "at": "2026-09-12T19:46:19.464Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "analyze",
+        "kind": "act",
+        "state": "retrying",
+        "attempt": 1,
+        "jobSession": "hima-a1041ae4-workshop-analyze-46bf8e",
+        "reason": "job \"analyze\" in tmux session hima-a1041ae4-workshop-analyze-46bf8e exited 2; that is 1 failed attempt of an allowance of 2, so the node tries again"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000012",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 12,
+        "at": "2026-09-12T19:47:44.672Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "code",
+        "nodeId": "analyze",
+        "attempt": 2,
+        "sessionId": "session-a89b5a84-33c7-46a3-82c3-7b8dcd9bd586",
+        "workshop": "analyze",
+        "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh",
+        "sha256": "3a7a4f301ece20c621aa499b64db7b032c416f092432bdd22acbffde2f28fae2",
+        "bytes": 1849,
+        "language": "sh"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000013",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 13,
+        "at": "2026-09-12T19:47:57.554Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "job",
+        "event": "launched",
+        "job": {
+          "session": "hima-a1041ae4-workshop-analyze-cbf266",
+          "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+          "name": "workshop-analyze",
+          "startedAt": "2026-09-12T19:47:57.450Z",
+          "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d' '11' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-cbf266.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-cbf266.exit'",
+          "pid": 91376
+        },
+        "nodeId": "analyze",
+        "workshop": {
+          "id": "analyze",
+          "entry": {
+            "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh",
+            "sha256": "3a7a4f301ece20c621aa499b64db7b032c416f092432bdd22acbffde2f28fae2"
+          }
+        },
+        "attempt": 2
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000014",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 14,
+        "at": "2026-09-12T19:47:57.605Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "analyze",
+        "kind": "act",
+        "state": "running",
+        "attempt": 2,
+        "jobSession": "hima-a1041ae4-workshop-analyze-cbf266"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000015",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 15,
+        "at": "2026-09-12T19:47:57.865Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "job",
+        "event": "finished",
+        "job": {
+          "session": "hima-a1041ae4-workshop-analyze-cbf266",
+          "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+          "name": "workshop-analyze",
+          "startedAt": "2026-09-12T19:47:57.450Z",
+          "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d/entry.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/research/analysis/.executions/execution-59a33053-4ba8-4a7d-8e1d-6ba486eb785d' '11' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-cbf266.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-workshop-analyze-cbf266.exit'",
+          "pid": 91376
+        },
+        "exitCode": 0,
+        "nodeId": "analyze"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000016",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 16,
+        "at": "2026-09-12T19:47:57.920Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "analyze",
+        "kind": "act",
+        "state": "done",
+        "attempt": 2,
+        "jobSession": "hima-a1041ae4-workshop-analyze-cbf266"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000017",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 17,
+        "at": "2026-09-12T19:50:27.122Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "read-analysis",
+        "kind": "act",
+        "state": "running",
+        "attempt": 1
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000018",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 18,
+        "at": "2026-09-12T19:50:27.267Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "job",
+        "event": "launched",
+        "job": {
+          "session": "hima-a1041ae4-reader-analysis-result-7bcf03",
+          "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+          "name": "reader-analysis-result",
+          "startedAt": "2026-09-12T19:50:27.183Z",
+          "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-readers/analysis-result/read-analysis-result.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/result.txt' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-readers/analysis-result/read-analysis-g1-a1.json' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-reader-analysis-result-7bcf03.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-reader-analysis-result-7bcf03.exit'",
+          "pid": 3308
+        },
+        "nodeId": "read-analysis",
+        "reading": {
+          "reader": {
+            "id": "analysis-result",
+            "version": "1",
+            "reportKind": "authored-numeric-analysis",
+            "emits": [
+              "numeric_sum",
+              "result_readable",
+              "sum_correct",
+              "expected_sum",
+              "options_asserted"
+            ],
+            "file": "tools/read-analysis-result.sh",
+            "sha256": "7bd0400819844a7c31c9c61a4e05483a64786643058e60943cf44997c1dbd64b"
+          },
+          "out": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-readers/analysis-result/read-analysis-g1-a1.json",
+          "report": {
+            "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/result.txt",
+            "contentSha256": "b56797986dcb891ef0072c12ebc457b38e63b1e6d61be1547b04b88431df9465",
+            "bytes": 4
+          }
+        },
+        "attempt": 1
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000019",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 19,
+        "at": "2026-09-12T19:50:27.295Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "read-analysis",
+        "kind": "act",
+        "state": "running",
+        "attempt": 1,
+        "jobSession": "hima-a1041ae4-reader-analysis-result-7bcf03"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000020",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 20,
+        "at": "2026-09-12T19:50:27.569Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "job",
+        "event": "finished",
+        "job": {
+          "session": "hima-a1041ae4-reader-analysis-result-7bcf03",
+          "workspace": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d",
+          "name": "reader-analysis-result",
+          "startedAt": "2026-09-12T19:50:27.183Z",
+          "wire": "'sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-readers/analysis-result/read-analysis-result.sh' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/result.txt' '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-readers/analysis-result/read-analysis-g1-a1.json' > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-reader-analysis-result-7bcf03.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-a1041ae4-reader-analysis-result-7bcf03.exit'",
+          "pid": 3308
+        },
+        "exitCode": 0,
+        "nodeId": "read-analysis"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000021",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 21,
+        "at": "2026-09-12T19:50:27.614Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "observation",
+        "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/result.txt",
+        "contentSha256": "b56797986dcb891ef0072c12ebc457b38e63b1e6d61be1547b04b88431df9465",
+        "bytes": 4,
+        "reader": {
+          "id": "analysis-result",
+          "version": "1",
+          "reportKind": "authored-numeric-analysis",
+          "emits": [
+            "numeric_sum",
+            "result_readable",
+            "sum_correct",
+            "expected_sum",
+            "options_asserted"
+          ],
+          "file": "tools/read-analysis-result.sh",
+          "sha256": "7bd0400819844a7c31c9c61a4e05483a64786643058e60943cf44997c1dbd64b"
+        },
+        "values": [
+          {
+            "type": "numeric_sum",
+            "value": 227,
+            "unit": "count"
+          },
+          {
+            "type": "result_readable",
+            "value": 1,
+            "unit": "count"
+          },
+          {
+            "type": "sum_correct",
+            "value": 1,
+            "unit": "count"
+          },
+          {
+            "type": "expected_sum",
+            "value": 227,
+            "unit": "count"
+          },
+          {
+            "type": "options_asserted",
+            "value": 1,
+            "unit": "count"
+          }
+        ]
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000022",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 22,
+        "at": "2026-09-12T19:50:27.639Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "read-analysis",
+        "kind": "act",
+        "state": "done",
+        "attempt": 1,
+        "jobSession": "hima-a1041ae4-reader-analysis-result-7bcf03"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000023",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 23,
+        "at": "2026-09-12T19:50:54.159Z",
+        "writer": "judge",
+        "generation": 1,
+        "type": "verdict",
+        "outcome": "PASS",
+        "ruleId": "options-asserted",
+        "ruleVersion": "1",
+        "cites": [
+          "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000021"
+        ],
+        "valuesAsRead": [
+          {
+            "type": "numeric_sum",
+            "value": 227,
+            "unit": "count"
+          },
+          {
+            "type": "options_asserted",
+            "value": 1,
+            "unit": "count"
+          }
+        ]
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000024",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 24,
+        "at": "2026-09-12T19:50:54.188Z",
+        "writer": "judge",
+        "generation": 1,
+        "type": "verdict",
+        "outcome": "PASS",
+        "ruleId": "sum-correct",
+        "ruleVersion": "1",
+        "cites": [
+          "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000021"
+        ],
+        "valuesAsRead": [
+          {
+            "type": "numeric_sum",
+            "value": 227,
+            "unit": "count"
+          },
+          {
+            "type": "expected_sum",
+            "value": 227,
+            "unit": "count"
+          },
+          {
+            "type": "sum_correct",
+            "value": 1,
+            "unit": "count"
+          }
+        ]
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000025",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 25,
+        "at": "2026-09-12T19:50:54.220Z",
+        "writer": "judge",
+        "generation": 1,
+        "type": "verdict",
+        "outcome": "PASS",
+        "ruleId": "acceptance-bound",
+        "ruleVersion": "1",
+        "cites": [
+          "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000021"
+        ],
+        "valuesAsRead": [
+          {
+            "type": "numeric_sum",
+            "value": 227,
+            "unit": "count"
+          },
+          {
+            "type": "result_readable",
+            "value": 1,
+            "unit": "count"
+          }
+        ],
+        "boundParameters": {
+          "minimum": 1
+        }
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000026",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 26,
+        "at": "2026-09-12T19:50:54.262Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "judge",
+        "kind": "judge",
+        "state": "done",
+        "attempt": 1,
+        "outcome": "PASS"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000027",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 27,
+        "at": "2026-09-12T19:51:08.710Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "blocked",
+        "kind": "wait",
+        "state": "blocked",
+        "attempt": 1,
+        "reason": "this Pack requires human clearance of hard-blocker"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000028",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 28,
+        "at": "2026-09-12T19:51:44.943Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "cancel",
+        "nodeId": "blocked"
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000029",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 29,
+        "at": "2026-09-12T19:51:45.021Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "node",
+        "nodeId": "blocked",
+        "kind": "wait",
+        "state": "cancelled",
+        "attempt": 1
+      },
+      {
+        "id": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5#000030",
+        "runId": "run-a1041ae4-9847-4cda-a673-863de8c4a0d5",
+        "siteId": "local",
+        "seq": 30,
+        "at": "2026-09-12T19:51:45.199Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "experience",
+        "writtenAt": "2026-09-12T19:51:45.064Z",
+        "markdown": {
+          "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-experience/run-a1041ae4-9847-4cda-a673-863de8c4a0d5.md",
+          "sha256": "82a060473d4aa3cda49aed95c02bbb5e1fa54d4d13c0100036281ffef0804ecc",
+          "bytes": 3841
+        },
+        "json": {
+          "path": "/private/tmp/hima-l4-J5R76P/hima-home-JAqnCY/workspace/authored-numeric-20260912-194344-750d/hima-experience/run-a1041ae4-9847-4cda-a673-863de8c4a0d5.json",
+          "sha256": "528c595eb47c5033ae2cfa2e6f67d0b0b7fab3e5386cf62c9b35fcd360fb821d",
+          "bytes": 19819
+        }
+      }
+    ]
+  }
+]

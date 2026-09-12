@@ -141,11 +141,16 @@ block in `knowledge/pack-anatomy.md`. Preserve its `purpose`, `inputs`, `reads`,
 and must appear in `environment.wrappers`; `argv[1]` is exactly `${ENTRY}`. Bind each declared
 input at the graph node through `parameters.arguments` using the declared Goal or Strategy name.
 The reserved `ENTRY`, `WORKSHOP`, `WORKSPACE`, `FLOW_ROOT`, `DESIGN`, `CAMPAIGN` values are supplied
-by the Harness and are never declared as Workshop inputs or rebound at nodes.
+by the Harness and are never declared as Workshop inputs or rebound at nodes. Read back the written
+`argv` against the approved spec **operand by operand**, including the script's `$1`, `$2`, etc.
+`WORKSPACE` is the Campaign root; `WORKSHOP` is the admitted execution's private code directory.
+Use the root the approved input/output paths require; preserve their order rather than copying the
+anatomy's example. Explain both operands explicitly when a script needs both roots.
 
 Create an act node with `parameters.workshop: <id>` and connect it into the real graph. Schedule
-producers of `reads` before it. Its `produces` names a contract output with a reader; write that
-reader and semantics when no shipped reader covers the output. Add an observing act node and the
+producers of `reads` before it. Both `reads` and `produces` use the exact `contract.outputs[].name`;
+`@workshop-input:<name>` is a diagnostic label, not an output name or a read-tool argument.
+Its `produces` names a contract output with a reader; write that reader and semantics when no shipped reader covers the output. Add an observing act node and the
 required Judge downstream so the produced file becomes checked evidence. A Workshop with an empty
 purpose, no graph binding, no declared reader, an undeclared wrapper or an output escaping the
 Campaign workspace is incomplete. Stop at the failed check; record the actual gap.
@@ -155,6 +160,26 @@ reader now; do not fill the future research result with invented data. `PACK.md`
 method, but never substitutes for the executable declaration. A spec that says it has no Workshops
 gets no Workshop block. The Goal values themselves belong to each Run; the contract declares their
 shape and the graph binds them without fixing a Campaign's choice.
+
+## Audit the written method before recording FABRIC
+
+Read the actual contract, graph and scripts back from the folder. Trace each declared ending in
+`SPEC.md` through the actual edges and decisions, recording the source node, matching outcome,
+destination and resulting ending alongside the file review shown to the author. A comment saying
+"terminal" is not an edge audit. The first Judge rule determines its outgoing outcome; an Explore decision
+weighs the current constraint and Goal rules in their declared order. Goal completion needs its
+explicit goal-met decision, not a terminal Judge PASS alone. A revisit describes the next-strategy
+path; a generation limit may stop that path before another generation starts.
+
+A wait node is valid when the spec calls for human clearance at that boundary. When the spec calls
+for a successful terminal ending, follow the actual success path and verify that it reaches that
+ending. Resolve any file/spec discrepancy in the compiled files before `FABRIC.md`; an honest
+later `TEST.md` disagreement does not make a contradictory method ready to compile or release.
+
+For knowledge files, explain the method symbolically until a worked numerical claim has an exact
+input, parameter values and an observed reproducible calculation or checked result to cite. Keep
+unverified numbers out of worked examples. Author-approved parameter defaults are declarations;
+measured or calculated results require their own evidence.
 
 ## The gaps, and the review
 
@@ -214,5 +239,5 @@ which fault you cannot fix and what the author has to decide.
   file you found by searching the disk for a key name.
 - **The flow stays where it lies.** Read it; copy nothing of it into this folder.
 - **You compute nothing.** A hash, a folder digest, a check against the ledger — those are verbs this
-  harness has (`hima_pack_check`, and the later stages' own). A number you worked out yourself is a
-  number nobody can check.
+  harness has (`hima_pack_check`, and the later stages' own). Use their actual answers for those
+  facts; worked examples follow the evidence rule in the written-method audit above.

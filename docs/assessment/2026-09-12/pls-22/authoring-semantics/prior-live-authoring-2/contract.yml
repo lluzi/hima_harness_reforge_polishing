@@ -1,0 +1,115 @@
+# The run contract of authored-numeric: what a Site must bind before this pack can run, what one
+# generation produces inside the Campaign workspace, and what the pack runs on the Site.
+# `/hima pack check authored-numeric --site <site>` reads this file against a Site's own and reports
+# every input that is not bound, every wrapper the Permit will not run, and every rule or reader that
+# does not exist.
+id: authored-numeric
+version: '1'
+title: authored numeric
+
+# What a Site binds, in its site file under `bindings:`. The same pack runs on another Site by
+# editing that file, never this one.
+inputs:
+  - name: flowRoot
+    description: >-
+      The Golden Flow's root on the Site: the directory holding prepare.sh and numbers.txt.
+      Read-only to a Campaign — a generation prepares its own copy of it, never here.
+  - name: workspaceRoot
+    description: >-
+      Where Campaign workspaces are created. The Site's Permit must allow writes under it; nothing
+      the pack does writes anywhere else.
+
+# What a generation leaves in its Campaign workspace. Paths are relative to the workspace. The judged
+# output is read into typed values by this pack's own reader; `analysisOptions` is read by no reader
+# of its own, because the same reader reads it as part of the judged output's option assertion.
+outputs:
+  - name: measuredInput
+    path: flow/measured.txt
+    description: >-
+      The measured input the preparation tool produced in the workspace copy of the flow, one
+      nonnegative integer per line. It is what the Workshop reads, and the file the reader computes
+      the exact expected sum from. Read by no reader of its own: it is the analysis's input, not a
+      judged output.
+  - name: analysis
+    path: result.txt
+    reader: analysis-result
+    description: >-
+      The integer sum the Workshop's authored script wrote, alone, over the measured values strictly
+      greater than LIMIT. The judged file, read by this pack's own reader into its typed values.
+  - name: analysisOptions
+    path: options.txt
+    description: >-
+      The option record the authored script wrote beside its result: the comparison it applied and
+      the bound it applied it at, with the input and output paths and the output contract. The
+      judged file's reader holds this against the declared options before the count is accepted.
+
+# What the Site must let this pack run: the first word of every tool's and reader's command line. The
+# Permit's `allowedWrappers` decides each one, so a pack cannot introduce a command a Site owner
+# never allowed.
+environment:
+  wrappers:
+    - sh
+
+# How a Campaign workspace is prepared from the bound flow root, once per Campaign. The copy lands in
+# `<workspace>/flow/`, which is the pack anatomy's fixed place for it. `prepare.sh` reads
+# `numbers.txt` from its own directory, so both travel together.
+workspace:
+  copy:
+    - prepare.sh
+    - numbers.txt
+
+# The pack's tools. Each names the file a person reads and runs by hand, and the command line the
+# fabric launches on the Site. `${NAME}` in `argv` is one of the tool's declared `inputs`, which are
+# the environment variables the tool's own script reads. Neither tool holds a licence.
+tools:
+  - id: prepare
+    file: tools/prepare.sh
+    description: >-
+      The Golden Flow's own preparation stage, run unchanged inside the Campaign's copy of the flow.
+      It copies numbers.txt to measured.txt; it takes no LIMIT, because the flow does not encode one.
+    inputs: [WORKSPACE, FLOW_ROOT]
+    argv:
+      - sh
+      - ${WORKSPACE}/flow/prepare.sh
+      - ${WORKSPACE}/flow
+
+# What a run of this pack is set to for one generation. One knob: the bound the analysis applies, in
+# count. Its bounds are what a person could plausibly ask this flow for; the default is the value a
+# run that sets nothing starts at.
+strategy:
+  limit: { type: number, unit: count, min: 0, max: 100, default: 11 }
+
+# What this pack's numbers are called, for the faces a person reads: one entry per goal parameter the
+# graph binds and one per knob a run's strategy is made of.
+words:
+  minimum: { label: acceptance bound, unit: count }
+  limit: { label: analysis limit, unit: count }
+
+# Every rule this pack's judge node may apply, by id. Each is this pack's own: the shipped rules are
+# timing rules over ns, and this business measures counts.
+rules:
+  - options-asserted
+  - sum-correct
+  - acceptance-bound
+
+# This pack's own domain knowledge. It states the rule by which the exact sum is computed, so the
+# Workshop can author a correct script and the reader can obtain expected_sum independently.
+knowledge:
+  - file: analysis.md
+    purpose: the declared analysis knowledge — the strict-bound sum rule and the option contract
+
+# This pack's actual Workshop: the one place in it where a model writes code at run time.
+workshops:
+  - id: analyze
+    purpose: >-
+      Read the declared measured input, and write a shell script deriving the requested sum from its
+      actual data — summing only the values strictly greater than LIMIT and writing that integer
+      alone — then run it and leave both its result and the option record it applied.
+    directory: research/analysis
+    entry: entry.sh
+    language: sh
+    inputs: [LIMIT]
+    reads: [measuredInput]
+    knowledge: [analysis.md]
+    produces: analysis
+    argv: [sh, '${ENTRY}', '${WORKSHOP}', '${LIMIT}']
