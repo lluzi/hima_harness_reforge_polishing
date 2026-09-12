@@ -1,0 +1,22 @@
+{
+  "sourceSha": "9316146796e4714c07a54190dcbd40c7b036ee7d",
+  "actions": [
+    "the hima profile is already at /private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/profiles/hima",
+    "installed @hima/harness product assets into /private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/profiles/hima/node_modules/@hima/harness",
+    "installed the hima-moment agent preset into /private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/.agent-presets/hima-moment"
+  ],
+  "changedAssets": [
+    "lib/ledger.js (rewritten)",
+    "lib/ledger.js.map (rewritten)",
+    "lib/remote.js (rewritten)",
+    "lib/remote.js.map (rewritten)",
+    "lib/types/ledger.d.ts (rewritten)",
+    "lib/types/remote.d.ts (rewritten)",
+    "lib/types/workspace.d.ts (rewritten)",
+    "lib/workspace.js (rewritten)",
+    "lib/workspace.js.map (rewritten)",
+    "skills/hima-test/SKILL.md (rewritten)"
+  ],
+  "protectedFiles": 61,
+  "protectedChanges": []
+}

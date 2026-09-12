@@ -1,0 +1,15 @@
+{
+  "sourceSha": "93afd7616b9fd0e82b96b81b8c17d5683c700724",
+  "tests": 377,
+  "pass": 377,
+  "fail": 0,
+  "skip": 0,
+  "elapsedSeconds": 1195.578,
+  "hostProcess": 47,
+  "hostInProcess": 357,
+  "electron": 0,
+  "ssh": 0,
+  "rawLog": "release-candidate-local.tap.gz",
+  "rawSha256": "e25938fc31f13096359433639b5aeb995188f902c6fee6ef91267e28b7bc5581",
+  "compression": "gzip preserves exact stdout bytes including trailing whitespace"
+}
