@@ -1,0 +1,2 @@
+$ node scripts/check-boundary.mjs
+boundary: nothing under packages/*/src, packages/harness/rules, packages/harness/choosers, packages/harness/skills names a design, a technology, a vendor tool, a mining route or a report of one, beyond 4 exemption(s) each naming its ticket

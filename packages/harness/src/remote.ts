@@ -548,15 +548,11 @@ export interface RemoteOperations {
    *  configuration and this namespace touches no filesystem of its own. */
   installed(): { readonly packs: readonly string[]; readonly sites: readonly string[] };
   /**
-   * What a pack calls its Goal's parameters and its Strategy's knobs (#42), or nothing for a pack
-   * that declares no words, for a Run that names no pack, or for a pack this host can no longer
-   * read. Here for the reason `installed` is: a pack is a directory, and this namespace opens none.
-   *
-   * Asked once per answer rather than cached, so a pack whose words were corrected while a window
-   * was open says the correction on the next render — the same call `installed` makes, and against
-   * two small files.
+   * What the Run's verified original method calls its Goal parameters and Strategy knobs. Missing
+   * or unreadable historical identity leaves raw names; a newer installed method cannot interpret
+   * older numbers. The host reads the directory because this namespace opens none.
    */
-  packWords(packId: string | undefined): RunWords | undefined;
+  runWords(run: RunRecord): RunWords | undefined;
   /** Read local Pack/Site declarations once. Loading faults identify their preparation owner;
    * unexpected checking faults still propagate to the Host's internal error boundary. */
   startPreparation(packId: string, siteName: string | undefined): Pick<StartChoices, 'goal' | 'strategy' | 'words' | 'check' | 'preparation'>;
@@ -689,7 +685,7 @@ export const experienceView = (record: ExperienceRecord): ExperienceView => ({
  * @param words - what this Run's pack calls its Goal's parameters and its Strategy's knobs (#42),
  *                or nothing for a Run whose pack declares none or whose pack cannot be read. Handed
  *                in rather than resolved here because a pack is a directory on disk and this module
- *                opens none: `RemoteOperations.packWords` is what reads it, once per answer.
+ *                opens none: `RemoteOperations.runWords` is what reads it, once per answer.
  */
 export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunView {
   const records = ledger.records({ runId: run.id });
@@ -750,7 +746,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
  * depending on which button a person had pressed last.
  */
 const runAnswer = (ops: RemoteOperations, run: RunRecord): RunView =>
-  runView(ops.ledger, run, ops.packWords(run.packId));
+  runView(ops.ledger, run, ops.runWords(run));
 
 const RECORD_TYPES = new Set<LedgerRecord['type']>(['observation', 'refusal', 'verdict', 'job', 'workspace', 'node', 'blocker', 'resumed', 'decision', 'cancel', 'loop', 'experience', 'session', 'code']);
 

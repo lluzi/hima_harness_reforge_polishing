@@ -40,7 +40,7 @@ import { packDigestExcludes, packFilePath, packId, pipelineFiles, snapshotPackFo
 // modules name each other — this one climbs the ladder for the release, that one reads the seal for
 // the ladder — and neither reads a value of the other's while it is being evaluated: every use is
 // inside a function, which is what keeps the pair loadable in either order.
-import { releaseIssue } from './release.js';
+import { loadRunPack, releaseIssue } from './release.js';
 
 // Re-exported so a caller of `loadPack` finds the error it can throw right beside it.
 export { PackNotFoundError };
@@ -1133,18 +1133,29 @@ export function packWords(pack: Pack): RunWords | undefined {
 }
 
 /**
- * The words the pack a Run names declares, read off the installed packs directory — what the host
- * hands the run view for every Run it answers with (#42).
+ * Interpret a Run's numbers only through its verified original method. A legacy row with no
+ * recorded digest has unknown labels/units; today's installation cannot supply that missing fact.
+ * Loading errors propagate so a recording tool can distinguish an unreadable method from one
+ * declaring no words. Display faces may retain their raw-name fallback when that happens.
+ */
+export function runPackWords(packsDir: string, run: Pick<RunRecord, 'packId' | 'packDigest'>): RunWords | undefined {
+  if (run.packId === undefined || run.packDigest === undefined) return undefined;
+  return packWords(loadRunPack(packsDir, run.packId, run.packDigest));
+}
+
+/**
+ * The currently installed pack's words, for preparation before a Run exists. Historical reads
+ * must use `runPackWords` with the recorded method digest instead.
  *
  * Every way of not finding them answers undefined, including a pack that no longer loads: a Run
- * whose pack has since been uninstalled, renamed, or edited into something that does not hang
- * together still has a card, and that card shows the names HimaLedger itself holds. A page that
+ * whose chosen pack was uninstalled, renamed, or edited into something that does not hang
+ * together still has a preparation page. A page that
  * would not render because a directory moved is a worse answer than the names, and *why* a pack
  * cannot be loaded is what `/hima pack check` says at length — not something to raise from a render
  * that happens once a second.
  *
  * @param packsDir - the directory holding one directory per installed pack.
- * @param id - the pack the Run names, or undefined for a Probe-campaign Run, which names none.
+ * @param id - the pack selected for preparation, if any.
  * @returns the words, or undefined when there are none to be had.
  */
 export function installedPackWords(packsDir: string, id: string | undefined): RunWords | undefined {

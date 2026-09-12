@@ -17,7 +17,7 @@ import { observe, type ObserveResult } from './observe.js';
 import { jobKill, jobStatus, jobTail, launchJob, type JobKillResult, type JobStatusResult, type LaunchResult } from './jobs.js';
 import { claimSlot, fullSaid, type FullSlot } from './job-cap.js';
 import { loadSite } from './sites.js';
-import { checkInstalledPack, installedPackWords, type PackCheck, type PackCheckResult, type PackStage } from './packs.js';
+import { checkInstalledPack, runPackWords, type PackCheck, type PackCheckResult, type PackStage } from './packs.js';
 import { releasePack } from './release.js';
 import type { PackDataOrigin } from './ledger.js';
 import { campaignIdIssue, prepareWorkspace, type PrepareResult } from './workspace.js';
@@ -252,8 +252,12 @@ export function describePrepare(result: PrepareResult): string {
  * carrying it empty — which is how every absent fact is said in this harness.
  */
 function wordsOf(deps: FabricDeps, run: RunRecord): { readonly words?: RunWords } {
-  const words = installedPackWords(deps.packsDir, run.packId);
-  return words === undefined ? {} : { words };
+  try {
+    const words = runPackWords(deps.packsDir, run);
+    return words === undefined ? {} : { words };
+  } catch {
+    return {};
+  }
 }
 
 /**

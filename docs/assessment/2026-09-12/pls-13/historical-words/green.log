@@ -1,0 +1,27 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/historical-words.host.test.ts
+local: 1 selected; 40 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: old Run labels and units survive a method upgrade and an unreadable current installation on every Host read face
+ok 1 - old Run labels and units survive a method upgrade and an unreadable current installation on every Host read face
+  ---
+  duration_ms: 11271.686292
+  type: 'test'
+  ...
+# Subtest: historical Run records with missing or unavailable method identity never borrow current labels
+ok 2 - historical Run records with missing or unavailable method identity never borrow current labels
+  ---
+  duration_ms: 7335.254709
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19364.309208
+Test boot attempts: {"host-process":2,"host-in-process":2,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 19.472 s; pass/fail/skip counts are in the TAP summary above

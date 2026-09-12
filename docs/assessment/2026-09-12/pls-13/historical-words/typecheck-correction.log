@@ -1,0 +1,29 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+$ tsc -p tsconfig.json --noEmit
+test/contract/historical-words.host.test.ts(8,66): error TS2614: Module '"@hima/harness"' has no exported member 'StartChoices'. Did you mean to use 'import StartChoices from "@hima/harness"' instead?
+test/contract/historical-words.host.test.ts(39,23): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+test/contract/historical-words.host.test.ts(40,20): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+test/contract/historical-words.host.test.ts(41,61): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+test/contract/historical-words.host.test.ts(45,98): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+test/contract/historical-words.host.test.ts(55,79): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+test/contract/historical-words.host.test.ts(67,103): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+test/contract/historical-words.host.test.ts(71,77): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+test/contract/historical-words.host.test.ts(79,71): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+test/contract/historical-words.host.test.ts(93,69): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+test/contract/historical-words.host.test.ts(95,74): error TS2339: Property 'run' does not exist on type 'StartRunResult'.
+  Property 'run' does not exist on type '{ readonly kind: "unfit"; readonly check: PackCheck; }'.
+[ELIFECYCLE] Command failed with exit code 2.
+real 26.49
+user 33.49
+sys 3.12
