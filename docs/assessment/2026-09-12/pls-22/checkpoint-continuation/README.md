@@ -10,6 +10,8 @@ The live entry holds the exact original resumed Agent handle across turns. It su
 
 The unchanged Golden Flow/other-Pack/bundle baseline starts at this continuation. The earlier phase remains linked to its parent guard/tool provenance and input hash; the parent did not record a whole-tree baseline before authoring. Parent costs remain separate, then aggregate with continuation costs. Cleanup scans the retained original home as well as new evidence and temporary files, and stops only the new private tmux server.
 
+The first continuation failed in the driver before any provider request: native resume was given no live model options, and cleanup then tried to cancel its prematurely disposed projection. [Diagnosis and deterministic regression](resume-fix/README.md) establish the correction. The original failed turn/evidence remain; a retry requires `--prior-attempt` and validates that exact failure separately from the preserved original tools/skills. It adds the prior attempt's one request event and one Host to cost accounting while stating its zero provider requests. The original `SHA256SUMS.txt` belongs to commit `802da4d`; the correction has a separate manifest below.
+
 ## Invocation
 
 Run from the polishing checkout with Node 24 and fresh output directories. Preflight never needs a credential and boots only a disposable copy:
@@ -17,6 +19,7 @@ Run from the polishing checkout with Node 24 and fresh output directories. Prefl
 ```sh
 node scripts/live-check-pipeline-checkpoint.ts \
   --parent docs/assessment/2026-09-12/pls-22/live-authoring-3/evidence.json \
+  --prior-attempt docs/assessment/2026-09-12/pls-22/live-continuation-1/evidence.json \
   --out .hima-tmp/checkpoint-preflight-new --preflight-only
 ```
 
@@ -25,11 +28,12 @@ The separately authorized live execution expects the key through its inherited e
 ```sh
 node scripts/live-check-pipeline-checkpoint.ts \
   --parent docs/assessment/2026-09-12/pls-22/live-authoring-3/evidence.json \
-  --out docs/assessment/2026-09-12/pls-22/live-continuation-1 \
+  --prior-attempt docs/assessment/2026-09-12/pls-22/live-continuation-1/evidence.json \
+  --out docs/assessment/2026-09-12/pls-22/live-continuation-2 \
   --timeout-ms 720000 --max-turns 12 --max-steps 100
 ```
 
-The checkpoint is intentionally single-use after correction or a Run: altered parent method bytes, TEST/release files, or any existing Run cause admission failure. A later failure needs a fresh diagnosis from its new evidence.
+The checkpoint is intentionally single-use after correction or a Run: altered parent method bytes, TEST/release files, or any existing Run cause admission failure. Only the diagnosed pre-provider missing-model attempt is admitted by `--prior-attempt`; another failure needs a fresh diagnosis from its new evidence.
 
 ## Validation and limits
 

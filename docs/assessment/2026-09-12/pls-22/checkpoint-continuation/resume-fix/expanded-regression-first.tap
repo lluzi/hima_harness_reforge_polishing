@@ -1,0 +1,75 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/checkpoint-resume.host.test.ts test/contract/pipeline-checkpoint.test.ts
+local: 2 selected; 46 unselected in local; other groups not run (not passes)
+TAP version 13
+# live-check-pipeline-checkpoint: PASS; evidence /private/tmp/hima-tests-Oi4qdX/hima-home-rc83E0/completed-turn-evidence
+# Subtest: native persisted resume restores the explicitly held model and finishes an actual tool before say returns
+not ok 1 - native persisted resume restores the explicitly held model and finishes an actual tool before say returns
+  ---
+  duration_ms: 7779.802417
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pipeline-checkpoint/test/contract/checkpoint-resume.host.test.ts:63:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of undefined (reading 'get')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pipeline-checkpoint/test/contract/checkpoint-resume.host.test.ts:83:34)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: LiveCheck reports a native turn failure instead of advancing to method assertions
+ok 2 - LiveCheck reports a native turn failure instead of advancing to method assertions
+  ---
+  duration_ms: 2014.869
+  type: 'test'
+  ...
+# live-check-pipeline-checkpoint: FAIL; evidence /private/tmp/hima-tests-Oi4qdX/hima-home-UrdAm7/cleanup-evidence
+# Subtest: cleanup survives an already disposed projection, records failure and scans the retained external home
+ok 3 - cleanup survives an already disposed projection, records failure and scans the retained external home
+  ---
+  duration_ms: 1755.227333
+  type: 'test'
+  ...
+# Subtest: checkpoint admission refuses an existing Run, additional failure, missing stage, altered contract and split author
+ok 4 - checkpoint admission refuses an existing Run, additional failure, missing stage, altered contract and split author
+  ---
+  duration_ms: 21.034542
+  type: 'test'
+  ...
+# Subtest: checkpoint provenance rejects changed installed bytes before any Host or reader execution
+ok 5 - checkpoint provenance rejects changed installed bytes before any Host or reader execution
+  ---
+  duration_ms: 35.985041
+  type: 'test'
+  ...
+# Subtest: checkpoint provenance rejects changed or extra authored files before any Host or reader execution
+ok 6 - checkpoint provenance rejects changed or extra authored files before any Host or reader execution
+  ---
+  duration_ms: 25.8305
+  type: 'test'
+  ...
+# Subtest: reader probes expose whitespace concatenation and do not pass inherited environment to child scripts
+ok 7 - reader probes expose whitespace concatenation and do not pass inherited environment to child scripts
+  ---
+  duration_ms: 295.883708
+  type: 'test'
+  ...
+# Subtest: checkpoint CLI requires a parent and isolates its opt-in flags from LiveCheck budgets
+ok 8 - checkpoint CLI requires a parent and isolates its opt-in flags from LiveCheck budgets
+  ---
+  duration_ms: 1.135292
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 7
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13717.81725
+Test boot attempts: {"host-process":0,"host-in-process":6,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 13.842 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

@@ -1,0 +1,71 @@
+{
+  "id": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+  "options": {},
+  "seq": 236,
+  "lastTurn": {
+    "type": "turn/end",
+    "seq": 234,
+    "time": 1789247528253,
+    "data": {
+      "turn": 6,
+      "reason": {
+        "kind": "error",
+        "error": {
+          "message": "agent \"session-49dc2661-cbdd-49ae-ac65-8df55b0917bf\" has no provider/model: set AgentOptions.provider and AgentOptions.model or supply both via the agent/request waterfall",
+          "code": "UNKNOWN"
+        }
+      }
+    }
+  },
+  "lastEventTypes": [
+    {
+      "seq": 224,
+      "type": "step/start"
+    },
+    {
+      "seq": 225,
+      "type": "assistant/message"
+    },
+    {
+      "seq": 226,
+      "type": "step/end"
+    },
+    {
+      "seq": 227,
+      "type": "turn/end"
+    },
+    {
+      "seq": 228,
+      "type": "session/end-seed"
+    },
+    {
+      "seq": 229,
+      "type": "agent/inbox/spliced"
+    },
+    {
+      "seq": 230,
+      "type": "turn/start"
+    },
+    {
+      "seq": 231,
+      "type": "agent/inbox/spliced"
+    },
+    {
+      "seq": 232,
+      "type": "step/start"
+    },
+    {
+      "seq": 233,
+      "type": "step/end"
+    },
+    {
+      "seq": 234,
+      "type": "turn/end"
+    },
+    {
+      "seq": 235,
+      "type": "session/end-seed"
+    }
+  ],
+  "runs": 0
+}

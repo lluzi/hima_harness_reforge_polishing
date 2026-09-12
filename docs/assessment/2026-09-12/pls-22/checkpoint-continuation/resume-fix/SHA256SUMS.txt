@@ -1,0 +1,12 @@
+711f7333bba77b9cb998f3e88c5f8bd4d3759ee336f1600bef0dd77cfb1ef96f  scripts/live-check-pipeline-checkpoint.ts
+70bf3986ec3e52d952ec41ff5fbeae572786c07fe8b3abc907a28fce3f16d2e1  scripts/live-check-workshop.ts
+d6f10dd8f8d5da51f3e533b8694cf30b84d30a1b8f8bf428049543f4e3ed1f98  test/contract/support/boot-inprocess.ts
+13294fc44bc1b2de24cd83fbc1ddb739192efa2d871567bdf83ff72bd0e4a086  test/contract/checkpoint-resume.host.test.ts
+cdd906170eec0be3c5e7bee04efa1270ee058c6db7ad24824974b147dab2e06c  test/contract/pipeline-checkpoint.test.ts
+88dbacc679395e5a1c452566f4ad1329cf57d575d35358f9149ba73e36a2e866  docs/assessment/2026-09-12/pls-22/checkpoint-continuation/resume-fix/original-native-ending.json
+f207d8e6d9e7c6a1959af030dc044bf458bc0ed31c25b4e190b12e6369eae8cd  docs/assessment/2026-09-12/pls-22/checkpoint-continuation/resume-fix/retry-preflight.json
+6aeca149088e413d3d0818e152bbd3455ad770027d5244e264ef1f1bc430c610  docs/assessment/2026-09-12/pls-22/checkpoint-continuation/resume-fix/expanded-regression-first.tap
+aaec6a86550deeb0e95ac639326c3fa081a070a7d6e705d2cd0cc21d7fe26253  docs/assessment/2026-09-12/pls-22/checkpoint-continuation/resume-fix/regression-green.tap
+b3835bf802aa5b8322c7a1191b6188407816bbb1739bc2fa38c31504257fb26b  docs/assessment/2026-09-12/pls-22/checkpoint-continuation/resume-fix/regression-red.tap
+878734684ae82c81fcc7bb352062a289e84e00a1bc2d1d4f0cf54dcf2ebf4730  docs/assessment/2026-09-12/pls-22/checkpoint-continuation/resume-fix/typecheck-first.log
+421477bb59a41953bc0abf45aab37b271bfa978c4708c2c63c8f80b3d7073971  docs/assessment/2026-09-12/pls-22/checkpoint-continuation/resume-fix/typecheck.log

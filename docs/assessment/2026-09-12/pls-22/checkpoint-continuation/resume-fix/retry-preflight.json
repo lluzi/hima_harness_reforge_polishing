@@ -1,0 +1,178 @@
+{
+  "check": "pipeline-checkpoint-preflight",
+  "passed": true,
+  "parentPath": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-authoring-3/evidence.json",
+  "parentSha256": "ffd5773342edb5d4e42db0bbd4676d950dbd9cd788fd38620aaca01a81343411",
+  "originalHome": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w",
+  "copiedHome": "/private/tmp/hima-checkpoint-preflight-kTADf7/home",
+  "hosts": 1,
+  "modelRequests": 0,
+  "originalAuthor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+  "skills": [
+    "hima-grill",
+    "hima-spec",
+    "hima-fabric"
+  ],
+  "originalModel": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash"
+  },
+  "resumedModel": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash"
+  },
+  "priorAttempt": {
+    "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-continuation-1/evidence.json",
+    "sha256": "85e52e9aa0c218f9b095f9efe2421fb68a4fb67b1b68eb737a48055d5bde360a",
+    "recordedStatus": "in-progress",
+    "actualOutcome": "failed before provider invocation",
+    "costs": {
+      "hosts": 1,
+      "electron": 0,
+      "nativeSessionsCreated": 0,
+      "nativeSessionsResumed": 1,
+      "modelSessions": 1,
+      "modelRequestSteps": 1,
+      "apiRequests": "unmeasured; request steps exclude adapter retries",
+      "tokens": "unmeasured",
+      "userMessages": 1
+    },
+    "agentRequestEvents": 1,
+    "providerRequests": 0,
+    "nativeEnding": {
+      "type": "turn/end",
+      "seq": 234,
+      "time": 1789247528253,
+      "data": {
+        "turn": 6,
+        "reason": {
+          "kind": "error",
+          "error": {
+            "message": "agent \"session-49dc2661-cbdd-49ae-ac65-8df55b0917bf\" has no provider/model: set AgentOptions.provider and AgentOptions.model or supply both via the agent/request waterfall",
+            "code": "UNKNOWN"
+          }
+        }
+      }
+    },
+    "originalFilesUnchanged": true,
+    "explanation": "Native validation rejected missing live AgentOptions after agent/request and before provider invocation. The old in-progress snapshot is preserved; cleanup crashed after the assertion failure."
+  },
+  "originalMethodDigest": "39acedf4d2d214b4aa806e9777684793bebfa9149dc2c06f7a9ecb91d4844563",
+  "reader": {
+    "originalScript": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/tools/read-result.sh",
+    "sha256": "a5fe424b7347fd19da76e786791bb3704497144c3b2a9059a1461105d1e63e63",
+    "directory": "/private/tmp/hima-checkpoint-preflight-kTADf7/reader-check-KqTlWk",
+    "childEnvironment": [
+      "PATH=/usr/bin:/bin",
+      "HOME=private probe",
+      "TMPDIR=private probe",
+      "LC_ALL=C"
+    ],
+    "cases": [
+      {
+        "name": "single",
+        "input": "7\n",
+        "expected": 7,
+        "status": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": null,
+        "document": "{\"values\":[{\"type\":\"numeric_sum\",\"unit\":\"count\",\"value\":7}]}\n",
+        "passed": true
+      },
+      {
+        "name": "zero",
+        "input": "0\n",
+        "expected": 0,
+        "status": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": null,
+        "document": "{\"values\":[{\"type\":\"numeric_sum\",\"unit\":\"count\",\"value\":0}]}\n",
+        "passed": true
+      },
+      {
+        "name": "multiple-lines",
+        "input": "1\n2\n",
+        "expected": "no numeric claim",
+        "status": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": null,
+        "document": "{\"values\":[{\"type\":\"numeric_sum\",\"unit\":\"count\",\"value\":12}]}\n",
+        "passed": false
+      },
+      {
+        "name": "multiple-tokens",
+        "input": "1 2\n",
+        "expected": "no numeric claim",
+        "status": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": null,
+        "document": "{\"values\":[{\"type\":\"numeric_sum\",\"unit\":\"count\",\"value\":12}]}\n",
+        "passed": false
+      },
+      {
+        "name": "empty",
+        "input": "",
+        "expected": "no numeric claim",
+        "status": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": null,
+        "document": "{\"values\":[{\"type\":\"numeric_sum\",\"unit\":\"count\",\"value\":null,\"unknownReason\":\"the result report does not hold exactly one nonnegative integer\"}]}\n",
+        "passed": true
+      },
+      {
+        "name": "text",
+        "input": "invalid\n",
+        "expected": "no numeric claim",
+        "status": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": null,
+        "document": "{\"values\":[{\"type\":\"numeric_sum\",\"unit\":\"count\",\"value\":null,\"unknownReason\":\"the result report does not hold exactly one nonnegative integer\"}]}\n",
+        "passed": true
+      },
+      {
+        "name": "negative",
+        "input": "-1\n",
+        "expected": "no numeric claim",
+        "status": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": null,
+        "document": "{\"values\":[{\"type\":\"numeric_sum\",\"unit\":\"count\",\"value\":null,\"unknownReason\":\"the result report does not hold exactly one nonnegative integer\"}]}\n",
+        "passed": true
+      },
+      {
+        "name": "missing",
+        "input": null,
+        "expected": "no numeric claim",
+        "status": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": null,
+        "document": "{\"values\":[{\"type\":\"numeric_sum\",\"unit\":\"count\",\"value\":null,\"unknownReason\":\"the result report is missing or unreadable\"}]}\n",
+        "passed": true
+      },
+      {
+        "name": "unreadable",
+        "input": "9\n",
+        "expected": "no numeric claim",
+        "status": 1,
+        "stdout": "",
+        "stderr": "/private/tmp/hima-checkpoint-preflight-kTADf7/reader-check-KqTlWk/reader.sh: line 18: /private/tmp/hima-checkpoint-preflight-kTADf7/reader-check-KqTlWk/unreadable.txt: Permission denied\n",
+        "error": null,
+        "document": null,
+        "passed": true
+      }
+    ],
+    "passed": false
+  },
+  "readerCorrectionRequired": true,
+  "scope": "Read-only original checkpoint; native boot/resume and reader execution used private copies. A reproduced reader defect is a finding, not L4 acceptance.",
+  "originalFilesUnchanged": true,
+  "copyRemovedAfterValidation": true
+}

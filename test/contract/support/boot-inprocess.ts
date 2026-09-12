@@ -197,10 +197,12 @@ export function toolResults(agent: Agent): { failed: boolean; text: string }[] {
 }
 
 /** Hold the native resumed handle through a bounded continuation; the caller owns disposal. */
-export async function resumeTestAgent(ctx: Context, sessionId: string) {
+export async function resumeTestAgent(ctx: Context, sessionId: string, model?: { provider: string; model: string }) {
   const agents = ctx.get('agents');
   if (!agents) throw new Error('agents service missing');
-  return agents.resume({ resumeSessionId: sessionId as never });
+  // Native resume reconstructs history but defaults live AgentOptions to {}. A caller that will
+  // drive turns must supply its verified model selection; read-only consumers need no model.
+  return agents.resume({ resumeSessionId: sessionId as never, ...(model ? { agentOptions: model } : {}) });
 }
 
 /**

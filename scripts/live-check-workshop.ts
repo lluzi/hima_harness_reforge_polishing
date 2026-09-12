@@ -133,8 +133,17 @@ export class LiveCheck {
   }
   async say(agent: Agent, text: string): Promise<void> {
     this.admitMessage(agent, 'followup', text);
+    const start = agent.session.seq;
     await this.wait(sayAsUser(agent, text));
+    // whenIdle means settled, including native errors before a provider is invoked. Read the
+    // durable public turn ending before an acceptance assertion can mislabel that as model work.
+    const ends = agent.session.snapshotEvents(start).filter((event) => event.type === 'turn/end');
+    const turns = this.observed.nativeTurns as unknown[] | undefined;
+    this.observed.nativeTurns = [...turns ?? [], ...ends.map((event) => ({ session: String(agent.id), seq: event.seq, ...event.data }))];
     this.checkpoint();
+    const failed = ends.find((event) => event.data.reason.kind !== 'completed');
+    if (failed) throw new Error(`native Agent turn did not complete: ${JSON.stringify(failed.data.reason)}`);
+    if (ends.length === 0) throw new Error('native Agent returned idle without a settled followup turn');
   }
   steer(agent: Agent, text: string): void { this.admitMessage(agent, 'steer', text); steerAsUser(agent, text); }
   private admitMessage(agent: Agent, delivery: string, text: string): void {
@@ -178,7 +187,21 @@ export class LiveCheck {
       writeFileSync(path.join(this.out, 'evidence.json'), JSON.stringify(record, null, 2) + '\n');
     } catch { /* Preserve the preceding checkpoint if the Host has already disposed. */ }
   }
-  stopAgents(): void { for (const agent of this.agents) cancelTestAgent(agent, 'bounded live check finished'); }
+  stopAgents(): void {
+    for (const agent of this.agents) {
+      try {
+        // A disposed handle has already removed its registry entry and inbox projection. Its
+        // session remains readable for evidence, but cancel must never address that projection.
+        if (this.host && this.host.ctx.get('agents')?.get(agent.id) !== agent) continue;
+        cancelTestAgent(agent, 'bounded live check finished');
+      } catch (error) {
+        const message = this.clean(String(error));
+        this.failure ??= `Agent cleanup failed: ${message}`;
+        const previous = this.observed.cleanupErrors as unknown[] | undefined;
+        this.observed.cleanupErrors = [...previous ?? [], { session: String(agent.id), error: message }];
+      }
+    }
+  }
   stopJobs(): void { spawnSync('tmux', ['-S', path.join(this.temporary, `tmux-${process.getuid!()}`, 'default'), 'kill-server'], { stdio: 'ignore', timeout: 2000 }); }
   async finish(): Promise<void> {
     this.stopAgents();

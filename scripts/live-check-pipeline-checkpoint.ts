@@ -25,7 +25,7 @@ interface Parent {
     approvedBusiness: { facts: string; sha256: string; goal: { minimum: number }; initialStrategy: { limit: number }; generationLimit: number; timeBoxMs: number };
     allowedReadRoots: string[]; allowedWriteRoot: string; deniedTools: unknown[];
   };
-  agents: { id: string; session: string; cwd: string; skills: string[]; toolCalls: ReturnType<typeof toolCalls> }[];
+  agents: { id: string; session: string; cwd: string; options: { provider: string; model: string }; skills: string[]; toolCalls: ReturnType<typeof toolCalls> }[];
   runs: unknown[]; checks: { claim: string; passed: boolean }[];
 }
 
@@ -57,6 +57,7 @@ export function parseParent(value: unknown): Parent {
     { goal: { minimum: 1 }, strategy: { limit: o.input.limit }, generations: 1, timeBox: 480_000 }, 'parent approved business differs from this bounded continuation');
   const authors = p.agents.filter((agent) => agent.cwd === o.packFolder);
   assert.ok(authors.length === 1 && authors[0]!.id === authors[0]!.session && firstSkills.every((skill) => authors[0]!.skills.includes(skill)), 'parent must identify one original three-stage author');
+  assert.ok(typeof authors[0]!.options?.provider === 'string' && authors[0]!.options.provider.trim() && typeof authors[0]!.options.model === 'string' && authors[0]!.options.model.trim(), 'parent original model selection missing');
   assert.ok(Array.isArray(authors[0]!.toolCalls) && authors[0]!.toolCalls.length > 0, 'parent author tool history missing');
   assert.ok(Array.isArray(o.allowedReadRoots) && o.allowedWriteRoot === o.packFolder && Array.isArray(o.deniedTools), 'parent installed guard provenance missing');
   return p;
@@ -112,6 +113,40 @@ export async function inspectCheckpoint(parentPath: string) {
     author: parent.agents.find((agent) => agent.cwd === folder)!, numbers: o.input.numbers, limit: o.input.limit };
 }
 
+/** Admit the one diagnosed retry only by linking its immutable evidence and actual native error.
+ * Tool/skill history can be unchanged while a failed turn was appended; these are separate facts. */
+export function resumedProvenance(author: Parameters<typeof toolCalls>[0], checkpoint: Awaited<ReturnType<typeof inspectCheckpoint>>, priorPath?: string) {
+  const events = author.session.snapshotEvents();
+  const starts = events.filter((event) => event.type === 'turn/start');
+  const additional = starts.slice(checkpoint.parent.costs.userMessages);
+  if (!priorPath) {
+    assert.equal(additional.length, 0, 'resumed session has an additional attempt; --prior-attempt evidence is required');
+    return undefined;
+  }
+  const bytes = readFileSync(priorPath);
+  const prior = JSON.parse(bytes.toString('utf8')) as {
+    check: string; status: string; costs: Parent['costs']; runs: unknown[]; toolSequence: unknown[];
+    observed: { parent: { sha256: string; originalAuthor: string }; finalContinuationFiles: Record<string, string>; protectedContinuationDelta: unknown[]; parentStillUnchanged: boolean };
+    checks: { claim: string; passed: boolean }[];
+  };
+  assert.ok(prior.check === 'live-check-pipeline-checkpoint' && ['in-progress', 'failed'].includes(prior.status), 'prior attempt must be the failed checkpoint continuation');
+  assert.equal(prior.observed.parent.sha256, checkpoint.parentSha256, 'prior attempt links a different parent');
+  assert.equal(prior.observed.parent.originalAuthor, checkpoint.author.id, 'prior attempt used a different author');
+  assert.ok(prior.runs.length === 0 && prior.toolSequence.length === 0 && prior.costs.hosts === 1 && prior.costs.nativeSessionsCreated === 0 && prior.costs.modelRequestSteps === 1 && prior.costs.userMessages === 1, 'prior attempt must have one pre-provider request event, no new tools or Runs');
+  assert.deepEqual(prior.checks.filter((check) => !check.passed).map((check) => check.claim), ['pre-Run model correction changed only the reader and FABRIC record'], 'prior attempt failed at a different boundary');
+  assert.deepEqual(changedBetween(new Map(Object.entries(checkpoint.parent.observed.authoredFiles)), new Map(Object.entries(prior.observed.finalContinuationFiles))), [], 'prior attempt changed original authored bytes');
+  assert.ok(prior.observed.parentStillUnchanged && prior.observed.protectedContinuationDelta.length === 0, 'prior attempt changed protected provenance');
+  assert.equal(additional.length, 1, 'the retry evidence covers exactly one additional native turn');
+  const suffix = events.filter((event) => event.seq >= additional[0]!.seq);
+  const ended = suffix.find((event) => event.type === 'turn/end');
+  assert.ok(ended?.type === 'turn/end' && ended.data.reason.kind === 'error'
+    && ended.data.reason.error.message === `agent "${checkpoint.author.id}" has no provider/model: set AgentOptions.provider and AgentOptions.model or supply both via the agent/request waterfall`, 'prior native turn was not the diagnosed missing-model failure');
+  assert.ok(!suffix.some((event) => ['request/context', 'assistant/attempt', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)), 'prior turn reached model context, response or tool execution');
+  return { path: path.resolve(priorPath), sha256: sha256(bytes), recordedStatus: prior.status, actualOutcome: 'failed before provider invocation',
+    costs: prior.costs, agentRequestEvents: 1, providerRequests: 0, nativeEnding: ended, originalFilesUnchanged: true,
+    explanation: 'Native validation rejected missing live AgentOptions after agent/request and before provider invocation. The old in-progress snapshot is preserved; cleanup crashed after the assertion failure.' };
+}
+
 /** Run only a copied script against private fixtures, with no inherited model or user environment. */
 export function probeReader(script: string, parentDirectory: string) {
   const directory = mkdtempSync(path.join(parentDirectory, 'reader-check-'));
@@ -146,7 +181,7 @@ function retainedHome(home: string): HimaHome {
 }
 
 /** Keyless native API validation operates on a copy, because boot/resume may persist metadata. */
-export async function preflightOnly(parentPath: string, out: string): Promise<void> {
+export async function preflightOnly(parentPath: string, out: string, priorPath?: string): Promise<void> {
   assert.ok(!existsSync(out), 'use a fresh preflight output directory');
   const checkpoint = await inspectCheckpoint(parentPath);
   mkdirSync(out, { recursive: true });
@@ -162,16 +197,18 @@ export async function preflightOnly(parentPath: string, out: string): Promise<vo
   host.ctx.on('agent/request', () => { requests++; throw new Error('keyless checkpoint preflight forbids every model request'); });
   try {
     assert.equal(host.ctx.hima.ledger.runs().length, 0, 'retained checkpoint already has a Run');
-    const handle = await resumeTestAgent(host.ctx, checkpoint.author.id);
+    const handle = await resumeTestAgent(host.ctx, checkpoint.author.id, checkpoint.author.options);
     try {
       assert.equal(String(handle.agent.id), checkpoint.author.id, 'native resume changed Agent identity');
       assert.equal(handle.agent.session.header.cwd, checkpoint.folder, 'persisted author cwd changed');
+      assert.deepEqual(handle.agent.options, checkpoint.author.options, 'resume did not restore the original model selection');
       assert.deepEqual(injectedSkills(handle.agent), checkpoint.author.skills, 'persisted original stage skills changed');
       assert.deepEqual(toolCalls(handle.agent), checkpoint.author.toolCalls, 'persisted original tool history changed');
+      const priorAttempt = resumedProvenance(handle.agent, checkpoint, priorPath);
       const reader = probeReader(checkpoint.readerScript, temporary);
       assert.equal(requests, 0, 'preflight made a model request');
       evidence = { check: 'pipeline-checkpoint-preflight', passed: true, parentPath: checkpoint.parentPath, parentSha256: checkpoint.parentSha256,
-        originalHome: checkpoint.home, copiedHome, hosts: 1, modelRequests: requests, originalAuthor: checkpoint.author.id, skills: injectedSkills(handle.agent), originalMethodDigest: checkpoint.parent.observed.methodBeforeTest.digest,
+        originalHome: checkpoint.home, copiedHome, hosts: 1, modelRequests: requests, originalAuthor: checkpoint.author.id, skills: injectedSkills(handle.agent), originalModel: checkpoint.author.options, resumedModel: handle.agent.options, priorAttempt, originalMethodDigest: checkpoint.parent.observed.methodBeforeTest.digest,
         reader, readerCorrectionRequired: !reader.passed, scope: 'Read-only original checkpoint; native boot/resume and reader execution used private copies. A reproduced reader defect is a finding, not L4 acceptance.' };
     } finally { await handle.dispose(); }
   } finally {
@@ -183,7 +220,7 @@ export async function preflightOnly(parentPath: string, out: string): Promise<vo
   writeFileSync(path.join(out, 'evidence.json'), JSON.stringify({ ...evidence, originalFilesUnchanged: true, copyRemovedAfterValidation: true }, null, 2) + '\n');
 }
 
-async function continueCheckpoint(check: LiveCheck, parentPath: string): Promise<void> {
+async function continueCheckpoint(check: LiveCheck, parentPath: string, priorPath?: string): Promise<void> {
   const checkpoint = await inspectCheckpoint(parentPath);
   const { parent, folder, home, bundle, flow, readerScript, judge, explore, constraint, goal, numbers, limit } = checkpoint;
   const h = retainedHome(home); check.home = h;
@@ -205,11 +242,15 @@ async function continueCheckpoint(check: LiveCheck, parentPath: string): Promise
   check.observed.hostBootAttempts = 1;
   const host = await bootInProcess(h); check.attach(host);
   check.require('original retained Host has no existing Run', host.ctx.hima.ledger.runs().length === 0, host.ctx.hima.ledger.runs());
-  const handle = await resumeTestAgent(host.ctx, checkpoint.author.id);
+  const handle = await resumeTestAgent(host.ctx, checkpoint.author.id, checkpoint.author.options);
   const author = check.trackResumed(handle.agent);
+  let priorAttempt: ReturnType<typeof resumedProvenance>;
   // Hold this exact handle across every stage and turn; disposing between stages can lose ownership.
   try {
     check.require('native resume retained exact original Agent session and Pack workspace', String(author.id) === checkpoint.author.id && String(author.session.id) === checkpoint.author.session && author.session.header.cwd === folder, { id: author.id, session: author.session.id, cwd: author.session.header.cwd });
+    check.require('native resume explicitly restored original provider and model', author.options.provider === checkpoint.author.options.provider && author.options.model === checkpoint.author.options.model, author.options);
+    priorAttempt = resumedProvenance(author, checkpoint, priorPath);
+    check.observed.priorAttempt = priorAttempt ?? null;
     check.require('native persisted session retained all original stage injections and tool history', JSON.stringify(injectedSkills(author)) === JSON.stringify(checkpoint.author.skills) && JSON.stringify(toolCalls(author)) === JSON.stringify(checkpoint.author.toolCalls), { skills: injectedSkills(author), originalToolCalls: checkpoint.author.toolCalls.length, resumedToolCalls: toolCalls(author).length });
     guardInstalled(check, host, [bundle, path.dirname(folder), flow, h.workspace], folder);
     let phase: 'review' | 'test' | 'release' = 'review';
@@ -240,7 +281,7 @@ async function continueCheckpoint(check: LiveCheck, parentPath: string): Promise
     };
     const stage = (expected: string) => check.require(`Pack stage reached ${expected}`, packStage(folder).stage === expected, packStage(folder));
     if (!beforeReader.passed) {
-      await check.say(author, `/hima-fabric ${packId}. Continue this exact compiled method before its first test Run. Concrete author review of your reader ${path.relative(folder, readerScript)}: ${JSON.stringify(beforeReader.cases.filter((item) => !item.passed))}. This private, sanitized invocation used your exact script hash ${beforeReader.sha256}. The approved contract requires exactly one nonnegative integer; multiple values cannot be concatenated into a numeric claim. I approve correcting only this reader script and recording the review/correction in FABRIC.md. Read your actual reader, fix this reproduced defect, check valid single integer and malformed/missing/unreadable handling, and call hima_pack_check. Keep INTENT, SPEC, contract, graph, rules, chooser, knowledge and preparation unchanged. No Run yet. Runtime experiment code still belongs to the Workshop.`);
+      await check.say(author, `/hima-fabric ${packId}. Continue this exact compiled method before its first test Run.${priorAttempt ? ' The preceding continuation failed before any provider request because the test driver omitted your original model selection; it changed no files or Runs. That failed native turn and its evidence are preserved. Your original model selection is now explicitly restored.' : ''} Concrete author review of your reader ${path.relative(folder, readerScript)}: ${JSON.stringify(beforeReader.cases.filter((item) => !item.passed))}. This private, sanitized invocation used your exact script hash ${beforeReader.sha256}. The approved contract requires exactly one nonnegative integer; multiple values cannot be concatenated into a numeric claim. I approve correcting only this reader script and recording the review/correction in FABRIC.md. Read your actual reader, fix this reproduced defect, check valid single integer and malformed/missing/unreadable handling, and call hima_pack_check. Keep INTENT, SPEC, contract, graph, rules, chooser, knowledge and preparation unchanged. No Run yet. Runtime experiment code still belongs to the Workshop.`);
       const correctionDelta = changedBetween(checkpoint.files, await digestTrees([folder], folder + '.excluded'));
       check.require('pre-Run model correction changed only the reader and FABRIC record', correctionDelta.length === 2 && [readerScript, path.join(folder, pipelineFiles.fabric)].every((at) => correctionDelta.includes(`${at} (rewritten)`)), correctionDelta);
       record(pipelineFiles.fabric, HIMA_FABRIC_SECTIONS);
@@ -304,15 +345,19 @@ async function continueCheckpoint(check: LiveCheck, parentPath: string): Promise
     check.require('Golden Flow other Packs and installed bundle stayed unchanged throughout continuation', changed.length === 0, changed);
     check.require('continuation used only original native model session and no separate moment', check.agents.length === 1 && check.resumedSessions.size === 1 && check.requestSessions.size === 1 && check.requestSessions.has(checkpoint.author.id) && records.every((r) => r.type !== 'session'), { resumed: [...check.resumedSessions], model: [...check.requestSessions] });
     check.require('parent failed evidence remains byte-for-byte unchanged', sha256(readFileSync(parentPath)) === checkpoint.parentSha256, checkpoint.parentSha256);
+    if (priorAttempt) check.require('prior failed continuation evidence remains byte-for-byte unchanged', sha256(readFileSync(priorAttempt.path)) === priorAttempt.sha256, priorAttempt.sha256);
     check.observed.finalPackFiles = Object.fromEntries(await digestTrees([folder], folder + '.excluded'));
   } finally {
     check.observed.finalContinuationFiles = Object.fromEntries(await digestTrees([folder], folder + '.excluded'));
     check.observed.protectedContinuationDelta = changedBetween(before, await digestTrees(untouched, folder));
     check.observed.parentStillUnchanged = sha256(readFileSync(parentPath)) === checkpoint.parentSha256;
-    check.observed.costAccounting = { parent: parent.costs, continuation: { hosts: 1, nativeSessionsCreated: 0, nativeSessionsResumed: check.resumedSessions.size, modelRequestSteps: check.steps, userMessages: check.turns },
-      aggregate: { hosts: parent.costs.hosts + 1, nativeSessionsCreated: parent.costs.nativeSessionsCreated, modelSessions: 1, modelRequestSteps: parent.costs.modelRequestSteps + check.steps, userMessages: parent.costs.userMessages + check.turns }, apiRequests: 'unmeasured; request steps exclude adapter retries', tokens: 'unmeasured' };
+    check.observed.costAccounting = { parent: parent.costs, priorAttempt: priorAttempt?.costs ?? null, priorAttemptProviderRequests: priorAttempt ? 0 : null,
+      continuation: { hosts: 1, nativeSessionsCreated: 0, nativeSessionsResumed: check.resumedSessions.size, modelRequestSteps: check.steps, userMessages: check.turns },
+      aggregate: { hosts: parent.costs.hosts + (priorAttempt?.costs.hosts ?? 0) + 1, nativeSessionsCreated: parent.costs.nativeSessionsCreated, modelSessions: 1,
+        modelRequestSteps: parent.costs.modelRequestSteps + (priorAttempt?.costs.modelRequestSteps ?? 0) + check.steps, userMessages: parent.costs.userMessages + (priorAttempt?.costs.userMessages ?? 0) + check.turns }, apiRequests: 'unmeasured; agent/request events precede route validation and exclude adapter retries', tokens: 'unmeasured' };
     check.checkpoint();
-    await handle.dispose();
+    // The owning Host disposes this handle after LiveCheck cancellation and the final snapshot.
+    // Disposing here removes the inbox projection before finish() can cancel the Agent.
   }
 }
 
@@ -320,23 +365,30 @@ export function checkpointArguments(args: string[]) {
   const parentIndex = args.indexOf('--parent');
   assert.ok(parentIndex >= 0 && args[parentIndex + 1] && !args[parentIndex + 1]!.startsWith('--'), '--parent <original-evidence.json> is required');
   const parentPath = path.resolve(args[parentIndex + 1]!);
-  const remaining = args.filter((_, i) => i !== parentIndex && i !== parentIndex + 1);
+  let remaining = args.filter((_, i) => i !== parentIndex && i !== parentIndex + 1);
+  const priorIndex = remaining.indexOf('--prior-attempt');
+  let priorAttemptPath: string | undefined;
+  if (priorIndex >= 0) {
+    assert.ok(remaining[priorIndex + 1] && !remaining[priorIndex + 1]!.startsWith('--'), '--prior-attempt <failed-evidence.json> requires a path');
+    priorAttemptPath = path.resolve(remaining[priorIndex + 1]!);
+    remaining = remaining.filter((_, i) => i !== priorIndex && i !== priorIndex + 1);
+  }
   const preflight = remaining.includes('--preflight-only');
-  return { parentPath, preflight, remaining: remaining.filter((arg) => arg !== '--preflight-only') };
+  return { parentPath, ...(priorAttemptPath ? { priorAttemptPath } : {}), preflight, remaining: remaining.filter((arg) => arg !== '--preflight-only') };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   if (process.argv.includes('--help') || process.argv.includes('-h')) {
-    process.stdout.write('usage: node scripts/live-check-pipeline-checkpoint.ts --parent <original-evidence.json> --out <fresh-directory> [--preflight-only | --timeout-ms 720000 --max-turns 12 --max-steps 100]\nPreflight uses no credential or model and boots only a copy. Live continuation requires the inherited DEEPSEEK_API_KEY; never pass credentials as arguments. Live limits are at most 12 minutes, 12 user turns, 100 model request steps. The single product Run retains generations=1, retries=2, timeBox=8.\n');
+    process.stdout.write('usage: node scripts/live-check-pipeline-checkpoint.ts --parent <original-evidence.json> [--prior-attempt <diagnosed-failed-evidence.json>] --out <fresh-directory> [--preflight-only | --timeout-ms 720000 --max-turns 12 --max-steps 100]\nPreflight uses no credential or model and boots only a copy. A resumed session with the diagnosed failed turn requires --prior-attempt. Live continuation requires the inherited DEEPSEEK_API_KEY; never pass credentials as arguments. Live limits are at most 12 minutes, 12 user turns, 100 model request steps. The single product Run retains generations=1, retries=2, timeBox=8.\n');
   } else {
     const args = checkpointArguments(process.argv.slice(2));
     if (args.preflight) {
-      assert.ok(args.remaining.length === 2 && args.remaining[0] === '--out' && args.remaining[1], 'preflight requires only --parent, --out and --preflight-only');
-      await preflightOnly(args.parentPath, path.resolve(args.remaining[1]));
+      assert.ok(args.remaining.length === 2 && args.remaining[0] === '--out' && args.remaining[1], 'preflight requires --parent, --out, --preflight-only and optionally --prior-attempt');
+      await preflightOnly(args.parentPath, path.resolve(args.remaining[1]), args.priorAttemptPath);
       process.stdout.write('checkpoint preflight PASS; inspect reader findings before live continuation\n');
     } else {
       process.argv.splice(2, process.argv.length - 2, ...args.remaining);
-      await runLive('live-check-pipeline-checkpoint', 12, (check) => continueCheckpoint(check, args.parentPath));
+      await runLive('live-check-pipeline-checkpoint', 12, (check) => continueCheckpoint(check, args.parentPath, args.priorAttemptPath));
     }
   }
 }

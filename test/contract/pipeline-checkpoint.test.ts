@@ -25,7 +25,7 @@ function fixture() {
       approvedBusiness: { facts: 'Synthetic admission evidence, no model proof.', sha256: sha256('Synthetic admission evidence, no model proof.'), goal: { minimum: 1 }, initialStrategy: { limit: 1 }, generationLimit: 1, timeBoxMs: 480_000 },
       allowedReadRoots: [bundle, folder], allowedWriteRoot: folder, deniedTools: [],
     },
-    agents: [{ id: 'session-fixture', session: 'session-fixture', cwd: folder, skills: ['hima-grill', 'hima-spec', 'hima-fabric'], toolCalls: [{ name: 'read', args: { file_path: 'INTENT.md' } }] }],
+    agents: [{ id: 'session-fixture', session: 'session-fixture', cwd: folder, options: { provider: 'deepseek-official', model: 'deepseek-v4-flash' }, skills: ['hima-grill', 'hima-spec', 'hima-fabric'], toolCalls: [{ name: 'read', args: { file_path: 'INTENT.md' } }] }],
     runs: [] as unknown[],
     checks: [
       'grill waited for author answers before recording intent', 'spec added only SPEC.md', 'Pack stage reached compiled',
@@ -52,6 +52,8 @@ test('checkpoint admission refuses an existing Run, additional failure, missing 
     assert.throws(() => parseParent(altered), /business contract hash mismatch/);
     const split = structuredClone(f.parent); split.agents.push(structuredClone(split.agents[0]!));
     assert.throws(() => parseParent(split), /one original three-stage author/);
+    const missingModel = structuredClone(f.parent); missingModel.agents[0]!.options.model = '';
+    assert.throws(() => parseParent(missingModel), /original model selection missing/);
     const budget = structuredClone(f.parent); budget.observed.approvedBusiness.generationLimit = 2;
     assert.throws(() => parseParent(budget), /approved business differs/);
   } finally { f.dispose(); }
@@ -102,4 +104,6 @@ test('checkpoint CLI requires a parent and isolates its opt-in flags from LiveCh
   assert.throws(() => checkpointArguments(['--out', 'new']), /--parent/);
   assert.throws(() => checkpointArguments(['--parent', '--out', 'new']), /--parent/);
   assert.deepEqual(checkpointArguments(['--parent', '/tmp/parent.json', '--out', 'new', '--preflight-only']), { parentPath: '/tmp/parent.json', preflight: true, remaining: ['--out', 'new'] });
+  assert.deepEqual(checkpointArguments(['--parent', '/tmp/parent.json', '--prior-attempt', '/tmp/failed.json', '--out', 'new']), { parentPath: '/tmp/parent.json', priorAttemptPath: '/tmp/failed.json', preflight: false, remaining: ['--out', 'new'] });
+  assert.throws(() => checkpointArguments(['--parent', '/tmp/parent.json', '--prior-attempt', '--out', 'new']), /requires a path/);
 });
