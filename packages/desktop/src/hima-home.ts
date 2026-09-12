@@ -396,3 +396,20 @@ export async function clearReplayOverlay(home: string): Promise<string | undefin
   await rm(file, { force: true });
   return `removed the model stand-in overlay a previous boot left at ${file}`;
 }
+
+// Explicit offline operator entry on the existing home module. Importing this module while a
+// desktop or test prepares a home does nothing here; an import never starts a Host or model.
+if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const usage = 'usage: node packages/desktop/lib/hima-home.js --import-ledger <offline-v19.json> --home <new-empty-home>';
+  const args = process.argv.slice(2);
+  try {
+    if (args.length !== 4 || args[0] !== '--import-ledger' || args[2] !== '--home' ||
+      !args[1] || args[1].startsWith('--') || !args[3] || args[3].startsWith('--')) throw new Error(usage);
+    const { importLegacyLedger } = await import('@hima/harness');
+    const receipt = await importLegacyLedger({ sourceFile: args[1], home: args[3] });
+    process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+  } catch (error) {
+    process.stderr.write(`hima-home: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  }
+}

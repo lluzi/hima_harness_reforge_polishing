@@ -199,7 +199,8 @@ export type { MeteredRun } from './card-labels.js';
 // What the ledger holds, for a caller reading records back through the namespace. `hasEnded` is the
 // one predicate over a Run's status every face shares: what counts as an ending is the ledger's to
 // say, not each caller's.
-export { hasEnded, runIdPattern } from './ledger.js';
+export { hasEnded, runIdPattern, importLegacyLedger } from './ledger.js';
+export type { LegacyLedgerImportReceipt } from './ledger.js';
 export type {
   LedgerRecord,
   ObservationRecord,

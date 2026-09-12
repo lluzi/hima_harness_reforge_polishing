@@ -1,0 +1,103 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/ledger-import.test.ts
+local: 1 selected; 37 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+ok 1 - explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+  ---
+  duration_ms: 8486.632041
+  type: 'test'
+  ...
+# Subtest: opening the original v19 home still fails the version gate without rewriting it
+ok 2 - opening the original v19 home still fails the version gate without rewriting it
+  ---
+  duration_ms: 611.571584
+  type: 'test'
+  ...
+# Subtest: wrong formats, future controls and unknown fields cannot be silently dropped during import
+ok 3 - wrong formats, future controls and unknown fields cannot be silently dropped during import
+  ---
+  duration_ms: 164.628583
+  type: 'test'
+  ...
+# Subtest: Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+ok 4 - Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+  ---
+  duration_ms: 72.92225
+  type: 'test'
+  ...
+# Subtest: v20-only Job, workspace and decision facts are refused even with a v19 header
+ok 5 - v20-only Job, workspace and decision facts are refused even with a v19 header
+  ---
+  duration_ms: 21.376375
+  type: 'test'
+  ...
+# Subtest: symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+ok 6 - symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+  ---
+  duration_ms: 10.287125
+  type: 'test'
+  ...
+# Subtest: mid-write failure and process death cannot publish a partial import or alter the source
+not ok 7 - mid-write failure and process death cannot publish a partial import or alter the source
+  ---
+  duration_ms: 416.806917
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-ledger-upgrade/test/contract/ledger-import.test.ts:214:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      Comparison {
+    +   signal: null
+    -   signal: 'SIGXFSZ'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    signal: 'SIGXFSZ'
+  actual:
+  error: |-
+    Command failed: /bin/sh -c ulimit -f 1; exec "$@" import-test /Users/lluzi/.local/node24/bin/node /Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-ledger-upgrade/packages/desktop/lib/hima-home.js --import-ledger /private/tmp/hima-tests-Qf3tm5/hima-import-5ViG6w/interrupted-CMGX96/large.json --home /private/tmp/hima-tests-Qf3tm5/hima-import-5ViG6w/interrupted-CMGX96/home
+    hima-home: EFBIG: file too large, write
+    
+  stack: |-
+    genericNodeError (node:internal/errors:986:15)
+    wrappedFn (node:internal/errors:540:14)
+    ChildProcess.exithandler (node:child_process:417:12)
+    ChildProcess.emit (node:events:514:28)
+    maybeClose (node:internal/child_process:1141:16)
+    ChildProcess._handle.onexit (node:internal/child_process:306:5)
+  operator: 'rejects'
+  stack: |-
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-ledger-upgrade/test/contract/ledger-import.test.ts:225:3)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: the offline CLI requires both explicit paths and never defaults to DSH_HOME
+ok 8 - the offline CLI requires both explicit paths and never defaults to DSH_HOME
+  ---
+  duration_ms: 85.657083
+  type: 'test'
+  ...
+# Subtest: two simultaneous imports cannot replace the first complete destination
+ok 9 - two simultaneous imports cannot replace the first complete destination
+  ---
+  duration_ms: 39.142417
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 8
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10582.550041
+Test boot attempts: {"host-process":0,"host-in-process":3,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 10.668 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

@@ -1,7 +1,11 @@
 // @hima-seam storage-domain direct
 // HimaLedger: the append-only record of a Run's observations, refusals, and verdicts, kept in a
 // durable dsh storage domain. Business meaning lives here; the fabric only points at records.
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { constants, type BigIntStats } from 'node:fs';
+import { lstat, mkdir, mkdtemp, open, readdir, rename, rm } from 'node:fs/promises';
+import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain';
 import { cancelSessions } from './record-views.js';
@@ -1927,4 +1931,182 @@ export async function recordNode(
   // nothing else: a node outside every fork carries no key at all.
   const withBranchId = extra.branchId === undefined ? withSession : { ...withSession, branchId: extra.branchId };
   return ledger.appendNode(runId, extra.reason === undefined ? withBranchId : { ...withBranchId, reason: extra.reason });
+}
+
+// Offline import is deliberately outside Ledger's live write path. A version gate is still a
+// refusal, never an invitation to rewrite the old user's domain in place.
+const legacyRunRecord = runRecord.pick({
+  id: true, campaignId: true, siteId: true, createdAt: true, nextSeq: true, status: true,
+  packId: true, purpose: true, packDigest: true, goal: true, budget: true, currentNode: true,
+  strategy: true, firstStrategy: true, generation: true, loop: true, fork: true, meters: true,
+}).strict();
+const legacyLedgerRecord = z.discriminatedUnion('type', [
+  observationRecord, refusalRecord, verdictRecord,
+  jobRecord.safeExtend({ job: jobIdentity.extend({ pid: z.number().int().positive() }) }),
+  workspaceRecord.omit({ packDigest: true }), nodeRecord, blockerRecord, resumedRecord,
+  // v20 decisions can name the conversational agent. These are the complete v19 fields.
+  decisionRecord.pick({ id: true, runId: true, siteId: true, seq: true, at: true, writer: true,
+    generation: true, loopId: true, type: true, nodeId: true, chooser: true,
+    chooserOrigin: true, chosen: true, rationale: true, cites: true }),
+  cancelRecord, loopRecord, experienceRecord, sessionRecord, codeRecord,
+]);
+const legacyLedgerDocument = z.strictObject({
+  unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.literal(19) }),
+  global: z.null(),
+  tables: z.strictObject({
+    runs: z.record(z.string(), legacyRunRecord),
+    records: z.record(z.string(), legacyLedgerRecord),
+  }),
+});
+
+/** Validate a complete offline v19 JSON snapshot without deleting fields or inventing ownership. */
+function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
+  const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  const document = legacyLedgerDocument.parse(input);
+  // Several historical nested schemas strip unknown keys. Refuse such a file rather than silently
+  // lose facts, including future execution/control fields hidden inside a legacy-looking record.
+  if (!isDeepStrictEqual(input, document)) throw new Error('legacy ledger contains unsupported fields or values; import would change stored facts');
+  const { runs, records } = document.tables;
+  for (const [key, run] of Object.entries(runs)) {
+    if (key !== run.id || !new RegExp(`^${runIdPattern.source}$`).test(key)) throw new Error(`invalid legacy Run identity: ${key}`);
+    if (!Number.isSafeInteger(run.nextSeq)) throw new Error(`invalid legacy nextSeq: ${key}`);
+  }
+  for (const [key, record] of Object.entries(records)) {
+    const run = runs[record.runId];
+    if (!run || record.siteId !== run.siteId) throw new Error(`invalid legacy Run linkage: ${key}`);
+    if (!Number.isSafeInteger(record.seq) || key !== record.id || key !== recordKey(run.id, record.seq) || record.seq >= run.nextSeq) {
+      throw new Error(`invalid legacy record identity or sequence: ${key}`);
+    }
+    // A failed append can reserve a sequence number without writing a record. Gaps are kept; only
+    // collision, a mismatched key or a nextSeq that could overwrite a fact is refused.
+    if (record.type === 'workspace' && record.campaignId !== run.campaignId) throw new Error(`invalid legacy Campaign linkage: ${key}`);
+    if (record.type === 'verdict' || record.type === 'decision') {
+      for (const id of record.cites) {
+        const cited = records[id];
+        if (!cited || cited.runId !== run.id || cited.seq >= record.seq ||
+          (cited.type !== 'observation' && (record.type !== 'decision' || cited.type !== 'verdict'))) {
+          throw new Error(`invalid legacy evidence linkage: ${key} cites ${id}`);
+        }
+      }
+    }
+  }
+  return document;
+}
+
+/** lstat every component, including ancestors: O_NOFOLLOW alone protects only the final file. */
+async function importPathState(absolute: string, missingLeaf = false): Promise<BigIntStats | undefined> {
+  const root = path.parse(absolute).root;
+  let at = root;
+  const parts = path.relative(root, absolute).split(path.sep).filter(Boolean);
+  let state = await lstat(root, { bigint: true });
+  for (let i = 0; i < parts.length; i++) {
+    at = path.join(at, parts[i]!);
+    try { state = await lstat(at, { bigint: true }); } catch (error) {
+      if (missingLeaf && i === parts.length - 1 && (error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw error;
+    }
+    if (state.isSymbolicLink()) throw new Error(`ledger import refuses symlink paths: ${at}`);
+    if (i < parts.length - 1 && !state.isDirectory()) throw new Error(`ledger import ancestor is not a directory: ${at}`);
+  }
+  return state;
+}
+
+function sameImportFile(a: BigIntStats | undefined, b: BigIntStats | undefined): boolean {
+  return a !== undefined && b !== undefined && a.dev === b.dev && a.ino === b.ino;
+}
+function sameImportSnapshot(a: BigIntStats, b: BigIntStats): boolean {
+  return sameImportFile(a, b) && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+}
+
+export interface LegacyLedgerImportReceipt {
+  readonly format: 'hima-ledger-import-v1';
+  readonly source: { readonly path: string; readonly version: 19; readonly sha256: string; readonly bytes: number; readonly backup: string };
+  readonly target: { readonly version: number; readonly sha256: string; readonly file: string };
+  readonly importedAt: string;
+  readonly runs: number;
+  readonly records: number;
+  readonly ownership: 'unchanged-unowned';
+}
+
+/**
+ * Copy an offline v19 snapshot into a new, empty home, then exit without opening a Host.
+ *
+ * The caller must stop the old Host before taking/transferring the snapshot. This cannot establish
+ * that a different process or Site no longer drives old Jobs; it only preserves history. Adoption
+ * into a conversation requires the separate runtime safety checks and an explicit owner binding.
+ *
+ * All output is built in an owned sibling directory and published by one rename. Existing homes,
+ * symlink components, unknown fields and corrupt links are refused. Neither the source nor its
+ * home is written. The destination parent must already exist; no ancestor is created or repaired.
+ */
+export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
+  if (ledgerSpec.version !== 20) throw new Error('legacy import supports only the reviewed v19-to-v20 transition');
+  const source = path.resolve(request.sourceFile);
+  const home = path.resolve(request.home);
+  const parent = path.dirname(home);
+  if (home === parent || source === home || source.startsWith(`${home}${path.sep}`)) {
+    throw new Error('ledger import source must be outside the new home');
+  }
+  const sourceState = await importPathState(source);
+  if (!sourceState?.isFile()) throw new Error('ledger import source must be a regular offline JSON file');
+  const parentState = await importPathState(parent);
+  if (!parentState?.isDirectory()) throw new Error('ledger import destination parent must be a directory');
+  const homeState = await importPathState(home, true);
+  if (homeState && (!homeState.isDirectory() || (await readdir(home)).length !== 0)) throw new Error('ledger import destination must be a new empty home');
+  const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  let stage: string | undefined;
+  let stageState: BigIntStats | undefined;
+  try {
+    const opened = await sourceHandle.stat({ bigint: true });
+    if (!opened.isFile() || !sameImportSnapshot(sourceState, opened)) throw new Error('ledger import source changed while opening');
+    const bytes = await sourceHandle.readFile();
+    const afterRead = await sourceHandle.stat({ bigint: true });
+    if (!sameImportSnapshot(opened, afterRead) || !sameImportSnapshot(opened, (await importPathState(source))!)) {
+      throw new Error('ledger import source changed while reading; stop the old Host and export a stable snapshot');
+    }
+    const document = readLegacyLedger(bytes);
+    const target = Buffer.from(`${JSON.stringify({ ...document, unit: { ...document.unit, version: ledgerSpec.version } }, null, 2)}\n`);
+    const receipt: LegacyLedgerImportReceipt = {
+      format: 'hima-ledger-import-v1',
+      source: { path: source, version: 19, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, backup: 'ledger-import/source-v19.json' },
+      target: { version: ledgerSpec.version, sha256: createHash('sha256').update(target).digest('hex'), file: 'storages/hima_ledger.json' },
+      importedAt: new Date().toISOString(), runs: Object.keys(document.tables.runs).length,
+      records: Object.keys(document.tables.records).length, ownership: 'unchanged-unowned',
+    };
+    if (!sameImportFile(parentState, await importPathState(parent))) throw new Error('ledger import destination parent changed');
+    stage = await mkdtemp(path.join(parent, '.hima-ledger-import-'));
+    stageState = await importPathState(stage);
+    await mkdir(path.join(stage, 'ledger-import'));
+    await mkdir(path.join(stage, 'storages'));
+    const writeDurable = async (relative: string, content: Buffer | string) => {
+      const file = await open(path.join(stage!, relative), 'wx', 0o600);
+      try { await file.writeFile(content); await file.sync(); } finally { await file.close(); }
+    };
+    await writeDurable(receipt.source.backup, bytes);
+    await writeDurable('ledger-import/receipt.json', `${JSON.stringify(receipt, null, 2)}\n`);
+    await writeDurable(receipt.target.file, target);
+    for (const directory of ['ledger-import', 'storages', '.']) {
+      const handle = await open(path.join(stage, directory), constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      try { await handle.sync(); } finally { await handle.close(); }
+    }
+    // Recheck both boundaries immediately before the one publication. Do not remove or clean an
+    // existing destination; rename itself refuses if another writer has filled that directory.
+    if (!sameImportSnapshot(opened, await sourceHandle.stat({ bigint: true })) ||
+      !sameImportSnapshot(opened, (await importPathState(source))!)) throw new Error('ledger import source changed before publication');
+    if (!sameImportFile(parentState, await importPathState(parent))) throw new Error('ledger import destination parent changed');
+    const currentHome = await importPathState(home, true);
+    if (homeState ? !sameImportFile(homeState, currentHome) : currentHome !== undefined) throw new Error('ledger import destination changed');
+    if (currentHome && (await readdir(home)).length !== 0) throw new Error('ledger import destination must remain empty');
+    await rename(stage, home);
+    stage = undefined;
+    return receipt;
+  } finally {
+    try { await sourceHandle.close(); } finally {
+      // Never follow a replaced ancestor or remove somebody else's replacement directory while
+      // cleaning up a failed import. A disappeared/moved staging directory is left for the owner.
+      if (stage !== undefined && sameImportFile(stageState, await importPathState(stage, true))) {
+        await rm(stage, { recursive: true, force: true });
+      }
+    }
+  }
 }
