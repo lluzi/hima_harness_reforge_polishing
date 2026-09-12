@@ -704,6 +704,8 @@ async function tailOfJob(ctx: Driving, session: string): Promise<{ readonly ok: 
  *   blocked naming the session, the Run waits, and a person is told which session to look at.
  */
 async function timeBoxReached(ctx: Driving, node: PackNode, attempt: number, session: string, finish: FinishJob = settleFinished): Promise<Step> {
+  // Owned Runs stop all Jobs through Fabric's serialized deadline task, including idle branches.
+  if (existingRun(ctx.deps.ledger, ctx.runId).control !== undefined) return { kind: 'budget-exhausted' };
   let killed: JobKillResult;
   try {
     killed = await jobKill(ctx.deps, { run: ctx.runId, session });

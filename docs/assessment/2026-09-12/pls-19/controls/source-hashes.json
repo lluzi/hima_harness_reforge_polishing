@@ -1,0 +1,15 @@
+{
+  "base": "9614b78650382c0d580350638b84e456a4bf219d",
+  "branch": "codex/pls19-controls",
+  "sha256": {
+    "packages/harness/src/budget.ts": "0f27f585b48596d738032e16f7910470877e6d4d92c2a7b2ccc2f4b7f60540e0",
+    "packages/harness/src/fabric.ts": "7721cd184a29771d2d2f0fb5d21098d57f3837bab336924015d9e62dd762f1b6",
+    "packages/harness/src/ledger.ts": "d0162f0285ce1a4b841ee8a446e70a9919930f45dffe0c06ad03c922551b66be",
+    "packages/harness/src/node-turns.ts": "305e0f9f26fc157ab649873e2b61c10d2cfecc3ae1e159337c98ad5ccf70a92c",
+    "packages/harness/src/recovery.ts": "bc2172b527f1cbb20c1234653830ef6bd539959577ae166194c34ead8d8395f2",
+    "test/contract-groups.json": "0e72e3bd188cd1c43711b360c41b1fc7b1de33a64d892dd1f3adcfee6e6bad43",
+    "test/contract/agent-controls.host.test.ts": "0e3d70b43891b77184259940cbcb150250cbd573fec55b81bda40b130d1159ec",
+    "test/contract/agent-recovery.host.test.ts": "5cd31c3ccab6557c3e1c7bebf874bfcec7643b814659ede13db1a63b75bbfca9",
+    "test/contract/agent-workshop.host.test.ts": "2b5312bbb60bb87534677ff758a73fc066bd58a9df193da161e25345a81b2045"
+  }
+}

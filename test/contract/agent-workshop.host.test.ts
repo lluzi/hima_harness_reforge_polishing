@@ -6,7 +6,7 @@ import path from 'node:path';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
-import type { ExecutionActionRequest } from '../../packages/harness/src/fabric.js';
+import type { ExecutionActionRequest } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';

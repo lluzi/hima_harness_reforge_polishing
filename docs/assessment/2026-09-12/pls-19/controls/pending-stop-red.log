@@ -1,0 +1,72 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-controls.host.test.ts
+local: 1 selected; 44 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a human in another live conversation can promptly cancel a long Job without taking ownership
+ok 1 - a human in another live conversation can promptly cancel a long Job without taking ownership
+  ---
+  duration_ms: 6197.659125
+  type: 'test'
+  ...
+# Subtest: retry allowance blocks the failed node until its human owner clears that node
+ok 2 - retry allowance blocks the failed node until its human owner clears that node
+  ---
+  duration_ms: 4163.468666
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused without any next Agent action
+ok 3 - the total time box expires while paused without any next Agent action
+  ---
+  duration_ms: 1922.470084
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused with the Agent offline after Host restart
+ok 4 - the total time box expires while paused with the Agent offline after Host restart
+  ---
+  duration_ms: 1815.71275
+  type: 'test'
+  ...
+# Subtest: cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+ok 5 - cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+  ---
+  duration_ms: 1477.744958
+  type: 'test'
+  ...
+# Subtest: hard deadline stops an existing long Job and records the time box as the cause
+ok 6 - hard deadline stops an existing long Job and records the time box as the cause
+  ---
+  duration_ms: 2597.289625
+  type: 'test'
+  ...
+# Subtest: an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+ok 7 - an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+  ---
+  duration_ms: 2723.921
+  type: 'test'
+  ...
+# Subtest: pending stop I/O does not hold the conversational admission path
+not ok 8 - pending stop I/O does not hold the conversational admission path
+  ---
+  duration_ms: 3442.227541
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/agent-controls.host.test.ts:242:1'
+  failureType: 'testCodeFailure'
+  error: 'pending stop I/O held the business admission queue'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Timeout.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/agent-controls.host.test.ts:270:77)
+    listOnTimeout (node:internal/timers:685:17)
+    process.processTimers (node:internal/timers:618:7)
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 7
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 25009.986875
+Test boot attempts: {"host-process":0,"host-in-process":10,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 25.106 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

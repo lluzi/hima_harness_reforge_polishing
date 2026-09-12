@@ -171,8 +171,11 @@ test('adoption carries an open historical human wait once and new pauses continu
     await waitUntil('the original time box expires while the newly owned Run stays paused', () => Date.now() >= deadline + 5, 3000, 25);
     const continued = await host.ctx.hima.executionAction({ ...request, expectedEpoch: 1, expectedRevision: 1, requestId: 'continue-expired', action: 'continue', origin: 'human' });
     assert.equal(continued.kind, 'refused');
-    assert.match(continued.reason ?? '', /time box is exhausted/);
-    assert.equal(continued.context.run.control?.adoption?.legacyWaitedMs, offset, 'new pauses never enlarge the carried historical offset');
+    await waitUntil('the adopted Run ends at its carried deadline without an Agent action', () => host.ctx.hima.executionContext(runId).run.status === 'ended-budget-exhausted', 5000);
+    const ended = host.ctx.hima.executionContext(runId).run;
+    assert.equal(ended.meters?.endedBy, 'time-box');
+    assert.equal(ended.control?.adoption?.legacyWaitedMs, offset, 'new pauses never enlarge the carried historical offset');
+    assert.deepEqual(ended.budget, legacy.run.budget);
   } finally { await host.dispose(); await home.h.dispose(); }
 });
 

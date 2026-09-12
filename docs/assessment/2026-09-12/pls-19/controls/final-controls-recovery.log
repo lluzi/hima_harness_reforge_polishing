@@ -1,0 +1,105 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-controls.host.test.ts test/contract/agent-recovery.host.test.ts
+local: 2 selected; 43 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a human in another live conversation can promptly cancel a long Job without taking ownership
+ok 1 - a human in another live conversation can promptly cancel a long Job without taking ownership
+  ---
+  duration_ms: 2537.5005
+  type: 'test'
+  ...
+# Subtest: retry allowance blocks the failed node until its human owner clears that node
+ok 2 - retry allowance blocks the failed node until its human owner clears that node
+  ---
+  duration_ms: 4082.156334
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused without any next Agent action
+ok 3 - the total time box expires while paused without any next Agent action
+  ---
+  duration_ms: 1990.064959
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused with the Agent offline after Host restart
+ok 4 - the total time box expires while paused with the Agent offline after Host restart
+  ---
+  duration_ms: 1972.904208
+  type: 'test'
+  ...
+# Subtest: cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+ok 5 - cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+  ---
+  duration_ms: 1877.586
+  type: 'test'
+  ...
+# Subtest: hard deadline stops an existing long Job and records the time box as the cause
+ok 6 - hard deadline stops an existing long Job and records the time box as the cause
+  ---
+  duration_ms: 2530.604625
+  type: 'test'
+  ...
+# Subtest: an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+ok 7 - an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+  ---
+  duration_ms: 2363.672166
+  type: 'test'
+  ...
+# Subtest: production preparation refuses an unowned Run before any Job or Run is created
+ok 8 - production preparation refuses an unowned Run before any Job or Run is created
+  ---
+  duration_ms: 1448.913208
+  type: 'test'
+  ...
+# Subtest: a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+ok 9 - a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+  ---
+  duration_ms: 2920.95625
+  type: 'test'
+  ...
+# Subtest: an interrupted completion remains fenced even when its prior Job has a successful exit
+ok 10 - an interrupted completion remains fenced even when its prior Job has a successful exit
+  ---
+  duration_ms: 1830.878833
+  type: 'test'
+  ...
+# Subtest: adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+ok 11 - adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+  ---
+  duration_ms: 2935.22875
+  type: 'test'
+  ...
+# Subtest: adoption carries an open historical human wait once and new pauses continue to spend the original time box
+ok 12 - adoption carries an open historical human wait once and new pauses continue to spend the original time box
+  ---
+  duration_ms: 3837.585458
+  type: 'test'
+  ...
+# Subtest: historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+ok 13 - historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+  ---
+  duration_ms: 5312.274541
+  type: 'test'
+  ...
+# Subtest: an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+ok 14 - an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+  ---
+  duration_ms: 1169.025583
+  type: 'test'
+  ...
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+ok 15 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 5332.353375
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 43319.693917
+Test boot attempts: {"host-process":0,"host-in-process":22,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 43.391 s; pass/fail/skip counts are in the TAP summary above

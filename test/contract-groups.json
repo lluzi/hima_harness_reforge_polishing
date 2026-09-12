@@ -1,5 +1,6 @@
 {
   "local": [
+    "test/contract/agent-controls.host.test.ts",
     "test/contract/agent-recovery.host.test.ts",
     "test/contract/boot.test.ts",
     "test/contract/command.test.ts",

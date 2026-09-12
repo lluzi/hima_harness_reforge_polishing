@@ -1,0 +1,171 @@
+{
+  "cancel-green.log": {
+    "tests": 1,
+    "pass": 1,
+    "fail": 0,
+    "skipped": 0,
+    "exit": 0,
+    "elapsedSeconds": 6.933,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 1,
+      "electron": 0
+    }
+  },
+  "cancel-red.log": {
+    "tests": 1,
+    "pass": 0,
+    "fail": 1,
+    "skipped": 0,
+    "exit": 1,
+    "elapsedSeconds": 15.762,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 1,
+      "electron": 0
+    }
+  },
+  "controls-green.log": {
+    "tests": 7,
+    "pass": 7,
+    "fail": 0,
+    "skipped": 0,
+    "exit": 0,
+    "elapsedSeconds": 15.9,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 9,
+      "electron": 0
+    }
+  },
+  "deadline-green.log": {
+    "tests": 4,
+    "pass": 4,
+    "fail": 0,
+    "skipped": 0,
+    "exit": 0,
+    "elapsedSeconds": 10.629,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 5,
+      "electron": 0
+    }
+  },
+  "deadline-red.log": {
+    "tests": 4,
+    "pass": 2,
+    "fail": 2,
+    "skipped": 0,
+    "exit": 1,
+    "elapsedSeconds": 19.581,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 5,
+      "electron": 0
+    }
+  },
+  "final-controls-recovery.log": {
+    "tests": 15,
+    "pass": 15,
+    "fail": 0,
+    "skipped": 0,
+    "exit": 0,
+    "elapsedSeconds": 43.391,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 22,
+      "electron": 0
+    }
+  },
+  "final-controls.log": {
+    "tests": 8,
+    "pass": 8,
+    "fail": 0,
+    "skipped": 0,
+    "exit": 0,
+    "elapsedSeconds": 24.216,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 10,
+      "electron": 0
+    }
+  },
+  "final-related.log": {
+    "tests": 18,
+    "pass": 18,
+    "fail": 0,
+    "skipped": 0,
+    "exit": 0,
+    "elapsedSeconds": 65.271,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 23,
+      "electron": 0
+    }
+  },
+  "pending-stop-red.log": {
+    "tests": 8,
+    "pass": 7,
+    "fail": 1,
+    "skipped": 0,
+    "exit": 1,
+    "elapsedSeconds": 25.106,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 10,
+      "electron": 0
+    }
+  },
+  "related.log": {
+    "tests": 18,
+    "pass": 17,
+    "fail": 1,
+    "skipped": 0,
+    "exit": 1,
+    "elapsedSeconds": 58.995,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 23,
+      "electron": 0
+    }
+  },
+  "retry-green.log": {
+    "tests": 2,
+    "pass": 2,
+    "fail": 0,
+    "skipped": 0,
+    "exit": 0,
+    "elapsedSeconds": 9.033,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 2,
+      "electron": 0
+    }
+  },
+  "retry-red.log": {
+    "tests": 2,
+    "pass": 1,
+    "fail": 1,
+    "skipped": 0,
+    "exit": 1,
+    "elapsedSeconds": 8.121,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 2,
+      "electron": 0
+    }
+  },
+  "uncertain-red.log": {
+    "tests": 7,
+    "pass": 6,
+    "fail": 1,
+    "skipped": 0,
+    "exit": 1,
+    "elapsedSeconds": 24.422,
+    "boots": {
+      "host-process": 0,
+      "host-in-process": 9,
+      "electron": 0
+    }
+  }
+}

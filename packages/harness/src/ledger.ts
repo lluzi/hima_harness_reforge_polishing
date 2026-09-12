@@ -1293,6 +1293,7 @@ export type NodeExecution = z.infer<typeof nodeExecution>;
 export const executionReceipt = z.strictObject({
   requestId: z.string(), action: z.string(), executionId: z.string().optional(),
   owner: z.string().optional(), epoch: z.number().int().positive().optional(),
+  stop: z.enum(['cancelled', 'not-stopped']).optional(), reason: z.string().optional(), session: z.string().optional(),
 });
 export type ExecutionReceipt = z.infer<typeof executionReceipt>;
 export const executionRequest = z.strictObject({
@@ -1307,6 +1308,9 @@ export const runControl = z.strictObject({
   epoch: z.number().int().positive(),
   revision: z.number().int().nonnegative(),
   paused: z.array(z.string()),
+  stop: z.strictObject({ reason: z.enum(['cancel', 'budget']), requestId: z.string().optional(),
+    status: z.enum(['requested', 'confirmed', 'uncertain']).optional(), detail: z.string().optional(), session: z.string().optional(),
+  }).optional(),
   executions: z.record(z.string(), nodeExecution),
   requests: z.record(z.string(), executionRequest),
   siteDigest: sha256Hex.optional(),
