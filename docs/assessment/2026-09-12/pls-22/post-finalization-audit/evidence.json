@@ -1,0 +1,1659 @@
+{
+  "check": "pipeline-post-finalization-audit",
+  "status": "passed",
+  "passed": true,
+  "startedAt": "2026-09-12T22:47:52.163Z",
+  "finishedAt": "2026-09-12T22:47:56.642Z",
+  "sourceFailure": {
+    "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-finalization-1/evidence.json",
+    "sha256": "74320b117ead3a1c6c2943c8821735f41b3e4f2fbe99787bf384410d11fb4f8a",
+    "preservedStatus": "failed",
+    "reason": "order-sensitive serialization comparator; structural values are identical",
+    "originalRunKeys": [
+      "id",
+      "campaignId",
+      "siteId",
+      "packId",
+      "purpose",
+      "packDigest",
+      "goal",
+      "budget",
+      "firstStrategy",
+      "generation",
+      "control",
+      "createdAt",
+      "nextSeq",
+      "status",
+      "currentNode",
+      "strategy",
+      "meters"
+    ],
+    "reloadedRunKeys": [
+      "id",
+      "campaignId",
+      "siteId",
+      "createdAt",
+      "nextSeq",
+      "control",
+      "status",
+      "packId",
+      "purpose",
+      "packDigest",
+      "goal",
+      "budget",
+      "currentNode",
+      "strategy",
+      "firstStrategy",
+      "generation",
+      "meters"
+    ]
+  },
+  "links": [
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-continuation-2/evidence.json",
+      "sha256": "dea69e393161b4d6a2284fcbd1acc2ab7b66813fe316fcf7bfbd11a0aabe09d1"
+    },
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-authoring-3/evidence.json",
+      "sha256": "ffd5773342edb5d4e42db0bbd4676d950dbd9cd788fd38620aaca01a81343411",
+      "sourceSha": "572621663a3fa857dc58c5e1af88db45bfbbe74e",
+      "costs": {
+        "hosts": 1,
+        "electron": 0,
+        "nativeSessionsCreated": 2,
+        "modelSessions": 1,
+        "modelRequestSteps": 26,
+        "apiRequests": "unmeasured; request steps exclude adapter retries",
+        "tokens": "unmeasured",
+        "userMessages": 5
+      },
+      "originalAuthor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+      "methodDigest": "39acedf4d2d214b4aa806e9777684793bebfa9149dc2c06f7a9ecb91d4844563",
+      "authoredFiles": {
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/FABRIC.md": "ddd7cf50bbe1aea0cfd70a96d8a264370c541a741ef83461fa2c235f061b5bc5",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/INTENT.md": "8a1f06b2b046a0a3a3d93605e409d8ede7bf1e6a47d0480bd67d9f2d55807df7",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/SPEC.md": "4dc816ede8df2f0fed0371fa9b7eb60ced70cc4d7f0ba6d710d40b33d6f66ce7",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/choosers/limit-down-to-zero.yml": "9cc20d09078311c1161e3b7cd0d1c8ae139de7898d4682e5dfbc3b600a0f949b",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/contract.yml": "b34942c2ed331926f12b691232a610ca3cb989f9a40b73646ab828209d3e4600",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/graph.yml": "117925a2cfbef541bf9c9cd4ab02e606703c532167c1d4612ce69a0b38c90781",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/knowledge/numeric-strict-sum.md": "bfea7e2b1452dc987134690ecf3def45e8344db0b01aac780949b06db263d235",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/readers/read-result.yml": "307d6f36d5d0e7fec478c137d7f9eb869493a0af3e2b47be2c076964f8f1fd8d",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/rules/numeric-sum-meets-minimum.yml": "aef5dfbf330dae20a674ea05788cc1ac1a0197768f7fb86c9a9dc5e6951808e4",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/rules/numeric-sum-nonnegative.yml": "6e4ee14857befb23a81a53358c2dd3d2eb56a5f2f5fa3f1f153549ba91ee445a",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/semantics.yml": "238cf1ea9a434e394d09b13cdf6809c51e88e3d47ed681051644987028897ac2",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/tools/prepare.sh": "b36cf2665c0cb99aad6a2a8fd4b670682e9fad5070bc00567965c89fb63c9a80",
+        "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/tools/read-result.sh": "a5fe424b7347fd19da76e786791bb3704497144c3b2a9059a1461105d1e63e63"
+      },
+      "originalGuard": {
+        "reads": [
+          "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/profiles/hima/node_modules/@hima/harness",
+          "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs",
+          "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/numeric-flow",
+          "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace"
+        ],
+        "writes": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric",
+        "denied": [
+          {
+            "name": "glob",
+            "reason": "outside declared glob roots: /private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima"
+          },
+          {
+            "name": "glob",
+            "reason": "outside declared glob roots: /private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w"
+          },
+          {
+            "name": "glob",
+            "reason": "cannot resolve read path /private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/profiles/hima/node_modules/@hima/harness/opene902-timing-probe"
+          }
+        ]
+      },
+      "scope": "First three author stages remain the linked failed parent evidence. Full Golden Flow/other-Pack protection below starts at continuation; no whole-prior-phase tree snapshot was recorded."
+    },
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/live-continuation-1/evidence.json",
+      "sha256": "85e52e9aa0c218f9b095f9efe2421fb68a4fb67b1b68eb737a48055d5bde360a",
+      "recordedStatus": "in-progress",
+      "actualOutcome": "failed before provider invocation",
+      "costs": {
+        "hosts": 1,
+        "electron": 0,
+        "nativeSessionsCreated": 0,
+        "nativeSessionsResumed": 1,
+        "modelSessions": 1,
+        "modelRequestSteps": 1,
+        "apiRequests": "unmeasured; request steps exclude adapter retries",
+        "tokens": "unmeasured",
+        "userMessages": 1
+      },
+      "agentRequestEvents": 1,
+      "providerRequests": 0,
+      "nativeEnding": {
+        "type": "turn/end",
+        "seq": 234,
+        "time": 1789247528253,
+        "data": {
+          "turn": 6,
+          "reason": {
+            "kind": "error",
+            "error": {
+              "message": "agent \"session-49dc2661-cbdd-49ae-ac65-8df55b0917bf\" has no provider/model: set AgentOptions.provider and AgentOptions.model or supply both via the agent/request waterfall",
+              "code": "UNKNOWN"
+            }
+          }
+        }
+      },
+      "originalFilesUnchanged": true,
+      "explanation": "Native validation rejected missing live AgentOptions after agent/request and before provider invocation. The old in-progress snapshot is preserved; cleanup crashed after the assertion failure."
+    },
+    {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/assessment/2026-09-12/pls-22/runtime-upgrade/manifest.json",
+      "sha256": "d662d4b63c946a306af82b8eaee3f74909190c571e979a9193ca7f9ff9935b1f",
+      "sourceSha": "9316146796e4714c07a54190dcbd40c7b036ee7d",
+      "bundle": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/profiles/hima/node_modules/@hima/harness",
+      "backupBundle": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/runtime-upgrade/previous-bundle"
+    }
+  ],
+  "checks": [
+    {
+      "claim": "actual current Run and scientific records match structurally",
+      "passed": true,
+      "saw": {
+        "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+        "recordCount": 22
+      }
+    },
+    {
+      "claim": "actual original-owned test Run ended goal-met",
+      "passed": true,
+      "saw": {
+        "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+        "campaignId": "authored-numeric-20260912-214156-995f",
+        "siteId": "local",
+        "createdAt": "2026-09-12T21:41:56.652Z",
+        "nextSeq": 23,
+        "control": {
+          "mode": "agent",
+          "owner": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+          "epoch": 1,
+          "revision": 17,
+          "paused": [],
+          "executions": {
+            "execution-8a259bfa-8ca2-4171-a120-bae03152e85f": {
+              "id": "execution-8a259bfa-8ca2-4171-a120-bae03152e85f",
+              "nodeId": "prepare",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "baa8a8792c04561f6e1be80237df4615f0758f4414f16cdacf50b3b251aa59ce",
+              "phase": "completed",
+              "inputThroughSeq": 1,
+              "intent": {
+                "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-cbfcba3e-prepare-ddd36c",
+                  "workspace": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f",
+                  "name": "prepare",
+                  "startedAt": "2026-09-12T21:42:05.559Z",
+                  "wire": "'sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/flow/prepare.sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/flow' > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-prepare-ddd36c.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-prepare-ddd36c.exit'"
+                },
+                "nodeId": "prepare",
+                "attempt": 1
+              },
+              "jobSession": "hima-cbfcba3e-prepare-ddd36c",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-54800af2-0962-4b01-b5c4-c2a62522222d": {
+              "id": "execution-54800af2-0962-4b01-b5c4-c2a62522222d",
+              "nodeId": "analyze",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "baa8a8792c04561f6e1be80237df4615f0758f4414f16cdacf50b3b251aa59ce",
+              "phase": "completed",
+              "inputThroughSeq": 5,
+              "workshop": {
+                "id": "analyze",
+                "entry": "entry.sh",
+                "entryPath": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                "directory": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d"
+              },
+              "intent": {
+                "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-cbfcba3e-workshop-analyze-09d7f1",
+                  "workspace": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f",
+                  "name": "workshop-analyze",
+                  "startedAt": "2026-09-12T21:43:51.253Z",
+                  "wire": "'sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f' '16' > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-workshop-analyze-09d7f1.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-workshop-analyze-09d7f1.exit'"
+                },
+                "nodeId": "analyze",
+                "workshop": {
+                  "id": "analyze",
+                  "entry": {
+                    "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                    "sha256": "c736875fd384ea997ecbd6c2e6511f10dce3f45f82777cfdb72b25c422605fe7"
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-cbfcba3e-workshop-analyze-09d7f1",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21": {
+              "id": "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21",
+              "nodeId": "observe",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "baa8a8792c04561f6e1be80237df4615f0758f4414f16cdacf50b3b251aa59ce",
+              "phase": "completed",
+              "inputThroughSeq": 10,
+              "intent": {
+                "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-cbfcba3e-reader-read-result-5c7fbc",
+                  "workspace": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f",
+                  "name": "reader-read-result",
+                  "startedAt": "2026-09-12T21:44:12.468Z",
+                  "wire": "'sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-readers/read-result/read-result.sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/result.txt' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-readers/read-result/observe-g1-a1.json' > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-reader-read-result-5c7fbc.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-reader-read-result-5c7fbc.exit'"
+                },
+                "nodeId": "observe",
+                "reading": {
+                  "reader": {
+                    "id": "read-result",
+                    "version": "1",
+                    "reportKind": "numeric-sum-result",
+                    "emits": [
+                      "numeric_sum"
+                    ],
+                    "file": "tools/read-result.sh",
+                    "sha256": "7b3ab24d293aac4b30770903a79b2a96a2d2b129fd09c5f7a318b5cf8933e4ec"
+                  },
+                  "out": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-readers/read-result/observe-g1-a1.json",
+                  "report": {
+                    "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/result.txt",
+                    "contentSha256": "1ee1c7eb8ed268e88ca294b11ff2463a7edf168833613d0f5a191877657ea752",
+                    "bytes": 4
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-cbfcba3e-reader-read-result-5c7fbc",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-8f320555-da39-4597-9f97-354efcc5edb6": {
+              "id": "execution-8f320555-da39-4597-9f97-354efcc5edb6",
+              "nodeId": "judge",
+              "kind": "judge",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "d902aa3b5f66627791b307ebd0d7d27678bdd24160aa74495ef080d7e8d8c5cd",
+              "phase": "completed",
+              "inputThroughSeq": 16,
+              "result": {
+                "kind": "settled",
+                "outcome": "PASS"
+              }
+            },
+            "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067": {
+              "id": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067",
+              "nodeId": "next-limit",
+              "kind": "explore",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "2c8d5863182e5dad4b95aaca6d52075c023dec46080a0cd76fd05b7a1ad6affd",
+              "phase": "completed",
+              "inputThroughSeq": 19,
+              "result": {
+                "kind": "settled"
+              }
+            }
+          },
+          "requests": {
+            "req-begin-prepare-1": {
+              "digest": "f96b3ee2f7d81e4d44dd070f4f83e9521a4ee032c050e96f5405b80ac75336e5",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 0,
+              "at": "2026-09-12T21:42:02.391Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-prepare-1",
+                "action": "begin",
+                "executionId": "execution-8a259bfa-8ca2-4171-a120-bae03152e85f"
+              },
+              "origin": "agent"
+            },
+            "req-work-prepare-1": {
+              "digest": "f526d1a8580adb60094251d651ae0e349ea39d860bc93ef5008370a7bbfa6c04",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 1,
+              "at": "2026-09-12T21:42:05.512Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-prepare-1",
+                "action": "work",
+                "executionId": "execution-8a259bfa-8ca2-4171-a120-bae03152e85f"
+              },
+              "origin": "agent"
+            },
+            "req-complete-prepare-1": {
+              "digest": "c6f990457708e6900f2675731a2fd63ef802a7d6dc74fc17bd71d5e19745489e",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 2,
+              "at": "2026-09-12T21:42:41.904Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-prepare-1",
+                "action": "complete",
+                "executionId": "execution-8a259bfa-8ca2-4171-a120-bae03152e85f"
+              },
+              "origin": "agent"
+            },
+            "req-begin-analyze-1": {
+              "digest": "928e49aaf2774cf5d76f993818e138921005e114309e143c5f216b2d6c7e6276",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 3,
+              "at": "2026-09-12T21:42:50.795Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-analyze-1",
+                "action": "begin",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d"
+              },
+              "origin": "agent"
+            },
+            "req-recommend-analyze-1": {
+              "digest": "226fb35346bbcfeded3c06a9f50ca446977cc63d6d8756ad35740925e1346910",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 4,
+              "at": "2026-09-12T21:42:59.383Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-recommend-analyze-1",
+                "action": "recommend",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d",
+                "data": {
+                  "purpose": "Read the measured input and write its own shell script deriving the requested strict-bound sum from the actual data, then write the integer sum alone as the result.",
+                  "language": "sh",
+                  "entry": "entry.sh",
+                  "entryPath": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                  "directory": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d",
+                  "argv": [
+                    "sh",
+                    "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                    "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f",
+                    "16"
+                  ],
+                  "reads": [
+                    {
+                      "name": "measuredInput",
+                      "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/flow/measured.txt"
+                    }
+                  ],
+                  "knowledge": [
+                    {
+                      "file": "numeric-strict-sum.md",
+                      "purpose": "the symbolic strict-bound sum rule, and the exact input/output interface the Workshop's generated script must implement",
+                      "at": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/.hima-method-history/51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57/authored-numeric/knowledge/numeric-strict-sum.md"
+                    }
+                  ],
+                  "produces": {
+                    "name": "analysis",
+                    "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/result.txt",
+                    "reader": "read-result",
+                    "emits": [
+                      {
+                        "type": "numeric_sum",
+                        "declared": {
+                          "unit": "count",
+                          "description": "the sum of this generation's actual measured values that are strictly greater than its LIMIT, with equality to LIMIT excluded; the integer alone, as the Workshop's result.txt states it"
+                        }
+                      }
+                    ]
+                  },
+                  "values": {
+                    "LIMIT": "16"
+                  },
+                  "instruction": "Read declared inputs and knowledge with hima_execute. Write the executable entry using action write and a relative path. The entry and helpers belong to this execution version. Work verifies recorded hashes and returns its real Job. Inspect facts, then explicitly complete. Use read output @job-log to inspect a launched Job; no new node starts without your next request."
+                }
+              },
+              "origin": "agent"
+            },
+            "req-write-analyze-1": {
+              "digest": "a8f63e1323910f5fff32223e20468e0d3912eccf49d037dc7288b88e0eadaf3f",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 5,
+              "at": "2026-09-12T21:43:47.894Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-write-analyze-1",
+                "action": "write",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d",
+                "data": {
+                  "wrote": true,
+                  "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                  "sha256": "c736875fd384ea997ecbd6c2e6511f10dce3f45f82777cfdb72b25c422605fe7",
+                  "bytes": 588
+                }
+              },
+              "origin": "agent"
+            },
+            "req-work-analyze-1": {
+              "digest": "097bf5611a9178883350e74ae62785059be42f3fb0ec70265534cffa5f8e78e2",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 6,
+              "at": "2026-09-12T21:43:51.209Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-analyze-1",
+                "action": "work",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d"
+              },
+              "origin": "agent"
+            },
+            "req-complete-analyze-1": {
+              "digest": "37c2ef3c046459153c5924aeadadff2dc18cd4212a210a7a85cd56b7729c3779",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 7,
+              "at": "2026-09-12T21:44:05.652Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-analyze-1",
+                "action": "complete",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d"
+              },
+              "origin": "agent"
+            },
+            "req-begin-observe-1": {
+              "digest": "ce78a6e9bf49af64a4d589a4b398749918e76918836647d7f37556b2c046e463",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 8,
+              "at": "2026-09-12T21:44:09.202Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-observe-1",
+                "action": "begin",
+                "executionId": "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21"
+              },
+              "origin": "agent"
+            },
+            "req-work-observe-1": {
+              "digest": "328320189aa6de1cf1b8327f2e22410a5a2e634ecf79c80865964ace4a60c83a",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 9,
+              "at": "2026-09-12T21:44:12.407Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-observe-1",
+                "action": "work",
+                "executionId": "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21"
+              },
+              "origin": "agent"
+            },
+            "req-complete-observe-1": {
+              "digest": "a5effb89365aab7ec3730c375b84fc7c04a0675d2bb6ccb5408eeeb691bd43af",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 10,
+              "at": "2026-09-12T21:44:22.052Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-observe-1",
+                "action": "complete",
+                "executionId": "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21"
+              },
+              "origin": "agent"
+            },
+            "req-begin-judge-1": {
+              "digest": "e7ebacbf098be2da40bf7f39770839fc0757c413e69233f271728c2717b1452c",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 11,
+              "at": "2026-09-12T21:44:27.918Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-judge-1",
+                "action": "begin",
+                "executionId": "execution-8f320555-da39-4597-9f97-354efcc5edb6"
+              },
+              "origin": "agent"
+            },
+            "req-work-judge-1": {
+              "digest": "a3fa401a03fa8b92a8ae4aad00b09303d92540d20611445767eb0dc60058528b",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 12,
+              "at": "2026-09-12T21:44:31.416Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-judge-1",
+                "action": "work",
+                "executionId": "execution-8f320555-da39-4597-9f97-354efcc5edb6"
+              },
+              "origin": "agent"
+            },
+            "req-complete-judge-1": {
+              "digest": "216f64eeee0020fc1bfc134ae0f183aa2d20ee33f1f40455f34d1e7005573275",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 13,
+              "at": "2026-09-12T21:44:36.718Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-judge-1",
+                "action": "complete",
+                "executionId": "execution-8f320555-da39-4597-9f97-354efcc5edb6"
+              },
+              "origin": "agent"
+            },
+            "req-begin-explore-1": {
+              "digest": "6f030cac31f6c88f8ae5dcd2f16199a6870e3a68989081ad9582bcd8793db0a8",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 14,
+              "at": "2026-09-12T21:44:45.828Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-explore-1",
+                "action": "begin",
+                "executionId": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067"
+              },
+              "origin": "agent"
+            },
+            "req-work-explore-1": {
+              "digest": "997e4193bfe251785325e3e63c0d8a4e08baee61570c9d476291a3a622769390",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 15,
+              "at": "2026-09-12T21:44:49.382Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-explore-1",
+                "action": "work",
+                "executionId": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067"
+              },
+              "origin": "agent"
+            },
+            "req-complete-explore-1": {
+              "digest": "b3b82fd665e9ad0764d063fd6e647f9fcb7c26496fe58168c25a73661acbc7e1",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 16,
+              "at": "2026-09-12T21:44:55.486Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-explore-1",
+                "action": "complete",
+                "executionId": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067"
+              },
+              "origin": "agent"
+            }
+          },
+          "siteDigest": "e99f73266f1a355ed457bf6487052e20925fbd5721e8f9e37e2f45e523409b5c"
+        },
+        "status": "ended-goal-met",
+        "packId": "authored-numeric",
+        "purpose": "test",
+        "packDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+        "goal": {
+          "minimum": 1
+        },
+        "budget": {
+          "timeBoxMs": 480000,
+          "retryAllowance": 2,
+          "jobCap": 1,
+          "licences": {},
+          "generationLimit": 1
+        },
+        "currentNode": "next-limit",
+        "strategy": {
+          "limit": 16
+        },
+        "firstStrategy": {
+          "limit": 16
+        },
+        "generation": 1,
+        "meters": {
+          "elapsedMs": 178891,
+          "jobsLaunched": 3,
+          "attempts": 3,
+          "generationMs": [
+            178821
+          ]
+        }
+      }
+    },
+    {
+      "claim": "one Run retained the original one-generation budget Goal cutoff and owner",
+      "passed": true,
+      "saw": {
+        "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+        "campaignId": "authored-numeric-20260912-214156-995f",
+        "siteId": "local",
+        "createdAt": "2026-09-12T21:41:56.652Z",
+        "nextSeq": 23,
+        "control": {
+          "mode": "agent",
+          "owner": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+          "epoch": 1,
+          "revision": 17,
+          "paused": [],
+          "executions": {
+            "execution-8a259bfa-8ca2-4171-a120-bae03152e85f": {
+              "id": "execution-8a259bfa-8ca2-4171-a120-bae03152e85f",
+              "nodeId": "prepare",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "baa8a8792c04561f6e1be80237df4615f0758f4414f16cdacf50b3b251aa59ce",
+              "phase": "completed",
+              "inputThroughSeq": 1,
+              "intent": {
+                "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-cbfcba3e-prepare-ddd36c",
+                  "workspace": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f",
+                  "name": "prepare",
+                  "startedAt": "2026-09-12T21:42:05.559Z",
+                  "wire": "'sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/flow/prepare.sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/flow' > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-prepare-ddd36c.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-prepare-ddd36c.exit'"
+                },
+                "nodeId": "prepare",
+                "attempt": 1
+              },
+              "jobSession": "hima-cbfcba3e-prepare-ddd36c",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-54800af2-0962-4b01-b5c4-c2a62522222d": {
+              "id": "execution-54800af2-0962-4b01-b5c4-c2a62522222d",
+              "nodeId": "analyze",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "baa8a8792c04561f6e1be80237df4615f0758f4414f16cdacf50b3b251aa59ce",
+              "phase": "completed",
+              "inputThroughSeq": 5,
+              "workshop": {
+                "id": "analyze",
+                "entry": "entry.sh",
+                "entryPath": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                "directory": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d"
+              },
+              "intent": {
+                "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-cbfcba3e-workshop-analyze-09d7f1",
+                  "workspace": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f",
+                  "name": "workshop-analyze",
+                  "startedAt": "2026-09-12T21:43:51.253Z",
+                  "wire": "'sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f' '16' > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-workshop-analyze-09d7f1.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-workshop-analyze-09d7f1.exit'"
+                },
+                "nodeId": "analyze",
+                "workshop": {
+                  "id": "analyze",
+                  "entry": {
+                    "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                    "sha256": "c736875fd384ea997ecbd6c2e6511f10dce3f45f82777cfdb72b25c422605fe7"
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-cbfcba3e-workshop-analyze-09d7f1",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21": {
+              "id": "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21",
+              "nodeId": "observe",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "baa8a8792c04561f6e1be80237df4615f0758f4414f16cdacf50b3b251aa59ce",
+              "phase": "completed",
+              "inputThroughSeq": 10,
+              "intent": {
+                "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-cbfcba3e-reader-read-result-5c7fbc",
+                  "workspace": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f",
+                  "name": "reader-read-result",
+                  "startedAt": "2026-09-12T21:44:12.468Z",
+                  "wire": "'sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-readers/read-result/read-result.sh' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/result.txt' '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-readers/read-result/observe-g1-a1.json' > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-reader-read-result-5c7fbc.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-cbfcba3e-reader-read-result-5c7fbc.exit'"
+                },
+                "nodeId": "observe",
+                "reading": {
+                  "reader": {
+                    "id": "read-result",
+                    "version": "1",
+                    "reportKind": "numeric-sum-result",
+                    "emits": [
+                      "numeric_sum"
+                    ],
+                    "file": "tools/read-result.sh",
+                    "sha256": "7b3ab24d293aac4b30770903a79b2a96a2d2b129fd09c5f7a318b5cf8933e4ec"
+                  },
+                  "out": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/hima-readers/read-result/observe-g1-a1.json",
+                  "report": {
+                    "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/result.txt",
+                    "contentSha256": "1ee1c7eb8ed268e88ca294b11ff2463a7edf168833613d0f5a191877657ea752",
+                    "bytes": 4
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-cbfcba3e-reader-read-result-5c7fbc",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-8f320555-da39-4597-9f97-354efcc5edb6": {
+              "id": "execution-8f320555-da39-4597-9f97-354efcc5edb6",
+              "nodeId": "judge",
+              "kind": "judge",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "d902aa3b5f66627791b307ebd0d7d27678bdd24160aa74495ef080d7e8d8c5cd",
+              "phase": "completed",
+              "inputThroughSeq": 16,
+              "result": {
+                "kind": "settled",
+                "outcome": "PASS"
+              }
+            },
+            "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067": {
+              "id": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067",
+              "nodeId": "next-limit",
+              "kind": "explore",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+              "inputDigest": "2c8d5863182e5dad4b95aaca6d52075c023dec46080a0cd76fd05b7a1ad6affd",
+              "phase": "completed",
+              "inputThroughSeq": 19,
+              "result": {
+                "kind": "settled"
+              }
+            }
+          },
+          "requests": {
+            "req-begin-prepare-1": {
+              "digest": "f96b3ee2f7d81e4d44dd070f4f83e9521a4ee032c050e96f5405b80ac75336e5",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 0,
+              "at": "2026-09-12T21:42:02.391Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-prepare-1",
+                "action": "begin",
+                "executionId": "execution-8a259bfa-8ca2-4171-a120-bae03152e85f"
+              },
+              "origin": "agent"
+            },
+            "req-work-prepare-1": {
+              "digest": "f526d1a8580adb60094251d651ae0e349ea39d860bc93ef5008370a7bbfa6c04",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 1,
+              "at": "2026-09-12T21:42:05.512Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-prepare-1",
+                "action": "work",
+                "executionId": "execution-8a259bfa-8ca2-4171-a120-bae03152e85f"
+              },
+              "origin": "agent"
+            },
+            "req-complete-prepare-1": {
+              "digest": "c6f990457708e6900f2675731a2fd63ef802a7d6dc74fc17bd71d5e19745489e",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 2,
+              "at": "2026-09-12T21:42:41.904Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-prepare-1",
+                "action": "complete",
+                "executionId": "execution-8a259bfa-8ca2-4171-a120-bae03152e85f"
+              },
+              "origin": "agent"
+            },
+            "req-begin-analyze-1": {
+              "digest": "928e49aaf2774cf5d76f993818e138921005e114309e143c5f216b2d6c7e6276",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 3,
+              "at": "2026-09-12T21:42:50.795Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-analyze-1",
+                "action": "begin",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d"
+              },
+              "origin": "agent"
+            },
+            "req-recommend-analyze-1": {
+              "digest": "226fb35346bbcfeded3c06a9f50ca446977cc63d6d8756ad35740925e1346910",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 4,
+              "at": "2026-09-12T21:42:59.383Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-recommend-analyze-1",
+                "action": "recommend",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d",
+                "data": {
+                  "purpose": "Read the measured input and write its own shell script deriving the requested strict-bound sum from the actual data, then write the integer sum alone as the result.",
+                  "language": "sh",
+                  "entry": "entry.sh",
+                  "entryPath": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                  "directory": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d",
+                  "argv": [
+                    "sh",
+                    "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                    "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f",
+                    "16"
+                  ],
+                  "reads": [
+                    {
+                      "name": "measuredInput",
+                      "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/flow/measured.txt"
+                    }
+                  ],
+                  "knowledge": [
+                    {
+                      "file": "numeric-strict-sum.md",
+                      "purpose": "the symbolic strict-bound sum rule, and the exact input/output interface the Workshop's generated script must implement",
+                      "at": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/.hima-method-history/51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57/authored-numeric/knowledge/numeric-strict-sum.md"
+                    }
+                  ],
+                  "produces": {
+                    "name": "analysis",
+                    "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/result.txt",
+                    "reader": "read-result",
+                    "emits": [
+                      {
+                        "type": "numeric_sum",
+                        "declared": {
+                          "unit": "count",
+                          "description": "the sum of this generation's actual measured values that are strictly greater than its LIMIT, with equality to LIMIT excluded; the integer alone, as the Workshop's result.txt states it"
+                        }
+                      }
+                    ]
+                  },
+                  "values": {
+                    "LIMIT": "16"
+                  },
+                  "instruction": "Read declared inputs and knowledge with hima_execute. Write the executable entry using action write and a relative path. The entry and helpers belong to this execution version. Work verifies recorded hashes and returns its real Job. Inspect facts, then explicitly complete. Use read output @job-log to inspect a launched Job; no new node starts without your next request."
+                }
+              },
+              "origin": "agent"
+            },
+            "req-write-analyze-1": {
+              "digest": "a8f63e1323910f5fff32223e20468e0d3912eccf49d037dc7288b88e0eadaf3f",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 5,
+              "at": "2026-09-12T21:43:47.894Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-write-analyze-1",
+                "action": "write",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d",
+                "data": {
+                  "wrote": true,
+                  "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+                  "sha256": "c736875fd384ea997ecbd6c2e6511f10dce3f45f82777cfdb72b25c422605fe7",
+                  "bytes": 588
+                }
+              },
+              "origin": "agent"
+            },
+            "req-work-analyze-1": {
+              "digest": "097bf5611a9178883350e74ae62785059be42f3fb0ec70265534cffa5f8e78e2",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 6,
+              "at": "2026-09-12T21:43:51.209Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-analyze-1",
+                "action": "work",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d"
+              },
+              "origin": "agent"
+            },
+            "req-complete-analyze-1": {
+              "digest": "37c2ef3c046459153c5924aeadadff2dc18cd4212a210a7a85cd56b7729c3779",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 7,
+              "at": "2026-09-12T21:44:05.652Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-analyze-1",
+                "action": "complete",
+                "executionId": "execution-54800af2-0962-4b01-b5c4-c2a62522222d"
+              },
+              "origin": "agent"
+            },
+            "req-begin-observe-1": {
+              "digest": "ce78a6e9bf49af64a4d589a4b398749918e76918836647d7f37556b2c046e463",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 8,
+              "at": "2026-09-12T21:44:09.202Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-observe-1",
+                "action": "begin",
+                "executionId": "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21"
+              },
+              "origin": "agent"
+            },
+            "req-work-observe-1": {
+              "digest": "328320189aa6de1cf1b8327f2e22410a5a2e634ecf79c80865964ace4a60c83a",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 9,
+              "at": "2026-09-12T21:44:12.407Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-observe-1",
+                "action": "work",
+                "executionId": "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21"
+              },
+              "origin": "agent"
+            },
+            "req-complete-observe-1": {
+              "digest": "a5effb89365aab7ec3730c375b84fc7c04a0675d2bb6ccb5408eeeb691bd43af",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 10,
+              "at": "2026-09-12T21:44:22.052Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-observe-1",
+                "action": "complete",
+                "executionId": "execution-df5fe05d-9fc2-4e33-b948-d521b98fdb21"
+              },
+              "origin": "agent"
+            },
+            "req-begin-judge-1": {
+              "digest": "e7ebacbf098be2da40bf7f39770839fc0757c413e69233f271728c2717b1452c",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 11,
+              "at": "2026-09-12T21:44:27.918Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-judge-1",
+                "action": "begin",
+                "executionId": "execution-8f320555-da39-4597-9f97-354efcc5edb6"
+              },
+              "origin": "agent"
+            },
+            "req-work-judge-1": {
+              "digest": "a3fa401a03fa8b92a8ae4aad00b09303d92540d20611445767eb0dc60058528b",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 12,
+              "at": "2026-09-12T21:44:31.416Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-judge-1",
+                "action": "work",
+                "executionId": "execution-8f320555-da39-4597-9f97-354efcc5edb6"
+              },
+              "origin": "agent"
+            },
+            "req-complete-judge-1": {
+              "digest": "216f64eeee0020fc1bfc134ae0f183aa2d20ee33f1f40455f34d1e7005573275",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 13,
+              "at": "2026-09-12T21:44:36.718Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-judge-1",
+                "action": "complete",
+                "executionId": "execution-8f320555-da39-4597-9f97-354efcc5edb6"
+              },
+              "origin": "agent"
+            },
+            "req-begin-explore-1": {
+              "digest": "6f030cac31f6c88f8ae5dcd2f16199a6870e3a68989081ad9582bcd8793db0a8",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 14,
+              "at": "2026-09-12T21:44:45.828Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-explore-1",
+                "action": "begin",
+                "executionId": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067"
+              },
+              "origin": "agent"
+            },
+            "req-work-explore-1": {
+              "digest": "997e4193bfe251785325e3e63c0d8a4e08baee61570c9d476291a3a622769390",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 15,
+              "at": "2026-09-12T21:44:49.382Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-explore-1",
+                "action": "work",
+                "executionId": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067"
+              },
+              "origin": "agent"
+            },
+            "req-complete-explore-1": {
+              "digest": "b3b82fd665e9ad0764d063fd6e647f9fcb7c26496fe58168c25a73661acbc7e1",
+              "actor": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+              "epoch": 1,
+              "revision": 16,
+              "at": "2026-09-12T21:44:55.486Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-explore-1",
+                "action": "complete",
+                "executionId": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067"
+              },
+              "origin": "agent"
+            }
+          },
+          "siteDigest": "e99f73266f1a355ed457bf6487052e20925fbd5721e8f9e37e2f45e523409b5c"
+        },
+        "status": "ended-goal-met",
+        "packId": "authored-numeric",
+        "purpose": "test",
+        "packDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+        "goal": {
+          "minimum": 1
+        },
+        "budget": {
+          "timeBoxMs": 480000,
+          "retryAllowance": 2,
+          "jobCap": 1,
+          "licences": {},
+          "generationLimit": 1
+        },
+        "currentNode": "next-limit",
+        "strategy": {
+          "limit": 16
+        },
+        "firstStrategy": {
+          "limit": 16
+        },
+        "generation": 1,
+        "meters": {
+          "elapsedMs": 178891,
+          "jobsLaunched": 3,
+          "attempts": 3,
+          "generationMs": [
+            178821
+          ]
+        }
+      }
+    },
+    {
+      "claim": "test froze and executed the corrected model-authored method",
+      "passed": true,
+      "saw": {
+        "before": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+        "run": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+        "after": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57"
+      }
+    },
+    {
+      "claim": "Run workspace holds corrected method and unchanged measured input",
+      "passed": true,
+      "saw": {
+        "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000001",
+        "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+        "siteId": "local",
+        "seq": 1,
+        "at": "2026-09-12T21:41:56.713Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "workspace",
+        "event": "prepared",
+        "campaignId": "authored-numeric-20260912-214156-995f",
+        "packId": "authored-numeric",
+        "packVersion": "1",
+        "packDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+        "workspace": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f",
+        "flowRoot": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/numeric-flow",
+        "containerName": "hima-authored-numeric-20260912-214156-995f",
+        "copied": [
+          "prepare.sh",
+          "numbers.txt"
+        ],
+        "preparedAt": "2026-09-12T21:41:56.676Z"
+      }
+    },
+    {
+      "claim": "authored reader measured the independent actual-input strict-bound sum",
+      "passed": true,
+      "saw": {
+        "expected": 169,
+        "initialLimit": 16,
+        "observations": [
+          {
+            "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000015",
+            "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+            "siteId": "local",
+            "seq": 15,
+            "at": "2026-09-12T21:44:12.715Z",
+            "writer": "executor",
+            "generation": 1,
+            "type": "observation",
+            "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/result.txt",
+            "contentSha256": "1ee1c7eb8ed268e88ca294b11ff2463a7edf168833613d0f5a191877657ea752",
+            "bytes": 4,
+            "reader": {
+              "id": "read-result",
+              "version": "1",
+              "reportKind": "numeric-sum-result",
+              "emits": [
+                "numeric_sum"
+              ],
+              "file": "tools/read-result.sh",
+              "sha256": "7b3ab24d293aac4b30770903a79b2a96a2d2b129fd09c5f7a318b5cf8933e4ec"
+            },
+            "values": [
+              {
+                "type": "numeric_sum",
+                "value": 169,
+                "unit": "count"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "claim": "observation identifies the corrected reader bytes",
+      "passed": true,
+      "saw": {
+        "id": "read-result",
+        "version": "1",
+        "reportKind": "numeric-sum-result",
+        "emits": [
+          "numeric_sum"
+        ],
+        "file": "tools/read-result.sh",
+        "sha256": "7b3ab24d293aac4b30770903a79b2a96a2d2b129fd09c5f7a318b5cf8933e4ec"
+      }
+    },
+    {
+      "claim": "actual output contains the exact independent sum with matching observed hash",
+      "passed": true,
+      "saw": {
+        "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/result.txt",
+        "expected": 169,
+        "actual": "169\n",
+        "observedSha256": "1ee1c7eb8ed268e88ca294b11ff2463a7edf168833613d0f5a191877657ea752",
+        "actualSha256": "1ee1c7eb8ed268e88ca294b11ff2463a7edf168833613d0f5a191877657ea752"
+      }
+    },
+    {
+      "claim": "actual current constraint and bound Goal PASS cite the verified observation",
+      "passed": true,
+      "saw": {
+        "constraintVerdict": {
+          "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000017",
+          "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+          "siteId": "local",
+          "seq": 17,
+          "at": "2026-09-12T21:44:31.444Z",
+          "writer": "judge",
+          "generation": 1,
+          "type": "verdict",
+          "outcome": "PASS",
+          "ruleId": "numeric-sum-nonnegative",
+          "ruleVersion": "1",
+          "cites": [
+            "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000015"
+          ],
+          "valuesAsRead": [
+            {
+              "type": "numeric_sum",
+              "value": 169,
+              "unit": "count"
+            }
+          ]
+        },
+        "goalVerdict": {
+          "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000018",
+          "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+          "siteId": "local",
+          "seq": 18,
+          "at": "2026-09-12T21:44:31.464Z",
+          "writer": "judge",
+          "generation": 1,
+          "type": "verdict",
+          "outcome": "PASS",
+          "ruleId": "numeric-sum-meets-minimum",
+          "ruleVersion": "1",
+          "cites": [
+            "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000015"
+          ],
+          "valuesAsRead": [
+            {
+              "type": "numeric_sum",
+              "value": 169,
+              "unit": "count"
+            }
+          ],
+          "boundParameters": {
+            "minimum": 1
+          }
+        }
+      }
+    },
+    {
+      "claim": "original owner completed Explore goal-met with actual current observation and both verdicts",
+      "passed": true,
+      "saw": {
+        "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000020",
+        "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+        "siteId": "local",
+        "seq": 20,
+        "at": "2026-09-12T21:44:55.518Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "decision",
+        "nodeId": "next-limit",
+        "chooser": "limit-down-to-zero",
+        "chooserOrigin": "pack",
+        "agent": {
+          "sessionId": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+          "executionId": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067",
+          "rationale": "The Judge's first rule numeric-sum-nonnegative@1 PASSed (verdict #000017) and its goal rule numeric-sum-meets-minimum@1 PASSed with minimum bound to 1 (verdict #000018), both citing the current observation #000015. That observation is the declared reader read-result@1 reading result.txt (sha256 1ee1c7eb8ed268e88ca294b11ff2463a7edf168833613d0f5a191877657ea752) as numeric_sum = 169 count, produced by the Workshop at LIMIT 16 over the actual flow/measured.txt. 169 >= goal minimum 1, so the acceptance bound is reached and there is no next experiment to choose."
+        },
+        "chosen": {
+          "goalMet": true
+        },
+        "rationale": {},
+        "cites": [
+          "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000015",
+          "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000017",
+          "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000018"
+        ]
+      }
+    },
+    {
+      "claim": "original model generated Workshop code whose actual bytes match recorded hashes",
+      "passed": true,
+      "saw": [
+        {
+          "record": {
+            "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000006",
+            "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+            "siteId": "local",
+            "seq": 6,
+            "at": "2026-09-12T21:43:47.951Z",
+            "writer": "executor",
+            "generation": 1,
+            "type": "code",
+            "nodeId": "analyze",
+            "attempt": 1,
+            "sessionId": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+            "workshop": "analyze",
+            "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+            "sha256": "c736875fd384ea997ecbd6c2e6511f10dce3f45f82777cfdb72b25c422605fe7",
+            "bytes": 588,
+            "language": "sh"
+          },
+          "content": "#!/bin/sh\n# Written by the Workshop at run time from the actual measured input and the declared knowledge\n# `numeric-strict-sum.md`: sum every measured value strictly greater than LIMIT, and write the\n# integer sum alone to result.txt.\n#\n#   $1 = the Campaign workspace (holds flow/measured.txt, receives result.txt)\n#   $2 = LIMIT\nset -eu\n\nworkspace=${1:?the Campaign workspace}\nlimit=${2:?the LIMIT threshold}\n\nawk -v limit=\"$limit\" '\n  /^[0-9]+$/ { if ($0 + 0 > limit + 0) total += $0 + 0 }\n  END { printf \"%d\\n\", total + 0 }\n' \"$workspace/flow/measured.txt\" > \"$workspace/result.txt\"\n",
+          "actualSha256": "c736875fd384ea997ecbd6c2e6511f10dce3f45f82777cfdb72b25c422605fe7"
+        }
+      ]
+    }
+  ],
+  "observed": {
+    "currentSuccess": {
+      "expected": 169,
+      "initialLimit": 16,
+      "observation": {
+        "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000015",
+        "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+        "siteId": "local",
+        "seq": 15,
+        "at": "2026-09-12T21:44:12.715Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "observation",
+        "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/result.txt",
+        "contentSha256": "1ee1c7eb8ed268e88ca294b11ff2463a7edf168833613d0f5a191877657ea752",
+        "bytes": 4,
+        "reader": {
+          "id": "read-result",
+          "version": "1",
+          "reportKind": "numeric-sum-result",
+          "emits": [
+            "numeric_sum"
+          ],
+          "file": "tools/read-result.sh",
+          "sha256": "7b3ab24d293aac4b30770903a79b2a96a2d2b129fd09c5f7a318b5cf8933e4ec"
+        },
+        "values": [
+          {
+            "type": "numeric_sum",
+            "value": 169,
+            "unit": "count"
+          }
+        ]
+      },
+      "constraintVerdict": {
+        "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000017",
+        "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+        "siteId": "local",
+        "seq": 17,
+        "at": "2026-09-12T21:44:31.444Z",
+        "writer": "judge",
+        "generation": 1,
+        "type": "verdict",
+        "outcome": "PASS",
+        "ruleId": "numeric-sum-nonnegative",
+        "ruleVersion": "1",
+        "cites": [
+          "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000015"
+        ],
+        "valuesAsRead": [
+          {
+            "type": "numeric_sum",
+            "value": 169,
+            "unit": "count"
+          }
+        ]
+      },
+      "goalVerdict": {
+        "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000018",
+        "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+        "siteId": "local",
+        "seq": 18,
+        "at": "2026-09-12T21:44:31.464Z",
+        "writer": "judge",
+        "generation": 1,
+        "type": "verdict",
+        "outcome": "PASS",
+        "ruleId": "numeric-sum-meets-minimum",
+        "ruleVersion": "1",
+        "cites": [
+          "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000015"
+        ],
+        "valuesAsRead": [
+          {
+            "type": "numeric_sum",
+            "value": 169,
+            "unit": "count"
+          }
+        ],
+        "boundParameters": {
+          "minimum": 1
+        }
+      },
+      "decision": {
+        "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000020",
+        "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+        "siteId": "local",
+        "seq": 20,
+        "at": "2026-09-12T21:44:55.518Z",
+        "writer": "executor",
+        "generation": 1,
+        "type": "decision",
+        "nodeId": "next-limit",
+        "chooser": "limit-down-to-zero",
+        "chooserOrigin": "pack",
+        "agent": {
+          "sessionId": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+          "executionId": "execution-2cdc158b-1b5e-4040-9ace-d4bdbd159067",
+          "rationale": "The Judge's first rule numeric-sum-nonnegative@1 PASSed (verdict #000017) and its goal rule numeric-sum-meets-minimum@1 PASSed with minimum bound to 1 (verdict #000018), both citing the current observation #000015. That observation is the declared reader read-result@1 reading result.txt (sha256 1ee1c7eb8ed268e88ca294b11ff2463a7edf168833613d0f5a191877657ea752) as numeric_sum = 169 count, produced by the Workshop at LIMIT 16 over the actual flow/measured.txt. 169 >= goal minimum 1, so the acceptance bound is reached and there is no next experiment to choose."
+        },
+        "chosen": {
+          "goalMet": true
+        },
+        "rationale": {},
+        "cites": [
+          "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000015",
+          "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000017",
+          "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000018"
+        ]
+      }
+    },
+    "code": [
+      {
+        "record": {
+          "id": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81#000006",
+          "runId": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81",
+          "siteId": "local",
+          "seq": 6,
+          "at": "2026-09-12T21:43:47.951Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "code",
+          "nodeId": "analyze",
+          "attempt": 1,
+          "sessionId": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+          "workshop": "analyze",
+          "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/workspace/authored-numeric-20260912-214156-995f/research/.executions/execution-54800af2-0962-4b01-b5c4-c2a62522222d/entry.sh",
+          "sha256": "c736875fd384ea997ecbd6c2e6511f10dce3f45f82777cfdb72b25c422605fe7",
+          "bytes": 588,
+          "language": "sh"
+        },
+        "content": "#!/bin/sh\n# Written by the Workshop at run time from the actual measured input and the declared knowledge\n# `numeric-strict-sum.md`: sum every measured value strictly greater than LIMIT, and write the\n# integer sum alone to result.txt.\n#\n#   $1 = the Campaign workspace (holds flow/measured.txt, receives result.txt)\n#   $2 = LIMIT\nset -eu\n\nworkspace=${1:?the Campaign workspace}\nlimit=${2:?the LIMIT threshold}\n\nawk -v limit=\"$limit\" '\n  /^[0-9]+$/ { if ($0 + 0 > limit + 0) total += $0 + 0 }\n  END { printf \"%d\\n\", total + 0 }\n' \"$workspace/flow/measured.txt\" > \"$workspace/result.txt\"\n",
+        "actualSha256": "c736875fd384ea997ecbd6c2e6511f10dce3f45f82777cfdb72b25c422605fe7"
+      }
+    ],
+    "nativeAuthor": {
+      "id": "session-49dc2661-cbdd-49ae-ac65-8df55b0917bf",
+      "skills": [
+        "hima-grill",
+        "hima-spec",
+        "hima-fabric",
+        "hima-fabric",
+        "hima-test",
+        "hima-test",
+        "hima-release"
+      ],
+      "toolCalls": 104,
+      "finalizationCalls": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/TEST.md"
+          }
+        },
+        {
+          "name": "edit",
+          "args": {
+            "file_path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/TEST.md",
+            "old_string": "run: run-cbfcba3e-fc8d-459e-b6a6-304de9764a81 — goal: goal minimum 1 (count); strategy: limit 16 (count).",
+            "new_string": "run: run-cbfcba3e-fc8d-459e-b6a6-304de9764a81\n\n— goal: goal minimum 1 (count); strategy: limit 16 (count)."
+          }
+        },
+        {
+          "name": "edit",
+          "args": {
+            "file_path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/TEST.md",
+            "old_string": "status: ended-goal-met — this is one the spec's",
+            "new_string": "status: ended-goal-met\n\n— this is one the spec's"
+          }
+        },
+        {
+          "name": "grep",
+          "args": {
+            "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/TEST.md",
+            "pattern": "^(run:|status:|— )|^## "
+          }
+        },
+        {
+          "name": "hima_pack_check",
+          "args": {
+            "pack": "authored-numeric",
+            "site": "local"
+          }
+        },
+        {
+          "name": "hima_pack_check",
+          "args": {
+            "pack": "authored-numeric",
+            "site": "local"
+          }
+        },
+        {
+          "name": "hima_pack_release",
+          "args": {
+            "pack": "authored-numeric"
+          }
+        },
+        {
+          "name": "hima_pack_check",
+          "args": {
+            "pack": "authored-numeric",
+            "site": "local"
+          }
+        }
+      ],
+      "nativeRelease": true
+    }
+  },
+  "seal": {
+    "pack": "authored-numeric",
+    "version": "1",
+    "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+    "released": "2026-09-12T22:33:04.891Z",
+    "test": {
+      "record": "TEST.md",
+      "run": "run-cbfcba3e-fc8d-459e-b6a6-304de9764a81"
+    },
+    "files": {
+      "FABRIC.md": "e864fe812aee447e2f8def1092637c7dd7f41fda6111efddc4f7cb1531322e5a",
+      "INTENT.md": "8a1f06b2b046a0a3a3d93605e409d8ede7bf1e6a47d0480bd67d9f2d55807df7",
+      "SPEC.md": "4dc816ede8df2f0fed0371fa9b7eb60ced70cc4d7f0ba6d710d40b33d6f66ce7",
+      "TEST.md": "826250e6c969be23eefca64e53922751644d0cb511c3709faece8c3da249bf29",
+      "choosers/limit-down-to-zero.yml": "9cc20d09078311c1161e3b7cd0d1c8ae139de7898d4682e5dfbc3b600a0f949b",
+      "contract.yml": "b34942c2ed331926f12b691232a610ca3cb989f9a40b73646ab828209d3e4600",
+      "graph.yml": "117925a2cfbef541bf9c9cd4ab02e606703c532167c1d4612ce69a0b38c90781",
+      "knowledge/numeric-strict-sum.md": "bfea7e2b1452dc987134690ecf3def45e8344db0b01aac780949b06db263d235",
+      "readers/read-result.yml": "307d6f36d5d0e7fec478c137d7f9eb869493a0af3e2b47be2c076964f8f1fd8d",
+      "rules/numeric-sum-meets-minimum.yml": "aef5dfbf330dae20a674ea05788cc1ac1a0197768f7fb86c9a9dc5e6951808e4",
+      "rules/numeric-sum-nonnegative.yml": "6e4ee14857befb23a81a53358c2dd3d2eb56a5f2f5fa3f1f153549ba91ee445a",
+      "semantics.yml": "238cf1ea9a434e394d09b13cdf6809c51e88e3d47ed681051644987028897ac2",
+      "tools/prepare.sh": "b36cf2665c0cb99aad6a2a8fd4b670682e9fad5070bc00567965c89fb63c9a80",
+      "tools/read-result.sh": "7b3ab24d293aac4b30770903a79b2a96a2d2b129fd09c5f7a318b5cf8933e4ec"
+    }
+  },
+  "finalTestSha256": "826250e6c969be23eefca64e53922751644d0cb511c3709faece8c3da249bf29",
+  "methodDigest": "51b975e734d107436fdd49d35335e886b2682b3334bc635cb09b8d16f9ef6e57",
+  "allowedTreeDelta": [
+    "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/TEST.md (rewritten)",
+    "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/hima/packs/authored-numeric/VERSION.yml (new)"
+  ],
+  "ledgerBytes": {
+    "path": "/private/tmp/hima-l4-JUuVfx/hima-home-NOrd0w/storages/hima_ledger.json",
+    "sha256": "4b259e4938dc1961eb0525c4cb1b3b7906f9b4482fbcca92800756b13b79c444",
+    "unchangedSinceRuntimeUpgrade": true
+  },
+  "originalHomeUnchangedByAudit": true,
+  "priorCosts": {
+    "original": {
+      "hosts": 1,
+      "electron": 0,
+      "nativeSessionsCreated": 2,
+      "modelSessions": 1,
+      "modelRequestSteps": 26,
+      "apiRequests": "unmeasured; request steps exclude adapter retries",
+      "tokens": "unmeasured",
+      "userMessages": 5
+    },
+    "failedFirstAttempt": {
+      "hosts": 1,
+      "electron": 0,
+      "nativeSessionsCreated": 0,
+      "nativeSessionsResumed": 1,
+      "modelSessions": 1,
+      "modelRequestSteps": 1,
+      "apiRequests": "unmeasured; request steps exclude adapter retries",
+      "tokens": "unmeasured",
+      "userMessages": 1
+    },
+    "scientificContinuation": {
+      "hosts": 1,
+      "electron": 0,
+      "nativeSessionsCreated": 0,
+      "nativeSessionsResumed": 1,
+      "modelSessions": 1,
+      "modelRequestSteps": 37,
+      "apiRequests": "unmeasured; request steps exclude adapter retries",
+      "tokens": "unmeasured",
+      "userMessages": 2
+    },
+    "finalization": {
+      "hosts": 1,
+      "nativeSessionsCreated": 0,
+      "nativeSessionsResumed": 1,
+      "modelRequestSteps": 8,
+      "userMessages": 2
+    },
+    "aggregate": {
+      "hosts": 4,
+      "nativeSessionsCreated": 2,
+      "modelRequestSteps": 72,
+      "userMessages": 10
+    },
+    "failedFirstAttemptProviderRequests": 0,
+    "providerRequests": "otherwise unmeasured; request events are not API request counts"
+  },
+  "auditCosts": {
+    "hosts": 1,
+    "modelRequests": 0,
+    "providerRequests": 0,
+    "runExecutions": 0,
+    "fileEditsInOriginalHome": 0
+  },
+  "aggregateCostsIncludingAudit": {
+    "hosts": 5,
+    "nativeSessionsCreated": 2,
+    "modelRequestSteps": 72,
+    "userMessages": 10
+  }
+}

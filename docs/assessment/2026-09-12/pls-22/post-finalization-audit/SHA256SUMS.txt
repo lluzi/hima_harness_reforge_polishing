@@ -1,0 +1,7 @@
+7f4920add069d16324f3ae2ac9897abf9fc654ed2e0d0f5a5083ca75bcc8bca6  scripts/live-check-pipeline-finalize.ts
+cde54bab1f0e65fd7a8d7f523e0afdd7dd98bd35153ddfa81e0f4c6c4601fa3a  scripts/audit-pipeline-finalization.ts
+25bc0d7e2c8e3a5ed900f376cac9ae98aefcdcf6714a18d58f0d82905c92e52f  test/contract/pipeline-finalize.test.ts
+370a1cae8ce74a0ceb052d4113ee48bc4170186470866a4b07a796a3b9c2991c  docs/assessment/2026-09-12/pls-22/post-finalization-audit/evidence.json
+071563b7165673a9e40b4cf1e0343cfd5d932f7ea4715a6e7bd4a379624f0f3d  docs/assessment/2026-09-12/pls-22/post-finalization-audit/property-order-red.tap
+e02398610d1a7c43983142215e22f6157073245165a30483010c3f308f7aac7f  docs/assessment/2026-09-12/pls-22/post-finalization-audit/property-order-green.tap
+421477bb59a41953bc0abf45aab37b271bfa978c4708c2c63c8f80b3d7073971  docs/assessment/2026-09-12/pls-22/post-finalization-audit/typecheck.log
