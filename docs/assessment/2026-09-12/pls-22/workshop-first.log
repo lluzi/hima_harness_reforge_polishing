@@ -1,0 +1,25 @@
+✖ installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it (4494.375ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5351.078583
+
+✖ failing tests:
+
+test at test/contract/skills.test.ts:67:1
+✖ installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it (4494.375ms)
+  AssertionError [ERR_ASSERTION]: installed hima-grill: /private/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-RiWGmn/profiles/hima/node_modules/@hima/harness/skills/hima-grill/SKILL.md
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/skills.test.ts:92:14)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

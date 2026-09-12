@@ -1,0 +1,6 @@
+id: sum-file
+version: '1'
+file: tools/read-sum.sh
+argv: [sh, '${READER}', '${REPORT}', '${OUT}']
+reportKind: scaled-sum
+emits: [scaled_sum]

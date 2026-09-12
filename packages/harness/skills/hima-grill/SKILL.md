@@ -8,11 +8,12 @@ You write exactly one file: `INTENT.md`, in the session's working directory. Tha
 pack folder, and it is the only place you write. You do not write anywhere else, you do not create
 subdirectories, and you do not copy any file of the Golden Flow into it.
 
-**Check the working directory first.** A pack folder is empty, or holds only this pipeline's own
-files — `INTENT.md`, `SPEC.md`, a pack's `contract.yml`, `graph.yml` and `semantics.yml`, and the
-directories they name (`tools/`, `rules/`, `choosers/`, `readers/`, `knowledge/`). If what you are standing in is plainly something else — a source tree, a home directory, the
-Golden Flow itself — say so, say what you found, and stop. Ask the person to open the pack folder
-they mean to author and invoke this stage again. Do not author into a directory nobody chose for it.
+**Bind the Pack workspace first.** If this conversation is not already in the chosen Pack folder,
+call `hima_author` with its id and `create: true` only when the author requested a new Pack.
+The returned native session has the Pack folder as its real workspace. Show its Open authoring
+session action and continue `/hima-grill` there. Keep the Golden Flow and Site paths in the author's
+message as read-only references. Once in that session, write `INTENT.md` there; the file tools and
+Host guard enforce the Pack boundary. An ordinary Coding session keeps its own workspace.
 
 ## How you ask
 

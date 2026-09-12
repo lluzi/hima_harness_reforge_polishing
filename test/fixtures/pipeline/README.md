@@ -135,3 +135,7 @@ own **on the same session** (`@deepseek-ai/dsh-session-title-first-prompt-llm`, 
 eat one of the entries below — and it is deferred, so which one it ate would differ from run to run.
 `test/contract/support/pipeline.ts` therefore disables that one row in the home's own patch layer,
 beside the stand-in, so the only model calls on the session are the stage's own.
+
+## PLS-22 installed Workshop
+
+`workshop/` adds a handwritten mechanism fixture for authoring and real local execution of an input-dependent script. Its README states provenance and the separate real-model gate. Five-stage historical fixtures remain replay evidence, not this version's model acceptance.

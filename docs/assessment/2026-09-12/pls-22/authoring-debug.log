@@ -1,0 +1,47 @@
+✖ installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it (2476.211583ms)
+✖ from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding (640.345708ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3651.094083
+
+✖ failing tests:
+
+test at test/contract/skills.test.ts:67:1
+✖ installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it (2476.211583ms)
+  AssertionError [ERR_ASSERTION]: pack authored-workshop on site local: unfit — pack authored-workshop has a contract.yml but no graph.yml beside it
+  stage: none; next: intent — INTENT.md, written by /hima-grill
+  
+  'error' !== 'ok'
+  
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/skills.test.ts:110:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'error',
+    expected: 'ok',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/contract/skills.test.ts:133:1
+✖ from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding (640.345708ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls22/test/contract/skills.test.ts:165:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

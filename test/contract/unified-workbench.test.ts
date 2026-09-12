@@ -1,7 +1,7 @@
 // L3: native dsh conversation + Hima dock. Real Host and local Jobs; no model turn or SSH.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { bootDriver, type BootedDriver } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
@@ -12,6 +12,8 @@ import { localHome } from './support/fabric.ts';
 import { installWorkshopPack, packsDirOf, writePackVariant } from './support/pack.ts';
 import { writeMomentScenario } from './support/moments.ts';
 import { HIMA_INTENT_SECTIONS } from '@hima/harness';
+import { repoRoot } from './support/dsh-home.ts';
+import { QUIET_TITLE_ROW } from './support/pipeline.ts';
 import type { RunView } from '@hima/harness';
 
 type Inspector = Awaited<ReturnType<typeof inspectWindow>>;
@@ -82,6 +84,51 @@ async function finish(d: BootedDriver, browser?: Inspector) {
   }
   await d.dispose();
 }
+
+test('ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  if (!home) return;
+  // Keep title generation from consuming a tool replay turn; this is a model stand-in only.
+  await appendFile(path.join(home.h.profileDir, 'cordis.patch.yml'), QUIET_TITLE_ROW);
+  const fixture = path.join(repoRoot, 'test/fixtures/pipeline/workshop');
+  const port = await freePort();
+  const d = await bootDriver(t, { existing: home.h, theme: 'light', window: { width: 1440, height: 960 }, remoteDebuggingPort: port,
+    model: { replay: { file: path.join(fixture, 'session.jsonl'), override: path.join(fixture, 'open.override.json') } } });
+  if (!d) { await home.h.dispose(); return; }
+  let browser: Inspector | undefined;
+  try {
+    browser = await inspectWindow(port);
+    await prepareSession(d, browser, true);
+    const original = await d.read('studio'); assert.ok(original.ok);
+    const url = await browser.evaluate<string>('location.href');
+    await browser.evaluate(`(() => { const e=document.querySelector('[contenteditable="true"]'); e.focus(); const r=document.createRange(); r.selectNodeContents(e); const s=getSelection(); s.removeAllRanges(); s.addRange(r); })()`);
+    await browser.send('Input.insertText', { text: 'Create a new Pack named window-author for me to author.' });
+    await browser.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await browser.wait(`!!document.querySelector('[data-hima-control="open-authoring"]')`, 20_000);
+    await browser.wait(`document.body.innerText.includes('1 tool call')`, 12_000);
+    await browser.markText('*', '1 tool call', 'expand-authoring-tool');
+    assert.ok((await d.click('expand-authoring-tool')).ok);
+    await browser.wait(`document.querySelector('[data-hima-control="open-authoring"]')?.getBoundingClientRect().height > 0`);
+    await capture(d, browser, 'authoring-created');
+    assert.ok((await d.click('open-authoring')).ok);
+    await browser.wait(`!document.querySelector('[data-hima-control="open-authoring"]')`);
+    assert.ok((await d.click('open-workbench')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="studio"]') && document.querySelector('[data-hima-region="studio"]').getAttribute('data-hima-state-session') !== ${JSON.stringify(original.state.session)}`);
+    const chosen = await d.read('studio'); assert.ok(chosen.ok);
+    assert.notEqual(chosen.state.session, original.state.session);
+    assert.equal(await browser.evaluate('location.href'), url);
+    await browser.wait(`!!document.querySelector('[contenteditable="true"]')`).catch(async (error: unknown) => {
+      t.diagnostic(await browser!.evaluate<string>('document.body.innerText'));
+      await capture(d, browser!, 'authoring-failure'); throw error;
+    });
+    assert.equal(await realpath(path.join(packsDirOf(home.h), 'window-author')), path.join(await realpath(packsDirOf(home.h)), 'window-author'));
+    await capture(d, browser, 'authoring-native-session');
+    await browser.markText('button', 'Files & code', 'author-files');
+    assert.ok((await d.click('author-files')).ok);
+    await browser.wait(`document.body.innerText.includes('window-author')`);
+  } finally { await finish(d, browser); await home.h.dispose(); }
+});
 
 test('conversation draft, native files and verified reports share one workspace with a real Run', async (t) => {
   const port = await freePort();

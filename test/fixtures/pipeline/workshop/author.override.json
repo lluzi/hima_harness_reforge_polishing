@@ -1,0 +1,208 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-workshop-0",
+          "name": "write",
+          "arguments": "{\"file_path\": \"contract.yml\", \"content\": \"id: authored-workshop\\nversion: '1'\\ntitle: Installed numeric analysis\\ninputs:\\n  - { name: flowRoot, description: Read-only source numbers }\\n  - { name: design, description: Input set }\\n  - { name: workspaceRoot, description: Campaign workspaces }\\noutputs:\\n  - { name: numbers, path: flow/numbers.txt, description: Source measurements }\\n  - { name: analysis, path: research/analysis/result.txt, reader: sum-file, description: Scaled sum }\\nenvironment:\\n  wrappers: [sh]\\nworkspace:\\n  copy: [numbers.txt]\\nworkshops:\\n  - id: analyze\\n    purpose: Read the actual numbers, write a script to sum them, scale by SCALE and produce analysis.\\n    directory: research/analysis\\n    entry: entry.sh\\n    language: sh\\n    inputs: [SCALE]\\n    reads: [numbers]\\n    knowledge: [sum.md]\\n    produces: analysis\\n    argv: [sh, '${ENTRY}', '${WORKSHOP}', '${WORKSPACE}', '${SCALE}']\\nrules: [sum-valid]\\nknowledge:\\n  - { file: sum.md, purpose: How to calculate the scaled sum }\\nstrategy:\\n  scale: { type: number, unit: count, min: 1, max: 4, default: 2 }\\nwords:\\n  scale: { label: scale factor, unit: count }\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-workshop-1",
+          "name": "write",
+          "arguments": "{\"file_path\": \"graph.yml\", \"content\": \"id: authored-workshop\\nversion: '1'\\nentry: analyze\\nnodes:\\n  - id: analyze\\n    kind: act\\n    parameters:\\n      workshop: analyze\\n      arguments:\\n        SCALE: { from: strategy, name: scale }\\n  - id: read-analysis\\n    kind: act\\n    parameters: { observes: analysis }\\n  - id: judge\\n    kind: judge\\n    parameters: { rules: [sum-valid] }\\n  - id: blocked\\n    kind: wait\\n    parameters: { blocker: hard-blocker }\\nedges:\\n  - { from: analyze, to: read-analysis }\\n  - { from: read-analysis, to: judge }\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-workshop-2",
+          "name": "write",
+          "arguments": "{\"file_path\": \"semantics.yml\", \"content\": \"values:\\n  scaled_sum:\\n    unit: count\\n    description: Sum of source integers multiplied by scale\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-workshop-3",
+          "name": "write",
+          "arguments": "{\"file_path\": \"readers/sum-file.yml\", \"content\": \"id: sum-file\\nversion: '1'\\nfile: tools/read-sum.sh\\nargv: [sh, '${READER}', '${REPORT}', '${OUT}']\\nreportKind: scaled-sum\\nemits: [scaled_sum]\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-workshop-4",
+          "name": "write",
+          "arguments": "{\"file_path\": \"rules/sum-valid.yml\", \"content\": \"id: sum-valid\\nversion: '1'\\ntitle: The scaled sum matches the known input\\nrequires: [{ type: scaled_sum }]\\nsubject: { type: scaled_sum }\\npredicate: { op: eq, threshold: 42, unit: count }\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-workshop-5",
+          "name": "write",
+          "arguments": "{\"file_path\": \"knowledge/sum.md\", \"content\": \"# Scaled sum\\nRead each source integer, sum all of them and multiply by SCALE. Never substitute a canned answer.\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "call-workshop-6",
+          "name": "write",
+          "arguments": "{\"file_path\": \"tools/read-sum.sh\", \"content\": \"#!/bin/sh\\nset -eu\\nvalue=$(cat \\\"$1\\\")\\ncase \\\"$value\\\" in ''|*[!0-9]*) exit 2;; esac\\nprintf '{\\\"values\\\":[{\\\"type\\\":\\\"scaled_sum\\\",\\\"unit\\\":\\\"count\\\",\\\"value\\\":%s}]}\\\\n' \\\"$value\\\" > \\\"$2\\\"\\n\"}"
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "text"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": "The declared files are written. Ask the Host to check their actual validity."
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "stop"
+        }
+      }
+    ]
+  }
+]

@@ -36,7 +36,7 @@ import { installedSites, loadSite } from './sites.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
 import { registerHimaSkills } from './skills.js';
-import { registerAuthoringGuard } from './authoring.js';
+import { openAuthoringSession, registerAuthoringGuard } from './authoring.js';
 // The audit the routes answer with: the module-level pair every channel in this process records into.
 import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from './channel.js';
 
@@ -361,7 +361,7 @@ export default class Hima extends Service {
         handler: (inv) => handleHimaCommand(this.deps(), inv),
       }),
     );
-    for (const tool of himaTools(this.deps())) this.ctx.effect(() => this.ctx.tools.register(tool));
+    for (const tool of himaTools(this.deps(), (request, agent) => openAuthoringSession(this.ctx, this.config.packsDir, request, agent))) this.ctx.effect(() => this.ctx.tools.register(tool));
     // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
     // A person invokes one by typing its name; the model never chooses one for itself, because a
     // stage is a person's decision about their own pack folder.

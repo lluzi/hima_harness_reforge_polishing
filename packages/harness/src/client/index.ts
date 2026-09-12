@@ -2,7 +2,7 @@
 // Hima occupies the native dsh dock. The host owns sessions, chat, files and panel geometry;
 // this adapter registers the Hima view and passes navigation actions into presentation components.
 import { createElement, useState, type ReactElement } from 'react';
-import { HimaRunCard } from './HimaRunCard.js';
+import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
 import { HimaWorkbench } from './HimaWorkbench.js';
 import { STUDIO_STYLE } from './workbench-style.js';
 
@@ -24,10 +24,11 @@ export interface ClientContext {
   readonly sidebarRight: { openTab(kind: string, options?: { params?: { runId?: string } }): void };
   readonly sidebarRightTabs: { register(definition: { id: string; kind: string; title(address: string): string; guide: { order: number; title(): string; description(): string }[] }): () => void };
   readonly layout: { toggleSidebar(): void };
+  readonly sessions: { open(id: string): void };
   effect(callback: () => (() => void)): unknown;
 }
 
-export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout'];
+export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'layout', 'sessions'];
 export const name = 'hima-guide';
 
 /** Hima's own mark, composed through the shell's brand seats. */
@@ -37,6 +38,29 @@ function HimaMark({ size = 24, className }: { size?: number; className?: string 
 }
 function HimaName(): ReactElement {
   return createElement('span', { className: 'hima-brand' }, 'HimaHarness');
+}
+
+function AuthoringCard({ block, openAuthor }: { block: ToolBlock; openAuthor(id: string): void }): ReactElement {
+  const [error, setError] = useState<string>();
+  let value: { sessionId: string; pack: string; folder: string } | undefined;
+  if (block.kind && !block.isError) {
+    for (const item of block.content ?? []) {
+      if (item.type !== 'text' || !item.text) continue;
+      try {
+        const parsed = JSON.parse(item.text) as Partial<NonNullable<typeof value>>;
+        if (typeof parsed.sessionId === 'string' && typeof parsed.pack === 'string' && typeof parsed.folder === 'string') value = parsed as NonNullable<typeof value>;
+      } catch { /* Pending and failed calls retain their actual tool text. */ }
+    }
+  }
+  return createElement('div', { 'data-hima-region': 'authoring-session' },
+    value ? createElement('div', null,
+      createElement('p', null, `Pack ${value.pack} · ${value.folder}`),
+      createElement('button', { type: 'button', 'data-hima-control': 'open-authoring', onClick: () => {
+        try { openAuthor(value!.sessionId); setError(undefined); } catch (failure) { setError((failure as Error).message); }
+      } }, 'Open authoring session'),
+      createElement('p', null, 'Begin with /hima-grill. Live Run and Files remain beside the conversation.'))
+      : createElement('pre', null, (block.content ?? []).map((item) => item.text ?? '').join('\n') || 'Preparing Pack workspace…'),
+    error ? createElement('p', { role: 'alert' }, error) : null);
 }
 
 interface EntryProps {
@@ -79,6 +103,7 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name', priority: -10 }, HimaName));
   ctx.slots.inject('tool.call.toolview', () => {
     const claimed = HIMA_RUN_TOOLS.map((key) => ctx.slots.register({ name: 'tool.call.toolview', key, inject: () => ({ openRun }) }, HimaRunCard));
+    claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_author', inject: () => ({ openAuthor: (id: string) => { ctx.sessions.open(id); } }) }, AuthoringCard));
     return () => { for (const dispose of claimed) if (typeof dispose === 'function') (dispose as () => void)(); };
   });
 }

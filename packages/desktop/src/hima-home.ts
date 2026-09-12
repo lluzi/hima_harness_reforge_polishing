@@ -19,7 +19,7 @@
 // Nothing in here imports a sibling module. The contract suite loads this file as TypeScript through
 // Node's type stripping, which resolves specifiers literally — a `./host-launch.js` import would be a
 // file that does not exist in `src/` — so what this module needs, it declares.
-import { cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { createRequire } from 'node:module';
@@ -168,6 +168,10 @@ export interface PrepareHimaHomeRequest {
   readonly home: string;
   /** The checkout the template and the bundle come from; this one by default. */
   readonly root?: string;
+  /** Relocatable product assets, supplied by an installation rather than a source checkout. */
+  readonly sources?: HimaHomeSources;
+  /** Copy published bundle assets into the home. Development keeps the existing linked build. */
+  readonly bundleMode?: 'linked' | 'installed';
 }
 
 /**
@@ -196,13 +200,18 @@ export interface PrepareHimaHomeRequest {
  * @throws when the checkout has no profile template, or its bundle has not been built.
  */
 export async function prepareHimaHome(req: PrepareHimaHomeRequest): Promise<PreparedHimaHome> {
-  const sources = himaHomeSources(req.root);
+  const sources = req.sources ?? himaHomeSources(req.root);
   if (!existsSync(sources.profileTemplate)) throw new Error(`profile template missing: ${sources.profileTemplate}`);
   // Both halves must be built: the host's client-module registry fails activation loudly when a
   // package declaring `dsh.client` has no bundle, so a stale build would look like a boot failure.
   for (const half of HARNESS_BUNDLES) {
     if (!existsSync(path.join(sources.harnessPackage, half))) {
       throw new Error(`bundle not built: ${sources.harnessPackage}/${half} (run pnpm run build)`);
+    }
+  }
+  if (req.bundleMode === 'installed') {
+    for (const asset of ['package.json', 'cordis.patch.yml', 'skills', 'rules', 'choosers', 'presets', 'semantics.yml']) {
+      if (!existsSync(path.join(sources.harnessPackage, asset))) throw new Error(`installed bundle asset missing: ${asset}`);
     }
   }
 
@@ -230,8 +239,26 @@ export async function prepareHimaHome(req: PrepareHimaHomeRequest): Promise<Prep
   const link = path.join(profileDir, 'node_modules', HARNESS_PACKAGE);
   await mkdir(linkDir, { recursive: true });
   await rm(link, { recursive: true, force: true });
-  await symlink(sources.harnessPackage, link, 'dir');
-  did.push(`linked ${HARNESS_PACKAGE} → ${sources.harnessPackage}`);
+  if (req.bundleMode === 'installed') {
+    await mkdir(link, { recursive: true });
+    for (const item of ['package.json', 'cordis.patch.yml', 'lib', 'skills', 'rules', 'choosers', 'presets', 'semantics.yml']) {
+      await cp(path.join(sources.harnessPackage, item), path.join(link, item), { recursive: true });
+    }
+    // Runtime dependencies remain the dependency installation's responsibility. Link only that
+    // package's declared dependencies, never its source, tests, repository or build configuration.
+    const manifest = JSON.parse(await readFile(path.join(link, 'package.json'), 'utf8')) as { dependencies?: Record<string, string>; peerDependencies?: Record<string, string> };
+    for (const name of new Set([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.peerDependencies ?? {})])) {
+      const dependency = path.join(sources.harnessPackage, 'node_modules', name);
+      if (!existsSync(dependency)) continue;
+      const at = path.join(link, 'node_modules', name);
+      await mkdir(path.dirname(at), { recursive: true });
+      await symlink(await realpath(dependency), at, 'dir');
+    }
+    did.push(`installed ${HARNESS_PACKAGE} product assets into ${link}`);
+  } else {
+    await symlink(sources.harnessPackage, link, 'dir');
+    did.push(`linked ${HARNESS_PACKAGE} → ${sources.harnessPackage}`);
+  }
 
   // The bundle's own agent presets, where dsh's roster looks for a person's: copied rather than
   // linked, because discovery reads directories and a link is not one everywhere, and refreshed

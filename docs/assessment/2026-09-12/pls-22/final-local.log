@@ -1,0 +1,161 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/skills.test.ts test/contract/view.test.ts test/contract/view-run.test.ts
+local: 3 selected; 31 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it
+ok 1 - installed authoring compiles a Workshop whose real local Job computes the declared output and whose reader records it
+  ---
+  duration_ms: 5172.068833
+  type: 'test'
+  ...
+# Subtest: from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding
+ok 2 - from ordinary chat, authoring creates a native Pack workspace session and confines its writes without changing ordinary Coding
+  ---
+  duration_ms: 704.152125
+  type: 'test'
+  ...
+# Subtest: on a booted host: the bundle registers the pipeline's five skills from one provider — a person's to invoke, never the model's to choose
+ok 3 - on a booted host: the bundle registers the pipeline's five skills from one provider — a person's to invoke, never the model's to choose
+  ---
+  duration_ms: 506.79625
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: /hima-grill writes the pack intent record in the pack folder and nothing outside it, /hima-spec writes the pack spec beside it, and pack check says the folder is specified
+ok 4 - through a booted host with the replay stand-in: /hima-grill writes the pack intent record in the pack folder and nothing outside it, /hima-spec writes the pack spec beside it, and pack check says the folder is specified
+  ---
+  duration_ms: 1759.626958
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an authoring session may not write outside its pack folder and has no shell, and the same two calls go through in an ordinary session
+ok 5 - through a booted host with the replay stand-in: an authoring session may not write outside its pack folder and has no shell, and the same two calls go through in an ordinary session
+  ---
+  duration_ms: 1816.008791
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an authoring session's target is judged as the tool received it — a new file inside the folder goes through, and a dot segment, a link out of the folder and an edit outside do not
+ok 6 - through a booted host with the replay stand-in: an authoring session's target is judged as the tool received it — a new file inside the folder goes through, and a dot segment, a link out of the folder and an edit outside do not
+  ---
+  duration_ms: 652.093292
+  type: 'test'
+  ...
+# Subtest: through a booted host with the replay stand-in: an absent packs directory leaves a session untouched, and a packs directory or a working directory that will not resolve stops the governed tools
+ok 7 - through a booted host with the replay stand-in: an absent packs directory leaves a session untouched, and a packs directory or a working directory that will not resolve stops the governed tools
+  ---
+  duration_ms: 1948.807791
+  type: 'test'
+  ...
+# Subtest: the intent record the live check authors its spec stage from is the one the contract suite runs the grill stage against
+ok 8 - the intent record the live check authors its spec stage from is the one the contract suite runs the grill stage against
+  ---
+  duration_ms: 62.440917
+  type: 'test'
+  ...
+# Subtest: every skeleton in the pack anatomy reference is a file this harness accepts: assembled into a folder they load as a pack and fit the local site
+ok 9 - every skeleton in the pack anatomy reference is a file this harness accepts: assembled into a folder they load as a pack and fit the local site
+  ---
+  duration_ms: 828.60575
+  type: 'test'
+  ...
+# pack example-probe@1 on site local: fit — 3 of 3 inputs bound, 1 tool, 1 rule, 1 reader, 1 chooser, 1 knowledge file, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-DFTlyk/hima-home-3EJf9s/standin-flow
+#   design = a-subject
+#   workspaceRoot = /private/tmp/hima-tests-DFTlyk/hima-home-3EJf9s/workspace
+# tools:
+#   measure (tools/measure.sh): "make" is an allowed wrapper of site local
+# rules:
+#   measurement-within-bound@1: found in the pack
+# readers:
+#   measurement-file@1 reads measurement: found in the pack
+# semantics:
+#   measured_ms: declared by this pack in /private/tmp/hima-tests-DFTlyk/hima-home-3EJf9s/hima/packs/example-probe/semantics.yml
+#   8 value types come from the bundle
+# choosers:
+#   step-back-off@1 chooses at next-step: found in the pack
+# knowledge:
+#   the-step-method.md (why this pack changes the step the way it does): found in the pack
+# licences:
+#   measure holds 1 of "measuring-seat": site local declares 1
+# Subtest: the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget
+ok 10 - the run view carries the whole path of a run started over HTTP: nodes, jobs, decision, meters, goal and budget
+  ---
+  duration_ms: 11163.264708
+  type: 'test'
+  ...
+# run run-eaeb0acd-e3e8-4a24-af8c-3503aadfc8c5
+#   synthesize: done
+#   read-qor: done
+#   judge: done
+#   next-period: done
+# Subtest: over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either
+ok 11 - over HTTP a person resumes a blocked run and cancels the job it launched: the blocker, the request, the observed stop, and a 409 on a run whose status cannot take either
+  ---
+  duration_ms: 10829.54275
+  type: 'test'
+  ...
+# Subtest: a run HimaFabric never started cannot be cancelled, and says so with 409 hima/run-not-in-state
+ok 12 - a run HimaFabric never started cannot be cancelled, and says so with 409 hima/run-not-in-state
+  ---
+  duration_ms: 7720.048625
+  type: 'test'
+  ...
+# Subtest: every route the workbench uses, and the workbench page itself, sit behind the web app's own session cookie
+ok 13 - every route the workbench uses, and the workbench page itself, sit behind the web app's own session cookie
+  ---
+  duration_ms: 9158.387167
+  type: 'test'
+  ...
+# Subtest: the served HimaGuide bundle claims the tool-view key of both Hima tools and carries the rendering of every run status and node state
+ok 14 - the served HimaGuide bundle claims the tool-view key of both Hima tools and carries the rendering of every run status and node state
+  ---
+  duration_ms: 11836.470208
+  type: 'test'
+  ...
+# Subtest: the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+ok 15 - the Hima namespace answers a run round-trip over HTTP: observe, judge, and every citation resolved to the observation it was read from
+  ---
+  duration_ms: 9867.312625
+  type: 'test'
+  ...
+# Subtest: a refused read is reported as a refusal in the run view, never as an empty pass
+ok 16 - a refused read is reported as a refusal in the run view, never as an empty pass
+  ---
+  duration_ms: 8439.846375
+  type: 'test'
+  ...
+# Subtest: a remote error reaches the caller as a coded JSON error, never as an empty answer
+ok 17 - a remote error reaches the caller as a coded JSON error, never as an empty answer
+  ---
+  duration_ms: 8317.142334
+  type: 'test'
+  ...
+# Subtest: a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+ok 18 - a fault that is not the caller's doing — a misconfigured site the caller could not have known about — reaches them as 500 hima/internal, never relabelled as their mistake
+  ---
+  duration_ms: 8602.169375
+  type: 'test'
+  ...
+# Subtest: every /hima/api route sits behind the web app's own session cookie
+ok 19 - every /hima/api route sits behind the web app's own session cookie
+  ---
+  duration_ms: 8531.827416
+  type: 'test'
+  ...
+# Subtest: the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+ok 20 - the Hima browser module is in the served boot graph and its bundle is served as a client-module envelope
+  ---
+  duration_ms: 7571.848333
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 117871.064542
+Test boot attempts: {"host-process":11,"host-in-process":14,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 117.987 s; pass/fail/skip counts are in the TAP summary above

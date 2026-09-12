@@ -511,7 +511,7 @@ test('the served HimaGuide bundle carries the card\'s cancel and resume controls
         register: (declaration) => { registered.push({ name: declaration.name, ...('key' in declaration ? { key: declaration.key } : {}), ...('id' in declaration ? { id: declaration.id } : {}) }); return () => undefined; },
       },
     });
-    assert.deepEqual(registered.filter((r) => r.name === 'tool.call.toolview').map((r) => r.key).sort(), ['hima_observe', 'hima_run'], 'and claims no key it did not claim before');
+    assert.deepEqual(registered.filter((r) => r.name === 'tool.call.toolview').map((r) => r.key).sort(), ['hima_author', 'hima_observe', 'hima_run'], 'and claims no key it did not claim before');
     assert.deepEqual(d.unexpectedStdout(), []);
   } finally {
     await d.dispose();
