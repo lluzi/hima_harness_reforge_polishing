@@ -1,0 +1,14 @@
+{
+  "packages/harness/skills/hima-test/SKILL.md": "ec18a4720f11af0c63afd69d5baeb99e214c3ba0178c70ac2f27b58698e52caf",
+  "packages/harness/src/client/HimaRunCard.tsx": "9e43473d523700d0e512b22b9657e469f24ab59554a0b1a3a39ee9f7ebeaf887",
+  "packages/harness/src/client/HimaWorkbench.tsx": "03aaa0a2ba691d5d07969e19e683ac13bd7154d8ee4ad7297e74a09c3519e0b8",
+  "packages/harness/src/client/api.ts": "15a5809970a78e8b7c6479cfd3019423663f7817b86c2baabfe4ab5335f4ce78",
+  "packages/harness/src/client/index.ts": "f4fb255ae748fdc72abe73a63dd22717e571b3c0d5183c985a2c5383ce70573e",
+  "packages/harness/src/commands.ts": "01fb7a2e49c9373cb428a5a45d932a8f746594a53550d9a07ff33eb7e878aa5f",
+  "packages/harness/src/fabric.ts": "6876b385c7b0f23df3fc7351af443083d182badac670b70afe3e87b22baf7c3f",
+  "packages/harness/src/index.ts": "76d63cd946f215593a01d827de36b1c37d7869ce3148724e4c9f6fd770fa66e9",
+  "packages/harness/src/node-turns.ts": "7e8e8e56ee59506cceafc62f52cf5813bf89407b819231589028567ec04d7a0b",
+  "packages/harness/src/remote.ts": "a89b185af48ee4769d95a75c2435963556b3c29b7c4454d44e91c2b45c0d767d",
+  "packages/harness/src/tools.ts": "2bea73f92bdb7463c565551ccd38572e19a5be6880ef9700720f60a4efa4873e",
+  "test/contract/conversation-execution.host.test.ts": "036fa4c4bae04f5c72b5aa836d062f8c5506a8882f5e98044f69c34c5462e1f8"
+}

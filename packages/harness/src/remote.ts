@@ -11,62 +11,12 @@
 // web app's own Host/Origin fence and session cookie to every one of them, so a Hima route is
 // exactly as guarded as `/api` is.
 //
-// The whole namespace, thirteen operations and no more:
-//   GET  /hima/api/runs/<runId>           the Run: where it stands, its observations, its refusals,
-//                                         its verdicts with every citation resolved to the record it
-//                                         was read from, its nodes, its Jobs, and its decision
-//   GET  /hima/api/runs/<runId>/records   the Run's ledger records, `?type=` narrowing to one kind
-//   GET  /hima/api/records/<recordId>     one ledger record by id, exactly as the ledger holds it
-//   POST /hima/api/observe                the observe operation, body `{ site, path, reader?, run?, judge?, params? }`,
-//                                         answering with the Run it created or appended to — the same
-//                                         view as the read above. `params` binds a value for any
-//                                         parameter a rule in `judge` declares, e.g. `{ declared_parameter: 2.3 }`.
-//   POST /hima/api/runs                   start a Campaign and execute its graph, body
-//                                         `{ pack, site, goal, strategy?, test?, timeBox?, retries?, generations? }`, answering
-//                                         with the Run when it stops — the same view as the read above.
-//   POST /hima/api/runs/start             the same body and the same operation, answering as soon as
-//                                         the Run exists while HimaFabric goes on driving it in the
-//                                         host — what the workbench's start form posts, because a
-//                                         Campaign outlives any one request (#26).
-//   POST /hima/api/runs/<runId>/resume    clear a waiting Run and carry it on, no body, answering
-//                                         with the Run when it stops again — the same view. Recorded
-//                                         as a person's action, by `workbench`.
-//   GET  /hima/api/audit                  every command HimaChannel has asked a Site to run in this
-//                                         host process since the last drain, oldest first, with
-//                                         `windowFilled` saying whether the rolling window has been
-//                                         full — whether a command may already have been lost
-//   POST /hima/api/audit/drain            the same answer, and the audit cleared: what a caller
-//                                         watching a long Campaign asks so a window's worth of
-//                                         polling cannot evict the launch line it is watching for
-//   POST /hima/api/runs/<runId>/cancel    stop that Run: kill the Job it has open, wait for the stop
-//                                         to be observed, end the Run cancelled, and answer with it —
-//                                         again the same view. A Run that already ended answers with
-//                                         its own status and nothing is written.
-//   GET  /hima/api/runs/<runId>/experience
-//                                         the Campaign's technical report (#30): the `experience`
-//                                         record plus both files read back off the Site through the
-//                                         channel's read-only verbs, each held against the hash the
-//                                         record carries — a file that has changed answers
-//                                         `409 hima/experience-changed` naming both hashes. The one
-//                                         pair of routes in this namespace that reaches a Site to
-//                                         answer a read
-//   GET  /hima/api/runs/<runId>/experience.md
-//                                         the same report's Markdown alone, as `text/markdown`: what
-//                                         the card's link opens
-//   POST /hima/api/runs/<runId>/moment    open one Model moment on the node this Run stands at, body
-//                                         `{ instructions }`: an isolated model session with those
-//                                         instructions as its whole system prompt and no tools at
-//                                         all, asked one turn and closed, answering
-//                                         `{ sessionId, model, tools, text }` (#59). The ledger
-//                                         carries the pair of `session` records either way
-// The three reads are #3's three ledger reads — by run, by type, and by ID — and every one of them
-// goes through the host: nothing in the browser reaches a storage domain.
-//
-// One document lives beside the namespace, behind the same fence: `GET /hima/` is the workbench
-// page (`workbench.ts`), the Runs listed and, with `?run=<id>`, one Run's card — what the desktop
-// shell's driver opens and reads (D42, ADR-0004). It is served here because it answers off the same
-// run view the JSON does, and a page rendered from a second reading of the ledger would be a page
-// that could disagree with the route beside it.
+// Reads expose Ledger facts and retained evidence. Both Run start routes prepare a Run for a
+// validated native session. The control endpoint accepts human pause/continue/cancel with current
+// epoch/revision; node work remains on the owning Agent's controlled tool. Legacy mutation routes
+// refuse Agent-owned Runs. Browser authentication grants the human emergency cancellation access,
+// never ownership merely by selecting or reading a Run.
+import type { ExecutionContext, ExecutionActionRequest, ExecutionActionResult } from './fabric.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 // Type-only: these load the `ctx.webServer` and `ctx.connection` declaration merges onto Context.
@@ -318,6 +268,7 @@ export interface RunWords {
 
 /** The Run row itself: its identity, and the fabric state a Run HimaFabric started also carries. */
 export interface RunHeadView {
+  readonly control?: RunRecord['control'];
   readonly id: string;
   readonly campaignId: string;
   readonly siteId: string;
@@ -529,6 +480,8 @@ export interface ObserveBody extends ObserveRequest {
  * the way the flags are. `timeBox` is in minutes, as the flag is.
  */
 export interface StartRunBody {
+  /** Actual native conversation selection, validated against Host registry before binding. */
+  readonly sessionId?: string;
   readonly pack: string;
   readonly site: string;
   readonly goal: Readonly<Record<string, number | string>>;
@@ -553,10 +506,13 @@ export interface StartRunBody {
 /** What this namespace needs from the Hima service. Nothing here reaches for the plugin itself. */
 export interface RemoteOperations {
   readonly ledger: Ledger;
+  validateSession?(sessionId: string): boolean;
+  executionContext?(runId: string): ExecutionContext;
+  executionAction?(request: ExecutionActionRequest): Promise<ExecutionActionResult>;
   observe(request: ObserveRequest): Promise<ObserveResult>;
   /** Ask HimaJudge to rule; the verdicts it wrote are read back from the ledger, not from here. */
   judge(runId: string, ruleIds: readonly string[], params?: Readonly<Record<string, number>>): Promise<VerdictRecord[]>;
-  /** Start a Campaign and execute its graph; the Run it left behind is read back from the ledger. */
+  /** Prepare a Campaign for the validated native conversation; business work remains explicit. */
   startRun(request: StartRunRequest): Promise<StartRunResult>;
   /** Clear a waiting Run and carry it on, as the person `who` names. */
   resumeRun(runId: string, who: string): Promise<ResumeResult>;
@@ -702,7 +658,8 @@ function runHeadView(run: RunRecord, packVersion?: string, words?: RunWords): Ru
   const withGeneration = run.generation === undefined ? withStrategy : { ...withStrategy, generation: run.generation };
   const withLoop = run.loop === undefined ? withGeneration : { ...withGeneration, loop: run.loop };
   const withFork = run.fork === undefined ? withLoop : { ...withLoop, fork: run.fork };
-  return run.meters === undefined ? withFork : { ...withFork, meters: run.meters };
+  const withMeters = run.meters === undefined ? withFork : { ...withFork, meters: run.meters };
+  return run.control === undefined ? withMeters : { ...withMeters, control: run.control };
 }
 
 /**
@@ -958,6 +915,7 @@ async function observeOperation(ops: RemoteOperations, req: IncomingMessage): Pr
     judge: optionalStrings(body, 'judge'),
     params: optionalNumberRecord(body, 'params'),
   };
+  if (request.run && ops.ledger.run(request.run)?.control) throw new BadRequest('Agent-owned Run observations require hima_execute with an admitted execution');
   let result: ObserveResult;
   try {
     result = await ops.observe(request);
@@ -994,6 +952,7 @@ async function observeOperation(ops: RemoteOperations, req: IncomingMessage): Pr
 async function readStartBody(req: IncomingMessage): Promise<StartRunBody> {
   const body = await readJsonBody(req);
   return {
+    sessionId: optionalString(body, 'sessionId'),
     pack: requiredString(body, 'pack'),
     site: requiredString(body, 'site'),
     goal: strategyRecord(body, 'goal') ?? {},
@@ -1008,6 +967,7 @@ async function readStartBody(req: IncomingMessage): Promise<StartRunBody> {
 /** That request as HimaFabric takes it: the flags' spelling turned into the operation's, with the
  *  time box converted from the minutes every face spells it in to the milliseconds it is stored in. */
 const startRequestOf = (request: StartRunBody): StartRunRequest => ({
+  ownerSessionId: request.sessionId,
   pack: request.pack,
   site: request.site,
   goal: request.goal,
@@ -1018,14 +978,10 @@ const startRequestOf = (request: StartRunBody): StartRunRequest => ({
   generationLimit: request.generations,
 });
 
-/**
- * `POST /hima/api/runs`: start a Campaign and let HimaFabric execute its graph, answering with the
- * Run when it stops. The whole Campaign happens inside this request, as it does inside the command
- * face — every generation of the Loop, one after another — and the Budget's time box and generation
- * limit are what bound how long that is.
- */
+/** Both public start routes prepare and return context without starting a business node. */
 async function startRunOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
   const request = await readStartBody(req);
+  validateStartSession(ops, request);
   let result: StartRunResult;
   try {
     result = await ops.startRun(startRequestOf(request));
@@ -1072,73 +1028,31 @@ function startedNothing(request: StartRunBody, result: Exclude<StartRunResult, {
   throw new BadRequest(`campaign ${result.run.campaignId} has no workspace to run in: ${unpreparedReason(result.prepared)}`);
 }
 
-/**
- * How often the start route looks at the row its own start opened, waiting for HimaFabric to move it
- * to `running`.
- *
- * One row by its id — `ledger.run(id)` — and never the whole list: the start says which Run it
- * opened (`StartRunRequest.onOpened`), so there is nothing to search for and nothing to guess at.
- * That is also why this look has no time limit any more. It used to have one because it was a sort
- * of every Run in the ledger 40 times a second against a guess, which could not be left running for
- * ever; a single lookup of a known row costs nothing, and a preparation still going is a request
- * still being answered rather than a request nobody will answer.
- */
-const RUN_OPENS_POLL_MS = 25;
+function validateStartSession(ops: RemoteOperations, request: StartRunBody): void {
+  if (!request.sessionId || !ops.validateSession?.(request.sessionId)) throw new BadRequest('select a live conversation on this Host before preparing a Run');
+}
 
-/**
- * `POST /hima/api/runs/start`: the same operation the route above performs, answered as soon as the
- * Run exists rather than when it stops — the run id and where it stands — while HimaFabric goes on
- * driving the Campaign in the host.
- *
- * Two answers to one operation because there are two callers with two needs, and neither can be
- * given the other's. A test and a script want the ending, and the route above is the one request
- * that waits for it. A *window* cannot wait: a Campaign is generations of synthesis long, and a form
- * whose request hung until the Campaign ended could not be watched, could not be cancelled, and
- * would be cut off by anything between the browser and the host that times a request out. So the
- * window posts here, and reads the rest off the card, which is what the card is for.
- *
- * The drive is started and deliberately not awaited. Whatever it does after this answer is recorded
- * against the Run itself, exactly as it is for the route above — a fault mid-drive lands on the Run's
- * blocked node, which the same fenced caller reads back through this namespace — so the promise is
- * watched only for what it says about a start that never got as far as a Run.
- *
- * That is also how this route knows what to answer with: `startRun` says which row it opened, the
- * moment it opens it (`StartRunRequest.onOpened`), and this route watches that row and no other
- * until HimaFabric has moved it to `running`. Waiting for `running` and not merely for the row is
- * what keeps this answer honest, because the two refusals that happen *after* a row exists — a
- * Campaign with no workspace, and a preparation that faulted — both leave the row `waiting` and are
- * answered as refusals here, the way they are answered everywhere else, rather than raced into a 200.
- */
 async function startCampaignOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
-  const request = await readStartBody(req);
-  /** The row this start opened, as the start itself named it. Undefined until it has one. */
-  let opened: RunRecord | undefined;
-  let settled: { readonly ran: StartRunResult } | { readonly threw: unknown } | undefined;
-  let driving: Promise<StartRunResult>;
-  try {
-    driving = ops.startRun({ ...startRequestOf(request), onOpened: (run) => { opened = run; } });
-  } catch (err) {
-    // A start that threw before it was even a promise is classified exactly as one that rejected.
-    return startThrew(request, err);
+  return startRunOperation(ops, req);
+}
+
+/** Human control uses the current UI snapshot and records the selected real session. */
+async function controlOperation(ops: RemoteOperations, runId: string, req: IncomingMessage): Promise<Answer> {
+  if (!ops.executionAction) throw new BadRequest('the execution control service is unavailable');
+  const body = await readJsonBody(req);
+  const sessionId = requiredString(body, 'sessionId');
+  if (!ops.validateSession?.(sessionId)) throw new BadRequest('the selected conversation is not live on this Host');
+  const action = requiredString(body, 'action');
+  if (action !== 'pause' && action !== 'continue' && action !== 'cancel') throw new BadRequest('native control permits pause, continue or cancel only; the conversational Agent owns node work');
+  for (const field of ['expectedEpoch', 'expectedRevision'] as const) {
+    if (typeof body[field] !== 'number' || !Number.isSafeInteger(body[field]) || body[field] < 0) throw new BadRequest(`${field} must be a nonnegative integer from the Run context`);
   }
-  void driving.then(
-    (ran) => { settled = { ran }; },
-    (threw: unknown) => { settled = { threw }; },
-  );
-  for (;;) {
-    // The row as it stands now, and not the one handed over: what was handed over is an identity,
-    // and where the Run stands is what this answer waits for.
-    const row = opened === undefined ? undefined : ops.ledger.run(opened.id);
-    if (row?.status === 'running') return ok(runAnswer(ops, row));
-    const done = settled;
-    if (done !== undefined) {
-      if ('threw' in done) return startThrew(request, done.threw);
-      // A Run that reached `running` and then ended inside one poll: the drive's own answer is the
-      // Run, and it is a better one than the row would have been — it is where the Run finished.
-      return done.ran.kind === 'ran' ? ok(runAnswer(ops, done.ran.run)) : startedNothing(request, done.ran);
-    }
-    await new Promise((resolve) => setTimeout(resolve, RUN_OPENS_POLL_MS));
-  }
+  const result = await ops.executionAction({ runId, actor: sessionId, origin: 'human', action,
+    expectedEpoch: body.expectedEpoch as number, expectedRevision: body.expectedRevision as number,
+    requestId: requiredString(body, 'requestId'), ...(body.nodeId === undefined ? {} : { nodeId: requiredString(body, 'nodeId') }),
+  });
+  if (result.kind === 'refused' || result.kind === 'unsupported') return failure(409, 'hima/run-not-in-state', result.reason ?? result.kind);
+  return ok(runAnswer(ops, result.context.run));
 }
 
 /**
@@ -1147,6 +1061,7 @@ async function startCampaignOperation(ops: RemoteOperations, req: IncomingMessag
  * of it, rather than out of a shape invented for this one route.
  */
 async function cancelOperation(ops: RemoteOperations, runId: string): Promise<Answer> {
+  if (ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run cancellation requires the control endpoint with current owner epoch and revision');
   let result: CancelResult;
   try {
     result = await ops.cancelRun(runId);
@@ -1173,23 +1088,9 @@ async function cancelOperation(ops: RemoteOperations, runId: string): Promise<An
   return ok(runAnswer(ops, result.run));
 }
 
-/**
- * `POST /hima/api/runs/<runId>/resume`: clear a waiting Run and let HimaFabric carry it on, answering
- * with the Run when it stops again. The whole continuation happens inside this request, exactly as
- * starting one does.
- *
- * No body is read at all: what to resume is in the path and who is resuming it is this face's own
- * answer — `workbench`, because a request that arrived through the web app's session fence is a
- * person at the workbench and nothing else. A body naming someone else would be a caller writing
- * whatever name it liked into the ledger's record of a person's action.
- *
- * A Run that is not waiting is answered `hima/run-not-in-state` (409) with the reason: nothing in the
- * request is wrong, the Run is simply not blocked — perhaps because another face cleared it a moment
- * ago — and re-reading it is what the caller should do next. One that is waiting and still cannot be
- * re-entered is `hima/bad-request`, because re-reading it would tell them nothing. Nothing is written
- * on either.
- */
+/** Legacy resume refuses owned Runs; the versioned control endpoint is their continuation path. */
 async function resumeRunOperation(ops: RemoteOperations, runId: string): Promise<Answer> {
+  if (ops.ledger.run(runId)?.control) throw new BadRequest('Agent-owned Run continuation requires the control endpoint with current owner epoch and revision');
   let result: ResumeResult;
   try {
     result = await ops.resumeRun(runId, 'workbench');
@@ -1374,6 +1275,15 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   if (rest === '/runs/start') {
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
     return startCampaignOperation(ops, req);
+  }
+
+  const execution = /^\/runs\/([^/]+)\/(context|control)$/.exec(rest);
+  if (execution) {
+    const runId = decoded(execution[1]!, 'run id');
+    if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+    if (execution[2] === 'context' && method === 'GET' && ops.executionContext) return ok(ops.executionContext(runId));
+    if (execution[2] === 'control' && method === 'POST') return controlOperation(ops, runId, req);
+    return failure(405, 'hima/bad-request', 'execution context is GET; human control is POST');
   }
 
   // Both matched before the two reads below, which claim `/runs/<id>` and `/runs/<id>/records` alone.

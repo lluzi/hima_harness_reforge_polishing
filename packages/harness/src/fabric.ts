@@ -1028,15 +1028,20 @@ async function blockAtEntry(deps: FabricDeps, run: RunRecord, pack: Pack, reason
 export interface ExecutionActionRequest {
   readonly runId: string; readonly actor: string;
   readonly expectedEpoch: number; readonly expectedRevision: number; readonly requestId: string;
-  readonly action: 'begin'; readonly nodeId: string;
+  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend';
+  readonly nodeId?: string; readonly executionId?: string; readonly targetOwner?: string;
+  readonly path?: string; readonly content?: string; readonly output?: string; readonly file?: string;
+  readonly decision?: 'goal-met' | 'converged' | 'next-strategy';
+  readonly strategy?: Readonly<Record<string, StrategyValue>>; readonly rationale?: string;
+  readonly cites?: readonly string[]; readonly origin?: 'agent' | 'human';
 }
 export interface ExecutionContext {
   readonly run: RunRecord; readonly nodes: readonly PackNode[];
   readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly reason?: string;
 }
 export interface ExecutionActionResult {
-  readonly kind: 'accepted' | 'duplicate' | 'refused'; readonly context: ExecutionContext;
-  readonly receipt?: ExecutionReceipt; readonly reason?: string;
+  readonly kind: 'accepted' | 'duplicate' | 'refused' | 'unsupported'; readonly context: ExecutionContext;
+  readonly receipt?: ExecutionReceipt; readonly reason?: string; readonly data?: unknown;
 }
 
 // A live queue serializes admission, never holds a Job's lifetime or replaces durable state.
@@ -1108,7 +1113,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (control.paused.length > 0) return no('business admission is paused');
     const context = executionContext(deps, req.runId);
     if (context.reason !== undefined) return no(context.reason);
-    if (!context.available.includes(req.nodeId)) return no('this node is not currently available from the reference graph and execution facts');
+    if (req.nodeId === undefined || !context.available.includes(req.nodeId)) return no('this node is not currently available from the reference graph and execution facts');
     const node = context.nodes.find((item) => item.id === req.nodeId);
     if (node === undefined || run.packDigest === undefined) return no('the node or its method identity is unavailable');
     if (context.executions.some((execution) => execution.nodeId === node.id && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.phase !== 'completed' && execution.phase !== 'failed')) return no('this node already has an admitted execution');

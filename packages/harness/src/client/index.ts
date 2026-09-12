@@ -6,7 +6,7 @@ import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
 import { HimaWorkbench } from './HimaWorkbench.js';
 import { STUDIO_STYLE } from './workbench-style.js';
 
-const HIMA_RUN_TOOLS = ['hima_observe', 'hima_run'] as const;
+const HIMA_RUN_TOOLS = ['hima_observe', 'hima_run', 'hima_context', 'hima_execute'] as const;
 const WORKBENCH_KIND = 'hima-workbench';
 const WORKBENCH_ID = '@hima/harness/workbench';
 
@@ -24,7 +24,7 @@ export interface ClientContext {
   readonly sidebarRight: { openTab(kind: string, options?: { params?: { runId?: string } }): void };
   readonly sidebarRightTabs: { register(definition: { id: string; kind: string; title(address: string): string; guide: { order: number; title(): string; description(): string }[] }): () => void };
   readonly layout: { toggleSidebar(): void };
-  readonly sessions: { open(id: string): void };
+  readonly sessions: { open(id: string): void; scope(id: string): { conversation: { send(text: string): Promise<void> } } };
   effect(callback: () => (() => void)): unknown;
 }
 
@@ -91,7 +91,7 @@ export function apply(ctx: ClientContext): void {
   const openRun = (runId?: string) => ctx.sidebarRight.openTab(WORKBENCH_KIND, runId === undefined ? undefined : { params: { runId } });
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: WORKBENCH_ID,
-    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files') }),
+    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id), sendToOwner: (id: string, text: string) => ctx.sessions.scope(id).conversation.send(text) }),
   }, HimaWorkbench));
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'hima-workbench',
