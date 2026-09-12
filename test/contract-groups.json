@@ -16,6 +16,7 @@
     "test/contract/observe.test.ts",
     "test/contract/pack.test.ts",
     "test/contract/pack-method-assets.test.ts",
+    "test/contract/historical-words.host.test.ts",
     "test/contract/run-controls.test.ts",
     "test/contract/site-name.test.ts",
     "test/contract/ssh.test.ts",

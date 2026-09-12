@@ -25,8 +25,8 @@ import { createHash } from 'node:crypto';
 import { channelFor, mustRun, type Channel } from './channel.js';
 import { experienceReport, EXPERIENCE_DIR, type ExperienceJson } from './experience-report.js';
 import { hasEnded, type ExperienceFile, type ExperienceRecord, type Ledger, type RunRecord, type WorkspaceRecord } from './ledger.js';
-import { runView } from './remote.js';
-import { installedPackWords } from './packs.js';
+import { runView, type RunWords } from './remote.js';
+import { runPackWords } from './packs.js';
 import { existingRun } from './runs.js';
 import { decideRead, decideWrite } from './shell.js';
 import { loadSite, pathsOf, type Site } from './sites.js';
@@ -132,7 +132,10 @@ async function writeOnce(deps: ExperienceDeps, runId: string): Promise<WriteExpe
   const p = pathsOf(site);
   const channel = channelFor(site);
   const writtenAt = new Date().toISOString();
-  const report = experienceReport(runView(deps.ledger, run, installedPackWords(deps.packsDir, run.packId)), writtenAt);
+  let words: RunWords | undefined;
+  try { words = runPackWords(deps.packsDir, run); }
+  catch { /* Preserve the report's raw-name fallback if its original method is unavailable. */ }
+  const report = experienceReport(runView(deps.ledger, run, words), writtenAt);
 
   const dir = p.join(prepared.workspace, EXPERIENCE_DIR);
   const directory = await decideWrite(site, dir, channel);

@@ -1,0 +1,88 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/historical-words.host.test.ts test/contract/pack-method-assets.test.ts
+local: 2 selected; 39 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: old Run labels and units survive a method upgrade and an unreadable current installation on every Host read face
+ok 1 - old Run labels and units survive a method upgrade and an unreadable current installation on every Host read face
+  ---
+  duration_ms: 16653.911708
+  type: 'test'
+  ...
+# Subtest: historical Run records with missing or unavailable method identity never borrow current labels
+ok 2 - historical Run records with missing or unavailable method identity never borrow current labels
+  ---
+  duration_ms: 8531.32275
+  type: 'test'
+  ...
+# Subtest: repeated local seeding preserves the installed Pack customer archive byte for byte
+ok 3 - repeated local seeding preserves the installed Pack customer archive byte for byte
+  ---
+  duration_ms: 335.707875
+  type: 'test'
+  ...
+# Subtest: a real Host resumes the old Run against its original method after an installed version upgrade
+not ok 4 - a real Host resumes the old Run against its original method after an installed version upgrade
+  ---
+  duration_ms: 1528.886833
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-run-words/test/contract/pack-method-assets.test.ts:56:1'
+  failureType: 'testCodeFailure'
+  error: 'cannot resume run-6d2999ce-e4f3-481e-8736-7a50b00f7a46: this Run belongs to its conversational Agent; inspect its execution context and use its control protocol; nothing was written'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: 'cannot resume run-6d2999ce-e4f3-481e-8736-7a50b00f7a46: this Run belongs to its conversational Agent; inspect its execution context and use its control protocol; nothing was written'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls13-run-words/test/contract/pack-method-assets.test.ts:79:10)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+ok 5 - run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+  ---
+  duration_ms: 84.084625
+  type: 'test'
+  ...
+# Subtest: an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+ok 6 - an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+  ---
+  duration_ms: 66.566625
+  type: 'test'
+  ...
+# Subtest: asset symlinks and parent-directory links refuse installation and method export without changing their targets
+ok 7 - asset symlinks and parent-directory links refuse installation and method export without changing their targets
+  ---
+  duration_ms: 38.517333
+  type: 'test'
+  ...
+# Subtest: legacy installations are adopted only by exact bytes and missing historical identity is never invented
+ok 8 - legacy installations are adopted only by exact bytes and missing historical identity is never invented
+  ---
+  duration_ms: 47.849625
+  type: 'test'
+  ...
+# Subtest: a method-only export preserves executable method scripts
+ok 9 - a method-only export preserves executable method scripts
+  ---
+  duration_ms: 3218.371
+  type: 'test'
+  ...
+# Subtest: installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+ok 10 - installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+  ---
+  duration_ms: 72.036791
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 9
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 31922.2975
+Test boot attempts: {"host-process":2,"host-in-process":3,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 32.050 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

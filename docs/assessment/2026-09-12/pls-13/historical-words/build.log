@@ -1,0 +1,8 @@
+$ pnpm -r run build
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json && node scripts/build-client.mjs
+client: lib/client.js (135555 bytes)
+$ tsc -p tsconfig.json
+real 8.78
+user 13.59
+sys 1.40

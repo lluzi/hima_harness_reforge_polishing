@@ -16,7 +16,7 @@ import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { executionAction, executionContext, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
-import { checkInstalledPack, loadPack, packWords } from './packs.js';
+import { checkInstalledPack, runPackWords } from './packs.js';
 import { releasePack } from './release.js';
 import { runView, type RunWords } from './remote.js';
 import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyValue } from './run-arguments.js';
@@ -190,7 +190,10 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args) => {
         const context = executionContext(deps, args.run);
-        return toolJson({ runId: args.run, ...context, facts: runView(deps.ledger, context.run) });
+        let words: RunWords | undefined;
+        try { words = runPackWords(deps.packsDir, context.run); }
+        catch { /* Keep execution facts readable when the original method is unavailable. */ }
+        return toolJson({ runId: args.run, ...context, facts: runView(deps.ledger, context.run, words) });
       },
     }),
     defineTool({
@@ -444,14 +447,12 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         // A refusal in words, as `hima_resume` answers one: the caller asked about a run and there is
         // no such run, which is a fact about their request and not a fault of this host.
         if (!run) return Promise.resolve({ kind: 'unknown' as const, reason: `no run ${args.run} in the HimaLedger; nothing was read` });
-        // The pack's own words for the numbers this Run is stated in, loaded here and **not** through
-        // `installedPackWords` (#64). That helper answers "no words" for every way of failing to load
-        // a pack, which is right for a card rendered once a second and wrong for a stage: a pipeline
-        // stage writes a record from this answer, and a pack that will not load is the very thing the
-        // stage has to be told about rather than handed a view with the words quietly missing.
+        // A pipeline stage records this answer, so a verified identity that cannot be read must be
+        // reported as unreadable. An unreadable current installation is irrelevant when this Run's
+        // own method is retained. Legacy rows with no digest retain raw names, never today's labels.
         let words: RunWords | undefined;
         try {
-          words = run.packId === undefined ? undefined : packWords(loadPack(deps.packsDir, run.packId));
+          words = runPackWords(deps.packsDir, run);
         } catch (err) {
           return Promise.resolve({
             kind: 'unreadable' as const,

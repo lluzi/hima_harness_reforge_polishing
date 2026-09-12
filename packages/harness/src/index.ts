@@ -33,7 +33,7 @@ import { handleHimaCommand, himaCommandDescription } from './commands.js';
 import { himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
-import { checkPack, loadPack, goalDeclarationOf, packWords, installedPackWords, installedPacks } from './packs.js';
+import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks } from './packs.js';
 import { installedSites, loadSite } from './sites.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
@@ -348,10 +348,11 @@ export default class Hima extends Service {
           // while the window is open is one the form offers on the next look, and neither directory
           // is big enough for that to be worth caching against a person reloading a page.
           installed: () => ({ packs: installedPacks(this.config.packsDir), sites: installedSites(this.config.sitesDir) }),
-          // And what the Run's own pack calls its numbers (#42), read the same way and for the same
-          // reason: a pack is a directory, the namespace opens none, and words corrected while a
-          // window is open are the words the next render says.
-          packWords: (packId) => installedPackWords(this.config.packsDir, packId),
+          // Historical labels belong to the Run's method identity, even after an installed upgrade.
+          runWords: (run) => {
+            try { return runPackWords(this.config.packsDir, run); }
+            catch { return undefined; }
+          },
           startPreparation: (packId, siteName) => {
             let pack;
             try { pack = loadPack(this.config.packsDir, packId); }
