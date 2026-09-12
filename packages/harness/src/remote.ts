@@ -20,7 +20,7 @@
 //   POST /hima/api/observe                the observe operation, body `{ site, path, reader?, run?, judge?, params? }`,
 //                                         answering with the Run it created or appended to — the same
 //                                         view as the read above. `params` binds a value for any
-//                                         parameter a rule in `judge` declares, e.g. `{ target_period_ns: 2.3 }`.
+//                                         parameter a rule in `judge` declares, e.g. `{ declared_parameter: 2.3 }`.
 //   POST /hima/api/runs                   start a Campaign and execute its graph, body
 //                                         `{ pack, site, goal, strategy?, test?, timeBox?, retries?, generations? }`, answering
 //                                         with the Run when it stops — the same view as the read above.
@@ -123,7 +123,7 @@ import type { CancelResult } from './recovery.js';
 // Type-only, like every other shape here: `moments.ts` reaches dsh's agent seam, and this module is
 // bundled into the browser half, where a runtime import of it would ship the seam to every browser.
 import type { MomentOnNode } from './moments.js';
-import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyDeclaration, type StrategyValue } from './run-arguments.js';
+import { numericValue, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyDeclaration, type StrategyValue } from './run-arguments.js';
 import { SiteNotFoundError, RuleReferenceError, RunFaultError, RunReferenceError, RunStartError, PackFolderError, PackNotFoundError, SiteUnreadableError, MomentTurnError, NoCurrentNodeError, RunRunningError, WorkshopNodeError } from './errors.js';
 import { messagePage, runPage, runsPage, type StartChoices } from './workbench.js';
 // Type-only, and erased: the ladder's rung names, declared where a pack folder is read.
@@ -277,7 +277,7 @@ export interface CancelView {
 
 /**
  * What one of a Run's numbers is called and what it is measured in, as the pack that owns it
- * declares (#42): `{ label: 'clock period at most', unit: 'ns' }` for `target_period_ns`.
+ * declares (#42): `{ label: 'clock period at most', unit: 'ns' }` for `declared_parameter`.
  *
  * Declared here rather than beside the schema that parses it (`packs.ts`) because the browser
  * bundle reads this file and cannot read that one — `packs.ts` opens directories — and because this
@@ -531,7 +531,7 @@ export interface ObserveBody extends ObserveRequest {
 export interface StartRunBody {
   readonly pack: string;
   readonly site: string;
-  readonly goal: Readonly<Record<string, number>>;
+  readonly goal: Readonly<Record<string, number | string>>;
   /**
    * What to set the pack's own Strategy knobs to, by name (#58): `{ "<knob>": <value> }`. A knob left
    * out takes the default the pack's contract declares; a knob no pack declares, or a value outside
@@ -603,7 +603,7 @@ export interface RemoteOperations {
   packWords(packId: string | undefined): RunWords | undefined;
   /** Read local Pack/Site declarations once. Loading faults identify their preparation owner;
    * unexpected checking faults still propagate to the Host's internal error boundary. */
-  startPreparation(packId: string, siteName: string | undefined): Pick<StartChoices, 'strategy' | 'words' | 'check' | 'preparation'>;
+  startPreparation(packId: string, siteName: string | undefined): Pick<StartChoices, 'goal' | 'strategy' | 'words' | 'check' | 'preparation'>;
   /**
    * How far up the pack authoring pipeline each installed pack folder has come (#64), by pack id —
    * or, for a folder nothing can read, the reading's own refusal naming the path.
@@ -823,6 +823,24 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   } catch {
     throw new BadRequest('request body is not JSON');
   }
+  // JSON.parse keeps only the last duplicate key and rounds numeric tokens. Inspect the valid JSON
+  // token stream before either loss can authorize a Campaign. Strings are whole tokens, including escapes.
+  const tokens = text.match(/"(?:\\.|[^"\\])*"|[{}\[\]:,]|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/g) ?? [];
+  const scopes: (Set<string> | undefined)[] = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]!;
+    if (token === '{') scopes.push(new Set());
+    else if (token === '[') scopes.push(undefined);
+    else if (token === '}' || token === ']') scopes.pop();
+    else if (token.startsWith('"') && tokens[i + 1] === ':') {
+      const name = JSON.parse(token) as string;
+      const names = scopes.at(-1);
+      if (names?.has(name)) throw new BadRequest(`duplicate parameter "${name}" in request body`);
+      names?.add(name);
+    } else if (/^-?\d/.test(token) && numericValue(token) === undefined) {
+      throw new BadRequest(`number ${token} is not representable without changing its value`);
+    }
+  }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new BadRequest('request body must be a JSON object');
   return parsed as Record<string, unknown>;
 }
@@ -871,7 +889,7 @@ function runNumber(body: Record<string, unknown>, key: RunArgumentName): number 
 function requiredNumberRecord(body: Record<string, unknown>, key: string): Record<string, number> {
   const value = optionalNumberRecord(body, key);
   if (value === undefined || Object.keys(value).length === 0) {
-    throw new BadRequest(`"${key}" is required and must be a non-empty object of finite numbers, e.g. { "target_period_ns": 2.3 }`);
+    throw new BadRequest(`"${key}" is required and must be a non-empty object of finite numbers, e.g. { "declared_parameter": 2.3 }`);
   }
   return value;
 }
@@ -978,7 +996,7 @@ async function readStartBody(req: IncomingMessage): Promise<StartRunBody> {
   return {
     pack: requiredString(body, 'pack'),
     site: requiredString(body, 'site'),
-    goal: requiredNumberRecord(body, 'goal'),
+    goal: strategyRecord(body, 'goal') ?? {},
     strategy: strategyRecord(body, 'strategy'),
     test: optionalBoolean(body, 'test'),
     timeBox: runNumber(body, 'timeBox'),

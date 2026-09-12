@@ -11,6 +11,7 @@
 // question of the Permit for every tool before a Campaign starts, using the very function
 // `decideLaunch` will use when one does, so a check that says a pack fits cannot disagree with the
 // decision that later refuses it.
+import { campaignRelativePath } from './paths.js';
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
@@ -30,7 +31,7 @@ import type { RunWords } from './remote.js';
 // Type-only, and erased: what a knob may be is declared in the leaf module all three faces read it
 // from (`run-arguments.ts`), so the browser bundle that renders a knob's field and the routes that
 // carry a knob's value share one shape with the schema here that parses it.
-import type { StrategyDeclaration, StrategyKnob } from './run-arguments.js';
+import { literalArgument, strategyValue, legacyPeriodGoal, type GoalDeclaration, type StrategyDeclaration, type StrategyKnob } from './run-arguments.js';
 import { PackFolderError, PackNotFoundError } from './errors.js';
 // The one reading of a pack folder every answer about that folder is derived from (#64), and the
 // names and grammars that reading is defined in terms of.
@@ -117,8 +118,8 @@ export const readerArgvPlaceholders = ['READER', 'REPORT', 'OUT', 'WORKSPACE'] a
  *
  * A grammar and not a substitution pass, because this is the one string a pack author writes that
  * becomes a command line on somebody else's machine. A literal carries no `$` at all — so nothing in
- * it can be expanded by anything, whatever a later wrapper does with it — and no whitespace, so one
- * word of the declaration is one word of the argv and a pack cannot smuggle two. A placeholder is the
+ * it can be expanded by anything, whatever a later wrapper does with it. Spaces remain part of one
+ * argv operand; expansion and control characters are rejected before a reader is launched. A placeholder is the
  * *whole* word, so no value the harness computes is ever pasted into the middle of something else.
  * Every other `${…}` is refused at load naming the word, rather than reaching `substitute` and being
  * refused there as an unbound name, which would be the same refusal one layer too late.
@@ -137,8 +138,8 @@ const readerArgvWord = z.string().min(1).superRefine((word, ctx) => {
     ctx.addIssue({ code: 'custom', message: `the word "${word}" holds a "$", and a literal word of a reader's argv holds none: a whole word is either a literal or one of ${readerArgvPlaceholders.map((n) => `\${${n}}`).join(', ')}` });
     return;
   }
-  if (/\s/.test(word)) {
-    ctx.addIssue({ code: 'custom', message: `the word "${word}" holds whitespace, and one word of a reader's argv is one word of its command line` });
+  if (/[`\x00-\x1f\x7f]/.test(word)) {
+    ctx.addIssue({ code: 'custom', message: `the word "${word}" holds expansion or control characters, which are not literal data` });
   }
 });
 
@@ -412,7 +413,7 @@ export type PackWorkshop = z.infer<typeof packWorkshop>;
 
 /**
  * What a pack calls one of the values a Run is stated in, and what it is measured in (#42):
- * `target_period_ns: { label: clock period at most, unit: ns }`.
+ * `declared_parameter: { label: clock period at most, unit: ns }`.
  *
  * The label is required and non-empty. A pack that has nothing to say about a number says nothing
  * about it — the faces then show it under the name the wire carries — and a label with no unit
@@ -447,6 +448,7 @@ export const strategyKnob = z
       min: z.number(),
       max: z.number(),
       default: z.number(),
+      precision: z.number().int().min(0).max(15).optional(),
     }),
     z.strictObject({
       type: z.literal('choice'),
@@ -456,6 +458,10 @@ export const strategyKnob = z
   ])
   .superRefine((knob, ctx) => {
     if (knob.type === 'choice') {
+      if (new Set(knob.options).size !== knob.options.length) ctx.addIssue({ code: 'custom', message: 'choice options contain duplicates', path: ['options'] });
+      for (const option of knob.options) {
+        try { literalArgument(option, 'choice option'); } catch (error) { ctx.addIssue({ code: 'custom', message: (error as Error).message, path: ['options'] }); }
+      }
       if (!knob.options.includes(knob.default)) {
         ctx.addIssue({ code: 'custom', message: `default "${knob.default}" is not one of ${knob.options.map((o) => `"${o}"`).join(', ')}`, path: ['default'] });
       }
@@ -465,6 +471,8 @@ export const strategyKnob = z
       ctx.addIssue({ code: 'custom', message: `min ${String(knob.min)} is above max ${String(knob.max)}`, path: ['min'] });
       return;
     }
+    const held = strategyValue('default', knob, knob.default);
+    if ('error' in held) ctx.addIssue({ code: 'custom', message: held.error, path: ['default'] });
     if (knob.default < knob.min || knob.default > knob.max) {
       ctx.addIssue({ code: 'custom', message: `default ${String(knob.default)} is outside ${String(knob.min)} through ${String(knob.max)}`, path: ['default'] });
     }
@@ -515,6 +523,7 @@ export const packContract = z.strictObject({
    * every clause of which sets a knob nothing declares, and finally the ledger's own row schema
    * refusing a Strategy with nothing in it: a storage error in place of a sentence about the pack.
    */
+  goal: z.record(declaredName, strategyKnob.refine((parameter) => parameter.type === 'number', { error: 'Goal parameters must be numbers' })).refine((goal) => Object.keys(goal).length > 0, { error: 'goal declares no parameter' }).optional(),
   strategy: z.record(declaredName, strategyKnob).refine((knobs) => Object.keys(knobs).length > 0, {
     error: 'strategy: declares no knob, and a pack whose Strategy has nothing in it has nothing for an Explore node to choose',
   }),
@@ -522,7 +531,7 @@ export const packContract = z.strictObject({
    * What this pack's numbers are called, for the faces a person reads (#42): one entry per Goal
    * parameter its graph binds and one per knob a Run's Strategy is made of, keyed by that very name.
    *
-   * Declared by the pack because the pack is what knows: `target_period_ns` is a name the harness
+   * Declared by the pack because the pack is what knows: `declared_parameter` is a name the harness
    * carries and "clock period at most, in ns" is what it means, and only the method that named it
    * can say so. Optional, and empty by default — a pack that declares none renders under the names,
    * exactly as every pack did before this block existed. A name here that the pack neither takes
@@ -1088,6 +1097,19 @@ export function goalParametersOf(pack: Pack): string[] {
  */
 export const strategyKnobsOf = (pack: Pack): string[] => Object.keys(pack.contract.strategy);
 
+/** Old contracts obtained numeric Goal names from graph references. Keep that mapping readable. */
+export function goalDeclarationOf(pack: Pack): GoalDeclaration {
+  if (pack.contract.goal !== undefined) return pack.contract.goal as GoalDeclaration;
+  const names = goalParametersOf(pack);
+  return Object.fromEntries((names.length ? names : [legacyPeriodGoal.name]).map((name) => [name,
+    name === legacyPeriodGoal.name ? legacyPeriodGoal.parameter : {
+      type: 'number' as const, unit: pack.contract.words[name]?.unit ?? 'unspecified',
+      min: -Number.MAX_SAFE_INTEGER, max: Number.MAX_SAFE_INTEGER, default: 0,
+    },
+  ]));
+}
+
+
 /**
  * What this pack calls the numbers a Run of it is stated in, filed by where each number comes from:
  * what the run view carries and every face renders (#42).
@@ -1181,13 +1203,14 @@ export function substitute(text: string, values: Readonly<Record<string, string>
     // placeholder to the text of a function instead of refusing.
     const value = Object.hasOwn(values, name) ? values[name] : undefined;
     if (value === undefined) throw new Error(`${what} references \${${name}}, which nothing bound`);
-    return value;
+    return literalArgument(value, `${what} value ${name}`);
   });
 }
 
 /** A tool's command line with its inputs bound: what HimaFabric launches, and what the Permit decides. */
 export function toolArgv(tool: PackTool, values: Readonly<Record<string, string>>): string[] {
-  return tool.argv.map((word) => substitute(word, values, `tool "${tool.id}"`));
+  literalArgument(tool.argv[0]!, `tool "${tool.id}" wrapper`);
+  return tool.argv.map((word) => literalArgument(substitute(word, values, `tool "${tool.id}"`), `tool "${tool.id}" argument`));
 }
 
 /** Where one of the contract's outputs is, relative to the Campaign workspace. */
@@ -1201,11 +1224,12 @@ export function toolArgv(tool: PackTool, values: Readonly<Record<string, string>
  * `{ id, argv }` would say "tool" about a workshop or say neither about both.
  */
 export function workshopArgv(workshop: PackWorkshop, values: Readonly<Record<string, string>>): string[] {
-  return workshop.argv.map((word) => substitute(word, values, `workshop "${workshop.id}"`));
+  literalArgument(workshop.argv[0]!, `workshop "${workshop.id}" wrapper`);
+  return workshop.argv.map((word) => literalArgument(substitute(word, values, `workshop "${workshop.id}"`), `workshop "${workshop.id}" argument`));
 }
 
 export function outputPath(output: ContractOutput, bindings: Readonly<Record<string, string>>): string {
-  return substitute(output.path, bindings, `output "${output.name}"`);
+  return campaignRelativePath(literalArgument(substitute(output.path, bindings, `output "${output.name}"`), `output "${output.name}"`), `output "${output.name}"`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1369,13 +1393,28 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
   if (graph.id !== id) broken(packFiles.graph, `declares id "${graph.id}", not "${id}"`);
   if (graph.version !== contract.version) broken(packFiles.graph, `is version ${graph.version} while ${packFiles.contract} is version ${contract.version}`);
 
+  if (contract.goal !== undefined) {
+    const used = goalParametersOf(pack);
+    for (const name of used) if (!Object.hasOwn(contract.goal, name)) broken(packFiles.graph, `references undeclared Goal parameter "${name}"`);
+    for (const name of Object.keys(contract.goal)) if (!used.includes(name)) broken(packFiles.contract, `Goal parameter "${name}" is not bound by the graph`);
+  }
+  for (const [kind, names] of [
+    ['input', contract.inputs.map((input) => input.name)], ['output', contract.outputs.map((output) => output.name)],
+    ['tool', contract.tools.map((tool) => tool.id)], ['workshop', contract.workshops.map((workshop) => workshop.id)],
+    ...contract.tools.map((tool) => [`tool ${tool.id} input`, tool.inputs] as const),
+  ] as const) {
+    if (new Set(names).size !== names.length) broken(packFiles.contract, `duplicate ${kind} name`);
+  }
   const inputNames = new Set(contract.inputs.map((i) => i.name));
   const referencesInputs = (text: string, what: string): void => {
     for (const name of placeholdersIn(text)) {
       if (!inputNames.has(name)) broken(packFiles.contract, `${what} references \${${name}}, which is not one of its inputs`);
     }
   };
-  for (const output of contract.outputs) referencesInputs(output.path, `output "${output.name}"`);
+  for (const output of contract.outputs) {
+    referencesInputs(output.path, `output "${output.name}"`);
+    try { campaignRelativePath(output.path, `output "${output.name}"`); } catch (error) { broken(packFiles.contract, (error as Error).message); }
+  }
   for (const piece of contract.workspace.copy) referencesInputs(piece, `workspace copy entry "${piece}"`);
 
   // A tool's file must be there — a contract naming a script the directory does not hold is a pack
@@ -1383,6 +1422,7 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
   const wrappers = new Set<string>();
   for (const tool of contract.tools) {
     if (!folder.files.has(tool.file)) broken(packFiles.contract, `names tool file ${tool.file} for "${tool.id}", which the pack does not hold`);
+    try { literalArgument(tool.argv[0]!, `tool "${tool.id}" wrapper`); } catch (error) { broken(packFiles.contract, (error as Error).message); }
     const declared = new Set(tool.inputs);
     for (const word of tool.argv) {
       for (const name of placeholdersIn(word)) {
@@ -1525,6 +1565,9 @@ function validateWorkshops(pack: Pack, broken: (file: string, why: string) => ne
     const named = `workshop "${workshop.id}"`;
     if (seen.has(workshop.id)) broken(packFiles.contract, `declares two workshops called "${workshop.id}": an act node names a workshop by that id alone`);
     seen.add(workshop.id);
+    if (!workshop.purpose.trim()) broken(packFiles.contract, `${named} has no nonblank purpose`);
+    const bound = graphsOf(pack).some(({ graph }) => graph.nodes.some((node) => node.kind === 'act' && node.parameters.workshop === workshop.id));
+    if (!bound) broken(packFiles.contract, `${named} is not bound by any graph node`);
 
     // Where it writes, held against the two directories the workspace anatomy already owns. A pack
     // that put its workshop at either of them would have the model writing over a reader's own
@@ -2165,8 +2208,14 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
         `input "${input.name}" is not bound by site ${site.name}: add it under bindings: in ${site.file}`,
       );
     }
+    try { literalArgument(bound, `Site binding "${input.name}"`); }
+    catch (error) { return fail({ name: input.name, bound, error: (error as Error).message }, (error as Error).message); }
     return { name: input.name, bound, error: undefined };
   });
+
+  for (const output of pack.contract.outputs) {
+    try { outputPath(output, site.bindings); } catch (error) { errors.push((error as Error).message); }
+  }
 
   const tools: ToolCheck[] = pack.contract.tools.map((tool) => {
     const wrapper = tool.argv[0]!;
@@ -2525,12 +2574,16 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
   // Every word the contract declares, held against the names a face could ever look it up by (#42):
   // the Goal parameters this pack binds, and the knobs a Strategy is made of. A word keyed by
   // anything else is a label nothing will ever read — a face looks each number up by the name it
-  // arrives under — so a pack author's clock period would go on being shown as `target_period_ns`
+  // arrives under — so a pack author's clock period would go on being shown as `declared_parameter`
   // with nothing anywhere saying why.
   //
   // Here, with the other things a pack author is told at once, rather than at load: a pack whose
   // words have drifted from its graph is still a pack that runs, and refusing to *load* it would
   // stop a Campaign over a label. `/hima pack check` is where a pack is held to what it promises.
+  for (const [name, parameter] of Object.entries(pack.contract.goal ?? {})) {
+    const word = pack.contract.words[name];
+    if (parameter.type === 'number' && (word === undefined || word.unit !== parameter.unit)) errors.push(`words: Goal parameter "${name}" must have a label and unit "${parameter.unit}" matching its declaration`);
+  }
   const usable = [...goalParametersOf(pack), ...strategyKnobsOf(pack)];
   for (const name of Object.keys(pack.contract.words)) {
     if (usable.includes(name)) continue;

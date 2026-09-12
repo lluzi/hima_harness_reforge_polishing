@@ -39,27 +39,10 @@ const NOUNS = {
   goal: ['target_period_ns'],
 };
 
-/**
- * The files `target_period_ns` is still named in, and the one ticket that removes it from all of
- * them (#72: the Goal side's own nouns).
- *
- * The Goal's parameter names come from the Run and not from the harness, but the reference pack's
- * one number is spelled out in this bundle's product text — a route's example body, a card's label,
- * a start form's field, and the bundle's own `clock-period-at-most` rule, whose declared parameter
- * it is. Listed file by file rather than as a directory, because a list that shrinks to nothing is
- * how the day #72 lands announces itself.
- */
+/** Saved period Campaigns and the bundled legacy rule retain their original wire parameter. */
 const GOAL_PARAMETER_FILES = [
   'packages/harness/rules/clock-period-at-most.yml',
-  'packages/harness/src/card-labels.ts',
-  'packages/harness/src/fabric.ts',
-  'packages/harness/src/ledger.ts',
-  'packages/harness/src/packs.ts',
-  'packages/harness/src/remote.ts',
-  'packages/harness/src/tools.ts',
-  'packages/harness/src/workbench.ts',
-  // PLS-21 / polishing #24 owns the same existing Goal field in the unified workspace.
-  'packages/harness/src/client/HimaWorkbench.tsx',
+  'packages/harness/src/run-arguments.ts',
 ];
 
 /**
@@ -80,7 +63,7 @@ const EXEMPTIONS = [
     nouns: ['Design Compiler', 'dc_shell', 'qor.rpt', 'Innovus', 'verify_drc', 'target_period_ns'],
     ticket: 'carve-out, permanent (D46) — the stand-in flow imitates the shapes of the vendor reports the bundled readers read, which is the one imitation D46 names; since #60 that is three of them, one per reader a stage\'s report is read by',
   },
-  ...GOAL_PARAMETER_FILES.map((file) => ({ file, nouns: ['target_period_ns'], ticket: 'PLS-21 / #24 (upstream #72) — the Goal side\'s own nouns' })),
+  ...GOAL_PARAMETER_FILES.map((file) => ({ file, nouns: ['target_period_ns'], ticket: 'PLS-21 explicit legacy compatibility; new Pack Goals are declared data' })),
 ];
 
 /** What is scanned, relative to the root. Directories are walked; a file is scanned as itself. */

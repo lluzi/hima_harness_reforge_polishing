@@ -10,6 +10,7 @@
 // the driver's fault boundary to record; what a turn returns is already recorded by the time it
 // returns, which is why the outcomes below are so few — a `Step` says what the Run should do next,
 // never what to write.
+import { literalArgument } from './run-arguments.js';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
 import { choose, measuredRead, type Chooser } from './choosers.js';
@@ -1369,12 +1370,12 @@ async function runPackReader(
 
   let argv: string[];
   try {
-    argv = reading.declaration.argv.map((word) => substitute(word, {
+    argv = reading.declaration.argv.map((word) => literalArgument(substitute(word, {
       READER: shipped.absPath,
       REPORT: report.absPath,
       OUT: out.absPath,
       WORKSPACE: ctx.workspace,
-    }, `reader "${reading.reader.id}"`));
+    }, `reader "${reading.reader.id}"`), `reader "${reading.reader.id}" argument`));
   } catch (err) {
     return blocked(`node ${node.id} cannot make the command line of reader "${reading.reader.id}": ${(err as Error).message}`);
   }

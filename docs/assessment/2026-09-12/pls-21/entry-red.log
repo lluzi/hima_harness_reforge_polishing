@@ -1,0 +1,59 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/input-admission.host.test.ts
+local: 1 selected; 34 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: command and tool inputs reject duplicate names and numeric spellings that change value
+not ok 1 - command and tool inputs reject duplicate names and numeric spellings that change value
+  ---
+  duration_ms: 3352.271917
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/input-admission.host.test.ts:9:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    --goal target_period_ns=2 --goal target_period_ns=3: run run-0d9cc25a-6de6-4314-80da-8ce815e9094d of campaign opene902-timing-probe-20260912-155844-48e9 on site local: ended-goal-met, generation 1 of at most 1
+      workspace: /private/tmp/hima-tests-mrRXgJ/hima-home-yTBh6Q/workspace/opene902-timing-probe-20260912-155844-48e9
+      goal: clock period at most 3 ns
+      strategy: clock period 2.3 ns
+      budget: time box 60 min, retry allowance 3, at most 1 generation, job cap 1, licences Design-Compiler 1
+      current node: next-period
+      meters:
+        elapsed 1.6 s of a time box of 60.0 min
+        generation 1 of at most 1, 939 ms
+        1 job launched, at most 1 job at a time
+        next-period: attempt 1 of a retry allowance of 3, and 4 attempts in the campaign so far
+        Design-Compiler 0 seats of 1 declared, held for 591 ms
+      nodes:
+        synthesize (act): done, attempt 1, session hima-0d9cc25a-synthesize-5990b5 holding Design-Compiler 1
+        read-qor (act): done, attempt 1
+        judge (judge): done, attempt 1, PASS
+        next-period (explore): done, attempt 1
+      latest reading: /private/tmp/hima-tests-mrRXgJ/hima-home-yTBh6Q/workspace/opene902-timing-probe-20260912-155844-48e9/flow/results/opene902/syn/report/qor.rpt, read by dc-qor-report@1
+      decision: next-period chose goal met by over-constraining-push, citing run-0d9cc25a-6de6-4314-80da-8ce815e9094d#000010, run-0d9cc25a-6de6-4314-80da-8ce815e9094d#000011, run-0d9cc25a-6de6-4314-80da-8ce815e9094d#000007, from period 2.3, slack 0, stepNs 0.05
+      experience: written at 2026-09-12T15:58:46.003Z
+        markdown: /private/tmp/hima-tests-mrRXgJ/hima-home-yTBh6Q/workspace/opene902-timing-probe-20260912-155844-48e9/hima-experience/run-0d9cc25a-6de6-4314-80da-8ce815e9094d.md · sha256 c296a829c97a436a29c41bb7d87dd452e0bfc071925bb6810f28f9d300c5c684 · 3585 bytes
+        json: /private/tmp/hima-tests-mrRXgJ/hima-home-yTBh6Q/workspace/opene902-timing-probe-20260912-155844-48e9/hima-experience/run-0d9cc25a-6de6-4314-80da-8ce815e9094d.json · sha256 2e0460166d9c80fd7bec61efc73863e54c09a8903d4d85411c793ba3862b0ead · 15398 bytes
+
+    'success' !== 'error'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'error'
+  actual: 'success'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/input-admission.host.test.ts:17:14)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3732.389292
+Test boot attempts: {"host-process":0,"host-in-process":1,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 3.802 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

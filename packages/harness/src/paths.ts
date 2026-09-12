@@ -47,3 +47,12 @@ export const experienceMarkdownPath = (runId: string): string => `${runPath(runI
 /** Where the workbench shows one Run: the page's own path with the Run named on it, which is where
  *  the run list's links and the start form's landing both go. */
 export const runCardPath = (runId: string): string => `${HIMA_WORKBENCH_PATH}?run=${encodeURIComponent(runId)}`;
+
+
+/** A contract output is relative to its Campaign, before Permit resolves the real filesystem. */
+export function campaignRelativePath(value: string, what: string): string {
+  if (!value || /^(?:\/|[A-Za-z]:|\\)/.test(value) || value.split('/').some((segment) => segment === '..')) {
+    throw new Error(`${what} must be a relative path inside the Campaign workspace: ${JSON.stringify(value)}`);
+  }
+  return value;
+}

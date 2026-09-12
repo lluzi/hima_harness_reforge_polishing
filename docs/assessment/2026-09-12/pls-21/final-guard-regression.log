@@ -1,0 +1,75 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/input-admission.host.test.ts test/contract/substitute.test.ts
+local: 2 selected; 33 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: command and tool inputs reject duplicate names and numeric spellings that change value
+ok 1 - command and tool inputs reject duplicate names and numeric spellings that change value
+  ---
+  duration_ms: 7851.287
+  type: 'test'
+  ...
+# Subtest: a make expansion bound by a node is refused before any Job or escaping file exists
+ok 2 - a make expansion bound by a node is refused before any Job or escaping file exists
+  ---
+  duration_ms: 1629.57825
+  type: 'test'
+  ...
+# Subtest: reader and tool paths preserve spaces while dynamic Site bindings cannot launch either wrapper
+ok 3 - reader and tool paths preserve spaces while dynamic Site bindings cannot launch either wrapper
+  ---
+  duration_ms: 1757.569167
+  type: 'test'
+  ...
+# Subtest: a chooser candidate outside Strategy bounds cannot start a second generation or change the Goal
+ok 4 - a chooser candidate outside Strategy bounds cannot start a second generation or change the Goal
+  ---
+  duration_ms: 1492.692875
+  type: 'test'
+  ...
+# Subtest: the command and model tool both bind a newly declared relative Goal by its own name
+ok 5 - the command and model tool both bind a newly declared relative Goal by its own name
+  ---
+  duration_ms: 2503.850709
+  type: 'test'
+  ...
+# Subtest: a placeholder naming a property the values map only inherits is one nothing bound, and substitution throws saying so
+ok 6 - a placeholder naming a property the values map only inherits is one nothing bound, and substitution throws saying so
+  ---
+  duration_ms: 1.537542
+  type: 'test'
+  ...
+# Subtest: a placeholder the values map binds as its own property resolves, whatever its name
+ok 7 - a placeholder the values map binds as its own property resolves, whatever its name
+  ---
+  duration_ms: 0.852417
+  type: 'test'
+  ...
+# Subtest: dynamic tool operands stay literal, including make values and paths containing spaces
+ok 8 - dynamic tool operands stay literal, including make values and paths containing spaces
+  ---
+  duration_ms: 0.538334
+  type: 'test'
+  ...
+# Subtest: Goal and Strategy values preserve decimal meaning and enforce the same declared precision
+ok 9 - Goal and Strategy values preserve decimal meaning and enforce the same declared precision
+  ---
+  duration_ms: 1.421625
+  type: 'test'
+  ...
+# Subtest: output paths remain inside the Campaign and preserve legitimate spaces
+ok 10 - output paths remain inside the Campaign and preserve legitimate spaces
+  ---
+  duration_ms: 0.470084
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 17212.778792
+Test boot attempts: {"host-process":0,"host-in-process":5,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 17.372 s; pass/fail/skip counts are in the TAP summary above

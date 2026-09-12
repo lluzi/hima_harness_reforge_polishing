@@ -23,7 +23,7 @@ import type { PackDataOrigin } from './ledger.js';
 import { campaignIdIssue, prepareWorkspace, type PrepareResult } from './workspace.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
-import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName } from './run-arguments.js';
+import { numericValue, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName } from './run-arguments.js';
 // Type-only: the shape a pack's words travel in, declared with the rest of the run view.
 import type { RunWords } from './remote.js';
 import { bannerLines, branchSaid, branchesIn, convergedSaid, experienceFileSaid, meterLines, readerSaid, runPurposeMark, strategySaid, workshopSaid } from './card-labels.js';
@@ -475,14 +475,16 @@ const flagPresent = (flags: readonly string[], name: string): boolean => flags.i
  * are parsed by the one function so a caller cannot get one right and the other wrong.
  */
 function parseNamedNumbers(flags: readonly string[], flag: string): { params: Record<string, number> } | { error: string } {
-  const params: Record<string, number> = {};
+  const params: Record<string, number> = Object.create(null);
   for (let i = 0; i < flags.length; i++) {
     if (flags[i] !== flag) continue;
     const raw = flags[i + 1];
     const eq = raw?.indexOf('=') ?? -1;
     if (raw === undefined || eq <= 0) return { error: `invalid ${flag} "${raw ?? ''}"; expected ${flag} <name>=<value>` };
-    const value = Number(raw.slice(eq + 1));
-    if (!Number.isFinite(value)) return { error: `invalid ${flag} "${raw}"; expected a numeric value` };
+    const name = raw.slice(0, eq);
+    if (Object.hasOwn(params, name)) return { error: `duplicate ${flag} parameter "${name}"` };
+    const value = numericValue(raw.slice(eq + 1));
+    if (value === undefined) return { error: `invalid ${flag} "${raw}"; expected a numeric value` };
     params[raw.slice(0, eq)] = value;
   }
   return { params };
@@ -500,13 +502,15 @@ const parseParamFlags = (flags: readonly string[]): { params: Record<string, num
  * and a value no declaration allows is refused there, in the words every face says it in.
  */
 function parseSetFlags(flags: readonly string[]): { strategy: Record<string, string> } | { error: string } {
-  const strategy: Record<string, string> = {};
+  const strategy: Record<string, string> = Object.create(null);
   for (let i = 0; i < flags.length; i++) {
     if (flags[i] !== '--set') continue;
     const raw = flags[i + 1];
     const eq = raw?.indexOf('=') ?? -1;
     if (raw === undefined || eq <= 0 || eq === raw.length - 1) return { error: `invalid --set "${raw ?? ''}"; expected --set <knob>=<value>` };
-    strategy[raw.slice(0, eq)] = raw.slice(eq + 1);
+    const name = raw.slice(0, eq);
+    if (Object.hasOwn(strategy, name)) return { error: `duplicate --set parameter "${name}"` };
+    strategy[name] = raw.slice(eq + 1);
   }
   return { strategy };
 }
@@ -530,8 +534,11 @@ function unconsumedArgument(
   takesAValue: readonly string[],
   bare: readonly string[],
 ): string | undefined {
+  const seen = new Set<string>();
   for (let i = 0; i < flags.length; i++) {
     const word = flags[i]!;
+    if (seen.has(word) && !['--goal', '--param', '--set'].includes(word)) return `duplicate option "${word}"`;
+    seen.add(word);
     if (takesAValue.includes(word)) { i += 1; continue; }
     if (bare.includes(word)) continue;
     // `--anything` this command does not declare, including `--test=false`, which is one word and is
@@ -549,7 +556,7 @@ function unconsumedArgument(
 function numericFlag(flags: readonly string[], name: RunArgumentName, spelling: string): { value: number | undefined } | { error: string } {
   if (!flagPresent(flags, spelling)) return { value: undefined };
   const raw = flagValue(flags, spelling);
-  const value = raw === undefined ? Number.NaN : Number(raw);
+  const value = numericValue(raw) ?? Number.NaN;
   if (raw === undefined || !allowsRunArgument(name, value)) return { error: badRunArgument(name, spelling, raw ?? '') };
   return { value };
 }

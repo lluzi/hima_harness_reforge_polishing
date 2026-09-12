@@ -1,0 +1,69 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/input-admission.host.test.ts test/contract/substitute.test.ts test/contract/start-form.test.ts
+local: 3 selected; 32 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: command and tool inputs reject duplicate names and numeric spellings that change value
+ok 1 - command and tool inputs reject duplicate names and numeric spellings that change value
+  ---
+  duration_ms: 6235.609708
+  type: 'test'
+  ...
+# Subtest: an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+ok 2 - an empty home explains Pack and Site preparation without creating a Run or contacting a Site
+  ---
+  duration_ms: 9359.618416
+  type: 'test'
+  ...
+# Subtest: Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+ok 3 - Pack/Site declarations are checked before start; mismatch and configuration diagnostics remain actionable and fenced
+  ---
+  duration_ms: 7765.189333
+  type: 'test'
+  ...
+# Subtest: a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+ok 4 - a stale fit never authorizes a start, mismatched rules are escaped, and repaired inputs can start normally
+  ---
+  duration_ms: 12143.522125
+  type: 'test'
+  ...
+# Subtest: a declared relative Goal is rendered and revalidated before any Run exists
+ok 5 - a declared relative Goal is rendered and revalidated before any Run exists
+  ---
+  duration_ms: 13349.086375
+  type: 'test'
+  ...
+# Subtest: a placeholder naming a property the values map only inherits is one nothing bound, and substitution throws saying so
+ok 6 - a placeholder naming a property the values map only inherits is one nothing bound, and substitution throws saying so
+  ---
+  duration_ms: 1.588167
+  type: 'test'
+  ...
+# Subtest: a placeholder the values map binds as its own property resolves, whatever its name
+ok 7 - a placeholder the values map binds as its own property resolves, whatever its name
+  ---
+  duration_ms: 0.962458
+  type: 'test'
+  ...
+# Subtest: dynamic tool operands stay literal, including make values and paths containing spaces
+ok 8 - dynamic tool operands stay literal, including make values and paths containing spaces
+  ---
+  duration_ms: 3.50025
+  type: 'test'
+  ...
+# Subtest: Goal and Strategy values preserve decimal meaning and enforce the same declared precision
+ok 9 - Goal and Strategy values preserve decimal meaning and enforce the same declared precision
+  ---
+  duration_ms: 1.603875
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 50221.060375
+Test boot attempts: {"host-process":4,"host-in-process":1,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 50.290 s; pass/fail/skip counts are in the TAP summary above

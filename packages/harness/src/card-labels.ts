@@ -19,6 +19,7 @@ import type { DecisionChoice, LoopOutcome, NodeKind, NodeState, ReaderRef, RunBu
 import type { PackStageOrRefusal } from './packs.js';
 import type { CancelView, DecisionView, ExperienceFileView, ExperienceView, RunHeadView, RunView, RunWord, RunWords } from './remote.js';
 import type { SemanticValue } from './semantics.js';
+import { legacyPeriodGoal, type GoalParameter } from './run-arguments.js';
 import { experienceMarkdownPath } from './paths.js';
 import { cancelSessions, chosenAs, chosenKind, type ChosenKind, type CodeView, type ConvergedChoice, type WorkshopState, type WorkshopView } from './record-views.js';
 import { runArguments, strategyKnobWhat, type StrategyKnob } from './run-arguments.js';
@@ -1310,10 +1311,9 @@ export interface StartField extends ControlLabel { readonly hint: string }
  *
  * The form itself lives on the workbench page only: a chat has `/hima run`.
  */
-export const startForm: Readonly<Record<'pack' | 'site' | 'target' | 'timeBox' | 'retries' | 'generations', StartField>> = {
+export const startForm: Readonly<Record<'pack' | 'site' | 'timeBox' | 'retries' | 'generations', StartField>> = {
   pack: { control: 'start-pack', said: 'pack', hint: 'the HimaPack this campaign runs, as it is installed here' },
   site: { control: 'start-site', said: 'site', hint: 'the Site its jobs run on' },
-  target: { control: 'start-target', said: 'target period (ns)', hint: 'the Goal, bound as target_period_ns and immutable for this campaign' },
   timeBox: { control: 'start-time-box', said: 'time box (minutes)', hint: runArguments.timeBox.what },
   retries: { control: 'start-retries', said: 'retry allowance', hint: runArguments.retries.what },
   // The Loop's own bound, beside the box and the allowance because all three are the Budget (#27):
@@ -1343,6 +1343,13 @@ export const startKnobField = (name: string, knob: StrategyKnob, word: RunWord |
   control: `start-knob-${name}`,
   said: word === undefined ? name : (knob.type === 'number' && word.unit !== undefined ? `${word.label} (${word.unit})` : word.label),
   hint: strategyKnobWhat(knob),
+});
+
+/** Goal fields use the same declaration and units as final Campaign admission. */
+export const startGoalField = (name: string, parameter: GoalParameter, word: RunWord | undefined): StartField => ({
+  control: name === legacyPeriodGoal.name ? 'start-target' : `start-goal-${name}`,
+  said: `${word?.label ?? name} (${parameter.unit})`,
+  hint: `${strategyKnobWhat(parameter)}; immutable for this Campaign`,
 });
 
 /** The control that submits the form, and the heading above it. */

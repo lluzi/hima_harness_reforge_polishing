@@ -30,7 +30,7 @@ import { handleHimaCommand, himaCommandDescription } from './commands.js';
 import { himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
-import { checkPack, loadPack, packWords, installedPackWords, installedPacks } from './packs.js';
+import { checkPack, loadPack, goalDeclarationOf, packWords, installedPackWords, installedPacks } from './packs.js';
 import { installedSites, loadSite } from './sites.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
@@ -335,7 +335,7 @@ export default class Hima extends Service {
             catch (err) {
               return { preparation: { kind: 'pack', message: `Pack owner: repair Pack ${packId} files: ${err instanceof Error ? err.message : String(err)}` } };
             }
-            const fields = { strategy: pack.contract.strategy, words: packWords(pack) };
+            const fields = { goal: goalDeclarationOf(pack), strategy: pack.contract.strategy, words: packWords(pack) };
             if (siteName === undefined) return fields;
             let site;
             try { site = loadSite(this.config.sitesDir, siteName); }
@@ -454,3 +454,7 @@ declare module '@deepseek-ai/cordis' {
     hima: Hima;
   }
 }
+
+export { goalFrom, numericValue, strategyFrom, strategyValue, literalArgument } from './run-arguments.js';
+export type { GoalDeclaration, GoalParameter } from './run-arguments.js';
+export { goalDeclarationOf } from './packs.js';

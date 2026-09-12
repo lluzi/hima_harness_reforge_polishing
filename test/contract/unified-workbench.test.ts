@@ -234,3 +234,43 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     await capture(d, browser, 'light-workshop');
   } finally { await finish(d, browser); await home.h.dispose(); }
 });
+
+test('a native declared improvement Goal shows its units, refuses precision loss and starts with the exact value', async (t) => {
+  const port = await freePort();
+  const d = await bootDriver(t, { home: 'hima', sleepSeconds: 0, theme: 'light', window: { width: 1440, height: 960 }, remoteDebuggingPort: port });
+  if (!d) return;
+  let browser: Inspector | undefined;
+  try {
+    const pack = 'relative-goal';
+    await writePackVariant(packsDirOf(d.home), pack, [
+      ['  target_period_ns:', '  improvement_pct:'],
+      ['clock period at most, unit: ns', 'relative improvement, unit: "%"'],
+    ]);
+    const contract = path.join(packsDirOf(d.home), pack, 'contract.yml');
+    await writeFile(contract, (await readFile(contract, 'utf8')) + '\ngoal:\n  improvement_pct: { type: number, unit: "%", min: 0, max: 100, default: 5, precision: 2 }\n');
+    const graph = path.join(packsDirOf(d.home), pack, 'graph.yml');
+    await writeFile(graph, (await readFile(graph, 'utf8')).replaceAll('name: target_period_ns', 'name: improvement_pct'));
+    browser = await inspectWindow(port);
+    const { host, cookie } = await prepareSession(d, browser);
+    assert.ok((await d.click('studio-new')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="studio-pack"] option[value="relative-goal"]')`);
+    assert.ok((await d.fill('studio-pack', pack)).ok);
+    await browser.wait(`document.querySelector('[data-hima-control="studio-goal-improvement_pct"]') && document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status') === 'fit'`);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="studio-target"]') === null`), true);
+    assert.ok((await d.wait('studio-start', 'relative improvement (%)', 10_000)).ok);
+    assert.ok((await d.fill('studio-goal-improvement_pct', '1.001')).ok);
+    assert.ok((await d.click('studio-start')).ok);
+    assert.ok((await d.wait('studio-start', 'at most 2 decimal places', 10_000)).ok);
+    await browser.wait(`document.querySelector('[role="alert"]')?.textContent.includes('invalid Goal parameter')`);
+    assert.deepEqual(await (await api(host, cookie, '/hima/api/runs')).json(), { runs: [] });
+    await capture(d, browser, 'pls21-relative-goal-invalid');
+    assert.ok((await d.fill('studio-goal-improvement_pct', '5.25')).ok);
+    assert.ok((await d.fill('studio-generations', '1')).ok);
+    assert.ok((await d.click('studio-start')).ok);
+    await browser.wait(`!document.querySelector('[data-hima-control="studio-goal-improvement_pct"]') && !!document.querySelector('[data-hima-region="studio-status"]')`);
+    const id = await currentRun(d);
+    const view = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
+    assert.deepEqual(view.run.goal, { improvement_pct: 5.25 });
+    await capture(d, browser, 'pls21-relative-goal-started');
+  } finally { await finish(d, browser); }
+});

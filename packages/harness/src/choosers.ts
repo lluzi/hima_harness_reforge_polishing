@@ -14,6 +14,7 @@
 // Determinism is the point (D6): given the verdicts HimaJudge wrote and the values a reader read,
 // the same ledger always yields the same next strategy, and a person can re-derive it from the
 // decision record and this file alone.
+import { strategyFrom } from './run-arguments.js';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
@@ -393,9 +394,11 @@ function nextStrategy(chooser: Chooser, clause: ChooserClause, input: ChooserInp
     if (unknown !== undefined) {
       return { ok: false, reason: `chooser ${chooser.id} sets knob "${name}" from "${unknown}", which is neither one of its reads nor its parameter` };
     }
-    strategy[name] = roundNs(evaluate(next, rationale));
+    strategy[name] = knob.precision === undefined ? roundNs(evaluate(next, rationale)) : evaluate(next, rationale);
   }
-  return { ok: true, chosen: { strategy }, rationale };
+  const admitted = strategyFrom(input.knobs, strategy);
+  if ('error' in admitted) return { ok: false, reason: `chooser ${chooser.id}: ${admitted.error}` };
+  return { ok: true, chosen: { strategy: admitted.strategy }, rationale };
 }
 
 /**

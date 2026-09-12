@@ -112,7 +112,7 @@
 //   data-hima-region="start-error"      why a start was refused; empty text when none
 //   data-hima-control="start-pack"      the pack, chosen from the installed ones
 //   data-hima-control="start-site"      the Site, chosen from the installed ones
-//   data-hima-control="start-target"    the Goal's target_period_ns
+//   data-hima-control="start-target"    the legacy period Goal
 //   data-hima-region="start-knobs"      the fields of the selected pack's own strategy knobs (#58),
 //                                       one per knob it declares; -pack, which pack's they are, so
 //                                       the page can tell whether a change of selection needs them
@@ -123,7 +123,8 @@
 //   data-hima-control="start-retries"   the Retry allowance
 //   data-hima-control="start-generations" the Budget's generation limit
 //   data-hima-control="start"           submits the form
-import { answeredWithNoCode, bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchPointSaid, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, couldNotReach, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, good, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, askedObservedSaid, startKnobField, NO_FABRIC_STATE, NO_RUNS, NOT_HELD, NOT_RECORDED, NOTHING_JUDGED, NOTHING_TO_DO_ENDED, NOTHING_TO_DO_NO_FABRIC, nodeStateLabel, workshopStateLabel, workshopSaid, workshopState, codeSaid, codeOfWorkshop, readerSaid, outcomeColour, pathColumns, plain, plotLabels, plotValue, runColumns, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, START_HEADING, START_NO_PACK, START_NO_SITE, START_STATIC_FIT, START_STATIC_UNFIT, START_STATIC_LIMIT, startControl, startForm, tailSaid, warn } from './card-labels.js';
+import { legacyPeriodGoal } from './run-arguments.js';
+import { answeredWithNoCode, bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchPointSaid, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, couldNotReach, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, good, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, askedObservedSaid, startGoalField, startKnobField, NO_FABRIC_STATE, NO_RUNS, NOT_HELD, NOT_RECORDED, NOTHING_JUDGED, NOTHING_TO_DO_ENDED, NOTHING_TO_DO_NO_FABRIC, nodeStateLabel, workshopStateLabel, workshopSaid, workshopState, codeSaid, codeOfWorkshop, readerSaid, outcomeColour, pathColumns, plain, plotLabels, plotValue, runColumns, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, START_HEADING, START_NO_PACK, START_NO_SITE, START_STATIC_FIT, START_STATIC_UNFIT, START_STATIC_LIMIT, startControl, startForm, tailSaid, warn } from './card-labels.js';
 import type { PackCheck } from './packs.js';
 import type { LedgerBranchRow, LedgerGenerationRow, LedgerJoinRow, LedgerRow, MeterRow, StartField } from './card-labels.js';
 import { experienceReport, reportBlocks } from './experience-report.js';
@@ -573,7 +574,7 @@ function convergencePlot(view: RunView): { readonly keys: string; readonly figur
       : [{ on, branch: entry.branch, ns: observedPeriodNs, slackNs }];
   });
   if (measured.length === 0 && branchPoints.length === 0) return { keys: '', figure: '' };
-  const target = view.run.goal?.target_period_ns;
+  const target = view.run.goal?.[legacyPeriodGoal.name];
   const periodTop = PLOT.laneTop;
   const slackTop = PLOT.laneTop + PLOT.laneHeight + PLOT.laneGap;
   const height = slackTop + PLOT.laneHeight + PLOT.laneTop;
@@ -900,7 +901,7 @@ function generationLedger(view: RunView): string {
   // foot of a Loop's group and the join's line say what happened and carry no quantity of their own.
   const numbered = generationRowsOf(all);
   const branched = branchRowsOf(all).map((r) => r.branch);
-  const target = view.run.goal?.target_period_ns;
+  const target = view.run.goal?.[legacyPeriodGoal.name];
   // Every period any row *measured*, which is what the bars in this column are drawn from: a bar
   // runs from the Goal's target to the period the report stated. What a generation asked for is no
   // longer a number this table holds — it is the whole Strategy, in the pack's own knobs (#58), and
@@ -1232,6 +1233,7 @@ export interface StartChoices {
   readonly site?: string;
   readonly check?: PackCheck;
   readonly preparation?: { readonly kind: 'request' | 'pack' | 'site'; readonly message: string };
+  readonly goal?: import('./run-arguments.js').GoalDeclaration;
   readonly strategy?: StrategyDeclaration;
   readonly words?: RunWords;
   /**
@@ -1309,7 +1311,6 @@ function renderStartForm(choices: StartChoices): string {
     + choiceField(startForm.site, choices.sites, choices.site)
     + '</div></fieldset>'
     + '<fieldset class="form-group"><legend>Goal and starting strategy</legend><div class="fields">'
-    + numberField(startForm.target)
     + renderKnobFields(choices)
     + '</div></fieldset>'
     + '<fieldset class="form-group"><legend>Exploration budget</legend><div class="fields budget-fields">'
@@ -1369,11 +1370,15 @@ const choiceField = (
  */
 function renderKnobFields(choices: StartChoices): string {
   const marked = { 'data-hima-region': 'start-knobs', 'data-hima-state-pack': choices.pack ?? '' };
+  const goals = Object.entries(choices.goal ?? {}).map(([name, parameter]) => {
+    const f = startGoalField(name, parameter, choices.words?.goal[name]);
+    return numberFieldAt(f, parameter.default, parameter.unit).replace('<input ', `<input data-hima-goal="${escape(name)}" `);
+  });
   const fields = Object.entries(choices.strategy ?? {}).map(([name, knob]) => {
     const f = startKnobField(name, knob, choices.words?.strategy[name]);
     return knob.type === 'choice' ? choiceField(f, knob.options, knob.default) : numberFieldAt(f, knob.default, knob.unit);
   });
-  return `<div class="knobs"${attributes(marked)}>${fields.join('')}</div>`;
+  return `<div class="knobs"${attributes(marked)}>${goals.join('')}${fields.join('')}</div>`;
 }
 
 /** A number field already holding the value a pack declares a Run of it starts at. */
@@ -1518,8 +1523,7 @@ const START_FORM = `(() => {
       const raw = String(el.value).trim();
       if (raw === '') continue;
       if (el.tagName === 'SELECT') { set[name] = raw; continue; }
-      const n = Number(raw);
-      set[name] = Number.isFinite(n) ? n : raw;
+      set[name] = raw;
     }
     return set;
   };
@@ -1611,7 +1615,7 @@ const START_FORM = `(() => {
       body: JSON.stringify({
         pack: held('start-pack'),
         site: held('start-site'),
-        goal: { target_period_ns: number('start-target') },
+        goal: Object.fromEntries(Array.from(form.querySelectorAll('[data-hima-goal]')).map((el) => [el.getAttribute('data-hima-goal'), el.value])),
         strategy: knobs(),
         timeBox: number('start-time-box'),
         retries: number('start-retries'),

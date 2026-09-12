@@ -1,0 +1,184 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/input-admission.host.test.ts test/contract/pack-readers.host.test.ts test/contract/workshop.host.test.ts
+local: 3 selected; 32 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: command and tool inputs reject duplicate names and numeric spellings that change value
+ok 1 - command and tool inputs reject duplicate names and numeric spellings that change value
+  ---
+  duration_ms: 7158.886417
+  type: 'test'
+  ...
+# Subtest: a make expansion bound by a node is refused before any Job or escaping file exists
+ok 2 - a make expansion bound by a node is refused before any Job or escaping file exists
+  ---
+  duration_ms: 1431.777125
+  type: 'test'
+  ...
+# Subtest: reader and tool paths preserve spaces while dynamic Site bindings cannot launch either wrapper
+not ok 3 - reader and tool paths preserve spaces while dynamic Site bindings cannot launch either wrapper
+  ---
+  duration_ms: 495.926667
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/input-admission.host.test.ts:57:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Implicit keys need to be on a single line at line 8, column 1:
+
+      design: x
+    touch /private/tmp/hima-tests-5mbS6y/hima-home-gfXEeR/workspace/reader-escape
+    ^
+
+  code: 'MULTILINE_IMPLICIT_KEY'
+  name: 'YAMLParseError'
+  stack: |-
+    Composer.onError (/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/composer.js:70:34)
+    Object.resolveBlockMap (/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-map.js:48:17)
+    resolveCollection (/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-collection.js:13:27)
+    Object.composeCollection (/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-collection.js:59:16)
+    Object.composeNode (/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-node.js:34:42)
+    Object.composeDoc (/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-doc.js:35:23)
+    Composer.next (/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/composer.js:152:40)
+    next (<anonymous>)
+    Composer.compose (/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/composer.js:134:25)
+    compose.next (<anonymous>)
+  ...
+# Subtest: a site whose permit will not run the wrapper a reader declares is unfit before a campaign exists, and the check names the wrapper and what the site does allow
+ok 4 - a site whose permit will not run the wrapper a reader declares is unfit before a campaign exists, and the check names the wrapper and what the site does allow
+  ---
+  duration_ms: 1915.204916
+  type: 'test'
+  ...
+# pack pack-reader-unpermitted@2 on site local: unfit — 1 error; 3 of 3 inputs bound, 2 tools, 3 rules, 2 readers, 0 choosers, 1 licence
+# stage: none; next: intent — INTENT.md, written by /hima-grill
+# inputs:
+#   flowRoot = /private/tmp/hima-tests-5mbS6y/hima-home-yT1m1l/standin-flow
+#   design = opene902
+#   workspaceRoot = /private/tmp/hima-tests-5mbS6y/hima-home-yT1m1l/workspace
+# tools:
+#   synth (tools/synth.sh): "make" is an allowed wrapper of site local
+#   mine (tools/mine.sh): "make" is an allowed wrapper of site local
+# rules:
+#   candidates-at-least@1: found in the pack
+#   setup-wns-all-nonnegative@1: found in the bundle
+#   clock-period-at-most@1: found in the bundle
+# readers:
+#   dc-qor-report@1 reads qorReport: found in the bundle
+#   count-candidates@1 reads candidates: found in the pack, and reader "count-candidates", named by output "candidates", runs its script with "sh" is not an allowed wrapper of site local (allowed: make)
+# semantics:
+#   candidate_count: declared by this pack in /private/tmp/hima-tests-5mbS6y/hima-home-yT1m1l/hima/packs/pack-reader-unpermitted/semantics.yml
+#   candidate_slack: declared by this pack in /private/tmp/hima-tests-5mbS6y/hima-home-yT1m1l/hima/packs/pack-reader-unpermitted/semantics.yml
+#   8 value types come from the bundle
+# licences:
+#   synth holds 1 of "Design-Compiler": site local declares 1
+# errors:
+#   - reader "count-candidates", named by output "candidates", runs its script with "sh" is not an allowed wrapper of site local (allowed: make)
+# Subtest: `/hima status` names the reader of the run's latest reading, in the words both card mounts say it in
+not ok 5 - `/hima status` names the reader of the run's latest reading, in the words both card mounts say it in
+  ---
+  duration_ms: 856.058625
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/pack-readers.host.test.ts:54:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    /hima run pack-reader-said: unknown Goal parameter "target_period_ns"; this pack declares
+
+    'error' !== 'success'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'success'
+  actual: 'error'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/pack-readers.host.test.ts:76:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# /hima run pack-reader-said: unknown Goal parameter "target_period_ns"; this pack declares
+# Subtest: in process over the same home: a write that landed and verified but that the ledger would not record is named in the tool's answer, in the host log and in the node the run blocks at
+not ok 6 - in process over the same home: a write that landed and verified but that the ledger would not record is named in the tool's answer, in the host log and in the node the run blocks at
+  ---
+  duration_ms: 2000.6915
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/workshop.host.test.ts:24:1'
+  failureType: 'testCodeFailure'
+  error: 'the answer names the run: /hima run workshop-probe: unknown Goal parameter "target_period_ns"; this pack declares '
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/workshop.host.test.ts:57:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: in process over the same home: a host log that throws where the landed byte is reported stops neither the tool's answer nor the fault the node blocks on
+not ok 7 - in process over the same home: a host log that throws where the landed byte is reported stops neither the tool's answer nor the fault the node blocks on
+  ---
+  duration_ms: 676.701458
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/workshop.host.test.ts:112:1'
+  failureType: 'testCodeFailure'
+  error: 'the answer names the run: /hima run workshop-probe: unknown Goal parameter "target_period_ns"; this pack declares '
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/workshop.host.test.ts:142:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: a workshop declaration this harness will not run is refused before a campaign exists, naming the field
+ok 8 - a workshop declaration this harness will not run is refused before a campaign exists, naming the field
+  ---
+  duration_ms: 1630.40775
+  type: 'test'
+  ...
+# Subtest: at the ledger object: a job whose launch record names its attempt is that attempt, whether or not a node record ever named its session
+not ok 9 - at the ledger object: a job whose launch record names its attempt is that attempt, whether or not a node record ever named its session
+  ---
+  duration_ms: 561.123583
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/workshop.host.test.ts:267:1'
+  failureType: 'testCodeFailure'
+  error: 'the answer names the run: /hima run workshop-probe: unknown Goal parameter "target_period_ns"; this pack declares '
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/workshop.host.test.ts:295:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: in process over the same home: the moment of a retry is given the reason the attempt before it failed and the tail of that attempt's log
+not ok 10 - in process over the same home: the moment of a retry is given the reason the attempt before it failed and the tail of that attempt's log
+  ---
+  duration_ms: 638.285875
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/workshop.host.test.ts:341:1'
+  failureType: 'testCodeFailure'
+  error: 'the answer names the run: /hima run workshop-probe: unknown Goal parameter "target_period_ns"; this pack declares '
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls21/test/contract/workshop.host.test.ts:367:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# /hima run workshop-probe: unknown Goal parameter "target_period_ns"; this pack declares
+1..10
+# tests 10
+# suites 0
+# pass 4
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19130.755
+Test boot attempts: {"host-process":0,"host-in-process":10,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 19.220 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

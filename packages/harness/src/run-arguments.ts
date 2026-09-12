@@ -67,7 +67,7 @@ export const badRunArgument = (name: RunArgumentName, spelling: string, given: u
  * only thing that knows — and this is the shape it says so in.
  */
 export type StrategyKnob =
-  | { readonly type: 'number'; readonly unit: string; readonly min: number; readonly max: number; readonly default: number }
+  | { readonly type: 'number'; readonly unit: string; readonly min: number; readonly max: number; readonly default: number; readonly precision?: number }
   | { readonly type: 'choice'; readonly options: readonly string[]; readonly default: string };
 
 /** A pack's whole declaration: one knob per name, which is the name every face carries it under. */
@@ -79,7 +79,7 @@ export type StrategyValue = number | string;
 /** What this knob may be, in words a caller reads — the `what` of the table above, per knob. */
 export const strategyKnobWhat = (knob: StrategyKnob): string =>
   (knob.type === 'number'
-    ? `a number in ${knob.unit} from ${String(knob.min)} through ${String(knob.max)}`
+    ? `a number in ${knob.unit} from ${String(knob.min)} through ${String(knob.max)}${knob.precision === undefined ? '' : `, at most ${knob.precision} decimal places`}`
     : `one of ${knob.options.map((o) => JSON.stringify(o)).join(', ')}`);
 
 /**
@@ -113,8 +113,8 @@ export const unknownStrategyKnob = (name: string, declared: readonly string[]): 
 export function strategyValue(name: string, knob: StrategyKnob, given: StrategyValue): { readonly value: StrategyValue } | { readonly error: string } {
   const refuse = { error: badStrategyValue(name, knob, given) };
   if (knob.type === 'choice') return typeof given === 'string' && knob.options.includes(given) ? { value: given } : refuse;
-  const value = typeof given === 'number' ? given : (given.trim() === '' ? Number.NaN : Number(given));
-  if (!Number.isFinite(value) || value < knob.min || value > knob.max) return refuse;
+  const value = numericValue(given);
+  if (value === undefined || value < knob.min || value > knob.max || (knob.precision !== undefined && value !== Number(value.toFixed(knob.precision)))) return refuse;
   return { value };
 }
 
@@ -204,3 +204,57 @@ export const timeBoxMsBounds = {
 
 /** Is this a value the ledger's schema will accept for a Run's stored time box? */
 export const allowsTimeBoxMs = (ms: number): boolean => Number.isFinite(ms) && timeBoxMsBounds.allowed(ms);
+
+
+/** Dynamic operands are data even when a permitted wrapper passes them to make or a shell.
+ * Spaces stay intact; shell metacharacters and control characters are refused, never scrubbed. */
+export function literalArgument(value: string, what: string): string {
+  if (/[$`\\'";&|<>()\x00-\x1f\x7f]/.test(value)) throw new Error(`${what} must be literal data; shell expansion, quotes, operators, backslashes and control characters are not allowed`);
+  return value;
+}
+
+
+export type GoalParameter = Extract<StrategyKnob, { readonly type: 'number' }>;
+export type GoalDeclaration = Readonly<Record<string, GoalParameter>>;
+
+/** Normalize a decimal spelling without first rounding it through Number. */
+function decimalIdentity(text: string): string | undefined {
+  const match = /^([+-]?)([0-9]*)(?:\.([0-9]*))?(?:[eE]([+-]?[0-9]+))?$/.exec(text.trim());
+  if (!match || (match[2] === '' && !match[3])) return undefined;
+  const digits = (match[2]! + (match[3] ?? '')).replace(/^0+/, '');
+  if (!digits) return '0';
+  const trimmed = digits.replace(/0+$/, '');
+  const exponent = Number(match[4] ?? 0) - (match[3]?.length ?? 0) + digits.length - trimmed.length;
+  return `${match[1] === '-' ? '-' : ''}${trimmed}e${exponent}`;
+}
+
+/** Decimal text must survive a round trip through the numeric wire without changing its value. */
+export function numericValue(given: unknown): number | undefined {
+  if (typeof given !== 'number' && typeof given !== 'string') return undefined;
+  if (typeof given === 'string' && /[\x00-\x1f\x7f]/.test(given)) return undefined;
+  const value = Number(given);
+  if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) return undefined;
+  if (typeof given === 'string' && (decimalIdentity(given) === undefined || decimalIdentity(given) !== decimalIdentity(String(value)))) return undefined;
+  return value;
+}
+
+/** A Goal is supplied explicitly and completely. Defaults guide the form; they never fill an omitted Goal. */
+export function goalFrom(declaration: GoalDeclaration, given: Readonly<Record<string, unknown>>): { readonly goal: Record<string, number> } | { readonly error: string } {
+  for (const name of Object.keys(given)) {
+    if (!Object.hasOwn(declaration, name)) return { error: `unknown Goal parameter "${name}"; this pack declares ${Object.keys(declaration).join(', ')}` };
+  }
+  const goal: Record<string, number> = {};
+  for (const [name, parameter] of Object.entries(declaration)) {
+    const held = strategyValue(name, parameter, given[name] as StrategyValue);
+    if ('error' in held) return { error: held.error.replace('strategy knob', 'Goal parameter') };
+    goal[name] = held.value as number;
+  }
+  return Object.keys(goal).length ? { goal } : { error: 'a run needs a declared Goal' };
+}
+
+
+/** Compatibility with saved and undeclared first-generation period Packs only. New Packs declare Goal. */
+export const legacyPeriodGoal = {
+  name: 'target_period_ns',
+  parameter: { type: 'number' as const, unit: 'ns', min: Number.MIN_VALUE, max: Number.MAX_SAFE_INTEGER, default: 2.3 },
+};

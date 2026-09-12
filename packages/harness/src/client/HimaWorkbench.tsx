@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import type { RunView } from '../remote.js';
 import type { StartChoices } from '../workbench.js';
-import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows, nodeStateLabel, runPurposeMark, runStatusLabel, startForm, startKnobField, START_STATIC_LIMIT } from '../card-labels.js';
+import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows, nodeStateLabel, runPurposeMark, runStatusLabel, startForm, startGoalField, startKnobField, START_STATIC_LIMIT } from '../card-labels.js';
 import { reportBlocks } from '../experience-report.js';
 import { runPath } from '../paths.js';
 import { fetchRun, fetchRuns, fetchStartChoices, startCampaign, type HimaResult } from './api.js';
@@ -190,6 +190,7 @@ function StartRunForm({ onStarted, onClose, onBusy }: { onStarted(view: RunView)
   const [selection, setSelection] = useState<{ pack?: string; site?: string }>({});
   const [prepared, setPrepared] = useState<StartChoices>();
   const [values, setValues] = useState<Record<string, string>>({});
+  const [goals, setGoals] = useState<Record<string, string>>({});
   const [knobs, setKnobs] = useState<Record<string, string>>({});
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string>();
@@ -213,6 +214,9 @@ function StartRunForm({ onStarted, onClose, onBusy }: { onStarted(view: RunView)
         const compatible = old?.type === knob.type && (knob.type === 'choice' ? held !== undefined && knob.options.includes(held) : old?.type === 'number' && old.unit === knob.unit);
         return [name, compatible && held !== undefined ? held : String(knob.default)];
       })));
+      setGoals((current) => Object.fromEntries(Object.entries(next.goal ?? {}).map(([name, parameter]) => [name,
+        prior?.goal?.[name]?.unit === parameter.unit && current[name] !== undefined ? current[name] : String(parameter.default),
+      ])));
       previous.current = next; setPrepared(next); checkPending.current = false;
     });
     return () => own.abort();
@@ -222,8 +226,8 @@ function StartRunForm({ onStarted, onClose, onBusy }: { onStarted(view: RunView)
   const submit = async () => {
     if (request.current || checkPending.current || prepared?.check?.fit !== true) return;
     const own = new AbortController(); request.current = own; setSubmitting(true); onBusy(true); setError(undefined);
-    const strategy = Object.fromEntries(Object.entries(prepared.strategy ?? {}).map(([name, knob]) => [name, knob.type === 'choice' ? knobs[name] : numeric(knobs[name])]));
-    const result = await startCampaign({ pack: prepared.pack, site: prepared.site, goal: { target_period_ns: numeric(values.target) }, strategy, timeBox: numeric(values.timeBox), retries: numeric(values.retries), generations: numeric(values.generations) }, own.signal);
+    const strategy = Object.fromEntries(Object.entries(prepared.strategy ?? {}).map(([name, knob]) => [name, knobs[name]]));
+    const result = await startCampaign({ pack: prepared.pack, site: prepared.site, goal: goals, strategy, timeBox: numeric(values.timeBox), retries: numeric(values.retries), generations: numeric(values.generations) }, own.signal);
     if (own.signal.aborted) return;
     request.current = undefined; setSubmitting(false); onBusy(false);
     if (result.ok) onStarted(result.value); else setError(result.error.message);
@@ -232,7 +236,7 @@ function StartRunForm({ onStarted, onClose, onBusy }: { onStarted(view: RunView)
     <div className='hima-section-heading'><h3>New research run</h3><button type='button' className='hima-icon-button' aria-label='Close new Run form' disabled={submitting} onClick={onClose}>×</button></div>
     <p className='hima-small'>The Pack supplies the method. Set the objective and bounds for this experiment.</p>
     <div className='hima-fields'>{(['pack', 'site'] as const).map((kind) => <label key={kind}>{kind === 'pack' ? 'Method / Pack' : 'Execution Site'}<select data-hima-control={`studio-${kind}`} disabled={submitting} value={selection[kind] ?? prepared?.[kind] ?? ''} onChange={(event) => { checkPending.current = true; setChecking(true); setSelection({ pack: prepared?.pack, site: prepared?.site, ...selection, [kind]: event.target.value }); }}><option value='' disabled>Choose…</option>{(kind === 'pack' ? prepared?.packs : prepared?.sites)?.map((value) => <option key={value} value={value} disabled={kind === 'pack' && prepared?.cannotStart?.includes(value)}>{value}{kind === 'pack' && prepared?.marks?.[value] ? ` — ${prepared.marks[value]}` : ''}</option>)}</select></label>)}</div>
-    <div className='hima-fields'><label>Target period (ns)<input data-hima-control='studio-target' value={values.target ?? ''} onChange={(event) => setValues({ ...values, target: event.target.value })} placeholder='Your research objective' /></label>
+    <div className='hima-fields'>{Object.entries(prepared?.goal ?? {}).map(([name, parameter]) => { const field = startGoalField(name, parameter, prepared?.words?.goal[name]); return <label key={name}>{field.said}<input data-hima-control={field.control.replace('start-', 'studio-')} value={goals[name] ?? ''} onChange={(event) => setGoals({ ...goals, [name]: event.target.value })} /><small>{field.hint}</small></label>; })}
       {Object.entries(prepared?.strategy ?? {}).map(([name, knob]) => { const field = startKnobField(name, knob, prepared?.words?.strategy[name]); return <label key={name}>{field.said}{knob.type === 'choice' ? <select data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })}>{knob.options.map((option) => <option key={option}>{option}</option>)}</select> : <input data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })} />}<small>{field.hint}</small></label>; })}
     </div>
     <h4>Exploration budget</h4><div className='hima-fields'>{(['timeBox', 'retries', 'generations'] as const).map((name) => <label key={name}>{startForm[name].said}<input data-hima-control={`studio-${name}`} value={values[name] ?? ''} onChange={(event) => setValues({ ...values, [name]: event.target.value })} placeholder='Default' /></label>)}</div>

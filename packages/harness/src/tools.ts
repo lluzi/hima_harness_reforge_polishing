@@ -37,7 +37,7 @@ function toolNumber(name: RunArgumentName, given: number | undefined): number | 
  * instead of wrong.
  */
 function numericParams(raw: Record<string, unknown> | undefined): { params: Record<string, number> } | { error: string } {
-  const params: Record<string, number> = {};
+  const params: Record<string, number> = Object.create(null);
   for (const [name, value] of Object.entries(raw ?? {})) {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       return { error: `params.${name} must be a finite number; got ${JSON.stringify(value)}` };
@@ -55,13 +55,13 @@ function numericParams(raw: Record<string, unknown> | undefined): { params: Reco
  * `startRun`'s to say against its declaration. Refused rather than dropped, exactly as a bad
  * `params` entry is: a knob silently ignored would start a Campaign at a value nobody asked for.
  */
-function strategyArgument(raw: unknown): Record<string, StrategyValue> | undefined {
+function strategyArgument(raw: unknown, what = 'strategy'): Record<string, StrategyValue> | undefined {
   if (raw === undefined) return undefined;
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error(`strategy must be an object of knob values; got ${JSON.stringify(raw)}`);
-  const strategy: Record<string, StrategyValue> = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error(`${what} must be an object of knob values; got ${JSON.stringify(raw)}`);
+  const strategy: Record<string, StrategyValue> = Object.create(null);
   for (const [name, value] of Object.entries(raw)) {
     const ok = typeof value === 'number' ? Number.isFinite(value) : typeof value === 'string' && value !== '';
-    if (!ok) throw new Error(`strategy.${name} must be a finite number or a non-empty string; got ${JSON.stringify(value)}`);
+    if (!ok) throw new Error(`${what}.${name} must be a finite number or a non-empty string; got ${JSON.stringify(value)}`);
     strategy[name] = value as StrategyValue;
   }
   return strategy;
@@ -177,7 +177,7 @@ export function himaTools(deps: FabricDeps): ToolDefinition[] {
         params: {
           type: 'object',
           additionalProperties: true,
-          description: 'Named values for any parameter a rule in `judge` declares, e.g. { "target_period_ns": 2.3 }. Every value must be a finite number; a non-numeric value is rejected, never silently dropped. A declared parameter with no matching entry here leaves that rule UNDETERMINED.',
+          description: 'Named values for any parameter a rule in `judge` declares, e.g. { "declared_parameter": 2.3 }. Every value must be a finite number; a non-numeric value is rejected, never silently dropped. A declared parameter with no matching entry here leaves that rule UNDETERMINED.',
         },
       },
       output: {
@@ -235,7 +235,7 @@ export function himaTools(deps: FabricDeps): ToolDefinition[] {
           type: 'object',
           required: true,
           additionalProperties: true,
-          description: 'The Goal as named numbers, e.g. { "target_period_ns": 2.3 }. Every value must be a finite number. Immutable for the run: a new goal is a new campaign.',
+          description: 'The Goal parameters declared by contract.goal, with their units, bounds and precision. Values are finite numbers or lossless decimal strings. Immutable for the run: a new goal is a new campaign.',
         },
         strategy: {
           type: 'object',
@@ -267,15 +267,14 @@ export function himaTools(deps: FabricDeps): ToolDefinition[] {
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
       execute: async (args) => {
-        const goal = numericParams(args.goal as Record<string, unknown> | undefined);
-        if ('error' in goal) throw new Error(goal.error);
+        const goal = strategyArgument(args.goal, 'goal') ?? {};
         // The same checks the command face and the route make, from the same tables: a tool call is
         // a caller like any other, and a time box no person could type must not be one a model can.
         const timeBox = toolNumber('timeBox', args.timeBox);
         const result = await startRun(deps, {
           pack: args.pack,
           site: args.site,
-          goal: goal.params,
+          goal,
           strategy: strategyArgument(args.strategy),
           // An absent key, never an undefined one, as everywhere else a request is composed here:
           // the schema above has already held it to a boolean, so a caller that said nothing has

@@ -32,7 +32,7 @@
 // an outcome's edge leads to, and where a Run stops. What a turn itself does is `node-turns.ts`, what
 // a Run may spend `budget.ts`, what a Site will hold `job-cap.ts`, and picking a Run up again or
 // stopping one `recovery.ts`.
-import { boundInputs, checkPack, loadInstalledPack, loadPack, packStageFrom, positionOf, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { goalDeclarationOf, boundInputs, checkPack, loadInstalledPack, loadPack, packStageFrom, positionOf, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, type PackFolderSnapshot } from './pack-folder.js';
 import { campaignIdFor, prepareWorkspace, type PrepareResult } from './workspace.js';
 import { writeExperience } from './experience.js';
@@ -56,7 +56,7 @@ import type {
   WorkspaceRecord,
 } from './ledger.js';
 import { chosenAs, chosenKind, type ChosenKind } from './record-views.js';
-import { allowsRunArgument, allowsTimeBoxMs, runArguments, strategyFrom, timeBoxMsBounds, type StrategyValue } from './run-arguments.js';
+import { allowsRunArgument, allowsTimeBoxMs, runArguments, goalFrom, strategyFrom, timeBoxMsBounds, type StrategyValue } from './run-arguments.js';
 import { PackNotFoundError, RunFaultError, RunStartError, SiteUnreadableError } from './errors.js';
 import {
   advance,
@@ -119,7 +119,7 @@ export interface StartRunRequest {
   readonly pack: string;
   readonly site: string;
   /** The Goal as bound parameters, typed and checkable, immutable for the Campaign (D3). */
-  readonly goal: Readonly<Record<string, number>>;
+  readonly goal: Readonly<Record<string, number | string>>;
   /**
    * What to set the pack's own Strategy knobs to for the first generation, by name (#58). A knob left
    * out takes the default that pack's contract declares, which is where a starting value comes from
@@ -207,8 +207,9 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   const check = checkPack(pack, site);
   if (!check.fit) return { kind: 'unfit', check };
 
-  const goal = { ...req.goal };
-  if (Object.keys(goal).length === 0) throw new RunStartError('a run needs a goal, e.g. --goal target_period_ns=2.3');
+  const admittedGoal = goalFrom(goalDeclarationOf(pack), req.goal);
+  if ('error' in admittedGoal) throw new RunStartError(admittedGoal.error);
+  const goal = admittedGoal.goal;
   // The Strategy this Campaign starts at: the pack's declared defaults, overlaid with whatever the
   // caller set, every value held against the pack's own declaration (#58). Here and not in each
   // face, for the reason the Budget's numbers are re-checked below: `startRun` is an operation of

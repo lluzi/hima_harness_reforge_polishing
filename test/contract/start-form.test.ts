@@ -146,3 +146,69 @@ test('a stale fit never authorizes a start, mismatched rules are escaped, and re
     await home.dispose();
   }
 });
+
+// PLS-21: a relative improvement target has no period semantics. Both form projections and the
+// final start hold the same contract, even when an author changes it after preparation.
+test('a declared relative Goal is rendered and revalidated before any Run exists', async (t) => {
+  const home = await createHimaHome();
+  const flow = await writeStandinFlow(t, home);
+  if (flow === undefined) { await home.dispose(); return; }
+  await installPack(home);
+  const pack = 'relative-goal';
+  await writePackVariant(packsDirOf(home), pack, [
+    ['  target_period_ns:', '  improvement_pct:'],
+    ['clock period at most, unit: ns', 'relative improvement, unit: "%"'],
+  ], [['target_period_ns', 'improvement_pct']]);
+  const contract = path.join(packsDirOf(home), pack, 'contract.yml');
+  const { readFile } = await import('node:fs/promises');
+  const graphPath = path.join(packsDirOf(home), pack, 'graph.yml');
+  await writeFile(graphPath, (await readFile(graphPath, 'utf8')).replaceAll('name: target_period_ns', 'name: improvement_pct'));
+  const original = (await readFile(contract, 'utf8')).replace(/(improvement_pct:\n\s+label: relative improvement\n\s+unit:) ns/, '$1 %');
+  const declaration = '\ngoal:\n  improvement_pct: { type: number, unit: "%", min: 0, max: 100, default: 5, precision: 2 }\n';
+  await writeFile(contract, original + declaration);
+  await writeLocalSite(home, {
+    allowedReadRoots: [home.workspace, flow.root], allowedWriteRoots: [home.workspace],
+    bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: home.workspace },
+  });
+  const host = await bootHimaHost(home);
+  try {
+    const cookie = await openSession(host);
+    const choices = await (await api(host, cookie, `/hima/api/start-options?pack=${pack}&site=local`)).json() as { goal?: object; check?: { fit: boolean } };
+    assert.equal(choices.check?.fit, true, JSON.stringify(choices));
+    assert.deepEqual(choices.goal, { improvement_pct: { type: 'number', unit: '%', min: 0, max: 100, default: 5, precision: 2 } });
+    const html = await (await api(host, cookie, `/hima/?pack=${pack}&site=local`)).text();
+    assert.match(html, /data-hima-control="start-goal-improvement_pct"/);
+    assert.match(html, /relative improvement \(%\)/);
+    assert.ok(!html.includes('data-hima-control="start-target"'));
+    const start = (goal: object) => api(host, cookie, '/hima/api/runs', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pack, site: 'local', goal, generations: 1 }),
+    });
+    for (const goal of [{ improvement_pct: -1 }, { improvement_pct: 100.01 }, { improvement_pct: 1.001 }, { target_period_ns: 2.3 }]) {
+      const response = await start(goal);
+      assert.equal(response.status, 400, await response.text());
+    }
+    for (const raw of ['"improvement_pct":1,"improvement_pct":2', '"improvement_pct":2.00000000000000001']) {
+      const response = await api(host, cookie, '/hima/api/runs', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: `{"pack":"${pack}","site":"local","goal":{${raw}},"generations":1}`,
+      });
+      const text = await response.text();
+      assert.equal(response.status, 400, text);
+      assert.match(text, /duplicate|representable/);
+    }
+    await writeFile(contract, original + declaration.replace('max: 100', 'max: 10'));
+    const stale = await start({ improvement_pct: 25 });
+    assert.equal(stale.status, 400, await stale.text());
+    assert.deepEqual(await (await api(host, cookie, '/hima/api/runs')).json(), { runs: [] });
+    assert.deepEqual((await (await api(host, cookie, '/hima/api/audit')).json() as { commands: unknown[] }).commands, []);
+    const valid = await start({ improvement_pct: 10 });
+    const result = await valid.json() as { run: { goal: object }; jobs: { event: string }[] };
+    assert.equal(valid.status, 200, JSON.stringify(result));
+    assert.deepEqual(result.run.goal, { improvement_pct: 10 });
+    assert.ok(result.jobs.some((job) => job.event === 'launched'));
+  } finally {
+    assert.equal(await host.stop(), 0, host.stderr());
+    await home.dispose();
+  }
+});

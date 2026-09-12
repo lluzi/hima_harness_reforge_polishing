@@ -1294,7 +1294,7 @@ export const runRecord = z.object({
    * carrying something that is not a digest would be a Run nothing could ever be held against.
    */
   packDigest: sha256Hex.optional(),
-  /** The Goal as bound parameters: `target_period_ns` for the first pack. Typed, checkable, fixed (D3). */
+  /** The Goal as bound parameters: `declared_parameter` for the first pack. Typed, checkable, fixed (D3). */
   goal: z.record(z.string(), z.number()).optional(),
   budget: runBudget.optional(),
   currentNode: z.string().optional(),
