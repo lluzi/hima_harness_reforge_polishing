@@ -199,10 +199,10 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     }),
     defineTool({
       name: 'hima_execute',
-      description: 'Request one controlled node or Run action as this actual conversational Agent. begin admits a node; work performs its mechanical operation and returns a Job identity promptly; read/write/knowledge work inside the admitted node; complete validates actual evidence. You choose the next action from context; no action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; cancel requests real stop. revise/grow return unsupported until implemented. Preserve requestId when retrying identical requests; re-read context after refusals.',
+      description: 'Request one controlled node or Run action as this actual conversational Agent. adopt verifies an unowned historical Run at epoch/revision 0 before binding this conversation; begin admits a node; work performs its mechanical operation and returns a Job identity promptly; read/write/knowledge work inside the admitted node; complete validates actual evidence. You choose the next action from context; no action drives the rest of the graph. pause blocks new work while in-flight Jobs may still run; cancel requests real stop. revise/grow return unsupported until implemented. Preserve requestId when retrying identical requests; re-read context after refusals.',
       parameters: {
         run: { type: 'string', required: true, description: 'Exact Run id.' },
-        action: { type: 'string', required: true, enum: ['begin', 'work', 'complete', 'pause', 'continue', 'cancel', 'handoff', 'revise', 'grow', 'read', 'write', 'knowledge', 'recommend'] },
+        action: { type: 'string', required: true, enum: ['adopt', 'begin', 'work', 'complete', 'pause', 'continue', 'cancel', 'handoff', 'revise', 'grow', 'read', 'write', 'knowledge', 'recommend'] },
         expectedEpoch: { type: 'integer', required: true, description: 'Owner epoch from the latest context.' },
         expectedRevision: { type: 'integer', required: true, description: 'Control revision from the latest context.' },
         requestId: { type: 'string', required: true, description: 'Unique bounded request identity, reused only for an identical retry.' },
@@ -211,7 +211,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         targetOwner: { type: 'string', description: 'Explicit handoff target; must be a real Host conversation.' },
         path: { type: 'string', description: 'Controlled node file path for read or write.' },
         content: { type: 'string', description: 'Exact code/file content for write.' },
-        output: { type: 'string', description: 'Declared output name.' },
+        output: { type: 'string', description: 'Declared output name, or @job-log for this execution’s actual Job log.' },
         file: { type: 'string', description: 'Declared knowledge file.' },
         decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy'] },
         strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values for an explicit exploration decision.' },

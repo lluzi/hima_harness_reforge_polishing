@@ -5,6 +5,9 @@ import { localHome } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { timingProbePackId } from './support/pack.ts';
 
+process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
+process.env.HIMA_TEST_SILENT_AGENT = '1';
+
 test('hima_run prepares for the actual calling Agent and returns the same conversation context', async (t) => {
   const local = await localHome(t, { sleepSeconds: 0 });
   assert.ok(local);
@@ -70,6 +73,10 @@ test('controlled tools derive ownership, deduplicate admission, and refuse legac
     const coding = await call('write', { file_path: 'ordinary-coding.txt', content: 'ordinary coding remains available' });
     assert.equal(coding.isError, false, JSON.stringify(coding));
     assert.equal(host.ctx.hima.ledger.run(run)?.control?.revision, 1);
+    const historical = await host.ctx.hima.ledger.createRun({ campaignId: 'legacy-without-method', siteId: 'local' });
+    const adoption = value(await call('hima_execute', { run: historical.id, action: 'adopt', expectedEpoch: 0, expectedRevision: 0, requestId: 'inspect-adoption' }));
+    assert.equal(adoption.kind, 'refused', 'the real adoption operation refuses missing historical identity');
+    assert.equal(host.ctx.hima.ledger.run(historical.id)?.control, undefined);
   } finally { await host.dispose(); await local.h.dispose(); }
 });
 
