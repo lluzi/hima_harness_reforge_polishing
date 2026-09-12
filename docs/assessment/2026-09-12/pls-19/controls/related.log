@@ -1,0 +1,140 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-execution.host.test.ts test/contract/agent-graph.host.test.ts test/contract/agent-recovery.host.test.ts
+local: 3 selected; 42 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a conversational owner prepares a Run without executing its first business node
+ok 1 - a conversational owner prepares a Run without executing its first business node
+  ---
+  duration_ms: 9872.21075
+  type: 'test'
+  ...
+# Subtest: the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+ok 2 - the same Agent launches one node, pauses during its Job, validates completion and explicitly chooses the next node
+  ---
+  duration_ms: 3863.706583
+  type: 'test'
+  ...
+# Subtest: pause and an explicit handoff fence old owners without changing Goal or budget
+ok 3 - pause and an explicit handoff fence old owners without changing Goal or budget
+  ---
+  duration_ms: 1049.720042
+  type: 'test'
+  ...
+# Subtest: node admission is owned, versioned and idempotent before any Job exists
+ok 4 - node admission is owned, versioned and idempotent before any Job exists
+  ---
+  duration_ms: 982.013
+  type: 'test'
+  ...
+# Subtest: explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+ok 5 - explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+  ---
+  duration_ms: 5165.422875
+  type: 'test'
+  ...
+# Subtest: a valid next-strategy request at the generation budget records an honest ending without another Job
+ok 6 - a valid next-strategy request at the generation budget records an honest ending without another Job
+  ---
+  duration_ms: 1825.098833
+  type: 'test'
+  ...
+# Subtest: fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+ok 7 - fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+  ---
+  duration_ms: 3013.410125
+  type: 'test'
+  ...
+# Subtest: a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+ok 8 - a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+  ---
+  duration_ms: 3914.87825
+  type: 'test'
+  ...
+# Subtest: an invalid fixed chooser recommendation does not veto a valid owner strategy
+ok 9 - an invalid fixed chooser recommendation does not veto a valid owner strategy
+  ---
+  duration_ms: 2034.643292
+  type: 'test'
+  ...
+# Subtest: Pack wait needs a human clearance followed by explicit Agent completion
+ok 10 - Pack wait needs a human clearance followed by explicit Agent completion
+  ---
+  duration_ms: 748.154917
+  type: 'test'
+  ...
+# Subtest: production preparation refuses an unowned Run before any Job or Run is created
+ok 11 - production preparation refuses an unowned Run before any Job or Run is created
+  ---
+  duration_ms: 1103.109416
+  type: 'test'
+  ...
+# Subtest: a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+ok 12 - a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+  ---
+  duration_ms: 2586.263
+  type: 'test'
+  ...
+# Subtest: an interrupted completion remains fenced even when its prior Job has a successful exit
+ok 13 - an interrupted completion remains fenced even when its prior Job has a successful exit
+  ---
+  duration_ms: 1425.596542
+  type: 'test'
+  ...
+# Subtest: adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+ok 14 - adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+  ---
+  duration_ms: 3224.105667
+  type: 'test'
+  ...
+# Subtest: adoption carries an open historical human wait once and new pauses continue to spend the original time box
+not ok 15 - adoption carries an open historical human wait once and new pauses continue to spend the original time box
+  ---
+  duration_ms: 4338.225
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/agent-recovery.host.test.ts:149:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /time box is exhausted/. Input:
+    
+    'control revision is stale; inspect the current context before deciding again'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: 'control revision is stale; inspect the current context before deciding again'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/agent-recovery.host.test.ts:174:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+ok 16 - historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+  ---
+  duration_ms: 5070.4205
+  type: 'test'
+  ...
+# Subtest: an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+ok 17 - an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+  ---
+  duration_ms: 1422.990125
+  type: 'test'
+  ...
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+ok 18 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 5517.68275
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 17
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 58870.622833
+Test boot attempts: {"host-process":0,"host-in-process":23,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 58.995 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

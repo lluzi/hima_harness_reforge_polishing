@@ -46,6 +46,12 @@ const deadlineOf = (run: RunRecord, waitedMs: number): number | undefined =>
   run.budget === undefined ? undefined : Date.parse(run.createdAt) + run.budget.timeBoxMs
     + (run.control === undefined ? waitedMs : run.control.adoption?.legacyWaitedMs ?? 0);
 
+/** Remaining wall time uses the same deadline as admission and Job polling. */
+export const timeBoxRemainingMs = (run: RunRecord, waitedMs: number): number | undefined => {
+  const deadline = deadlineOf(run, waitedMs);
+  return deadline === undefined ? undefined : Math.max(0, deadline - Date.now());
+};
+
 /** Had this Run's time box been spent at that moment? What the resume asks about the moment the Run
  *  stopped, which is the last moment it was actually running. */
 export function timeBoxSpentAt(run: RunRecord, waitedMs: number, at: number): boolean {
@@ -424,7 +430,8 @@ export interface RetryStanding {
  */
 export function retryStanding(ledger: Ledger, runId: string, nodeId: string): RetryStanding {
   const allowance = existingRun(ledger, runId).budget?.retryAllowance ?? defaultRetryAllowance;
-  const resumedAt = ledger.records({ runId }).findLast((r) => r.type === 'resumed')?.seq ?? 0;
+  const owned = existingRun(ledger, runId).control !== undefined;
+  const resumedAt = ledger.records({ runId }).findLast((r) => r.type === 'resumed' && (!owned || r.nodeId === nodeId))?.seq ?? 0;
   const failedSinceResume = nodeRecordsOfGeneration(ledger, runId).filter((r) => r.nodeId === nodeId && r.state === 'retrying' && r.seq > resumedAt).length;
   const spent = failedSinceResume + 1;
   return { spent, allowance, exhausted: spent >= allowance };

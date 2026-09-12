@@ -71,6 +71,7 @@ import {
   attemptOf,
   attemptOfSession,
   currentAttemptOf,
+  retryStanding,
   defaultGenerationLimit,
   defaultRetryAllowance,
   defaultTimeBoxMs,
@@ -79,6 +80,7 @@ import {
   nextGenerationAllowed,
   nextLoopGenerationAllowed,
   timeBoxSpent,
+  timeBoxRemainingMs,
   timeBoxSpentAt,
   waitedMsOf,
 } from './budget.js';
@@ -102,7 +104,7 @@ import {
   type FabricDeps,
   type Step,
 } from './node-turns.js';
-import { adoptHistoricalRun } from './recovery.js';
+import { adoptHistoricalRun, cancelRun } from './recovery.js';
 
 /** The dependencies every fabric operation takes, declared with the turn that is handed them and
  *  named again here so a caller finds them beside `startRun`. */
@@ -369,6 +371,7 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
     waitedMs: 0,
   };
   if (opened.control === undefined) await drive(driving);
+  else scheduleExecutionDeadline(deps, opened.id);
   return { kind: 'ran', run: existingRun(deps.ledger, opened.id), workspace };
 }
 
@@ -1050,6 +1053,7 @@ async function blockAtEntry(deps: FabricDeps, run: RunRecord, pack: Pack, reason
   const entry = pack.graph.nodes.find((n) => n.id === pack.graph.entry);
   if (entry) await recordNode(deps.ledger, run.id, entry, 'blocked', attemptOf(deps.ledger, run.id, entry.id), { reason });
   await advance(deps.ledger, run.id, {}, { status: 'waiting', currentNode: pack.graph.entry, strategy });
+  if (run.control !== undefined) scheduleExecutionDeadline(deps, run.id);
 }
 
 /** The Host supplies actor from the actual tool/session context. */
@@ -1129,6 +1133,14 @@ function executionPauseReason(pack: Pack, run: RunRecord, nodeId: string): strin
   return dependent.has(nodeId) ? 'business admission is paused for this node or an upstream dependency' : undefined;
 }
 
+function unclearedFailure(run: RunRecord, scope: string): NodeExecution | undefined {
+  return Object.values(run.control?.executions ?? {}).findLast((execution) =>
+    execution.phase === 'failed' && execution.humanClearance === undefined
+    && (execution.result?.kind === 'hard-blocker' || execution.result?.kind === 'blocked')
+    && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id
+    && execution.loopGeneration === run.loop?.generation && (scope === '*' || execution.nodeId === scope));
+}
+
 export function executionContext(deps: FabricDeps, runId: string): ExecutionContext {
   const run = existingRun(deps.ledger, runId);
   const executions = Object.values(run.control?.executions ?? {});
@@ -1141,13 +1153,13 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
       : Object.values(run.fork.branches).every((branch) => branch.state === 'done')
         ? [run.fork.join]
         : Object.values(run.fork.branches).filter((branch) => branch.state !== 'done').map((branch) => branch.currentNode);
-    const incomplete = Object.values(run.control.requests).some((request) => request.receipt.action === 'complete' && request.state !== 'done');
-    const available = run.status !== 'running' || incomplete ? [] : candidates.filter((nodeId) =>
-      executionPauseReason(pack, run, nodeId) === undefined && !executions.some((execution) =>
+    const incomplete = Object.values(run.control.requests).some((request) => (request.receipt.action === 'complete' || request.receipt.action === 'continue') && request.state !== 'done');
+    const available = run.status !== 'running' || run.control.stop !== undefined || incomplete ? [] : candidates.filter((nodeId) =>
+      executionPauseReason(pack, run, nodeId) === undefined && unclearedFailure(run, nodeId) === undefined && !executions.some((execution) =>
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
         && execution.phase !== 'failed'));
-    return { run, nodes, available, executions, ...(incomplete ? { reason: 'an admitted completion has not finished recording its route; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
+    return { run, nodes, available, executions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
     return { run, nodes: [], available: [], executions, reason: (error as Error).message };
   }
@@ -1163,7 +1175,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (deps.stopSignal?.aborted) return no('the Host is stopping; no new business action was admitted');
     if (req.action === 'adopt') return adoptHistoricalRun(deps, req);
     if (control === undefined) return no('this historical Run has no conversational owner');
-    if (control.owner !== req.actor || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
+    if ((control.owner !== req.actor && !(req.action === 'cancel' && req.origin === 'human')) || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
     if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
     if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return no('request identity must be a bounded plain identifier');
     const digest = identityOf(req);
@@ -1172,6 +1184,18 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
     if (req.action === 'revise' || req.action === 'grow') return answer('unsupported', { reason: 'reference graph growth and algorithm revision are not implemented yet (PLS-10/11); no files, history or budget changed' });
     const reading = req.action === 'read' || req.action === 'knowledge' || req.action === 'recommend';
+    if (req.action === 'cancel') {
+      if (control.stop?.requestId !== undefined && control.requests[control.stop.requestId]?.state === 'admitted') return no('an earlier cancel request is still collecting its actual stop; inspect that receipt');
+      if (run.status !== 'running' && run.status !== 'waiting') return no('this Run is not active');
+      const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action };
+      await recordExecutionAction(deps, run, req, digest, {
+        paused: [...new Set([...control.paused, '*'])], stop: { reason: control.stop?.reason ?? 'cancel', requestId: req.requestId, status: 'requested' },
+      }, receipt, {}, 'admitted');
+      scheduleExecutionStop(deps, run.id);
+      return answer('accepted', { receipt });
+    }
+    if (!reading && Object.values(control.requests).some((request) => request.receipt.action === 'continue' && request.state !== 'done')) return no('an admitted human clearance is incomplete; inspect its original receipt before further business actions');
+    if (!reading && control.stop !== undefined) return no('this Run has a stop request; new business actions are fenced until its actual Job facts resolve');
     if (run.status !== 'running' && !reading) return no('this Run is not active');
     if (req.action === 'pause' || req.action === 'continue' || req.action === 'handoff') {
       const scope = req.nodeId ?? '*';
@@ -1188,15 +1212,23 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       } else if (req.action === 'pause') changed = { paused: [...new Set([...control.paused, scope])] };
       else {
         if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted; continuing does not reset it');
+        const blocked = unclearedFailure(run, scope);
+        if (blocked !== undefined) {
+          if (req.origin !== 'human') return no('the failed node needs a human clearance of its blocker; an Agent continue cannot grant another retry allowance');
+          if (deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === run.id && job.nodeId === blocked.nodeId)) return no('the blocked node still has an in-flight or uncertain Job; establish its actual exit before retrying');
+          receipt = { ...receipt, executionId: blocked.id };
+          await clearExecutionBlocker(deps, run, req, digest, blocked, scope, receipt);
+          return answer('accepted', { receipt });
+        }
         const waiting = Object.values(control.executions).find((execution) =>
           execution.kind === 'wait' && execution.phase === 'ready' && execution.nodeId === run.currentNode
           && execution.generation === run.generation && execution.loopId === run.loop?.id
           && execution.loopGeneration === run.loop?.generation && (scope === '*' || scope === execution.nodeId));
         if (waiting !== undefined && waiting.humanClearance === undefined) {
           if (req.origin !== 'human') return no('the Pack wait blocker needs a human clearance; an Agent continue is not that clearance');
-          await deps.ledger.appendResumed(run.id, { nodeId: waiting.nodeId, who: `human in conversation ${req.actor}` });
-          changed = { paused: control.paused.filter((paused) => paused !== scope && paused !== waiting.nodeId),
-            executions: { ...control.executions, [waiting.id]: { ...waiting, humanClearance: { actor: req.actor, requestId: req.requestId } } } };
+          receipt = { ...receipt, executionId: waiting.id };
+          await clearExecutionBlocker(deps, run, req, digest, waiting, scope, receipt);
+          return answer('accepted', { receipt });
         } else changed = { paused: control.paused.filter((paused) => paused !== scope) };
       }
       await recordExecutionAction(deps, run, req, digest, changed, receipt);
@@ -1215,6 +1247,8 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const node = context.nodes.find((item) => item.id === req.nodeId);
     if (node === undefined || run.packDigest === undefined) return no('the node or its method identity is unavailable');
     if (context.executions.some((execution) => execution.nodeId === node.id && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation && execution.phase !== 'completed' && execution.phase !== 'failed')) return no('this node already has an admitted execution');
+    const retry = retryStanding(deps.ledger, run.id, node.id);
+    if (retry.spent > retry.allowance) return no('this node has spent its retry allowance; a human must clear its blocker');
     const execution: NodeExecution = {
       id: `execution-${randomUUID()}`, nodeId: node.id, kind: node.kind,
       generation: run.generation ?? 1, attempt: attemptOf(deps.ledger, run.id, node.id),
@@ -1227,6 +1261,20 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: execution } }, receipt, node.kind === 'act' ? { attempts: 1 } : {});
     return answer('accepted', { receipt });
   });
+}
+
+async function clearExecutionBlocker(deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest,
+  digest: string, execution: NodeExecution, scope: string, receipt: ExecutionReceipt): Promise<void> {
+  await recordExecutionAction(deps, run, req, digest, {}, receipt, {}, 'admitted');
+  const blocker = deps.ledger.records({ runId: run.id, type: 'blocker' }).findLast((record) => record.type === 'blocker' && record.nodeId === execution.nodeId);
+  await deps.ledger.appendResumed(run.id, { nodeId: execution.nodeId, who: `human in conversation ${req.actor}`,
+    ...(blocker === undefined ? {} : { clears: blocker.id }) });
+  const control = existingRun(deps.ledger, run.id).control!;
+  await deps.ledger.advanceRun(run.id, { control: { ...control,
+    paused: control.paused.filter((paused) => paused !== scope && paused !== execution.nodeId),
+    executions: { ...control.executions, [execution.id]: { ...control.executions[execution.id]!, humanClearance: { actor: req.actor, requestId: req.requestId } } },
+    requests: { ...control.requests, [req.requestId]: { ...control.requests[req.requestId]!, state: 'done' } },
+  } });
 }
 
 async function recordExecutionAction(
@@ -1297,6 +1345,54 @@ export async function reconcileExecutionIntents(deps: FabricDeps, siteName: stri
 }
 
 const executionObservers = new WeakMap<Ledger, Map<string, Promise<void>>>();
+/** Host-owned mechanical work shares one tracker and the same disposal drain as Job observers. */
+export function trackExecutionTask(deps: FabricDeps, identity: string, work: () => Promise<void>): void {
+  const tasks = executionObservers.get(deps.ledger) ?? new Map<string, Promise<void>>();
+  executionObservers.set(deps.ledger, tasks);
+  if (tasks.has(identity) || deps.stopSignal?.aborted) return;
+  const task = Promise.resolve().then(work).catch((error: unknown) => deps.log?.(`execution task ${identity} failed: ${String(error)}`));
+  tasks.set(identity, task);
+  void task.finally(() => { if (tasks.get(identity) === task) tasks.delete(identity); });
+}
+
+/** One abortable deadline on the existing fact-work tracker; it never launches business work. */
+export function scheduleExecutionDeadline(deps: FabricDeps, runId: string): void {
+  const run = existingRun(deps.ledger, runId);
+  if (run.control === undefined || (run.status !== 'running' && run.status !== 'waiting')) return;
+  trackExecutionTask(deps, `deadline:${runId}`, async () => {
+    let remaining = timeBoxRemainingMs(existingRun(deps.ledger, runId), 0);
+    if (remaining === undefined) return;
+    while (remaining > 0 && !deps.stopSignal?.aborted) {
+      await new Promise<void>((resolve) => {
+        const done = () => { clearTimeout(timer); deps.stopSignal?.removeEventListener('abort', done); resolve(); };
+        const timer = setTimeout(done, Math.min(remaining!, 2_147_483_647));
+        timer.unref();
+        deps.stopSignal?.addEventListener('abort', done, { once: true });
+        if (deps.stopSignal?.aborted) done();
+      });
+      remaining = timeBoxRemainingMs(existingRun(deps.ledger, runId), 0) ?? 0;
+    }
+    if (!deps.stopSignal?.aborted) await controlling(deps, runId, () => requestExecutionBudgetStop(deps, runId));
+  });
+}
+
+/** Called under the admission queue, including when an existing Job observes its deadline. */
+async function requestExecutionBudgetStop(deps: FabricDeps, runId: string): Promise<void> {
+  const run = existingRun(deps.ledger, runId);
+  if (run.control === undefined || run.control.stop !== undefined || (run.status !== 'running' && run.status !== 'waiting')) return;
+  await deps.ledger.advanceRun(runId, { control: { ...run.control, revision: run.control.revision + 1,
+    paused: [...new Set([...run.control.paused, '*'])], stop: { reason: 'budget', status: 'requested' } } });
+  scheduleExecutionStop(deps, runId);
+}
+
+/** Stop was durably admitted before this work enters the shared Run queue. */
+export function scheduleExecutionStop(deps: FabricDeps, runId: string): void {
+  trackExecutionTask(deps, `stop:${runId}`, async () => {
+    if (deps.stopSignal?.aborted) return;
+    await cancelRun(deps, runId);
+  });
+}
+
 export async function drainExecutionObservers(ledger: Ledger): Promise<void> {
   const observers = executionObservers.get(ledger);
   while (observers !== undefined && observers.size > 0) await Promise.allSettled([...observers.values()]);
@@ -1324,7 +1420,14 @@ export function observeExecution(ctx: Driving, node: PackNode, execution: NodeEx
 export async function recordExecutionResult(ctx: Driving, execution: NodeExecution, result: Step, requestId?: string): Promise<void> {
   const phase = result.kind === 'settled' || result.kind === 'moved' ? 'ready' : result.kind === 'pending' ? 'working' : result.kind === 'at-cap' ? 'begun' : 'failed';
   await updateExecution(ctx.deps, ctx.runId, execution.id, { phase, result, ...(result.kind === 'pending' ? { jobSession: result.session } : {}) }, requestId);
-  if (result.kind === 'budget-exhausted') await endBudgetExhausted(ctx.deps.ledger, ctx.runId);
+  if (result.kind === 'hard-blocker' || result.kind === 'blocked') {
+    const run = existingRun(ctx.deps.ledger, ctx.runId);
+    const control = run.control!;
+    await ctx.deps.ledger.advanceRun(ctx.runId, { control: { ...control,
+      revision: control.revision + 1, paused: [...new Set([...control.paused, execution.nodeId])],
+    } });
+  }
+  if (result.kind === 'budget-exhausted') await requestExecutionBudgetStop(ctx.deps, ctx.runId);
   if (phase === 'ready' || phase === 'failed') {
     const owner = existingRun(ctx.deps.ledger, ctx.runId).control?.owner;
     if (owner !== undefined) ctx.deps.notify?.(owner, ctx.runId, execution.id);
@@ -1473,7 +1576,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
   const writes = req.action === 'write';
   const initializes = execution.workshop === undefined;
   if (writes && execution.phase !== 'begun') return no('this executable version is already in use or has a result; changing an active or historical file is not an accepted revision');
-  if ((writes || initializes) && (run.status !== 'running' || timeBoxSpent(run, 0))) return no('the Run cannot prepare or write a new Workshop version after it has ended or spent its time box');
+  if ((writes || initializes) && (run.status !== 'running' || timeBoxSpent(run, 0) || run.control?.stop !== undefined || Object.values(run.control?.requests ?? {}).some((request) => request.receipt.action === 'continue' && request.state !== 'done'))) return no('the Run cannot prepare or write a new Workshop version after it has ended or spent its time box');
   if (writes && (typeof req.path !== 'string' || typeof req.content !== 'string')) return no('write needs a relative path and the actual file content');
   const mutates = writes || initializes;
   const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };

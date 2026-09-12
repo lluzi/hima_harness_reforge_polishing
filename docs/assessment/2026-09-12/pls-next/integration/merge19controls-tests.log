@@ -1,0 +1,170 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-controls.host.test.ts test/contract/agent-workshop.host.test.ts test/contract/agent-graph.host.test.ts test/contract/agent-recovery.host.test.ts
+local: 4 selected; 41 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a human in another live conversation can promptly cancel a long Job without taking ownership
+not ok 1 - a human in another live conversation can promptly cancel a long Job without taking ownership
+  ---
+  duration_ms: 3837.954833
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/agent-controls.host.test.ts:11:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    'admitted' !== 'done'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'done'
+  actual: 'admitted'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/agent-controls.host.test.ts:43:12)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: retry allowance blocks the failed node until its human owner clears that node
+ok 2 - retry allowance blocks the failed node until its human owner clears that node
+  ---
+  duration_ms: 4823.734125
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused without any next Agent action
+ok 3 - the total time box expires while paused without any next Agent action
+  ---
+  duration_ms: 2067.408
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused with the Agent offline after Host restart
+ok 4 - the total time box expires while paused with the Agent offline after Host restart
+  ---
+  duration_ms: 2100.412834
+  type: 'test'
+  ...
+# Subtest: cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+ok 5 - cancel and launch use the same admission order and a stale cancel cannot kill unacknowledged work
+  ---
+  duration_ms: 1975.393459
+  type: 'test'
+  ...
+# Subtest: hard deadline stops an existing long Job and records the time box as the cause
+ok 6 - hard deadline stops an existing long Job and records the time box as the cause
+  ---
+  duration_ms: 2555.15225
+  type: 'test'
+  ...
+# Subtest: an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+ok 7 - an unknown launch remains fenced and truthfully uncertain when the hard deadline arrives
+  ---
+  duration_ms: 2026.875833
+  type: 'test'
+  ...
+# Subtest: pending stop I/O does not hold the conversational admission path
+ok 8 - pending stop I/O does not hold the conversational admission path
+  ---
+  duration_ms: 1053.118375
+  type: 'test'
+  ...
+# Subtest: explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+ok 9 - explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence
+  ---
+  duration_ms: 6691.166416
+  type: 'test'
+  ...
+# Subtest: a valid next-strategy request at the generation budget records an honest ending without another Job
+ok 10 - a valid next-strategy request at the generation budget records an honest ending without another Job
+  ---
+  duration_ms: 2770.793291
+  type: 'test'
+  ...
+# Subtest: fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+ok 11 - fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence
+  ---
+  duration_ms: 3520.442208
+  type: 'test'
+  ...
+# Subtest: a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+ok 12 - a declared nested Loop exposes entry and each inner generation without helper-driven Jobs
+  ---
+  duration_ms: 4776.831459
+  type: 'test'
+  ...
+# Subtest: an invalid fixed chooser recommendation does not veto a valid owner strategy
+ok 13 - an invalid fixed chooser recommendation does not veto a valid owner strategy
+  ---
+  duration_ms: 2271.695
+  type: 'test'
+  ...
+# Subtest: Pack wait needs a human clearance followed by explicit Agent completion
+ok 14 - Pack wait needs a human clearance followed by explicit Agent completion
+  ---
+  duration_ms: 1128.009333
+  type: 'test'
+  ...
+# Subtest: production preparation refuses an unowned Run before any Job or Run is created
+ok 15 - production preparation refuses an unowned Run before any Job or Run is created
+  ---
+  duration_ms: 1481.696666
+  type: 'test'
+  ...
+# Subtest: a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+ok 16 - a historical waiting Run observes its existing Job after restart without treating waiting as cancellation
+  ---
+  duration_ms: 2905.796875
+  type: 'test'
+  ...
+# Subtest: an interrupted completion remains fenced even when its prior Job has a successful exit
+ok 17 - an interrupted completion remains fenced even when its prior Job has a successful exit
+  ---
+  duration_ms: 1806.278542
+  type: 'test'
+  ...
+# Subtest: adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+ok 18 - adoption refuses missing method identity, changed input metadata and an interrupted boundary without a confirmed Job
+  ---
+  duration_ms: 2627.01925
+  type: 'test'
+  ...
+# Subtest: adoption carries an open historical human wait once and new pauses continue to spend the original time box
+ok 19 - adoption carries an open historical human wait once and new pauses continue to spend the original time box
+  ---
+  duration_ms: 3859.82325
+  type: 'test'
+  ...
+# Subtest: historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+ok 20 - historical Runs keep their node boundary on restart and explicit adoption verifies v19 metadata without inventing history
+  ---
+  duration_ms: 4981.931709
+  type: 'test'
+  ...
+# Subtest: an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+ok 21 - an interrupted admitted request stays uncertain after restart and does not free its Site or replay
+  ---
+  duration_ms: 1141.220666
+  type: 'test'
+  ...
+# Subtest: a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+ok 22 - a restarted Host observes the exact Job after its launch receipt was lost and never chooses the next node
+  ---
+  duration_ms: 5307.38425
+  type: 'test'
+  ...
+# Subtest: the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+ok 23 - the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+  ---
+  duration_ms: 4765.148416
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 22
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 72538.421167
+Test boot attempts: {"host-process":0,"host-in-process":30,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 72.636 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

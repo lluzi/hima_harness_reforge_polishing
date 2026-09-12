@@ -1,0 +1,14 @@
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+$ tsc -p tsconfig.json --noEmit
+packages/harness/src/channel.ts(185,15): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/channel.ts(329,5): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/channel.ts(330,5): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/errors.ts(90,15): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/errors.ts(112,15): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/workspace.ts(144,15): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+packages/harness/src/workspace.ts(144,41): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+test/contract/agent-controls.host.test.ts(148,20): error TS18048: 'first' is possibly 'undefined'.
+test/contract/agent-controls.host.test.ts(149,20): error TS18048: 'second' is possibly 'undefined'.
+[ELIFECYCLE] Command failed with exit code 2.

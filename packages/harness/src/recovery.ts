@@ -22,11 +22,11 @@ import { existingRun, legacyAutomaticAllowed } from './runs.js';
 import { recordNode } from './ledger.js';
 import type { JobRecord, NodeState, RunFork, RunRecord, WorkspaceRecord } from './ledger.js';
 import { openJobsOfRun } from './job-cap.js';
-import { advance, attemptOf, attemptOfSession, currentAttemptOf, waitedMsOf } from './budget.js';
+import { advance, endBudgetExhausted, attemptOf, attemptOfSession, currentAttemptOf, waitedMsOf } from './budget.js';
 import { killDidNotTake, type Driving, type FabricDeps } from './node-turns.js';
 import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
-import { drive, controlling, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { drive, controlling, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
 import { owesAnExperience, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
 
@@ -110,6 +110,8 @@ export async function reconcileRuns(deps: FabricDeps): Promise<ReconcileOutcome[
     if (run.control !== undefined) {
       try { out.push(await controlling(deps, run.id, () => reconcileControlledRun(deps, run))); }
       catch (error) { out.push({ runId: run.id, found: 'unreadable', detail: (error as Error).message }); }
+      scheduleExecutionDeadline(deps, run.id);
+      if (existingRun(deps.ledger, run.id).control?.stop !== undefined) scheduleExecutionStop(deps, run.id);
       continue;
     }
     if (!legacyAutomaticAllowed()) {
@@ -214,7 +216,7 @@ async function reconcileControlledRun(deps: FabricDeps, snapshot: RunRecord): Pr
   // Non-Job admissions have no recoverable process effect. Preserve the request and expose its gap.
   const run = existingRun(deps.ledger, snapshot.id);
   const control = run.control!;
-  const interrupted = Object.entries(control.requests).filter(([, request]) => request.state === 'admitted');
+  const interrupted = Object.entries(control.requests).filter(([, request]) => request.state === 'admitted' && request.receipt.action !== 'cancel');
   if (interrupted.length > 0) {
     const requests = { ...control.requests };
     const executions = { ...control.executions };
@@ -302,6 +304,7 @@ export async function adoptHistoricalRun(deps: FabricDeps, req: ExecutionActionR
       adoption: { at, workspaceSeq: prepared.seq, workspaceMetadataSha256: createHash('sha256').update(bytes).digest('hex'), methodDigest: run.packDigest, legacyWaitedMs },
       requests: { [req.requestId]: { digest, actor: req.actor, epoch: 0, revision: 0, at, state: 'done', origin: req.origin ?? 'agent', receipt } },
     } });
+    scheduleExecutionDeadline(deps, run.id);
     return { ...answer('accepted'), receipt };
   } catch (error) { return answer('refused', (error as Error).message); }
 }
@@ -574,8 +577,47 @@ export type CancelResult =
  * @returns what was stopped, or why nothing was.
  * @throws RunReferenceError when the ledger holds no such Run.
  */
+/** Trusted service emergency path still fences admission; slow stop I/O uses a separate key in
+ * the same existing queue map so context, duplicate receipts and refusals stay responsive. */
 export async function cancelRun(deps: FabricDeps, runId: string): Promise<CancelResult> {
+  await controlling(deps, runId, async () => {
+    const run = existingRun(deps.ledger, runId);
+    if (run.control !== undefined && (run.status === 'running' || run.status === 'waiting') && run.control.stop === undefined) {
+      await deps.ledger.advanceRun(runId, { control: { ...run.control, revision: run.control.revision + 1,
+        paused: [...new Set([...run.control.paused, '*'])], stop: { reason: 'cancel', status: 'requested' } } });
+    }
+  });
+  let result: CancelResult | undefined;
+  let fault: unknown;
+  try { result = await controlling(deps, `stop:${runId}`, () => cancelFencedRun(deps, runId)); }
+  catch (error) { fault = error; }
+  await controlling(deps, runId, async () => {
+    const run = existingRun(deps.ledger, runId);
+    const control = run.control;
+    const stop = control?.stop;
+    if (control === undefined || stop === undefined || stop.status === 'confirmed') return;
+    const confirmed = run.status === 'cancelled' || run.status === 'ended-budget-exhausted';
+    const reason = result?.kind === 'not-stopped' ? result.reason : fault === undefined ? undefined : String(fault);
+    const session = result?.kind === 'not-stopped' ? result.session : undefined;
+    const request = stop.requestId === undefined ? undefined : control.requests[stop.requestId];
+    await deps.ledger.advanceRun(runId, { control: { ...control,
+      stop: { ...stop, status: confirmed ? 'confirmed' : 'uncertain',
+        ...(reason === undefined ? {} : { detail: reason }), ...(session === undefined ? {} : { session }) },
+      ...(request === undefined || stop.requestId === undefined ? {} : { requests: { ...control.requests, [stop.requestId]: {
+        ...request, state: confirmed ? 'done' : 'uncertain', receipt: { ...request.receipt, stop: confirmed ? 'cancelled' : 'not-stopped',
+          ...(reason === undefined ? {} : { reason }), ...(session === undefined ? {} : { session }) },
+      } } }),
+    } });
+    deps.notify?.(control.owner, runId, stop.requestId ?? `stop:${runId}`);
+  });
+  if (fault !== undefined) throw fault;
+  return { ...result!, run: existingRun(deps.ledger, runId) };
+}
+
+/** Caller holds the stop-effect queue and has already persisted the business admission fence. */
+async function cancelFencedRun(deps: FabricDeps, runId: string): Promise<CancelResult> {
   const run = existingRun(deps.ledger, runId);
+  if (run.control !== undefined && run.control.stop === undefined && (run.status === 'running' || run.status === 'waiting')) throw new Error('controlled cancellation needs a durable stop fence under the admission queue');
   // A Run with no fabric state was never HimaFabric's, and a Run that has reached a final state is
   // over. Both are answers, and neither writes anything: a cancel records that a Run was stopped, and
   // neither of these was.
@@ -628,7 +670,9 @@ export async function cancelRun(deps: FabricDeps, runId: string): Promise<Cancel
   // `writeExperience` decides whether there is anything to do; a Site that will not take the report
   // raises, and the ending stands on the ledger either way.
   const ended = async (): Promise<RunRecord> => {
-    const cancelled = await advance(deps.ledger, run.id, { endedBy: 'cancel' }, { status: 'cancelled' });
+    const cancelled = existingRun(deps.ledger, run.id).control?.stop?.reason === 'budget'
+      ? await endBudgetExhausted(deps.ledger, run.id)
+      : await advance(deps.ledger, run.id, { endedBy: 'cancel' }, { status: 'cancelled' });
     await writeExperience(deps, run.id);
     return cancelled;
   };

@@ -81,7 +81,9 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     await waitUntil('the declared reader validates the actual output', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === reading.receipt!.executionId && execution.phase === 'ready'));
     assert.equal((await act('complete', { executionId: reading.receipt.executionId })).kind, 'accepted');
     const observations = host.ctx.hima.ledger.records({ runId, type: 'observation' });
-    assert.match(JSON.stringify(observations), /42/);
+    assert.ok(observations.some((record) => record.type === 'observation'
+      && record.values.some((value) => value.type === 'scaled_sum' && value.value === 42 && value.unit === 'count')),
+    'the declared reader measured exactly 42 count from the generated output');
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'session' }).length, 0, 'no separate model moment was opened or claimed closed');
   } finally {
     if (runId !== undefined) await host.ctx.hima.cancelRun(runId);

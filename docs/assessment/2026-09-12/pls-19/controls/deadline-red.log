@@ -1,0 +1,58 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-controls.host.test.ts
+local: 1 selected; 44 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a human in another live conversation can promptly cancel a long Job without taking ownership
+ok 1 - a human in another live conversation can promptly cancel a long Job without taking ownership
+  ---
+  duration_ms: 2729.483875
+  type: 'test'
+  ...
+# Subtest: retry allowance blocks the failed node until its human owner clears that node
+ok 2 - retry allowance blocks the failed node until its human owner clears that node
+  ---
+  duration_ms: 2584.7775
+  type: 'test'
+  ...
+# Subtest: the total time box expires while paused without any next Agent action
+not ok 3 - the total time box expires while paused without any next Agent action
+  ---
+  duration_ms: 6731.792458
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/agent-controls.host.test.ts:100:38'
+  failureType: 'testCodeFailure'
+  error: 'the hard time box ends the idle Run did not happen within 6000 ms'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    waitUntil (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/support/fabric.ts:92:39)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/agent-controls.host.test.ts:119:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+# Subtest: the total time box expires while paused with the Agent offline after Host restart
+not ok 4 - the total time box expires while paused with the Agent offline after Host restart
+  ---
+  duration_ms: 6896.3395
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/agent-controls.host.test.ts:100:38'
+  failureType: 'testCodeFailure'
+  error: 'the hard time box ends the idle Run did not happen within 6000 ms'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    waitUntil (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/support/fabric.ts:92:39)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-controls/test/contract/agent-controls.host.test.ts:119:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 2
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19497.8295
+Test boot attempts: {"host-process":0,"host-in-process":5,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 19.581 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.
