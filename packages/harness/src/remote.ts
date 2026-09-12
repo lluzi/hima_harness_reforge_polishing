@@ -203,6 +203,7 @@ export interface DecisionView {
   readonly chooserOrigin: PackDataOrigin;
   readonly chosen: DecisionChoice;
   readonly rationale: Readonly<Record<string, number>>;
+  readonly agent?: DecisionRecord['agent'];
   readonly cites: readonly string[];
 }
 
@@ -353,7 +354,7 @@ export interface RunView {
   /** The Run's latest decision, or null when it has made none. */
   readonly decision: DecisionView | null;
   /**
-   * Every file a Model moment of this Run wrote, oldest first (#62): where each is on the Site, what
+   * Every file a controlled Agent or historical Model moment wrote, oldest first: where each is on the Site, what
    * it hashes to, and which node, attempt and session wrote it.
    *
    * Every one of them and not only the current node's, for the reason `blockers` is every blocker: a
@@ -372,12 +373,10 @@ export interface RunView {
    * is no longer standing at. One entry and not a list, because a pack declares one workshop per node
    * and a Campaign asks about the one it is in the middle of.
    *
-   * Read off the Run's own `session` records, which carry the workshop and its entry since #62, and
-   * narrowed to the Generation the Run is in (`standingWorkshop`): no pack folder is opened to
-   * compose it, so a Campaign whose pack has since been edited or uninstalled still shows what its
-   * workshop did.
-   *
-   * Absent on every Run no workshop moment has opened on.
+   * Read from the controlled execution's resolved declaration/code/Job records or historical
+   * moment records, narrowed to the current Generation and Loop (`standingWorkshop`). No current
+   * Pack or model profile is consulted. Absent until an execution has resolved Workshop context
+   * or a historical Workshop moment opened.
    */
   readonly workshop?: WorkshopView;
   /**
@@ -634,6 +633,7 @@ function decisionView(record: DecisionRecord): DecisionView {
     chooserOrigin: record.chooserOrigin,
     chosen: record.chosen,
     rationale: record.rationale,
+    ...(record.agent === undefined ? {} : { agent: record.agent }),
     cites: record.cites,
   };
 }

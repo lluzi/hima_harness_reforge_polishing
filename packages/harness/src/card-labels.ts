@@ -824,6 +824,7 @@ export const workshopStateLabel: Readonly<Record<WorkshopState, StateLabel>> = {
   failed: { said: 'failed', colour: warn },
   blocked: { said: 'blocked', colour: bad },
   interrupted: { said: 'interrupted', colour: warn },
+  'awaiting-completion': { said: 'result ready — Agent completion required', colour: plain },
 };
 
 /**
@@ -854,6 +855,7 @@ export const codeSaid = (code: CodeView): string =>
 export const codeOfWorkshop = (view: RunView): readonly CodeView[] => {
   const workshop = view.workshop;
   if (workshop === undefined) return [];
+  if (workshop.codeRecordIds !== undefined) return view.code.filter((code) => workshop.codeRecordIds!.includes(code.recordId));
   // One row per file and the latest record of it, walked backwards until this attempt's own files
   // have been counted off. Backwards, and counted against `workshop.files`, because that is what
   // narrows the list to the Generation the view was folded in: `RunView.code` is every file the Run

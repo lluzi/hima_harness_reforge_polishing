@@ -6,7 +6,7 @@ import path from 'node:path';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
-import type { ExecutionActionRequest } from '@hima/harness';
+import type { ExecutionActionRequest, RunRecord, LedgerRecord, RunView } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
@@ -29,6 +29,10 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     assert.equal(started.kind, 'ran');
     if (started.kind !== 'ran') return;
     runId = started.run.id;
+    // Exercise the compiled shared projection using actual Host records; no moment rows are fabricated.
+    const projection = (await import(new URL('../../packages/harness/lib/record-views.js', import.meta.url).href)).standingWorkshop as
+      (run: RunRecord, records: readonly LedgerRecord[]) => RunView['workshop'];
+    const workshopView = () => projection(host.ctx.hima.ledger.run(runId!)!, host.ctx.hima.ledger.records({ runId: runId! }));
     let request = 0;
     const act = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => {
       const control = host.ctx.hima.ledger.run(runId!)!.control!;
@@ -40,6 +44,9 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const description = await act('recommend', { executionId });
     assert.equal(description.kind, 'accepted');
     assert.match(JSON.stringify(description.data), /result\.txt/);
+    assert.equal(workshopView()?.executionId, executionId);
+    assert.equal(workshopView()?.state, 'writing');
+    assert.equal(workshopView()?.sessionId, undefined, 'the view does not invent a model-moment session before code exists');
     const input = await act('read', { executionId, output: 'numbers' });
     assert.equal(input.kind, 'accepted');
     assert.match(JSON.stringify(input.data), /3\\n7\\n11/);
@@ -60,6 +67,9 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const code = host.ctx.hima.ledger.records({ runId, type: 'code' }).find((record) => record.type === 'code');
     assert.ok(code?.type === 'code');
     assert.equal(code.sessionId, String(owner.id));
+    assert.equal(workshopView()?.state, 'written');
+    assert.equal(workshopView()?.sessionId, String(owner.id), 'the displayed code author is the actual conversational Agent');
+    assert.deepEqual(workshopView()?.codeRecordIds, [code.id]);
     assert.ok(code.path.includes(`/.executions/${executionId}/`));
     assert.equal(await readFile(code.path, 'utf8'), script);
     const inspection = await act('read', { executionId, path: 'entry.sh' });
@@ -71,10 +81,14 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const escape = await act('write', { executionId, path: '../escape.sh', content: 'bad' });
     assert.equal((escape.data as { wrote?: boolean } | undefined)?.wrote ?? false, false);
     assert.equal((await act('work', { executionId })).kind, 'accepted');
+    assert.equal(workshopView()?.state, 'running');
+    assert.ok(workshopView()?.jobSession, 'the projection names the actual launched Job');
     assert.equal((await act('write', { executionId, path: 'entry.sh', content: 'echo forged' })).kind, 'refused');
     assert.equal(await readFile(code.path, 'utf8'), script);
     await waitUntil('the owned Workshop Job result is ready', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === executionId && execution.phase === 'ready'));
+    assert.equal(workshopView()?.state, 'awaiting-completion', 'successful Job work alone is not explicit Agent completion');
     assert.equal((await act('complete', { executionId })).kind, 'accepted');
+    assert.equal(workshopView()?.state, 'done');
     const reading = await act('begin', { nodeId: 'read-analysis' });
     assert.ok(reading.receipt?.executionId);
     assert.equal((await act('work', { executionId: reading.receipt.executionId })).kind, 'accepted');

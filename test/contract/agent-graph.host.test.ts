@@ -2,7 +2,7 @@
 // These cases prove execution mechanics, not model reasoning or EDA results.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ExecutionActionRequest, ExecutionContext } from '@hima/harness';
+import type { ExecutionActionRequest, ExecutionContext, RunView } from '@hima/harness';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { jobRecords, killSessions, localHome, recordsOf, sessionsOf, waitUntil } from './support/fabric.ts';
 import { installDrillDown, installFork, packsDirOf, timingProbePackId, writePackVariant } from './support/pack.ts';
@@ -156,6 +156,11 @@ test('explore rejects invented success and invalid strategy, then follows the ow
     const decision = recordsOf(host, runId).findLast((record) => record.type === 'decision');
     assert.equal(decision?.type, 'decision');
     if (decision?.type === 'decision') assert.deepEqual(decision.chosen, { strategy: { periodNs: 2.3 } });
+    const remote = await import(new URL('../../packages/harness/lib/remote.js', import.meta.url).href);
+    const projected = remote.runView(host.ctx.hima.ledger, host.ctx.hima.ledger.run(runId)!) as RunView;
+    assert.equal(projected.decision?.agent?.rationale, 'Test the requested goal directly after the valid 2.40 ns trial.');
+    assert.equal(projected.decision?.agent?.executionId, explore);
+    assert.equal(projected.decision?.agent?.sessionId, owner.context().run.control?.owner);
 
     await owner.node('synthesize');
     await owner.node('read-qor');

@@ -235,6 +235,7 @@ const workshopGlyph: Readonly<Record<WorkshopState, Glyph>> = {
   failed: 'waiting',
   blocked: 'blocked',
   interrupted: 'waiting',
+  'awaiting-completion': 'pending',
 };
 
 /** Which shape each generation's row wears. */

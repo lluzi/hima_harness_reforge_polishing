@@ -1,0 +1,37 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-desktop-replay.host.test.ts
+local: 1 selected; 44 unselected in local; other groups not run (not passes)
+TAP version 13
+# file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/test/contract/agent-desktop-replay.host.test.ts:5
+# import { bootInProcess, createRootAgent, sayAsUser, calledTools, toolResults, saidByModel } from './support/boot-inprocess.ts';
+#                                                     ^^^^^^^^^^^
+# SyntaxError: The requested module './support/boot-inprocess.ts' does not provide an export named 'calledTools'
+#     at \#asyncInstantiate (node:internal/modules/esm/module_job:455:21)
+#     at async ModuleJob.run (node:internal/modules/esm/module_job:553:5)
+#     at async node:internal/modules/esm/loader:647:26
+#     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+# Node.js v24.20.0
+# Subtest: test/contract/agent-desktop-replay.host.test.ts
+not ok 1 - test/contract/agent-desktop-replay.host.test.ts
+  ---
+  duration_ms: 549.561958
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-next/pls19-desktop/test/contract/agent-desktop-replay.host.test.ts:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 562.71975
+Test boot attempts: {"host-process":0,"host-in-process":0,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 0.650 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

@@ -44,7 +44,8 @@
     "test/contract/conversation-execution.host.test.ts",
     "test/contract/ledger-import.test.ts",
     "test/contract/agent-graph.host.test.ts",
-    "test/contract/agent-workshop.host.test.ts"
+    "test/contract/agent-workshop.host.test.ts",
+    "test/contract/agent-desktop-replay.host.test.ts"
   ],
   "desktop": [
     "test/contract/budget.test.ts",
@@ -63,7 +64,8 @@
     "test/contract/moment.test.ts",
     "test/contract/workshop.test.ts",
     "test/contract/pack-readers.test.ts",
-    "test/contract/pipeline-stages.test.ts"
+    "test/contract/pipeline-stages.test.ts",
+    "test/contract/agent-execution.desktop.test.ts"
   ],
   "live-site": [
     "test/contract/jobs.live.test.ts",
