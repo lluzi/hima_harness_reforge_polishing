@@ -1,0 +1,51 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/conversation-execution.host.test.ts
+local: 1 selected; 45 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: hima_run prepares for the actual calling Agent and returns the same conversation context
+ok 1 - hima_run prepares for the actual calling Agent and returns the same conversation context
+  ---
+  duration_ms: 5781.817792
+  type: 'test'
+  ...
+# Subtest: controlled tools derive ownership, deduplicate admission, and refuse legacy mutation bypasses
+ok 2 - controlled tools derive ownership, deduplicate admission, and refuse legacy mutation bypasses
+  ---
+  duration_ms: 745.7235
+  type: 'test'
+  ...
+# Subtest: native preparation validates a live selected session and exposes durable control without rebinding on read
+not ok 3 - native preparation validates a live selected session and exposes durable control without rebinding on read
+  ---
+  duration_ms: 6538.650583
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/conversation-execution.host.test.ts:83:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"error":{"code":"hima/internal","message":"/hima/api/runs/run-314af85a-0e4d-4918-b2c4-5a118d0a2815/moment failed inside HimaHarness; the reason is in the host log"}}
+    
+    500 !== 409
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 409
+  actual: 500
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/conversation-execution.host.test.ts:115:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:969:7)
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 2
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13700.666583
+Test boot attempts: {"host-process":1,"host-in-process":2,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 13.816 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

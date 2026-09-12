@@ -1186,6 +1186,7 @@ async function momentOperation(ops: RemoteOperations, runId: string, req: Incomi
     moment = await ops.openMoment(runId, instructions);
   } catch (err) {
     if (err instanceof NoCurrentNodeError) throw new NotInState(err.message);
+    if (err instanceof RunStartError) return failure(409, 'hima/run-not-in-state', err.message);
     // A Run somebody is driving opens its own moments, and its own session counter is the node's
     // attempt (#62): a moment opened here beside it would collide with the retry about to happen.
     if (err instanceof RunRunningError) return failure(409, 'hima/run-running', err.message);
