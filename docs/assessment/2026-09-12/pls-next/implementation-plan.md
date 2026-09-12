@@ -1,6 +1,6 @@
 # PLS-21 / 22 / 13 → 19 implementation
 
-Status: in progress. This file records implementation admission and design choices, not completed acceptance.
+Status: delivered implementation and acceptance. Full local passed 377/377 on source `93afd76`; the separate installed-author read-only audit passed 11/11. The original finalization JSON property-order failure is preserved. This file retains the original admission and design audit; current evidence and limits are in [batch acceptance](README.md).
 
 Baseline: `4d8bc8c9b1e1f1205eb7725ac14ee89386cdd3f2`, clean and equal to GitHub main at admission. Source snapshots remain read-only. Work branches and isolated builds live under polishing. Every commit is pushed and its remote SHA checked.
 
@@ -34,3 +34,13 @@ Existing specs and `docs/testing-strategy.md` already accept these seams: actual
 Each task first preserves the cheapest failing counterexample, then implements and rechecks it. Build/typecheck and relevant local subsets run during development. A fixed integrated build receives the complete local suite once, plus necessary L3 paths and small L4 model checks for changed authoring/execution tools. Replay is mechanism evidence; local stand-in is not real EDA or DTCO improvement. Exact attempts, failures, duration and resource counts accompany delivery.
 
 Independent Standards and Spec reviewers inspect a fixed implementation tree after integration. Findings are corrected and affected checks repeated before tasks are marked delivered. Real DTCO and human value acceptance remain later tasks.
+
+## Delivery state
+
+PLS-21/22/13 were integrated before PLS-19. The production path now binds the actual conversational Agent and requires explicit node actions; admission, asynchronous Job facts, controls, recovery and native authoring use the existing modules described above. No second execution or graph service was added.
+
+The focused integrated local set passed 60/60 and the final native conversation/control desktop path passed 1/1. The Workshop DeepSeek V4 Flash check passed 19/19 with current numeric observations, fixed Goal, in-flight pause and explicit continuation. The installed author continued the original session and scientific Run through reader repair, TEST formatting and native release, but its original record-invariance check failed because JSON property ordering changed at cold decode. The separate corrected read-only audit passed 11/11, verifying the unchanged scientific records, actual seal, allowed file delta and remaining tail without another model turn or Run. The complete local candidate passed 377/377 in 1195.578s (47 subprocess and 357 in-process Hosts, zero Electron/SSH). The subsequent comparator-only change passed its four-case integrated subset in 3.262s; the current 378-case full suite was not rerun. See [batch acceptance](README.md) for raw logs, failures, installation hashes and exact limits.
+
+Independent core Standards/Spec and subsequent delta reviews closed their actionable findings; the generic-workspace reader and finalizer tooling received separate review. The original v19 offline importer remains strict while the current v20 reader accepts absent design already written by generic Packs.
+
+Both final gates passed. The completed PLS count is 12/26 (01–07, 13, 19, 20, 21, 22). The dependency frontier is PLS-23 #26, PLS-24 #27, PLS-10 #11 and PLS-14 #15; this batch does not start them. Formal EDA/DTCO and human acceptance remain PLS-23/25/18/26.

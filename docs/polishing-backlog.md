@@ -2,6 +2,8 @@
 
 当前顺序（2026-09-12）：[接收 ca47fa0 并在 polishing 完成 Step 4](specs/step4-takeover/README.md)。PLS-01～07 与 UI-02 保持已完成；新建 PLS-20～26，调整 PLS-08～19 的依赖。PLS-20 集成结果见 [实施证据](assessment/2026-09-12/pls-20/README.md)，后续按 Agent/输入/作者/方法身份→正式 probe→挖掘→资产/完整验收推进，不继续等待上游整体验收。以下 b4ac9d9 分析作为首轮背景，当前开工范围与模块以接续规格为准。
 
+PLS-21/22/13 → PLS-19 已完成实现与验收，完整 local 377/377和安装态作者只读终检11/11通过；当前共完成12/26个PLS。证据、原始失败与独立复核见 [本批验收](assessment/2026-09-12/pls-next/README.md)。依赖已解除的前沿为 PLS-23（正式 AES probe）、PLS-24（代码/知识/结束依据 UI）、PLS-10（附加研究节点）、PLS-14（Pack 内知识归档）；本批不启动这些任务。
+
 日期：2026-09-11。产品目标以 [已确认定义](product-definition.md) 为准；批次与测试层级沿用 [pilot 方案](pilot-plan.md) 和 [测试方案](testing-strategy.md)。本表保留原规划与产品动机；PLS-01～07 的实际实现、测试及边界见 [批次交付记录](assessment/2026-09-11/pls02-07/README.md)。后续任务仍按其依赖和 Step 4 交接条件开展。
 
 实施任务已细化为 [Polishing v1 首轮规格与子任务](specs/polishing-v1/README.md)，其中明确模块、验收、分级测试和依赖；本工作单保留原 POL 编号和产品动机。
