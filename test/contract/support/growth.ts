@@ -7,7 +7,7 @@ import { bootInProcess, createRootAgent } from './boot-inprocess.ts';
 import { killSessions, localHome, recordsOf, sessionsOf, waitUntil } from './fabric.ts';
 import { packsDirOf, writePackVariant } from './pack.ts';
 
-function identity(value: unknown): string {
+export function identity(value: unknown): string {
   const stable = (item: unknown): unknown => Array.isArray(item) ? item.map(stable)
     : item !== null && typeof item === 'object'
       ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)).map(([key, field]) => [key, stable(field)]))
@@ -15,11 +15,11 @@ function identity(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
 
-export async function prepared(t: TestContext, timeBoxMs = 120_000) {
+export async function prepared(t: TestContext, timeBoxMs = 120_000, attemptLimit?: number) {
   const home = await localHome(t, { sleepSeconds: 0.01 });
   assert.ok(home);
   const pack = 'growth-host';
-  await writePackVariant(packsDirOf(home.h), pack, [], [['chooser: over-constraining-push', 'chooser: over-constraining-push\n      growth: true']]);
+  await writePackVariant(packsDirOf(home.h), pack, attemptLimit === undefined ? [] : [['words:', `budget:\n  attemptLimit: ${String(attemptLimit)}\nwords:`]], [['chooser: over-constraining-push', 'chooser: over-constraining-push\n      growth: true']]);
   const referenceDigest = packDigestOf(`${packsDirOf(home.h)}/${pack}`);
   const host = await bootInProcess(home.h);
   const agent = await createRootAgent(host.ctx, home.h.workspace);

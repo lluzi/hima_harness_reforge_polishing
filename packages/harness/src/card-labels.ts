@@ -127,6 +127,7 @@ export const packStageMark = (stage: PackStageOrRefusal): string | undefined =>
 export const endedByLabel: Readonly<Record<NonNullable<RunMeters['endedBy']>, string>> = {
   'time-box': 'the time box',
   'generation-limit': 'the generation limit',
+  'attempt-limit': 'the Campaign attempt limit',
   cancel: 'a person\'s cancel',
 };
 
@@ -1006,6 +1007,7 @@ export function metersState(view: MeteredRun): Readonly<Record<string, string>> 
     ...(budget === undefined ? {} : {
       'time-box-ms': String(budget.timeBoxMs),
       'closing-reserve-ms': String(budget.closingReserveMs ?? 0),
+      'attempt-limit': String(budget.attemptLimit ?? 1000),
       'research-write-limit': String(budget.researchWriteAttempts ?? 256),
       'research-byte-limit': String(budget.researchWriteBytes ?? 4 * 1024 * 1024),
       'generation-limit': String(budget.generationLimit),

@@ -33,6 +33,9 @@ export const defaultRetryAllowance = 3;
  */
 export const defaultGenerationLimit = 6;
 
+/** Finite legacy-compatible Campaign ceiling; the 48-node AES method remains below it. */
+export const defaultAttemptLimit = 1000;
+
 /**
  * When the original time box runs out. Owned Runs retain only the historical wait allowance
  * verified at adoption; new pauses keep counting. Unowned regression Runs use their old wait term.
@@ -53,12 +56,20 @@ export interface BudgetStanding {
   readonly hardRemainingMs?: number;
   readonly experimentRemainingMs?: number;
   readonly closingReserveMs: number;
+  readonly attempts: number;
+  readonly attemptLimit?: number;
+  readonly attemptRemaining?: number;
+  readonly attemptLimitSpent: boolean;
 }
 
 /** The reserve begins inside the original hard box; it never extends the hard deadline. */
 export function budgetStandingAt(run: RunRecord, waitedMs: number, at: number): BudgetStanding {
   const hard = deadlineOf(run, waitedMs);
-  if (hard === undefined) return { phase: 'active', closingReserveMs: 0 };
+  const attempts = run.meters?.attempts ?? 0;
+  const attemptLimit = run.budget?.attemptLimit;
+  const attemptState = attemptLimit === undefined ? {} : { attemptLimit, attemptRemaining: Math.max(0, attemptLimit - attempts) };
+  const attemptLimitSpent = attemptLimit !== undefined && attempts >= attemptLimit;
+  if (hard === undefined) return { phase: 'active', closingReserveMs: 0, attempts, attemptLimitSpent, ...attemptState };
   const reserve = run.budget?.closingReserveMs ?? 0;
   const experiment = hard - reserve;
   return {
@@ -66,6 +77,9 @@ export function budgetStandingAt(run: RunRecord, waitedMs: number, at: number): 
     hardRemainingMs: Math.max(0, hard - at),
     experimentRemainingMs: Math.max(0, experiment - at),
     closingReserveMs: reserve,
+    attempts,
+    attemptLimitSpent,
+    ...attemptState,
   };
 }
 
@@ -74,6 +88,15 @@ export const experimentBudgetSpentAt = (run: RunRecord, waitedMs: number, at: nu
   budgetStandingAt(run, waitedMs, at).phase !== 'active';
 export const experimentBudgetSpent = (run: RunRecord, waitedMs: number): boolean =>
   experimentBudgetSpentAt(run, waitedMs, Date.now());
+
+/** Has the durable Campaign-wide act-attempt pool been spent? */
+export const attemptLimitSpent = (run: RunRecord): boolean => {
+  const limit = run.budget?.attemptLimit;
+  return limit !== undefined && (run.meters?.attempts ?? 0) >= limit;
+};
+
+export const endAttemptLimit = (ledger: Ledger, runId: string): Promise<RunRecord> =>
+  advance(ledger, runId, { endedBy: 'attempt-limit' }, { status: 'ended-budget-exhausted' });
 
 /** Remaining wall time uses the same deadline as admission and Job polling. */
 export const timeBoxRemainingMs = (run: RunRecord, waitedMs: number): number | undefined => {

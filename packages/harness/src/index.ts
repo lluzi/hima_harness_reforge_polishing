@@ -123,7 +123,7 @@ export type { RunAssetManifest, ExperienceAsset } from './experience-report.js';
 // `attemptOfSession` is exported for the one thing that cannot be shown through a face: which
 // attempt a Job belongs to when the host that launched it died before the node record naming its
 // session was written. The contract suite asserts that reading at the ledger object (#62).
-export { defaultTimeBoxMs, defaultRetryAllowance, attemptOfSession, budgetStandingAt, budgetStanding, experimentBudgetSpentAt, experimentBudgetSpent, researchWriteTotals, reserveResearchWrite } from './budget.js';
+export { defaultTimeBoxMs, defaultRetryAllowance, defaultAttemptLimit, attemptOfSession, budgetStandingAt, budgetStanding, experimentBudgetSpentAt, experimentBudgetSpent, attemptLimitSpent, researchWriteTotals, reserveResearchWrite } from './budget.js';
 export type { BudgetPhase, BudgetStanding, ResearchWriteRequest, ResearchWriteAdmission } from './budget.js';
 export type { FabricDeps, StartRunRequest, StartRunResult, ResumeResult, ExecutionActionRequest, ExecutionActionResult, ExecutionContext, RevisionProposal } from './fabric.js';
 export type { CancelResult, ReconcileOutcome } from './recovery.js';
