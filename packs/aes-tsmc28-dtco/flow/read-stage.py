@@ -79,7 +79,9 @@ def checkpoint_path(workspace, value, what):
     return resolved
 
 
-def checkpoint_snapshot(base_path, workspace, allowed_links):
+def checkpoint_snapshot(base_path, workspace, allowed_links, phase):
+    if phase not in ("init", "postroute"):
+        raise ValueError("checkpoint phase must be init or postroute")
     script = checkpoint_path(workspace, base_path, "checkpoint script")
     root = checkpoint_path(workspace, str(base_path) + ".dat", "checkpoint directory")
     if not script.is_file() or script.stat().st_size == 0:
@@ -120,6 +122,7 @@ def checkpoint_snapshot(base_path, workspace, allowed_links):
         raise ValueError("checkpoint tree is missing one or more declared vendor links")
     script_raw = script.read_bytes()
     body = {
+        "phase": phase,
         "script": {"path": str(script.relative_to(workspace)),
                    "sha256": hashlib.sha256(script_raw).hexdigest(), "bytes": len(script_raw)},
         "restorePath": str(root.relative_to(workspace)),
@@ -129,17 +132,19 @@ def checkpoint_snapshot(base_path, workspace, allowed_links):
     return {"schema": "aes-dtco-innovus-checkpoint/1", **body, "treeSha256": tree_hash}
 
 
-def validate_checkpoint(manifest_path, workspace, allowed_links):
+def validate_checkpoint(manifest_path, workspace, allowed_links, phase):
     document = load(manifest_path)
-    if set(document) != {"schema", "script", "restorePath", "directories", "files", "links", "treeSha256"}:
+    if set(document) != {"schema", "phase", "script", "restorePath", "directories", "files", "links", "treeSha256"}:
         raise ValueError("checkpoint manifest has unexpected fields")
     if document.get("schema") != "aes-dtco-innovus-checkpoint/1":
         raise ValueError("checkpoint manifest schema is unsupported")
+    if document.get("phase") != phase:
+        raise ValueError("checkpoint manifest has the wrong phase")
     script = document.get("script")
     if not isinstance(script, dict) or set(script) != {"path", "sha256", "bytes"}:
         raise ValueError("checkpoint manifest has no exact restore-script identity")
     rebuilt = checkpoint_snapshot(checkpoint_path(workspace, script["path"], "checkpoint script"),
-                                  workspace, allowed_links)
+                                  workspace, allowed_links, phase)
     if rebuilt != document:
         raise ValueError("checkpoint manifest differs from the complete current tree")
     return checkpoint_path(workspace, document["restorePath"], "checkpoint restore path")
@@ -264,11 +269,21 @@ def mmmc_identity(path):
             "libraries": libraries[0][1].split()}
 
 
-def checkpoint_allowed_links(record, workspace, arm):
+def checkpoint_allowed_links(record, workspace, arm, phase):
+    if phase not in ("init", "postroute"):
+        raise ValueError("checkpoint link phase must be init or postroute")
     target_roles = {"TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH",
-                    "generated_liberty", "generated_lef", "pnr_input_sdc"}
+                    "generated_liberty", "generated_lef", "pnr_input_sdc",
+                    "postroute_rc_model"}
+    refs = list(record.get("inputs", []))
+    if phase == "postroute":
+        rc_refs = [row for row in record.get("artifacts", []) if row.get("role") == "postroute_rc_model"]
+        if len(rc_refs) != 1:
+            raise ValueError("PnR record has no unique postroute RC model artifact")
+        checked(rc_refs[0], workspace)
+        refs.extend(rc_refs)
     held = {}
-    for ref in record.get("inputs", []):
+    for ref in refs:
         if ref.get("role") not in target_roles:
             continue
         raw = Path(ref["path"])
@@ -283,9 +298,14 @@ def checkpoint_allowed_links(record, workspace, arm):
     mmmc = mmmc_identity(one(record, workspace, "mmmc_script:" + arm))
     categories = [
         (lef_rows[0].split(), "libs/lef"),
-        (list(mmmc["libraries"]) + [mmmc["sdc"]], "libs/mmmc"),
+        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase == "init" else []), "libs/mmmc"),
         ([mmmc["qrc"]], "libs/mmmc/rc_" + arm),
     ]
+    if phase == "postroute":
+        rc_models = [row for row in held.values() if row["role"] == "postroute_rc_model"]
+        if len(rc_models) != 1:
+            raise ValueError("postroute checkpoint requires one hash-held RC model")
+        categories.append(([str(rc_models[0]["resolvedPath"])], "libs/misc"))
     allowed = {}
     for paths, folder in categories:
         for value in paths:
@@ -473,9 +493,11 @@ def values_for(record, workspace, stage):
         arm = stage.split("-", 1)[1]
         log = logs(record, workspace, "pnr-" + arm + "_log").read_text(errors="replace")
         checked_condition(record, workspace, derived_pnr_condition(record, workspace, arm))
-        checkpoint_links = checkpoint_allowed_links(record, workspace, arm)
-        validate_checkpoint(one(record, workspace, "init_checkpoint"), workspace, checkpoint_links)
-        validate_checkpoint(one(record, workspace, "postroute_checkpoint"), workspace, checkpoint_links)
+        init_links = checkpoint_allowed_links(record, workspace, arm, "init")
+        postroute_links = checkpoint_allowed_links(record, workspace, arm, "postroute")
+        validate_checkpoint(one(record, workspace, "init_checkpoint"), workspace, init_links, "init")
+        validate_checkpoint(one(record, workspace, "postroute_checkpoint"),
+                            workspace, postroute_links, "postroute")
         one(record, workspace, "postroute_gds")
         actual_clock = sdc_period(one(record, workspace, "postroute_sdc"))
         mmmc = mmmc_identity(one(record, workspace, "mmmc_script:" + arm))
@@ -548,9 +570,12 @@ def values_for(record, workspace, stage):
         foundry_pnr = load(one(record, workspace, "source_stage_record:pnr-foundry", "inputs"))
         generated_pnr = load(one(record, workspace, "source_stage_record:pnr-generated", "inputs"))
         for pnr_record, pnr_arm in ((foundry_pnr, "foundry"), (generated_pnr, "generated")):
-            checkpoint_links = checkpoint_allowed_links(pnr_record, workspace, pnr_arm)
-            validate_checkpoint(one(pnr_record, workspace, "init_checkpoint"), workspace, checkpoint_links)
-            validate_checkpoint(one(pnr_record, workspace, "postroute_checkpoint"), workspace, checkpoint_links)
+            init_links = checkpoint_allowed_links(pnr_record, workspace, pnr_arm, "init")
+            postroute_links = checkpoint_allowed_links(pnr_record, workspace, pnr_arm, "postroute")
+            validate_checkpoint(one(pnr_record, workspace, "init_checkpoint"),
+                                workspace, init_links, "init")
+            validate_checkpoint(one(pnr_record, workspace, "postroute_checkpoint"),
+                                workspace, postroute_links, "postroute")
         foundry_pnr_condition = checked_condition(
             foundry_pnr, workspace, derived_pnr_condition(foundry_pnr, workspace, "foundry"))
         generated_pnr_condition = checked_condition(

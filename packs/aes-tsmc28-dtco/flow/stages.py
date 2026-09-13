@@ -128,7 +128,9 @@ def checkpoint_path(workspace, value, what):
     return resolved
 
 
-def checkpoint_snapshot(base_path, workspace, allowed_links):
+def checkpoint_snapshot(base_path, workspace, allowed_links, phase):
+    if phase not in ("init", "postroute"):
+        raise Rejected("checkpoint phase must be init or postroute")
     script = checkpoint_path(workspace, base_path, "checkpoint script")
     root = checkpoint_path(workspace, str(base_path) + ".dat", "checkpoint directory")
     if not script.is_file() or script.stat().st_size == 0:
@@ -171,6 +173,7 @@ def checkpoint_snapshot(base_path, workspace, allowed_links):
         raise Rejected("checkpoint tree is missing one or more declared vendor links")
     script_raw = script.read_bytes()
     body = {
+        "phase": phase,
         "script": {"path": str(script.relative_to(workspace)),
                    "sha256": sha_bytes(script_raw), "bytes": len(script_raw)},
         "restorePath": str(root.relative_to(workspace)),
@@ -180,25 +183,27 @@ def checkpoint_snapshot(base_path, workspace, allowed_links):
     return {"schema": "aes-dtco-innovus-checkpoint/1", **body, "treeSha256": tree_hash}
 
 
-def publish_checkpoint(ctx, base_path, role, allowed_links):
-    snapshot = checkpoint_snapshot(base_path, ctx.workspace, allowed_links)
+def publish_checkpoint(ctx, base_path, role, allowed_links, phase):
+    snapshot = checkpoint_snapshot(base_path, ctx.workspace, allowed_links, phase)
     target = ctx.run_dir / (role + ".json")
     atomic_json(target, snapshot)
     ctx.add_artifact(target, role, "innovus-checkpoint-manifest")
     return checkpoint_path(ctx.workspace, snapshot["restorePath"], "checkpoint restore path")
 
 
-def validate_checkpoint(manifest_path, workspace, allowed_links):
+def validate_checkpoint(manifest_path, workspace, allowed_links, phase):
     document = read_json(manifest_path)
-    if set(document) != {"schema", "script", "restorePath", "directories", "files", "links", "treeSha256"}:
+    if set(document) != {"schema", "phase", "script", "restorePath", "directories", "files", "links", "treeSha256"}:
         raise Rejected("checkpoint manifest has unexpected fields")
     if document.get("schema") != "aes-dtco-innovus-checkpoint/1":
         raise Rejected("checkpoint manifest schema is unsupported")
+    if document.get("phase") != phase:
+        raise Rejected("checkpoint manifest has the wrong phase")
     script = document.get("script")
     if not isinstance(script, dict) or set(script) != {"path", "sha256", "bytes"}:
         raise Rejected("checkpoint manifest has no exact restore-script identity")
     rebuilt = checkpoint_snapshot(checkpoint_path(workspace, script["path"], "checkpoint script"),
-                                  workspace, allowed_links)
+                                  workspace, allowed_links, phase)
     if rebuilt != document:
         raise Rejected("checkpoint manifest differs from the complete current tree")
     return checkpoint_path(workspace, document["restorePath"], "checkpoint restore path")
@@ -923,9 +928,12 @@ def fill_template(path, mapping):
     return text
 
 
-def checkpoint_allowed_links(inputs, workspace, init_script, mmmc_script, arm):
+def checkpoint_allowed_links(inputs, workspace, init_script, mmmc_script, arm, phase):
+    if phase not in ("init", "postroute"):
+        raise Rejected("checkpoint link phase must be init or postroute")
     target_roles = {"TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH",
-                    "generated_liberty", "generated_lef", "pnr_input_sdc"}
+                    "generated_liberty", "generated_lef", "pnr_input_sdc",
+                    "postroute_rc_model"}
     held = {}
     for ref in inputs:
         if ref.get("role") not in target_roles:
@@ -942,9 +950,14 @@ def checkpoint_allowed_links(inputs, workspace, init_script, mmmc_script, arm):
     mmmc = parse_mmmc(mmmc_script)
     categories = [
         (lef_rows[0].split(), "libs/lef"),
-        (list(mmmc["libraries"]) + [mmmc["sdc"]], "libs/mmmc"),
+        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase == "init" else []), "libs/mmmc"),
         ([mmmc["qrc"]], "libs/mmmc/rc_" + arm),
     ]
+    if phase == "postroute":
+        rc_models = [row for row in held.values() if row["role"] == "postroute_rc_model"]
+        if len(rc_models) != 1:
+            raise Rejected("postroute checkpoint requires one hash-held RC model")
+        categories.append(([str(rc_models[0]["resolvedPath"])], "libs/misc"))
     allowed = {}
     for paths, folder in categories:
         for value in paths:
@@ -959,11 +972,18 @@ def checkpoint_allowed_links(inputs, workspace, init_script, mmmc_script, arm):
     return allowed
 
 
-def pnr_record_allowed_links(record, workspace, arm):
+def pnr_record_allowed_links(record, workspace, arm, phase):
+    refs = list(record.get("inputs", []))
+    if phase == "postroute":
+        rc_refs = [row for row in record.get("artifacts", []) if row.get("role") == "postroute_rc_model"]
+        if len(rc_refs) != 1:
+            raise Rejected("PnR record has no unique postroute RC model artifact")
+        checked_ref(rc_refs[0], workspace, "postroute_rc_model")
+        refs.extend(rc_refs)
     return checkpoint_allowed_links(
-        record.get("inputs", []), workspace,
+        refs, workspace,
         artifact(record, workspace, "init_script:" + arm),
-        artifact(record, workspace, "mmmc_script:" + arm), arm)
+        artifact(record, workspace, "mmmc_script:" + arm), arm, phase)
 
 
 def merged_lef(ctx, layout):
@@ -1081,34 +1101,39 @@ def stage_pnr(ctx, arm):
         for kind in ("mmmc", "init", "pnr"):
             ctx.add_artifact(outputs[other][kind], "%s_script:%s" % (kind, other), "generated-tool-input")
     wrapper = str(ctx.file_binding("EDA_WRAPPER", "tool-wrapper"))
-    allowed_links = checkpoint_allowed_links(ctx.inputs, ctx.workspace,
-                                             chosen["init"], chosen["mmmc"], arm)
+    init_links = checkpoint_allowed_links(ctx.inputs, ctx.workspace,
+                                          chosen["init"], chosen["mmmc"], arm, "init")
     init_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["init"])], cwd=ctx.run_dir,
                        timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="init-" + arm)
-    if tool_error_lines(init_log.read_text(errors="replace")):
-        raise ToolFailure("Innovus init returned zero but emitted an error line")
-    init_restore = publish_checkpoint(ctx, chosen["init_checkpoint_base"],
-                                      "init_checkpoint", allowed_links)
-    if str(init_restore) not in chosen["pnr"].read_text(errors="replace"):
-        raise Rejected("PnR script does not restore the validated init checkpoint directory")
-    pnr_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["pnr"])], cwd=ctx.run_dir,
-                      timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="pnr-" + arm)
     text = init_log.read_text(errors="replace")
-    pnr_text = pnr_log.read_text(errors="replace")
-    if tool_error_lines(text) or tool_error_lines(pnr_text):
-        raise ToolFailure("Innovus returned zero but emitted an error line")
+    if tool_error_lines(text):
+        raise ToolFailure("Innovus init returned zero but emitted an error line")
     init_version = innovus_version(text)
-    route_version = innovus_version(pnr_text)
-    if init_version != route_version:
-        raise Rejected("Innovus init and route tool versions differ")
     visible_hits = re.findall(r"=== XS28 GENERATED_LIB_CELLS_AFTER_RESTORE (\d+) ===", text)
     visible = int(visible_hits[0]) if len(visible_hits) == 1 else None
     if arm == "generated" and (visible is None or visible <= 0):
         raise Rejected("generated library visibility was not proved after Innovus restore")
+    init_restore = publish_checkpoint(ctx, chosen["init_checkpoint_base"],
+                                      "init_checkpoint", init_links, "init")
+    if str(init_restore) not in chosen["pnr"].read_text(errors="replace"):
+        raise Rejected("PnR script does not restore the validated init checkpoint directory")
+    pnr_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["pnr"])], cwd=ctx.run_dir,
+                      timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="pnr-" + arm)
+    pnr_text = pnr_log.read_text(errors="replace")
+    if tool_error_lines(pnr_text):
+        raise ToolFailure("Innovus returned zero but emitted an error line")
+    route_version = innovus_version(pnr_text)
+    if init_version != route_version:
+        raise Rejected("Innovus init and route tool versions differ")
     if ("=== XS28 PNR DONE %s (GDS written) ===" % arm) not in pnr_text:
         raise ToolFailure("Innovus P&R log lacks the completion marker for " + arm)
+    rc_model = ctx.add_artifact(ctx.run_dir / "rc_model.bin", "postroute_rc_model",
+                                "innovus-output")
+    postroute_links = checkpoint_allowed_links(
+        [*ctx.inputs, rc_model], ctx.workspace, chosen["init"], chosen["mmmc"],
+        arm, "postroute")
     publish_checkpoint(ctx, chosen["final_checkpoint_base"],
-                       "postroute_checkpoint", allowed_links)
+                       "postroute_checkpoint", postroute_links, "postroute")
     timing_summary = ctx.run_dir / ("rpt_" + arm) / "postopt" / "post.summary.gz"
     timing_paths = ctx.run_dir / ("rpt_" + arm) / "postopt" / "post_all.tarpt.gz"
     timing = parse_timing_summary(timing_summary, timing_paths)
@@ -1164,9 +1189,9 @@ def stage_verify(ctx):
     wrapper = str(ctx.binding("EDA_WRAPPER"))
     for arm, stage in (("foundry", "pnr-foundry"), ("generated", "pnr-generated")):
         pnr_record = prior(ctx, stage)
-        links = pnr_record_allowed_links(pnr_record, ctx.workspace, arm)
+        links = pnr_record_allowed_links(pnr_record, ctx.workspace, arm, "postroute")
         db = validate_checkpoint(artifact(pnr_record, ctx.workspace, "postroute_checkpoint"),
-                                 ctx.workspace, links)
+                                 ctx.workspace, links, "postroute")
         report = ctx.run_dir / (arm + "_verify_drc.rpt")
         script = ctx.run_dir / (arm + "_verify.tcl")
         script.write_text(
@@ -1369,11 +1394,12 @@ def stage_compare(ctx):
 
         pnr_rows = {}
         for arm, record in (("foundry", foundry_pnr), ("generated", generated_pnr)):
-            links = pnr_record_allowed_links(record, ctx.workspace, arm)
+            init_links = pnr_record_allowed_links(record, ctx.workspace, arm, "init")
+            postroute_links = pnr_record_allowed_links(record, ctx.workspace, arm, "postroute")
             validate_checkpoint(artifact(record, ctx.workspace, "init_checkpoint"),
-                                ctx.workspace, links)
+                                ctx.workspace, init_links, "init")
             validate_checkpoint(artifact(record, ctx.workspace, "postroute_checkpoint"),
-                                ctx.workspace, links)
+                                ctx.workspace, postroute_links, "postroute")
             summary = artifact(record, ctx.workspace, "postroute_timing_summary")
             timing_paths = artifact(record, ctx.workspace, "postroute_timing_paths")
             mmmc = artifact(record, ctx.workspace, "mmmc_script:" + arm)
