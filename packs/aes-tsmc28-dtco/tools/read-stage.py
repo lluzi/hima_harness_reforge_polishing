@@ -137,6 +137,17 @@ def sdc_period(path):
     return values[0]
 
 
+def pnr_input_sdc_identity(path):
+    text = Path(path).read_text()
+    header = re.compile(r"^# Created by write_sdc on [^\r\n]+$", re.M)
+    if len(header.findall(text)) != 1:
+        raise ValueError("PnR-input SDC lacks one recognized volatile write_sdc header")
+    stable = header.sub("# Created by write_sdc on <volatile>", text, count=1)
+    raw = stable.encode()
+    return {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw),
+            "canonicalization": "one write_sdc creation-time comment"}
+
+
 def mmmc_identity(path):
     text = path.read_text(errors="replace")
     mode = re.findall(r"create_constraint_mode\s+-name\s+(\S+)\s+-sdc_files\s+\[list\s+([^\]]+)\]", text)
@@ -372,6 +383,7 @@ def values_for(record, workspace, stage):
         gm = mmmc_identity(one(record, workspace, "generated_mmmc", "inputs"))
         if Path(fm["sdc"]).resolve() != fsdc or Path(gm["sdc"]).resolve() != gsdc:
             raise ValueError("MMMC constraint mode does not bind the held arm SDC")
+        input_sdc_matched = pnr_input_sdc_identity(fsdc) == pnr_input_sdc_identity(gsdc)
         clock = sdc_period(foundry_actual_sdc)
         if (clock != sdc_period(gactual_sdc) or clock != sdc_period(fsdc)
                 or clock != sdc_period(gsdc) or fview != fm["view"] or gview != gm["view"]):
@@ -394,6 +406,7 @@ def values_for(record, workspace, stage):
             generated_pnr, workspace, derived_pnr_condition(generated_pnr, workspace, "generated"))
         synth_match = foundry_synth_condition == custom_synth_condition
         pnr_match = (foundry_pnr_condition == generated_pnr_condition
+                     and input_sdc_matched
                      and fm["qrc"] == gm["qrc"] and fm["temperature"] == gm["temperature"])
         matched_derived = synth_match and pnr_match
         netlist = one(record, workspace, "custom_netlist", "inputs").read_text(errors="replace")

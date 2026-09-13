@@ -104,6 +104,22 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   assert.equal(values.find((item) => item.type === 'setup_wns')!.value, 0.02);
   assert.equal(values.find((item) => item.type === 'full_constraint_failures')!.value, 0);
 
+  await writeFile(path.join(flow, 'synthetic-custom-input-delay'), 'same clock, different input delay\n');
+  assert.equal(fixture.run('custom-synth').status, 0);
+  assert.equal(fixture.run('pnr-generated').status, 0);
+  assert.equal(fixture.run('compare').status, 0);
+  const delayMismatch = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
+  assert.equal(delayMismatch.facts.clock_period, 0.5);
+  assert.equal(delayMismatch.facts.matched_conditions, false);
+  assert.equal(delayMismatch.facts.full_constraint_failures, 1);
+  const delayReading = fixture.read(path.join(flow, 'records/compare.json'), 'compare');
+  assert.equal(delayReading.run.status, 0, delayReading.run.stderr);
+  const delayValues = parseReading(await readFile(delayReading.out, 'utf8')).values as { type: string; value: number }[];
+  assert.equal(delayValues.find((item) => item.type === 'matched_conditions')!.value, 0);
+  await rm(path.join(flow, 'synthetic-custom-input-delay'));
+  assert.equal(fixture.run('custom-synth').status, 0, 'restore the matching generated-arm SDC');
+  assert.equal(fixture.run('pnr-generated').status, 0, 'restore PnR with the matching generated-arm SDC');
+
   const qrc = String((fixture.inputs.legacy as Record<string, unknown>).FOUNDRY_QRC_TECH);
   await writeFile(qrc, 'SYNTHETIC QRC CHANGED BETWEEN ARMS\n');
   assert.equal(fixture.run('pnr-generated').status, 0);
