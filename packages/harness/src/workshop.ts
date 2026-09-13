@@ -531,7 +531,23 @@ export async function knowledgeForWorkshop(scope: WorkshopScope, asked: string):
     const there = lstatSync(known.at, { throwIfNoEntry: false });
     if (there === undefined) return { read: false, reason: `the knowledge file "${known.file}" is not at ${known.at}` };
     if (!there.isFile()) return { read: false, reason: `the knowledge file "${known.file}" at ${known.at} is not a plain file, so nothing was read` };
-    return { file: known.file, purpose: known.purpose, text: await readFile(known.at, 'utf8') };
+    const bytes = await readFile(known.at);
+    const sessionId = scope.session.id;
+    if (sessionId === undefined) return { read: false, reason: `the knowledge file "${known.file}" was not returned because this workshop has no recorded Agent session` };
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    await scope.ledger.appendKnowledge(scope.runId, {
+      ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
+      nodeId: scope.nodeId,
+      attempt: scope.attempt,
+      sessionId,
+      workshop: scope.declaration.id,
+      file: known.file,
+      purpose: known.purpose,
+      path: known.at,
+      sha256,
+      bytes: bytes.byteLength,
+    });
+    return { file: known.file, purpose: known.purpose, text: bytes.toString('utf8') };
   } catch (err) {
     return { read: false, reason: `the knowledge file "${known.file}" at ${known.at} cannot be read: ${messageOf(err)}` };
   }

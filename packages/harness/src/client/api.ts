@@ -2,7 +2,7 @@
 // and the only place the HimaGuide module talks to the host. The wire contract lives in
 // `../remote.ts`; this file imports it as types alone, so nothing host-side reaches the bundle.
 import type { ExecutionContext } from '../fabric.js';
-import type { HimaErrorBody, HimaErrorCode, RunHeadView, RunView } from '../remote.js';
+import type { HimaErrorBody, HimaErrorCode, MaterialAnswer, RunHeadView, RunView } from '../remote.js';
 import type { StartChoices } from '../workbench.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
 import { HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runPath } from '../paths.js';
@@ -32,6 +32,11 @@ function failureFrom(status: number, body: unknown): HimaFailure {
  */
 export function fetchRun(runId: string, signal?: AbortSignal): Promise<HimaResult<RunView>> {
   return runRequest<RunView>(runPath(runId), { signal });
+}
+
+/** Read one Run-owned code or knowledge version after the Host has held it to its recorded hash. */
+export function fetchMaterial(runId: string, recordId: string, signal?: AbortSignal): Promise<HimaResult<MaterialAnswer>> {
+  return runRequest(`${runPath(runId)}/material/${encodeURIComponent(recordId)}`, { signal });
 }
 
 export const fetchRuns = (signal?: AbortSignal): Promise<HimaResult<{ runs: RunHeadView[] }>> =>

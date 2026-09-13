@@ -53,6 +53,17 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const knowledge = await act('knowledge', { executionId, file: 'sum.md' });
     assert.equal(knowledge.kind, 'accepted');
     assert.match(JSON.stringify(knowledge.data), /sum/i);
+    const knowledgeRecord = host.ctx.hima.ledger.records({ runId, type: 'knowledge' }).find((record) => record.type === 'knowledge');
+    assert.ok(knowledgeRecord?.type === 'knowledge', 'only the successful tool read is durable knowledge-use evidence');
+    if (knowledgeRecord?.type !== 'knowledge') throw new Error('knowledge record missing');
+    assert.equal(knowledgeRecord.nodeId, 'analyze');
+    assert.equal(knowledgeRecord.attempt, 1);
+    assert.equal(knowledgeRecord.sessionId, String(owner.id));
+    assert.equal(knowledgeRecord.file, 'sum.md');
+    assert.match(knowledgeRecord.purpose, /sum/i);
+    const heldKnowledge = await host.ctx.hima.readMaterial(runId, knowledgeRecord.id);
+    assert.equal(heldKnowledge.kind, 'read', JSON.stringify(heldKnowledge));
+    assert.match(heldKnowledge.kind === 'read' ? heldKnowledge.text : '', /sum/i);
     const script = 'sleep 2\nmkdir -p "$2/research/analysis"\nawk -v scale="$3" \'{sum+=$1} END {print sum*scale}\' "$2/flow/numbers.txt" > "$2/research/analysis/result.txt"\n';
     const written = await act('write', { executionId, path: 'entry.sh', content: script });
     assert.equal(written.kind, 'accepted');
@@ -63,15 +74,26 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
       expectedRevision: admitted.revision, requestId: written.receipt.requestId, action: 'write', executionId, path: 'entry.sh', content: script });
     assert.equal(duplicate.kind, 'duplicate');
     assert.deepEqual(duplicate.data, written.data);
-    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'code' }).length, 1);
-    const code = host.ctx.hima.ledger.records({ runId, type: 'code' }).find((record) => record.type === 'code');
+    const reviewedScript = `${script}# reviewed version\n`;
+    assert.equal((await act('write', { executionId, path: 'entry.sh', content: reviewedScript })).kind, 'accepted');
+    const versions = host.ctx.hima.ledger.records({ runId, type: 'code' });
+    assert.equal(versions.length, 2, 'one path has two durable code versions, each with its own hash');
+    const code = versions.findLast((record) => record.type === 'code');
     assert.ok(code?.type === 'code');
     assert.equal(code.sessionId, String(owner.id));
     assert.equal(workshopView()?.state, 'written');
     assert.equal(workshopView()?.sessionId, String(owner.id), 'the displayed code author is the actual conversational Agent');
     assert.deepEqual(workshopView()?.codeRecordIds, [code.id]);
     assert.ok(code.path.includes(`/.executions/${executionId}/`));
-    assert.equal(await readFile(code.path, 'utf8'), script);
+    assert.equal(await readFile(code.path, 'utf8'), reviewedScript);
+    const heldCode = await host.ctx.hima.readMaterial(runId, code.id);
+    assert.equal(heldCode.kind, 'read', JSON.stringify(heldCode));
+    assert.equal(heldCode.kind === 'read' ? heldCode.text : '', reviewedScript);
+    const otherRun = await host.ctx.hima.ledger.createRun({ campaignId: 'other-material-owner', siteId: 'local' });
+    assert.equal((await host.ctx.hima.readMaterial(otherRun.id, code.id)).kind, 'none', 'a record id from this Run cannot expose a different Run\'s file');
+    await writeFile(code.path, '# tampered\n');
+    assert.equal((await host.ctx.hima.readMaterial(runId, code.id)).kind, 'changed', 'changed current bytes cannot impersonate a recorded version');
+    await writeFile(code.path, reviewedScript);
     const inspection = await act('read', { executionId, path: 'entry.sh' });
     assert.equal(inspection.kind, 'accepted');
     assert.match(JSON.stringify(inspection.data), /awk/);
@@ -84,7 +106,7 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     assert.equal(workshopView()?.state, 'running');
     assert.ok(workshopView()?.jobSession, 'the projection names the actual launched Job');
     assert.equal((await act('write', { executionId, path: 'entry.sh', content: 'echo forged' })).kind, 'refused');
-    assert.equal(await readFile(code.path, 'utf8'), script);
+    assert.equal(await readFile(code.path, 'utf8'), reviewedScript);
     await waitUntil('the owned Workshop Job result is ready', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === executionId && execution.phase === 'ready'));
     assert.equal(workshopView()?.state, 'awaiting-completion', 'successful Job work alone is not explicit Agent completion');
     assert.equal((await act('complete', { executionId })).kind, 'accepted');
@@ -99,6 +121,16 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
       && record.values.some((value) => value.type === 'scaled_sum' && value.value === 42 && value.unit === 'count')),
     'the declared reader measured exactly 42 count from the generated output');
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'session' }).length, 0, 'no separate model moment was opened or claimed closed');
+    await host.ctx.hima.cancelRun(runId);
+    const report = await host.ctx.hima.readExperience(runId);
+    assert.equal(report.kind, 'read', JSON.stringify(report));
+    if (report.kind === 'read') {
+      assert.equal(report.json.schema, 'hima-experience/3');
+      if (report.json.schema === 'hima-experience/3') {
+        assert.equal(report.json.code.length, 2);
+        assert.equal(report.json.knowledge.length, 1);
+      }
+    }
   } finally {
     if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
     await host.dispose(); await home.h.dispose();

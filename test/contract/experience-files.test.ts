@@ -115,8 +115,8 @@ test('failure between the two report writes leaves no record; the next Host comp
       }
       assert.equal(result?.status, 200);
       const read = await result!.json() as ExperienceAnswer;
-      assert.equal(read.report.schema, 'hima-experience/2');
-      if (read.report.schema !== 'hima-experience/2') throw new Error('newly recovered report uses schema 2');
+      assert.equal(read.report.schema, 'hima-experience/3');
+      if (read.report.schema !== 'hima-experience/3') throw new Error('newly recovered report uses schema 3');
       assert.equal(read.report.research.environment.declaredDesign, 'declared-design');
       assert.equal(read.report.research.environment.toolVersions, 'not recorded');
       assert.equal(hash(read.markdown), read.experience.markdown.sha256);

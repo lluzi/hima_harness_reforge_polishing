@@ -31,7 +31,7 @@ function projected(view: RunView) { return experienceReport(view, at).json.resea
 test('a goal claim requires completed cited evidence; requested period is not a measured Fmax', () => {
   const view = fixture();
   const report = experienceReport(view, at);
-  assert.equal(report.json.schema, 'hima-experience/2');
+  assert.equal(report.json.schema, 'hima-experience/3');
   assert.equal(report.json.research.conclusion, 'goal-supported');
   assert.equal(report.json.research.trials[0]?.constraintOutcome, 'PASS');
   assert.deepEqual(report.json.research.trials[0]?.observation?.values, view.observations[0]?.values);

@@ -17,11 +17,11 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { runCardPath } from '../paths.js';
 import type { BranchView, GenerationJoinView, GenerationVerdictView, GenerationView, LoopView } from '../generations.js';
-import type { BlockerView, Citation, DecisionView, ExperienceView, NodeView, ObservationView, RunView, RunWords, VerdictView, WorkshopView } from '../remote.js';
+import type { BlockerView, Citation, CodeView, DecisionView, ExperienceView, KnowledgeView, NodeView, ObservationView, RunView, RunWords, VerdictView, WorkshopView } from '../remote.js';
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
 import { bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, good, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, outcomeColour, askedObservedSaid, plain, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, warn, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
-import { actOnRun, controlRun, fetchRun, type HimaFailure } from './api.js';
+import { actOnRun, controlRun, fetchMaterial, fetchRun, type HimaFailure } from './api.js';
 
 /** The slice of the tool block this card reads. The owner passes the frozen call or result node. */
 export interface ToolBlock {
@@ -587,6 +587,37 @@ export function WorkshopSection({ view, workshop }: { view: RunView; workshop: W
   );
 }
 
+/**
+ * The Run's complete material history. A click reads the selected record through the Host; it never
+ * substitutes today's bytes for an old hash. The same component is used in chat and the workbench.
+ */
+export function MaterialSection({ view }: { view: RunView }): ReactElement | null {
+  const [selected, setSelected] = useState<string>();
+  const [answer, setAnswer] = useState<{ recordId: string; text?: string; error?: string; loading?: boolean }>();
+  const request = useRef<AbortController | undefined>();
+  useEffect(() => () => request.current?.abort(), []);
+  if (view.code.length === 0 && view.knowledge.length === 0) return null;
+  const open = (record: CodeView | KnowledgeView) => {
+    request.current?.abort();
+    const own = new AbortController(); request.current = own;
+    setSelected(record.recordId); setAnswer({ recordId: record.recordId, loading: true });
+    void fetchMaterial(view.run.id, record.recordId, own.signal).then((result) => {
+      if (own.signal.aborted) return;
+      setAnswer(result.ok ? { recordId: record.recordId, text: result.value.text } : { recordId: record.recordId, error: result.error.message });
+    });
+  };
+  const row = (record: CodeView | KnowledgeView, kind: 'code' | 'knowledge') => <button type="button" key={record.recordId} onClick={() => open(record)} data-hima-control={`material-${record.recordId}`} style={{ ...mono, textAlign: 'left', border: 0, background: 'transparent', color: plain, cursor: 'pointer', padding: 0 }}>
+    {kind === 'code' ? (record as CodeView).path : `${(record as KnowledgeView).file} — ${(record as KnowledgeView).purpose}`} · node {record.nodeId} · generation {record.generation ?? 'not recorded'} · attempt {record.attempt} · source {record.sessionId} · sha256 {record.sha256}
+  </button>;
+  return <Section title="code & knowledge actually used" region="run-material" state={{ code: String(view.code.length), knowledge: String(view.knowledge.length) }}>
+    <div style={block}>{view.code.map((record) => row(record, 'code'))}{view.knowledge.map((record) => row(record, 'knowledge'))}</div>
+    {selected === undefined ? <div style={muted}>Choose a recorded version to verify and read its contents.</div>
+      : answer?.loading ? <div style={muted}>Reading the recorded version and verifying its hash…</div>
+        : answer?.error ? <div role="alert" style={{ ...muted, color: bad }}>Historical content unavailable: {answer.error}</div>
+          : <pre data-hima-region="material-content" data-hima-state-record={selected} style={logTail}>{answer?.text}</pre>}
+  </Section>;
+}
+
 /** One record a verdict cited. A citation that did not resolve is shown as such, never dropped. */
 function CitationRow({ citation }: { citation: Citation }): ReactElement {
   return citation.observation === null
@@ -752,6 +783,7 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
         being written now, and what was read is what the generation before it produced.
       */}
       {view.workshop === undefined ? null : <WorkshopSection view={view} workshop={view.workshop} />}
+      <MaterialSection view={view} />
       {view.observations.length === 0
         ? null
         : (

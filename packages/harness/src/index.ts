@@ -28,7 +28,7 @@ import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
 import { drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
-import { readExperience, type ReadExperienceResult } from './experience.js';
+import { readExperience, readMaterial, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
 import { handleHimaCommand, himaCommandDescription } from './commands.js';
 import { himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
@@ -112,7 +112,7 @@ export { cancelRun, reconcileRuns } from './recovery.js';
 export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn, nextMomentAttempt, HIMA_MOMENT_PRESET } from './moments.js';
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
 export { MomentTurnError, NoCurrentNodeError } from './errors.js';
-export { writeExperience, readExperience } from './experience.js';
+export { writeExperience, readExperience, readMaterial } from './experience.js';
 export type { WriteExperienceResult, ReadExperienceResult } from './experience.js';
 // `attemptOfSession` is exported for the one thing that cannot be shown through a face: which
 // attempt a Job belongs to when the host that launched it died before the node record naming its
@@ -329,6 +329,7 @@ export default class Hima extends Service {
           resumeRun: (runId, who) => this.resumeRun(runId, who),
           cancelRun: (runId) => this.cancelRun(runId),
           readExperience: (runId) => this.readExperience(runId),
+          readMaterial: (runId, recordId) => this.readMaterial(runId, recordId),
           // The one operation of this namespace that reaches dsh's agent seam, and the only one
           // that needs the host itself rather than the ledger: a moment is composed out of this
           // context (#59). Handed in like every other operation, so `remote.ts` stays a module a
@@ -444,6 +445,11 @@ export default class Hima extends Service {
   /** Read a Campaign's technical report back off its Site, both files held against their hashes. */
   readExperience(runId: string): Promise<ReadExperienceResult> {
     return readExperience(this.deps(), runId);
+  }
+
+  /** Read one Run-owned historical code or knowledge version at its recorded identity. */
+  readMaterial(runId: string, recordId: string): Promise<ReadMaterialResult> {
+    return readMaterial(this.deps(), runId, recordId);
   }
 
   /**

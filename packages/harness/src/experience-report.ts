@@ -49,7 +49,7 @@ import {
 } from './card-labels.js';
 import type { BranchView, GenerationView, LoopView } from './generations.js';
 import type { RunBudget, RunMeters, RunPurpose, RunStatus } from './ledger.js';
-import type { BlockerView, CancelView, NodeView, ObservationView, RunView, VerdictView } from './remote.js';
+import type { BlockerView, CancelView, CodeView, KnowledgeView, NodeView, ObservationView, RunView, VerdictView } from './remote.js';
 
 /**
  * What the machine's file says it is. Read by whoever opens it: a schema key is what lets a later
@@ -57,7 +57,7 @@ import type { BlockerView, CancelView, NodeView, ObservationView, RunView, Verdi
  * the keys it happens to find. It is versioned separately from the ledger's own domain, because the
  * file outlives the ledger that wrote it — it is the Site owner's, kept beside the results (D44).
  */
-export const EXPERIENCE_SCHEMA = 'hima-experience/2';
+export const EXPERIENCE_SCHEMA = 'hima-experience/3';
 
 /** The directory the two files live in, under the Campaign workspace, beside the results. */
 export const EXPERIENCE_DIR = 'hima-experience';
@@ -119,11 +119,17 @@ export interface ExperienceJsonV1 {
 
 /** Schema 1 remains a readable historical document; only new writes use schema 2. */
 export interface ExperienceJsonV2 extends Omit<ExperienceJsonV1, 'schema'> {
-  readonly schema: typeof EXPERIENCE_SCHEMA;
+  readonly schema: 'hima-experience/2';
   readonly purpose: RunPurpose;
   readonly research: ExperienceResearch;
 }
-export type ExperienceJson = ExperienceJsonV1 | ExperienceJsonV2;
+/** New material provenance is schema 3; schema 2 remains an unchanged historical document. */
+export interface ExperienceJsonV3 extends Omit<ExperienceJsonV2, 'schema'> {
+  readonly schema: typeof EXPERIENCE_SCHEMA;
+  readonly code: readonly CodeView[];
+  readonly knowledge: readonly KnowledgeView[];
+}
+export type ExperienceJson = ExperienceJsonV1 | ExperienceJsonV2 | ExperienceJsonV3;
 
 export interface ExperienceTrial {
   readonly generation: number;
@@ -157,7 +163,7 @@ export interface ExperienceResearch {
 
 /** The two documents of one newly composed report. Historical files are read without recomposition. */
 export interface ExperienceReport {
-  readonly json: ExperienceJsonV2;
+  readonly json: ExperienceJsonV3;
   readonly markdown: string;
 }
 
@@ -175,7 +181,7 @@ export function experienceReport(view: RunView, writtenAt: string): ExperienceRe
 }
 
 /** The machine's file, from the run view and nothing else. */
-function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV2 {
+function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV3 {
   const { run } = view;
   return {
     schema: EXPERIENCE_SCHEMA,
@@ -192,6 +198,8 @@ function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV2 {
     ...(run.budget === undefined ? {} : { budget: run.budget }),
     ending: endingOf(view),
     research: researchOf(view),
+    code: view.code ?? [],
+    knowledge: view.knowledge ?? [],
     generations: view.generations,
     ...(run.meters === undefined ? {} : { meters: run.meters }),
     path: view.nodes,
@@ -396,7 +404,7 @@ function fenced(text: string): string[] {
 }
 
 /** The person's file, composed from the machine's so the two cannot say different numbers. */
-function experienceMarkdown(json: ExperienceJsonV2, view: RunView): string {
+function experienceMarkdown(json: ExperienceJsonV3, view: RunView): string {
   const mark = runPurposeMark(json.purpose);
   const lines: string[] = [
     `# Campaign ${json.campaignId}`,
@@ -418,6 +426,8 @@ function experienceMarkdown(json: ExperienceJsonV2, view: RunView): string {
     ]),
     '',
     ...researchSection(json.research),
+    ...codeSection(json.code),
+    ...knowledgeSection(json.knowledge),
     ...budgetSection(view),
     ...generationsSection(json.generations, view),
     ...reasoningSection(json.generations, view),
@@ -471,6 +481,24 @@ function assembled(lines: readonly string[]): string[] {
 function endingLine(ending: ExperienceEnding): string {
   const said = labelled(runStatusLabel, ending.status).said;
   return said.toLowerCase().endsWith(ending.reason.toLowerCase()) ? `${said}.` : `${said}: ${ending.reason}.`;
+}
+
+/** Every recorded code version, not a current filesystem listing. */
+function codeSection(code: readonly CodeView[]): string[] {
+  if (code.length === 0) return [];
+  return ['## Recorded code versions', '', ...table(
+    ['node', 'generation', 'attempt', 'source', 'path', 'sha256'],
+    code.map((item) => [item.nodeId, item.generation === undefined ? NOT_HELD : String(item.generation), String(item.attempt), item.sessionId, item.path, item.sha256]),
+  ), ''];
+}
+
+/** Only successful reads appear: a declared knowledge file is not presented as an Agent citation. */
+function knowledgeSection(knowledge: readonly KnowledgeView[]): string[] {
+  if (knowledge.length === 0) return [];
+  return ['## Knowledge actually read', '', ...table(
+    ['node', 'generation', 'attempt', 'file', 'purpose', 'source', 'sha256'],
+    knowledge.map((item) => [item.nodeId, item.generation === undefined ? NOT_HELD : String(item.generation), String(item.attempt), item.file, item.purpose, item.sessionId, item.sha256]),
+  ), ''];
 }
 
 /** Every meter of the Budget against the bound the Campaign was started under, in the card's words. */

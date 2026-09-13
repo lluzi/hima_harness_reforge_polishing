@@ -276,6 +276,10 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     const workshop = await d.read('run-workshop'); assert.ok(workshop.ok);
     assert.ok(view.code.length > 0);
     for (const code of view.code) assert.ok(workshop.text.includes(code.sha256.slice(0, 12)), workshop.text);
+    const material = await d.read('run-material'); assert.ok(material.ok);
+    assert.ok(material.text.includes(view.code[0]!.sha256), material.text);
+    assert.ok((await d.click(`material-${view.code[0]!.recordId}`)).ok);
+    assert.ok((await d.wait('material-content', 'set -eu', 12_000)).ok);
     assert.equal(await browser.evaluate('location.href'), url);
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
     await capture(d, browser, 'light-workshop');
