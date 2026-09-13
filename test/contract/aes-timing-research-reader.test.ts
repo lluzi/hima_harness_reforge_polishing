@@ -23,18 +23,18 @@ async function fixture(t: test.TestContext) {
     schema: 'aes-path-motifs/1', budget: 2,
     paths: [
       { id: 'p1', points: [{ instance: 'u1', master: 'M1', sourceLine: 1 }] }, { id: 'p2', points: [{ instance: 'u1', master: 'M1', sourceLine: 2 }] },
-      { id: 'p3', points: [{ instance: 'u1', master: 'M1', sourceLine: 3 }] }, { id: 'p4', points: [{ instance: 'u3', master: 'M3', sourceLine: 4 }] },
+      { id: 'p3', points: [{ instance: 'u1', master: 'M1', sourceLine: 30 }, { instance: 'u2', master: 'M2', sourceLine: 31 }] }, { id: 'p4', points: [{ instance: 'u3', master: 'M3', sourceLine: 4 }] },
       { id: 'p5', points: [{ instance: 'u2', master: 'M2', sourceLine: 5 }] }, { id: 'p6', points: [{ instance: 'u3', master: 'M3', sourceLine: 6 }] },
     ],
     candidates: [
-      { id: 'a', cells: ['u1'], masters: ['M1'], occurrences: [{ path: 'p1', begin: 1, sourceLines: [1] }, { path: 'p2', begin: 2, sourceLines: [2] }] },
-      { id: 'b', cells: ['u1', 'u2'], masters: ['M1', 'M2'], occurrences: [{ path: 'p3', begin: 3, sourceLines: [3] }] },
-      { id: 'c', cells: ['u3'], masters: ['M3'], occurrences: [{ path: 'p4', begin: 4, sourceLines: [4] }] },
+      { id: 'a', cells: ['u1'], masters: ['M1'], occurrences: [{ path: 'p1', begin: 0, sourceLines: [1] }, { path: 'p2', begin: 0, sourceLines: [2] }] },
+      { id: 'b', cells: ['u1', 'u2'], masters: ['M1', 'M2'], occurrences: [{ path: 'p3', begin: 0, sourceLines: [30, 31] }] },
+      { id: 'c', cells: ['u3'], masters: ['M3'], occurrences: [{ path: 'p4', begin: 0, sourceLines: [4] }] },
     ],
   };
   const samplePath = path.join(root, 'sample.json');
   await writeFile(samplePath, JSON.stringify(sample));
-  return { report, out: path.join(root, 'read.json'), digest: createHash('sha256').update(await readFile(samplePath)).digest('hex') };
+  return { report, sample, samplePath, out: path.join(root, 'read.json'), digest: createHash('sha256').update(await readFile(samplePath)).digest('hex') };
 }
 
 test('owner-controlled two-generation Workshop retains code and turns a measured overlap FAIL into PASS on synthetic finite data', async (t) => {
@@ -45,12 +45,13 @@ test('owner-controlled two-generation Workshop retains code and turns a measured
   await mkdir(flow, { recursive: true });
   await (await import('node:fs/promises')).cp(path.join(repoRoot, 'packs/aes-timing-research'), packDir, { recursive: true });
   const sample = { schema: 'aes-path-motifs/1', budget: 2, paths: [
-    ...['p1', 'p2', 'p3', 'p4'].map((id, i) => ({ id, points: [{ instance: 'u1', master: 'M1', sourceLine: i + 1 }] })),
-    { id: 'p5', points: [{ instance: 'u2', master: 'M2', sourceLine: 5 }] }, { id: 'p6', points: [{ instance: 'u3', master: 'M3', sourceLine: 6 }] }, { id: 'p7', points: [{ instance: 'u4', master: 'M4', sourceLine: 7 }] },
+    ...['p1', 'p2', 'p3'].map((id, i) => ({ id, points: [{ instance: 'u1', master: 'M1', sourceLine: i + 1 }] })),
+    ...['p4', 'p5'].map((id, i) => ({ id, points: [{ instance: 'u1', master: 'M1', sourceLine: 40 + i * 10 }, { instance: 'u2', master: 'M2', sourceLine: 41 + i * 10 }] })),
+    ...['p6', 'p7'].map((id, i) => ({ id, points: [{ instance: 'u3', master: 'M3', sourceLine: 60 + i * 10 }, { instance: 'u4', master: 'M4', sourceLine: 61 + i * 10 }] })),
   ], candidates: [
-    { id: 'a', cells: ['u1'], masters: ['M1'], occurrences: [{ path: 'p1', begin: 1, sourceLines: [1] }, { path: 'p2', begin: 2, sourceLines: [2] }, { path: 'p3', begin: 3, sourceLines: [3] }] },
-    { id: 'b', cells: ['u1', 'u2'], masters: ['M1', 'M2'], occurrences: [{ path: 'p4', begin: 4, sourceLines: [4] }, { path: 'p5', begin: 5, sourceLines: [5] }] },
-    { id: 'c', cells: ['u3', 'u4'], masters: ['M3', 'M4'], occurrences: [{ path: 'p6', begin: 6, sourceLines: [6] }, { path: 'p7', begin: 7, sourceLines: [7] }] },
+    { id: 'a', cells: ['u1'], masters: ['M1'], occurrences: [{ path: 'p1', begin: 0, sourceLines: [1] }, { path: 'p2', begin: 0, sourceLines: [2] }, { path: 'p3', begin: 0, sourceLines: [3] }] },
+    { id: 'b', cells: ['u1', 'u2'], masters: ['M1', 'M2'], occurrences: [{ path: 'p4', begin: 0, sourceLines: [40, 41] }, { path: 'p5', begin: 0, sourceLines: [50, 51] }] },
+    { id: 'c', cells: ['u3', 'u4'], masters: ['M3', 'M4'], occurrences: [{ path: 'p6', begin: 0, sourceLines: [60, 61] }, { path: 'p7', begin: 0, sourceLines: [70, 71] }] },
   ] };
   await writeFile(path.join(flow, 'sample.json'), JSON.stringify(sample));
   await (await import('node:fs/promises')).cp(path.join(repoRoot, 'packs/aes-timing-research/tools/baseline.py'), path.join(flow, 'baseline.py'));
@@ -148,3 +149,30 @@ for (const selection of [
     await assert.rejects(readFile(f.out), { code: 'ENOENT' });
   });
 }
+
+
+test('distinct physical cells may share a master, but occurrence indexing and ordered provenance must match exactly', async (t) => {
+  const f = await fixture(t);
+  f.sample.candidates[1]!.masters = ['M1', 'M1'];
+  f.sample.paths[2]!.points[1]!.master = 'M1';
+  await writeFile(f.samplePath, JSON.stringify(f.sample));
+  const digest = createHash('sha256').update(await readFile(f.samplePath)).digest('hex');
+  await writeFile(f.report, JSON.stringify({ sampleSha256: digest, selected: ['b'] }));
+  const valid = spawnSync('/usr/bin/python3', [reader, f.report, f.out], { encoding: 'utf8' });
+  assert.equal(valid.status, 0, valid.stderr);
+  assert.equal(JSON.parse(await readFile(f.out, 'utf8')).values[0].value, 2);
+  for (const [i, occurrence] of [
+    { path: 'p3', begin: 1, sourceLines: [30, 31] },
+    { path: 'p3', begin: 0, sourceLines: [31, 30] },
+    { path: 'p3', begin: 0, sourceLines: [30] },
+  ].entries()) {
+    const changed = structuredClone(f.sample);
+    changed.candidates[1]!.occurrences = [occurrence];
+    await writeFile(f.samplePath, JSON.stringify(changed));
+    const hash = createHash('sha256').update(await readFile(f.samplePath)).digest('hex');
+    await writeFile(f.report, JSON.stringify({ sampleSha256: hash, selected: ['b'] }));
+    const output = f.out + '.bad-' + i;
+    const invalid = spawnSync('/usr/bin/python3', [reader, f.report, output], { encoding: 'utf8' });
+    assert.notEqual(invalid.status, 0); await assert.rejects(readFile(output), { code: 'ENOENT' });
+  }
+});

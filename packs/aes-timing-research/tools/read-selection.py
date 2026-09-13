@@ -31,6 +31,8 @@ report, output = map(Path, sys.argv[1:3])
 sample_path = report.parent / "sample.json"
 selection = load_json(report)
 sample = load_json(sample_path)
+if not isinstance(sample, dict):
+    fail("sample must be an object")
 if not isinstance(selection, dict) or set(selection) != {"sampleSha256", "selected"}:
     fail("selection schema must contain only sampleSha256 and selected")
 if not isinstance(selection["sampleSha256"], str) or not isinstance(selection["selected"], list):
@@ -62,9 +64,9 @@ for candidate in candidates:
     if candidate["id"] in by_id:
         fail("sample has duplicate candidate id")
     cells, masters, occurrences = candidate.get("cells"), candidate.get("masters"), candidate.get("occurrences")
-    if not isinstance(cells, list) or not cells or len(cells) != len(set(cells)) or not all(isinstance(cell, str) for cell in cells):
+    if not isinstance(cells, list) or not cells or not all(isinstance(cell, str) for cell in cells) or len(cells) != len(set(cells)):
         fail(f"candidate {candidate['id']} has invalid cells")
-    if not isinstance(masters, list) or not masters or len(masters) != len(set(masters)) or not all(isinstance(master, str) for master in masters):
+    if not isinstance(masters, list) or len(masters) != len(cells) or not all(isinstance(master, str) for master in masters):
         fail(f"candidate {candidate['id']} has invalid masters")
     if not isinstance(occurrences, list) or not occurrences:
         fail(f"candidate {candidate['id']} has invalid occurrence references")
@@ -74,9 +76,13 @@ for candidate in candidates:
         points = path_points.get(item["path"])
         if points is None:
             fail(f"candidate {candidate['id']} references unknown path")
-        referenced = [point for point in points if point["sourceLine"] in item["sourceLines"]]
-        if len(referenced) != len(item["sourceLines"]) or any(point["instance"] not in cells or point["master"] not in masters for point in referenced):
-            fail(f"candidate {candidate['id']} occurrence does not match path point provenance")
+        begin = item["begin"]
+        referenced = points[begin:begin + len(cells)] if begin >= 0 else []
+        if (len(referenced) != len(cells)
+                or [point["instance"] for point in referenced] != cells
+                or [point["master"] for point in referenced] != masters
+                or [point["sourceLine"] for point in referenced] != item["sourceLines"]):
+            fail(f"candidate {candidate['id']} occurrence does not match the indexed path slice")
     by_id[candidate["id"]] = candidate
 ids = selection["selected"]
 if not all(isinstance(candidate_id, str) for candidate_id in ids):
