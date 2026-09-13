@@ -53,6 +53,10 @@ puts "=== XS28 POST-OPT SETUP @@ARM@@ ==="
 timeDesign -postRoute -outDir @@RPT_DIR@@/postopt -prefix post
 puts "=== XS28 POST-OPT HOLD @@ARM@@ ==="
 timeDesign -postRoute -hold -outDir @@RPT_DIR@@/posthold -prefix hold
+# Export the active post-route constraints from this Innovus session. This command
+# still requires the planned real-Site L4 bring-up on Innovus 23.14; local fixture
+# coverage proves only the adapter/evidence contract.
+write_sdc @@POSTROUTE_SDC@@
 set_default_switching_activity -input_activity @@SWITCHING_ACTIVITY@@
 report_power    > @@RPT_DIR@@/power.rpt
 reportGateCount > @@RPT_DIR@@/gatecount.rpt

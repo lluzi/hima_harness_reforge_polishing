@@ -230,6 +230,11 @@ def values_for(record, workspace, stage):
         log = logs(record, workspace, "pnr-" + arm + "_log").read_text(errors="replace")
         one(record, workspace, "postroute_db")
         one(record, workspace, "postroute_gds")
+        actual_clock = sdc_period(one(record, workspace, "postroute_sdc"))
+        mmmc = mmmc_identity(one(record, workspace, "mmmc_script:" + arm))
+        input_sdc = Path(mmmc["sdc"]).resolve()
+        if not input_sdc.is_file() or input_sdc.is_symlink() or sdc_period(input_sdc) != actual_clock:
+            raise ValueError("actual post-route clock differs from the PnR input SDC")
         timing(one(record, workspace, "postroute_timing_summary"))
         if "=== XS28 PNR DONE %s (GDS written) ===" % arm not in log:
             raise ValueError("PnR completion marker is absent")
@@ -267,12 +272,15 @@ def values_for(record, workspace, stage):
         gview, gwns = timing(one(record, workspace, "generated_postroute_timing", "inputs"))
         fsdc = one(record, workspace, "foundry_pnr_sdc", "inputs")
         gsdc = one(record, workspace, "generated_pnr_sdc", "inputs")
+        foundry_actual_sdc = one(record, workspace, "foundry_postroute_sdc", "inputs")
+        gactual_sdc = one(record, workspace, "generated_postroute_sdc", "inputs")
         fm = mmmc_identity(one(record, workspace, "foundry_mmmc", "inputs"))
         gm = mmmc_identity(one(record, workspace, "generated_mmmc", "inputs"))
         if Path(fm["sdc"]).resolve() != fsdc or Path(gm["sdc"]).resolve() != gsdc:
             raise ValueError("MMMC constraint mode does not bind the held arm SDC")
-        clock = sdc_period(fsdc)
-        if clock != sdc_period(gsdc) or fview != fm["view"] or gview != gm["view"]:
+        clock = sdc_period(foundry_actual_sdc)
+        if (clock != sdc_period(gactual_sdc) or clock != sdc_period(fsdc)
+                or clock != sdc_period(gsdc) or fview != fm["view"] or gview != gm["view"]):
             raise ValueError("post-route analysis view or clock differs from MMMC/SDC evidence")
         foundry_init = one(record, workspace, "foundry_pnr_init_script", "inputs").read_text(errors="replace")
         generated_init = one(record, workspace, "generated_pnr_init_script", "inputs").read_text(errors="replace")
