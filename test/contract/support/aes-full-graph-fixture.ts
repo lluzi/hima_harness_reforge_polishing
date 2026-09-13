@@ -149,10 +149,10 @@ export async function installAesFullGraphFixture(workspace: string, productionSt
   await writeFile(path.join(flow, 'stages.py'), syntheticStageAdapter);
 
   let tool = await readFile(edaWrapper, 'utf8');
-  const importMarker = 'import pathlib, re, sys';
+  const importMarker = 'import gzip, pathlib, re, sys';
   const masterMarker = "    master = 'XS_FIX_ZN' if arm == 'custom' else 'NAND2_X1'";
   if (!tool.includes(importMarker) || !tool.includes(masterMarker)) throw new Error('synthetic EDA fixture shape changed');
-  tool = tool.replace(importMarker, 'import json, pathlib, re, sys').replace(masterMarker, String.raw`    master = 'NAND2_X1'
+  tool = tool.replace(importMarker, 'import gzip, json, pathlib, re, sys').replace(masterMarker, String.raw`    master = 'NAND2_X1'
     if arm == 'custom':
         workspace = next(parent for parent in script.parents if (parent / 'flow' / 'inputs.json').is_file())
         char = json.loads((workspace / 'flow' / 'records' / 'characterize.json').read_text())

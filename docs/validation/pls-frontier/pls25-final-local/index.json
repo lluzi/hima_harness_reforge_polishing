@@ -153,5 +153,40 @@
     "file": "pls25-podv2/focused-domain.tap.gz",
     "uncompressedSha256": "5eeb2e0d8082ae720be7ad19a1ad82cd0c77fdecf01dde50e8c76cb0e65a0d61",
     "uncompressedBytes": 2403
+  },
+  {
+    "file": "pls25-checkpoint-gzip/typecheck.log.gz",
+    "uncompressedSha256": "5a5c2fa81f086f393126331b2666f6acd7762211cb89ea29549863b9ef6e45c2",
+    "uncompressedBytes": 30
+  },
+  {
+    "file": "pls25-checkpoint-gzip/reader-sync.log.gz",
+    "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uncompressedBytes": 0
+  },
+  {
+    "file": "pls25-checkpoint-gzip/focused-domain.tap.gz",
+    "uncompressedSha256": "ddb1e8898e19cb1038e3f8bbebd83f352a1b3d9f324548c1cdb9124b26c66173",
+    "uncompressedBytes": 2404
+  },
+  {
+    "file": "pls25-checkpoint-gzip/actual-report-parse.json.gz",
+    "uncompressedSha256": "4a252d68b2e7d89f8a1e61c9f7452d6040eff7a4f1c847f8e9bf1a2ee0d23bed",
+    "uncompressedBytes": 573
+  },
+  {
+    "file": "final-checkpoint-host.tap.gz",
+    "uncompressedSha256": "ce440fb9cbceece3132644e29cdbda0f0b451603d67765b540dd363987846422",
+    "uncompressedBytes": 1315
+  },
+  {
+    "file": "final-checkpoint-host-aligned.tap.gz",
+    "uncompressedSha256": "da20ed0825c68600b577a49bb6559e4a0df6b02adb32e7e73f4f7fe9c37dda78",
+    "uncompressedBytes": 664
+  },
+  {
+    "file": "final-checkpoint-types.log.gz",
+    "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uncompressedBytes": 0
   }
 ]

@@ -164,3 +164,12 @@ that `post.summary.gz` is compressed and has no embedded view line; the companio
 `post_all.tarpt.gz` records the actual analysis view. The retained unadmitted outputs are under
 `pls25-physical-site/unadmitted-pnr-output/`. They are calibration evidence, not an accepted
 physical comparison. The actual active SDC parses to 0.5 ns. No result has been resealed.
+
+Checkpoint/gzip calibration `4be1cc4` passed 9/9 focused cases, type checking and actual retained
+report parsing. A scoped independent review found no Standards/Spec issues in that delta.
+The full Host fixture initially stopped before Host boot because its import marker had not
+followed the new gzip import; aligning the fixture retained the production behavior and passed
+1/1 (`final-checkpoint-host-aligned.tap`). A new real init attempt then stopped in 20.776 seconds
+because Innovus links checkpoint libraries to declared Site inputs (LEF, Liberty, QRC and SDC).
+The strict all-symlink rejection therefore needs a narrowly bound linked-input contract. The
+rejected record `pnr-foundry-1789295447091904000` is retained; routing was not launched.
