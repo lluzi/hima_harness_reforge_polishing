@@ -6,7 +6,7 @@ import path from 'node:path';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
-import type { ExecutionActionRequest, RunRecord, LedgerRecord, RunView } from '@hima/harness';
+import type { ExecutionActionRequest, ExecutionActionResult, RunRecord, LedgerRecord, RunView } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
@@ -50,6 +50,22 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const input = await act('read', { executionId, output: 'numbers' });
     assert.equal(input.kind, 'accepted');
     assert.match(JSON.stringify(input.data), /3\\n7\\n11/);
+    const currentControl = host.ctx.hima.ledger.run(runId)!.control!;
+    const nativeRead = await host.ctx.tools.execute({ name: 'hima_execute', agent: owner,
+      callId: 'native-compact-read' as never, signal: AbortSignal.timeout(10_000),
+      arguments: { run: runId, action: 'read', executionId, output: 'numbers', expectedEpoch: currentControl.epoch,
+        expectedRevision: currentControl.revision, requestId: 'native-compact-read' } });
+    assert.equal(nativeRead.isError, false);
+    const rendered = nativeRead.content.find(block => block.type === 'text');
+    assert.ok(rendered?.type === 'text');
+    const display = JSON.parse(rendered.text);
+    const lossless = (nativeRead as unknown as { value: ExecutionActionResult }).value;
+    assert.deepEqual(display.data, lossless.data, 'actual action data survives rendering in full');
+    assert.equal(display.context.run.control.revision, lossless.context.run.control?.revision);
+    assert.deepEqual(display.context.available, lossless.context.available);
+    assert.equal(display.context.method.contract, undefined, 'each read does not repeat the full method before its data');
+    assert.ok(lossless.context.method?.contract, 'the original structured UI/API value remains lossless');
+    assert.ok(rendered.text.length < JSON.stringify(lossless).length);
     const knowledge = await act('knowledge', { executionId, file: 'sum.md' });
     assert.equal(knowledge.kind, 'accepted');
     assert.match(JSON.stringify(knowledge.data), /sum/i);

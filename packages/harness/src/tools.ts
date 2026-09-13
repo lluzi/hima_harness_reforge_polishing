@@ -26,6 +26,30 @@ type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]:
 /** Shared execution context crosses the same JSON boundary as the HTTP view. */
 function toolJson(value: object): Record<string, ToolJson> { return JSON.parse(JSON.stringify(value)) as Record<string, ToolJson>; }
 
+/** Keep action data visible to the model; the lossless value remains available to the UI/API. */
+function executionText(value: Record<string, ToolJson>): string {
+  const object = (x: ToolJson | undefined): Record<string, ToolJson> =>
+    x !== null && typeof x === 'object' && !Array.isArray(x) ? x : {};
+  const context = object(value.context);
+  const run = object(context.run);
+  const control = object(run.control);
+  const method = object(context.method);
+  const executions = Array.isArray(context.executions) ? context.executions.map(item => {
+    const e = object(item);
+    return { id: e.id, nodeId: e.nodeId, phase: e.phase, attempt: e.attempt,
+      branchId: e.branchId, jobSession: e.jobSession, result: e.result };
+  }) : [];
+  return JSON.stringify({ runId: value.runId, kind: value.kind, reason: value.reason,
+    receipt: value.receipt, data: value.data,
+    context: { run: { id: run.id, status: run.status, generation: run.generation,
+      currentNode: run.currentNode, goal: run.goal, strategy: run.strategy, budget: run.budget,
+      loop: run.loop, control: { owner: control.owner, epoch: control.epoch, revision: control.revision,
+        paused: control.paused, stop: control.stop } }, available: context.available, executions,
+      reason: context.reason, method: { id: method.id, version: method.version, digest: method.digest } },
+    more: 'hima_context provides the full reference graph and recorded evidence when needed',
+  });
+}
+
 /** One tool as `ctx.tools.register` takes it: whatever `defineTool` makes of a definition. */
 type ToolDefinition = ReturnType<typeof defineTool>;
 
@@ -218,7 +242,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         rationale: { type: 'string', description: 'Reason for the Explore decision, grounded in cited facts; submit with decision on complete.' },
         cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete.' },
       },
-      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: executionText(value) }] },
       execute: async (args, execution) => {
         if (!execution.agent) throw new Error('this operation requires a live conversational Agent');
         const { run, strategy, ...fields } = args;
