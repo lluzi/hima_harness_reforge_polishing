@@ -31,8 +31,7 @@ puts "=== XS28 well taps placed @@ARM@@ ==="
 
 setPlaceMode -place_global_place_io_pins true
 place_opt_design
-create_ccopt_clock_tree_spec
-ccopt_design
+clock_opt_design
 setNanoRouteMode -routeWithTimingDriven true
 setNanoRouteMode -envResistanceFromCapTable true
 routeDesign -globalDetail
