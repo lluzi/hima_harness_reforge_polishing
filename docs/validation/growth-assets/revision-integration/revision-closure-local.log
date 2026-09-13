@@ -1,0 +1,81 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/revision.host.test.ts test/contract/agent-workshop.host.test.ts test/contract/knowledge-reuse.host.test.ts
+local: 3 selected; 60 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: a closing reserve stays inside the hard box and admits analysis while refusing new node work
+ok 1 - a closing reserve stays inside the hard box and admits analysis while refusing new node work
+  ---
+  duration_ms: 5972.83175
+  type: 'test'
+  ...
+# Subtest: research writer charges rewrites and refused calls before Site effects across the whole Run
+ok 2 - research writer charges rewrites and refused calls before Site effects across the whole Run
+  ---
+  duration_ms: 1447.343
+  type: 'test'
+  ...
+# Subtest: the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+ok 3 - the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+  ---
+  duration_ms: 5116.325875
+  type: 'test'
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and launches unchanged
+ok 4 - a begun Workshop draft retains its original author's code across handoff and launches unchanged
+  ---
+  duration_ms: 1199.695708
+  type: 'test'
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+ok 5 - a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+  ---
+  duration_ms: 1075.208125
+  type: 'test'
+  ...
+# Subtest: recommend returns and records the matching negative archive before code, while mismatches and corrupt sources never auto-inject
+ok 6 - recommend returns and records the matching negative archive before code, while mismatches and corrupt sources never auto-inject
+  ---
+  duration_ms: 10706.685417
+  type: 'test'
+  ...
+# Subtest: owner revision preserves finished Workshop bytes and seeds the affected rerun without launching it
+ok 7 - owner revision preserves finished Workshop bytes and seeds the affected rerun without launching it
+  ---
+  duration_ms: 6633.381917
+  type: 'test'
+  ...
+# Subtest: a completed real fork reopens only the revised branch and keeps sibling evidence current
+ok 8 - a completed real fork reopens only the revised branch and keeps sibling evidence current
+  ---
+  duration_ms: 4867.107959
+  type: 'test'
+  ...
+# Subtest: strategy and shared workspace revisions derive every declared consumer before writing
+ok 9 - strategy and shared workspace revisions derive every declared consumer before writing
+  ---
+  duration_ms: 787.72225
+  type: 'test'
+  ...
+# Subtest: restart completes an applied revision control prefix and fences semantically tampered facts
+ok 10 - restart completes an applied revision control prefix and fences semantically tampered facts
+  ---
+  duration_ms: 1495.8775
+  type: 'test'
+  ...
+# Subtest: restart finishes admitted Workshop bytes interrupted before the applied record save
+ok 11 - restart finishes admitted Workshop bytes interrupted before the applied record save
+  ---
+  duration_ms: 1684.217917
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 42790.409083
+Test boot attempts: {"host-process":0,"host-in-process":15,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 42.885 s; pass/fail/skip counts are in the TAP summary above

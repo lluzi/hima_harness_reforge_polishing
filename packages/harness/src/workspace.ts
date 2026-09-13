@@ -438,6 +438,31 @@ export interface WorkspaceRevisionAsset {
 
 const sha256Of = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 
+/** Read-only admission check for revision sources. Applying repeats these checks because a Site can
+ * change after admission; this first pass keeps a plainly stale proposal from becoming an admitted
+ * interrupted effect when no revision byte has been written. */
+export async function verifyWorkspaceRevisionSources(site: ReturnType<typeof loadSite>, workspace: string,
+  revisionId: string, changes: readonly WorkspaceRevisionChange[]): Promise<void> {
+  const channel = channelFor(site); const p = pathsOf(site);
+  const root = p.join(workspace, '.hima', 'revisions', revisionId);
+  for (const change of changes) {
+    const target = change.scope === 'workspace' ? p.join(workspace, change.logicalPath) : change.sourcePath;
+    const decided = await decideRead(site, target, channel);
+    if (!decided.ok) throw new Error(`revision source ${target} cannot be read: ${decided.reason}`);
+    const currentSha = sha256Of(await channel.readFile(decided.absPath));
+    const afterSha = sha256Of(Buffer.from(change.content, 'utf8'));
+    if (currentSha === change.beforeSha256) continue;
+    if (change.scope !== 'workspace' || currentSha !== afterSha) {
+      throw new Error(`revision source ${decided.absPath} is ${currentSha}, not declared ${change.beforeSha256}`);
+    }
+    const held = p.join(root, 'before', change.logicalPath);
+    const old = await decideRead(site, held, channel);
+    if (!old.ok || sha256Of(await channel.readFile(old.absPath)) !== change.beforeSha256) {
+      throw new Error(`revision target changed but retained before-version ${held} is unavailable`);
+    }
+  }
+}
+
 /** Preserve both byte versions and apply only workspace-scoped changes. Workshop history is never
  * overwritten; node-turns copies its accepted after-version into each new execution directory. */
 export async function applyWorkspaceRevision(site: ReturnType<typeof loadSite>, workspace: string, revisionId: string,

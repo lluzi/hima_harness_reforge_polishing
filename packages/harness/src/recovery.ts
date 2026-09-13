@@ -26,7 +26,7 @@ import { advance, endBudgetExhausted, attemptOf, attemptOfSession, currentAttemp
 import { killDidNotTake, type Driving, type FabricDeps } from './node-turns.js';
 import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
-import { drive, controlling, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
+import { drive, controlling, reconcileAppliedRevisions, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
 import { owesAnExperience, owesRunAssets, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
 
@@ -187,7 +187,11 @@ async function reconcileControlledRun(deps: FabricDeps, snapshot: RunRecord): Pr
   let found: ReconcileOutcome['found'] = 'nothing-open';
   const details: string[] = [];
   const uncertainExecutions: string[] = [];
-  for (const execution of Object.values(snapshot.control!.executions)) {
+  const revisions = await reconcileAppliedRevisions(deps, snapshot.id);
+  for (const revisionId of revisions.repaired) details.push(`revision ${revisionId}: completed its recorded applied effect; no business work was started`);
+  for (const problem of revisions.problems) details.push(`revision recovery refused: ${problem}`);
+  const recoveredSnapshot = existingRun(deps.ledger, snapshot.id);
+  for (const execution of Object.values(recoveredSnapshot.control!.executions)) {
     if (execution.supersededBy !== undefined) continue;
     if (execution.phase !== 'working' && execution.phase !== 'uncertain') continue;
     const requests = Object.entries(existingRun(deps.ledger, snapshot.id).control!.requests)
@@ -244,7 +248,7 @@ async function reconcileControlledRun(deps: FabricDeps, snapshot: RunRecord): Pr
   const launched = deps.ledger.records({ runId: run.id, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched' && record.nodeId !== undefined).length;
   const held = existingRun(deps.ledger, run.id).meters?.jobsLaunched ?? 0;
   if (launched > held) await advance(deps.ledger, run.id, { jobs: launched - held });
-  return { runId: run.id, found: uncertainExecutions.length > 0 ? 'uncertain' : found, detail: details.join('; ') || 'Agent-owned context retained; waiting for an explicit business action from its owner' };
+  return { runId: run.id, found: uncertainExecutions.length > 0 || revisions.problems.length > 0 ? 'uncertain' : found, detail: details.join('; ') || 'Agent-owned context retained; waiting for an explicit business action from its owner' };
 }
 
 /** Called only under Fabric's existing admission queue. Verification records present evidence. */
