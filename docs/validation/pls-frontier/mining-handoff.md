@@ -1,7 +1,9 @@
 # PLS-25 AES full-mining handoff
 
-Status: implementation and bounded Site bring-up in progress. PLS-25 / #28 remains open;
-no v3 release or full physical-performance acceptance is claimed at this checkpoint.
+Status: PLS-25 engineering acceptance is complete. Version 3 was sealed through the native
+release tool and independently checked against the current source. The bounded real result is
+negative: no adoption, no setup closure, and nonzero checker-reported geometry entries.
+This is not full physical-performance acceptance; PLS-18 remains future work.
 PLS-23, PLS-08, PLS-09 and PLS-24 are closed, with their separate probe/research handoffs retained.
 
 ## Method and execution boundaries
@@ -173,3 +175,74 @@ followed the new gzip import; aligning the fixture retained the production behav
 because Innovus links checkpoint libraries to declared Site inputs (LEF, Liberty, QRC and SDC).
 The strict all-symlink rejection therefore needs a narrowly bound linked-input contract. The
 rejected record `pnr-foundry-1789295447091904000` is retained; routing was not launched.
+
+## Final v3 acceptance and negative-result asset
+
+Method digest: `54dced57bbf26eff2d3ff5f832bb4a07ebe39ac5b8bdac44434015650ec438ed`.
+The native TEST/release uses original local Run `run-8d564e1f-b71e-495f-a3b3-9b3886558dde`,
+which explicitly labels its external boundaries synthetic. Its full graph passed 1/1 in 61.197
+seconds, one Host, zero model/EDA/SSH/Electron calls. A fresh native Host sealed the unchanged
+method with zero model requests and no new business Jobs; its duration was not separately timed.
+See `aes-full-method-release/` for exact TEST, VERSION, release receipt and original local Run.
+The local fixture's `ended-goal-met` is not the real Site trial's result.
+
+All twelve downstream production-stage readers independently accepted the actual held Site
+records and derived non-null values. See [reader audit](pls25-physical-site/readers.json),
+[raw reports and stage index](pls25-physical-site/index.json), and
+[checker breakdown](pls25-physical-site/verification-breakdown.json). These were finite
+standalone bring-up calls, not an invented full native Site Campaign.
+
+| Observation | Foundry arm | Generated-library arm |
+| --- | ---: | ---: |
+| Asked and active clock period | 0.5 ns | 0.5 ns |
+| Actual post-route setup/all WNS | −0.015 ns | −0.015 ns |
+| Generated masters visible in synthesis/P&R | 0 (expected) | 2 |
+| Adopted generated instances | not applicable | 0 |
+| Cell-mode checker-reported entries | 35,540 | 37,019 |
+
+Declared common conditions match, with P&R condition identity
+`c8a42fe054922162b3d6de8ccc632ab93a989c2989374680cafcf66a9935fe3c`.
+The measured WNS delta is 0.000 ns; it is not a measured Fmax gain. The independent comparison
+returns `full_constraint_failures=3`: setup did not close, no generated cell was adopted, and
+the declared geometry check reported violations. Its `eq 0` final validity rule therefore cannot
+pass. No real Goal-met verdict or full native Site ending is fabricated.
+
+Successful tool timings: foundry P&R 393.219 seconds, generated P&R 419.445 seconds; two fresh
+verification sessions together 54.275 seconds; final comparison 1.309 seconds. The physical
+bring-up index retains 20 stage invocations including failed/superseded attempts, totaling
+2,244.493 seconds including wrapper/SSH overhead; the six original mining invocations are
+separately retained and total 239.243 seconds. Additional version/library diagnostics have their
+own retained commands and logs. Stage success means the command/evidence contract completed;
+it does not mean its scientific constraints or geometry check passed.
+
+Both P&R arms ran code snapshot `0d8dd24a160e...`. The final comparison/reader snapshot
+`b5c6e3c2389e...` adds only the setup-violation-count validity check and keeps the same physical
+method. It executes from a fresh immutable staged-code directory against the original accepted
+workspace, preserving checkpoint link targets and reusing the raw results without rerouting.
+Every receipt names its actual argv/code snapshot. Large DB/GDS and licensed inputs stay on the
+Site with hashes; checkpoint manifests, relevant raw reports, algorithms and evidence are retained
+here. Both prior snapshots and every failed record remain intact.
+
+### What this failure teaches, and what remains a hypothesis
+
+The library was accepted and seen by DC and Innovus, so invisibility is ruled out for these two
+offered cells in this trial. The exact netlist-to-master projection proves they were not adopted.
+It does not identify why: mapping eligibility, estimated cell cost/timing and the relationship
+between mined opportunities and the validation constraints need separate experiments. More
+physical runs alone would not distinguish these hypotheses.
+
+The foundry-only arm already reports 35,540 cell-mode checker entries. 21,297 of those refer to
+two objects on the same instance; the principal categories are SHORT, minimum area and via
+enclosure. The generated arm shows the same dominant categories and zero adopted generated
+cells. These are checker-reported entries, not established manufacturing defects. Before drawing
+geometry or algorithm conclusions, PLS-18 should establish a known-good baseline interpretation
+of the technology LEF, cell abstracts and checker mode. No automatic waiver or classification of
+these entries as harmless has been made. Neither report reached the configured 1,000,000-entry
+limit or indicated truncation.
+
+This bounded trial therefore does not establish that the campaign premise is wrong or that the
+six search strategies are generally ineffective. It provides reproducible negative evidence and
+a concrete next validation order: calibrate the baseline geometry check, investigate mapping of
+the admitted candidate cells, then spend a larger budget on measured performance exploration.
+The layout VT profile remains unqualified and Liberty characterization remains a learned-model
+prediction. Full pilot/second knowledge use remains PLS-18 and its dependencies.

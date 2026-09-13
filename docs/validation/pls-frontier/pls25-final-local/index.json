@@ -188,5 +188,80 @@
     "file": "final-checkpoint-types.log.gz",
     "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "uncompressedBytes": 0
+  },
+  {
+    "file": "pls25-checkpoint-links/typecheck.log.gz",
+    "uncompressedSha256": "596a8fddb7aac82dee74ae01f95eeb7dd2b33e0e59ff0cdbeef261c0044fb12f",
+    "uncompressedBytes": 30
+  },
+  {
+    "file": "pls25-checkpoint-links/reader-sync.log.gz",
+    "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uncompressedBytes": 0
+  },
+  {
+    "file": "pls25-checkpoint-links/focused-domain.tap.gz",
+    "uncompressedSha256": "0226ef9f58486312cfd2fb658b4b5425e66c49c74e69c2399ca4c0020f6cc137",
+    "uncompressedBytes": 2400
+  },
+  {
+    "file": "pls25-checkpoint-phases/typecheck.log.gz",
+    "uncompressedSha256": "ef4ce2e14b84a3d2259ab58f751f80e0f84123af63240bd777f74f4afe4598f1",
+    "uncompressedBytes": 30
+  },
+  {
+    "file": "pls25-checkpoint-phases/reader-sync.log.gz",
+    "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uncompressedBytes": 0
+  },
+  {
+    "file": "pls25-checkpoint-phases/focused-domain.tap.gz",
+    "uncompressedSha256": "028305910a1d0ca2012b00f414243855bb75a92cc711666565a6abbefd2bbdc3",
+    "uncompressedBytes": 2400
+  },
+  {
+    "file": "final-links-host.tap.gz",
+    "uncompressedSha256": "0e915672c7c8812a149d5ec777ab62132516b2c6b524655518df979a7683c4c5",
+    "uncompressedBytes": 667
+  },
+  {
+    "file": "final-phases-host.tap.gz",
+    "uncompressedSha256": "3e8527f27ce60333eb032fe7e1dc96df12fbdcb47f609f7bdf916b172986a40c",
+    "uncompressedBytes": 667
+  },
+  {
+    "file": "pls25-setup-closure/typecheck.log.gz",
+    "uncompressedSha256": "1bf9b1f26bb52c581254ac3ff6f22b8bdff18d24aaf6d249f59fbec0ca4172cc",
+    "uncompressedBytes": 30
+  },
+  {
+    "file": "pls25-setup-closure/reader-sync.log.gz",
+    "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uncompressedBytes": 0
+  },
+  {
+    "file": "pls25-setup-closure/focused-domain.tap.gz",
+    "uncompressedSha256": "c3a38ffaf3e1799aa509c24017e2c60fdf53e033fd6c5221fee4929d22d5e40c",
+    "uncompressedBytes": 2402
+  },
+  {
+    "file": "final-closure-host.tap.gz",
+    "uncompressedSha256": "cc1ef40f7e45ef9ca05b3f7d4648ae4ad71284367cbe87b89547bf7a1bf61e65",
+    "uncompressedBytes": 667
+  },
+  {
+    "file": "full-method-release-candidate.log.gz",
+    "uncompressedSha256": "47a6d42d80f8835a45f08ed46ed5bfcde3d23771aa295e624738c1787425b999",
+    "uncompressedBytes": 90
+  },
+  {
+    "file": "final-seams.log.gz",
+    "uncompressedSha256": "f669e55f8efa23a127b40e7f17717b76114c3507b18d542d16d6e65d1f7d1a73",
+    "uncompressedBytes": 54
+  },
+  {
+    "file": "final-boundary.log.gz",
+    "uncompressedSha256": "807be28016a57c65dab07bfe4e7ed82b00372e32f13110487d8918020260e981",
+    "uncompressedBytes": 240
   }
 ]

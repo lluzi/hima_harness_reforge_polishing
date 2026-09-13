@@ -1,0 +1,46 @@
+{
+  "scope": "read-only aggregation of checker-reported entries, not confirmed manufacturing defects or foundry signoff",
+  "modelRequests": 0,
+  "edaJobs": 0,
+  "rows": [
+    {
+      "arm": "foundry",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/verify/run-9bca9cfb8a0f4144bb1e672146df6dab/foundry_verify_drc.rpt",
+      "sha256": "83cd608a6d8fc25aa1c6e19529856569b6426b38ecf98806c50413a71f6e5b4a",
+      "reportedViolations": 35540,
+      "categories": {
+        "MAR": 14093,
+        "VIAENCLOSURE": 7307,
+        "SHORT": 14118,
+        "CUTSPACING": 11,
+        "SPACING": 7,
+        "EndOfLine": 4
+      },
+      "objectRelations": {
+        "single-object": 14242,
+        "same-instance": 21297,
+        "multiple-instances": 1
+      }
+    },
+    {
+      "arm": "generated",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/verify/run-9bca9cfb8a0f4144bb1e672146df6dab/generated_verify_drc.rpt",
+      "sha256": "b2230efe3f5b3cad5e93ce72beb73ed69a7035b703171cca823d20606c0afb4e",
+      "reportedViolations": 37019,
+      "categories": {
+        "MAR": 14576,
+        "VIAENCLOSURE": 7571,
+        "SHORT": 14606,
+        "CUTSPACING": 249,
+        "SPACING": 11,
+        "MINSTEP": 1,
+        "EndOfLine": 5
+      },
+      "objectRelations": {
+        "single-object": 15073,
+        "same-instance": 21939,
+        "multiple-instances": 7
+      }
+    }
+  ]
+}

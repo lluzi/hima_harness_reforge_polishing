@@ -1,0 +1,8 @@
+{
+  "encoding": "gzip",
+  "file": "local-run.json.gz",
+  "source": ".hima-tmp/pls-frontier/native-v3-final-closure/evidence.json",
+  "uncompressedSha256": "307aa4db09f0437dc29f3b751647b383d5584851a32048b595b07438c989ce77",
+  "uncompressedBytes": 457978,
+  "scope": "original complete local Run with synthetic external tools; not the actual Site performance result"
+}

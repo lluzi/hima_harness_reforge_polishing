@@ -1,0 +1,313 @@
+{
+  "passed": true,
+  "scope": "independent production readers over retained real Site stage outputs, not a native full Campaign",
+  "modelRequests": 0,
+  "newEdaJobs": 0,
+  "workspace": "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000",
+  "readerSha256": "58006a69742601a0766e75f24f4645744461705577c5379340d2db2a5ac3c241",
+  "rows": [
+    {
+      "stage": "merge",
+      "recordSha256": "5c4e464671505d1e430de4bb5a002ab2c82be93c370ba8793cdb9768f6d01d43",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/merge.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/merge.json",
+        "merge"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "candidate_count",
+            "unit": "count",
+            "value": 2
+          }
+        ]
+      }
+    },
+    {
+      "stage": "generate",
+      "recordSha256": "476dade206bad71c3791b15d548642a6121a5785f69c22398145e33a72299adc",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/generate.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/generate.json",
+        "generate"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "generated_cell_count",
+            "unit": "count",
+            "value": 2
+          }
+        ]
+      }
+    },
+    {
+      "stage": "layout",
+      "recordSha256": "6bc55bdd507a67bd9859daa483b76a2ea824f3af8bf7981105527436e50f8a95",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/layout.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/layout.json",
+        "layout"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "abstract_cell_count",
+            "unit": "count",
+            "value": 2
+          }
+        ]
+      }
+    },
+    {
+      "stage": "characterize",
+      "recordSha256": "c759ce33ae0c616253d361b3a246eaefac364b0136213d1edd8bd92a4f0c7ef2",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/characterize.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/characterize.json",
+        "characterize"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "predicted_cell_count",
+            "unit": "count",
+            "value": 2
+          }
+        ]
+      }
+    },
+    {
+      "stage": "compile",
+      "recordSha256": "33e4a7377056eadb6d8787ce0c0dbb030582d5f9ac6357223f894fe76f36819d",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/compile.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/compile.json",
+        "compile"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "lc_accepted",
+            "unit": "count",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "stage": "foundry-synth",
+      "recordSha256": "b199b463c1208403e8e31479f495b3e0770c34b2c0459a68bb53af2c54eaf393",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/foundry-synth.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/foundry-synth.json",
+        "foundry-synth"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "library_visible",
+            "unit": "count",
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "stage": "custom-synth",
+      "recordSha256": "c0a9ffa6a51653a2f7f5b52fcddc59e8b6fac20a0dcf165694467f8673ad3de2",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/custom-synth.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/custom-synth.json",
+        "custom-synth"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "library_visible",
+            "unit": "count",
+            "value": 2
+          }
+        ]
+      }
+    },
+    {
+      "stage": "adoption",
+      "recordSha256": "0561133a4f7ae157663a8913885de2000d7ae80fe60fca022dec3f7c26ef5dbb",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/adoption.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/adoption.json",
+        "adoption"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "library_visible",
+            "unit": "count",
+            "value": 2
+          },
+          {
+            "type": "adopted_instance_count",
+            "unit": "count",
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "stage": "pnr-foundry",
+      "recordSha256": "3375ea84c58c6ab9f2d6cfb05029967faf78f9aa509a0bf1721cba5ad8d4bd92",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/pnr-foundry.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/pnr-foundry.json",
+        "pnr-foundry"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "pnr_completed",
+            "unit": "count",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "stage": "pnr-generated",
+      "recordSha256": "c5a68c05671e0e013ca2eafac813d2938b2f4708ec3abd600b31c35f0cc75eda",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/pnr-generated.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/pnr-generated.json",
+        "pnr-generated"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "pnr_completed",
+            "unit": "count",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "stage": "verify",
+      "recordSha256": "431fa5f53ee9950d654306619df2baf8d154b605a954f2999e73227d1484ef0c",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/verify.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/verify.json",
+        "verify"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "verification_error_count",
+            "unit": "count",
+            "value": 72559
+          }
+        ]
+      }
+    },
+    {
+      "stage": "compare",
+      "recordSha256": "5b396beca3c0912f33a13a75ab31bc8b51438df0e88db9557aa32fb6ebe08466",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-inputs/aes-dtco-code-b5c6e3c2389e/read-stage.py",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/records/compare.json",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/audits/readers-b2e7d56459c5479cb9b4688f675e0786/compare.json",
+        "compare"
+      ],
+      "exitCode": 0,
+      "reading": {
+        "values": [
+          {
+            "type": "clock_period",
+            "unit": "ns",
+            "value": 0.5
+          },
+          {
+            "mode": "setup",
+            "scope": "all",
+            "type": "setup_wns",
+            "unit": "ns",
+            "value": -0.015
+          },
+          {
+            "mode": "setup",
+            "scope": "all",
+            "type": "foundry_setup_wns",
+            "unit": "ns",
+            "value": -0.015
+          },
+          {
+            "mode": "setup",
+            "scope": "all",
+            "type": "setup_wns_delta",
+            "unit": "ns",
+            "value": 0.0
+          },
+          {
+            "type": "matched_conditions",
+            "unit": "count",
+            "value": 1
+          },
+          {
+            "type": "library_visible",
+            "unit": "count",
+            "value": 1
+          },
+          {
+            "type": "adopted_instance_count",
+            "unit": "count",
+            "value": 0
+          },
+          {
+            "type": "verification_error_count",
+            "unit": "count",
+            "value": 72559
+          },
+          {
+            "type": "full_constraint_failures",
+            "unit": "count",
+            "value": 3
+          }
+        ]
+      }
+    }
+  ]
+}

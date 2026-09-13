@@ -1,0 +1,41 @@
+{
+  "scope": "read-only diagnostic inventory of vendor links in rejected init checkpoint; not an accepted stage",
+  "checkpoint": "/data/eda/project/hima_harness/polishing-runs/dtco-checkpoint-1789295433870181000/flow/artifacts/pnr-foundry/run-dac33a9342854f1ba0a59cb21f8f8df0/DBS_foundry/init.enc.dat",
+  "links": [
+    {
+      "path": "libs/lef/tcbn28hpcplusbwp40p140.lef",
+      "link": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/lef/tcbn28hpcplusbwp40p140_110a/lef/tcbn28hpcplusbwp40p140.lef",
+      "resolved": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/lef/tcbn28hpcplusbwp40p140_110a/lef/tcbn28hpcplusbwp40p140.lef",
+      "bytes": 9201321,
+      "sha256": "44f50b6fcd71f523be5c8e62cd61ed88b27fc3ddd51fd59793fe0103bd393a4e"
+    },
+    {
+      "path": "libs/lef/tsmcn28_10lm5X2Y2ZRDL.tlef",
+      "link": "/data/eda/project/tsmc28_prtf/gen_p140/tsmcn28_10lm5X2Y2ZRDL.tlef",
+      "resolved": "/data/eda/project/tsmc28_prtf/gen_p140/tsmcn28_10lm5X2Y2ZRDL.tlef",
+      "bytes": 166376,
+      "sha256": "07087310c53e7439ffbf40c26174f0bddbec583cc5fd157ac683ba547250aab2"
+    },
+    {
+      "path": "libs/mmmc/base.dc.sdc",
+      "link": "/data/eda/project/hima_harness/polishing-runs/dtco-checkpoint-1789295433870181000/flow/artifacts/foundry-synth/run-5043c0aa836d45989ab7d7c638e00060/results/base.dc.sdc",
+      "resolved": "/data/eda/project/hima_harness/polishing-runs/dtco-checkpoint-1789295433870181000/flow/artifacts/foundry-synth/run-5043c0aa836d45989ab7d7c638e00060/results/base.dc.sdc",
+      "bytes": 25036,
+      "sha256": "97c01915837b001114c0e364792e784462d9ce34442b050966b51717ba1e37cd"
+    },
+    {
+      "path": "libs/mmmc/rc_foundry/qrcTechFile",
+      "link": "/data/eda/project/techlib/tsmc28/TF/qrcTechFile",
+      "resolved": "/data/eda/project/techlib/tsmc28/TF/qrcTechFile",
+      "bytes": 99806168,
+      "sha256": "9783442472f884a18d75e4e8f72caeaafaa3126412068d78d0541c0db4ad393a"
+    },
+    {
+      "path": "libs/mmmc/tcbn28hpcplusbwp40p140tt0p9v25c.lib",
+      "link": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib",
+      "resolved": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib",
+      "bytes": 87283165,
+      "sha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "status": "passed",
+  "scope": "L2 complete graph with explicit synthetic external boundaries",
+  "from": {
+    "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pls-frontier/native-v3-final-closure/evidence.json",
+    "sha256": "307aa4db09f0437dc29f3b751647b383d5584851a32048b595b07438c989ce77"
+  },
+  "runId": "run-8d564e1f-b71e-495f-a3b3-9b3886558dde",
+  "methodDigest": "54dced57bbf26eff2d3ff5f832bb4a07ebe39ac5b8bdac44434015650ec438ed",
+  "owner": "session-64e437c6-1fc6-4578-851a-b0692eb5f65c",
+  "packFolder": "/private/tmp/hima-home-x3lmeS/hima/packs/aes-tsmc28-dtco",
+  "hosts": 1,
+  "modelRequests": 0,
+  "newResearchJobs": 0,
+  "realEdaJobs": 0,
+  "release": {
+    "isError": false,
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"kind\":\"released\",\"pack\":\"aes-tsmc28-dtco\",\"version\":\"3\",\"released\":\"2026-09-13T11:01:44.518Z\",\"run\":\"run-8d564e1f-b71e-495f-a3b3-9b3886558dde\",\"files\":68,\"file\":\"/private/tmp/hima-home-x3lmeS/hima/packs/aes-tsmc28-dtco/VERSION.yml\",\"rewritten\":false}"
+      }
+    ],
+    "value": {
+      "kind": "released",
+      "pack": "aes-tsmc28-dtco",
+      "version": "3",
+      "released": "2026-09-13T11:01:44.518Z",
+      "run": "run-8d564e1f-b71e-495f-a3b3-9b3886558dde",
+      "files": 68,
+      "file": "/private/tmp/hima-home-x3lmeS/hima/packs/aes-tsmc28-dtco/VERSION.yml",
+      "rewritten": false
+    }
+  },
+  "testSha256": "76b39b810bb49cfb15ee6f3d149e42c5da704d90cf895c977e5772155371a2cc",
+  "versionSha256": "9e382f8d7b98777d7ca45aa83384481d770dfbc5d0690e4a906f41866fc40a93"
+}
