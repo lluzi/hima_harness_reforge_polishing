@@ -2,7 +2,7 @@
 // It does not claim a production AES mine, learned characterization model, or EDA result.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { cp, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import type { ExecutionActionRequest } from '@hima/harness';
@@ -36,10 +36,25 @@ const implementSelection = (template: string): string => {
 };
 
 test('one native owner explicitly drives the bounded v3 AES graph through the Host', async (t) => {
-  const home = await localHome(t, { sleepSeconds: 0, parallelJobs: 1,
-    licences: { 'Library-Compiler': 1, 'Design-Compiler': 1, Innovus: 1 } });
-  assert.ok(home);
-  const fixture = await createAesDomainFixture();
+  const capture = process.env.HIMA_AES_CAPTURE_OUT ? path.resolve(process.env.HIMA_AES_CAPTURE_OUT) : undefined;
+  const { home, fixture } = await (async () => {
+    const previousTmpdir = process.env.TMPDIR;
+    try {
+      // The group runner removes its own temporary root. Retained delivery inputs therefore live
+      // outside that root; tmux sockets and boot counters still use the group's existing settings.
+      if (capture) process.env.TMPDIR = '/private/tmp';
+      const home = await localHome(t, { sleepSeconds: 0, parallelJobs: 1,
+        licences: { 'Library-Compiler': 1, 'Design-Compiler': 1, Innovus: 1 } });
+      assert.ok(home);
+      return { home, fixture: await createAesDomainFixture() };
+    } finally {
+      if (previousTmpdir === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = previousTmpdir;
+    }
+  })();
+  if (capture) {
+    await mkdir(capture, { recursive: false });
+    await writeFile(path.join(capture, 'preparation.json'), JSON.stringify({ home: home.h.home, fixture: fixture.workspace }) + '\n');
+  }
   let host: Awaited<ReturnType<typeof bootInProcess>> | undefined;
   let runId: string | undefined;
   try {
@@ -160,8 +175,20 @@ test('one native owner explicitly drives the bounded v3 AES graph through the Ho
       'each launched Workshop CodeRecord identifies the exact bytes supplied by the same owner');
     assert.ok((context().run.meters?.jobsLaunched ?? 0) > routes.length,
       `the Host recorded the bounded local jobs it launched: ${JSON.stringify(context().run.meters)}`);
+    // An opt-in delivery checkpoint keeps this same tested home and its Site inputs. It adds no
+    // second Run or extra business work; native TEST/release can then audit these original facts.
+    if (capture) {
+      await writeFile(path.join(capture, 'evidence.json'), JSON.stringify({
+        status: 'passed', passed: true, scope: 'L2 complete graph with explicit synthetic external boundaries',
+        home: home.h.home, fixture: fixture.workspace, owner: String(native.id),
+        agentOptions: native.options, packFolder: installedPack,
+        run: context().run, records: recordsOf(host, runId),
+        hosts: 1, modelRequests: 0, electron: 0, ssh: 0, realEdaJobs: 0,
+      }, null, 2) + '\n');
+    }
   } finally {
     if (runId) await host?.ctx.hima.cancelRun(runId);
-    await host?.dispose(); await fixture.dispose(); await home.h.dispose();
+    await host?.dispose();
+    if (!capture) { await fixture.dispose(); await home.h.dispose(); }
   }
 });

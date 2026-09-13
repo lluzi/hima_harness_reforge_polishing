@@ -52,7 +52,11 @@
     "test/contract/agent-desktop-replay.host.test.ts",
     "test/contract/aes-probe.test.ts",
     "test/contract/aes-analysis.test.ts",
-    "test/contract/aes-timing-research-reader.test.ts"
+    "test/contract/aes-timing-research-reader.test.ts",
+    "test/contract/aes-domain-stages.test.ts",
+    "test/contract/aes-full-graph.host.test.ts",
+    "test/contract/aes-mining-view.test.ts",
+    "test/contract/aes-selection-template.test.ts"
   ],
   "desktop": [
     "test/contract/budget.test.ts",

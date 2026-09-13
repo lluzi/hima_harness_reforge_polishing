@@ -1,0 +1,57 @@
+[
+  {
+    "file": "final-local-preflight-failed.log.gz",
+    "uncompressedSha256": "88ee1f14b6f8713d92459802b20daebf1d6d475a0ee4f2abdfee3365cd4fdbf2",
+    "uncompressedBytes": 417
+  },
+  {
+    "file": "final-local.log.gz",
+    "uncompressedSha256": "0e3424a900da45a4de2c7b190b4338e877b5dc49e6faa84a83cb6c4749553d69",
+    "uncompressedBytes": 265353
+  },
+  {
+    "file": "stale-expectations-delta.tap.gz",
+    "uncompressedSha256": "bed68a7ce8b583ecbd115fc9ed0c253b2b335a10eac8ccd4bad63a98d9e6122d",
+    "uncompressedBytes": 3780
+  },
+  {
+    "file": "final-domain-delta.tap.gz",
+    "uncompressedSha256": "db916428b6c1a00c93aa0c95cc5d336925581970409b56f78655027bb7b09882",
+    "uncompressedBytes": 2980
+  },
+  {
+    "file": "material-unified-delta.tap.gz",
+    "uncompressedSha256": "29b33b01d7a2492aa6cd36a8c89c5d49640f129f867aa5efe7d81601157a0c7b",
+    "uncompressedBytes": 1094
+  },
+  {
+    "file": "material-unified-configured.tap.gz",
+    "uncompressedSha256": "7b0b5a2a20aa7e49bd110ddc5e0f03eb7296c622b9bdb99e57bf4d075e7541f7",
+    "uncompressedBytes": 237
+  },
+  {
+    "file": "material-unified-boots.log.gz",
+    "uncompressedSha256": "71e64393a2a2c2de4bc4520e90da77c0034b7b00ea255a83f64d098be595b952",
+    "uncompressedBytes": 9
+  },
+  {
+    "file": "aes-mining-desktop.tap.gz",
+    "uncompressedSha256": "7cd7a3f6eaa0700655531e32a1a4fb4bec75dd2a33e5566e98f683c8b5f22715",
+    "uncompressedBytes": 232
+  },
+  {
+    "file": "aes-mining-desktop-polished.tap.gz",
+    "uncompressedSha256": "448b2c9baf4dce8de8b793c3aba206b51bf69085c43bd577547f90a5a6e6e006",
+    "uncompressedBytes": 232
+  },
+  {
+    "file": "final-ui-types-2.log.gz",
+    "uncompressedSha256": "421477bb59a41953bc0abf45aab37b271bfa978c4708c2c63c8f80b3d7073971",
+    "uncompressedBytes": 181
+  },
+  {
+    "file": "final-ui-build-2.log.gz",
+    "uncompressedSha256": "4df0bd531406859a840d9e1efd3f9ed72b820aa138e37076206385a6a812e2a0",
+    "uncompressedBytes": 93
+  }
+]

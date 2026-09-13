@@ -595,12 +595,16 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
   const [selected, setSelected] = useState<string>();
   const [answer, setAnswer] = useState<{ recordId: string; text?: string; error?: string; loading?: boolean }>();
   const request = useRef<AbortController | undefined>();
+  const content = useRef<HTMLDivElement | null>(null);
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {
     request.current?.abort();
     setSelected(undefined);
     setAnswer(undefined);
   }, [view.run.id]);
+  useEffect(() => {
+    if (answer && !answer.loading) content.current?.scrollIntoView({ block: 'nearest' });
+  }, [answer]);
   if (view.code.length === 0 && view.knowledge.length === 0) return null;
   const open = (record: CodeView | KnowledgeView) => {
     request.current?.abort();
@@ -611,15 +615,25 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
       setAnswer(result.ok ? { recordId: record.recordId, text: result.value.text } : { recordId: record.recordId, error: result.error.message });
     });
   };
-  const row = (record: CodeView | KnowledgeView, kind: 'code' | 'knowledge') => <button type="button" key={record.recordId} onClick={() => open(record)} data-hima-control={`material-${record.recordId}`} style={{ ...mono, textAlign: 'left', border: 0, background: 'transparent', color: plain, cursor: 'pointer', padding: 0 }}>
-    {kind === 'code' ? (record as CodeView).path : `${(record as KnowledgeView).file} — ${(record as KnowledgeView).purpose}`} · node {record.nodeId} · generation {record.generation ?? 'not recorded'} · attempt {record.attempt} · source {record.sessionId} · sha256 {record.sha256}
-  </button>;
+  const row = (record: CodeView | KnowledgeView, kind: 'code' | 'knowledge') => {
+    const location = kind === 'code' ? (record as CodeView).path : (record as KnowledgeView).file;
+    return <button type="button" key={record.recordId} onClick={() => open(record)} data-hima-control={`material-${record.recordId}`}
+      title={`${location}${kind === 'knowledge' ? `\n${(record as KnowledgeView).purpose}` : ''}\nsource ${record.sessionId}\nsha256 ${record.sha256}`}
+      style={{ ...mono, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 104px', gap: 12, alignItems: 'center', width: '100%', textAlign: 'left', border: 0, borderRadius: 5, background: selected === record.recordId ? '#f0f2f5' : 'transparent', color: plain, cursor: 'pointer', padding: '7px 8px' }}>
+      <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}><strong>{location.split(/[\\/]/).at(-1)}</strong> · {record.nodeId} · g{record.generation ?? '?'} / a{record.attempt}</span>
+      <span style={{ ...muted, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{record.sha256}</span>
+    </button>;
+  };
+  const chosen = [...view.code, ...view.knowledge].find(record => record.recordId === selected);
   return <Section title="code & knowledge actually used" region="run-material" state={{ code: String(view.code.length), knowledge: String(view.knowledge.length) }}>
     <div style={block}>{view.code.map((record) => row(record, 'code'))}{view.knowledge.map((record) => row(record, 'knowledge'))}</div>
-    {selected === undefined ? <div style={muted}>Choose a recorded version to verify and read its contents.</div>
-      : answer?.loading ? <div style={muted}>Reading the recorded version and verifying its hash…</div>
+    {selected === undefined || chosen === undefined ? <div style={muted}>Choose a recorded version to verify and read its contents.</div>
+      : <div ref={content}>{answer?.loading ? <div style={muted}>Reading the recorded version and verifying its hash…</div>
         : answer?.error ? <div role="alert" style={{ ...muted, color: bad }}>Historical content unavailable: {answer.error}</div>
-          : <pre data-hima-region="material-content" data-hima-state-record={selected} style={logTail}>{answer?.text}</pre>}
+          : <><details style={muted}><summary>Verified source · {chosen.nodeId}</summary>
+            {'purpose' in chosen ? <div>{chosen.purpose}</div> : null}
+            <div style={{ ...mono, overflowWrap: 'anywhere' }}>{chosen.path}<br />sha256 {chosen.sha256}<br />source {chosen.sessionId}</div>
+          </details><pre data-hima-region="material-content" data-hima-state-record={selected} style={logTail}>{answer?.text}</pre></>}</div>}
   </Section>;
 }
 

@@ -1,0 +1,8 @@
+{
+  "encoding": "gzip",
+  "file": "evidence.json.gz",
+  "uncompressedSha256": "c94b18f09adf8793a2c2494288314086b2af8a17f1a9cbb0fc16dd6995943126",
+  "uncompressedBytes": 18003796,
+  "status": "failed",
+  "reason": "Byte-preserving compression; original failed final-response deadline retained, with a separate completed-Run audit."
+}

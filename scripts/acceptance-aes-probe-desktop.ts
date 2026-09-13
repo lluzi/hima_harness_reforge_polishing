@@ -65,6 +65,7 @@ test('a completed real AES Run and its recorded code remain beside native chat w
       assert.ok((await d.click(`material-${code.recordId}`)).ok);
       await browser.wait(`document.querySelector('[data-hima-region="material-content"]')?.getAttribute('data-hima-state-record')===${JSON.stringify(code.recordId)}`, 15_000);
       assert.ok(await browser.evaluate(`document.querySelector('[data-hima-region="material-content"]').textContent.length > 0`));
+      await browser.wait(`(() => { const r = document.querySelector('[data-hima-region="material-content"]').getBoundingClientRect(); return r.height > 20 && r.top >= 0 && r.top + 20 < innerHeight; })()`, 10_000);
     }
     assert.ok((await d.screenshot(path.join(output, 'aes-probe-light.png'))).ok);
     assert.equal(sha256(readFileSync(originalLedger)), before, 'original evidence home remains byte-identical');

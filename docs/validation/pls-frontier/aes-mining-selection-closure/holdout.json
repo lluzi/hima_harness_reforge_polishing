@@ -1,0 +1,88 @@
+{
+  "passed": true,
+  "codeSha256": "3b8befdd3b4467bdeeee9d31d572f2f1e9aa074b42acdea858681bdb59a5a3c6",
+  "scope": "unchanged selector over six real seven-candidate subsets; no optimality or PPA claim",
+  "hosts": 0,
+  "modelRequests": 0,
+  "edaJobs": 0,
+  "results": [
+    {
+      "route": "timing_criticality",
+      "sourceSha256": "d3e1ac2b0bf58e05f388c90ca4420fb1a4cf7146915c15d6b8481d8cb53419a5",
+      "originalCount": 8,
+      "withheld": "CAND_TIMING_CRITICALITY_A2_SINGLE_0001",
+      "subsetCount": 7,
+      "selected": [
+        "CAND_TIMING_CRITICALITY_A2_SINGLE_0002",
+        "CAND_TIMING_CRITICALITY_A2_SINGLE_0003"
+      ],
+      "originalSelectionReproduced": true,
+      "validExactContracts": true
+    },
+    {
+      "route": "timing_context",
+      "sourceSha256": "85bac6d866cbdc6631e7562b4e2dbdeded221bcfa2133572b0700bd5f9129ca0",
+      "originalCount": 8,
+      "withheld": "CAND_TIMING_CONTEXT_A2_SINGLE_0001",
+      "subsetCount": 7,
+      "selected": [
+        "CAND_TIMING_CONTEXT_A2_SINGLE_0003",
+        "CAND_TIMING_CONTEXT_A2_SINGLE_0002"
+      ],
+      "originalSelectionReproduced": true,
+      "validExactContracts": true
+    },
+    {
+      "route": "structure_frequency",
+      "sourceSha256": "e95b4b0d6235ccd6c0fa829a128d8fdaafff3eba48c32102875f39ab498eccd6",
+      "originalCount": 8,
+      "withheld": "CAND_STRUCTURE_FREQUENCY_MAPPED_SINGLE_0001",
+      "subsetCount": 7,
+      "selected": [
+        "CAND_STRUCTURE_FREQUENCY_MAPPED_SINGLE_0002",
+        "CAND_STRUCTURE_FREQUENCY_MAPPED_SINGLE_0003"
+      ],
+      "originalSelectionReproduced": true,
+      "validExactContracts": true
+    },
+    {
+      "route": "structure_compaction",
+      "sourceSha256": "5a8c5b24e2eef9a56572ca20d93a1d5a74ed2c8964b83ea0f8a4e0957754968d",
+      "originalCount": 8,
+      "withheld": "CAND_STRUCTURE_COMPACTION_MAPPED_SINGLE_0001",
+      "subsetCount": 7,
+      "selected": [
+        "CAND_STRUCTURE_COMPACTION_MAPPED_SINGLE_0003",
+        "CAND_STRUCTURE_COMPACTION_MAPPED_SINGLE_0004"
+      ],
+      "originalSelectionReproduced": true,
+      "validExactContracts": true
+    },
+    {
+      "route": "mapper_compatibility",
+      "sourceSha256": "d28d1091b343a2f844e77301b46b1975284368d91701e30ac3b689c8e188e69b",
+      "originalCount": 8,
+      "withheld": "CAND_MAPPER_COMPATIBILITY_MAPPED_SINGLE_0006",
+      "subsetCount": 7,
+      "selected": [
+        "CAND_MAPPER_COMPATIBILITY_MAPPED_SINGLE_0007",
+        "CAND_MAPPER_COMPATIBILITY_MAPPED_SINGLE_0008"
+      ],
+      "originalSelectionReproduced": true,
+      "validExactContracts": true
+    },
+    {
+      "route": "functional_diversity",
+      "sourceSha256": "1802437d98169aef88ea63286f89379656f8da8f12cfa86d99a48f51410bcc9a",
+      "originalCount": 8,
+      "withheld": "CAND_FUNCTIONAL_DIVERSITY_MAPPED_SINGLE_0001",
+      "subsetCount": 7,
+      "selected": [
+        "CAND_FUNCTIONAL_DIVERSITY_MAPPED_SINGLE_0002",
+        "CAND_FUNCTIONAL_DIVERSITY_MAPPED_SINGLE_0004"
+      ],
+      "originalSelectionReproduced": true,
+      "validExactContracts": true
+    }
+  ]
+}

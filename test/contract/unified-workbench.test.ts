@@ -1,4 +1,5 @@
-// L3: native dsh conversation + Hima dock. Real Host and local Jobs; no model turn or SSH.
+// @hima-seam llm direct
+// L3: native dsh conversation + Hima dock. Real Host and local Jobs; no real model or SSH.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { appendFile, mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';

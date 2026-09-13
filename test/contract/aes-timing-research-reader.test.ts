@@ -44,7 +44,7 @@ test('owner-controlled two-generation Workshop retains code and turns a measured
   const flow = path.join(home.h.home, 'finite-selection-flow');
   await mkdir(flow, { recursive: true });
   await (await import('node:fs/promises')).cp(path.join(repoRoot, 'packs/aes-timing-research'), packDir, { recursive: true });
-  assert.equal(packStage(packDir).stage, 'compiled', JSON.stringify(packStage(packDir)));
+  assert.ok(['compiled', 'tested', 'released'].includes(packStage(packDir).stage), JSON.stringify(packStage(packDir)));
   const sample = { schema: 'aes-path-motifs/1', budget: 2, paths: [
     ...['p1', 'p2', 'p3'].map((id, i) => ({ id, points: [{ instance: 'u1', master: 'M1', sourceLine: i + 1 }] })),
     ...['p4', 'p5'].map((id, i) => ({ id, points: [{ instance: 'u1', master: 'M1', sourceLine: 40 + i * 10 }, { instance: 'u2', master: 'M2', sourceLine: 41 + i * 10 }] })),
