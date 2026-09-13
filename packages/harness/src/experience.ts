@@ -23,13 +23,14 @@
 // report is written, and this module leaves the Site alone.
 import { createHash } from 'node:crypto';
 import { lstatSync } from 'node:fs';
-import { readFile as readLocalFile } from 'node:fs/promises';
+import { mkdir, readFile as readLocalFile, rename, rm, writeFile as writeLocalFile } from 'node:fs/promises';
 import path from 'node:path';
 import { channelFor, mustRun, type Channel } from './channel.js';
-import { experienceReport, EXPERIENCE_DIR, type ExperienceJson } from './experience-report.js';
-import { hasEnded, type CodeRecord, type ExperienceFile, type ExperienceRecord, type KnowledgeRecord, type Ledger, type RunRecord, type WorkspaceRecord } from './ledger.js';
+import { experienceReport, EXPERIENCE_DIR, RUN_ASSET_MANIFEST_SCHEMA, type ExperienceJson, type RunAssetManifest } from './experience-report.js';
+import { hasEnded, type CodeRecord, type ExperienceFile, type ExperienceRecord, type KnowledgeRecord, type Ledger, type ObservationRecord, type RunRecord, type WorkspaceRecord } from './ledger.js';
 import { runView, type RunWords } from './remote.js';
-import { runPackWords } from './packs.js';
+import { installedPackFolder, runPackWords } from './packs.js';
+import { runAssetsDirectory } from './pack-folder.js';
 import { methodHistoryDirectory } from './pack-folder.js';
 import { existingRun } from './runs.js';
 import { decideRead, decideWrite } from './shell.js';
@@ -128,7 +129,10 @@ export function writeExperience(deps: ExperienceDeps, runId: string): Promise<Wr
 async function writeOnce(deps: ExperienceDeps, runId: string): Promise<WriteExperienceResult> {
   const run = existingRun(deps.ledger, runId);
   const held = experienceOf(deps.ledger, runId);
-  if (held !== undefined) return { kind: 'already', record: held };
+  if (held !== undefined) {
+    await writeRunAssets(deps, runId);
+    return { kind: 'already', record: held };
+  }
   if (!hasEnded(run.status)) {
     return { kind: 'nothing', why: `run ${runId} is ${run.status ?? 'not a run HimaFabric started'}, and a campaign's experience is written when its run ends` };
   }
@@ -137,7 +141,8 @@ async function writeOnce(deps: ExperienceDeps, runId: string): Promise<WriteExpe
     // The one ending a Run can reach without a workspace: a Campaign blocked at its entry node
     // because preparation never finished, then cancelled. There is nowhere beside the results to
     // write, because there are no results — and this harness writes nothing outside a workspace.
-    return { kind: 'nothing', why: `run ${runId} has no campaign workspace: nothing was prepared, so there is nowhere beside the results to write its experience` };
+    await writeRunAssets(deps, runId);
+    return { kind: 'nothing', why: `run ${runId} has no campaign workspace: no Site report was written; Pack-local delivery records the local execution facts when its installed Pack is available` };
   }
   const site = loadSite(deps.sitesDir, run.siteId);
   const p = pathsOf(site);
@@ -159,7 +164,9 @@ async function writeOnce(deps: ExperienceDeps, runId: string): Promise<WriteExpe
   if ('refusal' in json) return refused(deps, runId, json.refusal.refused, json.refusal.reason);
 
   // Last, and only now: the record is the claim that both files are there.
-  return { kind: 'written', record: await deps.ledger.appendExperience(runId, { writtenAt, markdown: markdown.file, json: json.file }) };
+  const record = await deps.ledger.appendExperience(runId, { writtenAt, markdown: markdown.file, json: json.file });
+  await writeRunAssets(deps, runId);
+  return { kind: 'written', record };
 }
 
 /** This Run's experience record, which is the one thing that says its report is already written. */
@@ -300,3 +307,178 @@ export async function readMaterial(deps: ExperienceDeps, runId: string, recordId
  *  Run it passes over, so the question is stated once and asked the same way everywhere. */
 export const owesAnExperience = (ledger: Ledger, run: RunRecord): boolean =>
   hasEnded(run.status) && experienceOf(ledger, run.id) === undefined;
+
+/** A failed archive is retried by the existing reconciliation path; only a complete record settles it. */
+export const owesRunAssets = (ledger: Ledger, run: RunRecord): boolean =>
+  hasEnded(run.status) && ledger.records({ runId: run.id, type: 'archive' }).findLast((record) => record.type === 'archive')?.delivery !== 'complete';
+
+/** Result of publishing (or checking) the Pack-local, portable copy of an Experience. */
+export type WriteRunAssetsResult =
+  | { readonly kind: 'written'; readonly manifest: RunAssetManifest; readonly directory: string; readonly manifestPath: string }
+  | { readonly kind: 'already'; readonly manifest: RunAssetManifest; readonly directory: string; readonly manifestPath: string }
+  | { readonly kind: 'nothing'; readonly why: string }
+  | { readonly kind: 'failed'; readonly why: string };
+
+export type ReadRunAssetsResult =
+  | { readonly kind: 'read'; readonly manifest: RunAssetManifest; readonly directory: string; readonly manifestPath: string }
+  | { readonly kind: 'none'; readonly why: string }
+  | { readonly kind: 'changed'; readonly path: string; readonly recorded: string; readonly found: string }
+  | { readonly kind: 'unreadable'; readonly path: string; readonly why: string };
+export type ReadArchivedMaterialResult =
+  | { readonly kind: 'read'; readonly manifest: RunAssetManifest; readonly material: RunAssetManifest['materials'][number]; readonly text: string }
+  | Exclude<ReadRunAssetsResult, { readonly kind: 'read' }>;
+
+/**
+ * Copy the two already-verified Experience bytes into the installed Pack's customer-asset area.
+ * This deliberately does not reach into a Site: Site reads remain governed by `readExperience` and
+ * no remote path becomes a substitute for a delivered required file.  A local report composed for
+ * an early no-workspace ending remains deliverable when its Pack is installed.
+ */
+export async function writeRunAssets(deps: ExperienceDeps, runId: string): Promise<WriteRunAssetsResult> {
+  const run = existingRun(deps.ledger, runId);
+  if (!hasEnded(run.status)) return { kind: 'nothing', why: `run ${runId} has not ended` };
+  if (run.packId === undefined) return archiveFailure(deps, runId, deps.packsDir, `run ${runId} has no HimaPack to receive customer assets`);
+  let folder: ReturnType<typeof installedPackFolder>;
+  try { folder = installedPackFolder(deps.packsDir, run.packId); }
+  catch (error) { return archiveFailure(deps, runId, deps.packsDir, (error as Error).message); }
+  if (folder === undefined) return archiveFailure(deps, runId, deps.packsDir, `installed Pack ${run.packId} is unavailable; no archive directory was created`);
+  const directory = path.join(folder.dir, runAssetsDirectory, runId);
+  const existing = await readRunAssetsAt(directory, runId);
+  if (existing.kind === 'read') return { kind: 'already', manifest: existing.manifest, directory, manifestPath: existing.manifestPath };
+  if (existing.kind === 'changed' || existing.kind === 'unreadable') return { kind: 'failed', why: `refusing to overwrite existing delivery: ${existing.kind === 'changed' ? existing.path : existing.path}` };
+
+  let words: RunWords | undefined;
+  try { words = runPackWords(deps.packsDir, run); } catch { /* Archive the raw-name fallback. */ }
+  const saved = experienceOf(deps.ledger, runId) === undefined ? undefined : await readExperience(deps, runId);
+  if (saved !== undefined && saved.kind !== 'read') {
+    const why = saved.kind === 'changed' ? `${saved.path} changed from ${saved.recorded} to ${saved.found}`
+      : saved.kind === 'unreadable' ? `${saved.path}: ${saved.why}` : saved.why ?? 'saved Experience is unavailable';
+    return archiveFailure(deps, runId, directory, `required saved Experience cannot be archived: ${why}`);
+  }
+  const report = saved?.kind === 'read' ? undefined : experienceReport(runView(deps.ledger, run, words), new Date().toISOString());
+  const reportFiles = [
+    { path: 'experience.md', source: saved?.kind === 'read' ? `site:${saved.record.markdown.path}` : 'generated:experience-markdown', bytes: Buffer.from(saved?.kind === 'read' ? saved.markdown : report!.markdown, 'utf8') },
+    { path: 'experience.json', source: saved?.kind === 'read' ? `site:${saved.record.json.path}` : 'generated:experience-json', bytes: Buffer.from(`${JSON.stringify(saved?.kind === 'read' ? saved.json : report!.json, null, 2)}\n`, 'utf8') },
+  ] as const;
+  const materialFiles: { path: string; source: string; bytes: Buffer; recordId: string; type: 'observation' | 'code' | 'knowledge' }[] = [];
+  for (const record of deps.ledger.records({ runId })) {
+    if (record.type === 'observation') {
+      const observed = await readObservedAsset(deps, run, record);
+      if (typeof observed === 'string') return archiveFailure(deps, runId, directory, `required observation ${record.id} cannot be archived: ${observed}`);
+      materialFiles.push({ path: `materials/${record.id}.dat`, source: `observation:${record.path}`, recordId: record.id, type: 'observation', bytes: observed });
+      continue;
+    }
+    if (record.type !== 'code' && record.type !== 'knowledge') continue;
+    const held = await readMaterial(deps, runId, record.id);
+    if (held.kind !== 'read') {
+      const why = held.kind === 'none' ? held.why : held.kind === 'changed'
+        ? `${held.path} changed from ${held.recorded} to ${held.found}` : `${held.path}: ${held.why}`;
+      return archiveFailure(deps, runId, directory, `required ${record.type} material ${record.id} cannot be archived: ${why}`);
+    }
+    materialFiles.push({ path: `materials/${record.id}.txt`, source: `${record.type}:${record.path}`, recordId: record.id, type: record.type, bytes: Buffer.from(held.text, 'utf8') });
+  }
+  const files = [...reportFiles, ...materialFiles];
+  const manifest: RunAssetManifest = {
+    schema: RUN_ASSET_MANIFEST_SCHEMA, runId, campaignId: run.campaignId, siteId: run.siteId,
+    pack: { id: run.packId, version: runView(deps.ledger, run, words).run.packVersion ?? 'not recorded' },
+    ...(run.packDigest === undefined ? {} : { methodDigest: run.packDigest }),
+    createdAt: new Date().toISOString(), delivery: 'complete',
+    materials: files.map((file) => ({ path: file.path, source: file.source, ...('recordId' in file ? { recordId: file.recordId, type: file.type } : { type: 'experience' as const }), sha256: hashOf(file.bytes), bytes: file.bytes.byteLength, required: true })),
+  };
+  const parent = path.dirname(directory);
+  const stage = path.join(parent, `.${runId}.stage-${randomSuffix()}`);
+  try {
+    await mkdir(parent, { recursive: true });
+    await mkdir(stage, { recursive: false });
+    for (const file of files) {
+      await mkdir(path.dirname(path.join(stage, file.path)), { recursive: true });
+      await writeLocalFile(path.join(stage, file.path), file.bytes, { flag: 'wx' });
+    }
+    for (const material of manifest.materials) {
+      const bytes = await readLocalFile(path.join(stage, material.path));
+      if (hashOf(bytes) !== material.sha256 || bytes.byteLength !== material.bytes) throw new Error(`staged material ${material.path} did not verify`);
+    }
+    await writeLocalFile(path.join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+    // Rename publishes one complete directory. A competing publisher is never overwritten.
+    await rename(stage, directory);
+    await deps.ledger.appendArchive(runId, { delivery: 'complete', directory, manifestSha256: hashOf(Buffer.from(JSON.stringify(manifest))), materials: [...manifest.materials] });
+    return { kind: 'written', manifest, directory, manifestPath: path.join(directory, 'manifest.json') };
+  } catch (error) {
+    await rm(stage, { recursive: true, force: true });
+    const after = await readRunAssetsAt(directory, runId);
+    if (after.kind === 'read') return { kind: 'already', manifest: after.manifest, directory, manifestPath: after.manifestPath };
+    return archiveFailure(deps, runId, directory, (error as Error).message);
+  }
+}
+
+/** Read a published archive only after each required material still matches its manifest. */
+export async function readRunAssets(deps: ExperienceDeps, runId: string): Promise<ReadRunAssetsResult> {
+  const run = existingRun(deps.ledger, runId);
+  if (run.packId === undefined) return { kind: 'none', why: `run ${runId} has no HimaPack archive` };
+  let folder: ReturnType<typeof installedPackFolder>;
+  try { folder = installedPackFolder(deps.packsDir, run.packId); }
+  catch (error) { return { kind: 'unreadable', path: deps.packsDir, why: (error as Error).message }; }
+  if (folder === undefined) return { kind: 'none', why: `installed Pack ${run.packId} is unavailable` };
+  return readRunAssetsAt(path.join(folder.dir, runAssetsDirectory, runId), runId);
+}
+
+/** Read a named archived byte without contacting its original Site. */
+export async function readArchivedMaterial(deps: ExperienceDeps, runId: string, materialPath: string): Promise<ReadArchivedMaterialResult> {
+  const archive = await readRunAssets(deps, runId);
+  if (archive.kind !== 'read') return archive;
+  const material = archive.manifest.materials.find((item) => item.path === materialPath);
+  if (material === undefined) return { kind: 'none', why: `run ${runId} archive has no material ${materialPath}` };
+  const at = path.resolve(archive.directory, material.path);
+  try {
+    const bytes = await readLocalFile(at);
+    const found = hashOf(bytes);
+    if (found !== material.sha256) return { kind: 'changed', path: at, recorded: material.sha256, found };
+    return { kind: 'read', manifest: archive.manifest, material, text: bytes.toString('utf8') };
+  } catch (error) { return { kind: 'unreadable', path: at, why: (error as Error).message }; }
+}
+
+async function readRunAssetsAt(directory: string, runId: string, expected?: RunAssetManifest): Promise<ReadRunAssetsResult> {
+  const manifestPath = path.join(directory, 'manifest.json');
+  let manifest: RunAssetManifest;
+  try {
+    const bytes = await readLocalFile(manifestPath);
+    manifest = JSON.parse(bytes.toString('utf8')) as RunAssetManifest;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'ENOENT' ? { kind: 'none', why: `no published manifest at ${manifestPath}` } : { kind: 'unreadable', path: manifestPath, why: (error as Error).message };
+  }
+  if (manifest.schema !== RUN_ASSET_MANIFEST_SCHEMA || manifest.runId !== runId || manifest.delivery !== 'complete') {
+    return { kind: 'unreadable', path: manifestPath, why: 'manifest is not a complete hima-run-assets/1 delivery for this Run' };
+  }
+  if (expected !== undefined && JSON.stringify(manifest) !== JSON.stringify(expected)) return { kind: 'unreadable', path: manifestPath, why: 'published manifest differs from the staged manifest' };
+  for (const material of manifest.materials) {
+    if (!material.required) continue;
+    const at = path.resolve(directory, material.path);
+    if (!at.startsWith(`${path.resolve(directory)}${path.sep}`)) return { kind: 'unreadable', path: manifestPath, why: `material path escapes archive: ${material.path}` };
+    let bytes: Buffer;
+    try { bytes = await readLocalFile(at); }
+    catch (error) { return { kind: 'unreadable', path: at, why: (error as Error).message }; }
+    const found = hashOf(bytes);
+    if (found !== material.sha256) return { kind: 'changed', path: at, recorded: material.sha256, found };
+    if (bytes.byteLength !== material.bytes) return { kind: 'unreadable', path: at, why: `recorded size ${String(material.bytes)} differs from found ${String(bytes.byteLength)}` };
+  }
+  return { kind: 'read', manifest, directory, manifestPath };
+}
+
+const randomSuffix = (): string => `${process.pid}-${Math.random().toString(16).slice(2)}`;
+
+async function archiveFailure(deps: ExperienceDeps, runId: string, directory: string, why: string): Promise<WriteRunAssetsResult> {
+  await deps.ledger.appendArchive(runId, { delivery: 'failed', directory, materials: [], reason: why });
+  return { kind: 'failed', why };
+}
+
+async function readObservedAsset(deps: ExperienceDeps, run: RunRecord, record: ObservationRecord): Promise<Buffer | string> {
+  const site = loadSite(deps.sitesDir, run.siteId);
+  const channel = channelFor(site);
+  const decision = await decideRead(site, record.path, channel);
+  if (!decision.ok) return decision.reason;
+  const answer = await channel.exec(['cat', '--', decision.absPath]);
+  if (answer.code !== 0) return answer.stderr.trim() || `cat exited ${String(answer.code)} on site ${site.name}`;
+  if (hashOf(answer.stdout) !== record.contentSha256) return `${record.path} changed from ${record.contentSha256} to ${hashOf(answer.stdout)}`;
+  return Buffer.from(answer.stdout);
+}

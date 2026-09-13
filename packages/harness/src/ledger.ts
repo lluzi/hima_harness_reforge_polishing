@@ -768,6 +768,22 @@ export const experienceRecord = z.object({
   json: experienceFile,
 });
 
+/** One Pack-local byte in a completed Run asset delivery. */
+export const archiveMaterial = z.strictObject({
+  path: z.string().min(1), source: z.string().min(1), recordId: z.string().min(1).optional(), type: z.enum(['experience', 'observation', 'code', 'knowledge']).optional(), sha256: sha256Hex,
+  bytes: z.number().int().nonnegative(), required: z.boolean(), missingReason: z.string().min(1).optional(),
+});
+/** The delivery lifecycle is separate from Run execution: only `complete` asserts offline bytes exist. */
+export const archiveRecord = z.object({
+  ...base,
+  type: z.literal('archive'),
+  delivery: z.enum(['complete', 'failed']),
+  directory: z.string().min(1),
+  manifestSha256: sha256Hex.optional(),
+  materials: z.array(archiveMaterial),
+  reason: z.string().min(1).optional(),
+});
+
 /** How a Model moment ended (#59): the turn ran, the turn failed, or the host went away mid-moment. */
 export const momentOutcome = z.enum(['completed', 'failed', 'interrupted']);
 export type MomentOutcome = z.infer<typeof momentOutcome>;
@@ -934,6 +950,7 @@ export const ledgerRecord = z.discriminatedUnion('type', [
   cancelRecord,
   loopRecord,
   experienceRecord,
+  archiveRecord,
   sessionRecord,
   codeRecord,
   knowledgeRecord,
@@ -950,6 +967,7 @@ export type DecisionRecord = z.infer<typeof decisionRecord>;
 export type CancelRecord = z.infer<typeof cancelRecord>;
 export type LoopRecord = z.infer<typeof loopRecord>;
 export type ExperienceRecord = z.infer<typeof experienceRecord>;
+export type ArchiveRecord = z.infer<typeof archiveRecord>;
 export type SessionRecord = z.infer<typeof sessionRecord>;
 export type CodeRecord = z.infer<typeof codeRecord>;
 export type KnowledgeRecord = z.infer<typeof knowledgeRecord>;
@@ -1634,7 +1652,10 @@ export const ledgerSpec = defineDomain({
   // its purpose, source session and byte identity. This is a new discriminant; a v20 reader would
   // reject it or lose the fact, so v21 refuses a v20 store until the explicit offline importer has
   // copied it into an empty v21 home. There is no in-place or automatic upgrade.
-  version: 21,
+  // 22: an `archive` record distinguishes a completed Pack-local delivery from an execution that
+  // ended while delivery is still missing or failed. It is a new union arm, so an older reader must
+  // refuse rather than erase the evidence lifecycle.
+  version: 22,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -1900,6 +1921,11 @@ export class Ledger {
    */
   async appendExperience(runId: string, data: Omit<ExperienceRecord, keyof typeof base | 'type'>): Promise<ExperienceRecord> {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'experience', ...data }));
+  }
+
+  /** Delivery fact for Pack-local customer assets; a failure names no false completion. */
+  async appendArchive(runId: string, data: Omit<ArchiveRecord, keyof typeof base | 'type'>): Promise<ArchiveRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'archive', ...data }));
   }
 
   /**
