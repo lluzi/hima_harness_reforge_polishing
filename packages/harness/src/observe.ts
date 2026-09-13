@@ -14,6 +14,7 @@ import { decideRead } from './shell.js';
 import { declarationOf, readerNamed } from './readers.js';
 import { bundleSemantics, semanticValue, validateReading, type Semantics } from './semantics.js';
 import { runFor } from './runs.js';
+import { retainRunMaterial } from './experience.js';
 
 export interface ObserveRequest {
   readonly site: string;
@@ -37,7 +38,7 @@ export type ObserveResult =
   | { readonly kind: 'observed'; readonly run: RunRecord; readonly record: ObservationRecord }
   | { readonly kind: 'refused'; readonly run: RunRecord; readonly record: RefusalRecord };
 
-export interface ObserveDeps { readonly ledger: Ledger; readonly sitesDir: string }
+export interface ObserveDeps { readonly ledger: Ledger; readonly sitesDir: string; readonly packsDir?: string }
 
 /** One reading, as either path produces it: what was read, from where, by whom, and what it said. */
 export interface Reading {
@@ -82,7 +83,8 @@ export type AppendedReading =
  * @param semantics - the value types in force: the pack's own ahead of the bundle's, or the bundle's
  *                    alone for a reading taken outside any pack.
  */
-export async function appendReading(ledger: Ledger, runId: string, reading: Reading, semantics: Semantics): Promise<AppendedReading> {
+export async function appendReading(ledger: Ledger, runId: string, reading: Reading, semantics: Semantics,
+  retention?: { readonly packsDir: string; readonly bytes: Uint8Array }): Promise<AppendedReading> {
   const refuse = async (reason: string): Promise<AppendedReading> => ({
     kind: 'refused',
     record: await ledger.appendRefusal(runId, { path: reading.path, reason }, 'executor'),
@@ -103,12 +105,20 @@ export async function appendReading(ledger: Ledger, runId: string, reading: Read
   }
   // An absent key, never an undefined one: a reading taken outside every fork says so by omission.
   const inBranch = reading.branchId === undefined ? {} : { branchId: reading.branchId };
+  let retainedPath: string | undefined;
+  if (retention) {
+    try {
+      if (retention.bytes.byteLength !== reading.bytes) return refuse('observed byte count changed before retention');
+      retainedPath = await retainRunMaterial({ ledger, packsDir: retention.packsDir }, runId, retention.bytes, reading.contentSha256);
+    } catch (error) { return refuse(`observed bytes could not be retained: ${(error as Error).message}`); }
+  }
   return {
     kind: 'observed',
     record: await ledger.appendObservation(runId, {
       ...inBranch,
       path: reading.path,
       contentSha256: reading.contentSha256,
+      ...(retainedPath === undefined ? {} : { retainedPath }),
       bytes: reading.bytes,
       reader: reading.reader,
       values: shaped.data,
@@ -200,6 +210,7 @@ async function read(deps: ObserveDeps, req: ObserveRequest, semantics: Semantics
       ...(req.branchId === undefined ? {} : { branchId: req.branchId }),
     },
     semantics,
+    deps.packsDir === undefined ? undefined : { packsDir: deps.packsDir, bytes },
   );
   return appended.kind === 'observed' ? { kind: 'observed', run, record: appended.record } : { kind: 'refused', run, record: appended.record };
 }

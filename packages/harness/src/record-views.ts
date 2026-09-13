@@ -119,6 +119,7 @@ export function jobView(record: JobRecord): JobView {
  * it.
  */
 export interface CodeView {
+  readonly retainedPath?: string;
   readonly recordId: string;
   readonly at: string;
   readonly nodeId: string;
@@ -148,6 +149,7 @@ export function codeView(record: CodeRecord): CodeView {
     sha256: record.sha256,
     bytes: record.bytes,
     language: record.language,
+    ...(record.retainedPath === undefined ? {} : { retainedPath: record.retainedPath }),
   };
   return record.branchId === undefined ? head : { ...head, branchId: record.branchId };
 }

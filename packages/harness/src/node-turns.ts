@@ -872,7 +872,7 @@ export async function workshopNode(ctx: Driving, node: Extract<PackNode, { kind:
   // host that never gets as far as reading this box.
   const fault: WorkshopFault = { why: undefined };
   const tools = workshopTools({
-    ledger: ctx.deps.ledger,
+    ledger: ctx.deps.ledger, packsDir: ctx.deps.packsDir,
     runId: ctx.runId,
     site: ctx.site,
     nodeId: node.id,
@@ -981,7 +981,7 @@ export async function buildWorkshopScope(ctx: Driving, node: Extract<PackNode, {
   const resolved = await resolveWorkshop(ctx, node);
   if (!resolved.ok) return resolved;
   return { ok: true, resolved, scope: {
-    ledger: ctx.deps.ledger, runId: ctx.runId, site: ctx.site, nodeId: node.id, attempt,
+    ledger: ctx.deps.ledger, packsDir: ctx.deps.packsDir, runId: ctx.runId, site: ctx.site, nodeId: node.id, attempt,
     session: { id: sessionId }, fault: { why: undefined }, log: (line) => toHostLog(ctx, line),
     declaration: resolved.declaration, workshopAbs: resolved.workshopAbs,
     reads: resolved.reads, knowledge: resolved.knowledge,
@@ -1511,6 +1511,9 @@ function readBackPackReader(launched: LaunchedReading): FinishJob {
     } catch (err) {
       return refuse(`${named} exited 0 and what this pack's value types mean cannot be read: ${(err as Error).message}`);
     }
+    const retainedSource = await decideRead(ctx.site, report.path, channel);
+    if (!retainedSource.ok) return refuse(`observed report can no longer be retained: ${retainedSource.reason}`);
+    const retainedBytes = await channel.readFile(retainedSource.absPath);
     const appended = await appendReading(
       ctx.deps.ledger,
       ctx.runId,
@@ -1523,6 +1526,7 @@ function readBackPackReader(launched: LaunchedReading): FinishJob {
         ...(ctx.branchId === undefined ? {} : { branchId: ctx.branchId }),
       },
       semantics,
+      { packsDir: ctx.deps.packsDir, bytes: retainedBytes },
     );
     if (appended.kind === 'refused') return blocked(appended.record.reason);
     await appendNode(ctx, node, 'done', attempt, { jobSession: session });

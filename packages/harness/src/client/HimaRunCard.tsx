@@ -665,6 +665,20 @@ export function ArchiveSection({ view }: { view: RunView }): ReactElement | null
   </Section>;
 }
 
+export function GrowthSection({ view }: { view: RunView }): ReactElement | null {
+  const branches = view.generations.flatMap(generation => (generation.growths ?? []).map(growth => ({ generation: generation.generation, growth })));
+  if (!branches.length) return null;
+  return <Section title='Additional research · Pack reference preserved' region='run-growth'>
+    {branches.map(({ generation, growth }) => <details key={growth.recordId} data-hima-region={`growth-${growth.proposalId}`} data-hima-state-event={growth.event} style={block}>
+      <summary data-hima-control={`growth-expand-${growth.proposalId}`}>{growth.proposalId} · generation {generation} · {growth.event}</summary>
+      <p style={muted}>From {growth.parentNode ?? 'not admitted'} · Return to {growth.returnNode ?? 'not admitted'}</p>
+      {growth.reason ? <p style={muted}>{growth.reason}</p> : null}
+      {growth.nodes.map(node => <div key={node.recordId} style={mono}>{node.nodeId} · {node.kind} · {node.state}</div>)}
+      <details><summary>{growth.evidence.length} evidence references</summary><pre style={logTail}>{growth.evidence.join('\n')}</pre></details>
+    </details>)}
+  </Section>;
+}
+
 /** One record a verdict cited. A citation that did not resolve is shown as such, never dropped. */
 function CitationRow({ citation }: { citation: Citation }): ReactElement {
   return citation.observation === null
@@ -832,6 +846,7 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
       {view.workshop === undefined ? null : <WorkshopSection view={view} workshop={view.workshop} />}
       <MaterialSection view={view} />
       <ArchiveSection view={view} />
+      <GrowthSection view={view} />
       {view.observations.length === 0
         ? null
         : (

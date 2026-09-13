@@ -5,7 +5,8 @@ import { createHash } from 'node:crypto';
 import { chmod, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHimaHome } from './support/dsh-home.ts';
-import { bootInProcess } from './support/boot-inprocess.ts';
+import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
+import { localHome } from './support/fabric.ts';
 import { bootHimaHost } from './support/boot-host.ts';
 import { api, openSession } from './support/hima-api.ts';
 import { writeLocalSite } from './support/site.ts';
@@ -25,6 +26,33 @@ async function fixture() {
   const close = async () => { if (!closed) { closed = true; await host.dispose(); } };
   return { h, host, run, deps, close };
 }
+
+test('two actual observations of an overwritten report retain both byte versions for final archive', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0.01 }); assert.ok(home);
+  const host = await bootInProcess(home.h);
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', ownerSessionId: String(owner.id), goal: { target_period_ns: 2 } });
+    assert.equal(started.kind, 'ran'); if (started.kind !== 'ran') return;
+    const at = path.join(home.h.workspace, 'changing-input.txt');
+    const observations = [];
+    for (const text of ['first actual bytes\n', 'second actual bytes\n']) {
+      await writeFile(at, text);
+      const result = await host.ctx.hima.observe({ site: 'local', run: started.run.id, path: at, reader: 'raw' });
+      assert.equal(result.kind, 'observed'); if (result.kind !== 'observed') throw new Error('observation refused');
+      observations.push({ record: result.record, text });
+    }
+    await host.ctx.hima.cancelRun(started.run.id);
+    const deps = { ledger: host.ctx.hima.ledger, sitesDir: path.join(home.h.home, 'hima/sites'), packsDir: packsDirOf(home.h) };
+    const archive = await readRunAssets(deps, started.run.id);
+    assert.equal(archive.kind, 'read', JSON.stringify(archive)); if (archive.kind !== 'read') return;
+    for (const { record, text } of observations) {
+      const material = archive.manifest.materials.find(item => item.recordId === record.id); assert.ok(material);
+      const result = await readArchivedMaterial(deps, started.run.id, material.path);
+      assert.equal(result.kind, 'read'); if (result.kind === 'read') assert.equal(result.text, text);
+    }
+  } finally { await host.dispose(); await home.h.dispose(); }
+});
 
 test('an ended Run without a workspace explains why no report is deliverable through projection and read API', async () => {
   const f = await fixture();

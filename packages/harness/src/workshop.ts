@@ -22,6 +22,7 @@ import { lstatSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { channelFor, mustRun, type Channel } from './channel.js';
+import { retainRunMaterial } from './experience.js';
 import { decideRead, decideWrite } from './shell.js';
 import { pathsOf, type Site } from './sites.js';
 import type { Ledger } from './ledger.js';
@@ -102,6 +103,7 @@ export interface WorkshopKnowledge { readonly file: string; readonly purpose: st
 /** Everything one workshop's tools are built against. Every path here was decided before the moment
  *  opened, which is what lets a tool refuse without asking the Site anything. */
 export interface WorkshopScope {
+  readonly packsDir?: string;
   readonly ledger: Ledger;
   readonly runId: string;
   readonly site: Site;
@@ -413,8 +415,11 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
   // the order it happened. What a face counts is files — distinct paths — and never records.
   const inBranch = scope.branchId === undefined ? {} : { branchId: scope.branchId };
   try {
+    const retainedPath = scope.packsDir === undefined ? undefined
+      : await retainRunMaterial({ ledger: scope.ledger, packsDir: scope.packsDir }, scope.runId, bytes, sha256);
     await scope.ledger.appendCode(scope.runId, {
       ...inBranch,
+      ...(retainedPath === undefined ? {} : { retainedPath }),
       nodeId: scope.nodeId,
       attempt: scope.attempt,
       sessionId,

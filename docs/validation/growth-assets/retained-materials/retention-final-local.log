@@ -1,0 +1,207 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/agent-workshop.host.test.ts test/contract/experience-files.test.ts test/contract/ledger-import.test.ts
+local: 3 selected; 57 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+ok 1 - the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+  ---
+  duration_ms: 6014.719792
+  type: 'test'
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and launches unchanged
+ok 2 - a begun Workshop draft retains its original author's code across handoff and launches unchanged
+  ---
+  duration_ms: 1213.231708
+  type: 'test'
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+ok 3 - a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+  ---
+  duration_ms: 1034.406041
+  type: 'test'
+  ...
+# Subtest: two actual observations of an overwritten report retain both byte versions for final archive
+ok 4 - two actual observations of an overwritten report retain both byte versions for final archive
+  ---
+  duration_ms: 1897.8975
+  type: 'test'
+  ...
+# Subtest: an ended Run without a workspace explains why no report is deliverable through projection and read API
+ok 5 - an ended Run without a workspace explains why no report is deliverable through projection and read API
+  ---
+  duration_ms: 5955.821792
+  type: 'test'
+  ...
+# Subtest: an ended Run publishes verified local copies only under its installed Pack, is idempotent, and refuses tampering
+ok 6 - an ended Run publishes verified local copies only under its installed Pack, is idempotent, and refuses tampering
+  ---
+  duration_ms: 490.079917
+  type: 'test'
+  ...
+# Subtest: archive publication refuses a symlinked run-assets ancestor without writing through it
+ok 7 - archive publication refuses a symlinked run-assets ancestor without writing through it
+  ---
+  duration_ms: 349.368125
+  type: 'test'
+  ...
+# Subtest: goal support, measured-negative ending, budget ending and cancellation each receive a verified local delivery
+ok 8 - goal support, measured-negative ending, budget ending and cancellation each receive a verified local delivery
+  ---
+  duration_ms: 528.487417
+  type: 'test'
+  ...
+# Subtest: an ended Run archives byte-identified code under a safe name and reads it offline after the Site source is gone
+ok 9 - an ended Run archives byte-identified code under a safe name and reads it offline after the Site source is gone
+  ---
+  duration_ms: 433.859959
+  type: 'test'
+  ...
+# Subtest: missing recorded code or observation bytes leave an explicit failed delivery and no completion
+ok 10 - missing recorded code or observation bytes leave an explicit failed delivery and no completion
+  ---
+  duration_ms: 426.336083
+  type: 'test'
+  ...
+# Subtest: recorded byte counts remain part of report, code and observation identity
+ok 11 - recorded byte counts remain part of report, code and observation identity
+  ---
+  duration_ms: 463.804041
+  type: 'test'
+  ...
+# Subtest: a failure before publication keeps one stable reservation and a retry publishes exactly once
+ok 12 - a failure before publication keeps one stable reservation and a retry publishes exactly once
+  ---
+  duration_ms: 460.508
+  type: 'test'
+  ...
+# Subtest: concurrent delivery calls publish one directory and one completion record
+ok 13 - concurrent delivery calls publish one directory and one completion record
+  ---
+  duration_ms: 454.048834
+  type: 'test'
+  ...
+# Subtest: restart completes an exact reserved directory published before the prior Host could append completion
+ok 14 - restart completes an exact reserved directory published before the prior Host could append completion
+  ---
+  duration_ms: 768.747542
+  type: 'test'
+  ...
+# Subtest: a pending hash cannot bless a published directory with another Run, Pack, version, Site or method identity
+ok 15 - a pending hash cannot bless a published directory with another Run, Pack, version, Site or method identity
+  ---
+  duration_ms: 585.558375
+  type: 'test'
+  ...
+# Subtest: a listed optional material must be verified unless its absence is explicitly explained
+ok 16 - a listed optional material must be verified unless its absence is explicitly explained
+  ---
+  duration_ms: 450.721041
+  type: 'test'
+  ...
+# Subtest: schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+ok 17 - schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+  ---
+  duration_ms: 5494.063917
+  type: 'test'
+  ...
+# Subtest: failure between the two report writes leaves no record; the next Host completes and verifies both files
+ok 18 - failure between the two report writes leaves no record; the next Host completes and verifies both files
+  ---
+  duration_ms: 6602.144292
+  type: 'test'
+  ...
+# Subtest: a Site report write failure still preserves local Run facts in the installed Pack
+ok 19 - a Site report write failure still preserves local Run facts in the installed Pack
+  ---
+  duration_ms: 430.4895
+  type: 'test'
+  ...
+# Subtest: offline v21 to v24 polishing facts import into the current domain without rewriting source bytes
+ok 20 - offline v21 to v24 polishing facts import into the current domain without rewriting source bytes
+  ---
+  duration_ms: 1299.057333
+  type: 'test'
+  ...
+# Subtest: explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+ok 21 - explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+  ---
+  duration_ms: 615.877542
+  type: 'test'
+  ...
+# Subtest: opening the original v19 home still fails the version gate without rewriting it
+ok 22 - opening the original v19 home still fails the version gate without rewriting it
+  ---
+  duration_ms: 253.738958
+  type: 'test'
+  ...
+# Subtest: an explicit v20 snapshot is copied into an empty v21 home while its source stays byte-for-byte intact
+ok 23 - an explicit v20 snapshot is copied into an empty v21 home while its source stays byte-for-byte intact
+  ---
+  duration_ms: 29.69225
+  type: 'test'
+  ...
+# Subtest: importing an owned v20 Run preserves its recorded owner and reports that ownership truthfully
+ok 24 - importing an owned v20 Run preserves its recorded owner and reports that ownership truthfully
+  ---
+  duration_ms: 30.778916
+  type: 'test'
+  ...
+# Subtest: v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home
+ok 25 - v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home
+  ---
+  duration_ms: 16.893416
+  type: 'test'
+  ...
+# Subtest: wrong formats, future controls and unknown fields cannot be silently dropped during import
+ok 26 - wrong formats, future controls and unknown fields cannot be silently dropped during import
+  ---
+  duration_ms: 51.795333
+  type: 'test'
+  ...
+# Subtest: Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+ok 27 - Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+  ---
+  duration_ms: 42.59975
+  type: 'test'
+  ...
+# Subtest: v20-only Job, workspace and decision facts are refused even with a v19 header
+ok 28 - v20-only Job, workspace and decision facts are refused even with a v19 header
+  ---
+  duration_ms: 21.580791
+  type: 'test'
+  ...
+# Subtest: symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+ok 29 - symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+  ---
+  duration_ms: 8.005708
+  type: 'test'
+  ...
+# Subtest: mid-write failure and process death cannot publish a partial import or alter the source
+ok 30 - mid-write failure and process death cannot publish a partial import or alter the source
+  ---
+  duration_ms: 789.948417
+  type: 'test'
+  ...
+# Subtest: the offline CLI requires both explicit paths and never defaults to DSH_HOME
+ok 31 - the offline CLI requires both explicit paths and never defaults to DSH_HOME
+  ---
+  duration_ms: 85.086792
+  type: 'test'
+  ...
+# Subtest: two simultaneous imports cannot replace the first complete destination
+ok 32 - two simultaneous imports cannot replace the first complete destination
+  ---
+  duration_ms: 38.430625
+  type: 'test'
+  ...
+1..32
+# tests 32
+# suites 0
+# pass 32
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 38860.929
+Test boot attempts: {"host-process":3,"host-in-process":23,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 38.932 s; pass/fail/skip counts are in the TAP summary above

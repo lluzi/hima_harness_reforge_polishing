@@ -7,7 +7,7 @@ import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows
 import { reportBlocks } from '../experience-report.js';
 import { runPath } from '../paths.js';
 import { fetchRun, fetchRuns, fetchStartChoices, reviewPackTransfer, startCampaign, type HimaResult } from './api.js';
-import { ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, MaterialSection, ObservationRow, ReportBlockRow, RunControls, useRunActions, VerdictRow, WorkshopSection } from './HimaRunCard.js';
+import { ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection, MaterialSection, ObservationRow, ReportBlockRow, RunControls, useRunActions, VerdictRow, WorkshopSection } from './HimaRunCard.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot. */
 export interface WorkbenchProps {
@@ -128,6 +128,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
                 <RunSummary view={view} />
                 <div className='hima-run-controls'><RunControls view={view} acting={acting} /></div>
                 <ExecutionTrace view={view} />
+                <GrowthSection view={view} />
                 <JobActivity view={view} />
                 {view.workshop ? <WorkshopSection view={view} workshop={view.workshop} /> : null}
                 <MaterialSection view={view} />

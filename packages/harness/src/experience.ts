@@ -23,7 +23,7 @@
 // report is written, and this module leaves the Site alone.
 import { createHash } from 'node:crypto';
 import { constants, lstatSync } from 'node:fs';
-import { lstat, mkdir, open, readFile as readLocalFile, rename, rm } from 'node:fs/promises';
+import { link, lstat, mkdir, open, readFile as readLocalFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { channelFor, mustRun, type Channel } from './channel.js';
@@ -313,6 +313,12 @@ export async function readMaterial(deps: ExperienceDeps, runId: string, recordId
   const record = deps.ledger.records({ runId }).find((item) => item.id === recordId && (item.type === 'code' || item.type === 'knowledge'));
   if (record?.type !== 'code' && record?.type !== 'knowledge') return { kind: 'none', why: `no recorded code or knowledge version ${recordId} belongs to run ${runId}` };
   if (record.type === 'code') {
+    if (record.retainedPath !== undefined) {
+      const held = await readRetainedMaterial(deps, run, record.retainedPath, record.sha256, record.bytes);
+      if (held.kind === 'read') return { kind: 'read', record, text: held.bytes.toString('utf8') };
+      return held.kind === 'changed' ? { kind: 'changed', path: record.retainedPath, recorded: record.sha256, found: held.found }
+        : { kind: 'unreadable', path: record.retainedPath, recorded: record.sha256, why: held.why };
+    }
     const site = loadSite(deps.sitesDir, run.siteId);
     const decision = await decideRead(site, record.path, channelFor(site));
     if (!decision.ok) return archivedOrOriginal(deps, runId, record, { kind: 'unreadable', path: record.path, recorded: record.sha256, why: decision.reason });
@@ -606,7 +612,6 @@ async function archiveFilePath(directory: string, relative: string, createParent
   const at = path.resolve(root, relative);
   if (!at.startsWith(`${root}${path.sep}`)) throw new Error(`archive material path escapes ${root}: ${relative}`);
   const parent = path.dirname(at);
-  if (createParents) await mkdir(parent, { recursive: true, mode: 0o700 });
   const below = path.relative(root, parent);
   const ancestors = [root];
   if (below !== '') {
@@ -614,6 +619,10 @@ async function archiveFilePath(directory: string, relative: string, createParent
     for (const part of below.split(path.sep)) { current = path.join(current, part); ancestors.push(current); }
   }
   for (const ancestor of ancestors) {
+    if (createParents) {
+      try { await mkdir(ancestor, { mode: 0o700 }); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+    }
     const state = await lstat(ancestor);
     if (state.isSymbolicLink() || !state.isDirectory()) throw new Error(`archive material ancestor is not a plain directory: ${ancestor}`);
   }
@@ -657,6 +666,10 @@ async function archiveFailure(deps: ExperienceDeps, runId: string, directory: st
 }
 
 async function readObservedAsset(deps: ExperienceDeps, run: RunRecord, record: ObservationRecord): Promise<Buffer | string> {
+  if (record.retainedPath !== undefined && run.packId !== undefined) {
+    const held = await readRetainedMaterial(deps, run, record.retainedPath, record.contentSha256, record.bytes);
+    return held.kind === 'read' ? held.bytes : held.kind === 'changed' ? `retained observation changed to ${held.found}` : held.why;
+  }
   const site = loadSite(deps.sitesDir, run.siteId);
   const channel = channelFor(site);
   const decision = await decideRead(site, record.path, channel);
@@ -667,4 +680,46 @@ async function readObservedAsset(deps: ExperienceDeps, run: RunRecord, record: O
   if (found !== record.contentSha256) return `${record.path} changed from ${record.contentSha256} to ${found}`;
   if (answer.stdout.byteLength !== record.bytes) return `${record.path} recorded size ${String(record.bytes)} differs from found ${String(answer.stdout.byteLength)}`;
   return Buffer.from(answer.stdout);
+}
+
+/** Hold exact observed bytes before later generations overwrite their Site pathname. This is
+ * private Pack evidence staging, not a completed archive or another observation authority. */
+export async function retainRunMaterial(deps: Pick<ExperienceDeps, 'ledger' | 'packsDir'>, runId: string,
+  bytes: Uint8Array, expectedSha256: string): Promise<string | undefined> {
+  const run = existingRun(deps.ledger, runId);
+  if (run.packId === undefined) return undefined;
+  if (hashOf(bytes) !== expectedSha256) throw new Error('source report changed before its observation was retained');
+  const folder = installedPackFolder(deps.packsDir, run.packId);
+  if (!folder) throw new Error('installed Pack is unavailable for retaining observation bytes');
+  await archivePathSafe(folder.dir, run.id, false);
+  const root = path.join(folder.dir, runAssetsDirectory);
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const relative = `.evidence/${run.id}/${expectedSha256}.dat`;
+  const target = await archiveFilePath(root, relative, true);
+  const temporary = `${relative}.${randomSuffix()}.tmp`;
+  const tempPath = await archiveFilePath(root, temporary, true);
+  try {
+    await writeArchiveFile(root, temporary, bytes);
+    try { await link(tempPath, target); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+    const held = await readArchiveFile(root, relative);
+    if (hashOf(held) !== expectedSha256 || held.byteLength !== bytes.byteLength) throw new Error('retained observation conflicts with existing bytes');
+    return target;
+  } finally { await rm(tempPath, { force: true }); }
+}
+
+async function readRetainedMaterial(deps: ExperienceDeps, run: RunRecord, retainedPath: string, sha256: string, size: number): Promise<
+  { kind: 'read'; bytes: Buffer } | { kind: 'changed'; found: string } | { kind: 'unreadable'; why: string }
+> {
+  try {
+    if (!run.packId) throw new Error('Run has no Pack for retained material');
+    const folder = installedPackFolder(deps.packsDir, run.packId);
+    if (!folder) throw new Error('installed Pack for retained material is unavailable');
+    const root = path.join(folder.dir, runAssetsDirectory), relative = `.evidence/${run.id}/${sha256}.dat`;
+    if (path.resolve(retainedPath) !== path.join(root, relative)) throw new Error('retained material is outside its Run and content identity');
+    const bytes = await readArchiveFile(root, relative), found = hashOf(bytes);
+    if (found !== sha256) return { kind: 'changed', found };
+    if (bytes.byteLength !== size) throw new Error('retained material byte count differs from the record');
+    return { kind: 'read', bytes };
+  } catch (error) { return { kind: 'unreadable', why: (error as Error).message }; }
 }

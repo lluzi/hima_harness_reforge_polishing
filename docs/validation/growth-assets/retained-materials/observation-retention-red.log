@@ -1,0 +1,28 @@
+✖ two actual observations of an overwritten report retain both byte versions for final archive (2947.932875ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4416.892292
+
+✖ failing tests:
+
+test at test/contract/experience-files.test.ts:30:1
+✖ two actual observations of an overwritten report retain both byte versions for final archive (2947.932875ms)
+  AssertionError [ERR_ASSERTION]: {"kind":"none","why":"run run-51bb607b-7a4f-4932-8c1c-cb76fab01ba1 has no Ledger-confirmed completed archive"}
+  
+  'none' !== 'read'
+  
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/experience-files.test.ts:48:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'none',
+    expected: 'read',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

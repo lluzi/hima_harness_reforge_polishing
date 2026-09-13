@@ -202,6 +202,8 @@ export const observationRecord = z.object({
   type: z.literal('observation'),
   path: z.string(),
   contentSha256: z.string(),
+  /** Pack-local byte snapshot held when observed; original path remains the Site provenance. */
+  retainedPath: z.string().optional(),
   bytes: z.number().int().nonnegative(),
   reader: readerRef,
   values: z.array(semanticValue),
@@ -899,6 +901,7 @@ export const sessionRecord = z
  * not mean to store is a fault rather than a field to keep.
  */
 export const codeRecord = z.strictObject({
+  retainedPath: z.string().optional(),
   ...base,
   ...inBranch,
   type: z.literal('code'),
@@ -1697,7 +1700,8 @@ export const ledgerSpec = defineDomain({
   // refuse rather than erase the evidence lifecycle.
   // 23: source-linked model analysis stays distinct from observed facts and Judge verdicts.
   // 24: accepted per-Run growth preserves the actual graph and its lifecycle.
-  version: 24,
+  // 25: retain observed and written byte versions before later attempts overwrite source paths.
+  version: 25,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -2087,14 +2091,14 @@ const legacyRunRecord = runRecord.pick({
   strategy: true, firstStrategy: true, generation: true, loop: true, fork: true, meters: true,
 }).strict();
 const legacyLedgerRecord = z.discriminatedUnion('type', [
-  observationRecord, refusalRecord, verdictRecord,
+  observationRecord.omit({ retainedPath: true }), refusalRecord, verdictRecord,
   jobRecord.safeExtend({ job: jobIdentity.extend({ pid: z.number().int().positive() }) }),
   workspaceRecord.omit({ packDigest: true }).extend({ design: z.string() }), nodeRecord, blockerRecord, resumedRecord,
   // v20 decisions can name the conversational agent. These are the complete v19 fields.
   decisionRecord.pick({ id: true, runId: true, siteId: true, seq: true, at: true, writer: true,
     generation: true, loopId: true, type: true, nodeId: true, chooser: true,
     chooserOrigin: true, chosen: true, rationale: true, cites: true }),
-  cancelRecord, loopRecord, experienceRecord, sessionRecord, codeRecord,
+  cancelRecord, loopRecord, experienceRecord, sessionRecord, codeRecord.omit({ retainedPath: true }),
 ]);
 const legacyLedgerDocument = z.strictObject({
   unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.literal(19) }),
@@ -2107,8 +2111,8 @@ const legacyLedgerDocument = z.strictObject({
 
 /** The immediately previous domain's complete shapes, before PLS-24 added `knowledge`. */
 const v20LedgerRecord = z.discriminatedUnion('type', [
-  observationRecord, refusalRecord, verdictRecord, jobRecord, workspaceRecord, nodeRecord, blockerRecord,
-  resumedRecord, decisionRecord, cancelRecord, loopRecord, experienceRecord, sessionRecord, codeRecord,
+  observationRecord.omit({ retainedPath: true }), refusalRecord, verdictRecord, jobRecord, workspaceRecord, nodeRecord, blockerRecord,
+  resumedRecord, decisionRecord, cancelRecord, loopRecord, experienceRecord, sessionRecord, codeRecord.omit({ retainedPath: true }),
 ]);
 const v20LedgerDocument = z.strictObject({
   unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.literal(20) }),
@@ -2117,14 +2121,15 @@ const v20LedgerDocument = z.strictObject({
 });
 
 const priorPolishingDocument = z.strictObject({
-  unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.union([z.literal(21), z.literal(22), z.literal(23)]) }),
+  unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.union([z.literal(21), z.literal(22), z.literal(23), z.literal(24)]) }),
   global: z.null(),
   tables: z.strictObject({ runs: z.record(z.string(), runRecord), records: z.record(z.string(),
-    z.discriminatedUnion('type', [...v20LedgerRecord.options, knowledgeRecord, archiveRecord, analysisRecord])) }),
+    z.discriminatedUnion('type', [...v20LedgerRecord.options, knowledgeRecord, archiveRecord, analysisRecord, growthRecord])) }),
 }).superRefine((document, context) => {
   if (document.unit.version === 21 && Object.values(document.tables.records).some(record => record.type === 'archive' || record.type === 'analysis')) {
     context.addIssue({ code: 'custom', message: 'v21 did not support archive or analysis records' });
   }
+  if (document.unit.version < 24 && Object.values(document.tables.records).some(record => record.type === 'growth')) context.addIssue({ code: 'custom', message: 'growth requires source v24' });
   if (document.unit.version === 22 && Object.values(document.tables.records).some(record => record.type === 'analysis')) context.addIssue({ code: 'custom', message: 'v22 did not support analysis records' });
 });
 
@@ -2173,7 +2178,7 @@ function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
 function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> {
   const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   const version = (input as { unit?: { version?: unknown } } | null)?.unit?.version;
-  const document = version === 21 || version === 22 || version === 23 ? priorPolishingDocument.parse(input)
+  const document = version === 21 || version === 22 || version === 23 || version === 24 ? priorPolishingDocument.parse(input)
     : version === 20 ? v20LedgerDocument.parse(input) : readLegacyLedger(bytes);
   if (!isDeepStrictEqual(input, document)) throw new Error('ledger import contains unsupported fields or values; import would change stored facts');
   validateImportDocument(document as unknown as ImportDocument);
@@ -2207,7 +2212,7 @@ function sameImportSnapshot(a: BigIntStats, b: BigIntStats): boolean {
 
 export interface LegacyLedgerImportReceipt {
   readonly format: 'hima-ledger-import-v1';
-  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23; readonly sha256: string; readonly bytes: number; readonly backup: string };
+  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23 | 24; readonly sha256: string; readonly bytes: number; readonly backup: string };
   readonly target: { readonly version: number; readonly sha256: string; readonly file: string };
   readonly importedAt: string;
   readonly runs: number;
@@ -2228,7 +2233,7 @@ export interface LegacyLedgerImportReceipt {
  * home is written. The destination parent must already exist; no ancestor is created or repaired.
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
-  if (ledgerSpec.version !== 24) throw new Error('legacy import supports only the reviewed v19-v23-to-v24 transition');
+  if (ledgerSpec.version !== 25) throw new Error('legacy import supports only the reviewed v19-v24-to-v25 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);
