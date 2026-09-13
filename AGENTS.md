@@ -22,6 +22,11 @@
 
 ## Agent skills
 
+### Model allocation
+
+开始开发切片、派工或升级模型、安排测试与复核前，必须阅读
+`docs/agents/model-policy.md`，按其中的模型、Effort 与上下文规则执行。
+
 ### Issue tracker
 
 任务与任务规格使用 `lluzi/hima_harness_reforge_polishing` 的 GitHub Issues。
