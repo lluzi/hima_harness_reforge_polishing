@@ -167,7 +167,7 @@
       "path": "pnr.tcl.tmpl",
       "source": "flow/scripts/pnr_tsmc28.tcl.tmpl",
       "sourceSha256": "e7db357c273593c742f451b3044b5d80aef936dfbe55a019e8eb25ea8b7f682e",
-      "packSha256": "d1d2bd480173d3978d21a0fa4d442b4dd5212cb3970bffede042284f25a7d9d9",
+      "packSha256": "d4ae29d7791a4078858721d457a90672522e002dc27fcead5f1e9a1f9e9ac745",
       "adapted": true
     }
   ],
@@ -178,6 +178,7 @@
     "init.tcl.tmpl uses documented setNanoRouteMode -routeTopRoutingLayer.",
     "charlib_emit.py writes per-cell prediction outputs and logs inside the Campaign attempt; no fixed /tmp path.",
     "pnr.tcl.tmpl exports the active post-route SDC for clock evidence; Innovus 23.14 support remains an L4 Site bring-up item.",
-    "Shared DC and Innovus liveness queries use qualified library/cell patterns and collection cardinality rather than Tcl list length."
+    "Shared DC and Innovus liveness queries use qualified library/cell patterns and collection cardinality rather than Tcl list length.",
+    "The Innovus PODv2 PnR method uses clock_opt_design rather than the rejected legacy ccopt_design sequence."
   ]
 }

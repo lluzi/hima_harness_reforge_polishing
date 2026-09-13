@@ -25,6 +25,12 @@ test('library liveness queries use qualified leaf names and collection cardinali
   assert.match(init, /sizeof_collection \$_xs_libcells/);
 });
 
+test('PODv2 PnR uses the clock optimization command required by Innovus 23.14', async () => {
+  const pnr = await readFile(path.join(aesDomainPack, 'flow/domain/pnr.tcl.tmpl'), 'utf8');
+  assert.match(pnr, /^clock_opt_design$/m);
+  assert.doesNotMatch(pnr, /^create_ccopt_clock_tree_spec$|^ccopt_design$/m);
+});
+
 test('DC version identity accepts the observed indented header and rejects ambiguity', () => {
   const moduleDir = path.join(aesDomainPack, 'flow');
   const code = 'import json,sys; sys.path.insert(0, sys.argv[1]); from stages import dc_version; print(json.dumps(dc_version(sys.stdin.read()), sort_keys=True))';
