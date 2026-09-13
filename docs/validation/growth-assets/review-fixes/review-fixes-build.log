@@ -1,0 +1,5 @@
+$ pnpm -r run build
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json && node scripts/build-client.mjs
+client: lib/client.js (165688 bytes)
+$ tsc -p tsconfig.json

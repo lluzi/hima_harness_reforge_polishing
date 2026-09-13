@@ -32,7 +32,7 @@ import { currentRecordsIn, hasEnded, type ArchiveRecord, type CodeRecord, type E
 import { runView, type RunWords } from './remote.js';
 import { installedPackFolder, runPackWords } from './packs.js';
 import { methodHistoryDirectory, runAssetsDirectory } from './pack-folder.js';
-import { verifiedPackRelocation } from './release.js';
+import { loadRunPack, verifiedPackRelocation } from './release.js';
 import { existingRun } from './runs.js';
 import { decideRead, decideWrite } from './shell.js';
 import { loadSite, pathsOf, type Site } from './sites.js';
@@ -428,6 +428,21 @@ function inputIdentities(ledger: Ledger, runId: string): Map<string, string> {
   return identities;
 }
 
+/** Every input whose bytes must be known before history can be injected automatically. Matching a
+ * subset is not evidence that the current and historical Workshop inputs are the same. */
+function declaredWorkshopInputs(deps: ExperienceDeps, run: RunRecord, workshop?: string):
+  { readonly inputs?: readonly string[]; readonly issue?: string } {
+  if (run.packId === undefined || run.packDigest === undefined) return { issue: 'The Run has no retained method identity.' };
+  try {
+    const pack = loadRunPack(deps.packsDir, run.packId, run.packDigest);
+    const selected = workshop === undefined ? pack.contract.workshops : pack.contract.workshops.filter(candidate => candidate.id === workshop);
+    if (workshop !== undefined && selected.length === 0) return { issue: `The retained method declares no Workshop ${workshop}.` };
+    return { inputs: selected.flatMap(candidate => candidate.reads.map(file => `${candidate.id}/${file}`)) };
+  } catch {
+    return { issue: 'The retained method declaration is unavailable, so complete Workshop input coverage cannot be established.' };
+  }
+}
+
 function parseArchivedExperience(text: string, source: RunRecord, manifest: RunAssetManifest): ExperienceJson {
   const parsed = JSON.parse(text) as Partial<ExperienceJson> | null;
   if (parsed === null || typeof parsed !== 'object' || !['hima-experience/1', 'hima-experience/2', 'hima-experience/3', 'hima-experience/4'].includes(String(parsed.schema))
@@ -463,13 +478,16 @@ function reportCoverage(report: ExperienceJson): string {
  * Wrong Packs/Sites and method/Goal identities are outside the candidate set, so their paths and
  * contents are never exposed through this interface.
  */
-export async function listRunKnowledge(deps: ExperienceDeps, currentRunId: string): Promise<RunKnowledgeList> {
+export async function listRunKnowledge(deps: ExperienceDeps, currentRunId: string, workshop?: string,
+  unavailableInputs: readonly string[] = []): Promise<RunKnowledgeList> {
   const current = existingRun(deps.ledger, currentRunId);
   if (current.packId === undefined || current.packDigest === undefined) return { candidates: [], unavailable: [] };
   const sources = deps.ledger.runs().filter((source) => source.id !== current.id && hasEnded(source.status)
     && source.packId === current.packId && source.siteId === current.siteId && source.packDigest === current.packDigest
     && sameGoalKeys(source.goal, current.goal)).slice(-HISTORY_SCAN_CAP).reverse();
   const currentInputs = inputIdentities(deps.ledger, current.id);
+  const declared = declaredWorkshopInputs(deps, current, workshop);
+  const currentlyUnavailable = new Set(unavailableInputs.map(file => workshop === undefined || file.includes('/') ? file : `${workshop}/${file}`));
   const candidates: RunKnowledgeCandidate[] = [];
   const unavailable: { sourceRun: string; reason: string }[] = [];
   for (const source of sources) {
@@ -505,21 +523,39 @@ export async function listRunKnowledge(deps: ExperienceDeps, currentRunId: strin
         ? 'Source and current purpose are test; matching input evidence may support this test study as limited background, never a production or EDA result.'
         : 'Source purpose is test; synthetic or authoring evidence is not automatically promoted into Campaign knowledge.');
     }
-    if (currentInputs.size === 0 || sourceInputs.size === 0) {
+    if (declared.inputs === undefined) {
       automatic = false;
-      conditions.push('Declared Workshop input content identity is unrecorded on the current or source Run.');
+      conditions.push(declared.issue!);
+    } else if (declared.inputs.length === 0) {
+      automatic = false;
+      conditions.push('The retained method declares no Workshop inputs whose content identity could establish automatic applicability.');
     } else {
-      for (const [name, currentSha] of currentInputs) {
+      const missingCurrent = declared.inputs.filter(name => !currentInputs.has(name) || currentlyUnavailable.has(name));
+      const missingSource = declared.inputs.filter(name => !sourceInputs.has(name));
+      if (missingCurrent.length > 0) {
+        automatic = false;
+        conditions.push(`Current Run lacks captured bytes for declared Workshop input${missingCurrent.length === 1 ? '' : 's'} ${missingCurrent.join(', ')}.`);
+      }
+      if (missingSource.length > 0) {
+        automatic = false;
+        conditions.push(`Historical Run lacks captured bytes for declared Workshop input${missingSource.length === 1 ? '' : 's'} ${missingSource.join(', ')}.`);
+      }
+      for (const name of declared.inputs) {
+        const currentSha = currentInputs.get(name);
         const historicalSha = sourceInputs.get(name);
-        if (historicalSha === undefined) {
-          automatic = false;
-          conditions.push(`Historical input ${name} has no comparable captured bytes.`);
-        } else if (historicalSha !== currentSha) {
+        if (currentSha !== undefined && historicalSha !== undefined && historicalSha !== currentSha) {
           automatic = false;
           conditions.push(`Historical input ${name} differs from the current captured bytes; explicit reads are limited background only.`);
         }
       }
-      if (automatic) conditions.push(`Captured declared input bytes match for ${[...currentInputs.keys()].join(', ')}.`);
+      for (const [name, currentSha] of currentInputs) {
+        const historicalSha = sourceInputs.get(name);
+        if (!declared.inputs.includes(name) && historicalSha !== undefined && historicalSha !== currentSha) {
+          automatic = false;
+          conditions.push(`Historical input ${name} differs from the current captured bytes; explicit reads are limited background only.`);
+        }
+      }
+      if (automatic) conditions.push(`Captured declared input bytes match for ${declared.inputs.join(', ')}.`);
     }
     const completion = deps.ledger.records({ runId: source.id, type: 'archive' }).findLast((record): record is ArchiveRecord => record.type === 'archive' && record.delivery === 'complete');
     if (completion?.manifestSha256 === undefined) {
@@ -591,8 +627,9 @@ function historicalSummary(candidate: RunKnowledgeCandidate, report: ExperienceJ
 export async function readRunKnowledge(deps: ExperienceDeps, request: {
   readonly runId: string; readonly nodeId: string; readonly attempt: number; readonly sessionId: string; readonly workshop: string;
   readonly branchId?: string; readonly sourceRun?: string; readonly assetPath?: string; readonly summary?: boolean;
+  readonly unavailableInputs?: readonly string[];
 }): Promise<ReadRunKnowledgeResult> {
-  const listed = await listRunKnowledge(deps, request.runId);
+  const listed = await listRunKnowledge(deps, request.runId, request.workshop, request.unavailableInputs);
   const candidate = request.sourceRun === undefined
     ? listed.candidates.find((item) => item.automatic)
     : listed.candidates.find((item) => item.sourceRun === request.sourceRun);

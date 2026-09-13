@@ -1,0 +1,192 @@
+TAP version 13
+# Subtest: analysis whose source is later invalidated remains visible only as historical interpretation
+not ok 1 - analysis whose source is later invalidated remains visible only as historical interpretation
+  ---
+  duration_ms: 4.655875
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/experience-report.test.ts:47:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /Citation observation-1 was invalidated by an applied revision/. Input:
+    
+    '# Campaign campaign-1\n' +
+      '\n' +
+      'ended — goal met.\n' +
+      '\n' +
+      '| fact | value |\n' +
+      '| --- | --- |\n' +
+      '| pack | timing@fixture |\n' +
+      '| site | local |\n' +
+      '| run | run-1 |\n' +
+      '| campaign | campaign-1 |\n' +
+      '| goal | target_period_ns=2.3 |\n' +
+      '| written at | 2026-09-11T00:00:00.000Z |\n' +
+      '\n' +
+      '## Research result and evidence limits\n' +
+      '\n' +
+      'The recorded goal-met decision is supported by completed, cited judge evidence in this Campaign.\n' +
+      '\n' +
+      '| trial | evidence | recorded constraint outcome | observation | judge records | scope |\n' +
+      '| --- | --- | --- | --- | --- | --- |\n' +
+      '| generation 1 | judged | PASS | observation-1: /campaign/qor.rpt; sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | constraint: PASS constraint@1; goal: PASS goal@1 | The experiment completed and its judge verdicts cite this observation. FAIL is a measured negative result, not an execution fault. |\n' +
+      '\n' +
+      'The built-in local demo uses simulated synthesis reports. Establish the source of a particular Run from its inputs and original reports.\n' +
+      '\n' +
+      'Reported clock periods are report values, not measured Fmax. Requested strategy values are inputs, not measurements.\n' +
+      '\n' +
+      'Convergence records the Pack rule over the tried values; it does not prove an optimum or general strategy failure.\n' +
+      '\n' +
+      'Incomplete trials and unresolved or stale citations are retained as history and excluded from the definite result.\n' +
+      '\n' +
+      'Workspace design, flow and container names are declarations, not verified runtime identity. Design-content identity, tool versions and operating system were not recorded; cross-trial comparability is unknown.\n' +
+      '\n' +
+      'No causal research explanation or AI analysis was recorded by this deterministic report. No improvement percentage is inferred.\n' +
+      '\n' +
+      '| environment | recorded value |\n' +
+      '| --- | --- |\n' +
+      '| site | local |\n' +
+      '| declaredDesign | not recorded |\n' +
+      '| declaredFlowRoot | not recorded |\n' +
+      '| declaredContainer | not recorded |\n' +
+      '| toolVersions | not recorded |\n' +
+      '| operatingSystem | not recorded |\n' +
+      '\n' +
+      '## Research interpretation and next experiments\n' +
+      '\n' +
+      'Model analysis is an interpretation of cited evidence. Hypotheses, comparisons and causal explanations are not measurements or verified facts.\n' +
+      '\n' +
+      'Analysis analysis-before-revision · node explore · source owner\n' +
+      '\n' +
+      'Research question: What did the earlier observation suggest?\n' +
+      '\n' +
+      'Hypothesis (unverified): The earlier path may explain the result.\n' +
+      '\n' +
+      'Comparison condition (declared, not independently probed): Compare with a rerun after revision.\n' +
+      '\n' +
+      'Unverified model interpretation: The earlier period was 2.3 ns.\n' +
+      'References: observation-1\n' +
+      '\n' +
+      'Limitation: The source was later invalidated.\n' +
+      '\n' +
+      'Proposed next experiment (not executed by this report): Use the revised path and measure again.\n' +
+      '\n' +
+      '## The generations\n' +
+      '\n' +
+      '| generation | strategy → period (asked → observed) | slack | verdicts | decision | wall time |\n' +
+      '| --- | --- | --- | --- | --- | --- |\n' +
+      '| 1 | periodNs 2.3 → 2.3 | 0 | PASS constraint, PASS goal | goal met | 100 ms |\n' +
+      '\n' +
+      '## Recorded experiment history\n' +
+      '\n' +
+      '### Generation 1\n' +
+      '\n' +
+      'It asked the flow for periodNs 2.3 and the report stated a clock period of 2.3 ns, with 0 ns of setup slack. HimaJudge found PASS on constraint, PASS on goal. The decision was goal met. It took 100 ms.\n' +
+      '\n' +
+      '## The path\n' +
+      '\n' +
+      '| # | node | kind | state | attempt | what was recorded |\n' +
+      '| --- | --- | --- | --- | --- | --- |\n' +
+      '| 1 | observe-done | act | done | 1 |  |\n' +
+      '| 2 | judge-done | judge | done | 1 | PASS |\n'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    # Campaign campaign-1
+    
+    ended — goal met.
+    
+    | fact | value |
+    | --- | --- |
+    | pack | timing@fixture |
+    | site | local |
+    | run | run-1 |
+    | campaign | campaign-1 |
+    | goal | target_period_ns=2.3 |
+    | written at | 2026-09-11T00:00:00.000Z |
+    
+    ## Research result and evidence limits
+    
+    The recorded goal-met decision is supported by completed, cited judge evidence in this Campaign.
+    
+    | trial | evidence | recorded constraint outcome | observation | judge records | scope |
+    | --- | --- | --- | --- | --- | --- |
+    | generation 1 | judged | PASS | observation-1: /campaign/qor.rpt; sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | constraint: PASS constraint@1; goal: PASS goal@1 | The experiment completed and its judge verdicts cite this observation. FAIL is a measured negative result, not an execution fault. |
+    
+    The built-in local demo uses simulated synthesis reports. Establish the source of a particular Run from its inputs and original reports.
+    
+    Reported clock periods are report values, not measured Fmax. Requested strategy values are inputs, not measurements.
+    
+    Convergence records the Pack rule over the tried values; it does not prove an optimum or general strategy failure.
+    
+    Incomplete trials and unresolved or stale citations are retained as history and excluded from the definite result.
+    
+    Workspace design, flow and container names are declarations, not verified runtime identity. Design-content identity, tool versions and operating system were not recorded; cross-trial comparability is unknown.
+    
+    No causal research explanation or AI analysis was recorded by this deterministic report. No improvement percentage is inferred.
+    
+    | environment | recorded value |
+    | --- | --- |
+    | site | local |
+    | declaredDesign | not recorded |
+    | declaredFlowRoot | not recorded |
+    | declaredContainer | not recorded |
+    | toolVersions | not recorded |
+    | operatingSystem | not recorded |
+    
+    ## Research interpretation and next experiments
+    
+    Model analysis is an interpretation of cited evidence. Hypotheses, comparisons and causal explanations are not measurements or verified facts.
+    
+    Analysis analysis-before-revision · node explore · source owner
+    
+    Research question: What did the earlier observation suggest?
+    
+    Hypothesis (unverified): The earlier path may explain the result.
+    
+    Comparison condition (declared, not independently probed): Compare with a rerun after revision.
+    
+    Unverified model interpretation: The earlier period was 2.3 ns.
+    References: observation-1
+    
+    Limitation: The source was later invalidated.
+    
+    Proposed next experiment (not executed by this report): Use the revised path and measure again.
+    
+    ## The generations
+    
+    | generation | strategy → period (asked → observed) | slack | verdicts | decision | wall time |
+    | --- | --- | --- | --- | --- | --- |
+    | 1 | periodNs 2.3 → 2.3 | 0 | PASS constraint, PASS goal | goal met | 100 ms |
+    
+    ## Recorded experiment history
+    
+    ### Generation 1
+    
+    It asked the flow for periodNs 2.3 and the report stated a clock period of 2.3 ns, with 0 ns of setup slack. HimaJudge found PASS on constraint, PASS on goal. The decision was goal met. It took 100 ms.
+    
+    ## The path
+    
+    | # | node | kind | state | attempt | what was recorded |
+    | --- | --- | --- | --- | --- | --- |
+    | 1 | observe-done | act | done | 1 |  |
+    | 2 | judge-done | judge | done | 1 | PASS |
+    
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/experience-report.test.ts:57:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1397:25)
+    Test.start (node:internal/test_runner/test:1257:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 356.883

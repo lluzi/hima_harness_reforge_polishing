@@ -1593,9 +1593,11 @@ async function growthAction(deps: FabricDeps, snapshot: RunRecord, req: Executio
   if (proposal.inputThroughSeq !== run.nextSeq - 1) return reject('growth inputs are stale; inputThroughSeq must name the current Ledger boundary');
   if (new Set(proposal.inputs.map((input) => input.recordId)).size !== proposal.inputs.length) return reject('growth inputs must cite distinct Ledger records');
   const records = deps.ledger.records({ runId: run.id });
+  const currentIds = new Set(currentRecordsIn(records).map(record => record.id));
   for (const input of proposal.inputs) {
     const record = records.find((item) => item.id === input.recordId && item.seq <= proposal.inputThroughSeq);
     if (record === undefined) return reject(`growth input ${input.recordId} is not an existing record at the declared boundary`);
+    if (!currentIds.has(record.id)) return reject(`growth input ${input.recordId} was superseded by a revision and is not current evidence`);
     if (!['observation', 'verdict', 'code', 'knowledge', 'workspace'].includes(record.type)) return reject(`growth input ${input.recordId} is not a content-bearing observation, verdict, code, knowledge or workspace record`);
     if (record.generation !== run.generation || record.loopId !== undefined) return reject(`growth input ${input.recordId} is not a current top-level generation fact`);
     if (identityOf(record) !== input.contentIdentity) return reject(`growth input ${input.recordId} content identity does not match the actual Ledger record`);
@@ -2306,11 +2308,12 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
     let data: unknown;
     if (req.action === 'recommend') {
       const inputs = await captureWorkshopInputs(scope);
-      const candidates = await listRunKnowledge(deps, runId);
+      const unavailableInputs = inputs.unavailable.map(input => input.file);
+      const candidates = await listRunKnowledge(deps, runId, resolved.declaration.id, unavailableInputs);
       const historical = await readRunKnowledge(deps, {
         runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.actor,
         workshop: resolved.declaration.id, ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
-        summary: true,
+        summary: true, unavailableInputs,
       });
       data = {
         purpose: resolved.declaration.purpose, language: resolved.declaration.language,
@@ -2330,12 +2333,16 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
     } else if (req.action === 'knowledge') {
       if (typeof req.file === 'string' && (req.assetRun !== undefined || req.assetPath !== undefined)) throw new RunStartError('knowledge reads either one declared Pack file or one verified historical asset, never both');
       if (typeof req.file === 'string') data = await knowledgeForWorkshop(scope, req.file);
-      else data = await readRunKnowledge(deps, {
-        runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.actor,
-        workshop: resolved.declaration.id, ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
-        ...(req.assetRun === undefined ? {} : { sourceRun: req.assetRun }),
-        ...(req.assetPath === undefined ? {} : { assetPath: req.assetPath }),
+      else {
+        const inputs = await captureWorkshopInputs(scope);
+        data = await readRunKnowledge(deps, {
+          runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.actor,
+          workshop: resolved.declaration.id, ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
+          ...(req.assetRun === undefined ? {} : { sourceRun: req.assetRun }),
+          ...(req.assetPath === undefined ? {} : { assetPath: req.assetPath }),
+          unavailableInputs: inputs.unavailable.map(input => input.file),
       });
+      }
     } else if (req.path !== undefined) {
       // A code read names only an actual record inside this execution's private directory.
       const target = pathsOf(ctx.site).join(scope.workshopAbs, req.path);

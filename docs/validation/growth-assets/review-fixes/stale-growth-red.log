@@ -1,0 +1,30 @@
+✖ growth after a revision rejects old same-generation evidence even with its correct hash (5897.493333ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6401.857917
+
+✖ failing tests:
+
+test at test/contract/growth.host.test.ts:337:1
+✖ growth after a revision rejects old same-generation evidence even with its correct hash (5897.493333ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'accepted'
+  - 'refused'
+  
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/growth.host.test.ts:355:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'accepted',
+    expected: 'refused',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

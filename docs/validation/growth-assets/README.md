@@ -1,7 +1,42 @@
 # 增长、回溯、预算与知识资产批次
 
-状态：实施中，尚未验收。基线 `6438c9f1cb76075bc31b25338b6937ac48d1a6bb`。
+状态：核心实现和定向验证已完成；独立审查、最终本地回归与任务关闭仍在进行。
+基线 `6438c9f1cb76075bc31b25338b6937ac48d1a6bb`。
 任务范围：PLS-10～12、PLS-14～17；PLS-18/26 完整 pilot 和独立用户验收另行保留。
+
+## 当前集成结果
+
+| 任务 | 现有模块中的交付行为 | 关键证据 |
+| --- | --- | --- |
+| PLS-10 | `graph.ts / fabric.ts / ledger.ts` 在声明 Explore 位置增加受预算约束的支路，保留参考方法，记录接纳/拒绝/返回 | `growth.test.ts`、`growth.host.test.ts`、一个实际支路 L3、真实模型闭环 |
+| PLS-11 | `fabric.ts / ledger.ts / workspace.ts` 保存版本、推导影响闭包、标记失效历史、重跑受影响分支并复用独立分支 | `revision.test.ts`、`revision.host.test.ts`；真实 fork、重启、同名与同路径内容变化；[远程字节验证](live-revision-files/) |
+| PLS-12 | `budget.ts / fabric.ts / workshop.ts` 共用时间/尝试/写入额度，保留收尾预留，硬截止停止 Campaign，原生对话继续 | `agent-workshop.host.test.ts`、growth 预算用例、[真实截止证据复核](live-model/revalidation.json) |
+| PLS-14 | `experience.ts / ledger.ts / remote.ts` 将原始材料与准确 manifest 存到已安装 Pack 的 `run-assets/<runId>`；观察/写入时保留字节版本 | `experience-files.test.ts`、`experience.host.test.ts`、[真实 Site 传输](live-archive-current/) |
+| PLS-15 | `experience.ts / fabric.ts / tools.ts` 保留研究问题、假设、限制、下一实验及引用；数值需匹配当前事实；未知不补造 | `research-analysis.host.test.ts`、`experience-report.test.ts`、[真实模型解释与算法审计](live-model/) |
+| PLS-16 | `experience.ts / workshop.ts` 验证同 Pack/Site/方法/输入的有限历史候选，保留实际读入来源，负结果可用于下次研究 | `knowledge-reuse.host.test.ts`、[实际历史读取→算法→新增验证→分析](live-model/) |
+| PLS-17 | `release.ts / remote.ts` 由 owner 审阅精确清单，分享默认只含方法；升级/迁移保留可验证私有资产并支持中断恢复 | `pack-method-assets.test.ts`、[owner 实际窗口确认](owner-preparation/) |
+
+保留原模块和同一个对话 owner，不新增调度、图、归档或检索服务。Ledger 当前版本 26；
+19～25 通过显式离线复制导入，原 home 不改写；Experience schema 4 兼容读取 1～3。
+增长首切片只支持声明的顶层 Explore，嵌套位置在接受前拒绝。回溯支持线性与一个可表达
+的 fork，无法安全表示的多个作用域在写入前拒绝。迁移不声称迁移活动 Agent/会话。
+
+预算到期后的回答不进入 Campaign 研究资产。确定性 archive/experience 仍可补交付；
+收尾时间属于原 timeBox，不能启动新实验/下一策略，但可对已有证据 Judge 和完成结论。
+研究写入按尝试和字节累计，拒绝与重写也记录，Host 重启或新增支路不重置额度。
+
+真实模型全流程有两次前置失败和一次业务完成但旧验收断言失败，全部保留在
+[尝试汇总](live-model/attempts.json)。对第三次快照的独立复核和改变子集的算法审计通过，
+没有为修正验收脚本重复调用模型。功能可用不等于已经证明知识复用降低成本；未进行
+固定预算的有/无资产因果对照，也未跑本批 L5、没有新的 Fmax/PPA 提升结论。
+
+## 回滚与保留
+
+代码可以按本批提交逐项 revert；不要删除已经生成的 `run-assets`、`.evidence`、版本材料
+或 Ledger 记录。旧程序不理解 Ledger 26 时不能直接打开该 home；先保留副本并按其支持
+的版本运行。Pack 方法升级有显式恢复入口；Run 归档失效显示 failed，不改写成成功。
+
+## 早期检查点（保留过程，不代表当前状态）
 
 ## 执行与边界
 

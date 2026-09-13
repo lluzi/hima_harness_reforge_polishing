@@ -1,0 +1,158 @@
+local: 4 selected; 59 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: model interpretation cannot turn missing citations or contradictory numbers into report facts
+ok 1 - model interpretation cannot turn missing citations or contradictory numbers into report facts
+  ---
+  duration_ms: 2.9465
+  type: 'test'
+  ...
+# Subtest: analysis whose source is later invalidated remains visible only as historical interpretation
+ok 2 - analysis whose source is later invalidated remains visible only as historical interpretation
+  ---
+  duration_ms: 0.408625
+  type: 'test'
+  ...
+# Subtest: a goal claim requires completed cited evidence; requested period is not a measured Fmax
+ok 3 - a goal claim requires completed cited evidence; requested period is not a measured Fmax
+  ---
+  duration_ms: 1.397875
+  type: 'test'
+  ...
+# Subtest: a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+ok 4 - a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+  ---
+  duration_ms: 0.335
+  type: 'test'
+  ...
+# Subtest: cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+ok 5 - cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+  ---
+  duration_ms: 0.479083
+  type: 'test'
+  ...
+# Subtest: missing, unresolved, stale and undetermined citations cannot establish a definite result
+ok 6 - missing, unresolved, stale and undetermined citations cannot establish a definite result
+  ---
+  duration_ms: 0.596542
+  type: 'test'
+  ...
+# Subtest: budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+ok 7 - budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+  ---
+  duration_ms: 0.428834
+  type: 'test'
+  ...
+# Subtest: no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+ok 8 - no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+  ---
+  duration_ms: 0.378208
+  type: 'test'
+  ...
+# Subtest: fork branches retain separate observations and partial branches do not inherit a completed peer
+ok 9 - fork branches retain separate observations and partial branches do not inherit a completed peer
+  ---
+  duration_ms: 0.660875
+  type: 'test'
+  ...
+# Subtest: native growth attaches mechanical identities without asking the Agent to copy hashes and keeps retries idempotent
+ok 10 - native growth attaches mechanical identities without asking the Agent to copy hashes and keeps retries idempotent
+  ---
+  duration_ms: 3302.512833
+  type: 'test'
+  ...
+# Subtest: the Campaign attempt limit refuses valid new growth and strategy-only revision while preserving analysis
+ok 11 - the Campaign attempt limit refuses valid new growth and strategy-only revision while preserving analysis
+  ---
+  duration_ms: 1746.072375
+  type: 'test'
+  ...
+# Subtest: a grown node cannot reset the Campaign attempt pool, including after Host restart
+ok 12 - a grown node cannot reset the Campaign attempt pool, including after Host restart
+  ---
+  duration_ms: 2741.564417
+  type: 'test'
+  ...
+# Subtest: an owner accepts, executes and returns from one additive branch with actual evidence and idempotent proposals
+ok 13 - an owner accepts, executes and returns from one additive branch with actual evidence and idempotent proposals
+  ---
+  duration_ms: 2806.818625
+  type: 'test'
+  ...
+# Subtest: semantic refusals are durable and start no added Job
+ok 14 - semantic refusals are durable and start no added Job
+  ---
+  duration_ms: 2681.008541
+  type: 'test'
+  ...
+# Subtest: accepted growth reconstructs after Host restart without insertion or launch replay
+ok 15 - accepted growth reconstructs after Host restart without insertion or launch replay
+  ---
+  duration_ms: 1917.335
+  type: 'test'
+  ...
+# Subtest: return is refused until current required observations and verdicts exist, while optional abandon returns to the same reference check
+ok 16 - return is refused until current required observations and verdicts exist, while optional abandon returns to the same reference check
+  ---
+  duration_ms: 2039.719166
+  type: 'test'
+  ...
+# Subtest: optional growth preserves abandoned, cancelled and actual failed outcomes and returns without skipping the parent
+ok 17 - optional growth preserves abandoned, cancelled and actual failed outcomes and returns without skipping the parent
+  ---
+  duration_ms: 2736.618166
+  type: 'test'
+  ...
+# Subtest: restart before acceptance retains only the reference point and starts nothing
+ok 18 - restart before acceptance retains only the reference point and starts nothing
+  ---
+  duration_ms: 1945.914
+  type: 'test'
+  ...
+# Subtest: exhausted time budget refuses growth with evidence
+ok 19 - exhausted time budget refuses growth with evidence
+  ---
+  duration_ms: 633.837
+  type: 'test'
+  ...
+# Subtest: closing reserve permits an evidence-backed Judge and Explore settlement without another experiment
+ok 20 - closing reserve permits an evidence-backed Judge and Explore settlement without another experiment
+  ---
+  duration_ms: 2097.847291
+  type: 'test'
+  ...
+# Subtest: growth after a revision rejects old same-generation evidence even with its correct hash
+ok 21 - growth after a revision rejects old same-generation evidence even with its correct hash
+  ---
+  duration_ms: 3515.651042
+  type: 'test'
+  ...
+# Subtest: recommend returns and records the matching negative archive before code, while mismatches and corrupt sources never auto-inject
+ok 22 - recommend returns and records the matching negative archive before code, while mismatches and corrupt sources never auto-inject
+  ---
+  duration_ms: 7178.3405
+  type: 'test'
+  ...
+# Subtest: recommend does not auto-inject history when one declared Workshop input is unavailable
+ok 23 - recommend does not auto-inject history when one declared Workshop input is unavailable
+  ---
+  duration_ms: 3177.422834
+  type: 'test'
+  ...
+# Subtest: only the actual owner can record source-linked research analysis; retries and false numeric claims preserve facts
+ok 24 - only the actual owner can record source-linked research analysis; retries and false numeric claims preserve facts
+  ---
+  duration_ms: 2550.275583
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 42395.7175
+Test boot attempts: {"host-process":0,"host-in-process":18,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 42.451 s; pass/fail/skip counts are in the TAP summary above

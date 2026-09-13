@@ -33,7 +33,7 @@ export const defaultRetryAllowance = 3;
  */
 export const defaultGenerationLimit = 6;
 
-/** Finite legacy-compatible Campaign ceiling; the 48-node AES method remains below it. */
+/** Finite legacy-compatible Campaign ceiling; existing multi-stage methods remain below it. */
 export const defaultAttemptLimit = 1000;
 
 /**

@@ -43,5 +43,15 @@ test('only the actual owner can record source-linked research analysis; retries 
     assert.equal((await host.ctx.hima.executionAction(ask)).kind, 'duplicate');
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'analysis' }).length, 1);
     assert.deepEqual(host.ctx.hima.ledger.records({ runId, type: 'observation' }), observations);
+    const identity = 'a'.repeat(64);
+    await host.ctx.hima.ledger.appendRevision(runId, { revisionId: 'invalidate-analysis-source', version: 1, event: 'applied',
+      proposalDigest: identity, methodIdentity: identity, sourceIdentity: identity, inputIdentity: identity,
+      environmentIdentity: identity, changedNodes: ['synthesize'], affectedNodes: ['synthesize', 'read-qor'],
+      invalidates: [source.id], reuses: [] });
+    const stale = await host.ctx.hima.executionAction(request({ action: 'analyze', nodeId: host.ctx.hima.ledger.run(runId)!.currentNode,
+      analysis: { ...analysis, claims: [{ text: 'This superseded observation is current.', cites: [source.id], measurements: [] }] } }));
+    assert.equal(stale.kind, 'refused');
+    assert.match(stale.reason ?? '', /invalidated by an applied revision/);
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'analysis' }).length, 1, 'the earlier analysis remains history; no stale-current analysis is appended');
   } finally { if (runId) await host.ctx.hima.cancelRun(runId); await host.dispose(); await home.h.dispose(); }
 });

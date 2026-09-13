@@ -83,6 +83,10 @@ test('the native workbench keeps a superseded Workshop version readable beside i
     const view = (await import(new URL('../../packages/harness/lib/remote.js', import.meta.url).href)).runView(host.ctx.hima.ledger, host.ctx.hima.ledger.run(runId)!);
     assert.equal(view.run.status, 'cancelled'); assert.equal(view.revisions[0]?.revisionId, proposal.revisionId);
     assert.ok(view.archive?.delivery === 'complete'); assert.ok(view.experience); assert.ok(view.knowledge.length > 0);
+    const expired = await host.ctx.hima.startRun({ pack, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id), timeBoxMs: 1 });
+    assert.ok('run' in expired);
+    const expiredId = expired.run.id;
+    await waitUntil('a real finite Campaign stops at its hard boundary', () => host.ctx.hima.ledger.run(expiredId)?.status === 'ended-budget-exhausted');
     sessions = sessionsOf(host, runId); await host.dispose();
     const replay = await writeExecutionReplay(home.h); const port = await freePort();
     const driver = await bootDriver(t, { existing: home.h, remoteDebuggingPort: port, model: { replay }, theme: 'light', window: { width: 1440, height: 960 },
@@ -120,6 +124,15 @@ test('the native workbench keeps a superseded Workshop version readable beside i
         await mkdir(process.env.HIMA_UI_ARTIFACTS, { recursive: true });
         assert.ok((await driver.screenshot(path.join(process.env.HIMA_UI_ARTIFACTS, 'revision-history-archive.png'))).ok);
       }
+      await driver.fill('studio-run', expiredId);
+      await browser.wait(`document.querySelector('[data-hima-region="studio-status"]')?.getAttribute('data-hima-state-status') === 'ended-budget-exhausted'`);
+      await browser.markText('summary', 'Budget and resource use', 'budget-details');
+      assert.ok((await driver.click('budget-details')).ok);
+      const stopped = await driver.read('studio-status'); assert.ok(stopped.ok);
+      assert.equal(stopped.state.status, 'ended-budget-exhausted');
+      assert.match(stopped.text, /time box/i);
+      assert.equal(await browser.evaluate<boolean>(`Boolean(document.querySelector('[data-hima-control="cancel"]'))`), false, 'ended Campaign offers no active stop action');
+      if (process.env.HIMA_UI_ARTIFACTS) assert.ok((await driver.screenshot(path.join(process.env.HIMA_UI_ARTIFACTS, 'campaign-budget-stopped.png'))).ok);
     } catch (error) { t.diagnostic(await browser.evaluate<string>('document.body.innerText')); throw error; }
     finally { browser.close(); await driver.dispose(); killSessions(sessions); }
   } finally {

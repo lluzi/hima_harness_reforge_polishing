@@ -1,0 +1,20 @@
+desktop: 1 selected; 20 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: the native workbench keeps a superseded Workshop version readable beside its current revision and archived report
+ok 1 - the native workbench keeps a superseded Workshop version readable beside its current revision and archived report
+  ---
+  duration_ms: 13926.514583
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14347.111292
+Test boot attempts: {"host-process":0,"host-in-process":1,"electron":1}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+desktop command exit code: 0; elapsed: 14.405 s; pass/fail/skip counts are in the TAP summary above

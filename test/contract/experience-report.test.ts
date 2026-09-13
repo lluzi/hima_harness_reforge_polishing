@@ -44,6 +44,21 @@ test('model interpretation cannot turn missing citations or contradictory number
   assert.match(report.markdown, /Hold the input fixed/);
 });
 
+test('analysis whose source is later invalidated remains visible only as historical interpretation', () => {
+  const view = fixture();
+  const analysis = { recordId: 'analysis-before-revision', at, sessionId: 'owner', nodeId: 'explore',
+    question: 'What did the earlier observation suggest?', hypotheses: ['The earlier path may explain the result.'],
+    comparisons: ['Compare with a rerun after revision.'], limitations: ['The source was later invalidated.'],
+    nextExperiments: ['Use the revised path and measure again.'], claims: [{ text: 'The earlier period was 2.3 ns.', cites: ['observation-1'],
+      measurements: [{ recordId: 'observation-1', field: 'clock_period', value: 2.3, unit: 'ns' }] }] };
+  const report = experienceReport({ ...view, analyses: [analysis], revisions: [{ revisionId: 'revision-1', version: 1,
+    recordId: 'revision-record-1', changedNodes: ['observe'], affectedNodes: ['observe', 'judge'],
+    invalidatedRecordIds: ['observation-1'], reusedRecordIds: [] }] }, at);
+  assert.match(report.markdown, /Citation observation-1 was invalidated by an applied revision/);
+  assert.match(report.markdown, /historical observation observation-1/);
+  assert.match(report.markdown, /Unverified model interpretation: The earlier period was 2.3 ns/);
+});
+
 test('a goal claim requires completed cited evidence; requested period is not a measured Fmax', () => {
   const view = fixture();
   const report = experienceReport(view, at);

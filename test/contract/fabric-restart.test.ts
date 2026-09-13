@@ -1115,7 +1115,7 @@ async function readerJobOf(host: InProcessHost, timeoutMs = waitTimeoutMs): Prom
   return found!;
 }
 
-test('a reader job picked up after a restart is read back from what its own launch recorded, and neither the script nor the declaration is resolved again from a pack folder that has changed since', async (t) => {
+for (const rewritten of [false, true]) test(`a restarted reader preserves its launch declaration and ${rewritten ? 'refuses a rewritten report' : 'settles unchanged source bytes'}`, async (t) => {
   const local = await localHome(t, { sleepSeconds: 0 });
   if (!local) return;
   const { h } = local;
@@ -1160,18 +1160,26 @@ test('a reader job picked up after a restart is read back from what its own laun
       path.join(packsDir, pack, 'readers', `${packReaderId}.yml`),
       `id: ${packReaderId}\nversion: '2'\nfile: ${packReaderFile}\nargv: [sh, '\${READER}', '\${REPORT}', '\${OUT}']\nreportKind: standin-candidates\nemits: [${candidateCountType}, cell_area]\n`,
     );
-    // And the report itself, which the flow could as easily have rewritten: more bytes, and the same
-    // count, so that what the reader emits is unchanged and the only thing that can differ is the
-    // provenance the observation carries.
-    await writeFile(report.path, `${asItStood.toString('utf8')}\n{ "note": "rewritten while the run was between hosts" }\n`);
-    const asItIsNow = await readFile(report.path);
-    assert.notEqual(createHash('sha256').update(asItIsNow).digest('hex'), report.contentSha256, 'the report on disk is not the report that was read');
+    // An external reader can consume the file after launch. If its bytes change in flight,
+    // the launch-time hash alone cannot establish which bytes produced the result.
+    if (rewritten) {
+      await writeFile(report.path, `${asItStood.toString('utf8')}\n{ "note": "rewritten while the run was between hosts" }\n`);
+      assert.notEqual(createHash('sha256').update(await readFile(report.path)).digest('hex'), report.contentSha256);
+    }
 
     const second = await after.boot();
     const reconciled = await second.ctx.hima.reconciled;
     assert.deepEqual(reconciled.map((r) => [r.runId, r.found]), [[job.runId, 'running']], JSON.stringify(reconciled));
     const { runId } = job;
-    await waitUntil('the run reached an ending', () => runOf(second, runId).status?.startsWith('ended') === true, 120_000);
+    if (rewritten) {
+      await waitUntil('changed in-flight source is blocked', () => runOf(second, runId).status === 'waiting', 40_000);
+      assert.equal(recordsOf(second, runId).filter(record => record.type === 'observation').length, 0);
+      assert.ok(recordsOf(second, runId).some(record => record.type === 'refusal' && /observed byte count changed before retention/.test(record.reason)));
+      assert.equal(nodeRecords(second, runId).findLast(record => record.nodeId === 'read-candidates')?.state, 'blocked');
+      assert.deepEqual(jobRecords(second, runId).filter(record => record.event === 'launched').map(record => record.job.name), ['mine', `reader-${packReaderId}`], 'the ambiguous read is not silently retried');
+      return;
+    }
+    await waitUntil('the run reached an ending', () => runOf(second, runId).status?.startsWith('ended') === true, 40_000);
 
     // One observation, and it is the launch's: the hash of the bytes that were actually shipped and
     // run, the version and the emitted set the declaration held when the Job was launched. A read
@@ -1191,18 +1199,11 @@ test('a reader job picked up after a restart is read back from what its own laun
       ],
       'and carrying what the script wrote',
     );
-    // The provenance is the launch's too, and this is where that matters most: the report on disk is
-    // no longer the report this reading is of, and an observation that hashed it now would say this
-    // number came out of bytes nobody read it from.
+    // The unchanged source and original launch reader are both independently bound.
     assert.deepEqual(
       reading.type === 'observation' ? { path: reading.path, contentSha256: reading.contentSha256, bytes: reading.bytes } : {},
       report,
       'the observation carries the report as it stood when the reader was launched, by path, hash and byte count',
-    );
-    assert.notEqual(
-      reading.type === 'observation' ? reading.bytes : 0,
-      asItIsNow.byteLength,
-      'and not as it stands now, which is what says it was not re-read',
     );
     assert.ok(existsSync(out), `and the script wrote where the record says it was told to: ${out}`);
     assert.equal(

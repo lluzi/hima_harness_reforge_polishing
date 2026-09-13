@@ -110,9 +110,12 @@ test('pause and an explicit handoff fence old owners without changing Goal or bu
     assert.deepEqual(handed.context.run.budget, started.run.budget);
     const old = await host.ctx.hima.executionAction({ ...base, requestId: 'pause-one', action: 'pause', nodeId: started.run.currentNode });
     assert.equal(old.kind, 'refused');
-    const unsupported = await host.ctx.hima.executionAction({ ...base, actor: String(next.id), expectedEpoch: 2, expectedRevision: 2, requestId: 'revision-not-shipped', action: 'revise' });
-    assert.equal(unsupported.kind, 'unsupported');
-    assert.equal(unsupported.context.run.control?.revision, 2);
+    const missingProposal = await host.ctx.hima.executionAction({ ...base, actor: String(next.id), expectedEpoch: 2, expectedRevision: 2, requestId: 'revision-missing-proposal', action: 'revise' });
+    assert.equal(missingProposal.kind, 'refused');
+    assert.match(missingProposal.reason ?? '', /invalid revision request/);
+    assert.equal(missingProposal.context.run.control?.revision, 2);
+    assert.deepEqual(missingProposal.context.run.goal, started.run.goal);
+    assert.deepEqual(missingProposal.context.run.budget, started.run.budget);
     await host.ctx.hima.cancelRun(started.run.id);
   } finally { await host.dispose(); await home.h.dispose(); }
 });

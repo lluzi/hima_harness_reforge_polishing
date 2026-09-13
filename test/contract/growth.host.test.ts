@@ -332,3 +332,32 @@ test('closing reserve permits an evidence-backed Judge and Explore settlement wi
     assert.equal(jobRecords(f.host, f.runId).filter(record => record.event === 'launched').length, launches);
   } finally { t.mock.timers.reset(); await dispose(f); }
 });
+
+
+test('growth after a revision rejects old same-generation evidence even with its correct hash', async (t) => {
+  const f = await prepared(t);
+  try {
+    await f.reachGrowth();
+    const old = recordsOf(f.host, f.runId).find(record => record.type === 'observation')!;
+    const workspace = recordsOf(f.host, f.runId).find(record => record.type === 'workspace')!;
+    const context = f.context();
+    const revision: RevisionProposal = { revisionId: 'growth-input-version',
+      method: { id: context.method!.id, version: context.method!.version, digest: context.method!.digest },
+      inputThroughSeq: context.run.nextSeq - 1, inputs: [{ recordId: workspace.id, contentIdentity: identity(workspace) }],
+      reason: 'Change the measured strategy and invalidate its former dependent evidence',
+      changedNodes: ['synthesize'], affectedNodes: ['synthesize', 'read-qor', 'judge', 'next-period'],
+      changes: [], strategy: { periodNs: 2.2 } };
+    const revised = await f.call({ action: 'revise', revision }); assert.equal(revised.kind, 'accepted', revised.reason);
+    await f.reachGrowth();
+    const launches = jobRecords(f.host, f.runId).filter(record => record.event === 'launched').length;
+    const stale = await f.call({ action: 'grow', proposal: { ...f.proposal('stale-after-revision'),
+      inputs: [{ recordId: old.id, contentIdentity: identity(old) }] } });
+    assert.equal(stale.kind, 'refused'); assert.match(stale.reason!, /superseded/);
+    assert.equal(jobRecords(f.host, f.runId).filter(record => record.event === 'launched').length, launches);
+    const fresh = recordsOf(f.host, f.runId).findLast(record => record.type === 'observation')!;
+    assert.notEqual(fresh.id, old.id);
+    const accepted = await f.call({ action: 'grow', proposal: { ...f.proposal('fresh-after-revision'),
+      inputs: [{ recordId: fresh.id, contentIdentity: identity(fresh) }] } });
+    assert.equal(accepted.kind, 'accepted', accepted.reason);
+  } finally { await dispose(f); }
+});

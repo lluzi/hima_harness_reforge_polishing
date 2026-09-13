@@ -47,19 +47,21 @@ DSH_TELEMETRY_DISABLED=1 \
 pnpm run desktop --site local
 ```
 
-Ledger 版本为 21；旧版本 home 仍会被明确拒绝，不会自动改写。完整离线版本 19 或 20 的 `storages/hima_ledger.json` 快照可显式导入到新的空 home：先停止旧 Host、保存快照，再执行以下命令（两个路径均须明确指定，目标父目录须已存在且不能含符号链接）。
+Ledger 版本为 26；旧版本 home 仍会被明确拒绝，不会自动改写。完整离线版本 19～25 的 `storages/hima_ledger.json` 快照可显式导入到新的空 home：先停止旧 Host、保存快照，再执行以下命令（两个路径均须明确指定，目标父目录须已存在且不能含符号链接）。
 
 ```sh
 node packages/desktop/lib/hima-home.js \
-  --import-ledger /absolute/path/offline-v19-or-v20.json \
+  --import-ledger /absolute/path/offline-v19-to-v25.json \
   --home /absolute/path/new-empty-home
 ```
 
-命令保存原字节备份、SHA-256 回执和身份不变的 Ledger 后退出，不启动 Host 或绑定执行 owner。只导入 Ledger 历史；Site、Pack、工作文件与 Agent 会话不随之复制。导入不等于在途 Run 已安全接管，旧 Host 必须保持停止，后续接管仍须通过 PLS-19 的安全边界检查。操作和验证范围见 [导入证据](docs/assessment/2026-09-12/pls-19/ledger-import/README.md)。其他旧版本继续保留给对应旧构建读取；Experience v1/v2/v3 文件仍按已记录的原字节/hash 读取。
+命令保存原字节备份、SHA-256 回执和身份不变的 Ledger 后退出，不启动 Host 或绑定执行 owner。只导入 Ledger 历史；Site、Pack、工作文件与 Agent 会话不随之复制。导入不等于在途 Run 已安全接管，旧 Host 必须保持停止，后续接管仍须通过 PLS-19 的安全边界检查。操作和验证范围见 [导入证据](docs/assessment/2026-09-12/pls-19/ledger-import/README.md)。其他旧版本继续保留给对应旧构建读取；Experience v1/v2/v3 文件仍按已记录的原字节/hash 读取；新报告使用 schema 4。当前版本与归档/迁移边界见[增长与知识资产交付](docs/validation/growth-assets/README.md)。
 
-数值 Pack 可仅声明自身需要的输入；未声明的 `design` 不会由 Site 偷补。当前 v21 读取器可冷启动读取先前已写出的无 design 记录；已声明却缺少的输入仍会在 Run 开始前拒绝，离线导入保持各源版本的严格 schema，见 [重启修正](docs/assessment/2026-09-12/pls-22/generic-workspace-restart/README.md)。
+数值 Pack 可仅声明自身需要的输入；未声明的 `design` 不会由 Site 偷补。当前读取器（v26，继承 v21 修正）可冷启动读取先前已写出的无 design 记录；已声明却缺少的输入仍会在 Run 开始前拒绝，离线导入保持各源版本的严格 schema，见 [重启修正](docs/assessment/2026-09-12/pls-22/generic-workspace-restart/README.md)。
 
 当前 `--site local` 每次启动会刷新生成的 flow；Campaign workspace 保留。样例 Pack 按方法清单安装，保留 `run-assets/<runId>/`，运行资产不改变方法 digest。旧 Run 使用保存的原方法；同版本不同内容、归属不明或中断的更新会拒绝覆盖，见 [PLS-13](docs/assessment/2026-09-12/pls-13/README.md)。文件归属、显式入口、资源隔离及未跑/跳过含义见 [测试入口](test/README.md)。Git hooks 仍须显式 `pnpm run hooks:install` 安装；pre-commit 构建并检查静态类型，pre-push 执行一次 `check:local`。Hook 通过只认证所跑的本地范围，窗口、模型或 Site 检查由实际改动决定。
+
+同屏工作区新增研究支路、回溯有效性、代码/输入/历史引用和 Pack 归档下钻。`Pack & assets` 支持 owner 审阅精确材料后升级、分享或迁移；默认分享只含方法，迁移资产与导入 Ledger 是分开的显式操作。Campaign 到期停止业务作业和新分析写入，原生对话仍可回答。
 
 ## 产品依据
 

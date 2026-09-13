@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
@@ -216,6 +216,98 @@ test('recommend returns and records the matching negative archive before code, w
     assert.ok(changedHistory.candidates.some((candidate) => candidate.conditions.some((line) => /differs from the current captured bytes/.test(line))));
   } finally {
     for (const runId of openRuns) await host.ctx.hima.cancelRun(runId);
+    await host.dispose();
+    await home.h.dispose();
+  }
+});
+
+test('recommend does not auto-inject history when one declared Workshop input is unavailable', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  const packDir = path.join(home.h.home, 'hima/packs/authored-workshop');
+  await mkdir(packDir, { recursive: true });
+  for (const file of ['contract.yml', 'graph.yml', 'semantics.yml', 'readers', 'rules', 'tools', 'knowledge']) {
+    await cp(path.join(repoRoot, 'test/fixtures/pipeline/workshop', file), path.join(packDir, file), { recursive: true });
+  }
+  await writeFile(path.join(packDir, 'PACK.md'), '# Complete input provenance fixture\n');
+  const contractPath = path.join(packDir, 'contract.yml');
+  const contract = (await readFile(contractPath, 'utf8'))
+    .replace('  - { name: numbers, path: flow/numbers.txt, description: Source measurements }',
+      '  - { name: numbers, path: flow/numbers.txt, description: Source measurements }\n  - { name: auxiliary, path: flow/auxiliary.txt, description: Second provenance input }')
+    .replace('  copy: [numbers.txt]', '  copy: [numbers.txt, auxiliary.txt]')
+    .replace('    reads: [numbers]', '    reads: [numbers, auxiliary]')
+    .replace('rules: [sum-valid]', `  - id: future-analysis
+    purpose: A later independent Workshop that must not block history for analyze.
+    directory: research/future-analysis
+    entry: entry.sh
+    language: sh
+    inputs: [SCALE]
+    reads: [auxiliary]
+    knowledge: [sum.md]
+    produces: analysis
+    argv: [sh, '\${ENTRY}', '\${WORKSHOP}', '\${WORKSPACE}', '\${SCALE}']
+rules: [sum-valid]`);
+  await writeFile(contractPath, contract);
+  const graphPath = path.join(packDir, 'graph.yml');
+  await writeFile(graphPath, (await readFile(graphPath, 'utf8')).replace('  - id: blocked', `  - id: future-analysis
+    kind: act
+    parameters:
+      workshop: future-analysis
+      arguments:
+        SCALE: { from: strategy, name: scale }
+  - id: blocked`));
+  await writeFile(path.join(home.flow.root, 'numbers.txt'), '3\n7\n11\n');
+  await writeFile(path.join(home.flow.root, 'auxiliary.txt'), 'same declared auxiliary input\n');
+  const host = await bootInProcess(home.h);
+  let currentRun: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const actor = String(owner.id);
+    const source = await archivedSource(host, home.h, actor, 1, 'complete-input-source');
+    const complete = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 },
+      strategy: { scale: 3 }, ownerSessionId: actor });
+    assert.equal(complete.kind, 'ran');
+    if (complete.kind !== 'ran') return;
+    const completeAct = ownerActions(host, complete.run.id, actor, 'complete-input-current');
+    const completeBegin = await completeAct('begin', { nodeId: 'analyze' });
+    assert.ok(completeBegin.receipt?.executionId);
+    const completeRecommendation = await completeAct('recommend', { executionId: completeBegin.receipt.executionId });
+    const completeHistory = (completeRecommendation.data as { history: { candidates: Array<{ sourceRun: string; automatic: boolean }> } }).history;
+    assert.equal(completeHistory.candidates.find(item => item.sourceRun === source.id)?.automatic, true,
+      'a future Workshop with uncaptured inputs does not block complete inputs for the requested Workshop');
+    const completeWorkspace = host.ctx.hima.ledger.records({ runId: complete.run.id, type: 'workspace' }).findLast(record => record.type === 'workspace');
+    assert.ok(completeWorkspace?.type === 'workspace');
+    await rm(path.join(completeWorkspace.workspace, 'flow/auxiliary.txt'));
+    const repeatedRecommendation = await completeAct('recommend', { executionId: completeBegin.receipt.executionId });
+    const repeatedHistory = (repeatedRecommendation.data as { history: { candidates: Array<{ sourceRun: string; automatic: boolean; conditions: string[] }>; untrustedHistoricalContext?: unknown; inputCapture: { unavailable: Array<{ file: string }> } } }).history;
+    const repeatedCandidate = repeatedHistory.candidates.find(item => item.sourceRun === source.id);
+    assert.equal(repeatedCandidate?.automatic, false, 'a prior capture does not hide that a declared input is unavailable now');
+    assert.ok(repeatedCandidate?.conditions.some(condition => condition.includes('Current Run lacks captured bytes for declared Workshop input analyze/auxiliary')));
+    assert.equal(repeatedHistory.untrustedHistoricalContext, undefined);
+    assert.deepEqual(repeatedHistory.inputCapture.unavailable.map(item => item.file), ['auxiliary']);
+    await host.ctx.hima.cancelRun(complete.run.id);
+    const current = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 },
+      strategy: { scale: 3 }, ownerSessionId: actor });
+    assert.equal(current.kind, 'ran');
+    if (current.kind !== 'ran') return;
+    currentRun = current.run.id;
+    const act = ownerActions(host, currentRun, actor, 'partial-input-current');
+    const begun = await act('begin', { nodeId: 'analyze' });
+    assert.ok(begun.receipt?.executionId);
+    const workspace = host.ctx.hima.ledger.records({ runId: currentRun, type: 'workspace' }).findLast(record => record.type === 'workspace');
+    assert.ok(workspace?.type === 'workspace');
+    await rm(path.join(workspace.workspace, 'flow/auxiliary.txt'));
+    const recommendation = await act('recommend', { executionId: begun.receipt.executionId });
+    assert.equal(recommendation.kind, 'accepted', recommendation.reason);
+    const history = (recommendation.data as { history: { candidates: Array<{ sourceRun: string; automatic: boolean; conditions: string[] }>; untrustedHistoricalContext?: unknown; noContext?: string; inputCapture: { unavailable: Array<{ file: string }> } } }).history;
+    const candidate = history.candidates.find(item => item.sourceRun === source.id);
+    assert.equal(candidate?.automatic, false);
+    assert.ok(candidate?.conditions.some(condition => condition.includes('Current Run lacks captured bytes for declared Workshop input analyze/auxiliary')));
+    assert.equal(history.untrustedHistoricalContext, undefined);
+    assert.match(history.noContext ?? '', /no automatically applicable verified history/);
+    assert.deepEqual(history.inputCapture.unavailable.map(item => item.file), ['auxiliary']);
+  } finally {
+    if (currentRun) await host.ctx.hima.cancelRun(currentRun);
     await host.dispose();
     await home.h.dispose();
   }
