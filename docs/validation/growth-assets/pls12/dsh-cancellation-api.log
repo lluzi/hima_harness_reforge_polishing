@@ -1,0 +1,125 @@
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-153-       * active activity, cancellation is a no-op and does not arm later work.
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-154-       * @param cause - the stable caller intent carried by the active operation signal.
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-155-       * @param options - cancellation options; `keepInbox` preserves pending work.
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-156-       */
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts:157:        cancel(cause: AgentCancelCause, options?: CancelOptions): void;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-158-        /**
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-159-       * Resolve after the current whole-agent activity reaches quiescence. This
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-160-       * follows replacement work started before the observed driver retires,
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-161-       * but does not identify the settlement of any particular message.
+--
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-314-            agent: Agent;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-315-            messages: UserMessage[];
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-316-            turn: number;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-317-            step: number;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts:318:            signal: AbortSignal;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-319-        }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision>;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-320-        /**
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-321-         * Replace the frozen call configuration. `await next()` yields the config
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-322-         * the machine would use (agent options on the first request, the logged
+--
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-332-         * @param payload.signal - the current turn's explicit abort signal.
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-333-         * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-334-         * @mode waterfall
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-335-        */
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts:336:        'agent/request'(this: Scoped<Agent>, payload: {
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-337-            agent: Agent;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-338-            turn: number;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-339-            step: number;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts:340:            signal: AbortSignal;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-341-        }, next: () => Promise<LlmCallConfig>): Promise<LlmCallConfig>;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-342-        /**
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-343-         * Handle one failed model-request attempt before the loop retries or closes
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-344-         * its step. A listener returns `{ kind: 'retry' }` without calling `next()`
+--
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-353-         * @param payload.signal - the turn abort signal.
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-354-         * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-355-         * @mode waterfall
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-356-         */
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts:357:        'agent/request-error'(this: Scoped<Agent>, payload: {
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-358-            agent: Agent;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-359-            turn: number;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-360-            step: number;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-361-            provider: string;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-362-            failure: LlmFailure;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-363-            retryPolicy: ResolvedRetryPolicy | undefined;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts:364:            signal: AbortSignal;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-365-        }, next: () => Promise<RequestErrorAction>): Promise<RequestErrorAction>;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-366-        /**
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-367-         * Process-local assistant-stream publication. Chunk frames are transient;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-368-         * the loop appends one final v2 `assistant/message` or `assistant/attempt`
+--
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-395-         */
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-396-        'agent/turn-stopping'(this: Scoped<Agent>, payload: {
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-397-            agent: Agent;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-398-            turn: number;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts:399:            signal: AbortSignal;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-400-        }): Promise<void> | void;
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-401-        /**
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-402-         * A step or turn errored. The machine reports a failure here even when
+node_modules/@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts-403-         * the error has no in-turn position for a durable record.
+--
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-194- * adds the registry-owned token to form a pipeline {@link ToolExecution};
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-195- * callers do not choose that token.
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-196- */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-197-export interface ToolExecutionInput {
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts:198:    readonly callId: ToolCallId;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-199-    /**
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-200-     * Root model-requested call owning this execution tree. Callers omit it for
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-201-     * a root execution; nested dispatchers propagate the enclosing value.
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-202-     */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts:203:    readonly rootCallId?: ToolCallId;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-204-    readonly name: string;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-205-    /** Losslessly JSON-serializable parsed arguments (tools validate their own schema). */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-206-    readonly arguments: unknown;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-207-    /** The agent on whose behalf the call runs (set by the agent loop). */
+--
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-216-     * `UNKNOWN_TOOL` before the policy pipeline. See {@link ToolRuntime.execute}.
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-217-     */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-218-    readonly parent?: ToolExecutionToken;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-219-    /** Required caller-owned cancellation for this invocation. */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts:220:    readonly signal: AbortSignal;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-221-}
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-222-/**
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-223- * Scheduling mode for one pending call. `parallel` may overlap with siblings;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-224- * `exclusive` runs alone and forms an ordering barrier.
+--
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-259- * observers run.
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-260- */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-261-export interface ToolExecution extends ToolExecutionInput {
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-262-    /** Root model-requested call, resolved for every root and nested execution. */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts:263:    readonly rootCallId: ToolCallId;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-264-    /** Registry-assigned identity shared with nested calls only as their opaque `parent` token. */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-265-    readonly token: ToolExecutionToken;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-266-}
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-267-/**
+--
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-270- * The registry fuses every replacement with the captured caller signal.
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-271- */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-272-export interface ToolDispatchExecution extends Omit<ToolExecution, 'signal'> {
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-273-    /** Cancellation signal visible to the next wrapper or tool body. */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts:274:    signal: AbortSignal;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-275-}
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-276-/**
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-277- * Runtime context handed to a tool implementation after the registry has
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-278- * accepted a {@link ToolExecution}. {@link deferContext} attaches context to
+--
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-280- * context back to the outer result, and a leaf tool may mint a fresh
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-281- * plugin-sourced instruction; the loop appends it only after the
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-282- * `tool/result`.
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-283- */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts:284:export interface ToolRunContext extends ToolExecution {
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-285-    /**
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-286-     * Defer one context — typically a nested-dispatch context ferried by a
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-287-     * composite tool, or a fresh plugin-sourced instruction — until this tool's
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-288-     * final result reaches the agent loop. Contexts retain their individual
+--
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-726-     * @param exec - the typed same-process call input. The registry assigns its
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-727-     *   correlation token before policy begins.
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-728-     * @returns the materialized final result.
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-729-     */
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts:730:    execute(exec: ToolExecutionInput): Promise<ToolExecutionResult>;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-731-    private completeScheduledExecution;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-732-    private createExecution;
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-733-    /**
+node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts-734-     * Run the ordered pre-execute and monotonic guard stages for the scheduler.

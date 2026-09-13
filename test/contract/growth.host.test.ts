@@ -2,7 +2,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import type { ExecutionActionRequest, ExecutionContext, GrowthProposal, LedgerRecord, RunView } from '@hima/harness';
+import type { ExecutionActionRequest, ExecutionContext, GrowthProposal, LedgerRecord, RevisionProposal, RunView } from '@hima/harness';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { jobRecords, killSessions, localHome, recordsOf, sessionsOf, waitUntil } from './support/fabric.ts';
 import { packDigestOf } from '@hima/harness';
@@ -18,11 +18,13 @@ function identity(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
 
-async function prepared(t: TestContext, timeBoxMs = 120_000) {
+async function prepared(t: TestContext, timeBoxMs = 120_000, attemptLimit?: number) {
   const home = await localHome(t, { sleepSeconds: 0.01 });
   assert.ok(home);
   const pack = 'growth-host';
-  await writePackVariant(packsDirOf(home.h), pack, [], [['chooser: over-constraining-push', 'chooser: over-constraining-push\n      growth: true']]);
+  await writePackVariant(packsDirOf(home.h), pack,
+    attemptLimit === undefined ? [] : [['words:', `budget:\n  attemptLimit: ${String(attemptLimit)}\nwords:`]],
+    [['chooser: over-constraining-push', 'chooser: over-constraining-push\n      growth: true']]);
   const referenceDigest = packDigestOf(`${packsDirOf(home.h)}/${pack}`);
   const host = await bootInProcess(home.h);
   const agent = await createRootAgent(host.ctx, home.h.workspace);
@@ -75,6 +77,81 @@ async function prepared(t: TestContext, timeBoxMs = 120_000) {
   };
   return { home, host, agent, pack, runId, referenceDigest, context, call, node, reachGrowth, proposal };
 }
+
+test('the Campaign attempt limit refuses valid new growth and strategy-only revision while preserving analysis', async (t) => {
+  const f = await prepared(t, 120_000, 2);
+  try {
+    await f.reachGrowth();
+    assert.equal(f.context().run.meters?.attempts, 2);
+    assert.equal(f.context().budget.attemptRemaining, 0);
+    const growth = await f.call({ action: 'grow', proposal: f.proposal('cap-valid-growth') });
+    assert.equal(growth.kind, 'refused');
+    assert.match(growth.reason!, /attempt limit is exhausted/);
+    assert.ok(recordsOf(f.host, f.runId).some((record) => record.type === 'growth'
+      && record.proposalId === 'cap-valid-growth' && record.event === 'rejected'));
+
+    const context = f.context();
+    const workspace = recordsOf(f.host, f.runId).find((record) => record.type === 'workspace')!;
+    const revision: RevisionProposal = {
+      revisionId: 'cap-strategy-only', method: { id: context.method!.id, version: context.method!.version, digest: context.method!.digest },
+      inputThroughSeq: context.run.nextSeq - 1, inputs: [{ recordId: workspace.id, contentIdentity: identity(workspace) }],
+      reason: 'retry the reference route with a different declared strategy', changedNodes: ['synthesize'],
+      affectedNodes: ['synthesize', 'read-qor', 'judge', 'next-period'], changes: [], strategy: { periodNs: 2.2 },
+    };
+    const revised = await f.call({ action: 'revise', revision });
+    assert.equal(revised.kind, 'refused');
+    assert.match(revised.reason!, /attempt limit is exhausted/);
+    assert.equal(f.context().run.strategy?.periodNs, 2.3, 'the refused strategy-only revision changes no Run strategy');
+    assert.equal(recordsOf(f.host, f.runId).some((record) => record.type === 'revision'
+      && record.revisionId === revision.revisionId && record.event === 'applied'), false);
+    const analyzed = await f.call({ action: 'analyze', nodeId: 'next-period', analysis: {
+      question: 'Why did experimentation stop?', hypotheses: [], comparisons: [], claims: [],
+      limitations: ['The Campaign used its two declared act attempts.'],
+      nextExperiments: ['Unexecuted: the proposed growth branch and revised strategy.'],
+    } });
+    assert.equal(analyzed.kind, 'accepted', JSON.stringify(analyzed));
+    assert.equal(f.context().run.meters?.attempts, 2, 'analysis consumes no experimental attempt');
+  } finally { await dispose(f); }
+});
+
+test('a grown node cannot reset the Campaign attempt pool, including after Host restart', async (t) => {
+  const f = await prepared(t, 120_000, 3);
+  let second: InProcessHost | undefined;
+  try {
+    await f.reachGrowth();
+    assert.equal((await f.call({ action: 'grow', proposal: f.proposal('cap-grown-route') })).kind, 'accepted');
+    await f.node('growth-synthesize');
+    assert.equal(f.context().run.meters?.attempts, 3);
+    assert.deepEqual(f.context().available, [], 'the next grown act node receives no fresh pool');
+    const refused = await f.call({ action: 'begin', nodeId: 'growth-read' });
+    assert.equal(refused.kind, 'refused');
+    assert.match(refused.reason!, /attempt limit is exhausted/);
+
+    const ownerId = String(f.agent.id);
+    await f.host.dispose();
+    second = await bootInProcess(f.home.h);
+    const agents = second.ctx.get('agents');
+    const defaultModel = second.ctx.get('agentDefaultModel');
+    assert.ok(agents && defaultModel);
+    const selection = defaultModel.currentSelection();
+    await agents.resume({ resumeSessionId: ownerId as never, agentOptions: { provider: selection.provider, model: selection.model } });
+    const context = second.ctx.hima.executionContext(f.runId);
+    assert.equal(context.run.meters?.attempts, 3);
+    assert.equal(context.budget.attemptRemaining, 0);
+    assert.deepEqual(context.available, []);
+    const control = context.run.control!;
+    const afterRestart = await second.ctx.hima.executionAction({ runId: f.runId, actor: ownerId,
+      expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: 'cap-after-restart',
+      action: 'begin', nodeId: 'growth-read' });
+    assert.equal(afterRestart.kind, 'refused');
+    assert.match(afterRestart.reason!, /attempt limit is exhausted/);
+  } finally {
+    const active = second;
+    if (active) { killSessions(sessionsOf(active, f.runId)); await active.ctx.hima.cancelRun(f.runId); await active.dispose(); }
+    else await dispose(f);
+    await f.home.h.dispose().catch(() => undefined);
+  }
+});
 
 async function dispose(fixture: Awaited<ReturnType<typeof prepared>>) {
   try { await fixture.host.ctx.hima.cancelRun(fixture.runId); }

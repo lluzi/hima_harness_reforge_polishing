@@ -419,10 +419,12 @@ export type PackWorkshop = z.infer<typeof packWorkshop>;
  */
 export const defaultPackBudget = {
   closingReserveMs: 0,
+  attemptLimit: 1000,
   researchWrites: { writeAttempts: 256, bytes: 4 * 1024 * 1024 },
 } as const;
 export const packBudget = z.strictObject({
   closingReserveMs: z.number().int().nonnegative().default(defaultPackBudget.closingReserveMs),
+  attemptLimit: z.number().int().positive().max(1_000_000).default(defaultPackBudget.attemptLimit),
   researchWrites: z.strictObject({
     writeAttempts: z.number().int().positive().max(100_000).default(defaultPackBudget.researchWrites.writeAttempts),
     bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(defaultPackBudget.researchWrites.bytes),

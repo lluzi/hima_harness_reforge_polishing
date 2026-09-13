@@ -17,17 +17,20 @@ test('a closing reserve stays inside the hard box and admits analysis while refu
   const run = {
     id: 'run-budget-boundary', campaignId: 'campaign-budget-boundary', siteId: 'local',
     createdAt: new Date(epoch).toISOString(), nextSeq: 1,
-    budget: { timeBoxMs: 100, closingReserveMs: 20, researchWriteAttempts: 2, researchWriteBytes: 6,
+    budget: { timeBoxMs: 100, closingReserveMs: 20, attemptLimit: 2, researchWriteAttempts: 2, researchWriteBytes: 6,
       retryAllowance: 1, jobCap: 1, licences: {}, generationLimit: 1 },
   } as RunRecord;
   assert.deepEqual(budgetStandingAt(run, 0, epoch + 79), {
     phase: 'active', hardRemainingMs: 21, experimentRemainingMs: 1, closingReserveMs: 20,
+    attempts: 0, attemptLimit: 2, attemptRemaining: 2, attemptLimitSpent: false,
   });
   assert.deepEqual(budgetStandingAt(run, 0, epoch + 80), {
     phase: 'closing', hardRemainingMs: 20, experimentRemainingMs: 0, closingReserveMs: 20,
+    attempts: 0, attemptLimit: 2, attemptRemaining: 2, attemptLimitSpent: false,
   });
   assert.deepEqual(budgetStandingAt(run, 0, epoch + 100), {
     phase: 'exhausted', hardRemainingMs: 0, experimentRemainingMs: 0, closingReserveMs: 20,
+    attempts: 0, attemptLimit: 2, attemptRemaining: 2, attemptLimitSpent: false,
   });
 
   const home = await localHome(t, { sleepSeconds: 0 });

@@ -1118,6 +1118,7 @@ export const runBudget = z.strictObject({
   /** Reserved inside `timeBoxMs`; zero keeps old Pack behavior. */
   closingReserveMs: z.number().int().nonnegative().optional(),
   /** Run-wide writer call and byte pools copied from the Pack at Campaign start. */
+  attemptLimit: z.number().int().positive().optional(),
   researchWriteAttempts: z.number().int().positive().optional(),
   researchWriteBytes: z.number().int().positive().optional(),
   /** Attempts a node may make, since it was last resumed, before its failure becomes a Hard blocker. */
@@ -1270,7 +1271,7 @@ export const runMeters = z.strictObject({
    * fabric started — carries no key rather than an empty list, as every absent fact here does.
    */
   generationMs: z.array(z.number().int().nonnegative()).optional(),
-  endedBy: z.enum(['time-box', 'generation-limit', 'cancel']).optional(),
+  endedBy: z.enum(['time-box', 'generation-limit', 'attempt-limit', 'cancel']).optional(),
 });
 export type RunMeters = z.infer<typeof runMeters>;
 

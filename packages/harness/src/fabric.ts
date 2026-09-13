@@ -75,6 +75,7 @@ import {
   advance,
   budgetStanding,
   experimentBudgetSpent,
+  attemptLimitSpent,
   reserveResearchWrite,
   attemptOf,
   attemptOfSession,
@@ -85,6 +86,7 @@ import {
   defaultTimeBoxMs,
   endBudgetExhausted,
   endGenerationLimit,
+  endAttemptLimit,
   nextGenerationAllowed,
   nextLoopGenerationAllowed,
   timeBoxSpent,
@@ -255,6 +257,7 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   const budget = {
     timeBoxMs: req.timeBoxMs ?? defaultTimeBoxMs,
     closingReserveMs: pack.contract.budget.closingReserveMs,
+    attemptLimit: pack.contract.budget.attemptLimit,
     researchWriteAttempts: pack.contract.budget.researchWrites.writeAttempts,
     researchWriteBytes: pack.contract.budget.researchWrites.bytes,
     retryAllowance: req.retryAllowance ?? defaultRetryAllowance,
@@ -599,6 +602,10 @@ async function driveOn(ctx: Driving, resume?: Resumption): Promise<void> {
     // asks on its own first look and kills there, which is the one path that records the stop.
     if (resuming === undefined && timeBoxSpent(run, ctx.waitedMs)) {
       await endBudgetExhausted(ctx.deps.ledger, ctx.runId);
+      return;
+    }
+    if (resuming === undefined && node.kind === 'act' && attemptLimitSpent(run)) {
+      await endAttemptLimit(ctx.deps.ledger, ctx.runId);
       return;
     }
 
@@ -1159,6 +1166,7 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
     kind, context: executionContext(deps, snapshot.id), ...(reason === undefined ? {} : { reason }), ...(receipt === undefined ? {} : { receipt, data: receipt.data }),
   });
   if (experimentBudgetSpent(snapshot, 0)) return answer('refused', 'the Campaign is in its closing reserve or has exhausted its hard time box; no revision may start');
+  if (attemptLimitSpent(snapshot)) return answer('refused', 'the Campaign attempt limit is exhausted; revision cannot create another act attempt');
   const parsed = revisionProposal.safeParse(req.revision);
   if (!parsed.success) return answer('refused', `invalid revision request: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'revision'} ${issue.message}`).join('; ')}`);
   const proposal = parsed.data; const proposalDigest = identityOf(proposal);
@@ -1316,7 +1324,8 @@ async function growthAction(deps: FabricDeps, snapshot: RunRecord, req: Executio
     return answer('accepted', { receipt, data: receipt.data });
   }
 
-  if (experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no growth budget remains');
+  const hardTimeSpent = timeBoxSpent(run, 0);
+  if (!hardTimeSpent && experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve; no growth budget remains');
 
   const parsed = growthProposal.safeParse(req.proposal);
   if (!parsed.success) return no(`invalid growth proposal: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'proposal'} ${issue.message}`).join('; ')}`);
@@ -1339,6 +1348,8 @@ async function growthAction(deps: FabricDeps, snapshot: RunRecord, req: Executio
   };
   const validation = validateGrowthGraph(executionPack(deps, run), proposal);
   if (!validation.ok) return reject(validation.reason);
+  if (hardTimeSpent) return reject('the Campaign time box is exhausted; no growth budget remains');
+  if (attemptLimitSpent(run)) return reject('the Campaign attempt limit is exhausted; no growth may add another experimental route');
   if (run.status !== 'running') return reject('growth requires an active Run');
   if (run.loop !== undefined || run.fork !== undefined) return reject('nested growth inside a Loop or fork is unsupported in the first slice');
   if (run.currentNode !== proposal.parent.nodeId || run.generation !== proposal.parent.generation) return reject('the proposal parent and generation are not the Run current declared growth point');
@@ -1512,11 +1523,12 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
         : Object.values(run.fork.branches).filter((branch) => branch.state !== 'done').map((branch) => branch.currentNode);
     const incomplete = Object.values(run.control.requests).some((request) => (request.receipt.action === 'complete' || request.receipt.action === 'continue') && request.state !== 'done');
     const available = standing.phase !== 'active' || run.status !== 'running' || run.control.stop !== undefined || incomplete ? [] : candidates.filter((nodeId) =>
-      executionPauseReason(pack, run, nodeId) === undefined && unclearedFailure(run, nodeId) === undefined && !executions.some((execution) =>
+      !(standing.attemptLimitSpent && nodes.find((node) => node.id === nodeId)?.kind === 'act')
+      && executionPauseReason(pack, run, nodeId) === undefined && unclearedFailure(run, nodeId) === undefined && !executions.some((execution) =>
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
         && execution.supersededBy === undefined && execution.phase !== 'failed'));
-    return { run, budget: standing, nodes, available, executions, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : standing.phase === 'closing' ? { reason: 'the Campaign is in its closing reserve; analysis, fact reading and deterministic settlement remain, but no new experiment, revision, growth or Workshop write may start' } : standing.phase === 'exhausted' ? { reason: 'the Campaign hard time box is exhausted; only deterministic facts and missing-delivery reporting remain' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
+    return { run, budget: standing, nodes, available, executions, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : standing.phase === 'closing' ? { reason: 'the Campaign is in its closing reserve; analysis, fact reading and deterministic settlement remain, but no new experiment, revision, growth or Workshop write may start' } : standing.phase === 'exhausted' ? { reason: 'the Campaign hard time box is exhausted; only deterministic facts and missing-delivery reporting remain' } : standing.attemptLimitSpent && candidates.some((nodeId) => nodes.find((node) => node.id === nodeId)?.kind === 'act') ? { reason: 'the Campaign attempt limit is exhausted; the current act node cannot be admitted, while analysis and deterministic closing remain available' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
     return { run, budget: standing, nodes: [], available: [], executions, growths: [], revisions, reason: (error as Error).message };
   }
@@ -1610,6 +1622,9 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || reading) return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');
     if (experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no new node execution may begin');
+    const runtimePack = executionPack(deps, run);
+    const requestedNode = req.nodeId === undefined ? undefined : positionOf(runtimePack, req.nodeId)?.node;
+    if (requestedNode?.kind === 'act' && attemptLimitSpent(run)) return no('the Campaign attempt limit is exhausted; no new act execution may begin');
     if (req.nodeId !== undefined) {
       const paused = executionPauseReason(executionPack(deps, run), run, req.nodeId);
       if (paused !== undefined) return no(paused);
@@ -1619,7 +1634,6 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (req.nodeId === undefined || !context.available.includes(req.nodeId)) return no('this node is not currently available from the reference graph and execution facts');
     const node = context.nodes.find((item) => item.id === req.nodeId);
     if (node === undefined || run.packDigest === undefined) return no('the node or its method identity is unavailable');
-    const runtimePack = executionPack(deps, run);
     const placement = growthPlacement(deps, runtimePack, run);
     if (placement !== undefined && placement.target === node.id && run.currentNode !== node.id) {
       await deps.ledger.advanceRun(run.id, { currentNode: node.id });
