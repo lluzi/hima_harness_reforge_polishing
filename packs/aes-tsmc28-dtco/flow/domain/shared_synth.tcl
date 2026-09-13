@@ -93,7 +93,7 @@ redirect ${REPORT_DIR}/power_${ARM}.rpt  { report_power }
 # record is built from the NETLIST relation, and this report is kept as the cross-check.
 redirect ${REPORT_DIR}/refs_${ARM}.rpt   { report_reference }
 set _xs_pattern [need XS28_GENERATED_LIB_CELL_PATTERN]
-set _xs_generated [get_lib_cells $_xs_pattern -quiet]
-puts "=== AES_DTCO LIBRARY_VISIBLE_COUNT [llength $_xs_generated] ==="
+set _xs_generated [get_lib_cells -quiet */$_xs_pattern]
+puts "=== AES_DTCO LIBRARY_VISIBLE_COUNT [sizeof_collection $_xs_generated] ==="
 puts "=== AES_DTCO SYNTHESIS_COMPLETE $ARM ==="
 exit

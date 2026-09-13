@@ -246,6 +246,60 @@ def tool_error_lines(text):
     return re.findall(r"^(?:\*\*ERROR|ERROR|Error|Fatal):.*$", text, re.M)
 
 
+def dc_version(text):
+    hits = re.findall(r"^Version\s+(\S+)\s+for\s+(\S+)(?:\s+.*)?$", text, re.M)
+    if len(hits) != 1:
+        raise Rejected("DC log has no unambiguous supported Version <version> for <platform> header")
+    return {"version": hits[0][0], "platform": hits[0][1]}
+
+
+def innovus_version(text):
+    hits = re.findall(r"^Version:\s*(v[^,\s]+),\s+built\s+(.+?)\s*$", text, re.M)
+    if len(hits) != 1:
+        raise Rejected("Innovus log has no unambiguous supported version header")
+    return {"version": hits[0][0], "build": hits[0][1]}
+
+
+def held_identities(refs, exact=(), prefixes=()):
+    selected = [ref for ref in refs if ref.get("role") in exact
+                or any(str(ref.get("role", "")).startswith(prefix) for prefix in prefixes)]
+    roles = [ref.get("role") for ref in selected]
+    if len(roles) != len(set(roles)):
+        raise Rejected("common-condition input roles are not unique")
+    missing = sorted(set(exact) - set(roles))
+    if missing:
+        raise Rejected("common-condition identity lacks: " + ",".join(missing))
+    return [{key: ref[key] for key in ("role", "sha256", "bytes", "sourceType")}
+            for ref in sorted(selected, key=lambda row: row["role"])]
+
+
+def referenced_paths(refs, workspace, roles):
+    paths = []
+    for ref in refs:
+        if ref.get("role") not in roles:
+            continue
+        path = Path(ref["path"])
+        paths.append(str((workspace / path).resolve() if not path.is_absolute() else path.resolve()))
+    return paths
+
+
+def normalized_synth_entry(text):
+    lines = []
+    for line in text.splitlines():
+        if "::env(XS28_CUSTOM_DB)" in line or "::env(XS28_ARM)" in line:
+            continue
+        line = re.sub(r"/[^\s\"]+/flow/artifacts/(?:foundry|custom)-synth/run-[0-9a-f]+", "@RUN@", line)
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def publish_condition_identity(ctx, identity):
+    target = ctx.run_dir / "common-condition-identity.json"
+    atomic_json(target, identity)
+    ctx.add_artifact(target, "common_condition_identity", "derived-from-held-condition-evidence")
+    ctx.facts["commonConditionIdentitySha256"] = sha_file(target)
+
+
 def mining_sources_hash():
     names = [
         "mining_strategy_contract.py", "mine_patterns.py", "mine_timing_route.py",
@@ -704,12 +758,13 @@ def stage_synth(ctx, custom):
                                for key, value in sorted(values.items()))
                      + "\nsource %s\n" % tcl_string(DOMAIN / "shared_synth.tcl"))
     ctx.add_artifact(entry, "synthesis_entry", "generated-tool-input")
-    wrapper = str(ctx.binding("EDA_WRAPPER"))
+    wrapper = str(ctx.file_binding("EDA_WRAPPER", "tool-wrapper"))
     log = ctx.run([wrapper, "dc_shell", "-f", str(entry)], cwd=ctx.run_dir,
                   timeout=int(ctx.binding("SYNTH_TIMEOUT_SEC")), tag=arm + "-dc")
     text = log.read_text(errors="replace")
     if tool_error_lines(text):
         raise ToolFailure("DC returned zero but emitted an error line")
+    version = dc_version(text)
     marker = re.findall(r"=== AES_DTCO LIBRARY_VISIBLE_COUNT (\d+) ===", text)
     if len(marker) != 1 or ("=== AES_DTCO SYNTHESIS_COMPLETE %s ===" % arm) not in text:
         raise ToolFailure("DC log lacks unambiguous library visibility/completion evidence")
@@ -723,6 +778,15 @@ def stage_synth(ctx, custom):
     for at, role in ((netlist, "synthesis_netlist"), (sdc, "synthesis_sdc"),
                      (refs, "reference_report"), (timing, "synthesis_timing_report")):
         ctx.add_artifact(at, role, "design-compiler-output")
+    publish_condition_identity(ctx, {
+        "schema": "aes-dtco-common-condition/1", "kind": "synthesis",
+        "commonInputs": held_identities(ctx.inputs,
+            exact=("FOUNDRY_DB", "shared_synth_template", "shared_synth_constraints", "EDA_WRAPPER"),
+            prefixes=("rtl:",)),
+        "entryContractSha256": sha_bytes(normalized_synth_entry(entry.read_text()).encode()),
+        "tool": version,
+        "armSpecificExclusions": ["XS28_ARM", "XS28_CUSTOM_DB", "generated_db"],
+    })
     ctx.facts.update({
         "arm": "generated" if custom else "foundry", "library_visible": visible,
         "clock_ns": float(ctx.binding("CLOCK_NS")),
@@ -730,7 +794,7 @@ def stage_synth(ctx, custom):
         "constraintsSha256": sha_file(DOMAIN / "shared_constraints.sdc"),
         "rtlSha256": [sha_file(at) for at in rtl],
         "librarySetSha256": [sha_file(foundry)] + ([sha_file(custom_db)] if custom_db else []),
-        "wrapper": wrapper,
+        "wrapper": wrapper, "toolVersion": version,
     })
 
 
@@ -784,8 +848,10 @@ def merged_lef(ctx, layout):
     return out
 
 
-def normalized_arm_script(text):
+def normalized_arm_script(text, excluded_paths=()):
     text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    for path in sorted(excluded_paths, key=len, reverse=True):
+        text = text.replace(" " + path, "")
     text = re.sub(r"\s+/[^\s{}\]]+/generated\.(?:lib|lef)", "", text)
     text = re.sub(r"/[^\s{}\]]+/flow/artifacts/pnr-(?:foundry|generated)/run-[0-9a-f]+", "@RUN@", text)
     text = re.sub(r"/[^\s{}\]]+/(?:base|custom)\.dc\.(?:v|sdc)", "@SYNTH@", text)
@@ -859,11 +925,15 @@ def build_arm_files(ctx):
 def stage_pnr(ctx, arm):
     outputs, generated_lef, generated_lib = build_arm_files(ctx)
     chosen = outputs[arm]
+    ctx.inputs.extend([
+        file_ref(DOMAIN / name, ctx.workspace, "pnr_method_template:" + name, "pack-method")
+        for name in ("init.tcl.tmpl", "mmmc.tcl.tmpl", "pnr.tcl.tmpl")
+    ])
     ctx.add_artifact(generated_lef, "generated_lef", "generated-abstract-collection")
     for other in ("foundry", "generated"):
         for kind in ("mmmc", "init", "pnr"):
             ctx.add_artifact(outputs[other][kind], "%s_script:%s" % (kind, other), "generated-tool-input")
-    wrapper = str(ctx.binding("EDA_WRAPPER"))
+    wrapper = str(ctx.file_binding("EDA_WRAPPER", "tool-wrapper"))
     init_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["init"])], cwd=ctx.run_dir,
                        timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="init-" + arm)
     pnr_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["pnr"])], cwd=ctx.run_dir,
@@ -872,6 +942,10 @@ def stage_pnr(ctx, arm):
     pnr_text = pnr_log.read_text(errors="replace")
     if tool_error_lines(text) or tool_error_lines(pnr_text):
         raise ToolFailure("Innovus returned zero but emitted an error line")
+    init_version = innovus_version(text)
+    route_version = innovus_version(pnr_text)
+    if init_version != route_version:
+        raise Rejected("Innovus init and route tool versions differ")
     visible_hits = re.findall(r"=== XS28 GENERATED_LIB_CELLS_AFTER_RESTORE (\d+) ===", text)
     visible = int(visible_hits[0]) if len(visible_hits) == 1 else None
     if arm == "generated" and (visible is None or visible <= 0):
@@ -885,8 +959,23 @@ def stage_pnr(ctx, arm):
         ctx.add_artifact(at, role, "innovus-output")
     ctx.inputs.extend([file_ref(generated_lib, ctx.workspace, "generated_liberty", "learned-model-prediction"),
                        file_ref(generated_lef, ctx.workspace, "generated_lef", "generated-abstract-collection")])
+    publish_condition_identity(ctx, {
+        "schema": "aes-dtco-common-condition/1", "kind": "place-and-route",
+        "commonInputs": held_identities(ctx.inputs, exact=(
+            "TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH",
+            "FOUNDRY_GDS", "XS28_GDS_MAP", "EDA_WRAPPER",
+            "pnr_method_template:init.tcl.tmpl", "pnr_method_template:mmmc.tcl.tmpl",
+            "pnr_method_template:pnr.tcl.tmpl")),
+        "scriptContractSha256": sha_bytes("\n".join(
+            normalized_arm_script(chosen[kind].read_text(), referenced_paths(
+                ctx.inputs, ctx.workspace, {"generated_liberty", "generated_lef"}))
+            for kind in ("mmmc", "init", "pnr")
+        ).encode()),
+        "tool": init_version,
+        "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
+    })
     ctx.facts.update({"arm": arm, "pnr_completed": 1, "library_visible": visible,
-                      "arm_scripts_matched": True,
+                      "arm_scripts_matched": True, "toolVersion": init_version,
                       "templateSha256": {name: sha_file(DOMAIN / name) for name in
                                          ("init.tcl.tmpl", "mmmc.tcl.tmpl", "pnr.tcl.tmpl")}})
 
@@ -919,8 +1008,8 @@ def stage_verify(ctx):
         script = ctx.run_dir / (arm + "_verify.tcl")
         script.write_text(
             "restoreDesign {%s} {%s}\nset_verify_drc_mode -check_only cell -limit %d\n"
-            "set _xs_libcells [get_lib_cells {%s} -quiet]\n"
-            "puts \"=== AES_DTCO VERIFY_LIBRARY_VISIBLE [llength $_xs_libcells] ===\"\n"
+            "set _xs_libcells [get_lib_cells -quiet \"*/%s\"]\n"
+            "puts \"=== AES_DTCO VERIFY_LIBRARY_VISIBLE [sizeof_collection $_xs_libcells] ===\"\n"
             "verify_drc -limit %d -report {%s}\n"
             "puts \"=== AES_DTCO VERIFY_COMPLETE %s ===\"\nexit\n" %
             (db, ctx.binding("DESIGN_TOP"), limit, ctx.binding("GENERATED_LIB_CELL_PATTERN"),
@@ -1013,6 +1102,51 @@ def role_refs(record, prefix):
     return [ref for ref in record.get("inputs", []) if str(ref.get("role", "")).startswith(prefix)]
 
 
+def derived_synth_condition(record, workspace, arm):
+    entry = artifact(record, workspace, "synthesis_entry")
+    log = execution_log(record, workspace, arm + "-dc_log")
+    return {
+        "schema": "aes-dtco-common-condition/1", "kind": "synthesis",
+        "commonInputs": held_identities(record.get("inputs", []),
+            exact=("FOUNDRY_DB", "shared_synth_template", "shared_synth_constraints", "EDA_WRAPPER"),
+            prefixes=("rtl:",)),
+        "entryContractSha256": sha_bytes(normalized_synth_entry(entry.read_text()).encode()),
+        "tool": dc_version(log.read_text(errors="replace")),
+        "armSpecificExclusions": ["XS28_ARM", "XS28_CUSTOM_DB", "generated_db"],
+    }
+
+
+def derived_pnr_condition(record, workspace, arm):
+    scripts = {kind: artifact(record, workspace, "%s_script:%s" % (kind, arm))
+               for kind in ("mmmc", "init", "pnr")}
+    init_tool = innovus_version(execution_log(record, workspace, "init-" + arm + "_log").read_text(errors="replace"))
+    route_tool = innovus_version(execution_log(record, workspace, "pnr-" + arm + "_log").read_text(errors="replace"))
+    if init_tool != route_tool:
+        raise Rejected("Innovus init and route tool versions differ in held evidence")
+    excluded = referenced_paths(record.get("inputs", []), workspace,
+                                {"generated_liberty", "generated_lef"})
+    return {
+        "schema": "aes-dtco-common-condition/1", "kind": "place-and-route",
+        "commonInputs": held_identities(record.get("inputs", []), exact=(
+            "TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH",
+            "FOUNDRY_GDS", "XS28_GDS_MAP", "EDA_WRAPPER",
+            "pnr_method_template:init.tcl.tmpl", "pnr_method_template:mmmc.tcl.tmpl",
+            "pnr_method_template:pnr.tcl.tmpl")),
+        "scriptContractSha256": sha_bytes("\n".join(
+            normalized_arm_script(scripts[kind].read_text(), excluded) for kind in ("mmmc", "init", "pnr")
+        ).encode()),
+        "tool": init_tool,
+        "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
+    }
+
+
+def validate_condition_artifact(record, workspace, derived):
+    published = read_json(artifact(record, workspace, "common_condition_identity"))
+    if published != derived:
+        raise Rejected("published common-condition identity disagrees with held inputs/scripts/logs")
+    return derived
+
+
 def stage_compare(ctx):
     unknown_reasons = []
     observations = {}
@@ -1030,21 +1164,13 @@ def stage_compare(ctx):
             ctx.inputs.append(file_ref(snapshot, ctx.workspace,
                                        "source_stage_record:" + name, "stage-record"))
 
-        # Common synthesis method and inputs are checked from held, hashed source references.
-        fs_template = role_refs(foundry_synth, "shared_synth")
-        cs_template = role_refs(custom_synth, "shared_synth")
-        fs_rtl = role_refs(foundry_synth, "rtl:")
-        cs_rtl = role_refs(custom_synth, "rtl:")
-        if len(fs_template) != 2 or len(cs_template) != 2:
-            raise Rejected("paired synthesis records lack shared template/constraint evidence")
-        synth_method_matched = (
-            [(x["role"], x["sha256"]) for x in fs_template]
-            == [(x["role"], x["sha256"]) for x in cs_template]
-            and [(x["role"], x["sha256"]) for x in fs_rtl]
-            == [(x["role"], x["sha256"]) for x in cs_rtl]
-            and foundry_synth["executions"][0]["argv"][:2]
-            == custom_synth["executions"][0]["argv"][:2]
-        )
+        # Re-derive common identities from held files and raw tool logs. The published identity is
+        # only an audit artifact and must agree; it is never trusted as the source of the match.
+        foundry_synth_condition = validate_condition_artifact(
+            foundry_synth, ctx.workspace, derived_synth_condition(foundry_synth, ctx.workspace, "base"))
+        custom_synth_condition = validate_condition_artifact(
+            custom_synth, ctx.workspace, derived_synth_condition(custom_synth, ctx.workspace, "custom"))
+        synth_method_matched = foundry_synth_condition == custom_synth_condition
 
         pnr_rows = {}
         for arm, record in (("foundry", foundry_pnr), ("generated", generated_pnr)):
@@ -1075,9 +1201,12 @@ def stage_compare(ctx):
                                file_ref(pnr_script, ctx.workspace, arm + "_pnr_route_script", "generated-tool-input")])
 
         left, right = pnr_rows["foundry"], pnr_rows["generated"]
+        foundry_pnr_condition = validate_condition_artifact(
+            foundry_pnr, ctx.workspace, derived_pnr_condition(foundry_pnr, ctx.workspace, "foundry"))
+        generated_pnr_condition = validate_condition_artifact(
+            generated_pnr, ctx.workspace, derived_pnr_condition(generated_pnr, ctx.workspace, "generated"))
         pnr_method_matched = (
-            normalized_arm_script(left["initText"]) == normalized_arm_script(right["initText"])
-            and normalized_arm_script(left["pnrText"]) == normalized_arm_script(right["pnrText"])
+            foundry_pnr_condition == generated_pnr_condition
             and left["clockNs"] == right["clockNs"]
             and left["mmmc"]["qrc"] == right["mmmc"]["qrc"]
             and left["mmmc"]["temperature"] == right["mmmc"]["temperature"]

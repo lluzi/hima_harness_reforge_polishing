@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createAesDomainFixture, sha256, writeSyntheticStageRecord } from './support/aes-domain-fixture.ts';
+import { aesDomainPack, createAesDomainFixture, sha256, writeSyntheticStageRecord } from './support/aes-domain-fixture.ts';
 import { readingDocument, semanticValue } from '../../packages/harness/src/semantics.ts';
 
 const repoRoot = path.resolve(import.meta.dirname, '../..');
@@ -15,6 +15,15 @@ function parseReading(text: string): { values: unknown[] } {
   semanticValue.array().parse(document.values);
   return document;
 }
+
+test('library liveness queries use qualified leaf names and collection cardinality', async () => {
+  const shared = await readFile(path.join(aesDomainPack, 'flow/domain/shared_synth.tcl'), 'utf8');
+  const init = await readFile(path.join(aesDomainPack, 'flow/domain/init.tcl.tmpl'), 'utf8');
+  assert.match(shared, /get_lib_cells -quiet \*\/\$_xs_pattern/);
+  assert.match(shared, /sizeof_collection \$_xs_generated/);
+  assert.match(init, /get_lib_cells -quiet \*\/@@GENERATED_LIB_CELL_PATTERN@@/);
+  assert.match(init, /sizeof_collection \$_xs_libcells/);
+});
 
 test('merge records a rejected stage when the six route evidence set is incomplete', async (t) => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'aes-domain-merge-'));
@@ -65,15 +74,52 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
     const ran = fixture.run(stage); assert.equal(ran.status, 0, `${stage}: ${ran.stderr}`);
   }
   const comparison = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
+  const conditionEvidence = async (stage: string) => {
+    const record = JSON.parse(await readFile(path.join(flow, `records/${stage}.json`), 'utf8'));
+    const ref = record.artifacts.find((item: { role: string }) => item.role === 'common_condition_identity');
+    return JSON.parse(await readFile(path.join(fixture.workspace, ref.path), 'utf8'));
+  };
+  const conditionDiagnostic = JSON.stringify({
+    foundrySynth: await conditionEvidence('foundry-synth'), customSynth: await conditionEvidence('custom-synth'),
+    foundryPnr: await conditionEvidence('pnr-foundry'), generatedPnr: await conditionEvidence('pnr-generated'),
+  });
   assert.deepEqual({
     clock: comparison.facts.clock_period, setup: comparison.facts.setup_wns,
     delta: comparison.facts.setup_wns_delta, failures: comparison.facts.full_constraint_failures,
-  }, { clock: 0.5, setup: 0.02, delta: 0.01, failures: 0 });
+  }, { clock: 0.5, setup: 0.02, delta: 0.01, failures: 0 }, conditionDiagnostic);
   const read = fixture.read(path.join(flow, 'records/compare.json'), 'compare');
   assert.equal(read.run.status, 0, read.run.stderr);
   const values = parseReading(await readFile(read.out, 'utf8')).values as { type: string; value: number }[];
   assert.equal(values.find((item) => item.type === 'setup_wns')!.value, 0.02);
   assert.equal(values.find((item) => item.type === 'full_constraint_failures')!.value, 0);
+
+  const qrc = String((fixture.inputs.legacy as Record<string, unknown>).FOUNDRY_QRC_TECH);
+  await writeFile(qrc, 'SYNTHETIC QRC CHANGED BETWEEN ARMS\n');
+  assert.equal(fixture.run('pnr-generated').status, 0);
+  assert.equal(fixture.run('compare').status, 0);
+  const qrcMismatch = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
+  assert.equal(qrcMismatch.facts.matched_conditions, false);
+  assert.equal(qrcMismatch.facts.full_constraint_failures, 1);
+  const qrcReading = fixture.read(path.join(flow, 'records/compare.json'), 'compare');
+  assert.equal(qrcReading.run.status, 0, qrcReading.run.stderr);
+  const qrcValues = parseReading(await readFile(qrcReading.out, 'utf8')).values as { type: string; value: number }[];
+  assert.equal(qrcValues.find((item) => item.type === 'matched_conditions')!.value, 0);
+  const qrcFoundry = (await conditionEvidence('pnr-foundry')).commonInputs
+    .find((item: { role: string }) => item.role === 'FOUNDRY_QRC_TECH').sha256;
+  const qrcGenerated = (await conditionEvidence('pnr-generated')).commonInputs
+    .find((item: { role: string }) => item.role === 'FOUNDRY_QRC_TECH').sha256;
+  assert.notEqual(qrcFoundry, qrcGenerated, 'same QRC path with changed bytes is not a matched condition');
+
+  assert.equal(fixture.run('pnr-foundry').status, 0, 'refresh the control on the changed synthetic QRC');
+  await writeFile(path.join(flow, 'synthetic-innovus-version-mismatch'), 'synthetic counterexample\n');
+  assert.equal(fixture.run('pnr-generated').status, 0);
+  assert.equal(fixture.run('compare').status, 0);
+  const versionMismatch = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
+  assert.equal(versionMismatch.facts.matched_conditions, false);
+  assert.notDeepEqual((await conditionEvidence('pnr-foundry')).tool,
+    (await conditionEvidence('pnr-generated')).tool, 'raw Innovus version headers differ');
+  await rm(path.join(flow, 'synthetic-innovus-version-mismatch'));
+  assert.equal(fixture.run('pnr-generated').status, 0, 'restore the matched synthetic tool version');
 
   await writeFile(path.join(flow, 'synthetic-changed-actual-clock'), 'synthetic counterexample\n');
   const changedPnr = fixture.run('pnr-generated');
