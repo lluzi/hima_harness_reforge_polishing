@@ -6,7 +6,7 @@ import type { StartChoices } from '../workbench.js';
 import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows, nodeStateLabel, runPurposeMark, runStatusLabel, startForm, startGoalField, startKnobField, START_STATIC_LIMIT } from '../card-labels.js';
 import { reportBlocks } from '../experience-report.js';
 import { runPath } from '../paths.js';
-import { fetchRun, fetchRuns, fetchStartChoices, startCampaign, type HimaResult } from './api.js';
+import { fetchRun, fetchRuns, fetchStartChoices, reviewPackTransfer, startCampaign, type HimaResult } from './api.js';
 import { DecisionRow, ExperienceSection, GenerationsTable, MaterialSection, ObservationRow, ReportBlockRow, RunControls, useRunActions, VerdictRow, WorkshopSection } from './HimaRunCard.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot. */
@@ -56,6 +56,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
   const requested = typeof params?.runId === 'string' ? params.runId : undefined;
   const [selected, setSelected] = useState<string | undefined>(requested);
   const [creating, setCreating] = useState(false);
+  const [managingPack, setManagingPack] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [starting, setStarting] = useState(false);
   const startPending = useRef(false);
@@ -98,6 +99,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
     <header className='hima-studio-header'>
       <div><h2>Research workspace</h2></div>
       <button className='hima-button' disabled={starting} onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
+      <button className='hima-button' disabled={starting} data-hima-control='studio-pack-owner' onClick={() => setManagingPack(value => !value)}>Pack & assets</button>
       <button className='hima-button hima-primary' disabled={starting} data-hima-control='studio-new' onClick={() => { if (!startPending.current) setCreating(true); }}>＋ New run</button>
     </header>
     <div className='hima-run-picker'>
@@ -111,6 +113,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
     </div>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
     {notice ? <p role='alert' className='hima-error'>{notice}</p> : null}
+    {managingPack ? <PackOwnerPanel key={sessionId} sessionId={sessionId} initialPack={view?.run.packId ?? ''} /> : null}
     {view?.run.control && view.run.control.owner !== sessionId ? <button type='button' className='hima-button' data-hima-control='open-owner' onClick={() => openOwner(view.run.control!.owner)}>Open owning conversation</button> : null}
     {creating ? <StartRunForm key={sessionId} sessionId={sessionId} onBusy={startBusy} onClose={() => { if (!startPending.current) setCreating(false); }} onStarted={(run) => { setSelected(run.run.id); setCreating(false); setSection('live'); list.refresh(); snapshot.refresh(); setNotice(undefined); if (run.run.control) void sendToOwner(run.run.control.owner, `Start the prepared Hima Run ${run.run.id} in this conversation. Read hima_context, inspect the Pack reference nodes and current facts, then use hima_execute to admit and perform each authorized node. You are the execution owner; choose the next step from actual evidence. Keep this conversation available during Jobs and honor pause/stop instructions. Do not create another Run or hidden execution Agent.`).catch((error: unknown) => setNotice(`Run ${run.run.id} is prepared, but the conversation message was not delivered: ${(error as Error).message}. Ask this conversation to inspect the Run; do not start a duplicate.`)); }} />
       : selected === undefined ? <div className='hima-empty'><div className='hima-empty-glyph'>⌘</div><h3>Explore. Experiment. Build evidence.</h3><p>Keep the engineering conversation here while Hima tracks each experiment beside it.</p><button className='hima-button hima-primary' onClick={() => setCreating(true)}>Start a research run</button><p className='hima-small'>Choose an existing run above, or start from an installed Pack.</p></div>
@@ -136,6 +139,60 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
           </>}
         </>}
   </div>;
+}
+
+/** Same-session owner reviews actual local file hashes before applying a transfer. */
+function PackOwnerPanel({ sessionId, initialPack }: { sessionId: string; initialPack: string }): ReactElement {
+  const [pack, setPack] = useState(initialPack);
+  const [mode, setMode] = useState<'share' | 'migrate' | 'upgrade'>('share');
+  const [location, setLocation] = useState('');
+  const [assets, setAssets] = useState('');
+  const [review, setReview] = useState<import('../release.js').PackTransferReview>();
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const controller = useRef<AbortController | undefined>();
+  useEffect(() => () => controller.current?.abort(), []);
+  const invalidate = () => { setReview(undefined); setMessage(''); };
+  const submit = async (confirm: boolean) => {
+    if (pending.current || (confirm && !review)) return;
+    pending.current = true; setBusy(true); setMessage('');
+    const own = new AbortController(); controller.current = own;
+    const result = await reviewPackTransfer({ sessionId, pack, mode, to: mode === 'upgrade' ? '' : location,
+      ...(mode === 'upgrade' ? { source: location } : {}),
+      ...(mode === 'share' ? { assets: assets.split('\n').map(line => line.trim()).filter(Boolean) } : {}),
+      ...(confirm ? { reviewSha256: review!.reviewSha256 } : {}) }, own.signal);
+    if (own.signal.aborted) return;
+    pending.current = false; setBusy(false);
+    if (!result.ok) { setReview(undefined); setMessage(result.error.message); return; }
+    setReview(result.value);
+    setMessage(confirm ? 'Confirmed files verified and written. No public upload was performed.' : 'Review the exact files and destination before confirming.');
+    if (confirm) setReview(undefined);
+  };
+  return <section className='hima-detail' data-hima-region='pack-owner'>
+    <h3>Pack & knowledge assets</h3>
+    <p className='hima-small'>This local owner controls method upgrades and which research materials leave the installed Pack.</p>
+    <fieldset disabled={busy} style={{ border: 0, padding: 0, minWidth: 0, display: 'grid', gap: 14 }}>
+      <div className='hima-fields'>
+        <label>Installed Pack<input data-hima-control='owner-pack' value={pack} onChange={event => { invalidate(); setPack(event.target.value); }} /></label>
+        <label>Action<select data-hima-control='owner-mode' value={mode} onChange={event => { invalidate(); setMode(event.target.value as typeof mode); }}>
+          <option value='share'>Share method / selected materials</option><option value='migrate'>Migrate my Pack with all assets</option><option value='upgrade'>Install tested method upgrade</option>
+        </select></label>
+        <label>{mode === 'upgrade' ? 'Tested release source folder' : 'New destination Pack folder'}<input data-hima-control='owner-location' value={location} onChange={event => { invalidate(); setLocation(event.target.value); }} /></label>
+      </div>
+      {mode === 'share' ? <label style={{ display: 'grid', gap: 8 }}>Optional material paths, one per line<textarea style={{ boxSizing: 'border-box', width: '100%', minHeight: 72, resize: 'vertical', padding: 10, font: 'inherit', color: 'inherit', background: 'transparent', border: '1px solid var(--dsw-alias-border-primary, #ddd)', borderRadius: 6 }} data-hima-control='owner-assets' value={assets} placeholder='Empty shares only the method. Select paths inside run-assets/ to include research.' onChange={event => { invalidate(); setAssets(event.target.value); }} /></label>
+        : <p className='hima-small'>{mode === 'migrate' ? 'Migration includes your private run-assets and historical methods. Use only your own destination.' : 'The current method remains unchanged until you confirm a tested release. Old methods and run-assets are retained.'}</p>}
+      <button style={{ justifySelf: 'start' }} className='hima-button' data-hima-control='owner-review' disabled={!pack || !location} onClick={() => { void submit(false); }}>Review files</button>
+      {review ? <div data-hima-region='pack-review'>
+        <p style={{ overflowWrap: 'anywhere' }}>Destination: <code>{review.to}</code></p>
+        <p className='hima-small'>{review.files.length} files · {review.changes.length} changes · review <code title={review.reviewSha256}>{review.reviewSha256.slice(0, 12)}</code></p>
+        <div style={{ maxHeight: 240, overflow: 'auto' }}><table style={{ width: '100%', tableLayout: 'fixed', fontSize: 12, textAlign: 'left' }}><thead><tr><th style={{ width: '56%' }}>File</th><th style={{ width: '16%' }}>Bytes</th><th>SHA-256</th></tr></thead><tbody>{review.files.map(file => <tr key={file.path}><td style={{ padding: '8px 6px 8px 0', overflowWrap: 'anywhere' }}>{file.path}</td><td>{file.bytes}</td><td><code title={file.sha256}>{file.sha256.slice(0, 12)}</code></td></tr>)}</tbody></table></div>
+        <details style={{ margin: '12px 0' }}><summary>Full manifest and changes</summary><pre style={{ maxHeight: 220, overflow: 'auto', fontSize: 11 }}>{JSON.stringify(review, null, 2)}</pre></details>
+        <button className='hima-button hima-primary' data-hima-control='owner-confirm' onClick={() => { void submit(true); }}>Confirm these exact files</button>
+      </div> : null}
+    </fieldset>
+    {message ? <p role='status' data-hima-region='pack-owner-message'>{message}</p> : null}
+  </section>;
 }
 
 function RunSummary({ view }: { view: RunView }): ReactElement {

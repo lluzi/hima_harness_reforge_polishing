@@ -1,0 +1,21 @@
+$ node scripts/run-contract-tests.mjs desktop --files test/contract/pack-owner.desktop.test.ts
+desktop: 1 selected; 18 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: owner reviews selected knowledge files and confirms the exact local sharing manifest in the native workspace
+ok 1 - owner reviews selected knowledge files and confirms the exact local sharing manifest in the native workspace
+  ---
+  duration_ms: 14426.66525
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15024.05425
+Test boot attempts: {"host-process":0,"host-in-process":0,"electron":1}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+desktop command exit code: 0; elapsed: 15.142 s; pass/fail/skip counts are in the TAP summary above

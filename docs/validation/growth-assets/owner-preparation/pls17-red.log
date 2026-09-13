@@ -1,0 +1,114 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/pack-method-assets.test.ts
+local: 1 selected; 56 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: owner can finish or roll back an interrupted method update without losing customer assets
+not ok 1 - owner can finish or roll back an interrupted method update without losing customer assets
+  ---
+  duration_ms: 2.315625
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack-method-assets.test.ts:40:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    a refused partial installation needs a verified owner recovery operation
+    + actual - expected
+    
+    + 'undefined'
+    - 'function'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'function'
+  actual: 'undefined'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack-method-assets.test.ts:42:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1397:25)
+    Test.start (node:internal/test_runner/test:1257:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact
+ok 2 - an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact
+  ---
+  duration_ms: 3695.914625
+  type: 'test'
+  ...
+# {"testRun":"run-48334b56-295e-434d-9f17-6c519e7e404f","purpose":"test","status":"ended-goal-met","methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","testRecordSha256":"460d43d1978a292af792c7d485e660acfc68db753ac93f79f2fe0d588978acfd","localJobs":1}
+# Subtest: an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive
+ok 3 - an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive
+  ---
+  duration_ms: 2927.862333
+  type: 'test'
+  ...
+# {"testRun":"run-70de1689-b5fd-40ff-85f5-0fcba6f6a7c2","purpose":"test","status":"ended-goal-met","methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","testRecordSha256":"a42905a587f78163e7c5dcf8cdd4b08c6590eef56940ccd8822cc46fdde4b51b","localJobs":1}
+# {"testRun":"run-ac89d403-f7b1-4bf5-85c2-e56b2f526342","purpose":"test","status":"ended-goal-met","methodDigest":"dc3a575ecc1a6ff650425bddbd78064f988f945caa135ce9bf7844ff73e0669b","testRecordSha256":"da34a202462551149a4caf8f61661ab3f026cf51b9381aaa2db516c818ef4799","localJobs":1}
+# Subtest: installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest
+ok 4 - installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest
+  ---
+  duration_ms: 3695.679292
+  type: 'test'
+  ...
+# {"testRun":"run-d4c49ff5-4dd9-4f16-b643-1398b7ab0e13","purpose":"test","status":"ended-goal-met","methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","testRecordSha256":"bdabeaed25f2e0e3996bb3aaa1ef0dde2ee373fc95c3554e6786d2cd2ad0696d","localJobs":1}
+# {"testRun":"run-267b21ca-d510-417d-a82e-7706db0049e3","purpose":"test","status":"ended-goal-met","methodDigest":"3c46f1cc5745831699cd7f4cb7e3d43083a97831afc7476310e13746d5183279","testRecordSha256":"87f790916c704ce85f7ae09c02c12c5f164f9fe66c201d057b58fc62408a928c","localJobs":1}
+# {"testRun":"run-64eb6440-31fc-491c-86b4-ff81411e2a4a","purpose":"test","status":"ended-goal-met","methodDigest":"22a812b3e8988a146af40b891fdf20d6968ba2d414709cee6aef513190701d76","testRecordSha256":"71027ed61830fc347a5a0078f7cd8e60de70507148e65ca7c3fc6c93765c921d","localJobs":1}
+# Subtest: repeated local seeding preserves the installed Pack customer archive byte for byte
+ok 5 - repeated local seeding preserves the installed Pack customer archive byte for byte
+  ---
+  duration_ms: 142.189583
+  type: 'test'
+  ...
+# Subtest: a real Host resumes the old Run against its original method after an installed version upgrade
+ok 6 - a real Host resumes the old Run against its original method after an installed version upgrade
+  ---
+  duration_ms: 715.297208
+  type: 'test'
+  ...
+# Subtest: run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+ok 7 - run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+  ---
+  duration_ms: 136.79675
+  type: 'test'
+  ...
+# Subtest: an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+ok 8 - an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+  ---
+  duration_ms: 74.424709
+  type: 'test'
+  ...
+# Subtest: asset symlinks and parent-directory links refuse installation and method export without changing their targets
+ok 9 - asset symlinks and parent-directory links refuse installation and method export without changing their targets
+  ---
+  duration_ms: 36.445583
+  type: 'test'
+  ...
+# Subtest: legacy installations are adopted only by exact bytes and missing historical identity is never invented
+ok 10 - legacy installations are adopted only by exact bytes and missing historical identity is never invented
+  ---
+  duration_ms: 58.3515
+  type: 'test'
+  ...
+# Subtest: a method-only export preserves executable method scripts
+ok 11 - a method-only export preserves executable method scripts
+  ---
+  duration_ms: 571.3385
+  type: 'test'
+  ...
+# Subtest: installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+ok 12 - installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+  ---
+  duration_ms: 80.2915
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 11
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12700.442583
+Test boot attempts: {"host-process":0,"host-in-process":4,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 12.795 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.

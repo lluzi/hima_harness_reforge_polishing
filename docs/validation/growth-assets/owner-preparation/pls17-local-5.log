@@ -1,0 +1,105 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/pack-method-assets.test.ts
+local: 1 selected; 56 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: owner can finish or roll back an interrupted method update without losing customer assets
+ok 1 - owner can finish or roll back an interrupted method update without losing customer assets
+  ---
+  duration_ms: 302.665459
+  type: 'test'
+  ...
+# Subtest: sharing previews exact selected bytes, defaults to method only, and refuses stale confirmation
+ok 2 - sharing previews exact selected bytes, defaults to method only, and refuses stale confirmation
+  ---
+  duration_ms: 219.30475
+  type: 'test'
+  ...
+# Subtest: a reviewed transfer resumes only matching staged files and never publishes a partial directory
+ok 3 - a reviewed transfer resumes only matching staged files and never publishes a partial directory
+  ---
+  duration_ms: 110.128209
+  type: 'test'
+  ...
+# Subtest: an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact
+ok 4 - an installed method can be tested, released and re-released, exported and reinstalled with customer assets intact
+  ---
+  duration_ms: 3666.76325
+  type: 'test'
+  ...
+# {"testRun":"run-dbb5efd9-826a-4d7e-a175-74d46c4688e5","purpose":"test","status":"ended-goal-met","methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","testRecordSha256":"2386d9d4c36a10788ea7de5c17422d13e24bbe0b515dd89f1986d2488b23b14f","localJobs":1}
+# Subtest: an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive
+ok 5 - an authorised new version of known installed method files publishes and upgrades while old Run methods and customer bytes survive
+  ---
+  duration_ms: 2792.737833
+  type: 'test'
+  ...
+# {"testRun":"run-282d78dc-2844-47be-b492-45e226272bd9","purpose":"test","status":"ended-goal-met","methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","testRecordSha256":"70d5b12ad1da576719f9eb8c550a1d96d921a3e140aaf878eb6cb9bbfb177b76","localJobs":1}
+# {"testRun":"run-4714bc41-4135-485d-b276-969454c44c6c","purpose":"test","status":"ended-goal-met","methodDigest":"dc3a575ecc1a6ff650425bddbd78064f988f945caa135ce9bf7844ff73e0669b","testRecordSha256":"e4b5cdc5e4bfa567a8a6458a54b337b8576784dee79c98c688aba68af7527594","localJobs":1}
+# Subtest: installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest
+ok 6 - installed publication refuses tested same-version edits, unknown customer files and forged ownership without changing the manifest
+  ---
+  duration_ms: 4274.956625
+  type: 'test'
+  ...
+# {"testRun":"run-4d3e40ef-1cbf-420c-b035-834a6313ad4f","purpose":"test","status":"ended-goal-met","methodDigest":"4010c632866b30892e2667c0aa822a9d9d3abc795ee464ffba56c1048324929d","testRecordSha256":"d132ad87c6b56857c63cd36a90b0265e8426886a8ce2c1009594f81e23d9f4fe","localJobs":1}
+# {"testRun":"run-22992f32-05b4-4bfe-a375-6fc419631e44","purpose":"test","status":"ended-goal-met","methodDigest":"3c46f1cc5745831699cd7f4cb7e3d43083a97831afc7476310e13746d5183279","testRecordSha256":"37d98543bfdfe706178b319aae8b3abbe9113ee51e28fad680a4f6868ddf61d6","localJobs":1}
+# {"testRun":"run-f414bb99-d30c-4b53-82df-1fe16c92227f","purpose":"test","status":"ended-goal-met","methodDigest":"22a812b3e8988a146af40b891fdf20d6968ba2d414709cee6aef513190701d76","testRecordSha256":"b656faf904bb2b3a30ec762728930dcd737592408b8e3e94ca7d2268d45ee0e5","localJobs":1}
+# Subtest: repeated local seeding preserves the installed Pack customer archive byte for byte
+ok 7 - repeated local seeding preserves the installed Pack customer archive byte for byte
+  ---
+  duration_ms: 150.412208
+  type: 'test'
+  ...
+# Subtest: a real Host resumes the old Run against its original method after an installed version upgrade
+ok 8 - a real Host resumes the old Run against its original method after an installed version upgrade
+  ---
+  duration_ms: 651.456208
+  type: 'test'
+  ...
+# Subtest: run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+ok 9 - run assets leave method identity and legacy method-only seals unchanged, while a same-version method edit is refused
+  ---
+  duration_ms: 92.628459
+  type: 'test'
+  ...
+# Subtest: an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+ok 10 - an interrupted upgrade leaves customer assets and the original method recoverable and refuses a partial installation
+  ---
+  duration_ms: 44.528375
+  type: 'test'
+  ...
+# Subtest: asset symlinks and parent-directory links refuse installation and method export without changing their targets
+ok 11 - asset symlinks and parent-directory links refuse installation and method export without changing their targets
+  ---
+  duration_ms: 22.007166
+  type: 'test'
+  ...
+# Subtest: legacy installations are adopted only by exact bytes and missing historical identity is never invented
+ok 12 - legacy installations are adopted only by exact bytes and missing historical identity is never invented
+  ---
+  duration_ms: 45.578208
+  type: 'test'
+  ...
+# Subtest: a method-only export preserves executable method scripts
+ok 13 - a method-only export preserves executable method scripts
+  ---
+  duration_ms: 466.255833
+  type: 'test'
+  ...
+# Subtest: installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+ok 14 - installed Pack ownership refuses unknown files even inside installer metadata, and method-only sharing never copies them
+  ---
+  duration_ms: 105.882292
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 13450.475167
+Test boot attempts: {"host-process":0,"host-in-process":4,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 13.538 s; pass/fail/skip counts are in the TAP summary above

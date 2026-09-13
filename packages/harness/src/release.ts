@@ -14,7 +14,7 @@
 // and a seal whose hashes, whose version and whose evidence came from three readings of a folder
 // would be a document that was never true all at once.
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
@@ -167,6 +167,10 @@ export type ReleaseResult =
  * then compared against comes from the snapshot.
  */
 function sealJustWritten(file: string): string {
+  return plainFileBytes(file).toString('utf8');
+}
+
+function plainFileBytes(file: string): Buffer {
   let fd: number;
   try {
     fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -175,7 +179,7 @@ function sealJustWritten(file: string): string {
   }
   try {
     if (!fstatSync(fd).isFile()) throw new Error(`${pipelineFiles.version} is not a plain file`);
-    return readFileSync(fd, 'utf8');
+    return readFileSync(fd);
   } finally {
     closeSync(fd);
   }
@@ -587,6 +591,83 @@ export function installPackMethod(req: { readonly from: string; readonly to: str
   }
 }
 
+/** Recover only the verified old/new method bytes of an interrupted installation. Customer assets
+ * stay in place. An unexpected file is a conflict to inspect, never permission to remove it. */
+export function recoverPackMethod(req: { readonly to: string; readonly action: 'finish' | 'rollback' }): { readonly dir: string; readonly digest: string } {
+  if (!['finish', 'rollback'].includes(req.action)) throw new PackFolderError('choose finish or rollback for this interrupted method update');
+  const dir = path.resolve(req.to);
+  plainAncestors(dir);
+  const id = packId.parse(path.basename(dir));
+  const lock = path.join(path.dirname(dir), `.${id}.hima-install-lock`);
+  writeFileSync(lock, `${JSON.stringify({ pack: id, recovery: req.action })}\n`, { flag: 'wx' });
+  try {
+    const marker = path.join(dir, methodUpdateFile);
+    if (lstatSync(marker, { throwIfNoEntry: false }) === undefined) {
+      const installed = snapshotPackFolder(dir);
+      verifyInstallOwnership(installed);
+      const held = readManifest(installed);
+      if (!held) throw new PackFolderError('no interrupted update or verified installed method exists');
+      return { dir, digest: held.digest };
+    }
+    const update = z.strictObject({ previous: methodManifest.nullable(), next: methodManifest })
+      .parse(JSON.parse(sealJustWritten(marker)));
+    if (update.next.pack !== id || (update.previous && update.previous.pack !== id)) throw new PackFolderError('interrupted update belongs to another Pack');
+    const snapshots = new Map<string, PackFolderSnapshot>();
+    for (const manifest of [update.previous, update.next]) {
+      if (!manifest) continue;
+      const held = snapshotPackFolder(path.join(dir, methodHistoryDirectory, manifest.digest, id));
+      verifyInstallOwnership(held, false);
+      const actual = readManifest(held);
+      if (!actual || JSON.stringify(Object.entries(actual.files).sort()) !== JSON.stringify(Object.entries(manifest.files).sort())
+          || actual.pack !== manifest.pack || actual.version !== manifest.version || actual.digest !== manifest.digest) {
+        throw new PackFolderError('interrupted update does not match its preserved method; nothing was overwritten');
+      }
+      snapshots.set(manifest.digest, held);
+    }
+    const target = req.action === 'finish' ? update.next : update.previous;
+    if (!target) throw new PackFolderError('first installation has no previous method to roll back to; finish the verified installation');
+    const owned = new Set([...Object.keys(update.previous?.files ?? {}), ...Object.keys(update.next.files)]);
+    const metadata = new Set([methodInstallFile, `${methodInstallFile}.next`, methodUpdateFile]);
+    const directories: string[] = [];
+    const inspect = (relative: string): void => {
+      const at = path.join(dir, relative);
+      const entry = lstatSync(at);
+      if (entry.isSymbolicLink() || (!entry.isDirectory() && !entry.isFile())) throw new PackFolderError(`${at} is not a plain recovery path`);
+      if (relative === runAssetsDirectory || relative === methodHistoryDirectory) {
+        if (!entry.isDirectory()) throw new PackFolderError(`${at} is not a plain directory`);
+        return;
+      }
+      if (entry.isDirectory()) {
+        if (relative && ![...owned].some(file => file.startsWith(`${relative}/`))) throw new PackFolderError(`${at} has unknown directory ownership`);
+        for (const name of readdirSync(at)) inspect(relative ? `${relative}/${name}` : name);
+        if (relative) directories.push(relative);
+        return;
+      }
+      if (metadata.has(relative)) return;
+      if (!owned.has(relative)) throw new PackFolderError(`${at} has unknown ownership; nothing was overwritten`);
+      const sha = createMethodHash(plainFileBytes(at));
+      if (sha !== update.previous?.files[relative] && sha !== update.next.files[relative]) throw new PackFolderError(`${at} differs from both preserved methods; nothing was overwritten`);
+    };
+    inspect('');
+    for (const relative of owned) {
+      const at = path.join(dir, relative);
+      if (lstatSync(at, { throwIfNoEntry: false })?.isFile()) rmSync(at);
+    }
+    for (const relative of directories) rmdirSync(path.join(dir, relative));
+    writeMethodFiles(snapshots.get(target.digest)!, dir);
+    const temp = path.join(dir, `${methodInstallFile}.next`);
+    if (lstatSync(temp, { throwIfNoEntry: false })) rmSync(temp);
+    writeFileSync(temp, `${JSON.stringify(target, null, 2)}\n`, { flag: 'wx' });
+    renameSync(temp, path.join(dir, methodInstallFile));
+    rmSync(marker);
+    // Re-read the final installation through the normal loader, not a recovery-only interpretation.
+    const verified = snapshotPackFolder(dir);
+    verifyInstallOwnership(verified);
+    if (readManifest(verified)?.digest !== target.digest) throw new PackFolderError('recovered method failed final verification');
+    return { dir, digest: target.digest };
+  } finally { rmSync(lock); }
+}
+
 function installMethodSnapshot(source: PackFolderSnapshot, next: MethodManifest, dir: string): { readonly dir: string; readonly digest: string; readonly changed: boolean } {
   const previous = snapshotPackFolderIfThere(dir);
   let owned: MethodManifest | undefined;
@@ -624,4 +705,122 @@ function installMethodSnapshot(source: PackFolderSnapshot, next: MethodManifest,
   renameSync(tempManifest, path.join(dir, methodInstallFile));
   rmSync(marker);
   return { dir, digest: next.digest, changed: true };
+}
+
+export interface PackTransferRequest {
+  readonly from: string;
+  readonly to: string;
+  readonly mode: 'share' | 'migrate' | 'upgrade';
+  /** Explicit relative material paths; absent for method-only sharing. Migration carries all assets. */
+  readonly assets?: readonly string[];
+}
+export interface PackTransferReview {
+  readonly from: string;
+  readonly to: string;
+  readonly mode: PackTransferRequest['mode'];
+  readonly pack: string;
+  readonly methodDigest: string;
+  readonly previousDigest?: string;
+  readonly files: readonly { readonly path: string; readonly sha256: string; readonly bytes: number }[];
+  readonly changes: readonly { readonly path: string; readonly before?: string; readonly after?: string }[];
+  readonly reviewSha256: string;
+}
+
+/** Review and application share one byte snapshot. The review digest includes source, destination,
+ * mode, selected material bytes and previous method identity, so earlier approval is not reusable
+ * for changed contents. This is a local owner operation, not a multi-tenant permission system. */
+function transferSnapshot(request: PackTransferRequest): { review: PackTransferReview; bytes: Map<string, Uint8Array>; modes: Map<string, number> } {
+  if (!['share', 'migrate', 'upgrade'].includes(request.mode)) throw new PackFolderError('unknown Pack transfer mode');
+  const from = path.resolve(request.from), to = path.resolve(request.to);
+  if (to === from || to.startsWith(`${from}${path.sep}`) || from.startsWith(`${to}${path.sep}`)) throw new PackFolderError('source and destination must be separate Pack directories');
+  plainAncestors(from); plainAncestors(to);
+  const folder = snapshotPackFolder(from);
+  const owned = readManifest(folder);
+  if (owned) verifyInstallOwnership(folder);
+  const method = manifestOf(folder);
+  if (path.basename(to) !== method.pack) throw new PackFolderError(`destination must be named ${method.pack}`);
+  if (request.mode !== 'upgrade' && lstatSync(to, { throwIfNoEntry: false })) throw new PackFolderError('export destination already exists; no existing files will be overwritten');
+  if (request.mode !== 'share' && request.assets?.length) throw new PackFolderError('explicit materials are only selected for sharing');
+  const bytes = new Map(folder.files), modes = new Map(folder.modes);
+  const take = (relative: string): void => {
+    const at = path.join(from, relative);
+    plainAncestors(path.dirname(at));
+    const stat = lstatSync(at);
+    if (!stat.isFile()) throw new PackFolderError(`${at} is not a plain material file`);
+    bytes.set(relative, plainFileBytes(at)); modes.set(relative, stat.mode & 0o777);
+  };
+  const walk = (relative: string): void => {
+    const at = path.join(from, relative), stat = lstatSync(at, { throwIfNoEntry: false });
+    if (!stat) return;
+    if (stat.isDirectory()) for (const child of readdirSync(at).sort()) walk(`${relative}/${child}`);
+    else take(relative);
+  };
+  if (request.mode === 'migrate') {
+    if (!owned) throw new PackFolderError('migration requires a verified installed method');
+    walk(runAssetsDirectory); walk(methodHistoryDirectory); take(methodInstallFile);
+  } else if (request.mode === 'share') {
+    for (const relative of new Set(request.assets ?? [])) {
+      if (!packFilePath.safeParse(relative).success || !relative.startsWith(`${runAssetsDirectory}/`)) throw new PackFolderError('shared materials must name files inside run-assets');
+      take(relative);
+    }
+  }
+  let previous: MethodManifest | undefined;
+  if (request.mode === 'upgrade') {
+    const installed = snapshotPackFolder(to);
+    previous = readManifest(installed);
+    if (!previous) throw new PackFolderError('upgrade requires a verified installed method');
+    verifyInstallOwnership(installed);
+    if (previous.pack !== method.pack) throw new PackFolderError('upgrade source belongs to another Pack');
+    if (previous.version === method.version && previous.digest !== method.digest) throw new PackFolderError('changed method needs a new version');
+    if (packStageFrom(folder).stage !== 'released') throw new PackFolderError('upgrade candidate must have a tested release');
+  }
+  const files = [...bytes].sort(([a], [b]) => a.localeCompare(b)).map(([at, content]) => ({ path: at, sha256: createMethodHash(content), bytes: content.byteLength }));
+  const changes = [...new Set([...Object.keys(previous?.files ?? {}), ...files.map(file => file.path)])].sort().flatMap(at => {
+    const before = previous?.files[at], after = files.find(file => file.path === at)?.sha256;
+    return before === after ? [] : [{ path: at, ...(before ? { before } : {}), ...(after ? { after } : {}) }];
+  });
+  const facts = { from, to, mode: request.mode, pack: method.pack, methodDigest: method.digest,
+    ...(previous ? { previousDigest: previous.digest } : {}), files, changes };
+  return { review: { ...facts, reviewSha256: createMethodHash(Buffer.from(JSON.stringify(facts))) }, bytes, modes };
+}
+
+export function previewPackTransfer(request: PackTransferRequest): PackTransferReview {
+  return transferSnapshot(request).review;
+}
+
+/** Called only after owner review of this exact manifest. No network publishing is performed. */
+export function applyPackTransfer(request: PackTransferRequest & { readonly reviewSha256: string }): PackTransferReview {
+  const held = transferSnapshot(request);
+  if (held.review.reviewSha256 !== request.reviewSha256) throw new PackFolderError('Pack transfer contents changed since review; inspect and confirm a fresh manifest');
+  if (request.mode === 'upgrade') {
+    installPackMethod({ from: held.review.from, to: held.review.to });
+    return held.review;
+  }
+  const destination = held.review.to;
+  mkdirSync(path.dirname(destination), { recursive: true });
+  const staging = path.join(path.dirname(destination), `.${path.basename(destination)}.transfer-${held.review.reviewSha256}`);
+  // A prior interrupted staging directory is retained for inspection; no claim that it completed.
+  // A retry verifies/reuses its exact files and adds only missing ones, never replaces changed bytes.
+  plainAncestors(staging); mkdirSync(staging, { recursive: true });
+  const expected = new Set(held.review.files.map(file => file.path));
+  const verifyExisting = (relative: string): void => {
+    const at = path.join(staging, relative), stat = lstatSync(at);
+    if (stat.isDirectory()) {
+      if (relative && ![...expected].some(file => file.startsWith(`${relative}/`))) throw new PackFolderError(`${at} is not part of this reviewed transfer`);
+      for (const child of readdirSync(at)) verifyExisting(relative ? `${relative}/${child}` : child);
+    } else {
+      if (!stat.isFile() || !expected.has(relative)) throw new PackFolderError(`${at} is not part of this reviewed transfer`);
+      if (createMethodHash(plainFileBytes(at)) !== held.review.files.find(file => file.path === relative)!.sha256) throw new PackFolderError(`${at} changed in interrupted transfer`);
+    }
+  };
+  verifyExisting('');
+  for (const file of held.review.files) {
+    const at = path.join(staging, file.path);
+    plainAncestors(path.dirname(at)); mkdirSync(path.dirname(at), { recursive: true });
+    if (!lstatSync(at, { throwIfNoEntry: false })) writeFileSync(at, held.bytes.get(file.path)!, { flag: 'wx', mode: held.modes.get(file.path) });
+    if (createMethodHash(plainFileBytes(at)) !== file.sha256) throw new PackFolderError(`${at} failed transferred content verification`);
+  }
+  if (lstatSync(destination, { throwIfNoEntry: false })) throw new PackFolderError('destination appeared during transfer; nothing was replaced');
+  renameSync(staging, destination);
+  return held.review;
 }

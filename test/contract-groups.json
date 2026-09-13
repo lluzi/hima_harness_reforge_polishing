@@ -59,6 +59,7 @@
     "test/contract/aes-selection-template.test.ts"
   ],
   "desktop": [
+    "test/contract/pack-owner.desktop.test.ts",
     "test/contract/budget.test.ts",
     "test/contract/desktop.test.ts",
     "test/contract/drill-down.test.ts",

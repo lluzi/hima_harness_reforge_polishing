@@ -52,6 +52,9 @@ export function fetchStartChoices(pack?: string, site?: string, signal?: AbortSi
 export const startCampaign = (body: Record<string, unknown>, signal?: AbortSignal): Promise<HimaResult<RunView>> =>
   runRequest(HIMA_RUNS_START_PATH, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
 
+export const reviewPackTransfer = (body: import('../remote.js').PackTransferBody & { sessionId: string }, signal?: AbortSignal): Promise<HimaResult<import('../release.js').PackTransferReview>> =>
+  runRequest('/hima/api/packs/transfer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+
 export const fetchExecutionContext = (runId: string, signal?: AbortSignal): Promise<HimaResult<ExecutionContext>> =>
   runRequest(`${runPath(runId)}/context`, { signal });
 

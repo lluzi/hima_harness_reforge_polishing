@@ -17,6 +17,7 @@
 // It is also the bundle's surface: everything a caller outside `packages/harness/src` imports from
 // `@hima/harness` is exported or re-exported here, whichever module it now lives in.
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import path from 'node:path';
 import { Service, type Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 // Type-only: these take the `ctx.commands` and `ctx.tools` declaration merges the registrations below
@@ -33,6 +34,8 @@ import { handleHimaCommand, himaCommandDescription } from './commands.js';
 import { himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
+import { previewPackTransfer, applyPackTransfer } from './release.js';
+import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks } from './packs.js';
 import { installedSites, loadSite } from './sites.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
@@ -83,7 +86,8 @@ export type { PackFolderSnapshot } from './pack-folder.js';
 // check that holds a folder against one. On the surface because the release verb is reached through
 // the command face and the tool face alike, and the acceptance and live-check scripts read a sealed
 // folder back.
-export { exportPackMethod, installPackMethod, loadRunPack, packVersionFile, preservePackMethod, releaseIssue, releasePack } from './release.js';
+export { exportPackMethod, installPackMethod, recoverPackMethod, previewPackTransfer, applyPackTransfer, loadRunPack, packVersionFile, preservePackMethod, releaseIssue, releasePack } from './release.js';
+export type { PackTransferRequest, PackTransferReview } from './release.js';
 export type { PackVersionFile, ReleaseResult } from './release.js';
 // The pack authoring pipeline's five skills (#63): what the bundle puts on a host, and where their
 // bodies and the authoring knowledge they cite live. On the surface because the contract suite holds
@@ -321,6 +325,15 @@ export default class Hima extends Service {
         () => registerHimaRoutes(webCtx, {
           ledger: this.ledger,
           validateSession: (id) => this.ctx.get('agents')?.list().some((agent) => String(agent.id) === id) === true,
+          packTransfer: (request) => {
+            const installed = path.resolve(this.config.packsDir, validPackId.parse(request.pack));
+            if (request.mode === 'upgrade' && !request.source) throw new Error('choose a tested release source for upgrade');
+            if (request.mode !== 'upgrade' && request.source !== undefined) throw new Error('sharing and migration read only the installed Pack');
+            const operation = { from: request.mode === 'upgrade' ? request.source! : installed,
+              to: request.mode === 'upgrade' ? installed : request.to, mode: request.mode, assets: request.assets };
+            return request.reviewSha256 === undefined ? previewPackTransfer(operation)
+              : applyPackTransfer({ ...operation, reviewSha256: request.reviewSha256 });
+          },
           executionContext: (runId) => this.executionContext(runId),
           executionAction: (request) => this.executionAction(request),
           observe: (req) => this.observe(req),

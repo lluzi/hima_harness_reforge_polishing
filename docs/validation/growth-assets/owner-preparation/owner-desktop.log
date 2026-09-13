@@ -1,0 +1,21 @@
+$ node scripts/run-contract-tests.mjs desktop --files test/contract/pack-owner.desktop.test.ts
+desktop: 1 selected; 18 unselected in desktop; other groups not run (not passes)
+TAP version 13
+# Subtest: owner reviews selected knowledge files and confirms the exact local sharing manifest in the native workspace
+not ok 1 - owner reviews selected knowledge files and confirms the exact local sharing manifest in the native workspace
+  ---
+  duration_ms: 24440.920625
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack-owner.desktop.test.ts:13:1'
+  failureType: 'testCodeFailure'
+  error: `Window condition timed out: !document.querySelector('[data-hima-control="open-workbench"]').disabled`
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Object.wait (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/support/inspect-window.ts:35:38)
+    async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack-owner.desktop.test.ts:36:5)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# HimaHarness\\nNew Session\\nWorkspaces\\nworkspace\\nLive Run\\n\\nChoose a workspace to begin\\n\\nSettings\\nInto the Unknown\\nPreview\\nChoose workspace\\nStandard mode\\nChoose a workspace to start\\nAdd an API key to get started\\n\\nConfigure the official DeepSeek provider to start building.\\n\\nAPI key\\nConfigure later\\nSave and continue
+# Interrupted while running: test/contract/pack-owner.desktop.test.ts at /Users/lluzi/code/hima_harness_reforge_polishing/test/contract/pack-owner.desktop.test.ts:1:1
+[ELIFECYCLE] Command failed.

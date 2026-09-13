@@ -510,7 +510,18 @@ export interface StartRunBody {
 }
 
 /** What this namespace needs from the Hima service. Nothing here reaches for the plugin itself. */
+export interface PackTransferBody {
+  readonly pack: string;
+  readonly mode: 'share' | 'migrate' | 'upgrade';
+  readonly to: string;
+  readonly source?: string;
+  readonly assets?: readonly string[];
+  readonly reviewSha256?: string;
+}
+
 export interface RemoteOperations {
+  /** Browser-session owner review only; not an Agent confirmation tool. */
+  packTransfer?(request: PackTransferBody): import('./release.js').PackTransferReview;
   readonly ledger: Ledger;
   validateSession?(sessionId: string): boolean;
   executionContext?(runId: string): ExecutionContext;
@@ -1287,6 +1298,19 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   if (rest === '/start-options') {
     if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
     return ok(startChoices(ops, url.searchParams.get('pack'), url.searchParams.get('site')));
+  }
+
+  if (rest === '/packs/transfer') {
+    if (method !== 'POST' || !ops.packTransfer) return failure(405, 'hima/bad-request', 'Pack transfer requires POST on a supporting Host');
+    const body = await readJsonBody(req);
+    if (typeof body.sessionId !== 'string' || !ops.validateSession?.(body.sessionId)) throw new BadRequest('select a live owner conversation before reviewing Pack contents');
+    if (Object.keys(body).some(key => !['sessionId', 'pack', 'mode', 'to', 'source', 'assets', 'reviewSha256'].includes(key))) throw new BadRequest('unknown Pack transfer field');
+    if (typeof body.pack !== 'string' || typeof body.to !== 'string' || !['share', 'migrate', 'upgrade'].includes(String(body.mode))
+        || (body.source !== undefined && typeof body.source !== 'string')
+        || (body.reviewSha256 !== undefined && (typeof body.reviewSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(body.reviewSha256)))
+        || (body.assets !== undefined && (!Array.isArray(body.assets) || !body.assets.every(item => typeof item === 'string')))) throw new BadRequest('invalid Pack transfer request');
+    try { return ok(ops.packTransfer(body as unknown as PackTransferBody)); }
+    catch (error) { throw new BadRequest((error as Error).message); }
   }
 
   if (rest === '/runs/start') {

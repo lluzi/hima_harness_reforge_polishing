@@ -14,6 +14,7 @@ import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess } from './support/boot-inprocess.ts';
 import { killSessions, localHome, sessionsOf } from './support/fabric.ts';
 import { committedRecord } from './support/pipeline.ts';
+import * as harness from '@hima/harness';
 
 const checkout = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const packId = 'opene902-timing-probe';
@@ -35,6 +36,90 @@ async function setVersion(source: string, version: string): Promise<void> {
     await writeFile(at, (await readFile(at, 'utf8')).replace(/^version: .+$/m, `version: '${version}'`));
   }
 }
+
+test('owner can finish or roll back an interrupted method update without losing customer assets', async (t) => {
+  const recover = (harness as unknown as { recoverPackMethod?: (request: { to: string; action: 'finish' | 'rollback' }) => { digest: string } }).recoverPackMethod;
+  assert.equal(typeof recover, 'function', 'a refused partial installation needs a verified owner recovery operation');
+  for (const action of ['finish', 'rollback'] as const) {
+    const { source, installed } = await methodFixture(t);
+    const original = packDigestOf(installed);
+    const asset = path.join(installed, 'run-assets', 'owner-note.md');
+    await mkdir(path.dirname(asset));
+    await writeFile(asset, 'private negative result, retained through recovery\n');
+    await setVersion(source, 'recovery-next');
+    const next = packDigestOf(source);
+    const locked = path.join(installed, 'tools');
+    await chmod(locked, 0o555);
+    try {
+      assert.throws(() => installPackMethod({ from: source, to: installed }), /EACCES|EPERM/);
+    } finally { await chmod(locked, 0o755); }
+    assert.throws(() => loadPack(path.dirname(installed), packId), /interrupted method update/);
+    const unexpected = path.join(installed, 'customer-secret.txt');
+    await writeFile(unexpected, 'not a method file');
+    const heldAsset = await readFile(asset);
+    assert.throws(() => recover!({ to: installed, action }), /unknown ownership/);
+    assert.deepEqual(await readFile(asset), heldAsset);
+    await rm(unexpected);
+    assert.equal(recover!({ to: installed, action }).digest, action === 'finish' ? next : original);
+    assert.equal(recover!({ to: installed, action }).digest, action === 'finish' ? next : original, 'repeated recovery does not reapply an old update');
+    assert.equal(packDigestOf(installed), action === 'finish' ? next : original);
+    assert.equal(await readFile(asset, 'utf8'), 'private negative result, retained through recovery\n');
+    assert.equal(packDigestOf(loadRunPack(path.dirname(installed), packId, original).dir), original);
+  }
+});
+
+test('sharing previews exact selected bytes, defaults to method only, and refuses stale confirmation', async (t) => {
+  const operations = harness as unknown as {
+    previewPackTransfer?: (r: { from: string; to: string; mode: 'share' | 'migrate'; assets?: string[] }) => { reviewSha256: string; files: { path: string; sha256: string }[] };
+    applyPackTransfer?: (r: { from: string; to: string; mode: 'share' | 'migrate'; assets?: string[]; reviewSha256: string }) => unknown;
+  };
+  assert.equal(typeof operations.previewPackTransfer, 'function');
+  assert.equal(typeof operations.applyPackTransfer, 'function');
+  const { root, installed } = await methodFixture(t);
+  const assetPath = 'run-assets/campaign/algorithm.py';
+  const privatePath = 'run-assets/campaign/customer-input.txt';
+  await mkdir(path.join(installed, 'run-assets/campaign'), { recursive: true });
+  await writeFile(path.join(installed, assetPath), 'print("verified negative result")\n');
+  await writeFile(path.join(installed, privatePath), 'customer input, do not share by default\n');
+  const request = { from: installed, to: path.join(root, 'public', packId), mode: 'share' as const };
+  const methodOnly = operations.previewPackTransfer!(request);
+  assert.ok(methodOnly.files.every(file => !file.path.startsWith('run-assets/') && !file.path.startsWith('.')));
+  const selected = { ...request, assets: [assetPath] };
+  const preview = operations.previewPackTransfer!(selected);
+  assert.ok(preview.files.some(file => file.path === assetPath));
+  assert.ok(preview.files.every(file => file.path !== privatePath));
+  await writeFile(path.join(installed, assetPath), 'changed after owner review\n');
+  assert.throws(() => operations.applyPackTransfer!({ ...selected, reviewSha256: preview.reviewSha256 }), /changed|review/);
+  await assert.rejects(readFile(path.join(request.to, 'contract.yml')), /ENOENT/);
+  const fresh = operations.previewPackTransfer!(selected);
+  operations.applyPackTransfer!({ ...selected, reviewSha256: fresh.reviewSha256 });
+  assert.equal(await readFile(path.join(request.to, assetPath), 'utf8'), 'changed after owner review\n');
+  await assert.rejects(readFile(path.join(request.to, privatePath)), /ENOENT/);
+  const migration = { from: installed, to: path.join(root, 'self', packId), mode: 'migrate' as const };
+  const self = operations.previewPackTransfer!(migration);
+  operations.applyPackTransfer!({ ...migration, reviewSha256: self.reviewSha256 });
+  assert.equal(await readFile(path.join(migration.to, privatePath), 'utf8'), 'customer input, do not share by default\n');
+  assert.equal(packDigestOf(loadRunPack(path.dirname(migration.to), packId, packDigestOf(installed)).dir), packDigestOf(installed));
+});
+
+test('a reviewed transfer resumes only matching staged files and never publishes a partial directory', async (t) => {
+  const { previewPackTransfer, applyPackTransfer } = harness;
+  const { root, installed } = await methodFixture(t);
+  const request = { from: installed, to: path.join(root, 'restored', packId), mode: 'share' as const };
+  const review = previewPackTransfer(request);
+  const staging = path.join(path.dirname(request.to), `.${packId}.transfer-${review.reviewSha256}`);
+  await mkdir(staging, { recursive: true });
+  const first = review.files[0]!;
+  await mkdir(path.dirname(path.join(staging, first.path)), { recursive: true });
+  await writeFile(path.join(staging, first.path), await readFile(path.join(installed, first.path)));
+  const conflict = path.join(staging, 'unreviewed.txt');
+  await writeFile(conflict, 'must not become a shared file');
+  assert.throws(() => applyPackTransfer({ ...request, reviewSha256: review.reviewSha256 }), /not part of this reviewed transfer/);
+  await assert.rejects(readFile(path.join(request.to, 'contract.yml')), /ENOENT/);
+  await rm(conflict);
+  applyPackTransfer({ ...request, reviewSha256: review.reviewSha256 });
+  for (const file of review.files) assert.equal(createHash('sha256').update(await readFile(path.join(request.to, file.path))).digest('hex'), file.sha256);
+});
 
 function legacyDriveFixture(t: import('node:test').TestContext): void {
   const legacy = process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
