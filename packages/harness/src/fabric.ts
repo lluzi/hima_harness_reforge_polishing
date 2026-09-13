@@ -1156,6 +1156,11 @@ export function revisionImpactOf(pack: Pack, changedNodes: readonly string[]): s
   return [...affected];
 }
 
+/** The tool-facing preview uses the same effective graph as revision admission. */
+export function revisionImpactForRun(deps: FabricDeps, runId: string, changedNodes: readonly string[]): string[] {
+  return revisionImpactOf(executionPack(deps, existingRun(deps.ledger, runId)), changedNodes);
+}
+
 /** A revision must be rooted in the method's actual bindings, not only in the nodes named by its
  * caller. Strategy bindings are declared in the graph. Workspace inputs have both a declaration
  * and, once used, a byte-identified Host capture; either can add consumers, while neither means the
@@ -1756,8 +1761,8 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
         ? [run.fork.join]
         : Object.values(run.fork.branches).filter((branch) => branch.state !== 'done').map((branch) => branch.currentNode);
     const incomplete = Object.values(run.control.requests).some((request) => (request.receipt.action === 'complete' || request.receipt.action === 'continue' || request.receipt.action === 'revise') && request.state !== 'done');
-    const available = standing.phase !== 'active' || run.status !== 'running' || run.control.stop !== undefined || incomplete ? [] : candidates.filter((nodeId) =>
-      !(standing.attemptLimitSpent && nodes.find((node) => node.id === nodeId)?.kind === 'act')
+    const available = standing.phase === 'exhausted' || run.status !== 'running' || run.control.stop !== undefined || incomplete ? [] : candidates.filter((nodeId) =>
+      !((standing.attemptLimitSpent || standing.phase === 'closing') && nodes.find((node) => node.id === nodeId)?.kind === 'act')
       && executionPauseReason(pack, run, nodeId) === undefined && unclearedFailure(run, nodeId) === undefined && !executions.some((execution) =>
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
@@ -1865,16 +1870,17 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     }
     if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || reading) return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');
-    if (experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no new node execution may begin');
+    if (timeBoxSpent(run, 0)) return no('the Campaign hard time box is exhausted; no new node execution may begin');
     const runtimePack = executionPack(deps, run);
     const requestedNode = req.nodeId === undefined ? undefined : positionOf(runtimePack, req.nodeId)?.node;
+    if (requestedNode?.kind === 'act' && experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve; no new experimental act may begin');
     if (requestedNode?.kind === 'act' && attemptLimitSpent(run)) return no('the Campaign attempt limit is exhausted; no new act execution may begin');
     if (req.nodeId !== undefined) {
       const paused = executionPauseReason(executionPack(deps, run), run, req.nodeId);
       if (paused !== undefined) return no(paused);
     }
     const context = executionContext(deps, req.runId);
-    if (context.reason !== undefined) return no(context.reason);
+    if (context.reason !== undefined && !(context.budget.phase === 'closing' && req.nodeId !== undefined && context.available.includes(req.nodeId))) return no(context.reason);
     if (req.nodeId === undefined || !context.available.includes(req.nodeId)) return no('this node is not currently available from the reference graph and execution facts');
     const node = context.nodes.find((item) => item.id === req.nodeId);
     if (node === undefined || run.packDigest === undefined) return no('the node or its method identity is unavailable');
@@ -2103,7 +2109,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   if (execution.generation !== run.generation || execution.loopId !== run.loop?.id || execution.loopGeneration !== run.loop?.generation) return no('this execution belongs to an earlier generation or Loop');
   const paused = executionPauseReason(executionPack(deps, run), run, execution.nodeId);
   if (paused !== undefined && (req.action === 'work' || req.action === 'complete')) return no(paused);
-  if (experimentBudgetSpent(run, 0) && (req.action === 'work' || req.action === 'write')) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no experiment or Workshop write may start');
+  if (experimentBudgetSpent(run, 0) && (req.action === 'write' || req.action === 'work' && (execution.kind === 'act' || timeBoxSpent(run, 0)))) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no experiment or Workshop write may start');
   if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq)) return no('the execution input version no longer matches the Run');
   let ctx: Driving;
   try { ctx = executionDriving(deps, run, execution); } catch (error) { return no((error as Error).message); }
@@ -2207,6 +2213,7 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
     let chosen: DecisionRecord['chosen'];
     let rationale: DecisionRecord['rationale'] = {};
     if (req.decision === 'next-strategy') {
+      if (experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve; a new experimental strategy cannot be admitted');
       if (req.strategy === undefined || Object.keys(req.strategy).length === 0) return no('next-strategy needs the actual Strategy to try');
       const admitted = strategyFrom(ctx.pack.contract.strategy, { ...run.strategy, ...req.strategy });
       if ('error' in admitted) return no(admitted.error);

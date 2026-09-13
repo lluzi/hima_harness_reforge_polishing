@@ -15,15 +15,15 @@ export function identity(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
 
-export async function prepared(t: TestContext, timeBoxMs = 120_000, attemptLimit?: number) {
+export async function prepared(t: TestContext, timeBoxMs = 120_000, attemptLimit?: number, closingReserveMs = 0, targetPeriodNs = 2) {
   const home = await localHome(t, { sleepSeconds: 0.01 });
   assert.ok(home);
   const pack = 'growth-host';
-  await writePackVariant(packsDirOf(home.h), pack, attemptLimit === undefined ? [] : [['words:', `budget:\n  attemptLimit: ${String(attemptLimit)}\nwords:`]], [['chooser: over-constraining-push', 'chooser: over-constraining-push\n      growth: true']]);
+  await writePackVariant(packsDirOf(home.h), pack, attemptLimit === undefined && closingReserveMs === 0 ? [] : [['words:', `budget:\n  closingReserveMs: ${closingReserveMs}\n  attemptLimit: ${String(attemptLimit ?? 1000)}\nwords:`]], [['chooser: over-constraining-push', 'chooser: over-constraining-push\n      growth: true']]);
   const referenceDigest = packDigestOf(`${packsDirOf(home.h)}/${pack}`);
   const host = await bootInProcess(home.h);
   const agent = await createRootAgent(host.ctx, home.h.workspace);
-  const started = await host.ctx.hima.startRun({ pack, site: 'local', ownerSessionId: String(agent.id), goal: { target_period_ns: 2 }, strategy: { periodNs: 2.3 }, generationLimit: 2, timeBoxMs });
+  const started = await host.ctx.hima.startRun({ pack, site: 'local', ownerSessionId: String(agent.id), goal: { target_period_ns: targetPeriodNs }, strategy: { periodNs: 2.3 }, generationLimit: 2, timeBoxMs });
   assert.equal(started.kind, 'ran', JSON.stringify(started));
   if (started.kind !== 'ran') throw new Error('unreachable');
   const runId = started.run.id;

@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "sourceRun": "run-5a30d37d-b778-4fdb-a908-29850121f465",
+  "executedCode": {
+    "record": "run-5a30d37d-b778-4fdb-a908-29850121f465#000011",
+    "generation": 1,
+    "path": "/private/tmp/hima-l4-NF6IvQ/hima-home-Mf8rGL/workspace/aes-timing-research-20260913-160741-1946/research/selection/.executions/execution-ff832857-5114-48a6-8cd1-e7c1ec9c084c/entry.py",
+    "sha256": "49a8dca077705eb43276dd3176b5184878a4e1b9f60dfa28f8f3ca2b82c34934"
+  },
+  "originalSampleSha256": "e8b21153b49da2935c8f742618a0b55ce67390b69d921b7f0208936161138570",
+  "originalSelectionSha256": "86911f64dfb1ac48bc74cab4bc0512b0198c0c271223fb2c15c18c2b4b808fb8",
+  "heldOutSampleSha256": "b3d00619765bdd50da4c2d28de6a5fefd4a23acee19befb4bd24d31690b6dfde",
+  "removedCandidate": "motif-0d20c7a391a0eb7e",
+  "candidateCount": 63,
+  "actualValues": {
+    "selection_score": 21,
+    "selected_count": 2,
+    "conflict_count": 0
+  },
+  "oracle": {
+    "bestScore": 21,
+    "bestIds": [
+      "motif-22458eed06226c03",
+      "motif-fe110393912a90bc"
+    ],
+    "combinationsChecked": 2016,
+    "greedyScore": 21,
+    "greedyIds": [
+      "motif-fe110393912a90bc",
+      "motif-22458eed06226c03"
+    ]
+  },
+  "modelRequests": 0,
+  "edaJobs": 0,
+  "localProgramExecutions": 1,
+  "localReaderExecutions": 1,
+  "scope": "one source-held subset, not a universal optimality or Fmax improvement claim"
+}

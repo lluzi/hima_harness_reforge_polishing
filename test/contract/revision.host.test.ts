@@ -141,8 +141,22 @@ test('owner revision preserves finished Workshop bytes and seeds the affected re
       inputThroughSeq: ctx.run.nextSeq - 1, inputs: [{ recordId: evidence.id, contentIdentity: identity(evidence) }],
       reason: 'correct the analysis algorithm while preserving the completed version', changedNodes: ['analyze'], affectedNodes: ['analyze', 'read-analysis', 'judge'],
       changes: [{ nodeId: 'analyze', scope: 'workshop', path: 'entry.sh', fromSha256: source.sha256, content: revised, sourceRecordId: source.id }] };
-    const applied = await act('revise', { revision: proposal });
+    // The native Agent supplies intent; the adapter binds exact current identities before admission.
+    const nativeControl = host.ctx.hima.ledger.run(runId)!.control!;
+    const nativeArgs = { run: runId, action: 'revise', expectedEpoch: nativeControl.epoch,
+      expectedRevision: nativeControl.revision, requestId: 'native-revision-intent', revision: {
+        revisionId: proposal.revisionId, reason: proposal.reason, changedNodes: proposal.changedNodes,
+        changes: [{ nodeId: 'analyze', scope: 'workshop', path: 'entry.sh', content: revised }],
+      } };
+    const executeIntent = async () => {
+      const result = await host.ctx.tools.execute({ name: 'hima_execute', arguments: nativeArgs, agent: owner,
+        callId: 'native-revision-check' as never, signal: AbortSignal.timeout(10_000) });
+      assert.equal(result.isError, false);
+      return (result as unknown as { value: { kind: string; reason?: string } }).value;
+    };
+    const applied = await executeIntent();
     assert.equal(applied.kind, 'accepted', JSON.stringify(applied));
+    assert.equal((await executeIntent()).kind, 'duplicate', 'retry preserves the admitted metadata after original inputs become superseded');
     const chargedAfterRevision = host.ctx.hima.ledger.records({ runId, type: 'research-write' });
     assert.equal(chargedAfterRevision.length, 2, 'the original writer call and the revision content are charged once each');
     assert.equal(chargedAfterRevision[1]?.type === 'research-write' && chargedAfterRevision[1].scope, 'workshop');

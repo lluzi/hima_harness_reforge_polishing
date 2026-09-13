@@ -14,7 +14,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent';
 import { currentRecordsIn, type VerdictRecord } from './ledger.js';
 import { legacyAutomaticAllowed } from './runs.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { identityOf, executionAction, executionContext, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
+import { identityOf, revisionImpactForRun, executionAction, executionContext, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
 import { checkInstalledPack, runPackWords } from './packs.js';
@@ -29,11 +29,11 @@ function toolJson(value: object): Record<string, ToolJson> { return JSON.parse(J
 /** The Agent supplies research intent. Mechanical identities are attached from this Run before the
  * existing executor performs its owner, epoch, validity and graph checks. Explicit identities are
  * never repaired. Replaying a proposal reuses its held defaults, not a later Ledger boundary. */
-function modelGrowthProposal(deps: FabricDeps, runId: string, raw: Record<string, unknown>): Record<string, unknown> {
+function modelResearchProposal(deps: FabricDeps, runId: string, kind: 'growth' | 'revision', raw: Record<string, unknown>): Record<string, unknown> {
   const context = executionContext(deps, runId);
   const records = deps.ledger.records({ runId });
-  const prior = records.find(record => record.type === 'growth' && record.event === 'proposed' && record.proposalId === raw.proposalId);
-  const held = prior?.type === 'growth' && prior.proposal !== null && typeof prior.proposal === 'object' && !Array.isArray(prior.proposal)
+  const prior = records.find(record => (kind === 'growth' ? record.type === 'growth' && record.proposalId === raw.proposalId : record.type === 'revision' && record.revisionId === raw.revisionId) && (record.type === 'growth' || record.type === 'revision') && record.event === 'proposed');
+  const held = (prior?.type === 'growth' || prior?.type === 'revision') && prior.proposal !== null && typeof prior.proposal === 'object' && !Array.isArray(prior.proposal)
     ? prior.proposal as Record<string, unknown> : undefined;
   const available = currentRecordsIn(records);
   const ref = (value: unknown): unknown => {
@@ -46,12 +46,27 @@ function modelGrowthProposal(deps: FabricDeps, runId: string, raw: Record<string
   const inputs = raw.inputs === undefined ? held?.inputs ?? available.filter(record =>
     record.generation === context.run.generation && ['observation', 'verdict', 'code', 'knowledge'].includes(record.type)).slice(-64).map(record => ({ recordId: record.id, contentIdentity: identityOf(record) }))
     : Array.isArray(raw.inputs) ? raw.inputs.map(ref) : raw.inputs;
-  return {
+  const common = {
     method: held?.method ?? (context.method ? { id: context.method.id, version: context.method.version, digest: context.method.digest } : undefined),
-    parent: held?.parent ?? { nodeId: context.run.currentNode, generation: context.run.generation },
+    ...(kind === 'growth' ? { parent: held?.parent ?? { nodeId: context.run.currentNode, generation: context.run.generation } } : {}),
     inputThroughSeq: held?.inputThroughSeq ?? context.run.nextSeq - 1,
     ...raw, inputs,
   };
+  if (kind === 'growth') return common;
+  const changes = Array.isArray(raw.changes) ? raw.changes.map(item => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) return item;
+    const change = item as Record<string, unknown>;
+    const previous = Array.isArray(held?.changes) ? held.changes.find(item => item && typeof item === 'object' && item.nodeId === change.nodeId && item.scope === change.scope && item.path === change.path) as Record<string, unknown> | undefined : undefined;
+    const source = available.findLast(record => change.sourceRecordId !== undefined ? record.id === change.sourceRecordId
+      : change.scope === 'workshop' && record.type === 'code' && record.nodeId === change.nodeId && record.path.endsWith(`/${String(change.path)}`));
+    return { ...change,
+      ...(change.scope === 'workshop' && change.sourceRecordId === undefined && (previous?.sourceRecordId !== undefined || source) ? { sourceRecordId: previous?.sourceRecordId ?? source?.id } : {}),
+      ...(change.fromSha256 === undefined && (previous?.fromSha256 !== undefined || source && ('sha256' in source || 'contentSha256' in source))
+        ? { fromSha256: previous?.fromSha256 ?? (source && ('sha256' in source ? source.sha256 : 'contentSha256' in source ? source.contentSha256 : undefined)) } : {}),
+    };
+  }) : raw.changes;
+  return { ...common, changes, affectedNodes: raw.affectedNodes !== undefined ? raw.affectedNodes : held?.affectedNodes
+    ?? revisionImpactForRun(deps, runId, Array.isArray(raw.changedNodes) && raw.changedNodes.every(node => typeof node === 'string') ? raw.changedNodes : []) };
 }
 
 /** Keep action data visible to the model; the lossless value remains available to the UI/API. */
@@ -304,7 +319,17 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
             inputs: { type: 'array', items: { oneOf: [{ type: 'string' }, { type: 'integer' }, { type: 'object', additionalProperties: false, properties: { recordId: { type: 'string', required: true }, contentIdentity: { type: 'string' } } }] } },
           },
         },
-        revision: { type: 'object', additionalProperties: true, description: 'For revise: revisionId, exact method, current inputThroughSeq, byte-identified input records, reason, changedNodes, optional declared strategy, changes [{nodeId,scope workshop|workspace,path,fromSha256,content,sourceRecordId?}], and the exact affectedNodes dependency closure. Take canonical input identities from hima_context.evidence. Workshop sourceRecordId names current code bytes; workspace paths are relative to the Campaign workspace.' },
+        revision: { type: 'object', additionalProperties: false, description: 'For revise, provide revisionId, reason, changedNodes, changes and optional strategy. Harness fills omitted method/input identities and affectedNodes from the effective graph. Workshop changes can omit fromSha256/sourceRecordId to use the latest valid code for that node/path; workspace changes require a verified fromSha256 or captured sourceRecordId. Explicit false identities/impact are refused. Use a new revisionId for changed intent.', properties: {
+          revisionId: { type: 'string', required: true }, reason: { type: 'string', required: true },
+          changedNodes: { type: 'array', items: { type: 'string' }, required: true },
+          affectedNodes: { type: 'array', items: { type: 'string' } }, strategy: { type: 'object', additionalProperties: true },
+          changes: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+            nodeId: { type: 'string', required: true }, scope: { type: 'string', enum: ['workshop', 'workspace'], required: true }, path: { type: 'string', required: true },
+            content: { type: 'string', required: true }, fromSha256: { type: 'string' }, sourceRecordId: { type: 'string' },
+          } } },
+          method: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, version: { type: 'string', required: true }, digest: { type: 'string', required: true } } },
+          inputThroughSeq: { type: 'integer' }, inputs: { type: 'array', items: { oneOf: [{ type: 'string' }, { type: 'integer' }, { type: 'object', additionalProperties: false, properties: { recordId: { type: 'string', required: true }, contentIdentity: { type: 'string' } } }] } },
+        } },
         proposalId: { type: 'string', description: 'Accepted proposal identity when settling an active optional growth branch.' },
         growthDisposition: { type: 'string', enum: ['failed', 'cancelled', 'abandoned'], description: 'For grow on an active optional branch: preserve this outcome and return to its declared parent after confirming no in-flight Job.' },
       },
@@ -313,7 +338,8 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         if (!execution.agent) throw new Error('this operation requires a live conversational Agent');
         const { run, strategy, ...fields } = args;
         const request: ExecutionActionRequest = { ...fields, runId: run, actor: String(execution.agent.id), origin: 'agent', ...(strategy === undefined ? {} : { strategy: strategyArgument(strategy) }) };
-        const bound = request.action === 'grow' && args.proposal !== undefined ? { ...request, proposal: modelGrowthProposal(deps, run, args.proposal) } : request;
+        const bound = request.action === 'grow' && args.proposal !== undefined ? { ...request, proposal: modelResearchProposal(deps, run, 'growth', args.proposal) }
+          : request.action === 'revise' && args.revision !== undefined ? { ...request, revision: modelResearchProposal(deps, run, 'revision', args.revision) } : request;
         return toolJson({ runId: run, ...await executionAction(deps, bound) });
       },
     }),

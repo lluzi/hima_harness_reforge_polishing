@@ -144,11 +144,12 @@ await runLive('live-check-growth-assets', 6, async check => {
   assert.ok('run' in deadlineRun);
   const expiredId = deadlineRun.run.id;
   await check.until('the finite Campaign hard deadline is observed', () => host.ctx.hima.ledger.run(expiredId)?.status === 'ended-budget-exhausted', 10_000);
-  const before = JSON.stringify(host.ctx.hima.ledger.records({ runId: expiredId }));
+  const before = JSON.stringify(host.ctx.hima.ledger.records({ runId: expiredId }).filter(record => record.type !== 'archive' && record.type !== 'experience'));
+  check.observed.deadlineBefore = { expiredId, recordsSha256: sha256(Buffer.from(before)), userMessages: check.turns };
   const turnStart = check.turns;
   await check.say(owner, `Controlled deadline validation: Run ${expiredId} has exhausted its time box. Read its context, then issue exactly one hima_execute analyze action on node refine with valid empty claims, a question, limitations and nextExperiments, to verify the expired write is refused. After that refusal answer briefly in this same conversation. Do not start a Run or write any report/TEST/method file; the answer is outside the ended Campaign research assets.`);
   check.require('expired Campaign refused analysis while the original conversation answered', check.turns > turnStart
-    && JSON.stringify(host.ctx.hima.ledger.records({ runId: expiredId })) === before
-    && check.toolSequence.some((entry: unknown) => { const tool = entry as { name?: string; args?: { run?: string; action?: string }; result?: { value?: { kind?: string } } }; return tool.name === 'hima_execute' && tool.args?.run === expiredId && tool.args.action === 'analyze' && tool.result?.value?.kind === 'refused'; }), { expiredId, modelSteps: check.steps });
+    && JSON.stringify(host.ctx.hima.ledger.records({ runId: expiredId }).filter(record => record.type !== 'archive' && record.type !== 'experience')) === before
+    && check.toolSequence.some((entry: unknown) => { const tool = entry as { name?: string; args?: { run?: string; action?: string }; result?: { content?: { type: string; text?: string }[] } }; return tool.name === 'hima_execute' && tool.args?.run === expiredId && tool.args.action === 'analyze' && tool.result?.content?.some(item => item.type === 'text' && item.text && JSON.parse(item.text).kind === 'refused'); }), { expiredId, modelSteps: check.steps });
   check.observed.expiredRun = expiredId;
 });

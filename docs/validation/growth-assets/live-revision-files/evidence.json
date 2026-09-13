@@ -1,0 +1,1419 @@
+{
+  "status": "passed",
+  "scope": "real SSH/Permit byte-version preservation and materialization only; no Agent/Campaign execution or EDA result claim",
+  "site": "linglong-aes",
+  "workspace": "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f",
+  "startedAt": "2026-09-13T15:39:45.625Z",
+  "wallTimeMs": 3650,
+  "modelRequests": 0,
+  "edaJobs": 0,
+  "assets": [
+    {
+      "nodeId": "input",
+      "scope": "workspace",
+      "logicalPath": "input.txt",
+      "path": "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt",
+      "beforeVersionPath": "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt",
+      "afterVersionPath": "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt",
+      "beforeSha256": "dcda0510a60c477c08f15ab58c940b2235fc06cec8cbe86a211c2f984dd9b6e3",
+      "afterSha256": "aff9bf1ebb9adc66234add2708479ca10649de07d00c99ea64bea45d7c3e0a93",
+      "bytes": 10
+    },
+    {
+      "nodeId": "algorithm",
+      "scope": "workshop",
+      "logicalPath": "entry.py",
+      "path": "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py",
+      "beforeVersionPath": "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py",
+      "afterVersionPath": "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py",
+      "beforeSha256": "cc42155088fca5730758db72b2a5bca33112a941dfaa2d43098ec422ce4ea213",
+      "afterSha256": "0111afd387e1ad576083c5039aa542faa2ed4a53d3e128bd03de990f9ea4255f",
+      "bytes": 9
+    }
+  ],
+  "checks": [
+    {
+      "claim": "fixture is confined to the authorized polishing-runs root",
+      "passed": true
+    },
+    {
+      "claim": "workspace input changed through the real revision writer",
+      "passed": true
+    },
+    {
+      "claim": "historical Workshop executable remained unchanged",
+      "passed": true
+    },
+    {
+      "claim": "input before version is retained",
+      "passed": true
+    },
+    {
+      "claim": "input after version is retained",
+      "passed": true
+    },
+    {
+      "claim": "algorithm before version is retained",
+      "passed": true
+    },
+    {
+      "claim": "algorithm after version is retained",
+      "passed": true
+    },
+    {
+      "claim": "repeating the same revision is byte-idempotent",
+      "passed": true
+    },
+    {
+      "claim": "new private Workshop received only the accepted version",
+      "passed": true
+    },
+    {
+      "claim": "no deletion, EDA wrapper or Job was requested",
+      "passed": true
+    }
+  ],
+  "commands": [
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f"
+      ],
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'tee' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop"
+      ],
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py"
+      ],
+      "wire": "'tee' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before"
+      ],
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'tee' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after"
+      ],
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt"
+      ],
+      "wire": "'tee' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'tee' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before"
+      ],
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py"
+      ],
+      "wire": "'tee' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after"
+      ],
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'tee' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/old-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/input.txt'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/before/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/.hima/revisions/version-one/after/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop'"
+    },
+    {
+      "argv": [
+        "mkdir",
+        "-p",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop"
+      ],
+      "wire": "'mkdir' '-p' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+    },
+    {
+      "argv": [
+        "test",
+        "!",
+        "-e",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py",
+        "-a",
+        "!",
+        "-L",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py"
+      ],
+      "wire": "'test' '!' '-e' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py' '-a' '!' '-L' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "tee",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py"
+      ],
+      "wire": "'tee' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py'"
+    },
+    {
+      "argv": [
+        "realpath",
+        "-z",
+        "-e",
+        "--",
+        "/data/eda/project"
+      ],
+      "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+    },
+    {
+      "argv": [
+        "cat",
+        "--",
+        "/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py"
+      ],
+      "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/pls11-bytes-125ee99e-380f-4c64-9e55-6263783f608f/new-workshop/entry.py'"
+    }
+  ]
+}

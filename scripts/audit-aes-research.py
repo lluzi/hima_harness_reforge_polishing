@@ -20,10 +20,13 @@ def main():
     parser.add_argument('--sample', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--generation', type=int, default=2, help='actual executed generation to audit (default preserves the original two-generation check)')
+    parser.add_argument('--validation', type=Path, help='optional independent native evidence revalidation, bound by source SHA256')
     args = parser.parse_args()
     evidence = json.loads(args.evidence.read_text())
     if evidence.get('status') != 'passed':
-        raise ValueError('research execution must first pass its native factual checks')
+        validation = json.loads(args.validation.read_text()) if args.validation else {}
+        if validation.get('status') != 'passed' or validation.get('sourceSha256') != sha(args.evidence.read_bytes()) or validation.get('checks', {}).get('research-native') is not True:
+            raise ValueError('research execution must first pass its native factual checks or a source-bound independent revalidation')
     workspace = Path(evidence['observed']['workspace'])
     original_sample = (workspace / 'sample.json').read_bytes()
     original_selection = (workspace / 'selection.json').read_bytes()

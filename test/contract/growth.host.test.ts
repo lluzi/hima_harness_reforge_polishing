@@ -307,3 +307,28 @@ test('exhausted time budget refuses growth with evidence', async (t) => {
     assert.ok(recordsOf(f.host, f.runId).some((record) => record.type === 'growth' && record.event === 'rejected' && record.proposalId === 'no-budget'));
   } finally { await dispose(f); }
 });
+
+
+test('closing reserve permits an evidence-backed Judge and Explore settlement without another experiment', async (t) => {
+  const f = await prepared(t, 120_000, undefined, 30_000, 2.5);
+  try {
+    await f.node('synthesize'); await f.node('read-qor');
+    const launches = jobRecords(f.host, f.runId).filter(record => record.event === 'launched').length;
+    // Move only Date beyond the experiment boundary; native timers and Jobs are not replayed.
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse(f.context().run.createdAt) + 100_000 });
+    assert.equal(f.context().budget.phase, 'closing');
+    assert.deepEqual(f.context().available, ['judge']);
+    await f.node('judge');
+    const begun = await f.call({ action: 'begin', nodeId: 'next-period' }); assert.equal(begun.kind, 'accepted');
+    const executionId = begun.receipt!.executionId!;
+    assert.equal((await f.call({ action: 'work', executionId })).kind, 'accepted');
+    const records = recordsOf(f.host, f.runId);
+    const cites = records.filter(record => record.type === 'observation' || record.type === 'verdict').map(record => record.id);
+    const next = await f.call({ action: 'complete', executionId, decision: 'next-strategy', strategy: { periodNs: 2.2 }, rationale: 'Try another experiment', cites });
+    assert.equal(next.kind, 'refused'); assert.match(next.reason!, /closing reserve/);
+    const done = await f.call({ action: 'complete', executionId, decision: 'goal-met', rationale: 'Only the existing measured fixture Goal is met.', cites });
+    assert.equal(done.kind, 'accepted', done.reason);
+    assert.equal(f.context().run.status, 'ended-goal-met');
+    assert.equal(jobRecords(f.host, f.runId).filter(record => record.event === 'launched').length, launches);
+  } finally { t.mock.timers.reset(); await dispose(f); }
+});

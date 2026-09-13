@@ -1,0 +1,30 @@
+{
+  "status": "passed",
+  "checks": {
+    "research-native": true,
+    "research-ended": true,
+    "exactly-one-expired-write-refused": true,
+    "campaign-stopped-no-new-business-records": true,
+    "same-run-before-and-after": true,
+    "conversation-answered": true
+  },
+  "sourceSha256": "654f79aa9857855bd0d511ce1aa0a698df12f250b453af0f65cb4f03898ea807",
+  "originalStatus": "failed",
+  "originalFailure": "Error: expired Campaign refused analysis while the original conversation answered",
+  "explanation": "Original snapshot unchanged. Native tool tracing serializes content, not the in-process value field. This audit checks the retained wire response and independent Ledger/turn facts. Deterministic archive/experience completion is allowed after the Campaign deadline; new business writes are not.",
+  "researchRun": "run-5a30d37d-b778-4fdb-a908-29850121f465",
+  "expiredRun": "run-dc7e81dd-3c60-4dd7-9d5f-07629f202be6",
+  "originalCosts": {
+    "hosts": 1,
+    "electron": 0,
+    "nativeSessionsCreated": 1,
+    "nativeSessionsResumed": 0,
+    "modelSessions": 1,
+    "modelRequestSteps": 54,
+    "apiRequests": "unmeasured; request steps exclude adapter retries",
+    "tokens": "unmeasured",
+    "userMessages": 2
+  },
+  "additionalModelRequests": 0,
+  "additionalEdaJobs": 0
+}
