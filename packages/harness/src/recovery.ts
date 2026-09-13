@@ -188,6 +188,7 @@ async function reconcileControlledRun(deps: FabricDeps, snapshot: RunRecord): Pr
   const details: string[] = [];
   const uncertainExecutions: string[] = [];
   for (const execution of Object.values(snapshot.control!.executions)) {
+    if (execution.supersededBy !== undefined) continue;
     if (execution.phase !== 'working' && execution.phase !== 'uncertain') continue;
     const requests = Object.entries(existingRun(deps.ledger, snapshot.id).control!.requests)
       .filter(([, request]) => request.receipt.executionId === execution.id && request.state !== 'done');

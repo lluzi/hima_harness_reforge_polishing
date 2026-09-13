@@ -1,0 +1,13 @@
+{
+  "task": "PLS-11 revision and validity core",
+  "baseline": "fad81847a8886dd98aa371847eb09c4bff9b4e60",
+  "branch": "codex/pls11-revision",
+  "checks": [
+    { "level": "L0", "name": "build typecheck seams boundary", "result": "pass", "exitCode": 0 },
+    { "level": "L1/L2", "files": ["test/contract/revision.test.ts", "test/contract/revision.host.test.ts"], "passed": 4, "failed": 0, "elapsedSeconds": 5.463, "exitCode": 0 },
+    { "level": "L2 adjacent", "files": ["test/contract/growth.test.ts", "test/contract/growth.host.test.ts", "test/contract/agent-workshop.host.test.ts"], "passed": 12, "failed": 0, "elapsedSeconds": 28.110, "exitCode": 0 },
+    { "level": "L2 adjacent broader", "passed": 28, "failed": 2, "exitCode": 1, "reason": "pre-existing PLS-14 archive records invalidate old report-only sequence assertion" }
+  ],
+  "expensiveDependencies": { "productModelCalls": 0, "edaJobs": 0, "remoteSiteJobs": 0, "electronLaunches": 0 },
+  "notRun": ["full local suite", "L3 UI", "L4 real model", "L4 real EDA/Site", "L5 pilot"]
+}

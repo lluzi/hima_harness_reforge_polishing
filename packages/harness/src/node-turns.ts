@@ -45,7 +45,7 @@ import { decideRead, decideWrite } from './shell.js';
 import { readingDocument, type Semantics, type SemanticDeclaration } from './semantics.js';
 import { driving, existingRun } from './runs.js';
 import { claimSlotAndLaunch } from './job-cap.js';
-import { cancelStopped, nodeRecordsIn, recordNode } from './ledger.js';
+import { cancelStopped, currentRecordsIn, nodeRecordsIn, recordNode } from './ledger.js';
 import type {
   CodeRecord,
   DecisionRecord,
@@ -60,6 +60,7 @@ import type {
   PackDataOrigin,
   RunProgress,
   RunRecord,
+  RevisionRecord,
   VerdictOutcome,
   VerdictRecord,
 } from './ledger.js';
@@ -85,6 +86,7 @@ import { counted } from './words.js';
 import type { JudgedBranch, Judge } from './judge.js';
 import type { ReaderRef } from './ledger.js';
 import { SiteUnreadableError } from './errors.js';
+import { materializeWorkshopRevision, type WorkspaceRevisionAsset } from './workspace.js';
 
 /** What every fabric operation is given: the ledger a Run lives in, HimaJudge, and where the Sites
  *  and packs this machine holds are installed. Declared here, with the turn that is handed it, and
@@ -980,6 +982,24 @@ export async function buildWorkshopScope(ctx: Driving, node: Extract<PackNode, {
 > {
   const resolved = await resolveWorkshop(ctx, node);
   if (!resolved.ok) return resolved;
+  const records = currentRecordsIn(ctx.deps.ledger.records({ runId: ctx.runId }));
+  const applied = records.filter((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied');
+  const latest = new Map<string, WorkspaceRevisionAsset>();
+  for (const revision of applied) for (const asset of revision.assets ?? []) {
+    if (asset.scope === 'workshop' && asset.nodeId === node.id) latest.set(asset.logicalPath, asset);
+  }
+  const already = records.some((record) => record.type === 'code' && record.nodeId === node.id
+    && record.attempt === attempt && record.path.startsWith(`${resolved.workshopAbs}/`));
+  if (!already && latest.size > 0) {
+    const assets = [...latest.values()];
+    await materializeWorkshopRevision(ctx.site, assets, resolved.workshopAbs);
+    for (const asset of assets) await ctx.deps.ledger.appendCode(ctx.runId, {
+      nodeId: node.id, attempt, sessionId, workshop: resolved.declaration.id,
+      path: pathsOf(ctx.site).join(resolved.workshopAbs, asset.logicalPath), sha256: asset.afterSha256,
+      bytes: asset.bytes, language: resolved.declaration.language,
+      ...(ctx.branchId === undefined ? {} : { branchId: ctx.branchId }),
+    });
+  }
   return { ok: true, resolved, scope: {
     ledger: ctx.deps.ledger, runId: ctx.runId, site: ctx.site, nodeId: node.id, attempt,
     session: { id: sessionId }, fault: { why: undefined }, log: (line) => toHostLog(ctx, line),
@@ -1693,7 +1713,8 @@ function branchesAt(ctx: Driving, run: RunRecord, joinId: string): readonly Judg
   const fork = graph === undefined ? undefined : forkJoinedAt(graph, joinId);
   if (fork === undefined) return undefined;
   const generation = run.loop?.generation ?? run.generation;
-  const observations = ctx.deps.ledger.records({ runId: run.id, type: 'observation' });
+  const observations = currentRecordsIn(ctx.deps.ledger.records({ runId: run.id }))
+    .filter((r): r is ObservationRecord => r.type === 'observation');
   return fork.branches.map((branch) => {
     const read = observations.findLast(
       (r): r is ObservationRecord => r.type === 'observation' && r.branchId === branch.id && r.generation === generation && r.loopId === run.loop?.id,
@@ -1802,7 +1823,7 @@ export function exploreEvidence(ctx: Driving, node: Extract<PackNode, { kind: 'e
     return no(`judge node ${judgeNodeOfRun.id} lists fewer than two rules, so ${chooser.id} has no constraint and goal to weigh`);
   }
 
-  const records = ctx.deps.ledger.records({ runId: ctx.runId });
+  const records = currentRecordsIn(ctx.deps.ledger.records({ runId: ctx.runId }));
   const verdicts = records.filter((r): r is VerdictRecord => r.type === 'verdict' && here(r) && r.seq < lastJudge!.seq);
   const observations = records.filter((r): r is ObservationRecord => r.type === 'observation' && here(r) && r.seq < lastJudge!.seq);
   const graph = positionOf(ctx.pack, judgeNodeOfRun.id)!.graph;
@@ -1881,8 +1902,7 @@ export async function exploreNode(ctx: Driving, node: Extract<PackNode, { kind: 
 function earlierGenerations(ctx: Driving, chooser: Chooser, read: string): number[] {
   const run = existingRun(ctx.deps.ledger, ctx.runId);
   const generation = run.loop?.generation ?? run.generation ?? 1;
-  const observations = ctx.deps.ledger
-    .records({ runId: ctx.runId, type: 'observation' })
+  const observations = currentRecordsIn(ctx.deps.ledger.records({ runId: ctx.runId }))
     .filter((r): r is ObservationRecord => r.type === 'observation' && r.loopId === run.loop?.id);
   const latest = new Map<number, ObservationRecord>();
   for (const record of observations) {

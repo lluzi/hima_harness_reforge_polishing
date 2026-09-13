@@ -103,13 +103,13 @@ export { FILE_WRITING_TOOLS, SHELL_TOOL, GOVERNED_TOOLS } from './authoring.js';
 // On the surface because the check reports it, the decision record carries it, and the boundary
 // between the two is what this bundle's callers need to be able to say.
 export { packDataDirs } from './pack-data.js';
-export { prepareWorkspace, campaignIdFor, containerNameFor, campaignIdIssue, workspaceFile } from './workspace.js';
-export type { PrepareRequest, PrepareResult, WorkspaceFile } from './workspace.js';
+export { prepareWorkspace, campaignIdFor, containerNameFor, campaignIdIssue, workspaceFile, applyWorkspaceRevision, materializeWorkshopRevision } from './workspace.js';
+export type { PrepareRequest, PrepareResult, WorkspaceFile, WorkspaceRevisionChange, WorkspaceRevisionAsset } from './workspace.js';
 
 // HimaFabric and the choosers an Explore node picks a next strategy with: part of the surface
 // because the acceptance script and the contract suite start runs the same way the faces do.
 export { versionLine, packStageSaid } from './commands.js';
-export { startRun, resumeRun, executionAction, executionContext } from './fabric.js';
+export { startRun, resumeRun, executionAction, executionContext, revisionImpactOf } from './fabric.js';
 export { cancelRun, reconcileRuns } from './recovery.js';
 // Model moments (#59): the one generic element a model needs, on the surface because the contract
 // suite and the live check both open one, and because the acceptance record names the preset.
@@ -124,7 +124,7 @@ export type { RunAssetManifest, ExperienceAsset } from './experience-report.js';
 // attempt a Job belongs to when the host that launched it died before the node record naming its
 // session was written. The contract suite asserts that reading at the ledger object (#62).
 export { defaultTimeBoxMs, defaultRetryAllowance, attemptOfSession } from './budget.js';
-export type { FabricDeps, StartRunRequest, StartRunResult, ResumeResult, ExecutionActionRequest, ExecutionActionResult, ExecutionContext } from './fabric.js';
+export type { FabricDeps, StartRunRequest, StartRunResult, ResumeResult, ExecutionActionRequest, ExecutionActionResult, ExecutionContext, RevisionProposal } from './fabric.js';
 export type { CancelResult, ReconcileOutcome } from './recovery.js';
 export { runArguments, allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason } from './run-arguments.js';
 export type { RunArgumentName } from './run-arguments.js';
@@ -177,7 +177,7 @@ export type { ExperienceJson, ExperienceReport, ExperienceEnding, ExperiencePack
 
 // The rows `RunView.generations` carries, stated by the module that folds them out of a Run's
 // records rather than by the namespace that answers with them.
-export type { GenerationView, GenerationVerdictView, GenerationState, GenerationJoinView, LoopView, BranchView, BranchState, GrowthBranchView } from './generations.js';
+export type { GenerationView, GenerationVerdictView, GenerationState, GenerationJoinView, LoopView, BranchView, BranchState, GrowthBranchView, RevisionHistoryView } from './generations.js';
 
 // The words a drill-down Loop is said in, and what the card's loops region says of them all (#28).
 // On the surface because both mounts of the card read them from here and the contract suite asserts
@@ -205,8 +205,8 @@ export type { MeteredRun } from './card-labels.js';
 // What the ledger holds, for a caller reading records back through the namespace. `hasEnded` is the
 // one predicate over a Run's status every face shares: what counts as an ending is the ledger's to
 // say, not each caller's.
-export { hasEnded, runIdPattern, importLegacyLedger } from './ledger.js';
-export type { LegacyLedgerImportReceipt } from './ledger.js';
+export { hasEnded, runIdPattern, importLegacyLedger, revisionRecordsIn, recordValidityOf, currentRecordsIn, retainedRecordMaterial } from './ledger.js';
+export type { LegacyLedgerImportReceipt, RecordValidity, RetainedRecordMaterial } from './ledger.js';
 export type {
   LedgerRecord,
   ObservationRecord,
@@ -224,6 +224,7 @@ export type {
   SessionRecord,
   CodeRecord,
   GrowthRecord,
+  RevisionRecord,
   MomentOutcome,
   ExperienceFile,
   LoopOutcome,

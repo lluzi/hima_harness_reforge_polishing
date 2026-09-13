@@ -973,6 +973,34 @@ export const growthRecord = z.strictObject({
   evidence: z.array(z.string()).optional(),
 });
 
+/** One accepted change to mutable Campaign material, and the validity boundary it creates (PLS-11).
+ * The changed bytes live in the Campaign workspace and its immutable `.hima/revisions` store; this
+ * record is the append-only index that tells later readers which historical facts remain current. */
+export const revisionRecord = z.strictObject({
+  ...base,
+  type: z.literal('revision'),
+  revisionId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/),
+  version: z.number().int().positive(),
+  event: z.enum(['proposed', 'applied', 'refused']),
+  proposalDigest: sha256Hex,
+  proposal: z.json().optional(),
+  reason: z.string().optional(),
+  methodIdentity: sha256Hex,
+  sourceIdentity: sha256Hex,
+  inputIdentity: sha256Hex,
+  environmentIdentity: sha256Hex,
+  changedNodes: z.array(z.string()),
+  affectedNodes: z.array(z.string()),
+  assets: z.array(z.strictObject({
+    nodeId: z.string(), scope: z.enum(['workshop', 'workspace']), logicalPath: z.string(),
+    path: absoluteSitePath, beforeVersionPath: absoluteSitePath, afterVersionPath: absoluteSitePath,
+    beforeSha256: sha256Hex, afterSha256: sha256Hex, bytes: z.number().int().nonnegative(),
+  })).optional(),
+  invalidates: z.array(z.string()).optional(),
+  reuses: z.array(z.string()).optional(),
+  supersedes: z.string().optional(),
+});
+
 export const ledgerRecord = z.discriminatedUnion('type', [
   observationRecord,
   refusalRecord,
@@ -992,6 +1020,7 @@ export const ledgerRecord = z.discriminatedUnion('type', [
   codeRecord,
   knowledgeRecord,
   growthRecord,
+  revisionRecord,
 ]);
 export type ObservationRecord = z.infer<typeof observationRecord>;
 export type RefusalRecord = z.infer<typeof refusalRecord>;
@@ -1011,6 +1040,7 @@ export type SessionRecord = z.infer<typeof sessionRecord>;
 export type CodeRecord = z.infer<typeof codeRecord>;
 export type KnowledgeRecord = z.infer<typeof knowledgeRecord>;
 export type GrowthRecord = z.infer<typeof growthRecord>;
+export type RevisionRecord = z.infer<typeof revisionRecord>;
 export type LedgerRecord = z.infer<typeof ledgerRecord>;
 
 /** What a caller states about a verdict; the ledger owns identity, sequence, time, and writer. */
@@ -1371,6 +1401,8 @@ export const nodeExecution = z.strictObject({
     outcome: verdictOutcome.optional(), session: z.string().optional(), reason: z.string().optional(),
   }).optional(),
   reason: z.string().optional(),
+  /** The applied revision that made this historical execution no longer current. */
+  supersededBy: z.string().optional(),
 });
 export type NodeExecution = z.infer<typeof nodeExecution>;
 export const executionReceipt = z.strictObject({
@@ -2009,6 +2041,11 @@ export class Ledger {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'growth', ...data }));
   }
 
+  /** Append one immutable revision lifecycle/validity fact. */
+  async appendRevision(runId: string, data: Omit<RevisionRecord, keyof typeof base | 'type'>): Promise<RevisionRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'revision', ...data }));
+  }
+
   /** Who refused: the shell for a permit decision (the default), the executor for a reader refusing a report kind. */
   async appendRefusal(runId: string, data: Omit<RefusalRecord, keyof typeof base | 'type'>, writer: WriterRole = 'shell'): Promise<RefusalRecord> {
     return this.#append(runId, writer, (h) => ({ ...h, type: 'refusal', ...data }));
@@ -2052,6 +2089,46 @@ export class Ledger {
  */
 export const nodeRecordsIn = (ledger: Ledger, runId: string): NodeRecord[] =>
   ledger.records({ runId, type: 'node' }).filter((r): r is NodeRecord => r.type === 'node');
+
+/** Every immutable revision event in ledger order. Shared by projections that must show history. */
+export const revisionRecordsIn = (ledger: Ledger, runId: string): RevisionRecord[] =>
+  ledger.records({ runId, type: 'revision' }).filter((r): r is RevisionRecord => r.type === 'revision');
+
+export interface RecordValidity { readonly valid: boolean; readonly invalidatedBy?: string }
+
+/** Whether one historical record is current under all applied revisions in this record set. */
+export function recordValidityOf(records: readonly LedgerRecord[], recordId: string): RecordValidity {
+  const revision = records.findLast((record): record is RevisionRecord =>
+    record.type === 'revision' && record.event === 'applied' && (record.invalidates ?? []).includes(recordId));
+  return revision === undefined ? { valid: true } : { valid: false, invalidatedBy: revision.revisionId };
+}
+
+/** The current evidence view. History remains in the input and can be paired with recordValidityOf. */
+export function currentRecordsIn(records: readonly LedgerRecord[]): LedgerRecord[] {
+  const invalid = new Set(records
+    .filter((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied')
+    .flatMap((record) => record.invalidates ?? []));
+  return records.filter((record) => !invalid.has(record.id));
+}
+
+export interface RetainedRecordMaterial {
+  readonly path: string; readonly sha256: string; readonly bytes: number;
+  readonly revisionId: string; readonly version: number;
+}
+
+/** Immutable bytes for a superseded code/observation record whose original path may since differ. */
+export function retainedRecordMaterial(records: readonly LedgerRecord[], recordId: string): RetainedRecordMaterial | undefined {
+  const original = records.find((record) => record.id === recordId);
+  const path = original?.type === 'code' ? original.path : original?.type === 'observation' ? original.path : undefined;
+  const sha256 = original?.type === 'code' ? original.sha256 : original?.type === 'observation' ? original.contentSha256 : undefined;
+  const bytes = original?.type === 'code' || original?.type === 'observation' ? original.bytes : undefined;
+  if (path === undefined || sha256 === undefined || bytes === undefined) return undefined;
+  const revision = records.findLast((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied'
+    && (record.invalidates ?? []).includes(recordId) && (record.assets ?? []).some((asset) => asset.path === path && asset.beforeSha256 === sha256));
+  const asset = revision?.assets?.find((item) => item.path === path && item.beforeSha256 === sha256);
+  return revision === undefined || asset === undefined ? undefined
+    : { path: asset.beforeVersionPath, sha256, bytes, revisionId: revision.revisionId, version: revision.version };
+}
 
 /**
  * Write one node transition: an absent key, never an undefined one, so a record round-trips as
