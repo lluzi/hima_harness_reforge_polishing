@@ -1,0 +1,9 @@
+command: PATH=/Users/lluzi/.local/node24/bin:$PATH node --experimental-strip-types scripts/live-check-pls14-site-archive.ts --out /tmp/pls14-live-final-1726250004
+exit_code: 0
+wall_time_ms: 2767
+run_id: run-29d86f2a-950c-48aa-aa7d-1faadece4704
+site_id: pls14-linglong-archive
+source_sha256: 2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b
+local_archive_sha256: 2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b
+archive_manifest_sha256: 8cb008e7364506c92ed7ae3246b18fafc57fce00eee088493c6d62d77a0a0dcc
+scope: read-only Hima Channel source observation and archive verification; product model calls 0, EDA Jobs 0, remote writes 0

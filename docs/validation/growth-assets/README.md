@@ -43,6 +43,15 @@ Experience 读取接口。用独立反例验证行为，不另建模拟 Fabric �
 
 原始命令、退出码、耗时、通过/失败/未跑及实际依赖调用在完成后追加。
 
+## PLS-14 live archive evidence
+
+The bounded L4 transfer is recorded in [live-archive](live-archive/). It used a fresh installed
+Home and an isolated Pack, an actual Agent-owned Run, the existing `linglong-aes` Permit bytes and
+one existing 500-byte Linglong comparison report. It requested no model, EDA wrapper, Job or remote
+write. The archive copied the original bytes under the installed Pack; the final archived read did
+not issue another SSH command. This proves only this source-to-archive mechanism, not a DTCO result
+or a full Campaign.
+
 ## PLS-17 独立准备切片
 
 已实现现有 `release.ts` 内的 `recoverPackMethod`、`previewPackTransfer` 和
