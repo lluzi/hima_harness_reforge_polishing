@@ -1,0 +1,13 @@
+allowedReadRoots:
+  - /data/eda/project
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/polishing-runs
+allowedWrappers:
+  - /usr/bin/python3
+  - /usr/local/bin/eda
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - deletions
+  - repository-downloads

@@ -20,7 +20,7 @@ of the failed result. Pre-test engineering corrections tightened period identity
 unsupported universal zero-slack / guaranteed-achievable-period language. The latter originated in
 the bundled knowledge and was corrected there as well as in this Pack.
 
-`aes-host-3.tap`: 5/5 local tests, 3 real in-process Hosts, 0 Electron, 0 SSH, 11.838 seconds.
+`aes-host-3.tap.gz`: 5/5 local tests, 3 real in-process Hosts, 0 Electron, 0 SSH, 11.838 seconds.
 Measurements in these local tests are **synthetic**, testing the real Pack/reader/Host/Job boundaries.
 Earlier red/failed outputs are retained beside it. Runtime tests check explicit ownership,
 Goal-met versus budget endings, failed tools producing no observation, and invalid/changed reports.
@@ -42,3 +42,5 @@ reported field. It also retains the precise measured slack: the failed trial's q
 Raw data is retained privately under `.hima-tmp/pls-frontier/first-site-artifacts`, with hashes in
 that Run's remote manifest. No library files or full customer design inputs are added to the Pack.
 The previous Run and its failed reader are unchanged; the corrected method needs a new test Run.
+
+Current probe test/release, real negative measurements, same-screen inspection and executable finite analysis handoff are documented in [probe-handoff.md](probe-handoff.md). PLS-23/08 remain pending integration review at this checkpoint.

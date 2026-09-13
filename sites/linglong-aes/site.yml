@@ -1,0 +1,19 @@
+# Verified pilot binding; customer CAD replaces paths for another Site.
+name: linglong-aes
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness/polishing-runs
+permit: ./permit.yml
+bindings:
+  flowRoot: /data/eda/project/hima_harness/polishing-inputs/aes-probe-66e57dc6bfbf
+  design: aes_cipher_top
+  workspaceRoot: /data/eda/project/hima_harness/polishing-runs
+ssh:
+  destination: luzi@192.168.50.41
+  jumps: []
+  controlPersistSeconds: 60
+capacity:
+  cores: 8
+  memoryGiB: 16
+  parallelJobs: 1
+  licences:
+    Design-Compiler: 1

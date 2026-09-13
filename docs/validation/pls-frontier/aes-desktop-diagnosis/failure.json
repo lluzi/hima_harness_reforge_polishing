@@ -1,0 +1,5 @@
+{
+  "error": "Error: Window condition timed out: [...document.querySelectorAll('[data-hima-control=\"studio-run\"] option')].some(o=>o.value===\"run-3ef44159-1b5a-4baf-ab5c-107b8104fd98\")",
+  "copiedHome": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-7ePrMD",
+  "body": "HimaHarness\nNew Session\nWorkspaces\nworkspace\naes-tsmc28-dtco\nNew Session\n/hima-test Test aes-tsmc28-dtco on lingl\n30min\nworkspace\nLive Run\nSettings\nInto the Unknown\nPreview\naes-tsmc28-dtco\nStandard mode\nDescribe what you want to build, / commands, @ files or sessions\nWorkspace Write\nDeepSeek-V4-Flash\nHigh\nAdd an API key to get started\n\nConfigure the official DeepSeek provider to start building.\n\nAPI key\nConfigure later\nSave and continue"
+}

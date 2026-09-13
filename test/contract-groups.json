@@ -50,7 +50,8 @@
     "test/contract/agent-graph.host.test.ts",
     "test/contract/agent-workshop.host.test.ts",
     "test/contract/agent-desktop-replay.host.test.ts",
-    "test/contract/aes-probe.test.ts"
+    "test/contract/aes-probe.test.ts",
+    "test/contract/aes-analysis.test.ts"
   ],
   "desktop": [
     "test/contract/budget.test.ts",

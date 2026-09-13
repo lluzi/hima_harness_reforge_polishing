@@ -1,0 +1,611 @@
+{
+  "status": 200,
+  "body": {
+    "runs": [
+      {
+        "id": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+        "campaignId": "aes-tsmc28-dtco-20260913-023713-097f",
+        "siteId": "linglong-aes",
+        "createdAt": "2026-09-13T02:37:13.109Z",
+        "status": "ended-budget-exhausted",
+        "packId": "aes-tsmc28-dtco",
+        "purpose": "test",
+        "goal": {
+          "target_period_ns": 0.5
+        },
+        "budget": {
+          "timeBoxMs": 720000,
+          "retryAllowance": 1,
+          "jobCap": 1,
+          "licences": {
+            "Design-Compiler": 1
+          },
+          "generationLimit": 2
+        },
+        "currentNode": "next-period",
+        "strategy": {
+          "periodNs": 0.341
+        },
+        "generation": 2,
+        "meters": {
+          "elapsedMs": 308811,
+          "jobsLaunched": 4,
+          "attempts": 4,
+          "licenceMs": {
+            "Design-Compiler": 172904
+          },
+          "generationMs": [
+            148466,
+            152753
+          ],
+          "endedBy": "generation-limit"
+        },
+        "control": {
+          "mode": "agent",
+          "owner": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+          "epoch": 1,
+          "revision": 24,
+          "paused": [],
+          "executions": {
+            "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac": {
+              "id": "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac",
+              "nodeId": "synthesize",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+              "inputDigest": "37e0598fe84cad56a70ad3e8e6c1cf881deeb069eb546943bc0d7bb6c6572fcf",
+              "phase": "completed",
+              "inputThroughSeq": 1,
+              "intent": {
+                "runId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+                "siteId": "linglong-aes",
+                "job": {
+                  "session": "hima-3ef44159-synthesize-33d14a",
+                  "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+                  "name": "synthesize",
+                  "startedAt": "2026-09-13T02:37:23.123Z",
+                  "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.py' '--workspace' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f' '--period' '0.35' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-33d14a.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-33d14a.exit'"
+                },
+                "nodeId": "synthesize",
+                "licences": {
+                  "Design-Compiler": 1
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-3ef44159-synthesize-33d14a",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77": {
+              "id": "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77",
+              "nodeId": "read-probe",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+              "inputDigest": "37e0598fe84cad56a70ad3e8e6c1cf881deeb069eb546943bc0d7bb6c6572fcf",
+              "phase": "completed",
+              "inputThroughSeq": 5,
+              "intent": {
+                "runId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+                "siteId": "linglong-aes",
+                "job": {
+                  "session": "hima-3ef44159-reader-aes-probe-reading-a42be9",
+                  "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+                  "name": "reader-aes-probe-reading",
+                  "startedAt": "2026-09-13T02:39:05.806Z",
+                  "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe.py' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g1-a1.json' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-a42be9.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-a42be9.exit'"
+                },
+                "nodeId": "read-probe",
+                "reading": {
+                  "reader": {
+                    "id": "aes-probe-reading",
+                    "version": "1",
+                    "reportKind": "aes-probe/1",
+                    "emits": [
+                      "clock_period",
+                      "setup_wns",
+                      "cell_area"
+                    ],
+                    "file": "tools/read-probe.py",
+                    "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+                  },
+                  "out": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g1-a1.json",
+                  "report": {
+                    "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+                    "contentSha256": "9db98dc9eab1679953b324f8ff86108132509737fd6ac795bc48736e70ae87b8",
+                    "bytes": 4185
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-3ef44159-reader-aes-probe-reading-a42be9",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4": {
+              "id": "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4",
+              "nodeId": "judge",
+              "kind": "judge",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+              "inputDigest": "5e477d47dd252e5f7adb4f600e88e83916d57a7eec5cb260d75356ad2d91d4e0",
+              "phase": "completed",
+              "inputThroughSeq": 11,
+              "result": {
+                "kind": "settled",
+                "outcome": "FAIL"
+              }
+            },
+            "execution-0f81db56-f872-4646-b147-a633787c339c": {
+              "id": "execution-0f81db56-f872-4646-b147-a633787c339c",
+              "nodeId": "next-period",
+              "kind": "explore",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+              "inputDigest": "820fb927d6ad6bde2be7046fd46707ddc81cbb54174104c2a9e098af7bd3123e",
+              "phase": "completed",
+              "inputThroughSeq": 14,
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e": {
+              "id": "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e",
+              "nodeId": "synthesize",
+              "kind": "act",
+              "generation": 2,
+              "attempt": 1,
+              "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+              "inputDigest": "0e30bf7d041e21127e26c7f6f86301706e6758bf75a6d32577299c70065a9f4e",
+              "phase": "completed",
+              "inputThroughSeq": 16,
+              "intent": {
+                "runId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+                "siteId": "linglong-aes",
+                "job": {
+                  "session": "hima-3ef44159-synthesize-3c37f3",
+                  "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+                  "name": "synthesize",
+                  "startedAt": "2026-09-13T02:39:49.112Z",
+                  "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.py' '--workspace' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f' '--period' '0.341' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-3c37f3.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-3c37f3.exit'"
+                },
+                "nodeId": "synthesize",
+                "licences": {
+                  "Design-Compiler": 1
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-3ef44159-synthesize-3c37f3",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-6e536105-501c-4714-8380-da2a97c72086": {
+              "id": "execution-6e536105-501c-4714-8380-da2a97c72086",
+              "nodeId": "read-probe",
+              "kind": "act",
+              "generation": 2,
+              "attempt": 1,
+              "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+              "inputDigest": "0e30bf7d041e21127e26c7f6f86301706e6758bf75a6d32577299c70065a9f4e",
+              "phase": "completed",
+              "inputThroughSeq": 20,
+              "intent": {
+                "runId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+                "siteId": "linglong-aes",
+                "job": {
+                  "session": "hima-3ef44159-reader-aes-probe-reading-3f1f5e",
+                  "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+                  "name": "reader-aes-probe-reading",
+                  "startedAt": "2026-09-13T02:41:34.907Z",
+                  "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe.py' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g2-a1.json' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-3f1f5e.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-3f1f5e.exit'"
+                },
+                "nodeId": "read-probe",
+                "reading": {
+                  "reader": {
+                    "id": "aes-probe-reading",
+                    "version": "1",
+                    "reportKind": "aes-probe/1",
+                    "emits": [
+                      "clock_period",
+                      "setup_wns",
+                      "cell_area"
+                    ],
+                    "file": "tools/read-probe.py",
+                    "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+                  },
+                  "out": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g2-a1.json",
+                  "report": {
+                    "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+                    "contentSha256": "7afc5a2b006565c44036738717a3bce68eb679d6e970bab1d19d0e7e376297a0",
+                    "bytes": 4186
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-3ef44159-reader-aes-probe-reading-3f1f5e",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-18a77873-62ef-4d34-a467-5829bf11fccb": {
+              "id": "execution-18a77873-62ef-4d34-a467-5829bf11fccb",
+              "nodeId": "judge",
+              "kind": "judge",
+              "generation": 2,
+              "attempt": 1,
+              "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+              "inputDigest": "c59aaa69cde5960eb36e3b226618f2a15828dcd4167f98298f67d04ff8c71d79",
+              "phase": "completed",
+              "inputThroughSeq": 26,
+              "result": {
+                "kind": "settled",
+                "outcome": "FAIL"
+              }
+            },
+            "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac": {
+              "id": "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac",
+              "nodeId": "next-period",
+              "kind": "explore",
+              "generation": 2,
+              "attempt": 1,
+              "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+              "inputDigest": "bcc359cdee0d1d9b8bf64579a0a2146e41648c4f9dd5c5f9f12c4d3d8a652763",
+              "phase": "completed",
+              "inputThroughSeq": 29,
+              "result": {
+                "kind": "settled"
+              }
+            }
+          },
+          "requests": {
+            "req-begin-synth-g1-001": {
+              "digest": "7de907542eb62c54bb6b35a9b77e6e5ea686016b407749234fd552f123832376",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 0,
+              "at": "2026-09-13T02:37:19.979Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-synth-g1-001",
+                "action": "begin",
+                "executionId": "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac"
+              },
+              "origin": "agent"
+            },
+            "req-work-synth-g1-002": {
+              "digest": "758e4af8c534d58351f3066e6dde4c8b9d1a75b9e42a9190a44404ea0836eafe",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 1,
+              "at": "2026-09-13T02:37:23.052Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-synth-g1-002",
+                "action": "work",
+                "executionId": "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac"
+              },
+              "origin": "agent"
+            },
+            "req-complete-synth-g1-004": {
+              "digest": "68c8dc524cd6c633200fc25e6c709214fd26b8ce60e147b2880d8b25da15a123",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 2,
+              "at": "2026-09-13T02:38:57.479Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-synth-g1-004",
+                "action": "complete",
+                "executionId": "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac"
+              },
+              "origin": "agent"
+            },
+            "req-begin-read-g1-005": {
+              "digest": "2327bcdbf991cbad084966144cc7cca569e116dd9ed2307ee698fb5c79cbbf9c",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 3,
+              "at": "2026-09-13T02:39:00.613Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-read-g1-005",
+                "action": "begin",
+                "executionId": "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77"
+              },
+              "origin": "agent"
+            },
+            "req-work-read-g1-006": {
+              "digest": "1f5f82394d796a335b5dcb11ff6154e44e54ae6ae2282f20977ae50edfebeba8",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 4,
+              "at": "2026-09-13T02:39:05.281Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-read-g1-006",
+                "action": "work",
+                "executionId": "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77"
+              },
+              "origin": "agent"
+            },
+            "req-complete-read-g1-007": {
+              "digest": "eb12f5bc6241737bffca7e49da18cacd364c243ddbd4a6bc685555526b5d351a",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 5,
+              "at": "2026-09-13T02:39:15.544Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-read-g1-007",
+                "action": "complete",
+                "executionId": "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77"
+              },
+              "origin": "agent"
+            },
+            "req-begin-judge-g1-008": {
+              "digest": "59461fccd655b4a0e118c1f3644269e7a64b3349dde352f901d7e76c2cd926b7",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 6,
+              "at": "2026-09-13T02:39:18.658Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-judge-g1-008",
+                "action": "begin",
+                "executionId": "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4"
+              },
+              "origin": "agent"
+            },
+            "req-work-judge-g1-009": {
+              "digest": "05cf10a66cc54d8cdc72162b681b1e7ce663ee6e4b21f2b8c7f332dcf84766a8",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 7,
+              "at": "2026-09-13T02:39:22.241Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-judge-g1-009",
+                "action": "work",
+                "executionId": "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4"
+              },
+              "origin": "agent"
+            },
+            "req-complete-judge-g1-010": {
+              "digest": "f6f34b9673522f1405dc4b1890749954cf45a3081e8f61c45486277442733d2c",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 8,
+              "at": "2026-09-13T02:39:25.746Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-judge-g1-010",
+                "action": "complete",
+                "executionId": "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4"
+              },
+              "origin": "agent"
+            },
+            "req-begin-next-g1-011": {
+              "digest": "201f51b14219432497cfe550b366f0cabc1d2b5631ee709c84c4f4b9004e0181",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 9,
+              "at": "2026-09-13T02:39:30.827Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-next-g1-011",
+                "action": "begin",
+                "executionId": "execution-0f81db56-f872-4646-b147-a633787c339c"
+              },
+              "origin": "agent"
+            },
+            "req-work-next-g1-012": {
+              "digest": "71245e598b9c2c07da9f7bd1a4d53bd0cac1671f562ee188dd0c10f74431b6ed",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 10,
+              "at": "2026-09-13T02:39:33.572Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-next-g1-012",
+                "action": "work",
+                "executionId": "execution-0f81db56-f872-4646-b147-a633787c339c"
+              },
+              "origin": "agent"
+            },
+            "req-complete-next-g1-013": {
+              "digest": "e1ed2747cf7671adb9b1d69a4f349a618f9c5526f63e9cb51b281d680e76dfe1",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 11,
+              "at": "2026-09-13T02:39:42.551Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-next-g1-013",
+                "action": "complete",
+                "executionId": "execution-0f81db56-f872-4646-b147-a633787c339c"
+              },
+              "origin": "agent"
+            },
+            "req-begin-synth-g2-014": {
+              "digest": "2a032c8946357e32a24b3312eb8731136194046ca14a3f722981db59e16f754c",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 12,
+              "at": "2026-09-13T02:39:46.083Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-synth-g2-014",
+                "action": "begin",
+                "executionId": "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e"
+              },
+              "origin": "agent"
+            },
+            "req-work-synth-g2-015": {
+              "digest": "c986f2b8d7c8a0f8abde63469740babc9de3da599b809b9fa0d9aa540f93be7b",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 13,
+              "at": "2026-09-13T02:39:49.038Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-synth-g2-015",
+                "action": "work",
+                "executionId": "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e"
+              },
+              "origin": "agent"
+            },
+            "req-complete-synth-g2-017": {
+              "digest": "fa17b1831869842e66e89f9b0c90c15e4a91910d12157feb5d7fc8d6200c1604",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 14,
+              "at": "2026-09-13T02:41:28.434Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-synth-g2-017",
+                "action": "complete",
+                "executionId": "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e"
+              },
+              "origin": "agent"
+            },
+            "req-begin-read-g2-018": {
+              "digest": "9702b106cc9ce98aef2f92a99ad4203b8f386cd44922f6c5d3a4d4f6252a0a23",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 15,
+              "at": "2026-09-13T02:41:31.851Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-read-g2-018",
+                "action": "begin",
+                "executionId": "execution-6e536105-501c-4714-8380-da2a97c72086"
+              },
+              "origin": "agent"
+            },
+            "req-work-read-g2-019": {
+              "digest": "f37aec9bb58f0edf45dc2e97da0a3e9a72e41a61e62144b1c596e028909eeea2",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 16,
+              "at": "2026-09-13T02:41:34.576Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-read-g2-019",
+                "action": "work",
+                "executionId": "execution-6e536105-501c-4714-8380-da2a97c72086"
+              },
+              "origin": "agent"
+            },
+            "req-complete-read-g2-020": {
+              "digest": "1007c399da9eb0711d454a8a0b50f746d10dd50f8efc38272c3a09dc92e971a7",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 17,
+              "at": "2026-09-13T02:41:46.692Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-read-g2-020",
+                "action": "complete",
+                "executionId": "execution-6e536105-501c-4714-8380-da2a97c72086"
+              },
+              "origin": "agent"
+            },
+            "req-begin-judge-g2-021": {
+              "digest": "f947cc0b19d02d302a9396b00b6e30ffc7c12ae3880d3188bffa88bf227e941e",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 18,
+              "at": "2026-09-13T02:41:50.874Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-judge-g2-021",
+                "action": "begin",
+                "executionId": "execution-18a77873-62ef-4d34-a467-5829bf11fccb"
+              },
+              "origin": "agent"
+            },
+            "req-work-judge-g2-022": {
+              "digest": "79f9af736ff7ee6718f61bbb3be279789e2d034a30b2f0bd6eefc40be3fb17ff",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 19,
+              "at": "2026-09-13T02:41:54.678Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-judge-g2-022",
+                "action": "work",
+                "executionId": "execution-18a77873-62ef-4d34-a467-5829bf11fccb"
+              },
+              "origin": "agent"
+            },
+            "req-complete-judge-g2-023": {
+              "digest": "4182845db604f2df69a24972310c62bdc97e7b182b2e3fb047d14702ec54a5d6",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 20,
+              "at": "2026-09-13T02:41:58.748Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-judge-g2-023",
+                "action": "complete",
+                "executionId": "execution-18a77873-62ef-4d34-a467-5829bf11fccb"
+              },
+              "origin": "agent"
+            },
+            "req-begin-next-g2-024": {
+              "digest": "6812d8ba82195d196577e3c561dbd0de208d98b6e5254edcca45f206b186ae0b",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 21,
+              "at": "2026-09-13T02:42:10.721Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-next-g2-024",
+                "action": "begin",
+                "executionId": "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac"
+              },
+              "origin": "agent"
+            },
+            "req-work-next-g2-025": {
+              "digest": "b9135c5289c851a6e390536940eff1a20c2a18cff4790354d24d0d8de4a8810a",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 22,
+              "at": "2026-09-13T02:42:14.822Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-next-g2-025",
+                "action": "work",
+                "executionId": "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac"
+              },
+              "origin": "agent"
+            },
+            "req-complete-next-g2-026": {
+              "digest": "5eaf0cc19deb6fcff99e54c6945df525bc6a61f0361e44ac7079af1a6ff4390c",
+              "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+              "epoch": 1,
+              "revision": 23,
+              "at": "2026-09-13T02:42:21.861Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-next-g2-026",
+                "action": "complete",
+                "executionId": "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac"
+              },
+              "origin": "agent"
+            }
+          },
+          "siteDigest": "c273e9992253dc7578fc9351a6dc239843518c330989eb187600a20f1322b60e"
+        }
+      }
+    ]
+  },
+  "copiedHome": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-cmFP92"
+}

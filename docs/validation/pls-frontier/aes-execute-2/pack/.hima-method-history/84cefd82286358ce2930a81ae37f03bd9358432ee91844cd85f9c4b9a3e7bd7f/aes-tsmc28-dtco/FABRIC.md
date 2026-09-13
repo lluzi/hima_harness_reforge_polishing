@@ -1,0 +1,29 @@
+## Files written
+
+- `contract.yml` — the run contract: the three Site inputs (`flowRoot`, `design`, `workspaceRoot`); the judged output `probe` at `flow/probe.json` with reader `aes-probe-reading`, and the unparsed output `timingManifest` at the same path for evidence access; wrapper `/usr/bin/python3`; the four files copied out of `flowRoot` into `<workspace>/flow/` (`probe.py`, `synth.tcl`, `read-probe.py`, `inputs.json`); the `synthesize` tool with inputs `WORKSPACE` and `PERIOD_NS`, one `Design-Compiler` seat and the command line `/usr/bin/python3 ${WORKSPACE}/flow/probe.py --workspace ${WORKSPACE} --period ${PERIOD_NS}`; the two shipped rules; the `aes-probe-method.md` knowledge declaration; Goal `target_period_ns`; strategy knob `periodNs`; and the words for both.
+- `graph.yml` — `synthesize` (act, tool `synthesize`, `PERIOD_NS` from strategy `periodNs`) → `read-probe` (act, observes `probe`) → `judge` (rules `setup-wns-all-nonnegative` then `clock-period-at-most`, binding `target_period_ns` from the Goal) → `next-period` (explore, chooser `over-constraining-push`, `stepNs` 0.01, converge on `period` at band 0.005 over 1 generation, limit 2) → `synthesize` (revisit). Both Judge edges, `PASS` and `FAIL`, go from `judge` to `next-period`. Ending trace against those actual edges and decisions: **Goal met** — source `next-period`, the `over-constraining-push` clause `{constraint: PASS, goal: PASS}` matching `goalMet: true` on the current `setup-wns-all-nonnegative` and `clock-period-at-most` verdicts, which is where the Run ends; **Converged** — source the `next-period` converge block itself (`read: period`, band 0.005, generations 1), taken instead of a next strategy, where the Run ends; **Budget exhausted** — source the Loop's generation meter at `generationLimit` 2, taken when the `next-period` → `synthesize` revisit is not followed, or the Run's time box; **Waiting on a hard blocker** — source the `blocked` wait node (`blocker: hard-blocker`), reached by the fabric when a node's Retry allowance is spent or a rule is UNDETERMINED, which the absent UNDETERMINED edge routes there, and which takes in both `setup-wns-all-nonnegative` (a missing `setup_wns`) and `clock-period-at-most` (a missing `clock_period`, including a manifest the reader refused). No terminal Judge PASS is treated as an ending: the success path runs through the explicit goal-met decision.
+- `readers/aes-probe-reading.yml` — this pack's own reader declaration: script `tools/read-probe.py`, argv `/usr/bin/python3 ${READER} ${REPORT} ${OUT}`, report kind `aes-probe/1`, emitting `clock_period`, `setup_wns` and `cell_area`.
+- `tools/read-probe.py` — the reader script, an exact copy of the Golden Flow's `read-probe.py`, which checks the manifest's format, tool exit, measurement sha256, exact field set and finiteness and emits the three typed values.
+- `tools/probe.py` — the human-facing file of the `synthesize` tool, holding the declared command line for a person to run by hand.
+- `choosers/over-constraining-push.yml` — the over-constraining push: parameter `stepNs`, reading `period` and `slack`, with the goal-met clause, the tighten-by-one-step clause on a met constraint and the `period + |slack| − stepNs` clause on a violation.
+- `knowledge/aes-probe-method.md` — how to read this pack's numbers and what they do not say: the zero-slack and violation reading, the measured versus estimated period, matching conditions and the manifest's hashes, the two constraints, and the finite hashed timing and netlist samples.
+- `FABRIC.md` — this record.
+
+No `semantics.yml` is written: all three value types are the harness's own. No `rules/` file is written: both rules resolve in the bundle. `INTENT.md`, `SPEC.md` and the pre-supplied `flow/` directory are untouched.
+
+## Gaps
+
+none
+
+## Reviews
+
+- `tools/probe.py` — the author's verdict, in their words: "The human-facing tool file documents/implements the same command." The file does exactly that: it reads `WORKSPACE` and `PERIOD_NS` from its environment and runs `/usr/bin/python3 ${WORKSPACE}/flow/probe.py --workspace ${WORKSPACE} --period ${PERIOD_NS}`, which is the argv `contract.yml` declares for `synthesize`.
+- `tools/read-probe.py` — the author's verdict, in their words: "The reader script is an exact copy of Golden Flow read-probe.py in tools/" and "Existing approved command/reader scripts are authorized within the private Campaign; no further approval is needed for copying their exact behavior." The file is that exact copy and is launched with the declared argv `/usr/bin/python3 ${READER} ${REPORT} ${OUT}`.
+
+- Pre-test engineering correction: the reader additionally rejects a manifest whose askedPeriodNs differs from the hashed measured period. This is backed by the mismatched-period counterexample in test/contract/aes-probe.test.ts. The current tools/read-probe.py exactly matches the current flow/read-probe.py; the original native author transcript retains the earlier bytes.
+
+- Pre-test engineering review corrected universal zero-slack and guaranteed-achievable-period wording: positive slack is retained and period/slack arithmetic is only a next-trial hypothesis, especially because IO/latency scale with period. Tcl queries both real and virtual clock periods from the actual design before publishing metrics.
+
+- Real Site correction after retained failed test Run run-5c951580-2ca6-4821-9626-1758090cf31e: X-2025.06-SP3 reports UID-101 for current_design area. synth.tcl now extracts the unique Cell Area field from its actual retained QoR report, instead of querying the nonexistent attribute. The failed trial and its original empty metrics field are unchanged.
+
+- The portable Golden Flow pointer in INTENT/SPEC now resolves to the Pack-local flow/ copy. The native original-author source path and bytes remain in the author checkpoint evidence.

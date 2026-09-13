@@ -1,0 +1,1421 @@
+{
+  "passed": true,
+  "runId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+  "status": "ended-budget-exhausted",
+  "generations": 2,
+  "originalLedgerSha256": "fee57bba44c786adad1a4e482f6c6e21a1cc2a4e0aef2d66f834db2788e9be7f",
+  "copiedHome": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-P9OvKT",
+  "electron": 1,
+  "modelTurnsSubmitted": 0,
+  "providerRequests": "not instrumented; key absent and title generation disabled",
+  "newEdaJobs": 0,
+  "view": {
+    "run": {
+      "id": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+      "campaignId": "aes-tsmc28-dtco-20260913-023713-097f",
+      "siteId": "linglong-aes",
+      "createdAt": "2026-09-13T02:37:13.109Z",
+      "status": "ended-budget-exhausted",
+      "packId": "aes-tsmc28-dtco",
+      "purpose": "test",
+      "packVersion": "1",
+      "words": {
+        "goal": {
+          "target_period_ns": {
+            "label": "clock period at most",
+            "unit": "ns"
+          }
+        },
+        "strategy": {
+          "periodNs": {
+            "label": "clock period",
+            "unit": "ns"
+          }
+        }
+      },
+      "goal": {
+        "target_period_ns": 0.5
+      },
+      "budget": {
+        "timeBoxMs": 720000,
+        "retryAllowance": 1,
+        "jobCap": 1,
+        "licences": {
+          "Design-Compiler": 1
+        },
+        "generationLimit": 2
+      },
+      "currentNode": "next-period",
+      "strategy": {
+        "periodNs": 0.341
+      },
+      "generation": 2,
+      "meters": {
+        "elapsedMs": 308811,
+        "jobsLaunched": 4,
+        "attempts": 4,
+        "licenceMs": {
+          "Design-Compiler": 172904
+        },
+        "generationMs": [
+          148466,
+          152753
+        ],
+        "endedBy": "generation-limit"
+      },
+      "control": {
+        "mode": "agent",
+        "owner": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+        "epoch": 1,
+        "revision": 24,
+        "paused": [],
+        "executions": {
+          "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac": {
+            "id": "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac",
+            "nodeId": "synthesize",
+            "kind": "act",
+            "generation": 1,
+            "attempt": 1,
+            "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+            "inputDigest": "37e0598fe84cad56a70ad3e8e6c1cf881deeb069eb546943bc0d7bb6c6572fcf",
+            "phase": "completed",
+            "inputThroughSeq": 1,
+            "intent": {
+              "runId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+              "siteId": "linglong-aes",
+              "job": {
+                "session": "hima-3ef44159-synthesize-33d14a",
+                "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+                "name": "synthesize",
+                "startedAt": "2026-09-13T02:37:23.123Z",
+                "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.py' '--workspace' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f' '--period' '0.35' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-33d14a.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-33d14a.exit'"
+              },
+              "nodeId": "synthesize",
+              "licences": {
+                "Design-Compiler": 1
+              },
+              "attempt": 1
+            },
+            "jobSession": "hima-3ef44159-synthesize-33d14a",
+            "result": {
+              "kind": "settled"
+            }
+          },
+          "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77": {
+            "id": "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77",
+            "nodeId": "read-probe",
+            "kind": "act",
+            "generation": 1,
+            "attempt": 1,
+            "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+            "inputDigest": "37e0598fe84cad56a70ad3e8e6c1cf881deeb069eb546943bc0d7bb6c6572fcf",
+            "phase": "completed",
+            "inputThroughSeq": 5,
+            "intent": {
+              "runId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+              "siteId": "linglong-aes",
+              "job": {
+                "session": "hima-3ef44159-reader-aes-probe-reading-a42be9",
+                "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+                "name": "reader-aes-probe-reading",
+                "startedAt": "2026-09-13T02:39:05.806Z",
+                "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe.py' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g1-a1.json' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-a42be9.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-a42be9.exit'"
+              },
+              "nodeId": "read-probe",
+              "reading": {
+                "reader": {
+                  "id": "aes-probe-reading",
+                  "version": "1",
+                  "reportKind": "aes-probe/1",
+                  "emits": [
+                    "clock_period",
+                    "setup_wns",
+                    "cell_area"
+                  ],
+                  "file": "tools/read-probe.py",
+                  "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+                },
+                "out": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g1-a1.json",
+                "report": {
+                  "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+                  "contentSha256": "9db98dc9eab1679953b324f8ff86108132509737fd6ac795bc48736e70ae87b8",
+                  "bytes": 4185
+                }
+              },
+              "attempt": 1
+            },
+            "jobSession": "hima-3ef44159-reader-aes-probe-reading-a42be9",
+            "result": {
+              "kind": "settled"
+            }
+          },
+          "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4": {
+            "id": "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4",
+            "nodeId": "judge",
+            "kind": "judge",
+            "generation": 1,
+            "attempt": 1,
+            "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+            "inputDigest": "5e477d47dd252e5f7adb4f600e88e83916d57a7eec5cb260d75356ad2d91d4e0",
+            "phase": "completed",
+            "inputThroughSeq": 11,
+            "result": {
+              "kind": "settled",
+              "outcome": "FAIL"
+            }
+          },
+          "execution-0f81db56-f872-4646-b147-a633787c339c": {
+            "id": "execution-0f81db56-f872-4646-b147-a633787c339c",
+            "nodeId": "next-period",
+            "kind": "explore",
+            "generation": 1,
+            "attempt": 1,
+            "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+            "inputDigest": "820fb927d6ad6bde2be7046fd46707ddc81cbb54174104c2a9e098af7bd3123e",
+            "phase": "completed",
+            "inputThroughSeq": 14,
+            "result": {
+              "kind": "settled"
+            }
+          },
+          "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e": {
+            "id": "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e",
+            "nodeId": "synthesize",
+            "kind": "act",
+            "generation": 2,
+            "attempt": 1,
+            "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+            "inputDigest": "0e30bf7d041e21127e26c7f6f86301706e6758bf75a6d32577299c70065a9f4e",
+            "phase": "completed",
+            "inputThroughSeq": 16,
+            "intent": {
+              "runId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+              "siteId": "linglong-aes",
+              "job": {
+                "session": "hima-3ef44159-synthesize-3c37f3",
+                "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+                "name": "synthesize",
+                "startedAt": "2026-09-13T02:39:49.112Z",
+                "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.py' '--workspace' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f' '--period' '0.341' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-3c37f3.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-3c37f3.exit'"
+              },
+              "nodeId": "synthesize",
+              "licences": {
+                "Design-Compiler": 1
+              },
+              "attempt": 1
+            },
+            "jobSession": "hima-3ef44159-synthesize-3c37f3",
+            "result": {
+              "kind": "settled"
+            }
+          },
+          "execution-6e536105-501c-4714-8380-da2a97c72086": {
+            "id": "execution-6e536105-501c-4714-8380-da2a97c72086",
+            "nodeId": "read-probe",
+            "kind": "act",
+            "generation": 2,
+            "attempt": 1,
+            "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+            "inputDigest": "0e30bf7d041e21127e26c7f6f86301706e6758bf75a6d32577299c70065a9f4e",
+            "phase": "completed",
+            "inputThroughSeq": 20,
+            "intent": {
+              "runId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+              "siteId": "linglong-aes",
+              "job": {
+                "session": "hima-3ef44159-reader-aes-probe-reading-3f1f5e",
+                "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+                "name": "reader-aes-probe-reading",
+                "startedAt": "2026-09-13T02:41:34.907Z",
+                "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe.py' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g2-a1.json' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-3f1f5e.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-3f1f5e.exit'"
+              },
+              "nodeId": "read-probe",
+              "reading": {
+                "reader": {
+                  "id": "aes-probe-reading",
+                  "version": "1",
+                  "reportKind": "aes-probe/1",
+                  "emits": [
+                    "clock_period",
+                    "setup_wns",
+                    "cell_area"
+                  ],
+                  "file": "tools/read-probe.py",
+                  "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+                },
+                "out": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g2-a1.json",
+                "report": {
+                  "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+                  "contentSha256": "7afc5a2b006565c44036738717a3bce68eb679d6e970bab1d19d0e7e376297a0",
+                  "bytes": 4186
+                }
+              },
+              "attempt": 1
+            },
+            "jobSession": "hima-3ef44159-reader-aes-probe-reading-3f1f5e",
+            "result": {
+              "kind": "settled"
+            }
+          },
+          "execution-18a77873-62ef-4d34-a467-5829bf11fccb": {
+            "id": "execution-18a77873-62ef-4d34-a467-5829bf11fccb",
+            "nodeId": "judge",
+            "kind": "judge",
+            "generation": 2,
+            "attempt": 1,
+            "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+            "inputDigest": "c59aaa69cde5960eb36e3b226618f2a15828dcd4167f98298f67d04ff8c71d79",
+            "phase": "completed",
+            "inputThroughSeq": 26,
+            "result": {
+              "kind": "settled",
+              "outcome": "FAIL"
+            }
+          },
+          "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac": {
+            "id": "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac",
+            "nodeId": "next-period",
+            "kind": "explore",
+            "generation": 2,
+            "attempt": 1,
+            "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+            "inputDigest": "bcc359cdee0d1d9b8bf64579a0a2146e41648c4f9dd5c5f9f12c4d3d8a652763",
+            "phase": "completed",
+            "inputThroughSeq": 29,
+            "result": {
+              "kind": "settled"
+            }
+          }
+        },
+        "requests": {
+          "req-begin-synth-g1-001": {
+            "digest": "7de907542eb62c54bb6b35a9b77e6e5ea686016b407749234fd552f123832376",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 0,
+            "at": "2026-09-13T02:37:19.979Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-synth-g1-001",
+              "action": "begin",
+              "executionId": "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac"
+            },
+            "origin": "agent"
+          },
+          "req-work-synth-g1-002": {
+            "digest": "758e4af8c534d58351f3066e6dde4c8b9d1a75b9e42a9190a44404ea0836eafe",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 1,
+            "at": "2026-09-13T02:37:23.052Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-synth-g1-002",
+              "action": "work",
+              "executionId": "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac"
+            },
+            "origin": "agent"
+          },
+          "req-complete-synth-g1-004": {
+            "digest": "68c8dc524cd6c633200fc25e6c709214fd26b8ce60e147b2880d8b25da15a123",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 2,
+            "at": "2026-09-13T02:38:57.479Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-synth-g1-004",
+              "action": "complete",
+              "executionId": "execution-9fd8986e-d2fd-472b-a61f-d62edea755ac"
+            },
+            "origin": "agent"
+          },
+          "req-begin-read-g1-005": {
+            "digest": "2327bcdbf991cbad084966144cc7cca569e116dd9ed2307ee698fb5c79cbbf9c",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 3,
+            "at": "2026-09-13T02:39:00.613Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-read-g1-005",
+              "action": "begin",
+              "executionId": "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77"
+            },
+            "origin": "agent"
+          },
+          "req-work-read-g1-006": {
+            "digest": "1f5f82394d796a335b5dcb11ff6154e44e54ae6ae2282f20977ae50edfebeba8",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 4,
+            "at": "2026-09-13T02:39:05.281Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-read-g1-006",
+              "action": "work",
+              "executionId": "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77"
+            },
+            "origin": "agent"
+          },
+          "req-complete-read-g1-007": {
+            "digest": "eb12f5bc6241737bffca7e49da18cacd364c243ddbd4a6bc685555526b5d351a",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 5,
+            "at": "2026-09-13T02:39:15.544Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-read-g1-007",
+              "action": "complete",
+              "executionId": "execution-12d478ca-fcc0-4f15-bd20-5f7c4780aa77"
+            },
+            "origin": "agent"
+          },
+          "req-begin-judge-g1-008": {
+            "digest": "59461fccd655b4a0e118c1f3644269e7a64b3349dde352f901d7e76c2cd926b7",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 6,
+            "at": "2026-09-13T02:39:18.658Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-judge-g1-008",
+              "action": "begin",
+              "executionId": "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4"
+            },
+            "origin": "agent"
+          },
+          "req-work-judge-g1-009": {
+            "digest": "05cf10a66cc54d8cdc72162b681b1e7ce663ee6e4b21f2b8c7f332dcf84766a8",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 7,
+            "at": "2026-09-13T02:39:22.241Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-judge-g1-009",
+              "action": "work",
+              "executionId": "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4"
+            },
+            "origin": "agent"
+          },
+          "req-complete-judge-g1-010": {
+            "digest": "f6f34b9673522f1405dc4b1890749954cf45a3081e8f61c45486277442733d2c",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 8,
+            "at": "2026-09-13T02:39:25.746Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-judge-g1-010",
+              "action": "complete",
+              "executionId": "execution-3557dabb-2c7c-44f7-8e7c-a1b0bc2fb7d4"
+            },
+            "origin": "agent"
+          },
+          "req-begin-next-g1-011": {
+            "digest": "201f51b14219432497cfe550b366f0cabc1d2b5631ee709c84c4f4b9004e0181",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 9,
+            "at": "2026-09-13T02:39:30.827Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-next-g1-011",
+              "action": "begin",
+              "executionId": "execution-0f81db56-f872-4646-b147-a633787c339c"
+            },
+            "origin": "agent"
+          },
+          "req-work-next-g1-012": {
+            "digest": "71245e598b9c2c07da9f7bd1a4d53bd0cac1671f562ee188dd0c10f74431b6ed",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 10,
+            "at": "2026-09-13T02:39:33.572Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-next-g1-012",
+              "action": "work",
+              "executionId": "execution-0f81db56-f872-4646-b147-a633787c339c"
+            },
+            "origin": "agent"
+          },
+          "req-complete-next-g1-013": {
+            "digest": "e1ed2747cf7671adb9b1d69a4f349a618f9c5526f63e9cb51b281d680e76dfe1",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 11,
+            "at": "2026-09-13T02:39:42.551Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-next-g1-013",
+              "action": "complete",
+              "executionId": "execution-0f81db56-f872-4646-b147-a633787c339c"
+            },
+            "origin": "agent"
+          },
+          "req-begin-synth-g2-014": {
+            "digest": "2a032c8946357e32a24b3312eb8731136194046ca14a3f722981db59e16f754c",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 12,
+            "at": "2026-09-13T02:39:46.083Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-synth-g2-014",
+              "action": "begin",
+              "executionId": "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e"
+            },
+            "origin": "agent"
+          },
+          "req-work-synth-g2-015": {
+            "digest": "c986f2b8d7c8a0f8abde63469740babc9de3da599b809b9fa0d9aa540f93be7b",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 13,
+            "at": "2026-09-13T02:39:49.038Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-synth-g2-015",
+              "action": "work",
+              "executionId": "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e"
+            },
+            "origin": "agent"
+          },
+          "req-complete-synth-g2-017": {
+            "digest": "fa17b1831869842e66e89f9b0c90c15e4a91910d12157feb5d7fc8d6200c1604",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 14,
+            "at": "2026-09-13T02:41:28.434Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-synth-g2-017",
+              "action": "complete",
+              "executionId": "execution-aa07e4ee-2ebb-4ca0-bf73-66fc97a7461e"
+            },
+            "origin": "agent"
+          },
+          "req-begin-read-g2-018": {
+            "digest": "9702b106cc9ce98aef2f92a99ad4203b8f386cd44922f6c5d3a4d4f6252a0a23",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 15,
+            "at": "2026-09-13T02:41:31.851Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-read-g2-018",
+              "action": "begin",
+              "executionId": "execution-6e536105-501c-4714-8380-da2a97c72086"
+            },
+            "origin": "agent"
+          },
+          "req-work-read-g2-019": {
+            "digest": "f37aec9bb58f0edf45dc2e97da0a3e9a72e41a61e62144b1c596e028909eeea2",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 16,
+            "at": "2026-09-13T02:41:34.576Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-read-g2-019",
+              "action": "work",
+              "executionId": "execution-6e536105-501c-4714-8380-da2a97c72086"
+            },
+            "origin": "agent"
+          },
+          "req-complete-read-g2-020": {
+            "digest": "1007c399da9eb0711d454a8a0b50f746d10dd50f8efc38272c3a09dc92e971a7",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 17,
+            "at": "2026-09-13T02:41:46.692Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-read-g2-020",
+              "action": "complete",
+              "executionId": "execution-6e536105-501c-4714-8380-da2a97c72086"
+            },
+            "origin": "agent"
+          },
+          "req-begin-judge-g2-021": {
+            "digest": "f947cc0b19d02d302a9396b00b6e30ffc7c12ae3880d3188bffa88bf227e941e",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 18,
+            "at": "2026-09-13T02:41:50.874Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-judge-g2-021",
+              "action": "begin",
+              "executionId": "execution-18a77873-62ef-4d34-a467-5829bf11fccb"
+            },
+            "origin": "agent"
+          },
+          "req-work-judge-g2-022": {
+            "digest": "79f9af736ff7ee6718f61bbb3be279789e2d034a30b2f0bd6eefc40be3fb17ff",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 19,
+            "at": "2026-09-13T02:41:54.678Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-judge-g2-022",
+              "action": "work",
+              "executionId": "execution-18a77873-62ef-4d34-a467-5829bf11fccb"
+            },
+            "origin": "agent"
+          },
+          "req-complete-judge-g2-023": {
+            "digest": "4182845db604f2df69a24972310c62bdc97e7b182b2e3fb047d14702ec54a5d6",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 20,
+            "at": "2026-09-13T02:41:58.748Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-judge-g2-023",
+              "action": "complete",
+              "executionId": "execution-18a77873-62ef-4d34-a467-5829bf11fccb"
+            },
+            "origin": "agent"
+          },
+          "req-begin-next-g2-024": {
+            "digest": "6812d8ba82195d196577e3c561dbd0de208d98b6e5254edcca45f206b186ae0b",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 21,
+            "at": "2026-09-13T02:42:10.721Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-begin-next-g2-024",
+              "action": "begin",
+              "executionId": "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac"
+            },
+            "origin": "agent"
+          },
+          "req-work-next-g2-025": {
+            "digest": "b9135c5289c851a6e390536940eff1a20c2a18cff4790354d24d0d8de4a8810a",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 22,
+            "at": "2026-09-13T02:42:14.822Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-work-next-g2-025",
+              "action": "work",
+              "executionId": "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac"
+            },
+            "origin": "agent"
+          },
+          "req-complete-next-g2-026": {
+            "digest": "5eaf0cc19deb6fcff99e54c6945df525bc6a61f0361e44ac7079af1a6ff4390c",
+            "actor": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+            "epoch": 1,
+            "revision": 23,
+            "at": "2026-09-13T02:42:21.861Z",
+            "state": "done",
+            "receipt": {
+              "requestId": "req-complete-next-g2-026",
+              "action": "complete",
+              "executionId": "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac"
+            },
+            "origin": "agent"
+          }
+        },
+        "siteDigest": "c273e9992253dc7578fc9351a6dc239843518c330989eb187600a20f1322b60e"
+      }
+    },
+    "workspace": {
+      "design": "aes_cipher_top",
+      "flowRoot": "/data/eda/project/hima_harness/polishing-inputs/aes-probe-66e57dc6bfbf",
+      "containerName": "hima-aes-tsmc28-dtco-20260913-023713-097f"
+    },
+    "observations": [
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000010",
+        "at": "2026-09-13T02:39:06.029Z",
+        "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+        "contentSha256": "9db98dc9eab1679953b324f8ff86108132509737fd6ac795bc48736e70ae87b8",
+        "bytes": 4185,
+        "reader": {
+          "id": "aes-probe-reading",
+          "version": "1",
+          "reportKind": "aes-probe/1",
+          "emits": [
+            "clock_period",
+            "setup_wns",
+            "cell_area"
+          ],
+          "file": "tools/read-probe.py",
+          "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+        },
+        "values": [
+          {
+            "type": "clock_period",
+            "value": 0.35,
+            "unit": "ns"
+          },
+          {
+            "type": "setup_wns",
+            "value": -0.000969827,
+            "unit": "ns",
+            "mode": "setup",
+            "scope": "all"
+          },
+          {
+            "type": "cell_area",
+            "value": 8667.161987,
+            "unit": "um2"
+          }
+        ]
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025",
+        "at": "2026-09-13T02:41:35.170Z",
+        "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+        "contentSha256": "7afc5a2b006565c44036738717a3bce68eb679d6e970bab1d19d0e7e376297a0",
+        "bytes": 4186,
+        "reader": {
+          "id": "aes-probe-reading",
+          "version": "1",
+          "reportKind": "aes-probe/1",
+          "emits": [
+            "clock_period",
+            "setup_wns",
+            "cell_area"
+          ],
+          "file": "tools/read-probe.py",
+          "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+        },
+        "values": [
+          {
+            "type": "clock_period",
+            "value": 0.341,
+            "unit": "ns"
+          },
+          {
+            "type": "setup_wns",
+            "value": -0.00422013,
+            "unit": "ns",
+            "mode": "setup",
+            "scope": "all"
+          },
+          {
+            "type": "cell_area",
+            "value": 9142.181989,
+            "unit": "um2"
+          }
+        ]
+      }
+    ],
+    "refusals": [],
+    "verdicts": [
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000012",
+        "at": "2026-09-13T02:39:22.268Z",
+        "outcome": "FAIL",
+        "ruleId": "setup-wns-all-nonnegative",
+        "ruleVersion": "1",
+        "valuesAsRead": [
+          {
+            "type": "setup_wns",
+            "value": -0.000969827,
+            "unit": "ns",
+            "mode": "setup",
+            "scope": "all"
+          }
+        ],
+        "cites": [
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000010",
+            "observation": {
+              "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000010",
+              "at": "2026-09-13T02:39:06.029Z",
+              "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+              "contentSha256": "9db98dc9eab1679953b324f8ff86108132509737fd6ac795bc48736e70ae87b8",
+              "bytes": 4185,
+              "reader": {
+                "id": "aes-probe-reading",
+                "version": "1",
+                "reportKind": "aes-probe/1",
+                "emits": [
+                  "clock_period",
+                  "setup_wns",
+                  "cell_area"
+                ],
+                "file": "tools/read-probe.py",
+                "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+              },
+              "values": [
+                {
+                  "type": "clock_period",
+                  "value": 0.35,
+                  "unit": "ns"
+                },
+                {
+                  "type": "setup_wns",
+                  "value": -0.000969827,
+                  "unit": "ns",
+                  "mode": "setup",
+                  "scope": "all"
+                },
+                {
+                  "type": "cell_area",
+                  "value": 8667.161987,
+                  "unit": "um2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000013",
+        "at": "2026-09-13T02:39:22.284Z",
+        "outcome": "PASS",
+        "ruleId": "clock-period-at-most",
+        "ruleVersion": "1",
+        "valuesAsRead": [
+          {
+            "type": "clock_period",
+            "value": 0.35,
+            "unit": "ns"
+          }
+        ],
+        "cites": [
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000010",
+            "observation": {
+              "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000010",
+              "at": "2026-09-13T02:39:06.029Z",
+              "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+              "contentSha256": "9db98dc9eab1679953b324f8ff86108132509737fd6ac795bc48736e70ae87b8",
+              "bytes": 4185,
+              "reader": {
+                "id": "aes-probe-reading",
+                "version": "1",
+                "reportKind": "aes-probe/1",
+                "emits": [
+                  "clock_period",
+                  "setup_wns",
+                  "cell_area"
+                ],
+                "file": "tools/read-probe.py",
+                "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+              },
+              "values": [
+                {
+                  "type": "clock_period",
+                  "value": 0.35,
+                  "unit": "ns"
+                },
+                {
+                  "type": "setup_wns",
+                  "value": -0.000969827,
+                  "unit": "ns",
+                  "mode": "setup",
+                  "scope": "all"
+                },
+                {
+                  "type": "cell_area",
+                  "value": 8667.161987,
+                  "unit": "um2"
+                }
+              ]
+            }
+          }
+        ],
+        "boundParameters": {
+          "target_period_ns": 0.5
+        }
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000027",
+        "at": "2026-09-13T02:41:54.702Z",
+        "outcome": "FAIL",
+        "ruleId": "setup-wns-all-nonnegative",
+        "ruleVersion": "1",
+        "valuesAsRead": [
+          {
+            "type": "setup_wns",
+            "value": -0.00422013,
+            "unit": "ns",
+            "mode": "setup",
+            "scope": "all"
+          }
+        ],
+        "cites": [
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025",
+            "observation": {
+              "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025",
+              "at": "2026-09-13T02:41:35.170Z",
+              "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+              "contentSha256": "7afc5a2b006565c44036738717a3bce68eb679d6e970bab1d19d0e7e376297a0",
+              "bytes": 4186,
+              "reader": {
+                "id": "aes-probe-reading",
+                "version": "1",
+                "reportKind": "aes-probe/1",
+                "emits": [
+                  "clock_period",
+                  "setup_wns",
+                  "cell_area"
+                ],
+                "file": "tools/read-probe.py",
+                "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+              },
+              "values": [
+                {
+                  "type": "clock_period",
+                  "value": 0.341,
+                  "unit": "ns"
+                },
+                {
+                  "type": "setup_wns",
+                  "value": -0.00422013,
+                  "unit": "ns",
+                  "mode": "setup",
+                  "scope": "all"
+                },
+                {
+                  "type": "cell_area",
+                  "value": 9142.181989,
+                  "unit": "um2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000028",
+        "at": "2026-09-13T02:41:54.718Z",
+        "outcome": "PASS",
+        "ruleId": "clock-period-at-most",
+        "ruleVersion": "1",
+        "valuesAsRead": [
+          {
+            "type": "clock_period",
+            "value": 0.341,
+            "unit": "ns"
+          }
+        ],
+        "cites": [
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025",
+            "observation": {
+              "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025",
+              "at": "2026-09-13T02:41:35.170Z",
+              "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+              "contentSha256": "7afc5a2b006565c44036738717a3bce68eb679d6e970bab1d19d0e7e376297a0",
+              "bytes": 4186,
+              "reader": {
+                "id": "aes-probe-reading",
+                "version": "1",
+                "reportKind": "aes-probe/1",
+                "emits": [
+                  "clock_period",
+                  "setup_wns",
+                  "cell_area"
+                ],
+                "file": "tools/read-probe.py",
+                "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+              },
+              "values": [
+                {
+                  "type": "clock_period",
+                  "value": 0.341,
+                  "unit": "ns"
+                },
+                {
+                  "type": "setup_wns",
+                  "value": -0.00422013,
+                  "unit": "ns",
+                  "mode": "setup",
+                  "scope": "all"
+                },
+                {
+                  "type": "cell_area",
+                  "value": 9142.181989,
+                  "unit": "um2"
+                }
+              ]
+            }
+          }
+        ],
+        "boundParameters": {
+          "target_period_ns": 0.5
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000020",
+        "at": "2026-09-13T02:41:17.159Z",
+        "nodeId": "synthesize",
+        "kind": "act",
+        "state": "done",
+        "attempt": 1,
+        "jobSession": "hima-3ef44159-synthesize-3c37f3"
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000026",
+        "at": "2026-09-13T02:41:35.186Z",
+        "nodeId": "read-probe",
+        "kind": "act",
+        "state": "done",
+        "attempt": 1,
+        "jobSession": "hima-3ef44159-reader-aes-probe-reading-3f1f5e"
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000029",
+        "at": "2026-09-13T02:41:54.735Z",
+        "nodeId": "judge",
+        "kind": "judge",
+        "state": "done",
+        "attempt": 1,
+        "outcome": "FAIL"
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000031",
+        "at": "2026-09-13T02:42:21.908Z",
+        "nodeId": "next-period",
+        "kind": "explore",
+        "state": "done",
+        "attempt": 1
+      }
+    ],
+    "generations": [
+      {
+        "generation": 1,
+        "strategy": {
+          "periodNs": 0.35
+        },
+        "nodes": [
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000003",
+            "at": "2026-09-13T02:37:23.187Z",
+            "nodeId": "synthesize",
+            "kind": "act",
+            "state": "running",
+            "attempt": 1,
+            "jobSession": "hima-3ef44159-synthesize-33d14a"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000005",
+            "at": "2026-09-13T02:38:48.113Z",
+            "nodeId": "synthesize",
+            "kind": "act",
+            "state": "done",
+            "attempt": 1,
+            "jobSession": "hima-3ef44159-synthesize-33d14a"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000006",
+            "at": "2026-09-13T02:39:05.304Z",
+            "nodeId": "read-probe",
+            "kind": "act",
+            "state": "running",
+            "attempt": 1
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000008",
+            "at": "2026-09-13T02:39:05.871Z",
+            "nodeId": "read-probe",
+            "kind": "act",
+            "state": "running",
+            "attempt": 1,
+            "jobSession": "hima-3ef44159-reader-aes-probe-reading-a42be9"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000011",
+            "at": "2026-09-13T02:39:06.046Z",
+            "nodeId": "read-probe",
+            "kind": "act",
+            "state": "done",
+            "attempt": 1,
+            "jobSession": "hima-3ef44159-reader-aes-probe-reading-a42be9"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000014",
+            "at": "2026-09-13T02:39:22.300Z",
+            "nodeId": "judge",
+            "kind": "judge",
+            "state": "done",
+            "attempt": 1,
+            "outcome": "FAIL"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000016",
+            "at": "2026-09-13T02:39:42.587Z",
+            "nodeId": "next-period",
+            "kind": "explore",
+            "state": "done",
+            "attempt": 1
+          }
+        ],
+        "observation": {
+          "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000010",
+          "at": "2026-09-13T02:39:06.029Z",
+          "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+          "contentSha256": "9db98dc9eab1679953b324f8ff86108132509737fd6ac795bc48736e70ae87b8",
+          "bytes": 4185,
+          "reader": {
+            "id": "aes-probe-reading",
+            "version": "1",
+            "reportKind": "aes-probe/1",
+            "emits": [
+              "clock_period",
+              "setup_wns",
+              "cell_area"
+            ],
+            "file": "tools/read-probe.py",
+            "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+          },
+          "values": [
+            {
+              "type": "clock_period",
+              "value": 0.35,
+              "unit": "ns"
+            },
+            {
+              "type": "setup_wns",
+              "value": -0.000969827,
+              "unit": "ns",
+              "mode": "setup",
+              "scope": "all"
+            },
+            {
+              "type": "cell_area",
+              "value": 8667.161987,
+              "unit": "um2"
+            }
+          ]
+        },
+        "observedPeriodNs": 0.35,
+        "slackNs": -0.000969827,
+        "verdicts": [
+          {
+            "ruleId": "setup-wns-all-nonnegative",
+            "outcome": "FAIL",
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000012",
+            "cites": [
+              "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000010"
+            ]
+          },
+          {
+            "ruleId": "clock-period-at-most",
+            "outcome": "PASS",
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000013",
+            "cites": [
+              "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000010"
+            ]
+          }
+        ],
+        "wallMs": 148458,
+        "state": "done",
+        "decision": "next strategy: clock period 0.341 ns",
+        "decisionRecordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000015"
+      },
+      {
+        "generation": 2,
+        "strategy": {
+          "periodNs": 0.341
+        },
+        "nodes": [
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000018",
+            "at": "2026-09-13T02:39:49.173Z",
+            "nodeId": "synthesize",
+            "kind": "act",
+            "state": "running",
+            "attempt": 1,
+            "jobSession": "hima-3ef44159-synthesize-3c37f3"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000020",
+            "at": "2026-09-13T02:41:17.159Z",
+            "nodeId": "synthesize",
+            "kind": "act",
+            "state": "done",
+            "attempt": 1,
+            "jobSession": "hima-3ef44159-synthesize-3c37f3"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000021",
+            "at": "2026-09-13T02:41:34.593Z",
+            "nodeId": "read-probe",
+            "kind": "act",
+            "state": "running",
+            "attempt": 1
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000023",
+            "at": "2026-09-13T02:41:34.966Z",
+            "nodeId": "read-probe",
+            "kind": "act",
+            "state": "running",
+            "attempt": 1,
+            "jobSession": "hima-3ef44159-reader-aes-probe-reading-3f1f5e"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000026",
+            "at": "2026-09-13T02:41:35.186Z",
+            "nodeId": "read-probe",
+            "kind": "act",
+            "state": "done",
+            "attempt": 1,
+            "jobSession": "hima-3ef44159-reader-aes-probe-reading-3f1f5e"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000029",
+            "at": "2026-09-13T02:41:54.735Z",
+            "nodeId": "judge",
+            "kind": "judge",
+            "state": "done",
+            "attempt": 1,
+            "outcome": "FAIL"
+          },
+          {
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000031",
+            "at": "2026-09-13T02:42:21.908Z",
+            "nodeId": "next-period",
+            "kind": "explore",
+            "state": "done",
+            "attempt": 1
+          }
+        ],
+        "observation": {
+          "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025",
+          "at": "2026-09-13T02:41:35.170Z",
+          "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json",
+          "contentSha256": "7afc5a2b006565c44036738717a3bce68eb679d6e970bab1d19d0e7e376297a0",
+          "bytes": 4186,
+          "reader": {
+            "id": "aes-probe-reading",
+            "version": "1",
+            "reportKind": "aes-probe/1",
+            "emits": [
+              "clock_period",
+              "setup_wns",
+              "cell_area"
+            ],
+            "file": "tools/read-probe.py",
+            "sha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca"
+          },
+          "values": [
+            {
+              "type": "clock_period",
+              "value": 0.341,
+              "unit": "ns"
+            },
+            {
+              "type": "setup_wns",
+              "value": -0.00422013,
+              "unit": "ns",
+              "mode": "setup",
+              "scope": "all"
+            },
+            {
+              "type": "cell_area",
+              "value": 9142.181989,
+              "unit": "um2"
+            }
+          ]
+        },
+        "observedPeriodNs": 0.341,
+        "slackNs": -0.00422013,
+        "verdicts": [
+          {
+            "ruleId": "setup-wns-all-nonnegative",
+            "outcome": "FAIL",
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000027",
+            "cites": [
+              "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025"
+            ]
+          },
+          {
+            "ruleId": "clock-period-at-most",
+            "outcome": "PASS",
+            "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000028",
+            "cites": [
+              "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025"
+            ]
+          }
+        ],
+        "wallMs": 152753,
+        "state": "done",
+        "decision": "next strategy: clock period 0.335 ns",
+        "decisionRecordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000030"
+      }
+    ],
+    "jobs": [
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000002",
+        "at": "2026-09-13T02:37:23.170Z",
+        "event": "launched",
+        "job": {
+          "session": "hima-3ef44159-synthesize-33d14a",
+          "pid": 637405,
+          "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+          "name": "synthesize",
+          "startedAt": "2026-09-13T02:37:23.123Z",
+          "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.py' '--workspace' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f' '--period' '0.35' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-33d14a.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-33d14a.exit'"
+        },
+        "nodeId": "synthesize",
+        "licences": {
+          "Design-Compiler": 1
+        }
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000004",
+        "at": "2026-09-13T02:38:48.091Z",
+        "event": "finished",
+        "job": {
+          "session": "hima-3ef44159-synthesize-33d14a",
+          "pid": 637405,
+          "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+          "name": "synthesize",
+          "startedAt": "2026-09-13T02:37:23.123Z",
+          "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.py' '--workspace' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f' '--period' '0.35' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-33d14a.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-33d14a.exit'"
+        },
+        "exitCode": 0,
+        "nodeId": "synthesize"
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000007",
+        "at": "2026-09-13T02:39:05.854Z",
+        "event": "launched",
+        "job": {
+          "session": "hima-3ef44159-reader-aes-probe-reading-a42be9",
+          "pid": 639394,
+          "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+          "name": "reader-aes-probe-reading",
+          "startedAt": "2026-09-13T02:39:05.806Z",
+          "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe.py' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g1-a1.json' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-a42be9.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-a42be9.exit'"
+        },
+        "nodeId": "read-probe"
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000009",
+        "at": "2026-09-13T02:39:05.953Z",
+        "event": "finished",
+        "job": {
+          "session": "hima-3ef44159-reader-aes-probe-reading-a42be9",
+          "pid": 639394,
+          "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+          "name": "reader-aes-probe-reading",
+          "startedAt": "2026-09-13T02:39:05.806Z",
+          "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe.py' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g1-a1.json' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-a42be9.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-a42be9.exit'"
+        },
+        "exitCode": 0,
+        "nodeId": "read-probe"
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000017",
+        "at": "2026-09-13T02:39:49.155Z",
+        "event": "launched",
+        "job": {
+          "session": "hima-3ef44159-synthesize-3c37f3",
+          "pid": 639999,
+          "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+          "name": "synthesize",
+          "startedAt": "2026-09-13T02:39:49.112Z",
+          "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.py' '--workspace' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f' '--period' '0.341' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-3c37f3.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-3c37f3.exit'"
+        },
+        "nodeId": "synthesize",
+        "licences": {
+          "Design-Compiler": 1
+        }
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000019",
+        "at": "2026-09-13T02:41:17.138Z",
+        "event": "finished",
+        "job": {
+          "session": "hima-3ef44159-synthesize-3c37f3",
+          "pid": 639999,
+          "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+          "name": "synthesize",
+          "startedAt": "2026-09-13T02:39:49.112Z",
+          "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.py' '--workspace' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f' '--period' '0.341' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-3c37f3.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-synthesize-3c37f3.exit'"
+        },
+        "exitCode": 0,
+        "nodeId": "synthesize"
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000022",
+        "at": "2026-09-13T02:41:34.948Z",
+        "event": "launched",
+        "job": {
+          "session": "hima-3ef44159-reader-aes-probe-reading-3f1f5e",
+          "pid": 641996,
+          "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+          "name": "reader-aes-probe-reading",
+          "startedAt": "2026-09-13T02:41:34.907Z",
+          "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe.py' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g2-a1.json' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-3f1f5e.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-3f1f5e.exit'"
+        },
+        "nodeId": "read-probe"
+      },
+      {
+        "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000024",
+        "at": "2026-09-13T02:41:35.088Z",
+        "event": "finished",
+        "job": {
+          "session": "hima-3ef44159-reader-aes-probe-reading-3f1f5e",
+          "pid": 641996,
+          "workspace": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f",
+          "name": "reader-aes-probe-reading",
+          "startedAt": "2026-09-13T02:41:34.907Z",
+          "wire": "'/usr/bin/python3' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe.py' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/flow/probe.json' '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-readers/aes-probe-reading/read-probe-g2-a1.json' > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-3f1f5e.log' 2>&1; printf '%s\\n' \"$?\" > '/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-3ef44159-reader-aes-probe-reading-3f1f5e.exit'"
+        },
+        "exitCode": 0,
+        "nodeId": "read-probe"
+      }
+    ],
+    "blockers": [],
+    "cancels": [],
+    "decision": {
+      "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000030",
+      "at": "2026-09-13T02:42:21.885Z",
+      "nodeId": "next-period",
+      "chooser": "over-constraining-push",
+      "chooserOrigin": "pack",
+      "chosen": {
+        "strategy": {
+          "periodNs": 0.335
+        }
+      },
+      "rationale": {},
+      "agent": {
+        "sessionId": "session-9de2283f-1b6e-474d-b3cc-86aa6de7baaf",
+        "executionId": "execution-86b46f5b-b94f-4283-b303-28d6b5fff6ac",
+        "rationale": "Generation 2 measured clock_period 0.341 ns with setup_wns -0.00422013 ns (setup/all) on observation run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025. The constraint rule setup-wns-all-nonnegative@1 returned FAIL (#000027) because setup_wns < 0; the goal rule clock-period-at-most@1 returned PASS (#000028) because 0.341 <= target_period_ns 0.5. Because the constraint FAILs, the goalMet clause does not apply, so this is not goal-met. The chooser over-constraining-push's FAIL clause reads period and |slack| from the current observation and proposes period + |slack| - stepNs = 0.341 + 0.00422013 - 0.01 = 0.33522013 ns, which at precision 3 is 0.335 ns; that is a hypothesis for the next trial, not a measured period. Convergence is not reached: the converge block reads period over 1 successive generation with band 0.005, and the two measured periods are 0.35 ns (generation 1) and 0.341 ns (generation 2), whose difference 0.009 ns exceeds the 0.005 ns band. The decision is therefore next-strategy with periodNs 0.335. This is the second generation of a generationLimit-2 budget, so the revisit that would open generation three does not happen and the proposed 0.335 ns is recorded as the period it would have tried; the run ends as a spent budget, an honest incomplete result and not performance success."
+      },
+      "cites": [
+        "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000025",
+        "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000027",
+        "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000028"
+      ]
+    },
+    "code": [],
+    "experience": {
+      "recordId": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000032",
+      "writtenAt": "2026-09-13T02:42:21.940Z",
+      "markdown": {
+        "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-experience/run-3ef44159-1b5a-4baf-ab5c-107b8104fd98.md",
+        "sha256": "e92a069468b999e3ea4a293ecebc66a7c647bbbcb05f2ba8dd3eb551304ed825",
+        "bytes": 5007
+      },
+      "json": {
+        "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-023713-097f/hima-experience/run-3ef44159-1b5a-4baf-ab5c-107b8104fd98.json",
+        "sha256": "907dbe4db0dba30e72f7556d3827858e98d4f15f8f87706b3c8034a24224653d",
+        "bytes": 23965
+      }
+    }
+  }
+}

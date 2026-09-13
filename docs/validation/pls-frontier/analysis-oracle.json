@@ -1,0 +1,23 @@
+{
+  "sampleSha256": "5503504b644d3bc19f5e9aeb87fb5813a00c0730fef3c503d637298080856a1b",
+  "bestScore": 21,
+  "bestIds": [
+    "motif-0d20c7a391a0eb7e",
+    "motif-fe110393912a90bc"
+  ],
+  "combinationsChecked": 2080,
+  "greedyScore": 21,
+  "greedyIds": [
+    "motif-fe110393912a90bc",
+    "motif-0d20c7a391a0eb7e"
+  ],
+  "frequencyBaseline": {
+    "ids": [
+      "motif-5a454fc679f31557",
+      "motif-8c78c56e7f1ca062"
+    ],
+    "claimedScore": 16,
+    "sharedCellCount": 1,
+    "valid": false
+  }
+}
