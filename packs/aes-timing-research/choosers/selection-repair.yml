@@ -1,0 +1,13 @@
+id: selection-repair
+version: '1'
+title: Repair the first finite selection algorithm after an observed constraint failure
+parameter: { name: repairRevision, unit: count }
+reads:
+  selection_score: { type: selection_score, unit: count }
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: FAIL }
+    next: { algorithmRevision: repairRevision }
+  - when: { constraint: PASS, goal: FAIL }
+    next: { algorithmRevision: repairRevision }

@@ -1,0 +1,4 @@
+values:
+  selection_score: { unit: count, description: Sum of selected candidate cell counts times unique occurrence paths }
+  selected_count: { unit: count, description: Number of selected candidate ids }
+  conflict_count: { unit: count, description: Reused physical cells across selected candidates }
