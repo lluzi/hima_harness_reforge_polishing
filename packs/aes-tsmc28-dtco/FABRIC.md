@@ -27,3 +27,5 @@ none
 - Real Site correction after retained failed test Run run-5c951580-2ca6-4821-9626-1758090cf31e: X-2025.06-SP3 reports UID-101 for current_design area. synth.tcl now extracts the unique Cell Area field from its actual retained QoR report, instead of querying the nonexistent attribute. The failed trial and its original empty metrics field are unchanged.
 
 - The portable Golden Flow pointer in INTENT/SPEC now resolves to the Pack-local flow/ copy. The native original-author source path and bytes remain in the author checkpoint evidence.
+
+- Method version 2 pins the first successful trial’s input/method and reported tool/operating-condition identity in Campaign flow/probe-inputs.json. Later trials reject changed source fingerprints before launch, recheck after synthesis, and refuse changed tool conditions before publishing. Reader v2 checks the pinned identity/hash before emitting comparable values. Original v1 TEST/VERSION remain in Git and the original native execution evidence; v2 requires a new test/release.

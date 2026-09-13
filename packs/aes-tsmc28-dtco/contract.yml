@@ -2,7 +2,7 @@
 # pack can run, what a generation produces in the Campaign workspace, and what the pack runs on the
 # Site. `/hima pack check <pack> --site <site>` reads this file against a Site's own.
 id: aes-tsmc28-dtco
-version: '1'
+version: '2'
 title: AES TSMC28 DTCO foundry-only Fmax probe
 
 # What a Site binds, in its own site file under `bindings:`. The same pack runs on another Site by

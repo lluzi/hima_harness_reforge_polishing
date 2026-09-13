@@ -15,6 +15,7 @@ import re
 import subprocess
 import time
 import uuid
+import sys
 
 
 def sha(at):
@@ -32,6 +33,7 @@ def main():
     args = argparse.ArgumentParser()
     args.add_argument('--workspace', required=True)
     args.add_argument('--period', required=True, type=float)
+    args.add_argument('--check-inputs', action='store_true', help='read-only identity preflight; launches no tool')
     opts = args.parse_args()
     if not math.isfinite(opts.period) or not 0.1 <= opts.period <= 5:
         args.error('period must be finite, 0.1 to 5 ns')
@@ -44,6 +46,23 @@ def main():
     db = Path(inputs['foundryDb']).resolve()
     if not rtl or any(not p.is_file() for p in rtl) or not db.is_file():
         raise ValueError('missing RTL or foundry database')
+    def identity():
+        return {
+            'inputs': {'bindingSha256': sha(flow / 'inputs.json'),
+                'foundryDb': {'path': str(db), 'sha256': sha(db)},
+                'rtl': [{'path': str(p), 'sha256': sha(p)} for p in rtl]},
+            'method': {'probeSha256': sha(Path(__file__)), 'synthSha256': sha(flow / 'synth.tcl'),
+                'wrapperSha256': sha(Path(inputs['edaWrapper']).resolve()),
+                'pythonVersion': sys.version},
+        }
+    before = identity()
+    pin_file = flow / 'probe-inputs.json'
+    pinned = json.loads(pin_file.read_text()) if pin_file.exists() else None
+    if pinned is not None and any(pinned[key] != before[key] for key in ('inputs', 'method')):
+        raise ValueError('effective inputs or method changed since the first trial; start a new Campaign')
+    if opts.check_inputs:
+        print(json.dumps(before, sort_keys=True))
+        return
     trial = flow / 'probes' / ('trial-' + uuid.uuid4().hex)
     trial.mkdir(parents=True, exist_ok=False)
     prelude = '\n'.join([
@@ -62,13 +81,24 @@ def main():
     required = ['metrics.tsv', 'timing.rpt', 'qor.rpt', 'netlist.v', 'constraints.sdc', 'references.rpt', 'check_timing.rpt']
     if result.returncode or re.search(r'^Error:', log, re.M) or any(not (trial / n).is_file() for n in required):
         raise RuntimeError('synthesis failed or incomplete; inspect retained ' + str(trial / 'dc.log'))
+    if identity() != before:
+        raise ValueError('effective inputs or method changed during synthesis; no measurement published')
+    versions = re.findall(r'^Version:\s*(\S+)\s*$', (trial / 'qor.rpt').read_text(), re.M)
+    conditions = re.findall(r'^Operating Conditions:.*$', (trial / 'timing.rpt').read_text(), re.M)
+    if len(versions) != 1 or len(conditions) != 1:
+        raise ValueError('missing or ambiguous tool/operating-condition identity')
+    effective = {'schema': 1, **before, 'tool': {'version': versions[0], 'conditions': conditions[0]}}
+    if pinned is not None and pinned != effective:
+        raise ValueError('tool or operating conditions changed since the first trial; no comparable measurement published')
+    if pinned is None:
+        with pin_file.open('x') as pin:
+            pin.write(json.dumps(effective, sort_keys=True, indent=2) + '\n')
     evidence = {('metrics' if n == 'metrics.tsv' else n): {'path': str((trial / n).relative_to(flow)), 'sha256': sha(trial / n)} for n in required + ['dc.log', 'entry.tcl']}
     record = {
-        'format': 'aes-probe/1', 'toolExit': result.returncode, 'askedPeriodNs': opts.period,
+        'format': 'aes-probe/2', 'toolExit': result.returncode, 'askedPeriodNs': opts.period,
         'elapsedSeconds': time.time() - started, 'command': command,
-        'inputs': {'bindingSha256': sha(flow / 'inputs.json'), 'foundryDb': {'path': str(db), 'sha256': sha(db)},
-                   'rtl': [{'path': str(p), 'sha256': sha(p)} for p in rtl]},
-        'method': {'probeSha256': sha(Path(__file__)), 'synthSha256': sha(flow / 'synth.tcl')},
+        'inputs': before['inputs'], 'method': before['method'], 'effectiveIdentity': effective,
+        'identity': {'path': 'probe-inputs.json', 'sha256': sha(pin_file)},
         'evidence': evidence,
         'scope': 'foundry-only synthesis, not post-route signoff or measured silicon Fmax',
     }

@@ -130,11 +130,25 @@ def main():
         raise ValueError('handoff requires a validated real probe record')
     manifest_bytes = args.manifest.read_bytes()
     manifest = json.loads(manifest_bytes)
+    if manifest.get('format') not in ('aes-probe/1', 'aes-probe/2') or type(manifest.get('toolExit')) is not int or manifest['toolExit'] != 0:
+        raise ValueError('manifest is not a successful versioned AES probe')
     source = [(r['run'], row) for r in evidence['runs'] for row in r['records']
               if row['type'] == 'observation' and row.get('contentSha256') == sha(manifest_bytes)]
     if len(source) != 1:
         raise ValueError('manifest is not the observed bytes of exactly one validated Run')
     run, observation = source[0]
+    digest = run.get('packDigest')
+    reader = observation.get('reader', {})
+    observed = evidence.get('observed', {})
+    if (run.get('packId') != 'aes-tsmc28-dtco' or not re.fullmatch(r'[a-f0-9]{64}', str(digest))
+            or observed.get('methodBeforeTest') != digest or observed.get('methodDigest') != digest
+            or not str(run.get('status', '')).startswith('ended-')
+            or observation.get('runId') != run.get('id') or observation.get('siteId') != run.get('siteId')
+            or not str(observation.get('id', '')).startswith(str(run.get('id')) + '#')
+            or reader.get('id') != 'aes-probe-reading' or reader.get('reportKind') != manifest['format']
+            or reader.get('version') != manifest['format'].split('/')[1]
+            or not re.fullmatch(r'[a-f0-9]{64}', str(reader.get('sha256', '')))):
+        raise ValueError('Pack, method, Run or reader identity does not match the validated probe')
     data = {}
     for name in ('timing.rpt', 'netlist.v'):
         ref = manifest['evidence'][name]

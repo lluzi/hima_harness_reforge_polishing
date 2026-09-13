@@ -50,6 +50,7 @@ await runLive('live-check-aes-probe', 12, async (check) => {
   if (phase === 'author') cpSync(golden, path.join(folder, 'flow'), { recursive: true });
   guardInstalled(check, host, [bundle, packsDirOf(h), golden, h.workspace], folder);
   check.observed.phase = phase;
+  check.observed.realEdaRequested = phase === 'execute';
   check.observed.packFolder = folder;
   check.observed.staging = staging;
   check.observed.owner = String(author.id);

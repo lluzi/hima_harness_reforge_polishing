@@ -40,7 +40,7 @@ worst constrained `-delay_type max` path queried per path group. The measurement
 required artefact is missing or the log holds an `Error:` line.
 
 Those options are asserted before any value counts. The reader refuses a manifest whose `format` is
-not `aes-probe/1`, whose `toolExit` is not the integer 0, whose measurement the sha256 it names does
+not `aes-probe/2`, whose `toolExit` is not the integer 0, whose measurement the sha256 it names does
 not match, whose field set is not exactly those three names, or whose numbers are nonfinite, with a
 period ≤ 0 or an area ≤ 0. The manifest also carries the sha256 of `probe.py` and `synth.tcl`, of the
 private `inputs.json` binding, of the foundry database and of every RTL file, so the option set a
@@ -102,7 +102,7 @@ and of the reader's; no other wrapper is run.
 
 - Script: `tools/read-probe.py`, an exact copy of the Golden Flow's `read-probe.py`, so its argv is
   `/usr/bin/python3 ${READER} ${REPORT} ${OUT}`.
-- Report kind: `aes-probe/1`. Emits `clock_period`, `setup_wns`, `cell_area`.
+- Report kind: `aes-probe/2`. Emits `clock_period`, `setup_wns`, `cell_area`.
 - What it does: checks the manifest's format, tool exit, measurement sha256, exact field set and
   finiteness, then writes those three typed values to `${OUT}`. It never emits a guessed closed
   period.

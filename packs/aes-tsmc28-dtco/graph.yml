@@ -8,7 +8,7 @@
 # `next-period` back to `synthesize`, marked `revisit: true`: it is the only edge in this graph that
 # goes backwards, and following it is what opens the next generation.
 id: aes-tsmc28-dtco
-version: '1'
+version: '2'
 entry: synthesize
 
 nodes:

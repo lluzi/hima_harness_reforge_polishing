@@ -18,8 +18,22 @@ def unique(pairs):
 
 def read(report):
     record = json.loads(report.read_text(), object_pairs_hook=unique)
-    if record['format'] != 'aes-probe/1' or type(record['toolExit']) is not int or record['toolExit'] != 0:
+    if record['format'] != 'aes-probe/2' or type(record['toolExit']) is not int or record['toolExit'] != 0:
         raise ValueError('no successful AES measurement')
+    identity_ref = record['identity']
+    if identity_ref['path'] != 'probe-inputs.json':
+        raise ValueError('wrong Campaign input identity reference')
+    pinned = report.parent / 'probe-inputs.json'
+    if pinned.is_symlink() or not pinned.resolve().is_relative_to(report.parent.resolve()):
+        raise ValueError('input identity escapes report directory')
+    pinned_bytes = pinned.read_bytes()
+    if hashlib.sha256(pinned_bytes).hexdigest() != identity_ref['sha256']:
+        raise ValueError('Campaign input identity hash mismatch')
+    baseline = json.loads(pinned_bytes, object_pairs_hook=unique)
+    if baseline.get('schema') != 1 or not all(isinstance(baseline.get(k), dict) for k in ('inputs', 'method', 'tool')):
+        raise ValueError('incomplete effective input identity')
+    if record['effectiveIdentity'] != baseline:
+        raise ValueError('effective inputs changed; observations are not comparable')
     ref = record['evidence']['metrics']
     relative = Path(ref['path'])
     if relative.is_absolute() or '..' in relative.parts:

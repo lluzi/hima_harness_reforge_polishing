@@ -32,17 +32,20 @@ results, and a report that lists it as though the design had closed there is wro
 
 ## Matching conditions, and the hashes that establish them
 
-Two generations are comparable only when the method, the library, the RTL and the constraints are the
-same. The manifest is what makes that checkable: it carries a sha256 for `probe.py` and `synth.tcl`,
-for the private `inputs.json` binding, for the foundry database, for every RTL file, and for every
-artefact the trial produced. A comparison between two generations whose method or inputs hashes
-differ is not a comparison of the design; it is a comparison of two different runs, and it should be
-reported as such. Retesting at the same period under the same conditions is how stability is
-assessed — and a repeated measurement that does not reproduce is itself a fact worth recording.
+Two generations can be compared only under the same effective inputs and method. Version 2 pins
+binding, RTL/database hashes, producer/constraint/wrapper hashes and Python version. It checks those
+before another trial and again after synthesis. The actual reported tool version and operating
+conditions must also match before a later manifest is published. The reader checks the immutable
+Campaign identity reference before emitting observations for convergence.
+
+These checks cover declared inputs, code and reported tool conditions; they are not a complete OS
+snapshot or attestation of every runtime variable. The Site remains responsible for its environment.
+A mismatch requires a new Campaign and leaves existing trials intact. A repeated measurement that
+fails to reproduce under matching conditions remains useful evidence of that limited result.
 
 ## The reading is of hashed bytes
 
-The reader runs only over a manifest whose `format` is `aes-probe/1`, whose `toolExit` is the integer
+The reader runs only over a manifest whose `format` is `aes-probe/2`, whose `toolExit` is the integer
 `0`, whose measurement file's sha256 matches the hash the manifest names, whose field set is exactly
 `asked_period_ns`, `worst_slack_ns` and `cell_area_um2`, and whose three numbers are finite with a
 positive period and a positive area. Anything else — a malformed manifest, a missing report, a hash

@@ -4,12 +4,12 @@
 # sniffed; `emits` is exactly the set of value types the script writes, all three already declared by
 # this harness, so this pack writes no semantics.yml of its own.
 id: aes-probe-reading
-version: '1'
+version: '2'
 file: tools/read-probe.py
 argv:
   - /usr/bin/python3
   - ${READER}
   - ${REPORT}
   - ${OUT}
-reportKind: aes-probe/1
+reportKind: aes-probe/2
 emits: [clock_period, setup_wns, cell_area]
