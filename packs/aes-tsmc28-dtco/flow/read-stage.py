@@ -228,11 +228,19 @@ def timing(path, companion):
             cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
             value = float(cells[header.index("all") + 1])
             if math.isfinite(value):
+                violating_rows = []
+                for row in text.splitlines():
+                    if "|" in row and "Violating Paths" in row:
+                        row_cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+                        violating_rows.append(float(row_cells[header.index("all") + 1]))
+                if (len(violating_rows) != 1 or not math.isfinite(violating_rows[0])
+                        or violating_rows[0] < 0 or not violating_rows[0].is_integer()):
+                    raise ValueError("post-route timing has no finite nonnegative integer setup/all violating-path count")
                 path_one = re.search(r"^Path 1:.*?^= Slack Time\s+([0-9.eE+-]+)\s*$",
                                      path_text, re.M | re.S)
                 if path_one is None or float(path_one.group(1)) != value:
                     raise ValueError("post-route summary WNS differs from Path 1 slack")
-                return next(iter(views)), value
+                return next(iter(views)), value, int(violating_rows[0])
     raise ValueError("post-route timing has no finite setup/all WNS")
 
 
@@ -504,8 +512,8 @@ def values_for(record, workspace, stage):
         input_sdc = Path(mmmc["sdc"]).resolve()
         if not input_sdc.is_file() or input_sdc.is_symlink() or sdc_period(input_sdc) != actual_clock:
             raise ValueError("actual post-route clock differs from the PnR input SDC")
-        view, _wns = timing(one(record, workspace, "postroute_timing_summary"),
-                            one(record, workspace, "postroute_timing_paths"))
+        view, _wns, _violating = timing(one(record, workspace, "postroute_timing_summary"),
+                                        one(record, workspace, "postroute_timing_paths"))
         if view != mmmc["view"]:
             raise ValueError("post-route timing companion names the wrong analysis view")
         if "=== XS28 PNR DONE %s (GDS written) ===" % arm not in log:
@@ -540,10 +548,10 @@ def values_for(record, workspace, stage):
                 unknown("full_constraint_failures", reason),
             ]
         # Re-derive the final observations from raw references copied into the comparison record.
-        fview, fwns = timing(one(record, workspace, "foundry_postroute_timing", "inputs"),
-                             one(record, workspace, "foundry_postroute_timing_paths", "inputs"))
-        gview, gwns = timing(one(record, workspace, "generated_postroute_timing", "inputs"),
-                             one(record, workspace, "generated_postroute_timing_paths", "inputs"))
+        fview, fwns, _fviolating = timing(one(record, workspace, "foundry_postroute_timing", "inputs"),
+                                          one(record, workspace, "foundry_postroute_timing_paths", "inputs"))
+        gview, gwns, gviolating = timing(one(record, workspace, "generated_postroute_timing", "inputs"),
+                                         one(record, workspace, "generated_postroute_timing_paths", "inputs"))
         fsdc = one(record, workspace, "foundry_pnr_sdc", "inputs")
         gsdc = one(record, workspace, "generated_pnr_sdc", "inputs")
         foundry_actual_sdc = one(record, workspace, "foundry_postroute_sdc", "inputs")
@@ -612,7 +620,8 @@ def values_for(record, workspace, stage):
         failures = facts.get("full_constraint_failures")
         if not isinstance(matched, bool) or matched != matched_derived or facts.get("clock_period") != clock:
             raise ValueError("comparison lacks derived clock/matched-condition evidence")
-        expected = sum((not matched, gwns < 0, not visible, adopted <= 0, errors != 0))
+        expected = sum((not matched, gwns < 0 or gviolating > 0,
+                        not visible, adopted <= 0, errors != 0))
         if failures != expected:
             raise ValueError("full_constraint_failures disagrees with raw evidence")
         values.extend([
