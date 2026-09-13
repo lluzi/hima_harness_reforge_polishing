@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "scope": "read-only check of accepted actual synth SDCs, no tool jobs",
+  "rows": [
+    {
+      "arm": "foundry",
+      "path": "/data/eda/project/hima_harness/polishing-runs/dtco-sdc-1789294144262648000/flow/artifacts/foundry-synth/run-5043c0aa836d45989ab7d7c638e00060/results/base.dc.sdc",
+      "rawSha256": "97c01915837b001114c0e364792e784462d9ce34442b050966b51717ba1e37cd",
+      "canonical": {
+        "sha256": "2b34257c010c06292b920a97795fc169f626db19c4ad5db8cd313762a7d12d77",
+        "bytes": 25022,
+        "canonicalization": "one write_sdc creation-time comment"
+      }
+    },
+    {
+      "arm": "custom",
+      "path": "/data/eda/project/hima_harness/polishing-runs/dtco-sdc-1789294144262648000/flow/artifacts/custom-synth/run-e2cef5a7f2654ca89fb2218289f555c8/results/custom.dc.sdc",
+      "rawSha256": "b2524714eace8e549b2ea656fc507674ea8cd2dd249a4e9941dd046f4eb1e7a6",
+      "canonical": {
+        "sha256": "2b34257c010c06292b920a97795fc169f626db19c4ad5db8cd313762a7d12d77",
+        "bytes": 25022,
+        "canonicalization": "one write_sdc creation-time comment"
+      }
+    }
+  ]
+}

@@ -1,0 +1,665 @@
+{
+  "scope": "bounded production-stage Site bring-up, separate from full native Campaign acceptance",
+  "files": [
+    {
+      "file": "adoption-1789294004313673000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/adoption-1789294004313673000.receipt.json",
+      "sha256": "610449e0bb2ea524225515de1a6e16eb124b242fc5c93673f6a3b0c93ea3e9f0",
+      "bytes": 1070
+    },
+    {
+      "file": "adoption-1789294004313673000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/adoption-1789294004313673000.record.json",
+      "sha256": "0561133a4f7ae157663a8913885de2000d7ae80fe60fca022dec3f7c26ef5dbb",
+      "bytes": 6633
+    },
+    {
+      "file": "adoption-1789294004313673000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/adoption-1789294004313673000.log",
+      "sha256": "667730d88be4272c180a3ecda3518e9832a4484d476e98906f42ee5d2a6a1419",
+      "bytes": 160
+    },
+    {
+      "file": "characterize-1789287257902765000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/characterize-1789287257902765000.receipt.json",
+      "sha256": "6166d3e588d7f8760bafb9b8d3d8b76c12e2b8bc316960c9958e6cf8b3aa6e05",
+      "bytes": 845
+    },
+    {
+      "file": "characterize-1789287257902765000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/characterize-1789287257902765000.record.json",
+      "sha256": "c759ce33ae0c616253d361b3a246eaefac364b0136213d1edd8bd92a4f0c7ef2",
+      "bytes": 13530
+    },
+    {
+      "file": "characterize-1789287257902765000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/characterize-1789287257902765000.log",
+      "sha256": "227239a2603f46b13c627bc479ccc398e28e9d2cf19eaccaa6584853a2b974a6",
+      "bytes": 170
+    },
+    {
+      "file": "compile-1789287392701336000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789287392701336000.receipt.json",
+      "sha256": "43d721ac1e75635bb6a186a8f004d5900f9927b2a5ef1e08ca5408afe102ecb0",
+      "bytes": 904
+    },
+    {
+      "file": "compile-1789287392701336000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789287392701336000.record.json",
+      "sha256": "915aecb3d19eb5a35fbe61905413b456c681d5b238a3024c265dcc887a399563",
+      "bytes": 6626
+    },
+    {
+      "file": "compile-1789287392701336000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789287392701336000.log",
+      "sha256": "60fc479635f3afd844ca26e5b339eaa2ffe1c1b61d0a0c383e1b738662824429",
+      "bytes": 186
+    },
+    {
+      "file": "compile-1789290006651971000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789290006651971000.receipt.json",
+      "sha256": "63e28a8e805a355c570836d71292bc8693f1bad5bafe6d34d14bd419092d2415",
+      "bytes": 720
+    },
+    {
+      "file": "compile-1789290006651971000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789290006651971000.record.json",
+      "sha256": "33e4a7377056eadb6d8787ce0c0dbb030582d5f9ac6357223f894fe76f36819d",
+      "bytes": 6733
+    },
+    {
+      "file": "compile-1789290006651971000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789290006651971000.log",
+      "sha256": "27893d349f5090aa119558053775d472265c6a39e427ae41d30b9d9648655019",
+      "bytes": 160
+    },
+    {
+      "file": "custom-synth-1789291217563672000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789291217563672000.receipt.json",
+      "sha256": "2d11dd3c2a65c4257fa7e7373b85e1cc21eff185069be8b9e0c47098caa3535b",
+      "bytes": 794
+    },
+    {
+      "file": "custom-synth-1789291217563672000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789291217563672000.record.json",
+      "sha256": "e6d1991246744f33e3dfc6374489ddeabe78e29bd0ff0494482843fc1b680a6d",
+      "bytes": 9449
+    },
+    {
+      "file": "custom-synth-1789291217563672000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789291217563672000.log",
+      "sha256": "1e239efd4be3b207884493fcba1ab26b4fc15eb660d592fdc545ae4fa4654a87",
+      "bytes": 58
+    },
+    {
+      "file": "custom-synth-1789293913812044000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789293913812044000.receipt.json",
+      "sha256": "cee4d5e9af4a649fd900b7f6bf63dee1ac25a42fb636aefc0bb1774f045fc8f8",
+      "bytes": 1960
+    },
+    {
+      "file": "custom-synth-1789293913812044000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789293913812044000.record.json",
+      "sha256": "c0a9ffa6a51653a2f7f5b52fcddc59e8b6fac20a0dcf165694467f8673ad3de2",
+      "bytes": 12395
+    },
+    {
+      "file": "custom-synth-1789293913812044000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789293913812044000.log",
+      "sha256": "b10a01af08ae0fd626ffba9e2756c3cb30ebc2f44bc7338c7e723d53cffd4cd9",
+      "bytes": 168
+    },
+    {
+      "file": "foundry-synth-1789290233431128000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789290233431128000.receipt.json",
+      "sha256": "a027836e64e30f671cc8ae5ba785007bec652a511f21174357debbc5afd30f82",
+      "bytes": 1660
+    },
+    {
+      "file": "foundry-synth-1789290233431128000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789290233431128000.record.json",
+      "sha256": "407cb070222f5ca6c9714c7ed8fa45f980b3f6a5f9e6527645040987502bf17a",
+      "bytes": 11231
+    },
+    {
+      "file": "foundry-synth-1789290233431128000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789290233431128000.log",
+      "sha256": "fc04ce999a1a6602daa78e271acfdd774e8adcc8437960aa5eaece19da8c5b87",
+      "bytes": 172
+    },
+    {
+      "file": "foundry-synth-1789292825259106000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789292825259106000.receipt.json",
+      "sha256": "9f8f5df30ad0f7430226e936eb80d220942025498679594eaf3057070b6bc258",
+      "bytes": 830
+    },
+    {
+      "file": "foundry-synth-1789292825259106000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789292825259106000.record.json",
+      "sha256": "49346c35e9f568562ceb7c9fe891f74f352b1b02a2514af68847d9bcfa76da9e",
+      "bytes": 9418
+    },
+    {
+      "file": "foundry-synth-1789292825259106000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789292825259106000.log",
+      "sha256": "872a61ad485115933ab968f6a92c5f88df9df6d19a0786f98c2a95e5d51d24e7",
+      "bytes": 86
+    },
+    {
+      "file": "foundry-synth-1789293811350240000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789293811350240000.receipt.json",
+      "sha256": "7154fd7ca4aa74eda733d4b0a367da70873ab9e0550d5ac1fea561f15901e5a4",
+      "bytes": 1888
+    },
+    {
+      "file": "foundry-synth-1789293811350240000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789293811350240000.record.json",
+      "sha256": "b199b463c1208403e8e31479f495b3e0770c34b2c0459a68bb53af2c54eaf393",
+      "bytes": 12023
+    },
+    {
+      "file": "foundry-synth-1789293811350240000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789293811350240000.log",
+      "sha256": "51b272fb96eab2464b6d77c1ea57d7e879ca7a0b8747bea60072588383303821",
+      "bytes": 170
+    },
+    {
+      "file": "generate-1789287004203611000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/generate-1789287004203611000.receipt.json",
+      "sha256": "b107c271c644e0b5c97b9d96ec3e9cfa43a5137b60c19a07d2d71a3a26bdc895",
+      "bytes": 789
+    },
+    {
+      "file": "generate-1789287004203611000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/generate-1789287004203611000.record.json",
+      "sha256": "476dade206bad71c3791b15d548642a6121a5785f69c22398145e33a72299adc",
+      "bytes": 8745
+    },
+    {
+      "file": "generate-1789287004203611000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/generate-1789287004203611000.log",
+      "sha256": "f0d76071e820c73ef3eaaab3d661a4e4ae056c0e85a8792584e1d07b6e04dc8c",
+      "bytes": 162
+    },
+    {
+      "file": "layout-1789287109636664000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/layout-1789287109636664000.receipt.json",
+      "sha256": "2eefeaab406cb91d822d2447fc77219c23da94320f753513a20d1e0fa1e5b5f6",
+      "bytes": 724
+    },
+    {
+      "file": "layout-1789287109636664000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/layout-1789287109636664000.record.json",
+      "sha256": "6bc55bdd507a67bd9859daa483b76a2ea824f3af8bf7981105527436e50f8a95",
+      "bytes": 10009
+    },
+    {
+      "file": "layout-1789287109636664000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/layout-1789287109636664000.log",
+      "sha256": "5ee60cf0f1a7b0252f9d4548da8877a7624b30c3fdafe1f30f40a10380768983",
+      "bytes": 158
+    },
+    {
+      "file": "merge-1789286964937925000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/merge-1789286964937925000.receipt.json",
+      "sha256": "0d4566d8c87f00a51183a0859c99fa0fa82d57f626f74efbc56d2a3173484d4c",
+      "bytes": 791
+    },
+    {
+      "file": "merge-1789286964937925000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/merge-1789286964937925000.record.json",
+      "sha256": "5c4e464671505d1e430de4bb5a002ab2c82be93c370ba8793cdb9768f6d01d43",
+      "bytes": 9136
+    },
+    {
+      "file": "merge-1789286964937925000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/merge-1789286964937925000.log",
+      "sha256": "2896d8ac657e320cc71f5dc403c49f9f847bfbb936314e0d9c9187b133b071d7",
+      "bytes": 156
+    },
+    {
+      "file": "pnr-foundry-1789294145060443000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294145060443000.receipt.json",
+      "sha256": "f55059aced2315f254f6645512b10e13ee111e68dfa613cb97f0ff3cf5117da6",
+      "bytes": 789
+    },
+    {
+      "file": "pnr-foundry-1789294145060443000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294145060443000.record.json",
+      "sha256": "0bfee871279265ba6181a967df8728c7bee5924b3654eb776cf822e3d707f0fd",
+      "bytes": 11778
+    },
+    {
+      "file": "pnr-foundry-1789294145060443000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294145060443000.log",
+      "sha256": "841abcc41f551aad732a773350f04589ff30048bcd7d653e7b19951ed20003af",
+      "bytes": 62
+    },
+    {
+      "file": "tool-logs/characterize-1789287257902765000/charmodel.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/characterize/run-bfe84c7387cd441caea9fd6f00b1ecdd/charmodel.log",
+      "sha256": "a6be5b64359b83cc59d490ac89480335df0d49cdbf52b83d9b468fb914b319e7",
+      "bytes": 371
+    },
+    {
+      "file": "tool-logs/characterize-1789287257902765000/XS_TIMING_CONTEXT_A2_SINGLE_0001_Y.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/characterize/run-bfe84c7387cd441caea9fd6f00b1ecdd/predictions/XS_TIMING_CONTEXT_A2_SINGLE_0001_Y.log",
+      "sha256": "afc1589a269539d8453eae99ac4fae98b5e4eeb3eacd00820763fb434fd7a31f",
+      "bytes": 212
+    },
+    {
+      "file": "tool-logs/characterize-1789287257902765000/XS_TIMING_CONTEXT_A2_SINGLE_0002_Y.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/characterize/run-bfe84c7387cd441caea9fd6f00b1ecdd/predictions/XS_TIMING_CONTEXT_A2_SINGLE_0002_Y.log",
+      "sha256": "35c13f7c38796ccad6126f401239a6dbc70e2afb8bb91b4aace3520c76509de0",
+      "bytes": 212
+    },
+    {
+      "file": "tool-logs/compile-1789287392701336000/lc.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/compile/run-f02bd7e65723427fb6a3ba22bae78c01/lc.log",
+      "sha256": "bbddbd54bd6d11b8d323f2001a00d33cf4335e723c17456d93bad93246e00e5b",
+      "bytes": 9614
+    },
+    {
+      "file": "tool-logs/compile-1789290006651971000/lc.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/compile/run-e7bf88e1a9d7437d84acc7d305d5fbbb/lc.log",
+      "sha256": "b0663883af5f76aba00ff9e47bfa6561267db163b8099eead3c77ea065a8e79c",
+      "bytes": 6001
+    },
+    {
+      "file": "tool-logs/custom-synth-1789291217563672000/custom-dc.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/custom-synth/run-9503ce09691d4841be98f915168975ed/custom-dc.log",
+      "sha256": "164fb3d4e33a7def62e611da987b4dafadfe603bfe1b2442d3b79ccfeb524138",
+      "bytes": 50462
+    },
+    {
+      "file": "tool-logs/custom-synth-1789293913812044000/custom-dc.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-header-1789293800910344000/flow/artifacts/custom-synth/run-e2cef5a7f2654ca89fb2218289f555c8/custom-dc.log",
+      "sha256": "8e19a219c221767cdd4af4831138a9bfc59b1484e4c5fa69ddd8bd7c0953e422",
+      "bytes": 50430
+    },
+    {
+      "file": "tool-logs/foundry-synth-1789290233431128000/base-dc.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/foundry-synth/run-998a1ab23dcc46e0a814526a81815e58/base-dc.log",
+      "sha256": "7978246463996a099c570bade241f99d2629db99a7ff758723fba1239b73c41c",
+      "bytes": 49347
+    },
+    {
+      "file": "tool-logs/foundry-synth-1789292825259106000/base-dc.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-conditions-1789292824885438000/flow/artifacts/foundry-synth/run-99ebe0c421894968b14e4d49d078bb73/base-dc.log",
+      "sha256": "7ab82405995f4bdff630efebfd13bc2ca1d72e6312a2baea2869686f3280edb2",
+      "bytes": 49364
+    },
+    {
+      "file": "tool-logs/foundry-synth-1789293811350240000/base-dc.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-header-1789293800910344000/flow/artifacts/foundry-synth/run-5043c0aa836d45989ab7d7c638e00060/base-dc.log",
+      "sha256": "6a70df99377c3e7705c36be724fcd2dc5fd7a36935815d347a50683a169114ac",
+      "bytes": 49329
+    },
+    {
+      "file": "tool-logs/generate-1789287004203611000/bool2cmos-00.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/generate/run-82328939021647999331eea00a803c1d/bool2cmos-00.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "tool-logs/generate-1789287004203611000/bool2cmos-01.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/generate/run-82328939021647999331eea00a803c1d/bool2cmos-01.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "file": "tool-logs/layout-1789287109636664000/layout-00.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/layout/run-38754591f65647d38b74eeb10ee1e825/layout-00.log",
+      "sha256": "c6f8bafab35d04fff857a01b6b784929fb3e8fe1f78e80f3785985478c26ebda",
+      "bytes": 101
+    },
+    {
+      "file": "tool-logs/layout-1789287109636664000/layout-01.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/layout/run-38754591f65647d38b74eeb10ee1e825/layout-01.log",
+      "sha256": "2c9600da3f5a2fa6fa2875dc843d5a1caeaaf99b1dcf0f152201feecc730b1d9",
+      "bytes": 101
+    },
+    {
+      "file": "tool-logs/pnr-foundry-1789294145060443000/init-foundry.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-sdc-1789294144262648000/flow/artifacts/pnr-foundry/run-3ce81e70e80b4acabd9c18e515580da7/init-foundry.log",
+      "sha256": "ac0992ed8a6a8e72d32896d7d30dccb33d133b0467a386b14124c86ebdd4aa29",
+      "bytes": 24593
+    },
+    {
+      "file": "tool-logs/pnr-foundry-1789294145060443000/pnr-foundry.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-sdc-1789294144262648000/flow/artifacts/pnr-foundry/run-3ce81e70e80b4acabd9c18e515580da7/pnr-foundry.log",
+      "sha256": "6a1ab58e124d2ad1f35d9e6154a9e410741e0cbd0e2c4940078abc6a08785d3f",
+      "bytes": 107718
+    }
+  ],
+  "stageInvocations": [
+    {
+      "stage": "adoption",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-header-1789293800910344000/flow/stages.py",
+        "adoption",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-header-1789293800910344000"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.477,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/adoption-1789294004313673000.log",
+      "logSha256": "667730d88be4272c180a3ecda3518e9832a4484d476e98906f42ee5d2a6a1419",
+      "stagingSha256": "45b36b3c39e83a4dec7ea304d1c0292b7d76b96d7cb3a27072f73e2ef0187ac6",
+      "status": "passed",
+      "facts": {
+        "adopted_instance_count": 0,
+        "distinct_master_count": 0,
+        "generated_library_cell_count": 2,
+        "generated_masters_not_instantiated": [
+          "XS_TIMING_CONTEXT_A2_SINGLE_0001_Y",
+          "XS_TIMING_CONTEXT_A2_SINGLE_0002_Y"
+        ],
+        "library_visible": 2,
+        "master_rows": [],
+        "netlist_distinct_reference_count": 151,
+        "netlist_instance_total": 10017
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/adoption-1789294004313673000.record.json"
+    },
+    {
+      "stage": "characterize",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/stages.py",
+        "characterize",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 2.177,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/characterize-1789287257902765000.log",
+      "logSha256": "227239a2603f46b13c627bc479ccc398e28e9d2cf19eaccaa6584853a2b974a6",
+      "stagingSha256": "265012a8c5b5b547906ca8d3dda8ab46061337f6a38108e6041c3f89cc2893c7",
+      "status": "passed",
+      "facts": {
+        "characterization_type": "learned-model-prediction",
+        "measured_characterization": false,
+        "predicted_cell_count": 2
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/characterize-1789287257902765000.record.json"
+    },
+    {
+      "stage": "compile",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/stages.py",
+        "compile",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000"
+      ],
+      "exitCode": 3,
+      "elapsedSeconds": 5.62,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789287392701336000.log",
+      "logSha256": "60fc479635f3afd844ca26e5b339eaa2ffe1c1b61d0a0c383e1b738662824429",
+      "stagingSha256": "265012a8c5b5b547906ca8d3dda8ab46061337f6a38108e6041c3f89cc2893c7",
+      "status": "tool-failure",
+      "facts": {
+        "tool_failure_reason": "tool exited 139; inspect /data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/compile/run-f02bd7e65723427fb6a3ba22bae78c01/lc.log"
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789287392701336000.record.json"
+    },
+    {
+      "stage": "compile",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/stages.py",
+        "compile",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 11.932,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789290006651971000.log",
+      "logSha256": "27893d349f5090aa119558053775d472265c6a39e427ae41d30b9d9648655019",
+      "stagingSha256": "265012a8c5b5b547906ca8d3dda8ab46061337f6a38108e6041c3f89cc2893c7",
+      "status": "passed",
+      "facts": {
+        "lc_accepted": 1
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/compile-1789290006651971000.record.json"
+    },
+    {
+      "stage": "custom-synth",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/stages.py",
+        "custom-synth",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000"
+      ],
+      "exitCode": 2,
+      "elapsedSeconds": 83.247,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789291217563672000.log",
+      "logSha256": "1e239efd4be3b207884493fcba1ab26b4fc15eb660d592fdc545ae4fa4654a87",
+      "stagingSha256": "265012a8c5b5b547906ca8d3dda8ab46061337f6a38108e6041c3f89cc2893c7",
+      "status": "rejected",
+      "facts": {
+        "rejected_reason": "generated library is absent from the DC session"
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789291217563672000.record.json"
+    },
+    {
+      "stage": "custom-synth",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-header-1789293800910344000/flow/stages.py",
+        "custom-synth",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-header-1789293800910344000"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 81.911,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789293913812044000.log",
+      "logSha256": "b10a01af08ae0fd626ffba9e2756c3cb30ebc2f44bc7338c7e723d53cffd4cd9",
+      "stagingSha256": "45b36b3c39e83a4dec7ea304d1c0292b7d76b96d7cb3a27072f73e2ef0187ac6",
+      "status": "passed",
+      "facts": {
+        "arm": "generated",
+        "clock_ns": 0.5,
+        "commonConditionIdentitySha256": "31d288acb061a032a2c633d5cba1acf87de6316d5355674270fb1f25a66f665c",
+        "constraintsSha256": "4664044d3a0db77432cffadb4ad8706eedba079c3a1ce0ab91ac0981278896cc",
+        "librarySetSha256": [
+          "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0",
+          "140519c2193562a65682f7d71cd4ac3ded7ae7589752bdf44cc57fc8001f2fca"
+        ],
+        "library_visible": 2,
+        "rtlSha256": [
+          "ab39a4a094dc8cfde90fcaa4c1aaf7dc9bf75b57ed762e11a985b88f6b23996c",
+          "2f629dab66518aac9e76cb7dbbcf9365785e02531aadcca0cff8f4eb62c963a6",
+          "ce684a8941f3bd0a1b1345bcb4eb1cff01399a28935f89ce5b8e0be31652bbb2",
+          "bf06921c6fe80a69674f8b38160e8d677e1c4cc1a96befee2ac136bed3fe48c6",
+          "1e8a0d1f8c3da8d382adb94e98bacfab455683ca3bca282b982179c0f7607e8e",
+          "7f4fe4173d58017eb2520fb130b3b779d63a373463cb0198bd66c4371184d7fb",
+          "0833b736793bc11f640ed66357614c0f5cf30a548a7e515333b1e46438b2cb6b"
+        ],
+        "templateSha256": "a4686fbbb2532104bcd2b3be4ca0a37b6af8d19ea750b55088d2809ee3a1d765",
+        "toolVersion": {
+          "build": "Oct 16, 2025",
+          "platform": "linux64",
+          "version": "X-2025.06-SP3"
+        },
+        "wrapper": "/usr/local/bin/eda-shell"
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/custom-synth-1789293913812044000.record.json"
+    },
+    {
+      "stage": "foundry-synth",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/stages.py",
+        "foundry-synth",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 81.383,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789290233431128000.log",
+      "logSha256": "fc04ce999a1a6602daa78e271acfdd774e8adcc8437960aa5eaece19da8c5b87",
+      "stagingSha256": "265012a8c5b5b547906ca8d3dda8ab46061337f6a38108e6041c3f89cc2893c7",
+      "status": "passed",
+      "facts": {
+        "arm": "foundry",
+        "clock_ns": 0.5,
+        "constraintsSha256": "4664044d3a0db77432cffadb4ad8706eedba079c3a1ce0ab91ac0981278896cc",
+        "librarySetSha256": [
+          "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0"
+        ],
+        "library_visible": 0,
+        "rtlSha256": [
+          "ab39a4a094dc8cfde90fcaa4c1aaf7dc9bf75b57ed762e11a985b88f6b23996c",
+          "2f629dab66518aac9e76cb7dbbcf9365785e02531aadcca0cff8f4eb62c963a6",
+          "ce684a8941f3bd0a1b1345bcb4eb1cff01399a28935f89ce5b8e0be31652bbb2",
+          "bf06921c6fe80a69674f8b38160e8d677e1c4cc1a96befee2ac136bed3fe48c6",
+          "1e8a0d1f8c3da8d382adb94e98bacfab455683ca3bca282b982179c0f7607e8e",
+          "7f4fe4173d58017eb2520fb130b3b779d63a373463cb0198bd66c4371184d7fb",
+          "0833b736793bc11f640ed66357614c0f5cf30a548a7e515333b1e46438b2cb6b"
+        ],
+        "templateSha256": "31440ad3212039a0e58649c553e29bd36530dbfa1ebfc5439ed5536b34b65963",
+        "wrapper": "/usr/local/bin/eda"
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789290233431128000.record.json"
+    },
+    {
+      "stage": "foundry-synth",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-conditions-1789292824885438000/flow/stages.py",
+        "foundry-synth",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-conditions-1789292824885438000"
+      ],
+      "exitCode": 2,
+      "elapsedSeconds": 82.011,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789292825259106000.log",
+      "logSha256": "872a61ad485115933ab968f6a92c5f88df9df6d19a0786f98c2a95e5d51d24e7",
+      "stagingSha256": "392cd544e33b7eb86b8dea0160854789782dcc1b5ebe39092a355b7639f1d30f",
+      "status": "rejected",
+      "facts": {
+        "rejected_reason": "DC log has no unambiguous supported Version <version> for <platform> header"
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789292825259106000.record.json"
+    },
+    {
+      "stage": "foundry-synth",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-header-1789293800910344000/flow/stages.py",
+        "foundry-synth",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-header-1789293800910344000"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 84.613,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789293811350240000.log",
+      "logSha256": "51b272fb96eab2464b6d77c1ea57d7e879ca7a0b8747bea60072588383303821",
+      "stagingSha256": "45b36b3c39e83a4dec7ea304d1c0292b7d76b96d7cb3a27072f73e2ef0187ac6",
+      "status": "passed",
+      "facts": {
+        "arm": "foundry",
+        "clock_ns": 0.5,
+        "commonConditionIdentitySha256": "31d288acb061a032a2c633d5cba1acf87de6316d5355674270fb1f25a66f665c",
+        "constraintsSha256": "4664044d3a0db77432cffadb4ad8706eedba079c3a1ce0ab91ac0981278896cc",
+        "librarySetSha256": [
+          "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0"
+        ],
+        "library_visible": 0,
+        "rtlSha256": [
+          "ab39a4a094dc8cfde90fcaa4c1aaf7dc9bf75b57ed762e11a985b88f6b23996c",
+          "2f629dab66518aac9e76cb7dbbcf9365785e02531aadcca0cff8f4eb62c963a6",
+          "ce684a8941f3bd0a1b1345bcb4eb1cff01399a28935f89ce5b8e0be31652bbb2",
+          "bf06921c6fe80a69674f8b38160e8d677e1c4cc1a96befee2ac136bed3fe48c6",
+          "1e8a0d1f8c3da8d382adb94e98bacfab455683ca3bca282b982179c0f7607e8e",
+          "7f4fe4173d58017eb2520fb130b3b779d63a373463cb0198bd66c4371184d7fb",
+          "0833b736793bc11f640ed66357614c0f5cf30a548a7e515333b1e46438b2cb6b"
+        ],
+        "templateSha256": "a4686fbbb2532104bcd2b3be4ca0a37b6af8d19ea750b55088d2809ee3a1d765",
+        "toolVersion": {
+          "build": "Oct 16, 2025",
+          "platform": "linux64",
+          "version": "X-2025.06-SP3"
+        },
+        "wrapper": "/usr/local/bin/eda-shell"
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/foundry-synth-1789293811350240000.record.json"
+    },
+    {
+      "stage": "generate",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/stages.py",
+        "generate",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.516,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/generate-1789287004203611000.log",
+      "logSha256": "f0d76071e820c73ef3eaaab3d661a4e4ae056c0e85a8792584e1d07b6e04dc8c",
+      "stagingSha256": "265012a8c5b5b547906ca8d3dda8ab46061337f6a38108e6041c3f89cc2893c7",
+      "status": "passed",
+      "facts": {
+        "candidate_count": 2,
+        "generated_cell_count": 2,
+        "generation_job_count": 2
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/generate-1789287004203611000.record.json"
+    },
+    {
+      "stage": "layout",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/stages.py",
+        "layout",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 25.936,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/layout-1789287109636664000.log",
+      "logSha256": "5ee60cf0f1a7b0252f9d4548da8877a7624b30c3fdafe1f30f40a10380768983",
+      "stagingSha256": "265012a8c5b5b547906ca8d3dda8ab46061337f6a38108e6041c3f89cc2893c7",
+      "status": "passed",
+      "facts": {
+        "abstract_cell_count": 2
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/layout-1789287109636664000.record.json"
+    },
+    {
+      "stage": "merge",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/stages.py",
+        "merge",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.503,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/merge-1789286964937925000.log",
+      "logSha256": "2896d8ac657e320cc71f5dc403c49f9f847bfbb936314e0d9c9187b133b071d7",
+      "stagingSha256": "265012a8c5b5b547906ca8d3dda8ab46061337f6a38108e6041c3f89cc2893c7",
+      "status": "passed",
+      "facts": {
+        "candidate_count": 2,
+        "duplicate_count": 7,
+        "route_count": 6,
+        "unique_pool_count": 5
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/merge-1789286964937925000.record.json"
+    },
+    {
+      "stage": "pnr-foundry",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-sdc-1789294144262648000/flow/stages.py",
+        "pnr-foundry",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-sdc-1789294144262648000"
+      ],
+      "exitCode": 3,
+      "elapsedSeconds": 124.993,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294145060443000.log",
+      "logSha256": "841abcc41f551aad732a773350f04589ff30048bcd7d653e7b19951ed20003af",
+      "stagingSha256": "6f74f884bc2c72a0b15d26c76f7dc7a4b4377c0a08ce72b99f88e2fc39f31eae",
+      "status": "tool-failure",
+      "facts": {
+        "tool_failure_reason": "Innovus returned zero but emitted an error line"
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294145060443000.record.json"
+    }
+  ]
+}

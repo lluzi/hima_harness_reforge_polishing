@@ -619,7 +619,7 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
     const location = kind === 'code' ? (record as CodeView).path : (record as KnowledgeView).file;
     return <button type="button" key={record.recordId} onClick={() => open(record)} data-hima-control={`material-${record.recordId}`}
       title={`${location}${kind === 'knowledge' ? `\n${(record as KnowledgeView).purpose}` : ''}\nsource ${record.sessionId}\nsha256 ${record.sha256}`}
-      style={{ ...mono, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 104px', gap: 12, alignItems: 'center', width: '100%', textAlign: 'left', border: 0, borderRadius: 5, background: selected === record.recordId ? '#f0f2f5' : 'transparent', color: plain, cursor: 'pointer', padding: '7px 8px' }}>
+      style={{ ...mono, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 104px', gap: 12, alignItems: 'center', width: '100%', textAlign: 'left', border: 0, borderRadius: 5, background: selected === record.recordId ? 'var(--dsw-alias-fill-secondary, #f0f2f5)' : 'transparent', color: plain, cursor: 'pointer', padding: '7px 8px' }}>
       <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}><strong>{location.split(/[\\/]/).at(-1)}</strong> · {record.nodeId} · g{record.generation ?? '?'} / a{record.attempt}</span>
       <span style={{ ...muted, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{record.sha256}</span>
     </button>;

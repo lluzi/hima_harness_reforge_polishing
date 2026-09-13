@@ -121,3 +121,37 @@ its original log is retained separately. No costly desktop run replaces the loca
 Complete corrected paired tool bring-up and independent readers, create truthful native TEST and
 release v3, verify final source/release identity, then update #28. Full research conclusions and the
 second knowledge-use Campaign remain PLS-18 and its dependencies, not this bounded L4 bring-up.
+
+## Review delta: complete input constraints and real zero adoption
+
+The indented DC header correction passed 8/8 focused cases, the exact retained Site log parse,
+and another 1/1 full-graph Host run (75.217 seconds). Two earlier test selections omitted the
+required full repository-relative filename and failed preflight before starting a Host; those
+logs are retained. A further review found that equal clocks alone did not establish equal P&R
+input constraints. The producer and independent reader now compare complete synthesis-output SDC
+bytes after normalizing exactly the observed `# Created by write_sdc on ...` comment. The
+same-clock/different-input-delay counterexample fails matching; this delta passed 8/8 focused
+cases. Actual accepted Site SDCs have equal canonical SHA
+`2b34257c010c06292b920a97795fc169f626db19c4ad5db8cd313762a7d12d77`.
+No semantic constraint is removed by this canonicalization.
+
+Both actual synthesis arms now pass: foundry 84.613 seconds; custom 81.911 seconds. The custom
+DC session saw both generated masters, but the independent instance-to-master projection reports
+**zero adopted generated instances** among 10,017 instances and 151 reference types. This proves
+zero adoption for these two offered candidates under these settings, not a cause, an Fmax gain
+or a general verdict on the six search strategies. Target/link library injection is present in
+the recorded Tcl; nothing forces adoption merely to make a check green. Raw stage receipts and
+tool logs, including rejected earlier attempts, are held in `pls25-physical-site/`.
+
+P&R begins from these accepted artifacts in isolated workspace
+`/data/eda/project/hima_harness/polishing-runs/dtco-sdc-1789294144262648000`; the SDC comparison
+change does not rerun unchanged synthesis. The selected-material row also now uses the existing
+secondary-fill theme token, fixing the review's dark-theme contrast concern.
+
+The final SDC identity full-graph test passed 1/1 in 75.350 seconds (one Host, no model/EDA).
+The first real P&R attempt then stopped after placement at clock-tree optimization: Innovus
+reported IMPCCOPT-2440, requiring `clock_opt_design` for the PODv2 database produced by its
+`place_opt_design`. Exit code zero was correctly rejected because of tool error lines. The
+124.993-second failed attempt is retained (`pnr-foundry-1789294145060443000`); this is an
+unsupported-command compatibility failure, not an accepted routed result. The common template
+needs the current tool's supported clock optimization command before another attempt.

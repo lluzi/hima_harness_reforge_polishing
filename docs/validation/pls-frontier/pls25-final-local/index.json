@@ -53,5 +53,90 @@
     "file": "final-ui-build-2.log.gz",
     "uncompressedSha256": "4df0bd531406859a840d9e1efd3f9ed72b820aa138e37076206385a6a812e2a0",
     "uncompressedBytes": 93
+  },
+  {
+    "file": "final-dc-header-host.tap.gz",
+    "uncompressedSha256": "03049a0f1d4317000da7ec809b3ded1041c92d1e0132078b5b6eb245ee27974e",
+    "uncompressedBytes": 61
+  },
+  {
+    "file": "final-dc-header-host-configured.tap.gz",
+    "uncompressedSha256": "5997471b689960a8777697b820076a4b95fed568a7b21f9f45bad17fcff82be5",
+    "uncompressedBytes": 69
+  },
+  {
+    "file": "final-dc-header-host-exact-path.tap.gz",
+    "uncompressedSha256": "46a05a154653443ff8449a525fe381e37cbf419a167a1de4596ee114a4259b1b",
+    "uncompressedBytes": 664
+  },
+  {
+    "file": "full-method-finalizer-types.log.gz",
+    "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uncompressedBytes": 0
+  },
+  {
+    "file": "pls25-condition-identity/source-inventory.log.gz",
+    "uncompressedSha256": "f29293b88ea79d6c07413c63ac6ca4263cef2f581e79f7a6cf645c1a55366927",
+    "uncompressedBytes": 51
+  },
+  {
+    "file": "pls25-condition-identity/typecheck.log.gz",
+    "uncompressedSha256": "aed813d86618ff59848f144cd17f20b02668ce690cb9206f1635f08ce7a4e69d",
+    "uncompressedBytes": 30
+  },
+  {
+    "file": "pls25-condition-identity/reader-sync.log.gz",
+    "uncompressedSha256": "ac148848dd5934439bb7dabf6eae3bce3ec40974ded29a3d32a9d64386347ab6",
+    "uncompressedBytes": 29
+  },
+  {
+    "file": "pls25-condition-identity/focused-domain.tap.gz",
+    "uncompressedSha256": "c89949621698465a233ec0483425f1fa875f6441a27fc57a541571440f0930a3",
+    "uncompressedBytes": 1991
+  },
+  {
+    "file": "pls25-dc-version/typecheck.log.gz",
+    "uncompressedSha256": "8118ace12e3191a452582904502e139e5d45062b88fbd0cad40e3f90f6a4dc5e",
+    "uncompressedBytes": 30
+  },
+  {
+    "file": "pls25-dc-version/actual-header-parse.json.gz",
+    "uncompressedSha256": "6af651eec0bf5e5292b3824f37f4faadb7b423a2be331fbac255ded469360464",
+    "uncompressedBytes": 77
+  },
+  {
+    "file": "pls25-dc-version/reader-sync.log.gz",
+    "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uncompressedBytes": 0
+  },
+  {
+    "file": "pls25-dc-version/focused-domain.tap.gz",
+    "uncompressedSha256": "d8ae2d5d3d7e3459307d70778e9ec690048d5771ae9235e8b52ccc0da0a5035e",
+    "uncompressedBytes": 2203
+  },
+  {
+    "file": "pls25-sdc-identity/typecheck.log.gz",
+    "uncompressedSha256": "5a99df329a04e74903be839c14578dcd2986e16e8c8950a9351392e571257279",
+    "uncompressedBytes": 30
+  },
+  {
+    "file": "pls25-sdc-identity/reader-sync.log.gz",
+    "uncompressedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uncompressedBytes": 0
+  },
+  {
+    "file": "pls25-sdc-identity/focused-domain.tap.gz",
+    "uncompressedSha256": "48aa2bb78d8ad2caabe1a5a22529bdb4bb0923b29731c4d95c92b8a9626f67a8",
+    "uncompressedBytes": 2202
+  },
+  {
+    "file": "final-sdc-identity-host.tap.gz",
+    "uncompressedSha256": "27311f6cbdc679502fbab7b656bbb4710bda9f78469df86165278434a44a3bb5",
+    "uncompressedBytes": 667
+  },
+  {
+    "file": "final-theme-build.log.gz",
+    "uncompressedSha256": "cf2360932c71a3cd5e3dc8830d6f4b4e3fc33152dc9d8fbdf8ec211b2b8add1e",
+    "uncompressedBytes": 93
   }
 ]
