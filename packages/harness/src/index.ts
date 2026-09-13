@@ -51,8 +51,8 @@ export type { Site, SshTarget, Permit } from './sites.js';
 
 // A HimaPack is data, and reading it is part of the bundle's surface: an operator inspects a pack
 // against a Site before starting a Campaign, and the contract suite reads the same answer.
-export { loadPack, installedPacks, checkPack, flowDirName, workspaceFileName, packFiles, toolArgv, outputPath, boundInputs, strategyKnobsOf, resolveRule, resolveChooser, packReadersDir, packKnowledgeDir } from './packs.js';
-export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackWorkshop, ContractOutput, PackCheck, ChooserCheck, KnowledgeCheck, WorkshopCheck, PackDataAt } from './packs.js';
+export { loadPack, installedPacks, checkPack, flowDirName, workspaceFileName, packFiles, toolArgv, outputPath, boundInputs, strategyKnobsOf, resolveRule, resolveChooser, packReadersDir, packKnowledgeDir, growthProposal, validateGrowthGraph, withGrowthGraphs, runGraphsOf } from './packs.js';
+export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackWorkshop, ContractOutput, PackCheck, ChooserCheck, KnowledgeCheck, WorkshopCheck, PackDataAt, GrowthProposal, GrowthGraph, GrowthGraphValidation } from './packs.js';
 // The workshop (#62): the act node where the AI writes a script inside its declared directory and the
 // fabric runs it. On the surface because the contract suite asserts which three tools a workshop's
 // moment reaches and the live check opens one against the real model route.
@@ -171,7 +171,7 @@ export type { ExperienceJson, ExperienceReport, ExperienceEnding, ExperiencePack
 
 // The rows `RunView.generations` carries, stated by the module that folds them out of a Run's
 // records rather than by the namespace that answers with them.
-export type { GenerationView, GenerationVerdictView, GenerationState, GenerationJoinView, LoopView, BranchView, BranchState } from './generations.js';
+export type { GenerationView, GenerationVerdictView, GenerationState, GenerationJoinView, LoopView, BranchView, BranchState, GrowthBranchView } from './generations.js';
 
 // The words a drill-down Loop is said in, and what the card's loops region says of them all (#28).
 // On the surface because both mounts of the card read them from here and the contract suite asserts
@@ -217,6 +217,7 @@ export type {
   ExperienceRecord,
   SessionRecord,
   CodeRecord,
+  GrowthRecord,
   MomentOutcome,
   ExperienceFile,
   LoopOutcome,

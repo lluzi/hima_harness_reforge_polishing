@@ -921,6 +921,26 @@ export const knowledgeRecord = z.strictObject({
   bytes: z.number().int().nonnegative(),
 });
 
+/** Proposal, admission and lifecycle facts for one additive per-Run research branch (PLS-10).
+ * The proposal is JSON here because PackNode is owned by packs.ts, which already depends on Ledger
+ * record vocabulary. Fabric parses this field through `growthProposal` before accepting or using it. */
+export const growthRecord = z.strictObject({
+  ...base,
+  type: z.literal('growth'),
+  proposalId: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  proposalDigest: sha256Hex,
+  event: z.enum(['proposed', 'accepted', 'rejected', 'started', 'completed', 'failed', 'cancelled', 'abandoned', 'returned']),
+  proposal: z.json().optional(),
+  proposalRecordId: z.string().optional(),
+  parentNode: z.string().optional(),
+  entry: z.string().optional(),
+  returnNode: z.string().optional(),
+  nodeIds: z.array(z.string()).optional(),
+  optional: z.boolean().optional(),
+  reason: z.string().optional(),
+  evidence: z.array(z.string()).optional(),
+});
+
 export const ledgerRecord = z.discriminatedUnion('type', [
   observationRecord,
   refusalRecord,
@@ -937,6 +957,7 @@ export const ledgerRecord = z.discriminatedUnion('type', [
   sessionRecord,
   codeRecord,
   knowledgeRecord,
+  growthRecord,
 ]);
 export type ObservationRecord = z.infer<typeof observationRecord>;
 export type RefusalRecord = z.infer<typeof refusalRecord>;
@@ -953,6 +974,7 @@ export type ExperienceRecord = z.infer<typeof experienceRecord>;
 export type SessionRecord = z.infer<typeof sessionRecord>;
 export type CodeRecord = z.infer<typeof codeRecord>;
 export type KnowledgeRecord = z.infer<typeof knowledgeRecord>;
+export type GrowthRecord = z.infer<typeof growthRecord>;
 export type LedgerRecord = z.infer<typeof ledgerRecord>;
 
 /** What a caller states about a verdict; the ledger owns identity, sequence, time, and writer. */
@@ -1634,7 +1656,10 @@ export const ledgerSpec = defineDomain({
   // its purpose, source session and byte identity. This is a new discriminant; a v20 reader would
   // reject it or lose the fact, so v21 refuses a v20 store until the explicit offline importer has
   // copied it into an empty v21 home. There is no in-place or automatic upgrade.
-  version: 21,
+  // 22: a `growth` record preserves a proposal, its admission/refusal and its later branch
+  // lifecycle. This is a new discriminant; v21 cannot read it without losing the actual graph a Run
+  // may stand in, so the version gate refuses that store rather than presenting a missing node.
+  version: 22,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -1931,6 +1956,12 @@ export class Ledger {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'knowledge', ...data }));
   }
 
+  /** Append one immutable growth fact. Fabric owns validation and ordering; Ledger owns identity,
+   * sequence, time and writer exactly as for every other execution record. */
+  async appendGrowth(runId: string, data: Omit<GrowthRecord, keyof typeof base | 'type'>): Promise<GrowthRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'growth', ...data }));
+  }
+
   /** Who refused: the shell for a permit decision (the default), the executor for a reader refusing a report kind. */
   async appendRefusal(runId: string, data: Omit<RefusalRecord, keyof typeof base | 'type'>, writer: WriterRole = 'shell'): Promise<RefusalRecord> {
     return this.#append(runId, writer, (h) => ({ ...h, type: 'refusal', ...data }));
@@ -2138,7 +2169,7 @@ export interface LegacyLedgerImportReceipt {
  * home is written. The destination parent must already exist; no ancestor is created or repaired.
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
-  if (ledgerSpec.version !== 21) throw new Error('legacy import supports only the reviewed v19/v20-to-v21 transition');
+  if (ledgerSpec.version !== 22) throw new Error('legacy import supports only the reviewed v19/v20-to-v22 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);

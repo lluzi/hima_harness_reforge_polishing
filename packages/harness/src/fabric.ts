@@ -32,7 +32,7 @@
 // an outcome's edge leads to, and where a Run stops. What a turn itself does is `node-turns.ts`, what
 // a Run may spend `budget.ts`, what a Site will hold `job-cap.ts`, and picking a Run up again or
 // stopping one `recovery.ts`.
-import { goalDeclarationOf, boundInputs, checkPack, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { goalDeclarationOf, boundInputs, checkPack, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from './pack-folder.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { loadRunPack, preservePackMethod } from './release.js';
@@ -61,6 +61,7 @@ import type {
   WorkspaceRecord,
   NodeExecution,
   ExecutionReceipt,
+  GrowthRecord,
   RunControl,
 } from './ledger.js';
 import { chosenAs, chosenKind, type ChosenKind } from './record-views.js';
@@ -1066,15 +1067,121 @@ export interface ExecutionActionRequest {
   readonly decision?: 'goal-met' | 'converged' | 'next-strategy';
   readonly strategy?: Readonly<Record<string, StrategyValue>>; readonly rationale?: string;
   readonly cites?: readonly string[]; readonly origin?: 'agent' | 'human';
+  /** Structured PLS-10 proposal for grow, parsed again by Fabric before any acceptance. */
+  readonly proposal?: unknown;
+  /** Settle the currently active optional branch without claiming its required result. */
+  readonly growthDisposition?: 'failed' | 'cancelled' | 'abandoned';
+  readonly proposalId?: string;
+}
+export interface GrowthView {
+  readonly proposalId: string; readonly event: GrowthRecord['event']; readonly recordId: string;
+  readonly entry?: string; readonly parentNode?: string; readonly returnNode?: string;
+  readonly optional?: boolean; readonly reason?: string; readonly evidence?: readonly string[];
 }
 export interface ExecutionContext {
   readonly run: RunRecord; readonly nodes: readonly PackNode[];
   readonly method?: { readonly id: string; readonly version: string; readonly digest: string; readonly dir: string; readonly contract: Pack['contract']; readonly reference: Pack['graph'] };
-  readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly reason?: string;
+  readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly growths: readonly GrowthView[]; readonly reason?: string;
 }
 export interface ExecutionActionResult {
   readonly kind: 'accepted' | 'duplicate' | 'refused' | 'unsupported'; readonly context: ExecutionContext;
   readonly receipt?: ExecutionReceipt; readonly reason?: string; readonly data?: unknown;
+}
+
+function proposalJson(proposal: GrowthProposal): Exclude<GrowthRecord['proposal'], undefined> {
+  return proposal as Exclude<GrowthRecord['proposal'], undefined>;
+}
+
+async function rejectGrowth(deps: FabricDeps, run: RunRecord, proposal: GrowthProposal, proposalDigest: string, reason: string, existing?: GrowthRecord): Promise<void> {
+  const proposed = existing ?? await deps.ledger.appendGrowth(run.id, { proposalId: proposal.proposalId, proposalDigest, event: 'proposed', proposal: proposalJson(proposal) });
+  await deps.ledger.appendGrowth(run.id, { proposalId: proposal.proposalId, proposalDigest, event: 'rejected', proposalRecordId: proposed.id, reason });
+}
+
+/** Admit or explicitly settle one bounded additive branch. It only records and moves Run state; no
+ * node and no Job is started here. */
+async function growthAction(deps: FabricDeps, snapshot: RunRecord, req: ExecutionActionRequest, requestDigest: string): Promise<ExecutionActionResult> {
+  const answer = (kind: ExecutionActionResult['kind'], extra: { receipt?: ExecutionReceipt; reason?: string; data?: unknown } = {}): ExecutionActionResult =>
+    ({ kind, context: executionContext(deps, snapshot.id), ...extra });
+  const no = (reason: string): ExecutionActionResult => answer('refused', { reason });
+  const run = existingRun(deps.ledger, snapshot.id);
+  const control = run.control!;
+
+  if (req.growthDisposition !== undefined) {
+    if (req.proposal !== undefined) return no('settling an optional growth branch does not submit another proposal');
+    if (req.proposalId === undefined) return no('growth disposition needs the accepted proposal identity');
+    const pack = executionPack(deps, run);
+    const active = activeGrowth(deps, pack, run);
+    if (active === undefined || active.proposalId !== req.proposalId) return no('that proposal is not the active growth branch');
+    if (!active.optional) return no('a required growth branch cannot be abandoned, cancelled or returned without its required evidence');
+    const nodeIds = new Set(active.graph.nodes.map((node) => node.id));
+    const inFlight = Object.values(control.executions).some((execution) => nodeIds.has(execution.nodeId) && (execution.phase === 'working' || execution.phase === 'uncertain'));
+    if (inFlight || deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === run.id && job.nodeId !== undefined && nodeIds.has(job.nodeId))) return no('the optional branch still has an in-flight or uncertain Job');
+    if (req.growthDisposition === 'failed' && !Object.values(control.executions).some((execution) => nodeIds.has(execution.nodeId) && execution.phase === 'failed')) return no('the branch has no recorded failed execution');
+    const proposalDigest = growthRecords(deps, run.id).findLast((record) => record.proposalId === active.proposalId && record.event === 'accepted')!.proposalDigest;
+    const settled = await deps.ledger.appendGrowth(run.id, { proposalId: active.proposalId, proposalDigest, event: req.growthDisposition, reason: req.rationale?.trim() || `optional branch ${req.growthDisposition}` });
+    const returned = await deps.ledger.appendGrowth(run.id, { proposalId: active.proposalId, proposalDigest, event: 'returned', evidence: [settled.id] });
+    const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, data: { proposalId: active.proposalId, event: req.growthDisposition, returnNode: active.returnNode, recordId: returned.id } };
+    await deps.ledger.advanceRun(run.id, { currentNode: active.returnNode, control: {
+      ...control, revision: control.revision + 1,
+      requests: { ...control.requests, [req.requestId]: { digest: requestDigest, actor: req.actor, epoch: control.epoch, revision: control.revision, origin: req.origin ?? 'agent', at: new Date().toISOString(), state: 'done', receipt } },
+    } });
+    return answer('accepted', { receipt, data: receipt.data });
+  }
+
+  const parsed = growthProposal.safeParse(req.proposal);
+  if (!parsed.success) return no(`invalid growth proposal: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'proposal'} ${issue.message}`).join('; ')}`);
+  const proposal = parsed.data;
+  const proposalDigest = identityOf(proposal);
+  const earlier = growthRecords(deps, run.id).filter((record) => record.proposalId === proposal.proposalId);
+  if (earlier.length > 0) {
+    if (earlier.some((record) => record.proposalDigest !== proposalDigest)) return no('this growth proposal identity was already used with different contents');
+    const settled = earlier.findLast((record) => record.event === 'accepted' || record.event === 'rejected');
+    if (settled !== undefined) {
+      const data = { proposalId: proposal.proposalId, event: settled.event, recordId: settled.id };
+      const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, data };
+      await recordExecutionAction(deps, run, req, requestDigest, {}, receipt);
+      return answer('duplicate', { receipt, reason: settled.reason, data });
+    }
+  }
+  const reject = async (reason: string): Promise<ExecutionActionResult> => {
+    await rejectGrowth(deps, run, proposal, proposalDigest, reason, earlier.find((record) => record.event === 'proposed'));
+    return no(reason);
+  };
+  const validation = validateGrowthGraph(executionPack(deps, run), proposal);
+  if (!validation.ok) return reject(validation.reason);
+  if (timeBoxSpent(run, 0)) return reject('the Campaign time box is exhausted; no growth budget remains');
+  if (run.status !== 'running') return reject('growth requires an active Run');
+  if (run.loop !== undefined || run.fork !== undefined) return reject('nested growth inside a Loop or fork is unsupported in the first slice');
+  if (run.currentNode !== proposal.parent.nodeId || run.generation !== proposal.parent.generation) return reject('the proposal parent and generation are not the Run current declared growth point');
+  if (activeGrowth(deps, executionPack(deps, run), run) !== undefined) return reject('one accepted growth branch is already active');
+  if (proposal.inputThroughSeq !== run.nextSeq - 1) return reject('growth inputs are stale; inputThroughSeq must name the current Ledger boundary');
+  if (new Set(proposal.inputs.map((input) => input.recordId)).size !== proposal.inputs.length) return reject('growth inputs must cite distinct Ledger records');
+  const records = deps.ledger.records({ runId: run.id });
+  for (const input of proposal.inputs) {
+    const record = records.find((item) => item.id === input.recordId && item.seq <= proposal.inputThroughSeq);
+    if (record === undefined) return reject(`growth input ${input.recordId} is not an existing record at the declared boundary`);
+    if (!['observation', 'verdict', 'code', 'knowledge', 'workspace'].includes(record.type)) return reject(`growth input ${input.recordId} is not a content-bearing observation, verdict, code, knowledge or workspace record`);
+    if (record.generation !== run.generation || record.loopId !== undefined) return reject(`growth input ${input.recordId} is not a current top-level generation fact`);
+    if (identityOf(record) !== input.contentIdentity) return reject(`growth input ${input.recordId} content identity does not match the actual Ledger record`);
+  }
+  const existingIds = new Set((executionPack(deps, run).growthGraphs ?? []).flatMap((growth) => growth.graph.nodes.map((node) => node.id)));
+  const duplicate = proposal.nodes.find((node) => existingIds.has(node.id));
+  if (duplicate !== undefined) return reject(`added node "${duplicate.id}" already belongs to an accepted growth branch`);
+  if (Object.values(control.executions).some((execution) => execution.nodeId === proposal.parent.nodeId && execution.generation === run.generation && execution.phase !== 'completed' && execution.phase !== 'failed')) return reject('the declared growth point already has an admitted execution');
+
+  const proposed = earlier.find((record) => record.event === 'proposed')
+    ?? await deps.ledger.appendGrowth(run.id, { proposalId: proposal.proposalId, proposalDigest, event: 'proposed', proposal: proposalJson(proposal) });
+  const accepted = await deps.ledger.appendGrowth(run.id, {
+    proposalId: proposal.proposalId, proposalDigest, event: 'accepted', proposal: proposalJson(proposal), proposalRecordId: proposed.id,
+    parentNode: validation.graph.parentNode, entry: validation.graph.graph.entry, returnNode: validation.graph.returnNode,
+    nodeIds: validation.graph.graph.nodes.map((node) => node.id), optional: validation.graph.optional,
+  });
+  const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, data: { proposalId: proposal.proposalId, entry: validation.graph.graph.entry, parentNode: validation.graph.parentNode, returnNode: validation.graph.returnNode, recordId: accepted.id } };
+  await deps.ledger.advanceRun(run.id, { currentNode: validation.graph.graph.entry, control: {
+    ...control, revision: control.revision + 1,
+    requests: { ...control.requests, [req.requestId]: { digest: requestDigest, actor: req.actor, epoch: control.epoch, revision: control.revision, origin: req.origin ?? 'agent', at: new Date().toISOString(), state: 'done', receipt } },
+  } });
+  return answer('accepted', { receipt, data: receipt.data });
 }
 
 // A live queue serializes admission, never holds a Job's lifetime or replaces durable state.
@@ -1097,23 +1204,79 @@ export function identityOf(value: unknown): string {
   };
   return createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 }
+const growthRecords = (deps: FabricDeps, runId: string): GrowthRecord[] =>
+  deps.ledger.records({ runId, type: 'growth' }).filter((record): record is GrowthRecord => record.type === 'growth');
+
+function acceptedGrowthGraphs(deps: FabricDeps, pack: Pack, runId: string): GrowthGraph[] {
+  const accepted = growthRecords(deps, runId).filter((record) => record.event === 'accepted' && record.proposal !== undefined);
+  const seen = new Set<string>();
+  const graphs: GrowthGraph[] = [];
+  for (const record of accepted) {
+    if (seen.has(record.proposalId)) continue;
+    const validation = validateGrowthGraph(pack, record.proposal);
+    if (!validation.ok) throw new RunStartError(`accepted growth ${record.proposalId} is no longer readable: ${validation.reason}`);
+    seen.add(record.proposalId);
+    graphs.push({ ...validation.graph, acceptedSeq: record.seq });
+  }
+  return graphs;
+}
+
+function activeGrowth(deps: FabricDeps, pack: Pack, run: RunRecord): GrowthGraph | undefined {
+  const records = growthRecords(deps, run.id);
+  return acceptedGrowthGraphs(deps, pack, run.id).findLast((graph) => {
+    const accepted = records.findLast((record) => record.proposalId === graph.proposalId && record.event === 'accepted');
+    const terminal = records.findLast((record) => record.proposalId === graph.proposalId && ['completed', 'failed', 'cancelled', 'abandoned', 'returned'].includes(record.event));
+    return accepted !== undefined && (terminal === undefined || terminal.seq < accepted.seq)
+      && (run.currentNode === graph.parentNode || graph.graph.nodes.some((node) => node.id === run.currentNode));
+  });
+}
+
+/** The durable growth records' answer when a crash split a lifecycle append from its Run-row move. */
+function growthPlacement(deps: FabricDeps, pack: Pack, run: RunRecord): { readonly growth: GrowthGraph; readonly target: string } | undefined {
+  const records = growthRecords(deps, run.id);
+  const graphs = acceptedGrowthGraphs(deps, pack, run.id);
+  for (let index = graphs.length - 1; index >= 0; index -= 1) {
+    const graph = graphs[index]!;
+    const accepted = records.findLast((record) => record.proposalId === graph.proposalId && record.event === 'accepted');
+    if (accepted === undefined) continue;
+    const terminal = records.findLast((record) => record.proposalId === graph.proposalId && ['completed', 'failed', 'cancelled', 'abandoned', 'returned'].includes(record.event) && record.seq > accepted.seq);
+    if (terminal !== undefined && graph.graph.nodes.some((node) => node.id === run.currentNode)) return { growth: graph, target: graph.returnNode };
+    if (terminal === undefined && run.currentNode === graph.parentNode) return { growth: graph, target: graph.graph.entry };
+  }
+  return undefined;
+}
+
+function growthViews(deps: FabricDeps, pack: Pack, runId: string): GrowthView[] {
+  const graphs = new Map(acceptedGrowthGraphs(deps, pack, runId).map((graph) => [graph.proposalId, graph]));
+  return growthRecords(deps, runId).map((record) => {
+    const graph = graphs.get(record.proposalId);
+    return {
+      proposalId: record.proposalId, event: record.event, recordId: record.id,
+      ...(graph === undefined ? {} : { entry: graph.graph.entry, parentNode: graph.parentNode, returnNode: graph.returnNode, optional: graph.optional }),
+      ...(record.reason === undefined ? {} : { reason: record.reason }),
+      ...(record.evidence === undefined ? {} : { evidence: record.evidence }),
+    };
+  });
+}
+
 function executionPack(deps: FabricDeps, run: RunRecord): Pack {
   if (run.packId === undefined || run.packDigest === undefined) throw new RunStartError('the original Pack method identity is unavailable');
-  return loadRunPack(deps.packsDir, run.packId, run.packDigest);
+  const reference = loadRunPack(deps.packsDir, run.packId, run.packDigest);
+  return withGrowthGraphs(reference, acceptedGrowthGraphs(deps, reference, run.id));
 }
 function inputIdentity(deps: FabricDeps, run: RunRecord, throughSeq = run.nextSeq - 1): string {
   return identityOf({
     method: run.packDigest, site: run.siteId, goal: run.goal, strategy: run.strategy,
     generation: run.generation, loop: run.loop,
     workspace: deps.ledger.records({ runId: run.id, type: 'workspace' }).findLast((record) => record.type === 'workspace' && record.seq <= throughSeq),
-    evidence: deps.ledger.records({ runId: run.id }).filter((record) => record.seq <= throughSeq && (record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id),
+    evidence: deps.ledger.records({ runId: run.id }).filter((record) => record.seq <= throughSeq && ((record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id || record.type === 'growth')),
   });
 }
 /** Pause follows dependency edges, including Loop entry/return, but never a future revisit. */
 function executionPauseReason(pack: Pack, run: RunRecord, nodeId: string): string | undefined {
   const paused = run.control?.paused ?? [];
   if (paused.includes('*')) return 'business admission is paused for this Run';
-  const graphs = [pack.graph, ...Object.values(pack.graph.loops)];
+  const graphs = runGraphsOf(pack).map(({ graph }) => graph);
   const dependent = new Set(paused);
   const edges = graphs.flatMap((graph) => graph.edges.filter((edge) => edge.revisit !== true).map((edge) => [edge.from, edge.to] as const));
   for (const opener of pack.graph.nodes.filter(opensALoop)) {
@@ -1125,6 +1288,7 @@ function executionPauseReason(pack: Pack, run: RunRecord, nodeId: string): strin
       for (const to of continuations) edges.push([decision.id, to]);
     }
   }
+  for (const growth of pack.growthGraphs ?? []) edges.push([growth.parentNode, growth.graph.entry]);
   let changed = true;
   while (changed) {
     changed = false;
@@ -1144,12 +1308,13 @@ function unclearedFailure(run: RunRecord, scope: string): NodeExecution | undefi
 export function executionContext(deps: FabricDeps, runId: string): ExecutionContext {
   const run = existingRun(deps.ledger, runId);
   const executions = Object.values(run.control?.executions ?? {});
-  if (run.control === undefined) return { run, nodes: [], available: [], executions, reason: 'historical automatic Run; explicit safe ownership migration is required' };
+  if (run.control === undefined) return { run, nodes: [], available: [], executions, growths: [], reason: 'historical automatic Run; explicit safe ownership migration is required' };
   try {
     const pack = executionPack(deps, run);
-    const nodes = [...pack.graph.nodes, ...Object.values(pack.graph.loops).flatMap((loop) => loop.nodes)];
+    const nodes = runGraphsOf(pack).flatMap(({ graph }) => graph.nodes);
+    const placement = growthPlacement(deps, pack, run);
     const candidates = run.fork === undefined
-      ? run.currentNode === undefined ? [] : [run.currentNode]
+      ? run.currentNode === undefined ? [] : [placement?.target ?? run.currentNode]
       : Object.values(run.fork.branches).every((branch) => branch.state === 'done')
         ? [run.fork.join]
         : Object.values(run.fork.branches).filter((branch) => branch.state !== 'done').map((branch) => branch.currentNode);
@@ -1159,9 +1324,9 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
         && execution.phase !== 'failed'));
-    return { run, nodes, available, executions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
+    return { run, nodes, available, executions, growths: growthViews(deps, pack, run.id), ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
-    return { run, nodes: [], available: [], executions, reason: (error as Error).message };
+    return { run, nodes: [], available: [], executions, growths: [], reason: (error as Error).message };
   }
 }
 
@@ -1170,8 +1335,8 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
   return controlling(deps, req.runId, async () => {
     const answer = (kind: ExecutionActionResult['kind'], extra: { receipt?: ExecutionReceipt; reason?: string; data?: unknown } = {}): ExecutionActionResult => ({ kind, context: executionContext(deps, req.runId), ...extra });
     const no = (reason: string): ExecutionActionResult => answer('refused', { reason });
-    const run = existingRun(deps.ledger, req.runId);
-    const control = run.control;
+    let run = existingRun(deps.ledger, req.runId);
+    let control = run.control;
     if (deps.stopSignal?.aborted) return no('the Host is stopping; no new business action was admitted');
     if (req.action === 'adopt') return adoptHistoricalRun(deps, req);
     if (control === undefined) return no('this historical Run has no conversational owner');
@@ -1182,7 +1347,8 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const before = Object.hasOwn(control.requests, req.requestId) ? control.requests[req.requestId] : undefined;
     if (before !== undefined) return before.digest === digest ? answer('duplicate', { receipt: before.receipt, data: before.receipt.data }) : no('this request identity was already used with different contents');
     if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
-    if (req.action === 'revise' || req.action === 'grow') return answer('unsupported', { reason: 'reference graph growth and algorithm revision are not implemented yet (PLS-10/11); no files, history or budget changed' });
+    if (req.action === 'revise') return answer('unsupported', { reason: 'algorithm revision is not implemented yet (PLS-11); no files, history or budget changed' });
+    if (req.action === 'grow') return growthAction(deps, run, req, digest);
     const reading = req.action === 'read' || req.action === 'knowledge' || req.action === 'recommend';
     if (req.action === 'cancel') {
       if (control.stop?.requestId !== undefined && control.requests[control.stop.requestId]?.state === 'admitted') return no('an earlier cancel request is still collecting its actual stop; inspect that receipt');
@@ -1246,13 +1412,26 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (req.nodeId === undefined || !context.available.includes(req.nodeId)) return no('this node is not currently available from the reference graph and execution facts');
     const node = context.nodes.find((item) => item.id === req.nodeId);
     if (node === undefined || run.packDigest === undefined) return no('the node or its method identity is unavailable');
+    const runtimePack = executionPack(deps, run);
+    const placement = growthPlacement(deps, runtimePack, run);
+    if (placement !== undefined && placement.target === node.id && run.currentNode !== node.id) {
+      await deps.ledger.advanceRun(run.id, { currentNode: node.id });
+      run = existingRun(deps.ledger, run.id);
+      control = run.control;
+    }
+    const growth = runtimePack.growthGraphs?.find((candidate) => candidate.graph.nodes.some((item) => item.id === node.id));
+    if (growth !== undefined && !growthRecords(deps, run.id).some((record) => record.proposalId === growth.proposalId && record.event === 'started')) {
+      const accepted = growthRecords(deps, run.id).findLast((record) => record.proposalId === growth.proposalId && record.event === 'accepted')!;
+      await deps.ledger.appendGrowth(run.id, { proposalId: growth.proposalId, proposalDigest: accepted.proposalDigest, event: 'started', proposalRecordId: accepted.id });
+    }
+    if (control === undefined) return no('this Run lost its conversational owner before node admission');
     if (context.executions.some((execution) => execution.nodeId === node.id && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation && execution.phase !== 'completed' && execution.phase !== 'failed')) return no('this node already has an admitted execution');
     const retry = retryStanding(deps.ledger, run.id, node.id);
     if (retry.spent > retry.allowance) return no('this node has spent its retry allowance; a human must clear its blocker');
     const execution: NodeExecution = {
       id: `execution-${randomUUID()}`, nodeId: node.id, kind: node.kind,
       generation: run.generation ?? 1, attempt: attemptOf(deps.ledger, run.id, node.id),
-      methodDigest: run.packDigest, inputDigest: inputIdentity(deps, run), phase: 'begun',
+      methodDigest: run.packDigest!, inputDigest: inputIdentity(deps, run), phase: 'begun',
       inputThroughSeq: run.nextSeq - 1,
       ...(run.fork === undefined ? {} : { branchId: Object.entries(run.fork.branches).find(([, branch]) => branch.state !== 'done' && branch.currentNode === node.id)?.[0] }),
       ...(run.loop === undefined ? {} : { loopId: run.loop.id, loopGeneration: run.loop.generation }),
@@ -1500,6 +1679,37 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   return completeAdmittedNode(ctx, req, execution, digest);
 }
 
+function growthReturnEvidence(ctx: Driving, growth: GrowthGraph): { readonly ok: true; readonly evidence: string[] } | { readonly ok: false; readonly reason: string } {
+  const run = existingRun(ctx.deps.ledger, ctx.runId);
+  const records = ctx.deps.ledger.records({ runId: run.id }).filter((record) =>
+    record.seq > (growth.acceptedSeq ?? 0) && record.generation === run.generation && record.loopId === undefined);
+  const evidence: string[] = [];
+  for (const name of growth.requiredOutputs) {
+    const observing = growth.graph.nodes.find((node) => node.kind === 'act' && node.parameters.observes === name);
+    const completed = observing === undefined ? undefined : records.findLast((record) => record.type === 'node' && record.nodeId === observing.id && record.state === 'done');
+    if (observing === undefined || completed === undefined) {
+      return { ok: false, reason: `required growth output "${name}" has no completed current observation node` };
+    }
+    const before = records.findLast((record) => record.type === 'node' && record.seq < completed.seq)?.seq ?? (growth.acceptedSeq ?? 0);
+    const output = ctx.pack.contract.outputs.find((candidate) => candidate.name === name)!;
+    const expected = pathsOf(ctx.site).join(ctx.workspace, outputPath(output, ctx.bindings));
+    const observation = records.findLast((record) => record.type === 'observation' && record.seq > before && record.seq < completed.seq && record.path === expected);
+    if (observation === undefined) return { ok: false, reason: `required growth output "${name}" has no current byte-identified observation` };
+    evidence.push(observation.id);
+  }
+  for (const judge of growth.graph.nodes.filter((node): node is Extract<PackNode, { kind: 'judge' }> => node.kind === 'judge')) {
+    const completed = records.findLast((record) => record.type === 'node' && record.nodeId === judge.id && record.state === 'done');
+    if (completed === undefined) continue;
+    const before = records.findLast((record) => record.type === 'node' && record.seq < completed.seq)?.seq ?? (growth.acceptedSeq ?? 0);
+    const verdicts = records.filter((record) => record.type === 'verdict' && record.seq > before && record.seq < completed.seq && judge.parameters.rules.includes(record.ruleId));
+    if (new Set(verdicts.map((record) => record.type === 'verdict' ? record.ruleId : '')).size < judge.parameters.rules.length) {
+      return { ok: false, reason: `completed growth judge "${judge.id}" has no current verdict for every declared rule` };
+    }
+    evidence.push(...verdicts.map((record) => record.id));
+  }
+  return { ok: true, evidence: [...new Set(evidence)] };
+}
+
 /** Validate one explicit completion and route facts; this function never begins successor work. */
 async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, execution: NodeExecution, digest: string): Promise<ExecutionActionResult> {
   const { deps, runId } = ctx;
@@ -1545,6 +1755,10 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
     decision = { nodeId: node.id, chooser: evidence.chooser.id, chooserOrigin: evidence.chooserOrigin,
       chosen, rationale, cites: [...cites], agent: { sessionId: req.actor, executionId: execution.id, rationale: req.rationale.trim() } };
   }
+  const growth = ctx.pack.growthGraphs?.find((candidate) => candidate.graph === graph);
+  const growthTo = growth === undefined ? undefined : edgeFrom(ctx, graph, node, execution.result.outcome);
+  const returnEvidence = growth !== undefined && growthTo === growth.returnNode ? growthReturnEvidence(ctx, growth) : undefined;
+  if (returnEvidence !== undefined && !returnEvidence.ok) return no(returnEvidence.reason);
   // Persist the request before a decision or route. An interrupted completion must be inspected,
   // never retried as an unrecorded decision or treated as permission to run a successor.
   await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: { ...execution, phase: 'uncertain', reason: 'completion admitted; recording its decision and route' } } }, receipt, {}, 'admitted');
@@ -1568,7 +1782,12 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
       const forked = await openForkAt(ctx, graph, node);
       if (forked === undefined) {
         const to = edgeFrom(ctx, graph, node, execution.result.outcome);
-        if (to !== undefined) await progress(ctx, {}, { currentNode: to });
+        if (growth !== undefined && to === growth.returnNode && returnEvidence?.ok) {
+          const accepted = growthRecords(deps, runId).findLast((record) => record.proposalId === growth.proposalId && record.event === 'accepted')!;
+          const completed = await deps.ledger.appendGrowth(runId, { proposalId: growth.proposalId, proposalDigest: accepted.proposalDigest, event: 'completed', proposalRecordId: accepted.id, evidence: returnEvidence.evidence });
+          await progress(ctx, {}, { currentNode: to });
+          await deps.ledger.appendGrowth(runId, { proposalId: growth.proposalId, proposalDigest: accepted.proposalDigest, event: 'returned', proposalRecordId: accepted.id, evidence: [completed.id, ...returnEvidence.evidence] });
+        } else if (to !== undefined) await progress(ctx, {}, { currentNode: to });
         else if (execution.result.outcome === 'UNDETERMINED') await progress(ctx, {}, { status: 'waiting' });
         else await endRun(ctx);
       } else if (forked.kind === 'blocked') await progress(ctx, {}, { status: 'waiting' });

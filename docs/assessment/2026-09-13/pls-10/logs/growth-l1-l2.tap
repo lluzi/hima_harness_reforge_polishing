@@ -1,0 +1,69 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/growth.test.ts test/contract/growth.host.test.ts
+local: 2 selected; 57 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: an owner accepts, executes and returns from one additive branch with actual evidence and idempotent proposals
+ok 1 - an owner accepts, executes and returns from one additive branch with actual evidence and idempotent proposals
+  ---
+  duration_ms: 6261.098333
+  type: 'test'
+  ...
+# Subtest: semantic refusals are durable and start no added Job
+ok 2 - semantic refusals are durable and start no added Job
+  ---
+  duration_ms: 3496.144375
+  type: 'test'
+  ...
+# Subtest: accepted growth reconstructs after Host restart without insertion or launch replay
+ok 3 - accepted growth reconstructs after Host restart without insertion or launch replay
+  ---
+  duration_ms: 2306.352208
+  type: 'test'
+  ...
+# Subtest: return is refused until current required observations and verdicts exist, while optional abandon returns to the same reference check
+ok 4 - return is refused until current required observations and verdicts exist, while optional abandon returns to the same reference check
+  ---
+  duration_ms: 3048.119334
+  type: 'test'
+  ...
+# Subtest: optional growth preserves abandoned, cancelled and actual failed outcomes and returns without skipping the parent
+ok 5 - optional growth preserves abandoned, cancelled and actual failed outcomes and returns without skipping the parent
+  ---
+  duration_ms: 2784.849375
+  type: 'test'
+  ...
+# Subtest: restart before acceptance retains only the reference point and starts nothing
+ok 6 - restart before acceptance retains only the reference point and starts nothing
+  ---
+  duration_ms: 1896.631333
+  type: 'test'
+  ...
+# Subtest: exhausted time budget refuses growth with evidence
+ok 7 - exhausted time budget refuses growth with evidence
+  ---
+  duration_ms: 818.985
+  type: 'test'
+  ...
+# Subtest: one declared top-level growth point accepts an additive acyclic branch and leaves the reference graph byte-identical
+ok 8 - one declared top-level growth point accepts an additive acyclic branch and leaves the reference graph byte-identical
+  ---
+  duration_ms: 79.933583
+  type: 'test'
+  ...
+# Subtest: growth rejects reference rewrites, duplicate ids, cycles, missing return/output and nested shapes before acceptance
+ok 9 - growth rejects reference rewrites, duplicate ids, cycles, missing return/output and nested shapes before acceptance
+  ---
+  duration_ms: 20.687584
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21734.83125
+Test boot attempts: {"host-process":0,"host-in-process":9,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 21.809 s; pass/fail/skip counts are in the TAP summary above

@@ -641,6 +641,10 @@ const exploreNode = z.strictObject({
     bind: z.record(declaredName, z.number()).default({}),
     /** When this Loop has stopped learning, and how many generations it may take at most. */
     converge: packConverge.optional(),
+    /** This top-level Explore node is a declared point where one Run may take an additive research
+     *  detour. The marker grants no graph mutation: a proposal is still checked against the
+     *  original method identity and recorded by Fabric before the Run moves. */
+    growth: z.literal(true).optional(),
   }),
 });
 
@@ -707,6 +711,43 @@ export const packGraph = z.strictObject({
 });
 export type PackGraph = z.infer<typeof packGraph>;
 
+/** A byte-identified Ledger fact the proposal actually used as input. Fabric recomputes the
+ * identity from the cited record; this value is never trusted as a declaration about content. */
+export const growthInput = z.strictObject({
+  recordId: z.string().min(1),
+  contentIdentity: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
+/** The bounded PLS-10 proposal accepted at the first declared top-level growth point. */
+export const growthProposal = z.strictObject({
+  proposalId: packId,
+  method: z.strictObject({ id: packId, version: z.string().min(1), digest: z.string().regex(/^[0-9a-f]{64}$/) }),
+  parent: z.strictObject({ nodeId: packId, generation: z.number().int().positive() }),
+  inputThroughSeq: z.number().int().nonnegative(),
+  inputs: z.array(growthInput).min(1),
+  impactNodes: z.array(packId).min(1),
+  expectedChanges: z.array(z.string().min(1)).min(1),
+  nodes: z.array(packNode).min(1),
+  edges: z.array(packEdge).min(1),
+  requiredOutputs: z.array(declaredName).min(1),
+  endCondition: z.string().min(1),
+  returnNode: packId,
+  optional: z.boolean(),
+});
+export type GrowthProposal = z.infer<typeof growthProposal>;
+
+/** One accepted additive graph. It is reconstructed from Ledger records and never written into the
+ * Pack. `graph` deliberately contains only added nodes; its terminal edges may target returnNode. */
+export interface GrowthGraph {
+  readonly proposalId: string;
+  readonly parentNode: string;
+  readonly returnNode: string;
+  readonly requiredOutputs: readonly string[];
+  readonly optional: boolean;
+  readonly acceptedSeq?: number;
+  readonly graph: RunGraph;
+}
+
 /**
  * What HimaFabric actually runs a Run through: an entry, some nodes, and the edges between them. The
  * pack's own graph and each of its Loops are both one of these, which is what lets `drive` run a
@@ -743,6 +784,9 @@ export interface Pack {
   readonly ruleDirs: readonly string[];
   /** Where a chooser id this pack names resolves from, in order, for the reason above. */
   readonly chooserDirs: readonly string[];
+  /** Accepted per-Run additions, attached to an in-memory Pack reading by Fabric. Never persisted in
+   *  or hashed with the Pack folder. */
+  readonly growthGraphs?: readonly GrowthGraph[];
 }
 
 /**
@@ -1038,6 +1082,18 @@ export const graphsOf = (pack: Pack): { readonly loop: string | undefined; reado
   ...Object.entries(pack.graph.loops).map(([loop, graph]) => ({ loop, graph })),
 ];
 
+/** Attach durable per-Run additions to one in-memory Pack reading. The reference graph object is
+ * retained by identity, which makes accidental Pack mutation visible to callers and tests. */
+export const withGrowthGraphs = (pack: Pack, growthGraphs: readonly GrowthGraph[]): Pack =>
+  growthGraphs.length === 0 ? pack : { ...pack, growthGraphs: [...growthGraphs] };
+
+/** Graphs an executing Run may currently stand in: accepted additions first, then the immutable
+ * reference graph and its declared Loops. */
+export const runGraphsOf = (pack: Pack): { readonly growth?: GrowthGraph; readonly loop?: string; readonly graph: RunGraph }[] => [
+  ...(pack.growthGraphs ?? []).map((growth) => ({ growth, graph: growth.graph })),
+  ...graphsOf(pack),
+];
+
 /**
  * Where one node of a pack stands: the node itself, the graph it belongs to, and the Loop that graph
  * is, if it is one.
@@ -1053,11 +1109,134 @@ export const graphsOf = (pack: Pack): { readonly loop: string | undefined; reado
  */
 export function positionOf(pack: Pack, nodeId: string | undefined): { node: PackNode; graph: RunGraph; loop: string | undefined } | undefined {
   if (nodeId === undefined) return undefined;
-  for (const { loop, graph } of graphsOf(pack)) {
+  for (const { loop, graph } of runGraphsOf(pack)) {
     const node = graph.nodes.find((n) => n.id === nodeId);
     if (node) return { node, graph, loop };
   }
   return undefined;
+}
+
+export type GrowthGraphValidation =
+  | { readonly ok: true; readonly proposal: GrowthProposal; readonly graph: GrowthGraph }
+  | { readonly ok: false; readonly reason: string };
+
+/** Validate only the additive graph shape and its Pack references. Run position, cited input facts
+ * and remaining time are checked by Fabric at admission, where those authorities live. */
+export function validateGrowthGraph(pack: Pack, candidate: unknown): GrowthGraphValidation {
+  const parsed = growthProposal.safeParse(candidate);
+  if (!parsed.success) return { ok: false, reason: `invalid growth proposal: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'proposal'} ${issue.message}`).join('; ')}` };
+  const proposal = parsed.data;
+  const referenceDigest = pack.folder.digest(packDigestExcludes);
+  if (proposal.method.id !== pack.id || proposal.method.version !== pack.contract.version || proposal.method.digest !== referenceDigest) {
+    return { ok: false, reason: 'the proposal method identity does not match the immutable reference Pack reading' };
+  }
+  const declared = pack.graph.nodes.filter((node): node is Extract<PackNode, { kind: 'explore' }> =>
+    node.kind === 'explore' && node.parameters.growth === true);
+  if (declared.length !== 1) return { ok: false, reason: `this slice requires exactly one declared top-level growth point; the Pack declares ${String(declared.length)}` };
+  const parent = declared[0]!;
+  if (proposal.parent.nodeId !== parent.id) return { ok: false, reason: `growth is declared only at top-level node "${parent.id}"` };
+  if (proposal.returnNode !== parent.id) return { ok: false, reason: `the first growth slice must return to its declared parent "${parent.id}" so optional work cannot skip reference checks` };
+
+  if (new Set(proposal.impactNodes).size !== proposal.impactNodes.length) return { ok: false, reason: 'impact nodes must be distinct reference node identities' };
+  const referenceIds = new Set(graphsOf(pack).flatMap(({ graph }) => graph.nodes.map((node) => node.id)));
+  for (const id of proposal.impactNodes) if (!referenceIds.has(id)) return { ok: false, reason: `impact node "${id}" is not in the reference graph` };
+  const ids = proposal.nodes.map((node) => node.id);
+  if (new Set(ids).size !== ids.length) return { ok: false, reason: 'the added graph declares a duplicate node id' };
+  for (const id of ids) if (referenceIds.has(id)) return { ok: false, reason: `added node "${id}" already belongs to the reference graph` };
+  const added = new Set(ids);
+
+  const toolIds = new Set(pack.contract.tools.map((tool) => tool.id));
+  const workshopIds = new Set(pack.contract.workshops.map((workshop) => workshop.id));
+  const outputIds = new Set(pack.contract.outputs.map((output) => output.name));
+  for (const node of proposal.nodes) {
+    if (node.kind === 'explore') return { ok: false, reason: `nested exploration node "${node.id}" is unsupported in the first growth slice` };
+    if (node.kind === 'act') {
+      if (node.parameters.tool !== undefined && !toolIds.has(node.parameters.tool)) return { ok: false, reason: `added node "${node.id}" names undeclared tool "${node.parameters.tool}"` };
+      if (node.parameters.workshop !== undefined && !workshopIds.has(node.parameters.workshop)) return { ok: false, reason: `added node "${node.id}" names undeclared workshop "${node.parameters.workshop}"` };
+      if (node.parameters.observes !== undefined && !outputIds.has(node.parameters.observes)) return { ok: false, reason: `added node "${node.id}" names undeclared output "${node.parameters.observes}"` };
+      const opens = node.parameters.workshop !== undefined ? 'workshop' : node.parameters.tool !== undefined ? 'tool' : undefined;
+      if (opens !== undefined) {
+        const declaration = opens === 'tool'
+          ? pack.contract.tools.find((tool) => tool.id === node.parameters.tool)
+          : pack.contract.workshops.find((workshop) => workshop.id === node.parameters.workshop);
+        const reserved = new Set(reservedArgumentNames(opens));
+        for (const argument of Object.keys(node.parameters.arguments)) {
+          if (reserved.has(argument)) return { ok: false, reason: `added node "${node.id}" cannot bind reserved ${argument}; workspace and Site paths remain Fabric authority` };
+          if (declaration !== undefined && !declaration.inputs.includes(argument)) return { ok: false, reason: `added node "${node.id}" binds ${argument}, which its declared ${opens} does not accept` };
+        }
+      } else if (Object.keys(node.parameters.arguments).length > 0) return { ok: false, reason: `added observation node "${node.id}" accepts no arguments or path overrides` };
+    }
+  }
+  if (new Set(proposal.requiredOutputs).size !== proposal.requiredOutputs.length) return { ok: false, reason: 'each required output is named once' };
+  for (const output of proposal.requiredOutputs) {
+    if (!outputIds.has(output)) return { ok: false, reason: `required output "${output}" is not declared by the Pack contract` };
+    if (!proposal.nodes.some((node) => node.kind === 'act' && node.parameters.observes === output)) return { ok: false, reason: `required output "${output}" has no added observation node` };
+  }
+
+  const incoming = new Map(ids.map((id) => [id, 0]));
+  const outgoing = new Map(ids.map((id) => [id, [] as PackEdge[]]));
+  for (const edge of proposal.edges) {
+    if (!added.has(edge.from)) return { ok: false, reason: `growth edges may only leave added nodes; "${edge.from}" is a reference or missing node` };
+    if (!added.has(edge.to) && edge.to !== proposal.returnNode) return { ok: false, reason: `growth edge target "${edge.to}" is neither added nor the declared return node` };
+    if (edge.revisit === true) return { ok: false, reason: 'a growth branch must be acyclic and cannot declare a revisit edge' };
+    outgoing.get(edge.from)!.push(edge);
+    if (added.has(edge.to)) incoming.set(edge.to, incoming.get(edge.to)! + 1);
+  }
+  const cycleVisiting = new Set<string>();
+  const cycleDone = new Set<string>();
+  const rejectCycle = (id: string): void => {
+    if (cycleVisiting.has(id)) throw new Error(`cycle through "${id}"`);
+    if (cycleDone.has(id)) return;
+    cycleVisiting.add(id);
+    for (const edge of outgoing.get(id) ?? []) if (added.has(edge.to)) rejectCycle(edge.to);
+    cycleVisiting.delete(id);
+    cycleDone.add(id);
+  };
+  try { for (const id of ids) rejectCycle(id); }
+  catch (error) { return { ok: false, reason: `the added graph contains a cycle: ${(error as Error).message}` }; }
+  const entries = ids.filter((id) => incoming.get(id) === 0);
+  if (entries.length !== 1) return { ok: false, reason: `the added graph needs one entry; found ${String(entries.length)}` };
+  for (const node of proposal.nodes) {
+    const edges = outgoing.get(node.id)!;
+    if (edges.length === 0) return { ok: false, reason: `added node "${node.id}" has no path to the declared return` };
+    if (node.kind === 'judge') {
+      const outcomes = edges.map((edge) => edge.outcome);
+      if (outcomes.some((outcome) => outcome === undefined) || new Set(outcomes).size !== outcomes.length) return { ok: false, reason: `added judge node "${node.id}" needs distinct outcome-labelled edges` };
+      if (verdictOutcome.options.some((outcome) => !outcomes.includes(outcome))) return { ok: false, reason: `added judge node "${node.id}" must route PASS, FAIL and UNDETERMINED to the declared return path` };
+    } else if (edges.length !== 1 || edges[0]!.outcome !== undefined) {
+      return { ok: false, reason: `added ${node.kind} node "${node.id}" needs one unlabelled edge` };
+    }
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const reachesReturn = new Map<string, boolean>();
+  const visit = (id: string): boolean => {
+    if (visiting.has(id)) throw new Error(`cycle through "${id}"`);
+    if (visited.has(id)) return reachesReturn.get(id) ?? false;
+    visiting.add(id);
+    let reaches = false;
+    for (const edge of outgoing.get(id) ?? []) {
+      const edgeReaches = edge.to === proposal.returnNode || visit(edge.to);
+      reaches = reaches || edgeReaches;
+    }
+    visiting.delete(id); visited.add(id); reachesReturn.set(id, reaches);
+    return reaches;
+  };
+  visit(entries[0]!);
+  if (visited.size !== ids.length) return { ok: false, reason: 'every added node must be reachable from the single entry' };
+  for (const id of ids) if (!reachesReturn.get(id)) return { ok: false, reason: `added node "${id}" has no path to the declared return` };
+  return {
+    ok: true,
+    proposal,
+    graph: {
+      proposalId: proposal.proposalId,
+      parentNode: proposal.parent.nodeId,
+      returnNode: proposal.returnNode,
+      requiredOutputs: proposal.requiredOutputs,
+      optional: proposal.optional,
+      graph: { entry: entries[0]!, nodes: proposal.nodes, edges: proposal.edges },
+    },
+  };
 }
 
 /**
@@ -1468,6 +1647,12 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
       }
       declaredIn.set(node.id, graphSaid(loop));
     }
+  }
+  const growthPoints = graph.nodes.filter((node) => node.kind === 'explore' && node.parameters.growth === true);
+  if (growthPoints.length > 1) broken(packFiles.graph, `declares ${String(growthPoints.length)} growth points; the first growth slice supports one top-level Explore position`);
+  for (const [name, part] of Object.entries(graph.loops)) {
+    const nested = part.nodes.find((node) => node.kind === 'explore' && node.parameters.growth === true);
+    if (nested !== undefined) broken(packFiles.graph, `marks explore node "${nested.id}" in loop "${name}" as a growth point: nested growth is unsupported and must be rejected before a Run accepts it`);
   }
   for (const { loop, graph: part } of graphsOf(pack)) {
     const ids = new Set(part.nodes.map((n) => n.id));
