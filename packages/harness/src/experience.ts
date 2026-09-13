@@ -736,7 +736,8 @@ async function readRetainedMaterial(deps: ExperienceDeps, run: RunRecord, retain
     const folder = installedPackFolder(deps.packsDir, run.packId);
     if (!folder) throw new Error('installed Pack for retained material is unavailable');
     const root = path.join(folder.dir, runAssetsDirectory), relative = `.evidence/${run.id}/${sha256}.dat`;
-    if (path.resolve(retainedPath) !== path.join(root, relative)) throw new Error('retained material is outside its Run and content identity');
+    const canonical = path.join(root, relative);
+    if (path.resolve(retainedPath) !== canonical && verifiedPackRelocation({ packDir: folder.dir, originalPath: retainedPath, sha256, bytes: size }) !== canonical) throw new Error('retained material is outside its Run and content identity or has no verified migration');
     const bytes = await readArchiveFile(root, relative), found = hashOf(bytes);
     if (found !== sha256) return { kind: 'changed', found };
     if (bytes.byteLength !== size) throw new Error('retained material byte count differs from the record');

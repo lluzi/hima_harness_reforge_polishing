@@ -23,6 +23,8 @@ const out = path.resolve(args[1]!);
 if (existsSync(out)) throw new Error(`evidence directory already exists: ${out}`);
 mkdirSync(out, { recursive: true });
 const started = Date.now();
+process.env.HIMA_TEST_SILENT_AGENT = '1';
+let modelRequests = 0;
 const checks: { claim: string; passed: boolean; saw: unknown }[] = [];
 const check = (claim: string, passed: boolean, saw: unknown) => {
   checks.push({ claim, passed, saw });
@@ -76,13 +78,14 @@ try {
   writeFileSync(homePatchFile(home.home), '- id: session-title-llm\n  disabled: true\n');
 
   host = await bootInProcess(home);
+  host.ctx.on('agent/request', () => { modelRequests++; throw new Error('this read-only archive check forbids model requests'); });
   const owner = await createRootAgent(host.ctx, home.workspace);
   installed.clearRemoteCommands();
   const startAt = Date.now();
   const opened = await host.ctx.hima.startRun({ pack: id, site: site.name, goal: { target_period_ns: 2.3 }, ownerSessionId: String(owner.id), timeBoxMs: 60_000, retryAllowance: 0, generationLimit: 1 });
   const startMs = Date.now() - startAt;
   const preparationCommands = installed.remoteCommands();
-  check('the owned Run stopped at preparation with no workspace and made no Site write', opened.kind === 'unprepared' && opened.run.status === 'waiting' && host.ctx.hima.ledger.records({ runId: opened.run.id, type: 'workspace' }).length === 0 && !preparationCommands.some((command) => ['mkdir', 'tee', 'cp', 'mv', 'rm'].includes(command.argv[0]!)), { kind: opened.kind, run: opened.run, startMs, preparationCommands });
+  check('the owned Run stopped at preparation with no workspace and made no Site write', opened.kind === 'unprepared' && opened.run.status === 'waiting' && host.ctx.hima.ledger.records({ runId: opened.run.id, type: 'workspace' }).length === 0 && !preparationCommands.some((command) => ['mkdir', 'tee', 'cp', 'mv', 'rm'].includes(command.argv[0]!)), { kind: opened.kind, run: 'run' in opened ? opened.run : undefined, startMs, preparationCommands });
   if (opened.kind !== 'unprepared') throw new Error(`expected no-workspace Run, got ${opened.kind}`);
 
   const observeAt = Date.now();
@@ -106,9 +109,11 @@ try {
   const offlineMs = Date.now() - offlineAt;
   const commandsAfterOfflineRead = installed.remoteCommands();
   check('the archived material read is local and did not make another SSH request', offline.kind === 'read' && sha256(offline.text) === expectedSha256 && commandsAfterOfflineRead.length === commandsBeforeOfflineRead.length, { offline, remoteCommandsBefore: commandsBeforeOfflineRead.length, remoteCommandsAfter: commandsAfterOfflineRead.length, offlineMs });
+  check('no model request or Job was started', modelRequests === 0 && host.ctx.hima.ledger.records({ runId: opened.run.id, type: 'job' }).length === 0, { modelRequests, jobs: host.ctx.hima.ledger.records({ runId: opened.run.id, type: 'job' }).length });
+  check('all recorded Site operations remained read-only', !commandsAfterOfflineRead.some(command => ['mkdir', 'tee', 'cp', 'mv', 'rm', 'touch', 'sh', 'bash'].includes(command.argv[0]!)), commandsAfterOfflineRead);
 
   const evidence = {
-    status: 'passed', startedAt: new Date(started).toISOString(), finishedAt: new Date().toISOString(), wallTimeMs: Date.now() - started,
+    status: 'passed', modelRequests, startedAt: new Date(started).toISOString(), finishedAt: new Date().toISOString(), wallTimeMs: Date.now() - started,
     scope: 'One existing 500-byte Linglong compare report was read through Hima Channel and the Site Permit into an actual owned Run, then copied to the isolated installed Pack archive. No model request, EDA wrapper, Job, remote write, or source mutation was requested.',
     source: { path: source, sha256: expectedSha256, bytes: expectedBytes, inventory: 'docs/validation/pls-frontier/pls25-physical-site/index.json' },
     run: { id: opened.run.id, site: site.name, status: cancelled.run.status, owner: String(owner.id), startMs, observeMs, cancelMs },

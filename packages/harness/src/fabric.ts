@@ -1086,6 +1086,8 @@ export interface GrowthView {
   readonly optional?: boolean; readonly reason?: string; readonly evidence?: readonly string[];
 }
 export interface ExecutionContext {
+  /** Canonical record identities for structured grow/revise proposals; file SHA is a different identity. */
+  readonly evidence?: readonly { readonly recordId: string; readonly contentIdentity: string; readonly type: string; readonly generation?: number; readonly nodeId?: string }[];
   readonly run: RunRecord; readonly nodes: readonly PackNode[];
   readonly method?: { readonly id: string; readonly version: string; readonly digest: string; readonly dir: string; readonly contract: Pack['contract']; readonly reference: Pack['graph'] };
   readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly growths: readonly GrowthView[];
@@ -1467,6 +1469,9 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
   const run = existingRun(deps.ledger, runId);
   const executions = Object.values(run.control?.executions ?? {});
   const revisions = revisionRecordsIn(deps.ledger, runId);
+  const evidence = currentRecordsIn(deps.ledger.records({ runId })).filter(record => ['workspace', 'observation', 'verdict', 'code', 'knowledge'].includes(record.type)).slice(-128)
+    .map(record => ({ recordId: record.id, contentIdentity: identityOf(record), type: record.type,
+      ...(record.generation === undefined ? {} : { generation: record.generation }), ...('nodeId' in record ? { nodeId: record.nodeId } : {}) }));
   if (run.control === undefined) return { run, nodes: [], available: [], executions, growths: [], revisions, reason: 'historical automatic Run; explicit safe ownership migration is required' };
   try {
     const pack = executionPack(deps, run);
@@ -1483,7 +1488,7 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
         && execution.supersededBy === undefined && execution.phase !== 'failed'));
-    return { run, nodes, available, executions, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
+    return { run, nodes, available, executions, evidence, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
     return { run, nodes: [], available: [], executions, growths: [], revisions, reason: (error as Error).message };
   }

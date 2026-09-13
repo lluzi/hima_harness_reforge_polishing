@@ -17,6 +17,7 @@ test('an owner accepts, executes and returns from one additive branch with actua
   try {
     await f.reachGrowth();
     const proposal = f.proposal();
+    for (const input of proposal.inputs) assert.equal(f.context().evidence?.find(item => item.recordId === input.recordId)?.contentIdentity, input.contentIdentity, 'the model receives the exact canonical input identity, not a file hash it must reinterpret');
     const beforeJobs = jobRecords(f.host, f.runId).filter((record) => record.event === 'launched').length;
     const accepted = await f.call({ action: 'grow', proposal }, 'accept-growth');
     assert.equal(accepted.kind, 'accepted', JSON.stringify(accepted));

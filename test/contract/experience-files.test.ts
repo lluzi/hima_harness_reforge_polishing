@@ -11,7 +11,7 @@ import { bootHimaHost } from './support/boot-host.ts';
 import { api, openSession } from './support/hima-api.ts';
 import { writeLocalSite } from './support/site.ts';
 import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
-import { applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR } from '@hima/harness';
+import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR } from '@hima/harness';
 import type { ExperienceJson, ExperienceAnswer, RunAssetManifest, RunView } from '@hima/harness';
 
 const hash = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
@@ -136,6 +136,11 @@ test('the same Ledger reads exact migrated Run assets after a method update, whi
     installPackMethod({ from: source, to: installed.dir });
     const digest = packDigestOf(installed.dir);
     const run = await f.deps.ledger.createRun({ campaignId: 'portable-archive', siteId: 'local', status: 'cancelled', packId: timingProbePackId, packDigest: digest });
+    const codeBytes = 'retained historical algorithm\n';
+    const retainedPath = path.join(installed.dir, 'run-assets', '.evidence', run.id, `${hash(codeBytes)}.dat`);
+    await mkdir(path.dirname(retainedPath), { recursive: true }); await writeFile(retainedPath, codeBytes);
+    const code = await f.deps.ledger.appendCode(run.id, { nodeId: 'historical-node', attempt: 1, sessionId: 'historical-owner', workshop: 'historical-workshop',
+      path: path.join(f.h.workspace, 'old-algorithm.py'), retainedPath, sha256: hash(codeBytes), bytes: Buffer.byteLength(codeBytes), language: 'python' });
     const archived = await writeRunAssets(f.deps, run.id);
     assert.equal(archived.kind, 'written', archived.kind === 'failed' ? archived.why : '');
     if (archived.kind !== 'written') throw new Error(JSON.stringify(archived));
@@ -145,6 +150,8 @@ test('the same Ledger reads exact migrated Run assets after a method update, whi
     const review = previewPackTransfer(request);
     applyPackTransfer({ ...request, reviewSha256: review.reviewSha256 });
     assert.equal((await readRunAssets({ ...f.deps, packsDir: nextPacksDir }, run.id)).kind, 'read');
+    const heldCode = await readMaterial({ ...f.deps, packsDir: nextPacksDir }, run.id, code.id);
+    assert.ok(heldCode.kind === 'read' && heldCode.text === codeBytes, 'reviewed relocation preserves retained code reads without rewriting its original Ledger path');
 
     const update = path.join(f.h.home, 'update', timingProbePackId);
     await mkdir(path.dirname(update), { recursive: true });

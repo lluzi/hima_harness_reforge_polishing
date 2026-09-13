@@ -1,0 +1,159 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/growth.host.test.ts test/contract/experience-files.test.ts
+local: 2 selected; 60 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: two actual observations of an overwritten report retain both byte versions for final archive
+ok 1 - two actual observations of an overwritten report retain both byte versions for final archive
+  ---
+  duration_ms: 2628.768542
+  type: 'test'
+  ...
+# Subtest: an ended Run without a workspace explains why no report is deliverable through projection and read API
+ok 2 - an ended Run without a workspace explains why no report is deliverable through projection and read API
+  ---
+  duration_ms: 5961.844917
+  type: 'test'
+  ...
+# Subtest: an ended Run publishes verified local copies only under its installed Pack, is idempotent, and refuses tampering
+ok 3 - an ended Run publishes verified local copies only under its installed Pack, is idempotent, and refuses tampering
+  ---
+  duration_ms: 416.71925
+  type: 'test'
+  ...
+# Subtest: the same Ledger reads exact migrated Run assets after a method update, while a forged receipt cannot bless changed bytes
+ok 4 - the same Ledger reads exact migrated Run assets after a method update, while a forged receipt cannot bless changed bytes
+  ---
+  duration_ms: 503.632208
+  type: 'test'
+  ...
+# Subtest: archive publication refuses a symlinked run-assets ancestor without writing through it
+ok 5 - archive publication refuses a symlinked run-assets ancestor without writing through it
+  ---
+  duration_ms: 371.610208
+  type: 'test'
+  ...
+# Subtest: goal support, measured-negative ending, budget ending and cancellation each receive a verified local delivery
+ok 6 - goal support, measured-negative ending, budget ending and cancellation each receive a verified local delivery
+  ---
+  duration_ms: 571.741916
+  type: 'test'
+  ...
+# Subtest: an ended Run archives byte-identified code under a safe name and reads it offline after the Site source is gone
+ok 7 - an ended Run archives byte-identified code under a safe name and reads it offline after the Site source is gone
+  ---
+  duration_ms: 479.620666
+  type: 'test'
+  ...
+# Subtest: missing recorded code or observation bytes leave an explicit failed delivery and no completion
+ok 8 - missing recorded code or observation bytes leave an explicit failed delivery and no completion
+  ---
+  duration_ms: 443.085792
+  type: 'test'
+  ...
+# Subtest: recorded byte counts remain part of report, code and observation identity
+ok 9 - recorded byte counts remain part of report, code and observation identity
+  ---
+  duration_ms: 477.461
+  type: 'test'
+  ...
+# Subtest: a failure before publication keeps one stable reservation and a retry publishes exactly once
+ok 10 - a failure before publication keeps one stable reservation and a retry publishes exactly once
+  ---
+  duration_ms: 373.729041
+  type: 'test'
+  ...
+# Subtest: concurrent delivery calls publish one directory and one completion record
+ok 11 - concurrent delivery calls publish one directory and one completion record
+  ---
+  duration_ms: 327.649875
+  type: 'test'
+  ...
+# Subtest: restart completes an exact reserved directory published before the prior Host could append completion
+ok 12 - restart completes an exact reserved directory published before the prior Host could append completion
+  ---
+  duration_ms: 603.743
+  type: 'test'
+  ...
+# Subtest: a pending hash cannot bless a published directory with another Run, Pack, version, Site or method identity
+ok 13 - a pending hash cannot bless a published directory with another Run, Pack, version, Site or method identity
+  ---
+  duration_ms: 418.149292
+  type: 'test'
+  ...
+# Subtest: a listed optional material must be verified unless its absence is explicitly explained
+ok 14 - a listed optional material must be verified unless its absence is explicitly explained
+  ---
+  duration_ms: 289.861833
+  type: 'test'
+  ...
+# Subtest: schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+ok 15 - schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+  ---
+  duration_ms: 5441.484791
+  type: 'test'
+  ...
+# Subtest: failure between the two report writes leaves no record; the next Host completes and verifies both files
+ok 16 - failure between the two report writes leaves no record; the next Host completes and verifies both files
+  ---
+  duration_ms: 5941.615875
+  type: 'test'
+  ...
+# Subtest: a Site report write failure still preserves local Run facts in the installed Pack
+ok 17 - a Site report write failure still preserves local Run facts in the installed Pack
+  ---
+  duration_ms: 512.338166
+  type: 'test'
+  ...
+# Subtest: an owner accepts, executes and returns from one additive branch with actual evidence and idempotent proposals
+ok 18 - an owner accepts, executes and returns from one additive branch with actual evidence and idempotent proposals
+  ---
+  duration_ms: 4557.950709
+  type: 'test'
+  ...
+# Subtest: semantic refusals are durable and start no added Job
+ok 19 - semantic refusals are durable and start no added Job
+  ---
+  duration_ms: 2450.4515
+  type: 'test'
+  ...
+# Subtest: accepted growth reconstructs after Host restart without insertion or launch replay
+ok 20 - accepted growth reconstructs after Host restart without insertion or launch replay
+  ---
+  duration_ms: 2248.992709
+  type: 'test'
+  ...
+# Subtest: return is refused until current required observations and verdicts exist, while optional abandon returns to the same reference check
+ok 21 - return is refused until current required observations and verdicts exist, while optional abandon returns to the same reference check
+  ---
+  duration_ms: 2681.649708
+  type: 'test'
+  ...
+# Subtest: optional growth preserves abandoned, cancelled and actual failed outcomes and returns without skipping the parent
+ok 22 - optional growth preserves abandoned, cancelled and actual failed outcomes and returns without skipping the parent
+  ---
+  duration_ms: 2676.592583
+  type: 'test'
+  ...
+# Subtest: restart before acceptance retains only the reference point and starts nothing
+ok 23 - restart before acceptance retains only the reference point and starts nothing
+  ---
+  duration_ms: 2522.272208
+  type: 'test'
+  ...
+# Subtest: exhausted time budget refuses growth with evidence
+ok 24 - exhausted time budget refuses growth with evidence
+  ---
+  duration_ms: 654.192792
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 44417.961833
+Test boot attempts: {"host-process":3,"host-in-process":27,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 44.476 s; pass/fail/skip counts are in the TAP summary above

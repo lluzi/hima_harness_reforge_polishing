@@ -1,0 +1,498 @@
+{
+  "status": "passed",
+  "modelRequests": 0,
+  "startedAt": "2026-09-13T14:56:45.140Z",
+  "finishedAt": "2026-09-13T14:56:47.719Z",
+  "wallTimeMs": 2579,
+  "scope": "One existing 500-byte Linglong compare report was read through Hima Channel and the Site Permit into an actual owned Run, then copied to the isolated installed Pack archive. No model request, EDA wrapper, Job, remote write, or source mutation was requested.",
+  "source": {
+    "path": "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json",
+    "sha256": "2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b",
+    "bytes": 500,
+    "inventory": "docs/validation/pls-frontier/pls25-physical-site/index.json"
+  },
+  "run": {
+    "id": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4",
+    "site": "pls14-linglong-archive",
+    "status": "cancelled",
+    "owner": "session-0ff9e08a-acb3-4c35-b8ba-edcd453aa5bb",
+    "startMs": 450,
+    "observeMs": 105,
+    "cancelMs": 145
+  },
+  "archive": {
+    "directory": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-eew749/hima/packs/pls14-site-archive/run-assets/run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4",
+    "manifestSha256": "f5fefbf576a595389fc8509328b0669f0b295dce8e9fa33e878e3a4a6cfc7752",
+    "material": {
+      "path": "materials/observation-3.dat",
+      "source": "observation:/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json",
+      "recordId": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4#000003",
+      "type": "observation",
+      "sha256": "2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b",
+      "bytes": 500,
+      "required": true
+    },
+    "localSha256": "2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b",
+    "offlineReadMs": 11
+  },
+  "remote": {
+    "commands": [
+      {
+        "argv": [
+          "realpath",
+          "-z",
+          "-e",
+          "--",
+          "/data/eda/project/hima_harness/polishing-inputs/pls14-site-archive-20260913-145647-f3ac"
+        ],
+        "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-inputs/pls14-site-archive-20260913-145647-f3ac'"
+      },
+      {
+        "argv": [
+          "realpath",
+          "-z",
+          "-e",
+          "--",
+          "/data/eda/project/hima_harness/polishing-inputs"
+        ],
+        "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-inputs'"
+      },
+      {
+        "argv": [
+          "realpath",
+          "-z",
+          "-e",
+          "--",
+          "/data/eda/project/hima_harness/polishing-runs"
+        ],
+        "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+      },
+      {
+        "argv": [
+          "realpath",
+          "-z",
+          "-e",
+          "--",
+          "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json"
+        ],
+        "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json'"
+      },
+      {
+        "argv": [
+          "realpath",
+          "-z",
+          "-e",
+          "--",
+          "/data/eda/project"
+        ],
+        "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+      },
+      {
+        "argv": [
+          "cat",
+          "--",
+          "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json"
+        ],
+        "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json'"
+      }
+    ],
+    "commandCountBeforeOfflineRead": 6,
+    "commandCountAfterOfflineRead": 6,
+    "expectedPreparationRefusal": true,
+    "remoteWritesRequested": false
+  },
+  "checks": [
+    {
+      "claim": "the selected Site source is the tracked 500-byte compare artifact",
+      "passed": true,
+      "saw": {
+        "file": "artifacts/compare-1789297511535898000/comparison.json.gz",
+        "source": "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json",
+        "sha256": "2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b",
+        "bytes": 500,
+        "encoding": "gzip"
+      }
+    },
+    {
+      "claim": "the owned Run stopped at preparation with no workspace and made no Site write",
+      "passed": true,
+      "saw": {
+        "kind": "unprepared",
+        "run": {
+          "id": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4",
+          "campaignId": "pls14-site-archive-20260913-145647-f3ac",
+          "siteId": "pls14-linglong-archive",
+          "packId": "pls14-site-archive",
+          "purpose": "campaign",
+          "packDigest": "427723d5cdf29a7091287bf76285c882bec053004636664323995aadb75285ac",
+          "goal": {
+            "target_period_ns": 2.3
+          },
+          "budget": {
+            "timeBoxMs": 60000,
+            "retryAllowance": 0,
+            "jobCap": 1,
+            "licences": {
+              "Design-Compiler": 1
+            },
+            "generationLimit": 1
+          },
+          "firstStrategy": {
+            "periodNs": 2.3
+          },
+          "generation": 1,
+          "control": {
+            "mode": "agent",
+            "owner": "session-0ff9e08a-acb3-4c35-b8ba-edcd453aa5bb",
+            "epoch": 1,
+            "revision": 0,
+            "paused": [],
+            "executions": {},
+            "requests": {},
+            "siteDigest": "bb64b76eb4cb9a9527855ef3aec12c93371670d923ad1dd39fd94e8e2a1fd356"
+          },
+          "createdAt": "2026-09-13T14:56:47.038Z",
+          "nextSeq": 3,
+          "meters": {
+            "elapsedMs": 408,
+            "jobsLaunched": 0,
+            "attempts": 0,
+            "generationMs": [
+              19
+            ]
+          },
+          "status": "waiting",
+          "currentNode": "observe-source",
+          "strategy": {
+            "periodNs": 2.3
+          }
+        },
+        "startMs": 450,
+        "preparationCommands": [
+          {
+            "argv": [
+              "realpath",
+              "-z",
+              "-e",
+              "--",
+              "/data/eda/project/hima_harness/polishing-inputs/pls14-site-archive-20260913-145647-f3ac"
+            ],
+            "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-inputs/pls14-site-archive-20260913-145647-f3ac'"
+          },
+          {
+            "argv": [
+              "realpath",
+              "-z",
+              "-e",
+              "--",
+              "/data/eda/project/hima_harness/polishing-inputs"
+            ],
+            "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-inputs'"
+          },
+          {
+            "argv": [
+              "realpath",
+              "-z",
+              "-e",
+              "--",
+              "/data/eda/project/hima_harness/polishing-runs"
+            ],
+            "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+          }
+        ]
+      }
+    },
+    {
+      "claim": "the governed channel observed the tracked original bytes in the actual owned Run",
+      "passed": true,
+      "saw": {
+        "kind": "observed",
+        "run": {
+          "id": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4",
+          "campaignId": "pls14-site-archive-20260913-145647-f3ac",
+          "siteId": "pls14-linglong-archive",
+          "packId": "pls14-site-archive",
+          "purpose": "campaign",
+          "packDigest": "427723d5cdf29a7091287bf76285c882bec053004636664323995aadb75285ac",
+          "goal": {
+            "target_period_ns": 2.3
+          },
+          "budget": {
+            "timeBoxMs": 60000,
+            "retryAllowance": 0,
+            "jobCap": 1,
+            "licences": {
+              "Design-Compiler": 1
+            },
+            "generationLimit": 1
+          },
+          "firstStrategy": {
+            "periodNs": 2.3
+          },
+          "generation": 1,
+          "control": {
+            "mode": "agent",
+            "owner": "session-0ff9e08a-acb3-4c35-b8ba-edcd453aa5bb",
+            "epoch": 1,
+            "revision": 0,
+            "paused": [],
+            "executions": {},
+            "requests": {},
+            "siteDigest": "bb64b76eb4cb9a9527855ef3aec12c93371670d923ad1dd39fd94e8e2a1fd356"
+          },
+          "createdAt": "2026-09-13T14:56:47.038Z",
+          "nextSeq": 3,
+          "meters": {
+            "elapsedMs": 408,
+            "jobsLaunched": 0,
+            "attempts": 0,
+            "generationMs": [
+              19
+            ]
+          },
+          "status": "waiting",
+          "currentNode": "observe-source",
+          "strategy": {
+            "periodNs": 2.3
+          }
+        },
+        "record": {
+          "id": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4#000003",
+          "runId": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4",
+          "siteId": "pls14-linglong-archive",
+          "seq": 3,
+          "at": "2026-09-13T14:56:47.551Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "observation",
+          "path": "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json",
+          "contentSha256": "2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b",
+          "retainedPath": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-eew749/hima/packs/pls14-site-archive/run-assets/.evidence/run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4/2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b.dat",
+          "bytes": 500,
+          "reader": {
+            "id": "raw",
+            "version": "1",
+            "reportKind": "raw",
+            "emits": []
+          },
+          "values": []
+        }
+      }
+    },
+    {
+      "claim": "the actual Fabric cancellation ended the no-workspace Run",
+      "passed": true,
+      "saw": {
+        "kind": "cancelled",
+        "run": {
+          "id": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4",
+          "campaignId": "pls14-site-archive-20260913-145647-f3ac",
+          "siteId": "pls14-linglong-archive",
+          "packId": "pls14-site-archive",
+          "purpose": "campaign",
+          "packDigest": "427723d5cdf29a7091287bf76285c882bec053004636664323995aadb75285ac",
+          "goal": {
+            "target_period_ns": 2.3
+          },
+          "budget": {
+            "timeBoxMs": 60000,
+            "retryAllowance": 0,
+            "jobCap": 1,
+            "licences": {
+              "Design-Compiler": 1
+            },
+            "generationLimit": 1
+          },
+          "firstStrategy": {
+            "periodNs": 2.3
+          },
+          "generation": 1,
+          "control": {
+            "mode": "agent",
+            "owner": "session-0ff9e08a-acb3-4c35-b8ba-edcd453aa5bb",
+            "epoch": 1,
+            "revision": 1,
+            "paused": [
+              "*"
+            ],
+            "executions": {},
+            "requests": {},
+            "siteDigest": "bb64b76eb4cb9a9527855ef3aec12c93371670d923ad1dd39fd94e8e2a1fd356",
+            "stop": {
+              "reason": "cancel",
+              "status": "confirmed"
+            }
+          },
+          "createdAt": "2026-09-13T14:56:47.038Z",
+          "nextSeq": 8,
+          "meters": {
+            "elapsedMs": 585,
+            "jobsLaunched": 0,
+            "attempts": 0,
+            "generationMs": [
+              192
+            ],
+            "endedBy": "cancel"
+          },
+          "status": "cancelled",
+          "currentNode": "observe-source",
+          "strategy": {
+            "periodNs": 2.3
+          }
+        }
+      }
+    },
+    {
+      "claim": "the installed Pack archive copied the original observed bytes with the expected SHA-256",
+      "passed": true,
+      "saw": {
+        "archiveAt": "/var/folders/yv/b9msj2491d7fdrg2y8gr0rh00000gp/T/hima-home-eew749/hima/packs/pls14-site-archive/run-assets/run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4",
+        "manifestSha256": "f5fefbf576a595389fc8509328b0669f0b295dce8e9fa33e878e3a4a6cfc7752",
+        "asset": {
+          "path": "materials/observation-3.dat",
+          "source": "observation:/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json",
+          "recordId": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4#000003",
+          "type": "observation",
+          "sha256": "2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b",
+          "bytes": 500,
+          "required": true
+        },
+        "localSha256": "2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b"
+      }
+    },
+    {
+      "claim": "the archived material read is local and did not make another SSH request",
+      "passed": true,
+      "saw": {
+        "offline": {
+          "kind": "read",
+          "manifest": {
+            "schema": "hima-run-assets/1",
+            "runId": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4",
+            "campaignId": "pls14-site-archive-20260913-145647-f3ac",
+            "siteId": "pls14-linglong-archive",
+            "pack": {
+              "id": "pls14-site-archive",
+              "version": "not recorded"
+            },
+            "methodDigest": "427723d5cdf29a7091287bf76285c882bec053004636664323995aadb75285ac",
+            "createdAt": "2026-09-13T14:56:47.038Z",
+            "delivery": "complete",
+            "materials": [
+              {
+                "path": "experience.md",
+                "source": "generated:experience-markdown",
+                "type": "experience",
+                "sha256": "f2181505b86a8ea02b69f90a8532d17e46f1bcf40ee536f4634624f31119bd9e",
+                "bytes": 3580,
+                "required": true
+              },
+              {
+                "path": "experience.json",
+                "source": "generated:experience-json",
+                "type": "experience",
+                "sha256": "bc7b0ea4b9a8397be80d9770d4af064e9a0225866b9d0423a987b63465e3d27f",
+                "bytes": 5244,
+                "required": true
+              },
+              {
+                "path": "materials/observation-3.dat",
+                "source": "observation:/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json",
+                "recordId": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4#000003",
+                "type": "observation",
+                "sha256": "2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b",
+                "bytes": 500,
+                "required": true
+              }
+            ]
+          },
+          "material": {
+            "path": "materials/observation-3.dat",
+            "source": "observation:/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json",
+            "recordId": "run-a199f5a6-f18f-4b81-9ec6-0a8f9565f6b4#000003",
+            "type": "observation",
+            "sha256": "2f056da01b925908c1fab767e89a5af8c367acef339a77750ccb563e284bee4b",
+            "bytes": 500,
+            "required": true
+          },
+          "text": "{\n  \"adopted_instance_count\": 0,\n  \"analysisViews\": {\n    \"foundry\": \"view_foundry\",\n    \"generated\": \"view_generated\"\n  },\n  \"clock_period\": 0.5,\n  \"foundry_setup_wns\": -0.015,\n  \"full_constraint_failures\": 3,\n  \"library_visible\": true,\n  \"matched_conditions\": true,\n  \"measurementScope\": \"same requested period, post-route Innovus setup/all; delta is an observation, not Fmax benefit\",\n  \"setup_wns\": -0.015,\n  \"setup_wns_delta\": 0.0,\n  \"unknownReason\": null,\n  \"verification_error_count\": 72559\n}\n"
+        },
+        "remoteCommandsBefore": 6,
+        "remoteCommandsAfter": 6,
+        "offlineMs": 11
+      }
+    },
+    {
+      "claim": "no model request or Job was started",
+      "passed": true,
+      "saw": {
+        "modelRequests": 0,
+        "jobs": 0
+      }
+    },
+    {
+      "claim": "all recorded Site operations remained read-only",
+      "passed": true,
+      "saw": [
+        {
+          "argv": [
+            "realpath",
+            "-z",
+            "-e",
+            "--",
+            "/data/eda/project/hima_harness/polishing-inputs/pls14-site-archive-20260913-145647-f3ac"
+          ],
+          "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-inputs/pls14-site-archive-20260913-145647-f3ac'"
+        },
+        {
+          "argv": [
+            "realpath",
+            "-z",
+            "-e",
+            "--",
+            "/data/eda/project/hima_harness/polishing-inputs"
+          ],
+          "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-inputs'"
+        },
+        {
+          "argv": [
+            "realpath",
+            "-z",
+            "-e",
+            "--",
+            "/data/eda/project/hima_harness/polishing-runs"
+          ],
+          "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs'"
+        },
+        {
+          "argv": [
+            "realpath",
+            "-z",
+            "-e",
+            "--",
+            "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json"
+          ],
+          "wire": "'realpath' '-z' '-e' '--' '/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json'"
+        },
+        {
+          "argv": [
+            "realpath",
+            "-z",
+            "-e",
+            "--",
+            "/data/eda/project"
+          ],
+          "wire": "'realpath' '-z' '-e' '--' '/data/eda/project'"
+        },
+        {
+          "argv": [
+            "cat",
+            "--",
+            "/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json"
+          ],
+          "wire": "'cat' '--' '/data/eda/project/hima_harness/polishing-runs/dtco-phases-1789296501383130000/flow/artifacts/compare/run-895f86e48c2b46ed88a12b432028844f/comparison.json'"
+        }
+      ]
+    }
+  ]
+}
