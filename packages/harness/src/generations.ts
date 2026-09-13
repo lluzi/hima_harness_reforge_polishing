@@ -23,7 +23,7 @@
 // of the ledger's own module here would pull `node:crypto` and `node:fs` into the client build. The
 // ledger's *types* are imported, and types are erased.
 import { chosenSaid } from './card-labels.js';
-import type { DecisionRecord, JobRecord, LedgerRecord, LoopOutcome, LoopRecord, NodeRecord, ObservationRecord, RunBranch, RunRecord, RunStrategy, VerdictOutcome, VerdictRecord } from './ledger.js';
+import type { DecisionRecord, GrowthRecord, JobRecord, LedgerRecord, LoopOutcome, LoopRecord, NodeRecord, ObservationRecord, RunBranch, RunRecord, RunStrategy, VerdictOutcome, VerdictRecord } from './ledger.js';
 import { jobView, nodeView, observationView, type JobView, type NodeView, type ObservationView } from './record-views.js';
 // Type-only, and erased: the pack's words for its own knobs, which the decision each row carries is
 // said in (#42, #58). Declared in `remote.ts` beside the rest of the run view, which this module is
@@ -95,6 +95,8 @@ export interface GenerationView {
    *  Absent for a generation that opened none, which is every generation of a pack that drills
    *  nowhere. */
   readonly loops?: readonly LoopView[];
+  /** Additive per-Run research branches accepted or refused in this generation. */
+  readonly growths?: readonly GrowthBranchView[];
   /** The branches of the fork this generation ran, in the order the records name them. Absent for a
    *  generation that forked nowhere, which is every generation of a pack that does not fork. */
   readonly branches?: readonly BranchView[];
@@ -185,6 +187,21 @@ export interface LoopView {
   readonly generations: readonly GenerationView[];
 }
 
+/** One accepted or rejected additive research proposal as part of the actual generation path. */
+export interface GrowthBranchView {
+  readonly proposalId: string;
+  readonly event: GrowthRecord['event'];
+  readonly recordId: string;
+  readonly parentNode?: string;
+  readonly entry?: string;
+  readonly returnNode?: string;
+  readonly optional?: boolean;
+  readonly nodes: readonly NodeView[];
+  readonly jobs: readonly JobView[];
+  readonly evidence: readonly string[];
+  readonly reason?: string;
+}
+
 /**
  * The generations of one Run, oldest first: one row per generation the Run has opened.
  *
@@ -243,13 +260,40 @@ export function generationsOf(run: RunRecord, all: readonly LedgerRecord[], word
   return rows.map((row) => {
     const loops = nested.get(row.generation);
     const branches = branchesOf(run, outer, row.generation);
-    const withLoops = loops === undefined ? row : { ...row, loops };
+    const growths = growthBranchesOf(outer, row.generation);
+    const withGrowth = growths === undefined ? row : { ...row, growths };
+    const withLoops = loops === undefined ? withGrowth : { ...withGrowth, loops };
     if (branches === undefined) return withLoops;
     // The join belongs to the generation whose branches converged into it, and is composed here
     // beside them for that reason: a face reading a fork off the Run's path reads one entry per node
     // and so reads the *latest* transition of the join on every generation that ever forked.
     const join = joinOf(run, outer, row.generation);
     return join === undefined ? { ...withLoops, branches } : { ...withLoops, branches, join };
+  });
+}
+
+function growthBranchesOf(records: readonly LedgerRecord[], generation: number): GrowthBranchView[] | undefined {
+  const accepted = records.filter((record): record is GrowthRecord => record.type === 'growth' && record.event === 'accepted' && record.generation === generation);
+  const rejected = records.filter((record): record is GrowthRecord => record.type === 'growth' && record.event === 'rejected' && record.generation === generation);
+  const subjects = [...accepted, ...rejected].sort((a, b) => a.seq - b.seq);
+  if (subjects.length === 0) return undefined;
+  return subjects.map((subject) => {
+    const events = records.filter((record): record is GrowthRecord => record.type === 'growth' && record.proposalId === subject.proposalId && record.seq >= subject.seq);
+    const latest = events.at(-1) ?? subject;
+    const nodeIds = new Set(subject.nodeIds ?? []);
+    const until = events.find((event) => event.event === 'returned')?.seq ?? Number.POSITIVE_INFINITY;
+    const own = records.filter((record) => record.seq >= subject.seq && record.seq <= until && 'nodeId' in record && typeof record.nodeId === 'string' && nodeIds.has(record.nodeId));
+    return {
+      proposalId: subject.proposalId, event: latest.event, recordId: latest.id,
+      ...(subject.parentNode === undefined ? {} : { parentNode: subject.parentNode }),
+      ...(subject.entry === undefined ? {} : { entry: subject.entry }),
+      ...(subject.returnNode === undefined ? {} : { returnNode: subject.returnNode }),
+      ...(subject.optional === undefined ? {} : { optional: subject.optional }),
+      nodes: own.filter((record): record is NodeRecord => record.type === 'node').map(nodeView),
+      jobs: own.filter((record): record is JobRecord => record.type === 'job').map(jobView),
+      evidence: [...new Set(events.flatMap((event) => event.evidence ?? []))],
+      ...(latest.reason === undefined ? {} : { reason: latest.reason }),
+    };
   });
 }
 

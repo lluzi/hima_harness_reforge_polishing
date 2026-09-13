@@ -1,0 +1,153 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/growth.test.ts test/contract/growth.host.test.ts test/contract/research-analysis.host.test.ts test/contract/ledger-import.test.ts
+local: 4 selected; 56 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: an owner accepts, executes and returns from one additive branch with actual evidence and idempotent proposals
+ok 1 - an owner accepts, executes and returns from one additive branch with actual evidence and idempotent proposals
+  ---
+  duration_ms: 5359.723709
+  type: 'test'
+  ...
+# Subtest: semantic refusals are durable and start no added Job
+ok 2 - semantic refusals are durable and start no added Job
+  ---
+  duration_ms: 2471.752375
+  type: 'test'
+  ...
+# Subtest: accepted growth reconstructs after Host restart without insertion or launch replay
+ok 3 - accepted growth reconstructs after Host restart without insertion or launch replay
+  ---
+  duration_ms: 2117.855625
+  type: 'test'
+  ...
+# Subtest: return is refused until current required observations and verdicts exist, while optional abandon returns to the same reference check
+ok 4 - return is refused until current required observations and verdicts exist, while optional abandon returns to the same reference check
+  ---
+  duration_ms: 2918.738041
+  type: 'test'
+  ...
+# Subtest: optional growth preserves abandoned, cancelled and actual failed outcomes and returns without skipping the parent
+ok 5 - optional growth preserves abandoned, cancelled and actual failed outcomes and returns without skipping the parent
+  ---
+  duration_ms: 2912.633292
+  type: 'test'
+  ...
+# Subtest: restart before acceptance retains only the reference point and starts nothing
+ok 6 - restart before acceptance retains only the reference point and starts nothing
+  ---
+  duration_ms: 2238.904833
+  type: 'test'
+  ...
+# Subtest: exhausted time budget refuses growth with evidence
+ok 7 - exhausted time budget refuses growth with evidence
+  ---
+  duration_ms: 689.92975
+  type: 'test'
+  ...
+# Subtest: one declared top-level growth point accepts an additive acyclic branch and leaves the reference graph byte-identical
+ok 8 - one declared top-level growth point accepts an additive acyclic branch and leaves the reference graph byte-identical
+  ---
+  duration_ms: 87.490541
+  type: 'test'
+  ...
+# Subtest: growth rejects reference rewrites, duplicate ids, cycles, missing return/output and nested shapes before acceptance
+ok 9 - growth rejects reference rewrites, duplicate ids, cycles, missing return/output and nested shapes before acceptance
+  ---
+  duration_ms: 32.821541
+  type: 'test'
+  ...
+# Subtest: offline v21 to v23 polishing facts import into the current domain without rewriting source bytes
+ok 10 - offline v21 to v23 polishing facts import into the current domain without rewriting source bytes
+  ---
+  duration_ms: 2154.586292
+  type: 'test'
+  ...
+# Subtest: explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+ok 11 - explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+  ---
+  duration_ms: 704.091375
+  type: 'test'
+  ...
+# Subtest: opening the original v19 home still fails the version gate without rewriting it
+ok 12 - opening the original v19 home still fails the version gate without rewriting it
+  ---
+  duration_ms: 187.011084
+  type: 'test'
+  ...
+# Subtest: an explicit v20 snapshot is copied into an empty v21 home while its source stays byte-for-byte intact
+ok 13 - an explicit v20 snapshot is copied into an empty v21 home while its source stays byte-for-byte intact
+  ---
+  duration_ms: 23.753708
+  type: 'test'
+  ...
+# Subtest: importing an owned v20 Run preserves its recorded owner and reports that ownership truthfully
+ok 14 - importing an owned v20 Run preserves its recorded owner and reports that ownership truthfully
+  ---
+  duration_ms: 22.38725
+  type: 'test'
+  ...
+# Subtest: v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home
+ok 15 - v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home
+  ---
+  duration_ms: 16.307958
+  type: 'test'
+  ...
+# Subtest: wrong formats, future controls and unknown fields cannot be silently dropped during import
+ok 16 - wrong formats, future controls and unknown fields cannot be silently dropped during import
+  ---
+  duration_ms: 41.072708
+  type: 'test'
+  ...
+# Subtest: Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+ok 17 - Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+  ---
+  duration_ms: 42.236125
+  type: 'test'
+  ...
+# Subtest: v20-only Job, workspace and decision facts are refused even with a v19 header
+ok 18 - v20-only Job, workspace and decision facts are refused even with a v19 header
+  ---
+  duration_ms: 10.612083
+  type: 'test'
+  ...
+# Subtest: symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+ok 19 - symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+  ---
+  duration_ms: 6.4325
+  type: 'test'
+  ...
+# Subtest: mid-write failure and process death cannot publish a partial import or alter the source
+ok 20 - mid-write failure and process death cannot publish a partial import or alter the source
+  ---
+  duration_ms: 580.860875
+  type: 'test'
+  ...
+# Subtest: the offline CLI requires both explicit paths and never defaults to DSH_HOME
+ok 21 - the offline CLI requires both explicit paths and never defaults to DSH_HOME
+  ---
+  duration_ms: 64.723958
+  type: 'test'
+  ...
+# Subtest: two simultaneous imports cannot replace the first complete destination
+ok 22 - two simultaneous imports cannot replace the first complete destination
+  ---
+  duration_ms: 35.245625
+  type: 'test'
+  ...
+# Subtest: only the actual owner can record source-linked research analysis; retries and false numeric claims preserve facts
+ok 23 - only the actual owner can record source-linked research analysis; retries and false numeric claims preserve facts
+  ---
+  duration_ms: 2852.871166
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27366.710791
+Test boot attempts: {"host-process":0,"host-in-process":13,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 27.451 s; pass/fail/skip counts are in the TAP summary above

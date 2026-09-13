@@ -1,0 +1,19 @@
+{
+  "task": "PLS-10 growth core",
+  "baseline": "6438c9f1cb76075bc31b25338b6937ac48d1a6bb",
+  "branch": "codex/pls10-growth",
+  "development": {
+    "model": "gpt-5.6-sol",
+    "effort": "high",
+    "subagents": 0,
+    "requests": "not measured",
+    "tokens": "not measured"
+  },
+  "checks": [
+    { "level": "L0", "log": "logs/l0.log", "result": "pass", "exitCode": 0 },
+    { "level": "L1/L2", "log": "logs/growth-l1-l2.tap", "passed": 9, "failed": 0, "elapsedSeconds": 21.809, "exitCode": 0 },
+    { "level": "L2 adjacent", "log": "logs/adjacent-agent-graph-recovery.tap", "passed": 18, "failed": 0, "elapsedSeconds": 57.231, "exitCode": 0 }
+  ],
+  "expensiveDependencies": { "productModelCalls": 0, "edaJobs": 0, "remoteSiteJobs": 0, "electronLaunches": 0 },
+  "notRun": ["L3 UI", "L4 real DeepSeek collaboration", "L4 real EDA/Site", "L5 pilot", "full local suite"]
+}

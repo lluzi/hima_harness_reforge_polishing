@@ -1,6 +1,8 @@
 {
   "local": [
     "test/contract/research-analysis.host.test.ts",
+    "test/contract/growth.test.ts",
+    "test/contract/growth.host.test.ts",
     "test/contract/generic-workspace.host.test.ts",
     "test/contract/agent-controls.host.test.ts",
     "test/contract/agent-recovery.host.test.ts",

@@ -953,6 +953,26 @@ export type ResearchAnalysis = z.infer<typeof researchAnalysis>;
 const analysisRecord = z.object({ ...base, type: z.literal('analysis'), sessionId: z.string(), nodeId: z.string(),
   requestId: z.string(), requestDigest: sha256Hex, analysis: researchAnalysis });
 
+/** Proposal, admission and lifecycle facts for one additive per-Run research branch (PLS-10).
+ * The proposal is JSON here because PackNode is owned by packs.ts, which already depends on Ledger
+ * record vocabulary. Fabric parses this field through `growthProposal` before accepting or using it. */
+export const growthRecord = z.strictObject({
+  ...base,
+  type: z.literal('growth'),
+  proposalId: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  proposalDigest: sha256Hex,
+  event: z.enum(['proposed', 'accepted', 'rejected', 'started', 'completed', 'failed', 'cancelled', 'abandoned', 'returned']),
+  proposal: z.json().optional(),
+  proposalRecordId: z.string().optional(),
+  parentNode: z.string().optional(),
+  entry: z.string().optional(),
+  returnNode: z.string().optional(),
+  nodeIds: z.array(z.string()).optional(),
+  optional: z.boolean().optional(),
+  reason: z.string().optional(),
+  evidence: z.array(z.string()).optional(),
+});
+
 export const ledgerRecord = z.discriminatedUnion('type', [
   observationRecord,
   refusalRecord,
@@ -971,6 +991,7 @@ export const ledgerRecord = z.discriminatedUnion('type', [
   sessionRecord,
   codeRecord,
   knowledgeRecord,
+  growthRecord,
 ]);
 export type ObservationRecord = z.infer<typeof observationRecord>;
 export type RefusalRecord = z.infer<typeof refusalRecord>;
@@ -989,6 +1010,7 @@ export type AnalysisRecord = z.infer<typeof analysisRecord>;
 export type SessionRecord = z.infer<typeof sessionRecord>;
 export type CodeRecord = z.infer<typeof codeRecord>;
 export type KnowledgeRecord = z.infer<typeof knowledgeRecord>;
+export type GrowthRecord = z.infer<typeof growthRecord>;
 export type LedgerRecord = z.infer<typeof ledgerRecord>;
 
 /** What a caller states about a verdict; the ledger owns identity, sequence, time, and writer. */
@@ -1674,7 +1696,8 @@ export const ledgerSpec = defineDomain({
   // ended while delivery is still missing or failed. It is a new union arm, so an older reader must
   // refuse rather than erase the evidence lifecycle.
   // 23: source-linked model analysis stays distinct from observed facts and Judge verdicts.
-  version: 23,
+  // 24: accepted per-Run growth preserves the actual graph and its lifecycle.
+  version: 24,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -1980,6 +2003,12 @@ export class Ledger {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'knowledge', ...data }));
   }
 
+  /** Append one immutable growth fact. Fabric owns validation and ordering; Ledger owns identity,
+   * sequence, time and writer exactly as for every other execution record. */
+  async appendGrowth(runId: string, data: Omit<GrowthRecord, keyof typeof base | 'type'>): Promise<GrowthRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'growth', ...data }));
+  }
+
   /** Who refused: the shell for a permit decision (the default), the executor for a reader refusing a report kind. */
   async appendRefusal(runId: string, data: Omit<RefusalRecord, keyof typeof base | 'type'>, writer: WriterRole = 'shell'): Promise<RefusalRecord> {
     return this.#append(runId, writer, (h) => ({ ...h, type: 'refusal', ...data }));
@@ -2088,14 +2117,15 @@ const v20LedgerDocument = z.strictObject({
 });
 
 const priorPolishingDocument = z.strictObject({
-  unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.union([z.literal(21), z.literal(22)]) }),
+  unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.union([z.literal(21), z.literal(22), z.literal(23)]) }),
   global: z.null(),
   tables: z.strictObject({ runs: z.record(z.string(), runRecord), records: z.record(z.string(),
-    z.discriminatedUnion('type', [...v20LedgerRecord.options, knowledgeRecord, archiveRecord])) }),
+    z.discriminatedUnion('type', [...v20LedgerRecord.options, knowledgeRecord, archiveRecord, analysisRecord])) }),
 }).superRefine((document, context) => {
-  if (document.unit.version === 21 && Object.values(document.tables.records).some(record => record.type === 'archive')) {
-    context.addIssue({ code: 'custom', message: 'v21 did not support archive records' });
+  if (document.unit.version === 21 && Object.values(document.tables.records).some(record => record.type === 'archive' || record.type === 'analysis')) {
+    context.addIssue({ code: 'custom', message: 'v21 did not support archive or analysis records' });
   }
+  if (document.unit.version === 22 && Object.values(document.tables.records).some(record => record.type === 'analysis')) context.addIssue({ code: 'custom', message: 'v22 did not support analysis records' });
 });
 
 type ImportDocument = { readonly tables: { readonly runs: Record<string, RunRecord>; readonly records: Record<string, LedgerRecord> } };
@@ -2143,7 +2173,7 @@ function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
 function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> {
   const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   const version = (input as { unit?: { version?: unknown } } | null)?.unit?.version;
-  const document = version === 21 || version === 22 ? priorPolishingDocument.parse(input)
+  const document = version === 21 || version === 22 || version === 23 ? priorPolishingDocument.parse(input)
     : version === 20 ? v20LedgerDocument.parse(input) : readLegacyLedger(bytes);
   if (!isDeepStrictEqual(input, document)) throw new Error('ledger import contains unsupported fields or values; import would change stored facts');
   validateImportDocument(document as unknown as ImportDocument);
@@ -2177,7 +2207,7 @@ function sameImportSnapshot(a: BigIntStats, b: BigIntStats): boolean {
 
 export interface LegacyLedgerImportReceipt {
   readonly format: 'hima-ledger-import-v1';
-  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22; readonly sha256: string; readonly bytes: number; readonly backup: string };
+  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23; readonly sha256: string; readonly bytes: number; readonly backup: string };
   readonly target: { readonly version: number; readonly sha256: string; readonly file: string };
   readonly importedAt: string;
   readonly runs: number;
@@ -2198,7 +2228,7 @@ export interface LegacyLedgerImportReceipt {
  * home is written. The destination parent must already exist; no ancestor is created or repaired.
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
-  if (ledgerSpec.version !== 23) throw new Error('legacy import supports only the reviewed v19-v22-to-v23 transition');
+  if (ledgerSpec.version !== 24) throw new Error('legacy import supports only the reviewed v19-v23-to-v24 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);

@@ -1,0 +1,14 @@
+$ node scripts/require-node.mjs
+$ node scripts/check-seams.mjs
+seams: every dsh-facing source file declares its seam
+$ node scripts/check-boundary.mjs
+boundary: nothing under packages/*/src, packages/harness/rules, packages/harness/choosers, packages/harness/skills names a design, a technology, a vendor tool, a mining route or a report of one, beyond 4 exemption(s) each naming its ticket
+$ pnpm -r run build
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json && node scripts/build-client.mjs
+client: lib/client.js (143943 bytes)
+$ tsc -p tsconfig.json
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+$ tsc -p tsconfig.json --noEmit
