@@ -74,6 +74,29 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   const values = parseReading(await readFile(read.out, 'utf8')).values as { type: string; value: number }[];
   assert.equal(values.find((item) => item.type === 'setup_wns')!.value, 0.02);
   assert.equal(values.find((item) => item.type === 'full_constraint_failures')!.value, 0);
+
+  await writeFile(path.join(flow, 'synthetic-changed-actual-clock'), 'synthetic counterexample\n');
+  const changedPnr = fixture.run('pnr-generated');
+  assert.equal(changedPnr.status, 0, changedPnr.stderr);
+  const changedPnrReading = fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated');
+  assert.notEqual(changedPnrReading.run.status, 0, 'the PnR reader must reject an exported clock that differs from its input SDC');
+  const changedCompare = fixture.run('compare');
+  assert.equal(changedCompare.status, 0, changedCompare.stderr);
+  const changedRecord = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
+  assert.equal(changedRecord.facts.full_constraint_failures, null);
+  assert.match(changedRecord.facts.unknownReason.join('; '), /actual post-route clock differs/);
+  const changedReading = fixture.read(path.join(flow, 'records/compare.json'), 'compare');
+  assert.equal(changedReading.run.status, 0, changedReading.run.stderr);
+  assert.ok((parseReading(await readFile(changedReading.out, 'utf8')).values as { value: number | null }[])
+    .every((value) => value.value === null));
+
+  await rm(path.join(flow, 'synthetic-changed-actual-clock'));
+  await writeFile(path.join(flow, 'synthetic-missing-actual-clock'), 'synthetic counterexample\n');
+  const missingPnr = fixture.run('pnr-generated');
+  assert.equal(missingPnr.status, 2, missingPnr.stderr);
+  const missingRecord = JSON.parse(await readFile(path.join(flow, 'records/pnr-generated.json'), 'utf8'));
+  assert.equal(missingRecord.status, 'rejected');
+  assert.match(missingRecord.facts.rejected_reason, /postroute_sdc is missing/);
 });
 
 test('mine reruns retain immutable raw evidence and the selection reader checks its executed code identity', async (t) => {

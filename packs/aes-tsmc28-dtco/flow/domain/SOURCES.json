@@ -167,7 +167,7 @@
       "path": "pnr.tcl.tmpl",
       "source": "flow/scripts/pnr_tsmc28.tcl.tmpl",
       "sourceSha256": "e7db357c273593c742f451b3044b5d80aef936dfbe55a019e8eb25ea8b7f682e",
-      "packSha256": "abfa7c65a112593fb8bb46fc231ee8565049033b9d56f5f7cb8b2141015eb4ff",
+      "packSha256": "d1d2bd480173d3978d21a0fa4d442b4dd5212cb3970bffede042284f25a7d9d9",
       "adapted": true
     }
   ],
@@ -176,6 +176,7 @@
     "Mining arguments require explicit Site technology identifiers.",
     "shared_synth.tcl accepts an explicit SDC and emits raw library visibility markers for both arms.",
     "init.tcl.tmpl uses documented setNanoRouteMode -routeTopRoutingLayer.",
-    "charlib_emit.py writes per-cell prediction outputs and logs inside the Campaign attempt; no fixed /tmp path."
+    "charlib_emit.py writes per-cell prediction outputs and logs inside the Campaign attempt; no fixed /tmp path.",
+    "pnr.tcl.tmpl exports the active post-route SDC for clock evidence; Innovus 23.14 support remains an L4 Site bring-up item."
   ]
 }

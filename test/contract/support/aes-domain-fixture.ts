@@ -96,6 +96,12 @@ elif tool == 'innovus':
         summary.parent.mkdir(parents=True, exist_ok=True)
         wns = '0.020' if arm == 'generated' else '0.010'
         summary.write_text('SYNTHETIC FIXTURE -- timeDesign Summary\nSetup views included:\n view_%s\n| Setup mode | all | reg2reg | default |\n| WNS (ns): | %s | %s | 0.000 |\n| TNS (ns): | 0.000 | 0.000 | 0.000 |\n| Violating Paths: | 0 | 0 | 0 |\n| All Paths: | 1 | 1 | 0 |\n' % (arm, wns, wns))
+        actual_sdc = pathlib.Path(re.search(r'^write_sdc\s+(\S+)', text, re.M).group(1))
+        fixture_flow = script.parents[3]
+        if not (fixture_flow / 'synthetic-missing-actual-clock').exists():
+            period = '0.4' if (fixture_flow / 'synthetic-changed-actual-clock').exists() else '0.5'
+            actual_sdc.parent.mkdir(parents=True, exist_ok=True)
+            actual_sdc.write_text('create_clock -name clk -period %s [get_ports clk]\n' % period)
         print('=== XS28 PNR DONE %s (GDS written) ===' % arm)
     else:
         report = pathlib.Path(re.search(r'verify_drc -limit\s+(\d+) -report \{([^}]+)\}', text).group(2))

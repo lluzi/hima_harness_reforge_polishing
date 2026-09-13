@@ -827,6 +827,7 @@ def build_arm_files(ctx):
         rpt = ctx.run_dir / ("rpt_" + arm)
         final_db = ctx.run_dir / ("DBS_" + arm) / "postroute.enc"
         gds = ctx.run_dir / (arm + ".gds")
+        postroute_sdc = rpt / "postroute-active.sdc"
         pnr = fill_template(DOMAIN / "pnr.tcl.tmpl", {
             "INIT_DB": str(init_db) + ".dat", "DESIGN_TOP": ctx.binding("DESIGN_TOP"),
             "MULTI_CPU": ctx.binding("MULTI_CPU"), "TAP_CELL": ctx.binding("XS28_TAP_CELL"),
@@ -834,12 +835,14 @@ def build_arm_files(ctx):
             "RPT_DIR": rpt, "FINAL_DB": final_db, "GDS_OUT": gds,
             "GDS_MAP": site["XS28_GDS_MAP"], "MERGE_GDS": site["FOUNDRY_GDS"],
             "SWITCHING_ACTIVITY": ctx.binding("XS28_SWITCHING_ACTIVITY"), "ARM": arm,
+            "POSTROUTE_SDC": postroute_sdc,
         })
         init_path, pnr_path = ctx.run_dir / ("init_" + arm + ".tcl"), ctx.run_dir / ("pnr_" + arm + ".tcl")
         init_path.write_text(init); pnr_path.write_text(pnr)
         texts[arm] = {"init": init, "pnr": pnr}
         outputs[arm] = {"mmmc": mmmc_path, "init": init_path, "pnr": pnr_path,
-                        "init_db": Path(str(init_db) + ".dat"), "final_db": Path(str(final_db) + ".dat"), "gds": gds}
+                        "init_db": Path(str(init_db) + ".dat"), "final_db": Path(str(final_db) + ".dat"),
+                        "gds": gds, "postroute_sdc": postroute_sdc}
     matched = all(normalized_arm_script(texts["foundry"][kind]) == normalized_arm_script(texts["generated"][kind])
                   for kind in ("init", "pnr"))
     if not matched:
@@ -877,7 +880,8 @@ def stage_pnr(ctx, arm):
         raise ToolFailure("Innovus P&R log lacks the completion marker for " + arm)
     timing_summary = ctx.run_dir / ("rpt_" + arm) / "postopt" / "post.summary"
     for at, role in ((chosen["final_db"], "postroute_db"), (chosen["gds"], "postroute_gds"),
-                     (timing_summary, "postroute_timing_summary")):
+                     (timing_summary, "postroute_timing_summary"),
+                     (chosen["postroute_sdc"], "postroute_sdc")):
         ctx.add_artifact(at, role, "innovus-output")
     ctx.inputs.extend([file_ref(generated_lib, ctx.workspace, "generated_liberty", "learned-model-prediction"),
                        file_ref(generated_lef, ctx.workspace, "generated_lef", "generated-abstract-collection")])
@@ -1049,18 +1053,24 @@ def stage_compare(ctx):
             init = artifact(record, ctx.workspace, "init_script:" + arm)
             pnr_script = artifact(record, ctx.workspace, "pnr_script:" + arm)
             parsed_mmmc = parse_mmmc(mmmc)
-            sdc = Path(parsed_mmmc["sdc"]).resolve()
-            if not sdc.is_file() or sdc.is_symlink():
+            input_sdc = Path(parsed_mmmc["sdc"]).resolve()
+            actual_sdc = artifact(record, ctx.workspace, "postroute_sdc")
+            if not input_sdc.is_file() or input_sdc.is_symlink():
                 raise Rejected("%s PnR-bound SDC is absent" % arm)
+            input_clock = parse_sdc_period(input_sdc)
+            actual_clock = parse_sdc_period(actual_sdc)
+            if actual_clock != input_clock:
+                raise Rejected("%s actual post-route clock differs from the PnR input SDC" % arm)
             timing = parse_timing_summary(summary)
             if timing["analysisView"] != parsed_mmmc["view"] or parsed_mmmc["activeSetup"] != parsed_mmmc["view"]:
                 raise Rejected("%s post-route report analysis view differs from its MMMC view" % arm)
-            pnr_rows[arm] = {"timing": timing, "mmmc": parsed_mmmc, "clockNs": parse_sdc_period(sdc),
+            pnr_rows[arm] = {"timing": timing, "mmmc": parsed_mmmc, "clockNs": actual_clock,
                              "initText": init.read_text(errors="replace"),
                              "pnrText": pnr_script.read_text(errors="replace")}
             ctx.inputs.extend([file_ref(summary, ctx.workspace, arm + "_postroute_timing", "innovus-output"),
                                file_ref(mmmc, ctx.workspace, arm + "_mmmc", "generated-tool-input"),
-                               file_ref(sdc, ctx.workspace, arm + "_pnr_sdc", "design-compiler-output"),
+                               file_ref(input_sdc, ctx.workspace, arm + "_pnr_sdc", "design-compiler-output"),
+                               file_ref(actual_sdc, ctx.workspace, arm + "_postroute_sdc", "innovus-output"),
                                file_ref(init, ctx.workspace, arm + "_pnr_init_script", "generated-tool-input"),
                                file_ref(pnr_script, ctx.workspace, arm + "_pnr_route_script", "generated-tool-input")])
 
