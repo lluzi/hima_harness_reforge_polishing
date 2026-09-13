@@ -28,6 +28,8 @@ import { pathsOf, type Site } from './sites.js';
 import { currentRecordsIn, type KnowledgeRecord, type Ledger } from './ledger.js';
 import type { PackWorkshop } from './packs.js';
 import type { SemanticDeclaration } from './semantics.js';
+import { experimentBudgetSpent, reserveResearchWrite } from './budget.js';
+import { existingRun } from './runs.js';
 
 /** One tool as `ctx.tools.register` takes it: whatever `defineTool` makes of a definition. */
 type ToolDefinition = ReturnType<typeof defineTool>;
@@ -241,7 +243,11 @@ export async function readBack(site: Site, channel: Channel, at: string, expecte
  * and a schema and an answer that had drifted apart would be a model told one thing and handed
  * another.
  */
-export interface WriteAnswer { wrote: boolean; path?: string; sha256?: string; bytes?: number; refused?: string; reason?: string }
+export interface WriteAnswer {
+  wrote: boolean; path?: string; sha256?: string; bytes?: number; refused?: string; reason?: string;
+  /** Durable pre-effect call identity and its cumulative charged standing. */
+  writeReceipt?: string; usedWriteAttempts?: number; usedBytes?: number;
+}
 export interface ReadAnswer { read?: boolean; output?: string; path?: string; bytes?: number; text?: string; truncated?: boolean; reason?: string }
 export interface KnowledgeAnswer { read?: boolean; file?: string; purpose?: string; text?: string; reason?: string }
 
@@ -333,6 +339,9 @@ export function workshopTools(scope: WorkshopScope): ToolDefinition[] {
             bytes: { type: 'integer' },
             refused: { type: 'string', description: 'The path as it was asked for, when the write was refused.' },
             reason: { type: 'string', description: 'Why it was refused.' },
+            writeReceipt: { type: 'string', description: 'Ledger record for this charged writer call.' },
+            usedWriteAttempts: { type: 'integer' },
+            usedBytes: { type: 'integer' },
           },
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
@@ -408,14 +417,26 @@ export function workshopTools(scope: WorkshopScope): ToolDefinition[] {
 export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, content: string): Promise<WriteAnswer> {
   const channel = channelFor(scope.site);
   const p = pathsOf(scope.site);
+  let receipt: { readonly recordId: string; readonly usedWriteAttempts: number; readonly usedBytes: number } | undefined;
+  const withReceipt = <T extends WriteAnswer>(answer: T): T => receipt === undefined ? answer : {
+    ...answer, writeReceipt: receipt.recordId, usedWriteAttempts: receipt.usedWriteAttempts, usedBytes: receipt.usedBytes,
+  };
   const refused = async (reason: string): Promise<WriteAnswer> => {
     await refuse(scope, asked, reason);
-    return { wrote: false, refused: asked, reason };
+    return withReceipt({ wrote: false, refused: asked, reason });
   };
   const sessionId = scope.session.id;
   if (sessionId === undefined) {
     return refused('this workshop\'s session is not open yet, so nothing written in it could be recorded against a session');
   }
+  const bytes = Buffer.from(content, 'utf8');
+  const reserved = await reserveResearchWrite(scope.ledger, scope.runId, {
+    nodeId: scope.nodeId, attempt: scope.attempt, sessionId, scope: 'workshop', workshop: scope.declaration.id,
+    path: asked, requestedBytes: bytes.byteLength, ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
+  });
+  receipt = reserved;
+  if (!reserved.allowed) return refused(reserved.reason!);
+  const reserveStarted = (): boolean => experimentBudgetSpent(existingRun(scope.ledger, scope.runId), 0);
   const bad = badWritePath(asked);
   if (bad !== undefined) return refused(`a workshop writes only inside its own directory: ${bad}`);
 
@@ -435,6 +456,7 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
     if (!within(dir.absPath, scope.workshopAbs, scope.site)) {
       return refused(`${dir.absPath} is outside the workshop directory ${scope.workshopAbs}`);
     }
+    if (reserveStarted()) return refused('the Campaign entered its closing reserve before the workshop directory could be created; nothing was written');
     try {
       await mustRun(channel, ['mkdir', '-p', '--', dir.absPath], `create ${dir.absPath} on site ${scope.site.name}`);
     } catch (err) {
@@ -442,8 +464,8 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
     }
   }
 
-  const bytes = Buffer.from(content, 'utf8');
   const sha256 = createHash('sha256').update(bytes).digest('hex');
+  if (reserveStarted()) return refused('the Campaign entered its closing reserve before the workshop file could be written; nothing was written');
   try {
     await mustRun(channel, ['tee', '--', decided.absPath], `write ${decided.absPath} on site ${scope.site.name}`, { stdin: bytes });
   } catch (err) {
@@ -529,9 +551,9 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
       // to save the report of it.
       reason = `${said}; and the host log would not take that either (${messageOf(logErr)})`;
     }
-    return { wrote: false, reason };
+    return withReceipt({ wrote: false, reason });
   }
-  return { wrote: true, path: decided.absPath, sha256, bytes: bytes.byteLength };
+  return withReceipt({ wrote: true, path: decided.absPath, sha256, bytes: bytes.byteLength });
 }
 
 /** Read one of the declared outputs, under the Permit, capped. */

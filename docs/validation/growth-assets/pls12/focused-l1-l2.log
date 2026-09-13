@@ -1,0 +1,32 @@
+✔ fork exploration uses a fresh unbranched observation and Judge, never the last branch success (11355.119ms)
+✔ fork consolidation cannot bypass its fresh Judge on a revisit (486.17375ms)
+✔ explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence (4344.54875ms)
+✔ a valid next-strategy request at the generation budget records an honest ending without another Job (2905.047542ms)
+✔ fork branches require explicit work, node pause fences dependents only, and join uses each branch evidence (5597.283625ms)
+✔ a declared nested Loop exposes entry and each inner generation without helper-driven Jobs (5274.792209ms)
+✔ an invalid fixed chooser recommendation does not veto a valid owner strategy (2695.5905ms)
+✔ Pack wait needs a human clearance followed by explicit Agent completion (2106.552458ms)
+✔ a closing reserve stays inside the hard box and admits analysis while refusing new node work (6280.010416ms)
+✔ research writer charges rewrites and refused calls before Site effects across the whole Run (2193.220125ms)
+✔ the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session (5559.596041ms)
+✔ a begun Workshop draft retains its original author's code across handoff and launches unchanged (2070.461125ms)
+✔ a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry (2348.807042ms)
+✔ a durable launch intent must succeed before an actual Job can start (2587.017708ms)
+✔ nonblocking capacity admission returns once and never launches when a slot later frees (3020.55125ms)
+✔ a nonblocking tool returns its real session; stopping the Host observer leaves that Job running (1428.906084ms)
+✔ the conversational Agent writes isolated Workshop versions, and launch verifies every recorded file without a model moment (1433.292708ms)
+✔ a killed Host at before-launch reconciles the exact durable intent without relaunch (4178.281042ms)
+✔ a killed Host at running-without-receipt reconciles the exact durable intent without relaunch (3164.837292ms)
+✔ a killed Host at finished-without-receipt reconciles the exact durable intent without relaunch (3729.931166ms)
+✔ a nonblocking Pack reader returns its Job and only read-back can settle the observation (1585.450875ms)
+✔ the Pack chooser is readonly advice and does not accept its recommendation as an Agent decision (538.497584ms)
+✔ an unresolved launch intent vetoes another Run inside the Site capacity claim before any Job starts (525.095583ms)
+✔ owner revision preserves finished Workshop bytes and seeds the affected rerun without launching it (5140.051625ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 83347.699583

@@ -412,6 +412,25 @@ export const packWorkshop = z.strictObject({
 export type PackWorkshop = z.infer<typeof packWorkshop>;
 
 /**
+ * The part of a Pack's Campaign budget that the method itself owns. The defaults keep existing
+ * Packs loadable while still putting a finite ceiling over generated research material.
+ * `writeAttempts` counts calls, not distinct paths: replacing one file is another attempt and its
+ * whole content is charged again.
+ */
+export const defaultPackBudget = {
+  closingReserveMs: 0,
+  researchWrites: { writeAttempts: 256, bytes: 4 * 1024 * 1024 },
+} as const;
+export const packBudget = z.strictObject({
+  closingReserveMs: z.number().int().nonnegative().default(defaultPackBudget.closingReserveMs),
+  researchWrites: z.strictObject({
+    writeAttempts: z.number().int().positive().max(100_000).default(defaultPackBudget.researchWrites.writeAttempts),
+    bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(defaultPackBudget.researchWrites.bytes),
+  }).default(defaultPackBudget.researchWrites),
+});
+export type PackBudget = z.infer<typeof packBudget>;
+
+/**
  * What a pack calls one of the values a Run is stated in, and what it is measured in (#42):
  * `declared_parameter: { label: clock period at most, unit: ns }`.
  *
@@ -498,6 +517,8 @@ export const packContract = z.strictObject({
    * harness's, which is what lets the harness know nothing about what gets written.
    */
   workshops: z.array(packWorkshop).default([]),
+  /** Campaign-wide research bounds. Every Workshop and every grown node shares this one pool. */
+  budget: packBudget.default(defaultPackBudget),
   rules: z.array(z.string().min(1)).default([]),
   /**
    * The domain knowledge this pack carries (#57), one entry per file under its own `knowledge/`.

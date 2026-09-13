@@ -44,6 +44,7 @@ import type {
   ReaderRef,
   RevisionRecord,
   RefusalRecord,
+  ResearchWriteRecord,
   RunBudget,
   RunLoop,
   RunFork,
@@ -342,6 +343,8 @@ export interface RunView {
   readonly workspace?: { readonly design?: string; readonly flowRoot: string; readonly containerName: string };
   readonly observations: readonly ObservationView[];
   readonly refusals: readonly RefusalView[];
+  /** Every pre-effect research writer reservation, including refused and failed calls. */
+  readonly researchWrites?: readonly ResearchWriteView[];
   readonly verdicts: readonly VerdictView[];
   readonly nodes: readonly NodeView[];
   /**
@@ -403,6 +406,10 @@ export interface RunView {
   /** Why an ended Campaign has no deliverable report yet. No file is implied by this message. */
   readonly experienceUnavailable?: string;
 }
+
+export type ResearchWriteView = Pick<ResearchWriteRecord,
+  'id' | 'at' | 'callId' | 'nodeId' | 'attempt' | 'sessionId' | 'scope' | 'workshop' | 'path'
+  | 'requestedBytes' | 'allowed' | 'limitWriteAttempts' | 'limitBytes' | 'usedWriteAttempts' | 'usedBytes' | 'reason'>;
 
 export type AnalysisView = import('./ledger.js').ResearchAnalysis & {
   readonly recordId: string;
@@ -745,6 +752,14 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     ...(prepared === undefined ? {} : { workspace: { ...(prepared.design === undefined ? {} : { design: prepared.design }), flowRoot: prepared.flowRoot, containerName: prepared.containerName } }),
     observations,
     refusals: records.filter((r): r is RefusalRecord => r.type === 'refusal').map(refusalView),
+    researchWrites: records.filter((r): r is ResearchWriteRecord => r.type === 'research-write').map((record) => ({
+      id: record.id, at: record.at, callId: record.callId, nodeId: record.nodeId, attempt: record.attempt,
+      sessionId: record.sessionId, scope: record.scope, ...(record.workshop === undefined ? {} : { workshop: record.workshop }), path: record.path,
+      requestedBytes: record.requestedBytes, allowed: record.allowed,
+      limitWriteAttempts: record.limitWriteAttempts, limitBytes: record.limitBytes,
+      usedWriteAttempts: record.usedWriteAttempts, usedBytes: record.usedBytes,
+      ...(record.reason === undefined ? {} : { reason: record.reason }),
+    })),
     verdicts: records.filter((r): r is VerdictRecord => r.type === 'verdict').map((v) => verdictView(v, byId)),
     // An absent key, never an undefined one: a node that never waited says so by omission.
     nodes: [...nodes.values()].map((n) => (waitedForSlot.has(n.nodeId) ? { ...n, waitedForSlot: true as const } : n)),

@@ -73,6 +73,9 @@ import { allowsRunArgument, allowsTimeBoxMs, runArguments, goalFrom, strategyFro
 import { PackNotFoundError, RunFaultError, RunStartError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
 import {
   advance,
+  budgetStanding,
+  experimentBudgetSpent,
+  reserveResearchWrite,
   attemptOf,
   attemptOfSession,
   currentAttemptOf,
@@ -251,6 +254,9 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   const campaignId = campaignIdFor(pack, new Date());
   const budget = {
     timeBoxMs: req.timeBoxMs ?? defaultTimeBoxMs,
+    closingReserveMs: pack.contract.budget.closingReserveMs,
+    researchWriteAttempts: pack.contract.budget.researchWrites.writeAttempts,
+    researchWriteBytes: pack.contract.budget.researchWrites.bytes,
     retryAllowance: req.retryAllowance ?? defaultRetryAllowance,
     // The Site's own declaration, copied at start so a Run says what cap it was started under even
     // if the site file is edited afterwards, and what `claimSlotAndLaunch` counts a launch
@@ -275,6 +281,9 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   // unreachable.
   if (!allowsTimeBoxMs(budget.timeBoxMs)) {
     throw new RunStartError(`this run's time box is ${budget.timeBoxMs} ms; expected ${timeBoxMsBounds.what}`);
+  }
+  if (budget.closingReserveMs >= budget.timeBoxMs) {
+    throw new RunStartError(`this Pack reserves ${String(budget.closingReserveMs)} ms for closing inside a ${String(budget.timeBoxMs)} ms time box; the reserve must be smaller than the original box`);
   }
   // And the allowance against the same table the faces check against, for the same reason the first
   // strategy's period is re-checked above: `startRun` is an operation of its own — the acceptance
@@ -1090,6 +1099,7 @@ export interface ExecutionContext {
   /** Canonical record identities for structured grow/revise proposals; file SHA is a different identity. */
   readonly evidence?: readonly { readonly recordId: string; readonly contentIdentity: string; readonly type: string; readonly generation?: number; readonly nodeId?: string }[];
   readonly run: RunRecord; readonly nodes: readonly PackNode[];
+  readonly budget: ReturnType<typeof budgetStanding>;
   readonly method?: { readonly id: string; readonly version: string; readonly digest: string; readonly dir: string; readonly contract: Pack['contract']; readonly reference: Pack['graph'] };
   readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly growths: readonly GrowthView[];
   readonly revisions: readonly RevisionRecord[]; readonly reason?: string;
@@ -1151,6 +1161,7 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
   const answer = (kind: ExecutionActionResult['kind'], reason?: string, receipt?: ExecutionReceipt): ExecutionActionResult => ({
     kind, context: executionContext(deps, snapshot.id), ...(reason === undefined ? {} : { reason }), ...(receipt === undefined ? {} : { receipt, data: receipt.data }),
   });
+  if (experimentBudgetSpent(snapshot, 0)) return answer('refused', 'the Campaign is in its closing reserve or has exhausted its hard time box; no revision may start');
   const parsed = revisionProposal.safeParse(req.revision);
   if (!parsed.success) return answer('refused', `invalid revision request: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'revision'} ${issue.message}`).join('; ')}`);
   const proposal = parsed.data; const proposalDigest = identityOf(proposal);
@@ -1226,9 +1237,29 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
     methodIdentity, sourceIdentity, inputIdentity, environmentIdentity, changedNodes, affectedNodes: closure,
     supersedes: all.findLast((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied')?.revisionId,
   });
+  // Reserve every logical content change before the first Site write. The deterministic retained
+  // before/after copies made by `applyWorkspaceRevision` are consequences of this one request and
+  // are not charged again. Stable call identities make an interrupted identical retry idempotent.
+  for (const [index, change] of proposal.changes.entries()) {
+    const position = positionOf(pack, change.nodeId)?.node;
+    const workshop = change.scope === 'workshop' && position?.kind === 'act' ? position.parameters.workshop : undefined;
+    const reserved = await reserveResearchWrite(deps.ledger, run.id, {
+      callId: `revision:${proposal.revisionId}:${String(index)}`,
+      nodeId: change.nodeId, attempt: currentAttemptOf(deps.ledger, run.id, change.nodeId),
+      sessionId: req.actor, scope: change.scope, ...(workshop === undefined ? {} : { workshop }),
+      path: change.path, requestedBytes: Buffer.byteLength(change.content, 'utf8'),
+    });
+    if (!reserved.allowed) {
+      await deps.ledger.appendRevision(run.id, { revisionId: proposal.revisionId, version: proposed.version,
+        event: 'refused', proposalDigest, reason: reserved.reason, methodIdentity, sourceIdentity,
+        inputIdentity, environmentIdentity, changedNodes, affectedNodes: closure, supersedes: proposed.supersedes });
+      return answer('refused', reserved.reason);
+    }
+  }
   let applied = earlier.find((record) => record.event === 'applied');
   if (applied === undefined) {
     try {
+      if (experimentBudgetSpent(existingRun(deps.ledger, run.id), 0)) throw new RunStartError('the Campaign entered its closing reserve before revision bytes could be written; the charged request remains on the ledger and no revision was applied');
       const assets = await applyWorkspaceRevision(loadSite(deps.sitesDir, run.siteId), workspace.workspace, proposal.revisionId, workspaceChanges);
       applied = await deps.ledger.appendRevision(run.id, { revisionId: proposal.revisionId, version: proposed.version,
         event: 'applied', proposalDigest, methodIdentity, sourceIdentity, inputIdentity, environmentIdentity,
@@ -1288,6 +1319,8 @@ async function growthAction(deps: FabricDeps, snapshot: RunRecord, req: Executio
     return answer('accepted', { receipt, data: receipt.data });
   }
 
+  if (experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no growth budget remains');
+
   const parsed = growthProposal.safeParse(req.proposal);
   if (!parsed.success) return no(`invalid growth proposal: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'proposal'} ${issue.message}`).join('; ')}`);
   const proposal = parsed.data;
@@ -1309,7 +1342,6 @@ async function growthAction(deps: FabricDeps, snapshot: RunRecord, req: Executio
   };
   const validation = validateGrowthGraph(executionPack(deps, run), proposal);
   if (!validation.ok) return reject(validation.reason);
-  if (timeBoxSpent(run, 0)) return reject('the Campaign time box is exhausted; no growth budget remains');
   if (run.status !== 'running') return reject('growth requires an active Run');
   if (run.loop !== undefined || run.fork !== undefined) return reject('nested growth inside a Loop or fork is unsupported in the first slice');
   if (run.currentNode !== proposal.parent.nodeId || run.generation !== proposal.parent.generation) return reject('the proposal parent and generation are not the Run current declared growth point');
@@ -1468,12 +1500,13 @@ function unclearedFailure(run: RunRecord, scope: string): NodeExecution | undefi
 
 export function executionContext(deps: FabricDeps, runId: string): ExecutionContext {
   const run = existingRun(deps.ledger, runId);
+  const standing = budgetStanding(run, 0);
   const executions = Object.values(run.control?.executions ?? {});
   const revisions = revisionRecordsIn(deps.ledger, runId);
   const evidence = currentRecordsIn(deps.ledger.records({ runId })).filter(record => ['workspace', 'observation', 'verdict', 'code', 'knowledge'].includes(record.type)).slice(-128)
     .map(record => ({ recordId: record.id, contentIdentity: identityOf(record), type: record.type,
       ...(record.generation === undefined ? {} : { generation: record.generation }), ...('nodeId' in record ? { nodeId: record.nodeId } : {}) }));
-  if (run.control === undefined) return { run, nodes: [], available: [], executions, growths: [], revisions, reason: 'historical automatic Run; explicit safe ownership migration is required' };
+  if (run.control === undefined) return { run, budget: standing, nodes: [], available: [], executions, growths: [], revisions, reason: 'historical automatic Run; explicit safe ownership migration is required' };
   try {
     const pack = executionPack(deps, run);
     const nodes = runGraphsOf(pack).flatMap(({ graph }) => graph.nodes);
@@ -1484,14 +1517,14 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
         ? [run.fork.join]
         : Object.values(run.fork.branches).filter((branch) => branch.state !== 'done').map((branch) => branch.currentNode);
     const incomplete = Object.values(run.control.requests).some((request) => (request.receipt.action === 'complete' || request.receipt.action === 'continue') && request.state !== 'done');
-    const available = run.status !== 'running' || run.control.stop !== undefined || incomplete ? [] : candidates.filter((nodeId) =>
+    const available = standing.phase !== 'active' || run.status !== 'running' || run.control.stop !== undefined || incomplete ? [] : candidates.filter((nodeId) =>
       executionPauseReason(pack, run, nodeId) === undefined && unclearedFailure(run, nodeId) === undefined && !executions.some((execution) =>
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
         && execution.supersededBy === undefined && execution.phase !== 'failed'));
-    return { run, nodes, available, executions, evidence, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
+    return { run, budget: standing, nodes, available, executions, evidence, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : standing.phase === 'closing' ? { reason: 'the Campaign is in its closing reserve; analysis, fact reading and deterministic settlement remain, but no new experiment, revision, growth or Workshop write may start' } : standing.phase === 'exhausted' ? { reason: 'the Campaign hard time box is exhausted; only deterministic facts and missing-delivery reporting remain' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
-    return { run, nodes: [], available: [], executions, growths: [], revisions, reason: (error as Error).message };
+    return { run, budget: standing, nodes: [], available: [], executions, growths: [], revisions, reason: (error as Error).message };
   }
 }
 
@@ -1520,7 +1553,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       if (run.status !== 'running' && run.status !== 'waiting') return no('this Run is not active');
       const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action };
       await recordExecutionAction(deps, run, req, digest, {
-        paused: [...new Set([...control.paused, '*'])], stop: { reason: control.stop?.reason ?? 'cancel', requestId: req.requestId, status: 'requested' },
+        paused: [...new Set([...control.paused, '*'])], stop: { reason: 'cancel', requestId: req.requestId, status: 'requested' },
       }, receipt, {}, 'admitted');
       scheduleExecutionStop(deps, run.id);
       return answer('accepted', { receipt });
@@ -1582,7 +1615,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     }
     if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || reading) return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');
-    if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted');
+    if (experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no new node execution may begin');
     if (req.nodeId !== undefined) {
       const paused = executionPauseReason(executionPack(deps, run), run, req.nodeId);
       if (paused !== undefined) return no(paused);
@@ -1686,7 +1719,7 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
     beforeLaunch: async (offered: LaunchIntent) => {
       const revalidate = () => {
         if (deps.stopSignal?.aborted) throw new RunStartError('the Host stopped before this Job was launched');
-        if (timeBoxSpent(existingRun(deps.ledger, run.id), 0)) throw new RunStartError('the Campaign time box expired before this Job was launched');
+        if (experimentBudgetSpent(existingRun(deps.ledger, run.id), 0)) throw new RunStartError('the Campaign entered its closing reserve before this Job was launched');
       };
       revalidate();
       const intent = launchIntentSchema.parse(offered);
@@ -1758,7 +1791,8 @@ async function requestExecutionBudgetStop(deps: FabricDeps, runId: string): Prom
 export function scheduleExecutionStop(deps: FabricDeps, runId: string): void {
   trackExecutionTask(deps, `stop:${runId}`, async () => {
     if (deps.stopSignal?.aborted) return;
-    await cancelRun(deps, runId);
+    const reason = existingRun(deps.ledger, runId).control?.stop?.reason ?? 'cancel';
+    await cancelRun(deps, runId, reason);
   });
 }
 
@@ -1817,7 +1851,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   if (execution.generation !== run.generation || execution.loopId !== run.loop?.id || execution.loopGeneration !== run.loop?.generation) return no('this execution belongs to an earlier generation or Loop');
   const paused = executionPauseReason(executionPack(deps, run), run, execution.nodeId);
   if (paused !== undefined && (req.action === 'work' || req.action === 'complete')) return no(paused);
-  if (timeBoxSpent(run, 0) && (req.action === 'work' || req.action === 'complete' || req.action === 'write')) return no('the Campaign time box is exhausted');
+  if (experimentBudgetSpent(run, 0) && (req.action === 'work' || req.action === 'write')) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no experiment or Workshop write may start');
   if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq)) return no('the execution input version no longer matches the Run');
   let ctx: Driving;
   try { ctx = executionDriving(deps, run, execution); } catch (error) { return no((error as Error).message); }
@@ -1847,7 +1881,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
       return executionAnswer(deps, run.id, 'accepted', { receipt });
     } catch (error) {
       if (error instanceof LaunchNotDispatchedError) {
-        const exhausted = timeBoxSpent(existingRun(deps.ledger, run.id), 0);
+        const exhausted = experimentBudgetSpent(existingRun(deps.ledger, run.id), 0);
         // Only Jobs' pre-dispatch boundary can establish this fact. Errors after sending the
         // launch command keep their intent below, even when no launch receipt was persisted.
         await updateExecution(deps, run.id, execution.id, { phase: 'failed', intent: undefined,
@@ -1859,6 +1893,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
       return executionAnswer(deps, run.id, 'accepted', { receipt, reason: `work was admitted but its effect is uncertain; do not repeat the launch: ${(error as Error).message}` });
     }
   }
+  if (timeBoxSpent(run, 0) && node.kind === 'explore') return no('the Campaign hard time box is exhausted; an unfinished strategy analysis cannot be committed as a completed Explore decision');
   return completeAdmittedNode(ctx, req, execution, digest);
 }
 
@@ -1994,7 +2029,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
   const writes = req.action === 'write';
   const initializes = execution.workshop === undefined;
   if (writes && execution.phase !== 'begun') return no('this executable version is already in use or has a result; changing an active or historical file is not an accepted revision');
-  if ((writes || initializes) && (run.status !== 'running' || timeBoxSpent(run, 0) || run.control?.stop !== undefined || Object.values(run.control?.requests ?? {}).some((request) => request.receipt.action === 'continue' && request.state !== 'done'))) return no('the Run cannot prepare or write a new Workshop version after it has ended or spent its time box');
+  if ((writes || initializes) && (run.status !== 'running' || experimentBudgetSpent(run, 0) || run.control?.stop !== undefined || Object.values(run.control?.requests ?? {}).some((request) => request.receipt.action === 'continue' && request.state !== 'done'))) return no('the Run cannot prepare or write a new Workshop version after it ended or entered its closing reserve');
   if (writes && (typeof req.path !== 'string' || typeof req.content !== 'string')) return no('write needs a relative path and the actual file content');
   const mutates = writes || initializes;
   const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };

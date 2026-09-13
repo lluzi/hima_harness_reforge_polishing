@@ -84,7 +84,7 @@ test('a generic Pack without design reopens its completed Run without rewriting 
     host = undefined;
     const storageFile = path.join(h.home, 'storages/hima_ledger.json');
     const stored = await readFile(storageFile);
-    assert.equal(JSON.parse(stored.toString()).unit.version, 25);
+    assert.equal(JSON.parse(stored.toString()).unit.version, 26);
     host = await bootInProcess(h);
     await host.ctx.hima.reconciled;
     assert.equal(host.ctx.hima.ledger.run(started.run.id)?.status, 'ended-goal-not-met');

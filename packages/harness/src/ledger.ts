@@ -919,6 +919,27 @@ export const codeRecord = z.strictObject({
   language: ledgerSlug,
 });
 
+/** One charged call to the research writer, appended before any Site effect. */
+export const researchWriteRecord = z.strictObject({
+  ...base,
+  ...inBranch,
+  type: z.literal('research-write'),
+  callId: z.string().min(1),
+  nodeId: z.string().min(1),
+  attempt: z.number().int().positive(),
+  sessionId: z.string().min(1),
+  scope: z.enum(['workshop', 'workspace']),
+  workshop: ledgerSlug.optional(),
+  path: z.string(),
+  requestedBytes: z.number().int().nonnegative(),
+  allowed: z.boolean(),
+  limitWriteAttempts: z.number().int().positive(),
+  limitBytes: z.number().int().positive(),
+  usedWriteAttempts: z.number().int().positive(),
+  usedBytes: z.number().int().nonnegative(),
+  reason: z.string().min(1).optional(),
+});
+
 /**
  * A Pack knowledge file an Agent actually read while working one node.  This is deliberately not a
  * declaration: a Pack may offer many files, but only a successful tool read is evidence that its
@@ -1040,6 +1061,7 @@ export const ledgerRecord = z.discriminatedUnion('type', [
   analysisRecord,
   sessionRecord,
   codeRecord,
+  researchWriteRecord,
   knowledgeRecord,
   growthRecord,
   revisionRecord,
@@ -1060,6 +1082,7 @@ export type ArchiveRecord = z.infer<typeof archiveRecord>;
 export type AnalysisRecord = z.infer<typeof analysisRecord>;
 export type SessionRecord = z.infer<typeof sessionRecord>;
 export type CodeRecord = z.infer<typeof codeRecord>;
+export type ResearchWriteRecord = z.infer<typeof researchWriteRecord>;
 export type KnowledgeRecord = z.infer<typeof knowledgeRecord>;
 export type GrowthRecord = z.infer<typeof growthRecord>;
 export type RevisionRecord = z.infer<typeof revisionRecord>;
@@ -1114,6 +1137,11 @@ export type RunStatus = z.infer<typeof runStatus>;
 /** A Campaign's allowances on the meters tied to the design and the Site (D4). Never tokens or money. */
 export const runBudget = z.strictObject({
   timeBoxMs: z.number().int().positive(),
+  /** Reserved inside `timeBoxMs`; zero keeps old Pack behavior. */
+  closingReserveMs: z.number().int().nonnegative().optional(),
+  /** Run-wide writer call and byte pools copied from the Pack at Campaign start. */
+  researchWriteAttempts: z.number().int().positive().optional(),
+  researchWriteBytes: z.number().int().positive().optional(),
   /** Attempts a node may make, since it was last resumed, before its failure becomes a Hard blocker. */
   retryAllowance: z.number().int().nonnegative(),
   /** The Site's declared parallel job count, copied at start: the cap a launch is counted against. */
@@ -1227,6 +1255,8 @@ export const runMeters = z.strictObject({
   elapsedMs: z.number().int().nonnegative(),
   jobsLaunched: z.number().int().nonnegative(),
   attempts: z.number().int().nonnegative(),
+  researchWriteAttempts: z.number().int().nonnegative().optional(),
+  researchBytesAttempted: z.number().int().nonnegative().optional(),
   waitedMs: z.number().int().nonnegative().optional(),
   /**
    * What this Run has spent of each licence, in licence-milliseconds: the seats a Job held times how
@@ -1336,6 +1366,12 @@ const movedOn = (held: RunMeters | undefined, written: RunMeters, status: RunSta
     elapsedMs: Math.max(held.elapsedMs, written.elapsedMs),
     jobsLaunched: Math.max(held.jobsLaunched, written.jobsLaunched),
     attempts: Math.max(held.attempts, written.attempts),
+    ...(held.researchWriteAttempts === undefined && written.researchWriteAttempts === undefined ? {} : {
+      researchWriteAttempts: Math.max(held.researchWriteAttempts ?? 0, written.researchWriteAttempts ?? 0),
+    }),
+    ...(held.researchBytesAttempted === undefined && written.researchBytesAttempted === undefined ? {} : {
+      researchBytesAttempted: Math.max(held.researchBytesAttempted ?? 0, written.researchBytesAttempted ?? 0),
+    }),
     ...(waited < 0 ? {} : { waitedMs: waited }),
     ...(licences === undefined ? {} : { licenceMs: licences }),
     ...(generations === undefined ? {} : { generationMs: generations }),
@@ -1752,7 +1788,8 @@ export const ledgerSpec = defineDomain({
   // 23: source-linked model analysis stays distinct from observed facts and Judge verdicts.
   // 24: accepted per-Run growth preserves the actual graph and its lifecycle.
   // 25: retain observed and written byte versions before later attempts overwrite source paths.
-  version: 25,
+  // 26: freeze Campaign closing/attempt/write limits and retain pre-effect write admissions.
+  version: 26,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -2053,6 +2090,11 @@ export class Ledger {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'code', ...data }));
   }
 
+  /** Charge one writer call before any Site effect. */
+  async appendResearchWrite(runId: string, data: Omit<ResearchWriteRecord, keyof typeof base | 'type'>): Promise<ResearchWriteRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'research-write', ...data }));
+  }
+
   /** Record only a successful, byte-identified Pack knowledge read. */
   async appendKnowledge(runId: string, data: Omit<KnowledgeRecord, keyof typeof base | 'type'>): Promise<KnowledgeRecord> {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'knowledge', ...data }));
@@ -2229,6 +2271,14 @@ const priorPolishingDocument = z.strictObject({
   if (document.unit.version === 22 && Object.values(document.tables.records).some(record => record.type === 'analysis')) context.addIssue({ code: 'custom', message: 'v22 did not support analysis records' });
 });
 
+const v25LedgerDocument = z.strictObject({
+  unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.literal(25) }), global: z.null(),
+  tables: z.strictObject({ runs: z.record(z.string(), runRecord), records: z.record(z.string(), ledgerRecord) }),
+}).superRefine((document, context) => {
+  if (Object.values(document.tables.records).some(record => record.type === 'research-write')) context.addIssue({ code: 'custom', message: 'research-write requires source v26' });
+  if (Object.values(document.tables.runs).some(run => run.budget?.closingReserveMs !== undefined || run.budget?.researchWriteAttempts !== undefined || run.budget?.researchWriteBytes !== undefined)) context.addIssue({ code: 'custom', message: 'closing and research-write bounds require source v26' });
+});
+
 type ImportDocument = { readonly tables: { readonly runs: Record<string, RunRecord>; readonly records: Record<string, LedgerRecord> } };
 
 /** Shared relational checks, applied to every source schema before any target is staged. */
@@ -2271,10 +2321,10 @@ function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
 }
 
 /** Validate a v19 or v20 offline snapshot without changing fields or pretending it is live. */
-function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> {
+function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> | z.infer<typeof v25LedgerDocument> {
   const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   const version = (input as { unit?: { version?: unknown } } | null)?.unit?.version;
-  const document = version === 21 || version === 22 || version === 23 || version === 24 ? priorPolishingDocument.parse(input)
+  const document = version === 25 ? v25LedgerDocument.parse(input) : version === 21 || version === 22 || version === 23 || version === 24 ? priorPolishingDocument.parse(input)
     : version === 20 ? v20LedgerDocument.parse(input) : readLegacyLedger(bytes);
   if (!isDeepStrictEqual(input, document)) throw new Error('ledger import contains unsupported fields or values; import would change stored facts');
   validateImportDocument(document as unknown as ImportDocument);
@@ -2308,7 +2358,7 @@ function sameImportSnapshot(a: BigIntStats, b: BigIntStats): boolean {
 
 export interface LegacyLedgerImportReceipt {
   readonly format: 'hima-ledger-import-v1';
-  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23 | 24; readonly sha256: string; readonly bytes: number; readonly backup: string };
+  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22 | 23 | 24 | 25; readonly sha256: string; readonly bytes: number; readonly backup: string };
   readonly target: { readonly version: number; readonly sha256: string; readonly file: string };
   readonly importedAt: string;
   readonly runs: number;
@@ -2329,7 +2379,7 @@ export interface LegacyLedgerImportReceipt {
  * home is written. The destination parent must already exist; no ancestor is created or repaired.
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
-  if (ledgerSpec.version !== 25) throw new Error('legacy import supports only the reviewed v19-v24-to-v25 transition');
+  if (ledgerSpec.version !== 26) throw new Error('legacy import supports only the reviewed v19-v25-to-v26 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);
