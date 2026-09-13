@@ -1077,6 +1077,17 @@ def parse_sdc_period(path):
     return periods[0]
 
 
+def pnr_input_sdc_identity(path):
+    text = Path(path).read_text()
+    header = re.compile(r"^# Created by write_sdc on [^\r\n]+$", re.M)
+    if len(header.findall(text)) != 1:
+        raise Rejected("PnR-input SDC lacks one recognized volatile write_sdc header")
+    stable = header.sub("# Created by write_sdc on <volatile>", text, count=1)
+    raw = stable.encode()
+    return {"sha256": sha_bytes(raw), "bytes": len(raw),
+            "canonicalization": "one write_sdc creation-time comment"}
+
+
 def parse_mmmc(path):
     text = Path(path).read_text(errors="replace")
     mode = re.findall(r"create_constraint_mode\s+-name\s+(\S+)\s+-sdc_files\s+\[list\s+([^\]]+)\]", text)
@@ -1193,6 +1204,7 @@ def stage_compare(ctx):
             if timing["analysisView"] != parsed_mmmc["view"] or parsed_mmmc["activeSetup"] != parsed_mmmc["view"]:
                 raise Rejected("%s post-route report analysis view differs from its MMMC view" % arm)
             pnr_rows[arm] = {"timing": timing, "mmmc": parsed_mmmc, "clockNs": actual_clock,
+                             "inputSdcIdentity": pnr_input_sdc_identity(input_sdc),
                              "initText": init.read_text(errors="replace"),
                              "pnrText": pnr_script.read_text(errors="replace")}
             ctx.inputs.extend([file_ref(summary, ctx.workspace, arm + "_postroute_timing", "innovus-output"),
@@ -1210,6 +1222,7 @@ def stage_compare(ctx):
         pnr_method_matched = (
             foundry_pnr_condition == generated_pnr_condition
             and left["clockNs"] == right["clockNs"]
+            and left["inputSdcIdentity"] == right["inputSdcIdentity"]
             and left["mmmc"]["qrc"] == right["mmmc"]["qrc"]
             and left["mmmc"]["temperature"] == right["mmmc"]["temperature"]
         )

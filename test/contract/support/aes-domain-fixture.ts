@@ -74,10 +74,11 @@ elif tool == 'dc_shell':
     run = script.parent; (run / 'results').mkdir(exist_ok=True); (run / 'reports').mkdir(exist_ok=True)
     master = 'XS_FIX_ZN' if arm == 'custom' else 'NAND2_X1'
     (run / 'results' / (arm + '.dc.v')).write_text('module aes_cipher_top(input clk,a,b,output z);\n%s U0 (.A(a),.B(b),.Z(z));\nendmodule\n' % master)
-    (run / 'results' / (arm + '.dc.sdc')).write_text('create_clock -name clk -period 0.5 [get_ports clk]\n')
+    fixture_flow = script.parents[3]
+    input_delay = '0.2' if arm == 'custom' and (fixture_flow / 'synthetic-custom-input-delay').exists() else '0.1'
+    (run / 'results' / (arm + '.dc.sdc')).write_text('### SYNTHETIC FIXTURE SDC\n# Created by write_sdc on SYNTHETIC-%s\n###\ncreate_clock -name clk -period 0.5 [get_ports clk]\nset_input_delay -clock clk %s [get_ports a]\n' % (arm, input_delay))
     (run / 'reports' / ('refs_' + arm + '.rpt')).write_text('%s 1\n' % master)
     (run / 'reports' / ('timing_' + arm + '.rpt')).write_text('slack (MET) 0.010\n')
-    fixture_flow = script.parents[3]
     dc_version = 'SYNTHETIC-DC-B' if arm == 'custom' and (fixture_flow / 'synthetic-dc-version-mismatch').exists() else 'SYNTHETIC-DC-A'
     print('   Version %s for synthetic64 - SYNTHETIC-FIXTURE' % dc_version)
     print('=== AES_DTCO LIBRARY_VISIBLE_COUNT %d ===' % (1 if arm == 'custom' else 0))
