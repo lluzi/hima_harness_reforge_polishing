@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -109,6 +109,40 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   const values = parseReading(await readFile(read.out, 'utf8')).values as { type: string; value: number }[];
   assert.equal(values.find((item) => item.type === 'setup_wns')!.value, 0.02);
   assert.equal(values.find((item) => item.type === 'full_constraint_failures')!.value, 0);
+
+  const generatedPnrRecord = JSON.parse(await readFile(path.join(flow, 'records/pnr-generated.json'), 'utf8'));
+  const checkpointRef = generatedPnrRecord.artifacts.find((item: { role: string }) => item.role === 'postroute_checkpoint');
+  const checkpoint = JSON.parse(await readFile(path.join(fixture.workspace, checkpointRef.path), 'utf8'));
+  const checkpointRoot = await realpath(path.join(fixture.workspace, checkpoint.restorePath));
+  const member = path.join(checkpointRoot, checkpoint.files[0].path);
+  const memberBytes = await readFile(member);
+  const added = path.join(checkpointRoot, 'unexpected.member');
+  await writeFile(added, 'tamper\n');
+  assert.notEqual(fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated').run.status, 0,
+    'an added checkpoint member invalidates the complete tree inventory');
+  await rm(added);
+  const linked = path.join(checkpointRoot, 'linked.member');
+  await symlink(member, linked);
+  assert.notEqual(fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated').run.status, 0,
+    'a checkpoint symlink is rejected before resolution');
+  await rm(linked);
+  await rm(member);
+  assert.notEqual(fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated').run.status, 0,
+    'a missing checkpoint member invalidates the complete tree inventory');
+  await writeFile(member, memberBytes);
+  const verifyRecord = JSON.parse(await readFile(path.join(flow, 'records/verify.json'), 'utf8'));
+  const verifyScript = verifyRecord.artifacts.find((item: { role: string }) => item.role === 'verify_script:generated');
+  assert.match(await readFile(path.join(fixture.workspace, verifyScript.path), 'utf8'),
+    new RegExp(`^restoreDesign \\{${checkpointRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`, 'm'));
+
+  for (const control of ['synthetic-missing-timing-companion', 'synthetic-mismatched-timing-view',
+    'synthetic-corrupt-timing-gzip']) {
+    await writeFile(path.join(flow, control), 'synthetic timing counterexample\n');
+    const refused = fixture.run('pnr-generated');
+    assert.equal(refused.status, 2, `${control}: ${refused.stderr}`);
+    await rm(path.join(flow, control));
+  }
+  assert.equal(fixture.run('pnr-generated').status, 0, 'restore complete synthetic timing evidence');
 
   await writeFile(path.join(flow, 'synthetic-custom-input-delay'), 'same clock, different input delay\n');
   assert.equal(fixture.run('custom-synth').status, 0);

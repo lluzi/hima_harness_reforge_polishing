@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import glob
 import difflib
+import gzip
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -107,6 +109,78 @@ def checked_ref(ref, workspace, role=None):
     if sha_bytes(raw) != ref.get("sha256") or len(raw) != ref.get("bytes"):
         raise Rejected("artifact identity mismatch: %s" % at)
     return at
+
+
+def checkpoint_path(workspace, value, what):
+    raw = Path(value)
+    candidate = raw if raw.is_absolute() else workspace / raw
+    lexical = Path(os.path.abspath(candidate))
+    if not lexical.is_relative_to(workspace):
+        raise Rejected("%s escapes workspace" % what)
+    cursor = workspace
+    for part in lexical.relative_to(workspace).parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise Rejected("%s contains a symlink: %s" % (what, cursor))
+    resolved = lexical.resolve()
+    if not resolved.is_relative_to(workspace):
+        raise Rejected("%s resolves outside workspace" % what)
+    return resolved
+
+
+def checkpoint_snapshot(base_path, workspace):
+    script = checkpoint_path(workspace, base_path, "checkpoint script")
+    root = checkpoint_path(workspace, str(base_path) + ".dat", "checkpoint directory")
+    if not script.is_file() or script.stat().st_size == 0:
+        raise Rejected("checkpoint restore script is absent or empty: %s" % script)
+    if not root.is_dir():
+        raise Rejected("checkpoint data directory is absent: %s" % root)
+    directories, files = [], []
+    for entry in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
+        relative = entry.relative_to(root).as_posix()
+        if entry.is_symlink():
+            raise Rejected("checkpoint tree contains a symlink: %s" % relative)
+        if entry.is_dir():
+            directories.append(relative)
+        elif entry.is_file():
+            raw = entry.read_bytes()
+            files.append({"path": relative, "sha256": sha_bytes(raw), "bytes": len(raw)})
+        else:
+            raise Rejected("checkpoint tree contains an unsupported member: %s" % relative)
+    if not files:
+        raise Rejected("checkpoint data directory contains no files")
+    script_raw = script.read_bytes()
+    body = {
+        "script": {"path": str(script.relative_to(workspace)),
+                   "sha256": sha_bytes(script_raw), "bytes": len(script_raw)},
+        "restorePath": str(root.relative_to(workspace)),
+        "directories": directories, "files": files,
+    }
+    tree_hash = sha_bytes(json.dumps(body, sort_keys=True, separators=(",", ":")).encode())
+    return {"schema": "aes-dtco-innovus-checkpoint/1", **body, "treeSha256": tree_hash}
+
+
+def publish_checkpoint(ctx, base_path, role):
+    snapshot = checkpoint_snapshot(base_path, ctx.workspace)
+    target = ctx.run_dir / (role + ".json")
+    atomic_json(target, snapshot)
+    ctx.add_artifact(target, role, "innovus-checkpoint-manifest")
+    return checkpoint_path(ctx.workspace, snapshot["restorePath"], "checkpoint restore path")
+
+
+def validate_checkpoint(manifest_path, workspace):
+    document = read_json(manifest_path)
+    if set(document) != {"schema", "script", "restorePath", "directories", "files", "treeSha256"}:
+        raise Rejected("checkpoint manifest has unexpected fields")
+    if document.get("schema") != "aes-dtco-innovus-checkpoint/1":
+        raise Rejected("checkpoint manifest schema is unsupported")
+    script = document.get("script")
+    if not isinstance(script, dict) or set(script) != {"path", "sha256", "bytes"}:
+        raise Rejected("checkpoint manifest has no exact restore-script identity")
+    rebuilt = checkpoint_snapshot(checkpoint_path(workspace, script["path"], "checkpoint script"), workspace)
+    if rebuilt != document:
+        raise Rejected("checkpoint manifest differs from the complete current tree")
+    return checkpoint_path(workspace, document["restorePath"], "checkpoint restore path")
 
 
 def atomic_json(path, value):
@@ -909,7 +983,7 @@ def build_arm_files(ctx):
         init_path.write_text(init); pnr_path.write_text(pnr)
         texts[arm] = {"init": init, "pnr": pnr}
         outputs[arm] = {"mmmc": mmmc_path, "init": init_path, "pnr": pnr_path,
-                        "init_db": Path(str(init_db) + ".dat"), "final_db": Path(str(final_db) + ".dat"),
+                        "init_checkpoint_base": init_db, "final_checkpoint_base": final_db,
                         "gds": gds, "postroute_sdc": postroute_sdc}
     matched = all(normalized_arm_script(texts["foundry"][kind]) == normalized_arm_script(texts["generated"][kind])
                   for kind in ("init", "pnr"))
@@ -938,6 +1012,9 @@ def stage_pnr(ctx, arm):
     wrapper = str(ctx.file_binding("EDA_WRAPPER", "tool-wrapper"))
     init_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["init"])], cwd=ctx.run_dir,
                        timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="init-" + arm)
+    init_restore = publish_checkpoint(ctx, chosen["init_checkpoint_base"], "init_checkpoint")
+    if str(init_restore) not in chosen["pnr"].read_text(errors="replace"):
+        raise Rejected("PnR script does not restore the validated init checkpoint directory")
     pnr_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["pnr"])], cwd=ctx.run_dir,
                       timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="pnr-" + arm)
     text = init_log.read_text(errors="replace")
@@ -954,9 +1031,15 @@ def stage_pnr(ctx, arm):
         raise Rejected("generated library visibility was not proved after Innovus restore")
     if ("=== XS28 PNR DONE %s (GDS written) ===" % arm) not in pnr_text:
         raise ToolFailure("Innovus P&R log lacks the completion marker for " + arm)
-    timing_summary = ctx.run_dir / ("rpt_" + arm) / "postopt" / "post.summary"
-    for at, role in ((chosen["final_db"], "postroute_db"), (chosen["gds"], "postroute_gds"),
+    publish_checkpoint(ctx, chosen["final_checkpoint_base"], "postroute_checkpoint")
+    timing_summary = ctx.run_dir / ("rpt_" + arm) / "postopt" / "post.summary.gz"
+    timing_paths = ctx.run_dir / ("rpt_" + arm) / "postopt" / "post_all.tarpt.gz"
+    timing = parse_timing_summary(timing_summary, timing_paths)
+    if timing["analysisView"] != "view_" + arm:
+        raise Rejected("post-route timing companion names the wrong analysis view")
+    for at, role in ((chosen["gds"], "postroute_gds"),
                      (timing_summary, "postroute_timing_summary"),
+                     (timing_paths, "postroute_timing_paths"),
                      (chosen["postroute_sdc"], "postroute_sdc")):
         ctx.add_artifact(at, role, "innovus-output")
     ctx.inputs.extend([file_ref(generated_lib, ctx.workspace, "generated_liberty", "learned-model-prediction"),
@@ -1005,7 +1088,8 @@ def stage_verify(ctx):
     limit = int(ctx.binding("DRC_LIMIT"))
     wrapper = str(ctx.binding("EDA_WRAPPER"))
     for arm, stage in (("foundry", "pnr-foundry"), ("generated", "pnr-generated")):
-        db = artifact(prior(ctx, stage), ctx.workspace, "postroute_db")
+        pnr_record = prior(ctx, stage)
+        db = validate_checkpoint(artifact(pnr_record, ctx.workspace, "postroute_checkpoint"), ctx.workspace)
         report = ctx.run_dir / (arm + "_verify_drc.rpt")
         script = ctx.run_dir / (arm + "_verify.tcl")
         script.write_text(
@@ -1036,19 +1120,33 @@ def stage_verify(ctx):
                       "verification_method": "verify_drc with explicit cell-only mode and uncapped report"})
 
 
-def parse_timing_summary(path):
-    text = Path(path).read_text(errors="replace")
+def report_text(path):
+    path = Path(path)
+    try:
+        raw = gzip.decompress(path.read_bytes()) if path.suffix == ".gz" else path.read_bytes()
+        return raw.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Rejected("cannot decode complete timing report %s: %s" % (path, exc)) from exc
+
+
+def parse_timing_summary(path, companion):
+    text = report_text(path)
+    path_text = report_text(companion)
+    summary_commands = re.findall(r"^#\s+Command:\s+(.+?)\s*$", text, re.M)
+    path_commands = re.findall(r"^#\s+Command:\s+(.+?)\s*$", path_text, re.M)
+    if len(summary_commands) != 1 or summary_commands != path_commands:
+        raise Rejected("timing summary and path report lack one identical timeDesign command")
     header = None
     for line in text.splitlines():
         if "|" not in line:
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) >= 2 and cells[1] in ("all", "reg2reg", "default"):
+        if len(cells) >= 2 and cells[0] == "Setup mode" and cells[1] == "all":
             header = cells[1:]
             break
     if header is None or "all" not in header:
         raise Rejected("post-route timeDesign summary has no all-mode header")
-    views = re.findall(r"Setup views included:\s*\n\s*([^\s]+)", text)
+    views = set(re.findall(r"^Analysis View:\s*(\S+)\s*$", path_text, re.M))
     rows = {}
     for line in text.splitlines():
         if "|" not in line or ":" not in line:
@@ -1065,8 +1163,15 @@ def parse_timing_summary(path):
     if "WNS (ns)" not in rows or rows["WNS (ns)"].get("all") is None:
         raise Rejected("post-route timeDesign summary has no observed all-mode WNS")
     if len(views) != 1:
-        raise Rejected("post-route timeDesign summary has no unambiguous setup analysis view")
-    return {"analysisView": views[0], "setupWnsNs": rows["WNS (ns)"]["all"], "rows": rows}
+        raise Rejected("post-route path report has no unambiguous setup analysis view")
+    path_one = re.search(r"^Path 1:.*?^= Slack Time\s+([0-9.eE+-]+)\s*$", path_text, re.M | re.S)
+    if path_one is None or not math.isfinite(float(path_one.group(1))):
+        raise Rejected("post-route path report has no finite Path 1 setup slack")
+    wns = rows["WNS (ns)"]["all"]
+    if wns != float(path_one.group(1)):
+        raise Rejected("post-route summary WNS differs from Path 1 slack")
+    return {"analysisView": next(iter(views)), "setupWnsNs": wns,
+            "command": summary_commands[0], "rows": rows}
 
 
 def parse_sdc_period(path):
@@ -1187,7 +1292,10 @@ def stage_compare(ctx):
 
         pnr_rows = {}
         for arm, record in (("foundry", foundry_pnr), ("generated", generated_pnr)):
+            validate_checkpoint(artifact(record, ctx.workspace, "init_checkpoint"), ctx.workspace)
+            validate_checkpoint(artifact(record, ctx.workspace, "postroute_checkpoint"), ctx.workspace)
             summary = artifact(record, ctx.workspace, "postroute_timing_summary")
+            timing_paths = artifact(record, ctx.workspace, "postroute_timing_paths")
             mmmc = artifact(record, ctx.workspace, "mmmc_script:" + arm)
             init = artifact(record, ctx.workspace, "init_script:" + arm)
             pnr_script = artifact(record, ctx.workspace, "pnr_script:" + arm)
@@ -1200,7 +1308,7 @@ def stage_compare(ctx):
             actual_clock = parse_sdc_period(actual_sdc)
             if actual_clock != input_clock:
                 raise Rejected("%s actual post-route clock differs from the PnR input SDC" % arm)
-            timing = parse_timing_summary(summary)
+            timing = parse_timing_summary(summary, timing_paths)
             if timing["analysisView"] != parsed_mmmc["view"] or parsed_mmmc["activeSetup"] != parsed_mmmc["view"]:
                 raise Rejected("%s post-route report analysis view differs from its MMMC view" % arm)
             pnr_rows[arm] = {"timing": timing, "mmmc": parsed_mmmc, "clockNs": actual_clock,
@@ -1208,6 +1316,7 @@ def stage_compare(ctx):
                              "initText": init.read_text(errors="replace"),
                              "pnrText": pnr_script.read_text(errors="replace")}
             ctx.inputs.extend([file_ref(summary, ctx.workspace, arm + "_postroute_timing", "innovus-output"),
+                               file_ref(timing_paths, ctx.workspace, arm + "_postroute_timing_paths", "innovus-output"),
                                file_ref(mmmc, ctx.workspace, arm + "_mmmc", "generated-tool-input"),
                                file_ref(input_sdc, ctx.workspace, arm + "_pnr_sdc", "design-compiler-output"),
                                file_ref(actual_sdc, ctx.workspace, arm + "_postroute_sdc", "innovus-output"),

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import gzip
 import json
 import math
+import os
 from pathlib import Path
 import re
 import sys
@@ -60,6 +62,70 @@ def checked(ref, workspace):
     return path
 
 
+def checkpoint_path(workspace, value, what):
+    raw = Path(value)
+    candidate = raw if raw.is_absolute() else workspace / raw
+    lexical = Path(os.path.abspath(candidate))
+    if not lexical.is_relative_to(workspace):
+        raise ValueError("%s escapes workspace" % what)
+    cursor = workspace
+    for part in lexical.relative_to(workspace).parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ValueError("%s contains a symlink: %s" % (what, cursor))
+    resolved = lexical.resolve()
+    if not resolved.is_relative_to(workspace):
+        raise ValueError("%s resolves outside workspace" % what)
+    return resolved
+
+
+def checkpoint_snapshot(base_path, workspace):
+    script = checkpoint_path(workspace, base_path, "checkpoint script")
+    root = checkpoint_path(workspace, str(base_path) + ".dat", "checkpoint directory")
+    if not script.is_file() or script.stat().st_size == 0:
+        raise ValueError("checkpoint restore script is absent or empty")
+    if not root.is_dir():
+        raise ValueError("checkpoint data directory is absent")
+    directories, files = [], []
+    for entry in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
+        relative = entry.relative_to(root).as_posix()
+        if entry.is_symlink():
+            raise ValueError("checkpoint tree contains a symlink: " + relative)
+        if entry.is_dir():
+            directories.append(relative)
+        elif entry.is_file():
+            raw = entry.read_bytes()
+            files.append({"path": relative, "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)})
+        else:
+            raise ValueError("checkpoint tree contains an unsupported member: " + relative)
+    if not files:
+        raise ValueError("checkpoint data directory contains no files")
+    script_raw = script.read_bytes()
+    body = {
+        "script": {"path": str(script.relative_to(workspace)),
+                   "sha256": hashlib.sha256(script_raw).hexdigest(), "bytes": len(script_raw)},
+        "restorePath": str(root.relative_to(workspace)),
+        "directories": directories, "files": files,
+    }
+    tree_hash = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return {"schema": "aes-dtco-innovus-checkpoint/1", **body, "treeSha256": tree_hash}
+
+
+def validate_checkpoint(manifest_path, workspace):
+    document = load(manifest_path)
+    if set(document) != {"schema", "script", "restorePath", "directories", "files", "treeSha256"}:
+        raise ValueError("checkpoint manifest has unexpected fields")
+    if document.get("schema") != "aes-dtco-innovus-checkpoint/1":
+        raise ValueError("checkpoint manifest schema is unsupported")
+    script = document.get("script")
+    if not isinstance(script, dict) or set(script) != {"path", "sha256", "bytes"}:
+        raise ValueError("checkpoint manifest has no exact restore-script identity")
+    rebuilt = checkpoint_snapshot(checkpoint_path(workspace, script["path"], "checkpoint script"), workspace)
+    if rebuilt != document:
+        raise ValueError("checkpoint manifest differs from the complete current tree")
+    return checkpoint_path(workspace, document["restorePath"], "checkpoint restore path")
+
+
 def one(record, workspace, role, block="artifacts"):
     rows = [ref for ref in record.get(block, []) if ref.get("role") == role]
     if len(rows) != 1:
@@ -107,25 +173,42 @@ def drc_count(path, limit):
     return count
 
 
-def timing(path):
-    text = path.read_text(errors="replace")
+def report_text(path):
+    try:
+        raw = gzip.decompress(path.read_bytes()) if path.suffix == ".gz" else path.read_bytes()
+        return raw.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError("cannot decode complete timing report %s: %s" % (path, exc)) from exc
+
+
+def timing(path, companion):
+    text = report_text(path)
+    path_text = report_text(companion)
+    summary_commands = re.findall(r"^#\s+Command:\s+(.+?)\s*$", text, re.M)
+    path_commands = re.findall(r"^#\s+Command:\s+(.+?)\s*$", path_text, re.M)
+    if len(summary_commands) != 1 or summary_commands != path_commands:
+        raise ValueError("timing summary and path report lack one identical timeDesign command")
     header = None
     for line in text.splitlines():
         if "|" not in line:
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) >= 2 and cells[1] in ("all", "reg2reg", "default"):
+        if len(cells) >= 2 and cells[0] == "Setup mode" and cells[1] == "all":
             header = cells[1:]
             break
-    views = re.findall(r"Setup views included:\s*\n\s*([^\s]+)", text)
+    views = set(re.findall(r"^Analysis View:\s*(\S+)\s*$", path_text, re.M))
     if not header or "all" not in header or len(views) != 1:
-        raise ValueError("post-route timing lacks one view and all-mode table")
+        raise ValueError("post-route timing lacks one setup table and companion analysis view")
     for line in text.splitlines():
         if "|" in line and "WNS (ns)" in line:
             cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
             value = float(cells[header.index("all") + 1])
             if math.isfinite(value):
-                return views[0], value
+                path_one = re.search(r"^Path 1:.*?^= Slack Time\s+([0-9.eE+-]+)\s*$",
+                                     path_text, re.M | re.S)
+                if path_one is None or float(path_one.group(1)) != value:
+                    raise ValueError("post-route summary WNS differs from Path 1 slack")
+                return next(iter(views)), value
     raise ValueError("post-route timing has no finite setup/all WNS")
 
 
@@ -333,14 +416,18 @@ def values_for(record, workspace, stage):
         arm = stage.split("-", 1)[1]
         log = logs(record, workspace, "pnr-" + arm + "_log").read_text(errors="replace")
         checked_condition(record, workspace, derived_pnr_condition(record, workspace, arm))
-        one(record, workspace, "postroute_db")
+        validate_checkpoint(one(record, workspace, "init_checkpoint"), workspace)
+        validate_checkpoint(one(record, workspace, "postroute_checkpoint"), workspace)
         one(record, workspace, "postroute_gds")
         actual_clock = sdc_period(one(record, workspace, "postroute_sdc"))
         mmmc = mmmc_identity(one(record, workspace, "mmmc_script:" + arm))
         input_sdc = Path(mmmc["sdc"]).resolve()
         if not input_sdc.is_file() or input_sdc.is_symlink() or sdc_period(input_sdc) != actual_clock:
             raise ValueError("actual post-route clock differs from the PnR input SDC")
-        timing(one(record, workspace, "postroute_timing_summary"))
+        view, _wns = timing(one(record, workspace, "postroute_timing_summary"),
+                            one(record, workspace, "postroute_timing_paths"))
+        if view != mmmc["view"]:
+            raise ValueError("post-route timing companion names the wrong analysis view")
         if "=== XS28 PNR DONE %s (GDS written) ===" % arm not in log:
             raise ValueError("PnR completion marker is absent")
         values.append(number("pnr_completed", 1))
@@ -373,8 +460,10 @@ def values_for(record, workspace, stage):
                 unknown("full_constraint_failures", reason),
             ]
         # Re-derive the final observations from raw references copied into the comparison record.
-        fview, fwns = timing(one(record, workspace, "foundry_postroute_timing", "inputs"))
-        gview, gwns = timing(one(record, workspace, "generated_postroute_timing", "inputs"))
+        fview, fwns = timing(one(record, workspace, "foundry_postroute_timing", "inputs"),
+                             one(record, workspace, "foundry_postroute_timing_paths", "inputs"))
+        gview, gwns = timing(one(record, workspace, "generated_postroute_timing", "inputs"),
+                             one(record, workspace, "generated_postroute_timing_paths", "inputs"))
         fsdc = one(record, workspace, "foundry_pnr_sdc", "inputs")
         gsdc = one(record, workspace, "generated_pnr_sdc", "inputs")
         foundry_actual_sdc = one(record, workspace, "foundry_postroute_sdc", "inputs")
@@ -400,6 +489,9 @@ def values_for(record, workspace, stage):
             custom_synth, workspace, derived_synth_condition(custom_synth, workspace, "custom"))
         foundry_pnr = load(one(record, workspace, "source_stage_record:pnr-foundry", "inputs"))
         generated_pnr = load(one(record, workspace, "source_stage_record:pnr-generated", "inputs"))
+        for pnr_record in (foundry_pnr, generated_pnr):
+            validate_checkpoint(one(pnr_record, workspace, "init_checkpoint"), workspace)
+            validate_checkpoint(one(pnr_record, workspace, "postroute_checkpoint"), workspace)
         foundry_pnr_condition = checked_condition(
             foundry_pnr, workspace, derived_pnr_condition(foundry_pnr, workspace, "foundry"))
         generated_pnr_condition = checked_condition(
