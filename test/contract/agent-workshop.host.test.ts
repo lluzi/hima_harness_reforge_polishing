@@ -7,9 +7,139 @@ import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { repoRoot } from './support/dsh-home.ts';
 import type { ExecutionActionRequest, ExecutionActionResult, RunRecord, LedgerRecord, RunView } from '@hima/harness';
+import { budgetStandingAt, researchWriteTotals } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
+
+test('a closing reserve stays inside the hard box and admits analysis while refusing new node work', async (t) => {
+  const epoch = Date.parse('2026-09-13T00:00:00.000Z');
+  const run = {
+    id: 'run-budget-boundary', campaignId: 'campaign-budget-boundary', siteId: 'local',
+    createdAt: new Date(epoch).toISOString(), nextSeq: 1,
+    budget: { timeBoxMs: 100, closingReserveMs: 20, researchWriteAttempts: 2, researchWriteBytes: 6,
+      retryAllowance: 1, jobCap: 1, licences: {}, generationLimit: 1 },
+  } as RunRecord;
+  assert.deepEqual(budgetStandingAt(run, 0, epoch + 79), {
+    phase: 'active', hardRemainingMs: 21, experimentRemainingMs: 1, closingReserveMs: 20,
+  });
+  assert.deepEqual(budgetStandingAt(run, 0, epoch + 80), {
+    phase: 'closing', hardRemainingMs: 20, experimentRemainingMs: 0, closingReserveMs: 20,
+  });
+  assert.deepEqual(budgetStandingAt(run, 0, epoch + 100), {
+    phase: 'exhausted', hardRemainingMs: 0, experimentRemainingMs: 0, closingReserveMs: 20,
+  });
+
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  const packDir = path.join(home.h.home, 'hima/packs/authored-workshop');
+  await mkdir(packDir, { recursive: true });
+  for (const file of ['contract.yml', 'graph.yml', 'semantics.yml', 'readers', 'rules', 'tools', 'knowledge']) {
+    await cp(path.join(repoRoot, 'test/fixtures/pipeline/workshop', file), path.join(packDir, file), { recursive: true });
+  }
+  await writeFile(path.join(packDir, 'PACK.md'), '# Closing reserve fixture\n');
+  await writeFile(path.join(packDir, 'contract.yml'), `${await readFile(path.join(packDir, 'contract.yml'), 'utf8')}\nbudget:\n  closingReserveMs: 57000\n  researchWrites: { writeAttempts: 2, bytes: 6 }\n`);
+  await writeFile(path.join(home.flow.root, 'numbers.txt'), '3\n7\n11\n');
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 },
+      ownerSessionId: String(owner.id), timeBoxMs: 60_000 });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    let serial = 0;
+    const call = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => {
+      const control = host.ctx.hima.ledger.run(runId!)!.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), expectedEpoch: control.epoch,
+        expectedRevision: control.revision, requestId: `reserve-${++serial}`, action, ...fields });
+    };
+    assert.equal(host.ctx.hima.executionContext(runId).budget.phase, 'active');
+    const begun = await call('begin', { nodeId: 'analyze' });
+    assert.equal(begun.kind, 'accepted');
+    assert.ok(begun.receipt?.executionId);
+    await waitUntil('the Campaign enters its closing reserve', () => host.ctx.hima.executionContext(runId!).budget.phase === 'closing', 5_000, 10);
+    assert.equal(host.ctx.hima.executionContext(runId).budget.phase, 'closing');
+    const work = await call('work', { executionId: begun.receipt.executionId });
+    assert.equal(work.kind, 'refused');
+    assert.match(work.reason ?? '', /closing reserve/);
+    const write = await call('write', { executionId: begun.receipt.executionId, path: 'entry.sh', content: 'echo late' });
+    assert.equal(write.kind, 'refused');
+    assert.match(write.reason ?? '', /closing reserve/);
+    assert.equal((await call('begin', { nodeId: 'read-analysis' })).kind, 'refused');
+    assert.match((await call('revise', { revision: {} })).reason ?? '', /no revision may start/);
+    assert.match((await call('grow', { proposal: {} })).reason ?? '', /no growth budget remains/);
+    const analyzed = await call('analyze', { nodeId: 'analyze', analysis: {
+      question: 'What remains unfinished at reserve entry?', hypotheses: [], comparisons: [], claims: [],
+      limitations: ['No node work was admitted in the reserve.'], nextExperiments: ['Unexecuted: analyze Workshop.'],
+    } });
+    assert.equal(analyzed.kind, 'accepted');
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'analysis' }).length, 1);
+    const beforeCancel = host.ctx.hima.ledger.run(runId)!;
+    await host.ctx.hima.ledger.advanceRun(runId, { control: { ...beforeCancel.control!,
+      revision: beforeCancel.control!.revision + 1, paused: ['*'], stop: { reason: 'budget', status: 'requested' } } });
+    const cancelled = await host.ctx.hima.cancelRun(runId);
+    assert.equal(cancelled.run.status, 'cancelled', 'a later explicit user cancel outranks a pending budget stop');
+    assert.equal(cancelled.run.meters?.endedBy, 'cancel');
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});
+
+test('research writer charges rewrites and refused calls before Site effects across the whole Run', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  const packDir = path.join(home.h.home, 'hima/packs/authored-workshop');
+  await mkdir(packDir, { recursive: true });
+  for (const file of ['contract.yml', 'graph.yml', 'semantics.yml', 'readers', 'rules', 'tools', 'knowledge']) {
+    await cp(path.join(repoRoot, 'test/fixtures/pipeline/workshop', file), path.join(packDir, file), { recursive: true });
+  }
+  await writeFile(path.join(packDir, 'PACK.md'), '# Bounded writer fixture\n');
+  await writeFile(path.join(packDir, 'contract.yml'), `${await readFile(path.join(packDir, 'contract.yml'), 'utf8')}\nbudget:\n  researchWrites: { writeAttempts: 2, bytes: 6 }\n`);
+  await writeFile(path.join(home.flow.root, 'numbers.txt'), '3\n7\n11\n');
+  let host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    let serial = 0;
+    const call = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => {
+      const control = host.ctx.hima.ledger.run(runId!)!.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), expectedEpoch: control.epoch,
+        expectedRevision: control.revision, requestId: `write-budget-${++serial}`, action, ...fields });
+    };
+    const begun = await call('begin', { nodeId: 'analyze' });
+    const executionId = begun.receipt?.executionId;
+    assert.ok(executionId);
+    assert.equal((await call('recommend', { executionId })).kind, 'accepted');
+    const first = await call('write', { executionId, path: 'entry.sh', content: 'abc' });
+    const second = await call('write', { executionId, path: 'entry.sh', content: 'xyz' });
+    const refused = await call('write', { executionId, path: 'entry.sh', content: 'q' });
+    assert.equal((first.data as { wrote: boolean }).wrote, true);
+    assert.equal((second.data as { wrote: boolean }).wrote, true, 'a same-path rewrite at the exact byte boundary is admitted');
+    assert.equal((refused.data as { wrote: boolean }).wrote, false);
+    assert.match(String((refused.data as { reason?: string }).reason), /3\/2 calls and 7\/6 bytes/);
+    const charged = host.ctx.hima.ledger.records({ runId, type: 'research-write' });
+    assert.deepEqual(charged.map((record) => record.type === 'research-write' && [record.allowed, record.requestedBytes, record.usedWriteAttempts, record.usedBytes]),
+      [[true, 3, 1, 3], [true, 3, 2, 6], [false, 1, 3, 7]]);
+    assert.deepEqual(researchWriteTotals(host.ctx.hima.ledger, runId), { writeAttempts: 3, bytes: 7 });
+    assert.equal(host.ctx.hima.ledger.run(runId)!.meters?.researchWriteAttempts, 3);
+    assert.equal(host.ctx.hima.ledger.run(runId)!.meters?.researchBytesAttempted, 7);
+    assert.equal(await readFile(path.join((second.data as { path: string }).path), 'utf8'), 'xyz', 'the refused call leaves the prior bytes in place');
+    await host.dispose();
+    host = await bootInProcess(home.h);
+    assert.deepEqual(researchWriteTotals(host.ctx.hima.ledger, runId), { writeAttempts: 3, bytes: 7 }, 'a new Host reads the same exhausted pool from durable call receipts');
+    assert.equal(host.ctx.hima.ledger.run(runId)!.budget?.researchWriteBytes, 6, 'the frozen Campaign limit did not reload from mutable Pack state');
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});
 
 test('the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0 });

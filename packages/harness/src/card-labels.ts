@@ -1005,12 +1005,17 @@ export function metersState(view: MeteredRun): Readonly<Record<string, string>> 
     ...(generation === undefined ? {} : { generation: String(generation) }),
     ...(budget === undefined ? {} : {
       'time-box-ms': String(budget.timeBoxMs),
+      'closing-reserve-ms': String(budget.closingReserveMs ?? 0),
+      'research-write-limit': String(budget.researchWriteAttempts ?? 256),
+      'research-byte-limit': String(budget.researchWriteBytes ?? 4 * 1024 * 1024),
       'generation-limit': String(budget.generationLimit),
       'job-cap': String(budget.jobCap),
       'retry-allowance': String(budget.retryAllowance),
       ...Object.fromEntries(Object.entries(budget.licences).map(([name, seats]) => [`licence-${name.toLowerCase()}`, `${String(held[name] ?? 0)}/${String(seats)}`])),
     }),
     ...(attempts === undefined ? {} : { attempts: String(attempts.attempts) }),
+    ...(meters?.researchWriteAttempts === undefined ? {} : { 'research-write-attempts': String(meters.researchWriteAttempts) }),
+    ...(meters?.researchBytesAttempted === undefined ? {} : { 'research-bytes-attempted': String(meters.researchBytesAttempted) }),
     ...(meters?.endedBy === undefined ? {} : { 'ended-by': meters.endedBy }),
   };
 }

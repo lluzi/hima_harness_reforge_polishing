@@ -916,6 +916,27 @@ export const codeRecord = z.strictObject({
   language: ledgerSlug,
 });
 
+/** One charged call to the research writer, appended before any Site effect. */
+export const researchWriteRecord = z.strictObject({
+  ...base,
+  ...inBranch,
+  type: z.literal('research-write'),
+  callId: z.string().min(1),
+  nodeId: z.string().min(1),
+  attempt: z.number().int().positive(),
+  sessionId: z.string().min(1),
+  scope: z.enum(['workshop', 'workspace']),
+  workshop: ledgerSlug.optional(),
+  path: z.string(),
+  requestedBytes: z.number().int().nonnegative(),
+  allowed: z.boolean(),
+  limitWriteAttempts: z.number().int().positive(),
+  limitBytes: z.number().int().positive(),
+  usedWriteAttempts: z.number().int().positive(),
+  usedBytes: z.number().int().nonnegative(),
+  reason: z.string().min(1).optional(),
+});
+
 /**
  * A Pack knowledge file an Agent actually read while working one node.  This is deliberately not a
  * declaration: a Pack may offer many files, but only a successful tool read is evidence that its
@@ -1018,6 +1039,7 @@ export const ledgerRecord = z.discriminatedUnion('type', [
   analysisRecord,
   sessionRecord,
   codeRecord,
+  researchWriteRecord,
   knowledgeRecord,
   growthRecord,
   revisionRecord,
@@ -1038,6 +1060,7 @@ export type ArchiveRecord = z.infer<typeof archiveRecord>;
 export type AnalysisRecord = z.infer<typeof analysisRecord>;
 export type SessionRecord = z.infer<typeof sessionRecord>;
 export type CodeRecord = z.infer<typeof codeRecord>;
+export type ResearchWriteRecord = z.infer<typeof researchWriteRecord>;
 export type KnowledgeRecord = z.infer<typeof knowledgeRecord>;
 export type GrowthRecord = z.infer<typeof growthRecord>;
 export type RevisionRecord = z.infer<typeof revisionRecord>;
@@ -1092,6 +1115,11 @@ export type RunStatus = z.infer<typeof runStatus>;
 /** A Campaign's allowances on the meters tied to the design and the Site (D4). Never tokens or money. */
 export const runBudget = z.strictObject({
   timeBoxMs: z.number().int().positive(),
+  /** Reserved inside `timeBoxMs`; zero keeps old Pack behavior. */
+  closingReserveMs: z.number().int().nonnegative().optional(),
+  /** Run-wide writer call and byte pools copied from the Pack at Campaign start. */
+  researchWriteAttempts: z.number().int().positive().optional(),
+  researchWriteBytes: z.number().int().positive().optional(),
   /** Attempts a node may make, since it was last resumed, before its failure becomes a Hard blocker. */
   retryAllowance: z.number().int().nonnegative(),
   /** The Site's declared parallel job count, copied at start: the cap a launch is counted against. */
@@ -1205,6 +1233,8 @@ export const runMeters = z.strictObject({
   elapsedMs: z.number().int().nonnegative(),
   jobsLaunched: z.number().int().nonnegative(),
   attempts: z.number().int().nonnegative(),
+  researchWriteAttempts: z.number().int().nonnegative().optional(),
+  researchBytesAttempted: z.number().int().nonnegative().optional(),
   waitedMs: z.number().int().nonnegative().optional(),
   /**
    * What this Run has spent of each licence, in licence-milliseconds: the seats a Job held times how
@@ -1314,6 +1344,12 @@ const movedOn = (held: RunMeters | undefined, written: RunMeters, status: RunSta
     elapsedMs: Math.max(held.elapsedMs, written.elapsedMs),
     jobsLaunched: Math.max(held.jobsLaunched, written.jobsLaunched),
     attempts: Math.max(held.attempts, written.attempts),
+    ...(held.researchWriteAttempts === undefined && written.researchWriteAttempts === undefined ? {} : {
+      researchWriteAttempts: Math.max(held.researchWriteAttempts ?? 0, written.researchWriteAttempts ?? 0),
+    }),
+    ...(held.researchBytesAttempted === undefined && written.researchBytesAttempted === undefined ? {} : {
+      researchBytesAttempted: Math.max(held.researchBytesAttempted ?? 0, written.researchBytesAttempted ?? 0),
+    }),
     ...(waited < 0 ? {} : { waitedMs: waited }),
     ...(licences === undefined ? {} : { licenceMs: licences }),
     ...(generations === undefined ? {} : { generationMs: generations }),
@@ -1729,7 +1765,9 @@ export const ledgerSpec = defineDomain({
   // refuse rather than erase the evidence lifecycle.
   // 23: source-linked model analysis stays distinct from observed facts and Judge verdicts.
   // 24: accepted per-Run growth preserves the actual graph and its lifecycle.
-  version: 24,
+  // 25: PLS-12 freezes closing and research-write bounds and records every writer call before Site
+  // effects. Integration may renumber this beside parallel schema work.
+  version: 25,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -2028,6 +2066,11 @@ export class Ledger {
    */
   async appendCode(runId: string, data: Omit<CodeRecord, keyof typeof base | 'type'>): Promise<CodeRecord> {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'code', ...data }));
+  }
+
+  /** Charge one writer call before any Site effect. */
+  async appendResearchWrite(runId: string, data: Omit<ResearchWriteRecord, keyof typeof base | 'type'>): Promise<ResearchWriteRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'research-write', ...data }));
   }
 
   /** Record only a successful, byte-identified Pack knowledge read. */

@@ -59,6 +59,10 @@ test('owner revision preserves finished Workshop bytes and seeds the affected re
       changes: [{ nodeId: 'analyze', scope: 'workshop', path: 'entry.sh', fromSha256: source.sha256, content: revised, sourceRecordId: source.id }] };
     const applied = await act('revise', { revision: proposal });
     assert.equal(applied.kind, 'accepted', JSON.stringify(applied));
+    const chargedAfterRevision = host.ctx.hima.ledger.records({ runId, type: 'research-write' });
+    assert.equal(chargedAfterRevision.length, 2, 'the original writer call and the revision content are charged once each');
+    assert.equal(chargedAfterRevision[1]?.type === 'research-write' && chargedAfterRevision[1].scope, 'workshop');
+    assert.equal(chargedAfterRevision[1]?.type === 'research-write' && chargedAfterRevision[1].sessionId, String(owner.id));
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched').length, beforeLaunches);
     assert.equal(await readFile(source.path, 'utf8'), original, 'finished executable bytes are not mutated');
     const retained = retainedRecordMaterial(host.ctx.hima.ledger.records({ runId }), source.id); assert.ok(retained);
@@ -71,6 +75,8 @@ test('owner revision preserves finished Workshop bytes and seeds the affected re
     const rerun = await act('begin', { nodeId: 'analyze' }); const second = rerun.receipt!.executionId!;
     assert.notEqual(second, first);
     assert.equal((await act('recommend', { executionId: second })).kind, 'accepted');
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'research-write' }).length, 2,
+      'deterministic revision materialization does not charge the logical change a second time');
     const seeded = host.ctx.hima.ledger.records({ runId, type: 'code' }).findLast((record) => record.type === 'code' && record.attempt === 2)!;
     assert.equal(seeded.type, 'code'); assert.equal(await readFile(seeded.path, 'utf8'), revised);
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched').length, beforeLaunches,

@@ -12,6 +12,7 @@
 import { nodeRecordsIn, givesUpLaunch } from './ledger.js';
 import type { LedgerRecord, Ledger, MeterCount, NodeRecord, RunLoop, RunMeters, RunProgress, RunRecord, RunStatus } from './ledger.js';
 import { existingRun } from './runs.js';
+import { randomUUID } from 'node:crypto';
 
 /** How long a Run may take when nobody says: an hour, well past the two and a half minutes one
  *  opene902 generation costs on the reference Site, and short enough that a stuck Job cannot hold a
@@ -45,6 +46,34 @@ export const defaultGenerationLimit = 6;
 const deadlineOf = (run: RunRecord, waitedMs: number): number | undefined =>
   run.budget === undefined ? undefined : Date.parse(run.createdAt) + run.budget.timeBoxMs
     + (run.control === undefined ? waitedMs : run.control.adoption?.legacyWaitedMs ?? 0);
+
+export type BudgetPhase = 'active' | 'closing' | 'exhausted';
+export interface BudgetStanding {
+  readonly phase: BudgetPhase;
+  readonly hardRemainingMs?: number;
+  readonly experimentRemainingMs?: number;
+  readonly closingReserveMs: number;
+}
+
+/** The reserve begins inside the original hard box; it never extends the hard deadline. */
+export function budgetStandingAt(run: RunRecord, waitedMs: number, at: number): BudgetStanding {
+  const hard = deadlineOf(run, waitedMs);
+  if (hard === undefined) return { phase: 'active', closingReserveMs: 0 };
+  const reserve = run.budget?.closingReserveMs ?? 0;
+  const experiment = hard - reserve;
+  return {
+    phase: at >= hard ? 'exhausted' : at >= experiment ? 'closing' : 'active',
+    hardRemainingMs: Math.max(0, hard - at),
+    experimentRemainingMs: Math.max(0, experiment - at),
+    closingReserveMs: reserve,
+  };
+}
+
+export const budgetStanding = (run: RunRecord, waitedMs: number): BudgetStanding => budgetStandingAt(run, waitedMs, Date.now());
+export const experimentBudgetSpentAt = (run: RunRecord, waitedMs: number, at: number): boolean =>
+  budgetStandingAt(run, waitedMs, at).phase !== 'active';
+export const experimentBudgetSpent = (run: RunRecord, waitedMs: number): boolean =>
+  experimentBudgetSpentAt(run, waitedMs, Date.now());
 
 /** Remaining wall time uses the same deadline as admission and Job polling. */
 export const timeBoxRemainingMs = (run: RunRecord, waitedMs: number): number | undefined => {
@@ -128,6 +157,67 @@ function licenceMsOf(ledger: Ledger, runId: string): Record<string, number> {
     for (const [name, seats] of Object.entries(launch.licences)) held[name] = (held[name] ?? 0) + seats * ms;
   }
   return held;
+}
+
+/** Every writer call is charged, including a refused or failed call and a rewrite of one path. */
+export function researchWriteTotals(ledger: Ledger, runId: string): { readonly writeAttempts: number; readonly bytes: number } {
+  const writes = ledger.records({ runId, type: 'research-write' });
+  return {
+    writeAttempts: writes.length,
+    bytes: writes.reduce((sum, record) => sum + (record.type === 'research-write' ? record.requestedBytes : 0), 0),
+  };
+}
+
+export interface ResearchWriteRequest {
+  readonly nodeId: string; readonly attempt: number; readonly sessionId: string;
+  readonly scope: 'workshop' | 'workspace'; readonly workshop?: string;
+  readonly path: string; readonly requestedBytes: number; readonly callId?: string;
+  readonly branchId?: string;
+}
+export interface ResearchWriteAdmission {
+  readonly allowed: boolean; readonly callId: string; readonly recordId: string;
+  readonly reason?: string; readonly usedWriteAttempts: number; readonly usedBytes: number;
+}
+
+/** One in-process chain per Run closes parallel tool-call races around the durable reservation. */
+const researchReservations = new WeakMap<Ledger, Map<string, Promise<unknown>>>();
+export function reserveResearchWrite(ledger: Ledger, runId: string, request: ResearchWriteRequest): Promise<ResearchWriteAdmission> {
+  const chains = researchReservations.get(ledger) ?? new Map<string, Promise<unknown>>();
+  researchReservations.set(ledger, chains);
+  const reserve = async (): Promise<ResearchWriteAdmission> => {
+    const run = existingRun(ledger, runId);
+    const limits = run.budget;
+    const callId = request.callId ?? `research-write-${randomUUID()}`;
+    const existing = ledger.records({ runId, type: 'research-write' }).find((record) => record.type === 'research-write' && record.callId === callId);
+    if (existing?.type === 'research-write') {
+      if (existing.nodeId !== request.nodeId || existing.attempt !== request.attempt || existing.sessionId !== request.sessionId
+          || existing.scope !== request.scope || existing.workshop !== request.workshop || existing.path !== request.path
+          || existing.requestedBytes !== request.requestedBytes) throw new Error(`research writer call identity ${callId} was reused with different scope or bytes`);
+      return { allowed: existing.allowed, callId, recordId: existing.id, usedWriteAttempts: existing.usedWriteAttempts,
+        usedBytes: existing.usedBytes, ...(existing.reason === undefined ? {} : { reason: existing.reason }) };
+    }
+    const before = researchWriteTotals(ledger, runId);
+    const usedWriteAttempts = before.writeAttempts + 1;
+    const usedBytes = before.bytes + request.requestedBytes;
+    const limitWriteAttempts = limits?.researchWriteAttempts ?? 256;
+    const limitBytes = limits?.researchWriteBytes ?? 4 * 1024 * 1024;
+    const overAttempts = usedWriteAttempts > limitWriteAttempts;
+    const overBytes = usedBytes > limitBytes;
+    const allowed = !overAttempts && !overBytes;
+    const reason = allowed ? undefined : `the Campaign research-write budget is exhausted: attempted ${String(usedWriteAttempts)}/${String(limitWriteAttempts)} calls and ${String(usedBytes)}/${String(limitBytes)} bytes; nothing was written`;
+    const record = await ledger.appendResearchWrite(runId, {
+      callId, nodeId: request.nodeId, attempt: request.attempt, sessionId: request.sessionId,
+      scope: request.scope, ...(request.workshop === undefined ? {} : { workshop: request.workshop }), path: request.path,
+      requestedBytes: request.requestedBytes, allowed, limitWriteAttempts, limitBytes,
+      usedWriteAttempts, usedBytes, ...(reason === undefined ? {} : { reason }),
+      ...(request.branchId === undefined ? {} : { branchId: request.branchId }),
+    });
+    await advance(ledger, runId, {});
+    return { allowed, callId, recordId: record.id, usedWriteAttempts, usedBytes, ...(reason === undefined ? {} : { reason }) };
+  };
+  const mine = (chains.get(runId) ?? Promise.resolve()).then(reserve);
+  chains.set(runId, mine.then(() => undefined, () => undefined));
+  return mine;
 }
 
 /**
@@ -240,6 +330,10 @@ export async function advance(ledger: Ledger, runId: string, delta: MeterDelta, 
     jobsLaunched: held.jobsLaunched,
     attempts: held.attempts,
   };
+  const research = researchWriteTotals(ledger, runId);
+  const withResearch = research.writeAttempts === 0 ? meters : {
+    ...meters, researchWriteAttempts: research.writeAttempts, researchBytesAttempted: research.bytes,
+  };
   // An absent key, never an undefined one: a Run no meter ended, and one that has waited on nobody,
   // each say so by omission. `waitedMs` is how much of `elapsedMs` was a person being asked, and is
   // the term the time box is widened by — the one number that lets a person read a Run's elapsed
@@ -251,7 +345,7 @@ export async function advance(ledger: Ledger, runId: string, delta: MeterDelta, 
   // disagree — only a resume closes a wait, and a resume is what starts a drive — so this is the
   // drive's own deadline term, computed where every other number a Run carries is.
   const waited = Math.max(waitedMsOf(ledger, runId), run.control?.adoption?.legacyWaitedMs ?? 0);
-  const withWait = waited === 0 ? meters : { ...meters, waitedMs: waited };
+  const withWait = waited === 0 ? withResearch : { ...withResearch, waitedMs: waited };
   // Read out of the records for the same reason `waitedMs` is, and it matters more here: the cancel
   // and the reconciliation write meters too, and neither of them holds a drive that could have been
   // counting seats. A Run whose Jobs held nothing carries no key at all.

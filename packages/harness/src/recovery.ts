@@ -590,12 +590,13 @@ export type CancelResult =
  */
 /** Trusted service emergency path still fences admission; slow stop I/O uses a separate key in
  * the same existing queue map so context, duplicate receipts and refusals stay responsive. */
-export async function cancelRun(deps: FabricDeps, runId: string): Promise<CancelResult> {
+export async function cancelRun(deps: FabricDeps, runId: string, requestedReason: 'cancel' | 'budget' = 'cancel'): Promise<CancelResult> {
   await controlling(deps, runId, async () => {
     const run = existingRun(deps.ledger, runId);
-    if (run.control !== undefined && (run.status === 'running' || run.status === 'waiting') && run.control.stop === undefined) {
+    if (run.control !== undefined && (run.status === 'running' || run.status === 'waiting')
+        && (run.control.stop === undefined || (requestedReason === 'cancel' && run.control.stop.reason === 'budget'))) {
       await deps.ledger.advanceRun(runId, { control: { ...run.control, revision: run.control.revision + 1,
-        paused: [...new Set([...run.control.paused, '*'])], stop: { reason: 'cancel', status: 'requested' } } });
+        paused: [...new Set([...run.control.paused, '*'])], stop: { reason: requestedReason, status: 'requested' } } });
     }
   });
   let result: CancelResult | undefined;

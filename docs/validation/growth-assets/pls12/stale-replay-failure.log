@@ -1,0 +1,27 @@
+✖ through the shell with the replay stand-in: a workshop node opens a moment with three tools, the model writes a script into its own directory, the fabric runs it as a job, and the node after it observes what it produced (14587.186166ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15242.580333
+
+✖ failing tests:
+
+test at test/contract/workshop.test.ts:205:1
+✖ through the shell with the replay stand-in: a workshop node opens a moment with three tools, the model writes a script into its own directory, the fabric runs it as a job, and the node after it observes what it produced (14587.186166ms)
+  AssertionError [ERR_ASSERTION]: the start form refused to start a campaign of workshop-probe: select a live conversation on this Host before preparing a Run
+      at start (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/growth-assets/pls12/test/contract/workshop.test.ts:124:37)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/growth-assets/pls12/test/contract/workshop.test.ts:214:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
