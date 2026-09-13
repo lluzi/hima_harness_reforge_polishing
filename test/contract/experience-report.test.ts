@@ -22,7 +22,7 @@ function fixture(): RunView {
     verdicts: verdicts.map((v) => ({ ruleId: v.ruleId, outcome: v.outcome, recordId: v.recordId, cites: [observation.recordId] })),
     wallMs: 100, state: 'done', decision: 'goal met', decisionRecordId: 'decision-1' };
   return { run: { id: 'run-1', campaignId: 'campaign-1', siteId: 'local', createdAt: at, status: 'ended-goal-met', packId: 'timing', packVersion: 'fixture',
-    goal: { target_period_ns: 2.3 }, generation: 1 }, observations: [observation], verdicts, nodes, generations: [generation], jobs: [], code: [], refusals: [], blockers: [], cancels: [],
+    goal: { target_period_ns: 2.3 }, generation: 1 }, observations: [observation], verdicts, nodes, generations: [generation], jobs: [], code: [], knowledge: [], refusals: [], blockers: [], cancels: [],
     decision: { recordId: 'decision-1', at, nodeId: 'explore', chooser: 'fixture', chooserOrigin: 'pack', chosen: { goalMet: true }, rationale: {}, cites: ['constraint', 'goal', observation.recordId] } };
 }
 

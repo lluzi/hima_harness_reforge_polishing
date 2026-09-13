@@ -145,6 +145,18 @@ export async function writeMomentScenario(home: HimaHome, scenario: string, from
   return { file, override, readyFile, children };
 }
 
+/** Append one more live model session to an already materialized replay scenario. */
+export async function appendReplaySession(
+  fixture: MomentScenarioFixture,
+  id: string,
+  entries: readonly ReplayEntry[],
+): Promise<MomentScenarioFixture> {
+  const ordinal = fixture.children.length + 1;
+  const child = path.join(path.dirname(fixture.file), `session.${String(ordinal)}.jsonl`);
+  await writeFile(child, childSessionLog(id, ordinal, entries, `generated replay session ${id}`));
+  return { ...fixture, children: [...fixture.children, child] };
+}
+
 /**
  * One recorded child session log holding exactly these model calls.
  *
