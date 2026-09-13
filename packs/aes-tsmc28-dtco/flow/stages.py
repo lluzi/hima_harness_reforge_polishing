@@ -317,10 +317,39 @@ def stage_mine(ctx, route):
     published.parent.mkdir(parents=True, exist_ok=True)
     published.write_bytes(target.read_bytes())
     ctx.add_artifact(target, "mining_raw", "algorithm-output")
+    view = ctx.run_dir / "research.json"
+    atomic_json(view, mining_research_view(target, code_hash))
+    (published.parent / "research.json").write_bytes(view.read_bytes())
+    ctx.add_artifact(view, "mining_research_view", "source-linked-projection")
     ctx.facts.update({
         "route": route, "candidate_count": len(requests),
         "codeSha256": code_hash, "sourceNetlistSha256": sha_file(netlist),
     })
+
+
+def mining_research_view(raw_path, code_hash):
+    """A finite model-facing projection; the executable and reader still use the full raw file."""
+    raw = read_json(raw_path)
+    candidates = []
+    for request in raw["generation_requests"]:
+        evidence = request.get("discovery_evidence") or {}
+        contract = request.get("generator_contract") or {}
+        candidates.append({
+            "candidate_id": request["candidate_id"],
+            "implementation_route": (request.get("implementation_plan") or {}).get("route"),
+            "interface": contract.get("interface"),
+            "equivalence_digest": (contract.get("equivalence_reference") or {}).get("digest"),
+            "evidence": {key: evidence.get(key) for key in (
+                "raw_support", "non_overlapping_support", "non_overlapping_support_method",
+                "critical_impact_du", "critical_root_rank", "input_count", "output_count",
+                "search_objective", "discovery_algorithm", "library_function_match", "ppa_status",
+            )},
+        })
+    return {"schema": "aes-mining-research-view/1", "sourceSha256": sha_file(raw_path),
+            "minerCodeSha256": code_hash, "route": raw["strategy_id"], "candidates": candidates,
+            "limitations": ["A projection of every emitted candidate, not the full occurrence/equivalence proof.",
+                            "Null means absent in the source, not zero. Inspect the full raw file in your program.",
+                            "Timing delay units are proxies; neither support nor Boolean equivalence proves PPA."]}
 
 
 def candidate_key(request):

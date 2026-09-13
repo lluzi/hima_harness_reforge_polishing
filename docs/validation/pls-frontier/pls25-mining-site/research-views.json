@@ -1,0 +1,60 @@
+{
+  "root": "/data/eda/project/hima_harness/polishing-inputs/aes-mining-0c6be9383395",
+  "sha256": "83adb4e96bebb7a1dbb8d2a64c88e74b3162306eb5600a797b2f13d6af1c1555",
+  "sourceProbe": {
+    "path": "/data/eda/project/hima_harness/polishing-runs/aes-tsmc28-dtco-20260913-041329-eec9/flow/probe.json",
+    "sha256": "d4c2605b46c991392423e4d6fa70f23cacf20b2614fc9f3d36fe4d0ec41bb756",
+    "run": "run-7505e553-5cb2-4610-aa5d-a84057532031"
+  },
+  "projectionCodeSha256": "c121f8d0bba2e6d702474f96eb946e9a0458f10051420dd64ed82402d71e4f78",
+  "views": [
+    {
+      "route": "timing_criticality",
+      "rawSha256": "d3e1ac2b0bf58e05f388c90ca4420fb1a4cf7146915c15d6b8481d8cb53419a5",
+      "rawBytes": 384505,
+      "viewBytes": 11144,
+      "viewSha256": "61188735e7bf6c9f14d460d01d1f744015ba034de1525ecd2209123ecd261371",
+      "candidateCount": 8
+    },
+    {
+      "route": "timing_context",
+      "rawSha256": "85bac6d866cbdc6631e7562b4e2dbdeded221bcfa2133572b0700bd5f9129ca0",
+      "rawBytes": 408872,
+      "viewBytes": 11274,
+      "viewSha256": "9ad75946495ca7bff095002abb006ad28719672b5fe2d57e0192563b38901e8e",
+      "candidateCount": 8
+    },
+    {
+      "route": "structure_frequency",
+      "rawSha256": "e95b4b0d6235ccd6c0fa829a128d8fdaafff3eba48c32102875f39ab498eccd6",
+      "rawBytes": 182187,
+      "viewBytes": 11393,
+      "viewSha256": "8551d4d40082dd39a29d1c21d2d4752e11892bdaffb847306547dbc47e0772f7",
+      "candidateCount": 8
+    },
+    {
+      "route": "structure_compaction",
+      "rawSha256": "5a8c5b24e2eef9a56572ca20d93a1d5a74ed2c8964b83ea0f8a4e0957754968d",
+      "rawBytes": 177659,
+      "viewBytes": 11425,
+      "viewSha256": "bdffe40b58e47c95d44fa5c282d713abac545a7764ff18a4a108b6f40faf47ce",
+      "candidateCount": 8
+    },
+    {
+      "route": "mapper_compatibility",
+      "rawSha256": "d28d1091b343a2f844e77301b46b1975284368d91701e30ac3b689c8e188e69b",
+      "rawBytes": 140713,
+      "viewBytes": 11063,
+      "viewSha256": "a630c5ee9ea47d8d095f4bc0c67e9ab8dd5be14aac9c885c4d9f22ae7c0acd00",
+      "candidateCount": 8
+    },
+    {
+      "route": "functional_diversity",
+      "rawSha256": "1802437d98169aef88ea63286f89379656f8da8f12cfa86d99a48f51410bcc9a",
+      "rawBytes": 143457,
+      "viewBytes": 11212,
+      "viewSha256": "54b7bcb4d66a900602d4ddf6c8eb5f906f21e714ba53dddb1b5b06b406d9129b",
+      "candidateCount": 8
+    }
+  ]
+}

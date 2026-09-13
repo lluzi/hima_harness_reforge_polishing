@@ -1,0 +1,23 @@
+{
+  "stage": "mine-mapper_compatibility",
+  "argv": [
+    "/usr/bin/python3",
+    "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa/flow/stages.py",
+    "mine",
+    "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa",
+    "mapper_compatibility"
+  ],
+  "exitCode": 0,
+  "elapsedSeconds": 55.097,
+  "log": "mine-mapper_compatibility.log.gz",
+  "logSha256": "3a2e190e375cc3d6f23af1d5e930dbd2cc87348375c74ffb6af75818057a540b",
+  "stagingSha256": "12c0b2e1acfa803979c87a85d5173f96a320151468005d86d9fb32dd0e5cf520",
+  "status": "passed",
+  "facts": {
+    "candidate_count": 8,
+    "codeSha256": "0b61ec5ce0a263ad1c761be546b9f024860a3f77cfc9e1067468075d261829b1",
+    "route": "mapper_compatibility",
+    "sourceNetlistSha256": "587ed9678eb8135c5fe4052e771c39eaa962cdc174d1877ca4c4b02881a29f31"
+  },
+  "record": "mine-mapper_compatibility.record.json"
+}

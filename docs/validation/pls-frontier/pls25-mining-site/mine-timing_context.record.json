@@ -1,0 +1,236 @@
+{
+  "artifacts": [
+    {
+      "bytes": 408872,
+      "path": "flow/artifacts/mine-timing_context/run-28a0316c97944515b79a508fadd571b1/raw.json",
+      "role": "mining_raw",
+      "sha256": "85bac6d866cbdc6631e7562b4e2dbdeded221bcfa2133572b0700bd5f9129ca0",
+      "sourceType": "algorithm-output"
+    }
+  ],
+  "evidenceClass": "site-run",
+  "executions": [
+    {
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa/flow/domain/mine_timing_route.py",
+        "--netlist",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa/flow/probes/trial-ae034c4170ad4937b05cf6cea8d4e84c/netlist.v",
+        "--liberty-skeleton",
+        "/data/eda/project/tsmc28_work/xspace/tsmc28_skeleton.lib",
+        "--output",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa/flow/artifacts/mine-timing_context/run-28a0316c97944515b79a508fadd571b1/raw.json",
+        "--strategy-id",
+        "timing_context",
+        "--objective",
+        "critical_context_pareto",
+        "--top",
+        "8",
+        "--process-family",
+        "TSMC28",
+        "--cell-architecture-ref",
+        "library-profile://tsmc28/bwp40p140",
+        "--characterization-profile-ref",
+        "characterization-profile://tsmc28/learned-models",
+        "--drive-strength",
+        "D1",
+        "--vt-class",
+        "unqualified-layout-profile",
+        "--full-liberty",
+        "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib"
+      ],
+      "cwd": "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa/flow/artifacts/mine-timing_context/run-28a0316c97944515b79a508fadd571b1",
+      "elapsedSeconds": 9.227842330932617,
+      "exitCode": 0,
+      "log": {
+        "bytes": 233,
+        "path": "flow/artifacts/mine-timing_context/run-28a0316c97944515b79a508fadd571b1/mine-timing_context.log",
+        "role": "mine-timing_context_log",
+        "sha256": "85e1d0ae1d19ed723179986ebb2a98beeebf672318e5b38296d109a3e3526530",
+        "sourceType": "tool-log"
+      }
+    }
+  ],
+  "facts": {
+    "candidate_count": 8,
+    "codeSha256": "0b61ec5ce0a263ad1c761be546b9f024860a3f77cfc9e1067468075d261829b1",
+    "route": "timing_context",
+    "sourceNetlistSha256": "587ed9678eb8135c5fe4052e771c39eaa962cdc174d1877ca4c4b02881a29f31"
+  },
+  "inputs": [
+    {
+      "bytes": 8478,
+      "path": "flow/inputs.json",
+      "role": "inputs_json",
+      "sha256": "cdc8cd5a939a2f44f78392dfa161c398540da8d3a7d1513bbccfb7769a77c78f",
+      "sourceType": "campaign-binding"
+    },
+    {
+      "bytes": 7010,
+      "path": "flow/probe.json",
+      "role": "probe_record",
+      "sha256": "d4c2605b46c991392423e4d6fa70f23cacf20b2614fc9f3d36fe4d0ec41bb756",
+      "sourceType": "real-tool-record"
+    },
+    {
+      "bytes": 937130,
+      "path": "flow/probes/trial-ae034c4170ad4937b05cf6cea8d4e84c/netlist.v",
+      "role": "probe_netlist",
+      "sha256": "587ed9678eb8135c5fe4052e771c39eaa962cdc174d1877ca4c4b02881a29f31",
+      "sourceType": "real-tool-output"
+    },
+    {
+      "bytes": 312856,
+      "path": "/data/eda/project/tsmc28_work/xspace/tsmc28_skeleton.lib",
+      "role": "LIBERTY_SKELETON",
+      "sha256": "23dfb13ece2887ae5b6ed6e00fefbcbed41f550c7f46a6fe5164825e403a0c3b",
+      "sourceType": "site-input"
+    },
+    {
+      "bytes": 87283165,
+      "path": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib",
+      "role": "FOUNDRY_LIB",
+      "sha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5",
+      "sourceType": "site-input"
+    }
+  ],
+  "method": {
+    "codeSha256": "b4eb514fab8999b51c1015ce895fccd7fdfaa90031cd5846efc6a7a1c33808a7",
+    "domainSources": [
+      {
+        "bytes": 7847,
+        "path": "domain/SOURCES.json",
+        "sha256": "43cca9f7c1bd72c1939be6111e0e0996bdaf17097d3f59c2074bb8071e71bcd5"
+      },
+      {
+        "bytes": 7269,
+        "path": "domain/_cell_adoption_projection.py",
+        "sha256": "0bea4fbbe2f9f93ebabe41e41d020055fca68914dbad7490767c14b41e6fe9d6"
+      },
+      {
+        "bytes": 7974,
+        "path": "domain/_generation_projection.py",
+        "sha256": "f34a734194b529c528856658a0eae95d60d3c71262f15c0b5108d28f359449c0"
+      },
+      {
+        "bytes": 33302,
+        "path": "domain/abstract_cell.py",
+        "sha256": "a8d25f2090b61cd274a22db8e3c787e0d8d551f8d20afd55867c660a6284604c"
+      },
+      {
+        "bytes": 698,
+        "path": "domain/cell_need_miner/__init__.py",
+        "sha256": "d1941e7d457a223aa59a93c93b3dbb8eba6c4db7e8f5dab80eff7cd3f44a54cd"
+      },
+      {
+        "bytes": 2802,
+        "path": "domain/cell_need_miner/aig.py",
+        "sha256": "08eb4f9d2cab99828f6d8a24471db89ffba7847ac82b28a171a01bd0c6191a1a"
+      },
+      {
+        "bytes": 2248,
+        "path": "domain/cell_need_miner/cuts.py",
+        "sha256": "9270f9f860f8e08e8a8ba587bdc4ff20aa6542c46151b6789af0081d8c62ba07"
+      },
+      {
+        "bytes": 11987,
+        "path": "domain/cell_need_miner/generator_contract.py",
+        "sha256": "f4daac2b21606b58b59cd70d96a923fc2b731c0e262ef4643897794b1f812b67"
+      },
+      {
+        "bytes": 7152,
+        "path": "domain/cell_need_miner/liberty.py",
+        "sha256": "2a43d6a3df45dde2a0d653466ed240ca945aef7ac0441029d76d7f015ebdcf60"
+      },
+      {
+        "bytes": 4333,
+        "path": "domain/cell_need_miner/liberty_timing.py",
+        "sha256": "40e9a488f99997fae39ad44fb8322ddaf7203ab0871d7fb1db924c2082824b9c"
+      },
+      {
+        "bytes": 4209,
+        "path": "domain/cell_need_miner/npn.py",
+        "sha256": "201776e91e6131cdda44d59065f6862c44ae1e05713961505ffc8aa973ae5d3f"
+      },
+      {
+        "bytes": 29623,
+        "path": "domain/charlib_emit.py",
+        "sha256": "e5f1b04272415b235bd93811e18da7f9c55d54590646067fae941f0969c35c1b"
+      },
+      {
+        "bytes": 21124,
+        "path": "domain/features.py",
+        "sha256": "3c3ea8ef673fec7aae303d0549bb22b76d7c7e359689e19c2965ae13c5b90abd"
+      },
+      {
+        "bytes": 3217,
+        "path": "domain/featurize.py",
+        "sha256": "36ec66580f025a80d0f81b923faf75479b93fa7e55f798faac74d5626aa05242"
+      },
+      {
+        "bytes": 2590,
+        "path": "domain/init.tcl.tmpl",
+        "sha256": "a6505206e73113eb9762ba6da7319031b51e462f1d2a8ea82081986f6aadff92"
+      },
+      {
+        "bytes": 49562,
+        "path": "domain/mine_patterns.py",
+        "sha256": "dd7d0254ffd425883d8a52f72feac5c35403c4ac4d39987b849a77cd25af574d"
+      },
+      {
+        "bytes": 30412,
+        "path": "domain/mine_timing_route.py",
+        "sha256": "a29b4b286207330c1b559a1447967972707594e15453e611569e31afeccbc923"
+      },
+      {
+        "bytes": 2358,
+        "path": "domain/mining_strategy_contract.py",
+        "sha256": "f58befe3cb3dfd19de38d57e0ca5d57491f52cf8816ce325155894cdb35c05ed"
+      },
+      {
+        "bytes": 1834,
+        "path": "domain/mmmc.tcl.tmpl",
+        "sha256": "3b1dce88686b5a68412058659d1e15374c3de1593b2c79118b2dc90b02000b1a"
+      },
+      {
+        "bytes": 3189,
+        "path": "domain/pnr.tcl.tmpl",
+        "sha256": "abfa7c65a112593fb8bb46fc231ee8565049033b9d56f5f7cb8b2141015eb4ff"
+      },
+      {
+        "bytes": 21728,
+        "path": "domain/predict.py",
+        "sha256": "c50809e3ca57da6dd9d8e247cf0381efa89b351b6c83dd18c01d5d8329a2877e"
+      },
+      {
+        "bytes": 1584,
+        "path": "domain/shared_constraints.sdc",
+        "sha256": "4664044d3a0db77432cffadb4ad8706eedba079c3a1ce0ab91ac0981278896cc"
+      },
+      {
+        "bytes": 4299,
+        "path": "domain/shared_synth.tcl",
+        "sha256": "31440ad3212039a0e58649c553e29bd36530dbfa1ebfc5439ed5536b34b65963"
+      },
+      {
+        "bytes": 3413,
+        "path": "domain/techprofile.py",
+        "sha256": "72a3edd54872b152b8127c220d84fe263ec01af7e7562c890b78538bcb3fac15"
+      },
+      {
+        "bytes": 5486,
+        "path": "domain/verilog_netlist.py",
+        "sha256": "d205b31f7cd758d8afe0e086b991d5743417a451a2efa328cb29751d6495a2e8"
+      }
+    ],
+    "stageAdapter": {
+      "bytes": 61537,
+      "path": "stages.py",
+      "sha256": "3efce2d5798a96b25f94b1f0873ac67437504e3d06bb1df6ccd2a662b3148d3e"
+    }
+  },
+  "schema": "aes-dtco-stage/1",
+  "scope": "AES/TSMC28 Pack domain evidence; no silicon or cross-design PPA claim",
+  "stage": "mine-timing_context",
+  "status": "passed"
+}

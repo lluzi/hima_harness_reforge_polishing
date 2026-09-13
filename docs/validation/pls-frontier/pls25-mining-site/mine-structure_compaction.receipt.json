@@ -1,0 +1,23 @@
+{
+  "stage": "mine-structure_compaction",
+  "argv": [
+    "/usr/bin/python3",
+    "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa/flow/stages.py",
+    "mine",
+    "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa",
+    "structure_compaction"
+  ],
+  "exitCode": 0,
+  "elapsedSeconds": 55.078,
+  "log": "mine-structure_compaction.log.gz",
+  "logSha256": "596b78acbb2bc07b64707887e958055bdd0aadd10cff345995f7bc5350f9f416",
+  "stagingSha256": "12c0b2e1acfa803979c87a85d5173f96a320151468005d86d9fb32dd0e5cf520",
+  "status": "passed",
+  "facts": {
+    "candidate_count": 8,
+    "codeSha256": "0b61ec5ce0a263ad1c761be546b9f024860a3f77cfc9e1067468075d261829b1",
+    "route": "structure_compaction",
+    "sourceNetlistSha256": "587ed9678eb8135c5fe4052e771c39eaa962cdc174d1877ca4c4b02881a29f31"
+  },
+  "record": "mine-structure_compaction.record.json"
+}

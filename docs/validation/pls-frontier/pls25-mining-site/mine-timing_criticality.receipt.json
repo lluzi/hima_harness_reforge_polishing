@@ -1,0 +1,23 @@
+{
+  "stage": "mine-timing_criticality",
+  "argv": [
+    "/usr/bin/python3",
+    "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa/flow/stages.py",
+    "mine",
+    "/data/eda/project/hima_harness/polishing-runs/dtco-bringup-12c0b2e1acfa",
+    "timing_criticality"
+  ],
+  "exitCode": 0,
+  "elapsedSeconds": 9.718,
+  "log": "mine-timing_criticality.log.gz",
+  "logSha256": "40fec2b90f53da447a76f4e3c4e02b0e8fac7abb0481436f976a0110a969e516",
+  "stagingSha256": "12c0b2e1acfa803979c87a85d5173f96a320151468005d86d9fb32dd0e5cf520",
+  "status": "passed",
+  "facts": {
+    "candidate_count": 8,
+    "codeSha256": "0b61ec5ce0a263ad1c761be546b9f024860a3f77cfc9e1067468075d261829b1",
+    "route": "timing_criticality",
+    "sourceNetlistSha256": "587ed9678eb8135c5fe4052e771c39eaa962cdc174d1877ca4c4b02881a29f31"
+  },
+  "record": "mine-timing_criticality.record.json"
+}
