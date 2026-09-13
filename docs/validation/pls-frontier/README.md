@@ -46,3 +46,5 @@ The previous Run and its failed reader are unchanged; the corrected method needs
 Current probe test/release, real negative measurements, same-screen inspection and executable finite analysis handoff are documented in [probe-handoff.md](probe-handoff.md). PLS-23/08 remain pending integration review at this checkpoint.
 
 PLS-23 v2、PLS-08 交接及 PLS-24 同屏材料已完成验收，见 [最终交接](probe-handoff.md#final-v2-and-integration-closure)。接下来推进 PLS-09，再完成 PLS-25。
+
+PLS-09 的实际算法、独立holdout、原始失败与零模型收尾见 [research-handoff.md](research-handoff.md)。当前继续PLS-25全链路。

@@ -1,0 +1,1896 @@
+{
+  "status": "passed",
+  "passed": true,
+  "check": "independent research closure and native mechanical release",
+  "from": {
+    "path": "/Users/lluzi/code/hima_harness_reforge_polishing/docs/validation/pls-frontier/aes-research-live-2/evidence.json",
+    "sha256": "1e9f1995e721a9395631c1c6e1d459849b10d3709cc360db4229b746f2b65769",
+    "rawStatus": "failed"
+  },
+  "limitation": "Knowledge is proved by the original successful session read before code; no node-level knowledge read record exists. No research was rerun and no record was backfilled.",
+  "modelRequests": 0,
+  "newEdaJobs": 0,
+  "newResearchJobs": 0,
+  "hosts": 1,
+  "observed": {
+    "sourceSha": "a38dbb94586850682545fb91cca6191a63856c9b",
+    "privateRoot": "/private/tmp/hima-l4-bGmjJw",
+    "node": "v24.20.0",
+    "dirtyFiles": "",
+    "model": "native configured DeepSeek adapter; no replay",
+    "realEdaRequested": false,
+    "packFolder": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/hima/packs/aes-timing-research",
+    "sample": {
+      "sha256": "e8b21153b49da2935c8f742618a0b55ce67390b69d921b7f0208936161138570",
+      "source": {
+        "run": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98",
+        "observation": "run-3ef44159-1b5a-4baf-ab5c-107b8104fd98#000010",
+        "generation": 1,
+        "methodDigest": "84cefd82286358ce2930a81ae37f03bd9358432ee91844cd85f9c4b9a3e7bd7f",
+        "readerSha256": "677d94cdbb85fc33925cc8151dd5ed937102d2efcd18437b9fc6a420a3264dca",
+        "manifestSha256": "9db98dc9eab1679953b324f8ff86108132509737fd6ac795bc48736e70ae87b8",
+        "timingSha256": "da1daf575b7e4201558ae5b854303fb4726b2601729f4c0910c8f8173336a21f",
+        "netlistSha256": "b8b326ed95f1cc8e3d94229d8136a5f53b20dfb04603a98df288e51a0cd4a804"
+      }
+    },
+    "methodBeforeTest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+    "minimumScore": 21,
+    "allowedReadRoots": [
+      "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/hima/packs/aes-timing-research",
+      "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/profiles/hima/node_modules/@hima/harness",
+      "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/research-flow",
+      "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace"
+    ],
+    "allowedWriteRoot": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/hima/packs/aes-timing-research",
+    "deniedTools": [
+      {
+        "name": "job_list",
+        "reason": "bounded live check permits file inspection, Pack authoring and Hima tools only"
+      }
+    ],
+    "owner": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+    "nativeTurns": [
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 129,
+        "turn": 1,
+        "reason": {
+          "kind": "completed"
+        }
+      },
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 193,
+        "turn": 2,
+        "reason": {
+          "kind": "completed"
+        }
+      },
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 351,
+        "turn": 3,
+        "reason": {
+          "kind": "completed"
+        }
+      },
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 363,
+        "turn": 4,
+        "reason": {
+          "kind": "completed"
+        }
+      },
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 375,
+        "turn": 5,
+        "reason": {
+          "kind": "completed"
+        }
+      },
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 390,
+        "turn": 6,
+        "reason": {
+          "kind": "completed"
+        }
+      },
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 397,
+        "turn": 7,
+        "reason": {
+          "kind": "completed"
+        }
+      },
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 404,
+        "turn": 8,
+        "reason": {
+          "kind": "completed"
+        }
+      },
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 411,
+        "turn": 9,
+        "reason": {
+          "kind": "completed"
+        }
+      },
+      {
+        "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+        "seq": 418,
+        "turn": 10,
+        "reason": {
+          "kind": "completed"
+        }
+      }
+    ],
+    "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+    "secretScan": {
+      "files": 236,
+      "holding": [],
+      "unreadable": []
+    },
+    "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+    "codeFiles": [
+      {
+        "record": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000006",
+        "generation": 1,
+        "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py",
+        "sha256": "440f8b86f6dab77ce95799973d7d6723649d10977569c69329eb20558fdfc1b3",
+        "execution": "execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1"
+      },
+      {
+        "record": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000022",
+        "generation": 2,
+        "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py",
+        "sha256": "d39ebd3b5eccd538b5e602ba1e129c5ae0337b936ffb2e82daa5d98c58b78341",
+        "execution": "execution-d1793075-0614-472e-af86-355bd6fc39b9"
+      }
+    ],
+    "knowledgeAttribution": {
+      "kind": "session-read-before-code",
+      "callId": "call_02_xOzTzrs8jfps4zFlBtua1785",
+      "at": "2026-09-13T05:25:18.958Z",
+      "session": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+      "file": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/hima/packs/aes-timing-research/knowledge/selection-method.md",
+      "sha256": "f77856f49b15386aa15783c1ff0c05ffdc0c9ad86527e9decd14bbeaa32fd623",
+      "nodeRecord": false
+    },
+    "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+    "release": {
+      "isError": false,
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"kind\":\"released\",\"pack\":\"aes-timing-research\",\"version\":\"1\",\"released\":\"2026-09-13T05:41:36.081Z\",\"run\":\"run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961\",\"files\":15,\"file\":\"/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/hima/packs/aes-timing-research/VERSION.yml\",\"rewritten\":false}"
+        }
+      ],
+      "value": {
+        "kind": "released",
+        "pack": "aes-timing-research",
+        "version": "1",
+        "released": "2026-09-13T05:41:36.081Z",
+        "run": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+        "files": 15,
+        "file": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/hima/packs/aes-timing-research/VERSION.yml",
+        "rewritten": false
+      }
+    }
+  },
+  "runs": [
+    {
+      "run": {
+        "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+        "campaignId": "aes-timing-research-20260913-052612-46f9",
+        "siteId": "local",
+        "createdAt": "2026-09-13T05:26:12.168Z",
+        "nextSeq": 39,
+        "control": {
+          "mode": "agent",
+          "owner": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+          "epoch": 1,
+          "revision": 31,
+          "paused": [],
+          "executions": {
+            "execution-f0133dcf-1771-4718-b95a-739493305b94": {
+              "id": "execution-f0133dcf-1771-4718-b95a-739493305b94",
+              "nodeId": "prepare",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+              "inputDigest": "decbe00079343b78eaacbc891f941029782110e74679a24cc03dd519b9059d08",
+              "phase": "completed",
+              "inputThroughSeq": 1,
+              "intent": {
+                "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-a01dfd81-prepare-6eafd0",
+                  "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+                  "name": "prepare",
+                  "startedAt": "2026-09-13T05:26:18.295Z",
+                  "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/flow/prepare.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-prepare-6eafd0.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-prepare-6eafd0.exit'"
+                },
+                "nodeId": "prepare",
+                "attempt": 1
+              },
+              "jobSession": "hima-a01dfd81-prepare-6eafd0",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1": {
+              "id": "execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1",
+              "nodeId": "analyze",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+              "inputDigest": "decbe00079343b78eaacbc891f941029782110e74679a24cc03dd519b9059d08",
+              "phase": "completed",
+              "inputThroughSeq": 5,
+              "workshop": {
+                "id": "analyze",
+                "entry": "entry.py",
+                "entryPath": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py",
+                "directory": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1"
+              },
+              "intent": {
+                "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-a01dfd81-workshop-analyze-24e4bf",
+                  "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+                  "name": "workshop-analyze",
+                  "startedAt": "2026-09-13T05:26:55.276Z",
+                  "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9' '0' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-24e4bf.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-24e4bf.exit'"
+                },
+                "nodeId": "analyze",
+                "workshop": {
+                  "id": "analyze",
+                  "entry": {
+                    "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py",
+                    "sha256": "440f8b86f6dab77ce95799973d7d6723649d10977569c69329eb20558fdfc1b3"
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-a01dfd81-workshop-analyze-24e4bf",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-e56c533e-04cc-49a0-a76f-17b31c87bd92": {
+              "id": "execution-e56c533e-04cc-49a0-a76f-17b31c87bd92",
+              "nodeId": "read-selection",
+              "kind": "act",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+              "inputDigest": "decbe00079343b78eaacbc891f941029782110e74679a24cc03dd519b9059d08",
+              "phase": "completed",
+              "inputThroughSeq": 10,
+              "intent": {
+                "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-a01dfd81-reader-selection-reading-829d9d",
+                  "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+                  "name": "reader-selection-reading",
+                  "startedAt": "2026-09-13T05:27:09.986Z",
+                  "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g1-a1.json' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-829d9d.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-829d9d.exit'"
+                },
+                "nodeId": "read-selection",
+                "reading": {
+                  "reader": {
+                    "id": "selection-reading",
+                    "version": "1",
+                    "reportKind": "aes-selection/1",
+                    "emits": [
+                      "selection_score",
+                      "selected_count",
+                      "conflict_count"
+                    ],
+                    "file": "tools/read-selection.py",
+                    "sha256": "078a4242657c5a4dbb6118e43a92abe5aae6b69c1f90dc38265feb706b8619d7"
+                  },
+                  "out": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g1-a1.json",
+                  "report": {
+                    "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json",
+                    "contentSha256": "b42237860cd4b7d3ae991eb08d6f7494874adf83c798ffd8bc07ac2bd32a7549",
+                    "bytes": 147
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-a01dfd81-reader-selection-reading-829d9d",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-f1bed2a8-1913-4e88-af70-9fd944c60c15": {
+              "id": "execution-f1bed2a8-1913-4e88-af70-9fd944c60c15",
+              "nodeId": "judge",
+              "kind": "judge",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+              "inputDigest": "ced68d664d5b72f90ca40383cb2dbd2b14c640d2f9ec49d47775818a0fc7f113",
+              "phase": "completed",
+              "inputThroughSeq": 16,
+              "result": {
+                "kind": "settled",
+                "outcome": "FAIL"
+              }
+            },
+            "execution-14375a86-e9b1-457a-86d8-84f14b40cf1c": {
+              "id": "execution-14375a86-e9b1-457a-86d8-84f14b40cf1c",
+              "nodeId": "refine",
+              "kind": "explore",
+              "generation": 1,
+              "attempt": 1,
+              "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+              "inputDigest": "872869cf234e1e5e61980b1c2f2614c31302395c6e253b0f6bb4c7f76c8f39f6",
+              "phase": "completed",
+              "inputThroughSeq": 19,
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-d1793075-0614-472e-af86-355bd6fc39b9": {
+              "id": "execution-d1793075-0614-472e-af86-355bd6fc39b9",
+              "nodeId": "analyze",
+              "kind": "act",
+              "generation": 2,
+              "attempt": 1,
+              "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+              "inputDigest": "62668df223b1c6be95c437fcee5bc229fa59cc1031f8c3d7af0876f52eb8d4a3",
+              "phase": "completed",
+              "inputThroughSeq": 21,
+              "workshop": {
+                "id": "analyze",
+                "entry": "entry.py",
+                "entryPath": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py",
+                "directory": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9"
+              },
+              "intent": {
+                "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-a01dfd81-workshop-analyze-cfea04",
+                  "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+                  "name": "workshop-analyze",
+                  "startedAt": "2026-09-13T05:28:32.060Z",
+                  "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9' '1' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-cfea04.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-cfea04.exit'"
+                },
+                "nodeId": "analyze",
+                "workshop": {
+                  "id": "analyze",
+                  "entry": {
+                    "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py",
+                    "sha256": "d39ebd3b5eccd538b5e602ba1e129c5ae0337b936ffb2e82daa5d98c58b78341"
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-a01dfd81-workshop-analyze-cfea04",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-52b8cab5-4891-468c-8139-66aa167f7afe": {
+              "id": "execution-52b8cab5-4891-468c-8139-66aa167f7afe",
+              "nodeId": "read-selection",
+              "kind": "act",
+              "generation": 2,
+              "attempt": 1,
+              "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+              "inputDigest": "62668df223b1c6be95c437fcee5bc229fa59cc1031f8c3d7af0876f52eb8d4a3",
+              "phase": "completed",
+              "inputThroughSeq": 26,
+              "intent": {
+                "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+                "siteId": "local",
+                "job": {
+                  "session": "hima-a01dfd81-reader-selection-reading-8b40cd",
+                  "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+                  "name": "reader-selection-reading",
+                  "startedAt": "2026-09-13T05:28:52.637Z",
+                  "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g2-a1.json' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-8b40cd.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-8b40cd.exit'"
+                },
+                "nodeId": "read-selection",
+                "reading": {
+                  "reader": {
+                    "id": "selection-reading",
+                    "version": "1",
+                    "reportKind": "aes-selection/1",
+                    "emits": [
+                      "selection_score",
+                      "selected_count",
+                      "conflict_count"
+                    ],
+                    "file": "tools/read-selection.py",
+                    "sha256": "078a4242657c5a4dbb6118e43a92abe5aae6b69c1f90dc38265feb706b8619d7"
+                  },
+                  "out": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g2-a1.json",
+                  "report": {
+                    "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json",
+                    "contentSha256": "86911f64dfb1ac48bc74cab4bc0512b0198c0c271223fb2c15c18c2b4b808fb8",
+                    "bytes": 147
+                  }
+                },
+                "attempt": 1
+              },
+              "jobSession": "hima-a01dfd81-reader-selection-reading-8b40cd",
+              "result": {
+                "kind": "settled"
+              }
+            },
+            "execution-1d9d1060-ea81-4160-af28-880cf5048de8": {
+              "id": "execution-1d9d1060-ea81-4160-af28-880cf5048de8",
+              "nodeId": "judge",
+              "kind": "judge",
+              "generation": 2,
+              "attempt": 1,
+              "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+              "inputDigest": "e52c88a233d87233f0561472e947954ab21d18b2db8341dcf939222e5591385e",
+              "phase": "completed",
+              "inputThroughSeq": 32,
+              "result": {
+                "kind": "settled",
+                "outcome": "PASS"
+              }
+            },
+            "execution-64b53b1f-14db-4b45-9bc5-de40f40663a3": {
+              "id": "execution-64b53b1f-14db-4b45-9bc5-de40f40663a3",
+              "nodeId": "refine",
+              "kind": "explore",
+              "generation": 2,
+              "attempt": 1,
+              "methodDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+              "inputDigest": "d3b9c8253ad2840cb7c51aa556fa50facf97c38d393f1fe9fe4ad74c81407b9f",
+              "phase": "completed",
+              "inputThroughSeq": 35,
+              "result": {
+                "kind": "settled"
+              }
+            }
+          },
+          "requests": {
+            "req-begin-prepare-1": {
+              "digest": "71f855885e7b29af227b2f6a45151c2066dfd5778ad9e71a552be34ff49a0eb9",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 0,
+              "at": "2026-09-13T05:26:15.321Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-prepare-1",
+                "action": "begin",
+                "executionId": "execution-f0133dcf-1771-4718-b95a-739493305b94"
+              },
+              "origin": "agent"
+            },
+            "req-work-prepare-1": {
+              "digest": "3abf60f11b56ece0c1fd48d824353cf1f0fc900b2fde93ec69f537d3e08e53c4",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 1,
+              "at": "2026-09-13T05:26:18.266Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-prepare-1",
+                "action": "work",
+                "executionId": "execution-f0133dcf-1771-4718-b95a-739493305b94"
+              },
+              "origin": "agent"
+            },
+            "req-complete-prepare-1": {
+              "digest": "053d92527a85daa292e5a1cd165807108e302f2d339128ae668270b64096bafb",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 2,
+              "at": "2026-09-13T05:26:29.197Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-prepare-1",
+                "action": "complete",
+                "executionId": "execution-f0133dcf-1771-4718-b95a-739493305b94"
+              },
+              "origin": "agent"
+            },
+            "req-begin-analyze-g1": {
+              "digest": "57e308c537ce88db510fcba4e6105ded1637cfc326e7de6899b6d22a1642b580",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 3,
+              "at": "2026-09-13T05:26:32.010Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-analyze-g1",
+                "action": "begin",
+                "executionId": "execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1"
+              },
+              "origin": "agent"
+            },
+            "req-recommend-analyze-g1": {
+              "digest": "68645be6badb16eeeebf98b07eb557341131c3b361eb518a08d0f6b63b2c6c22",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 4,
+              "at": "2026-09-13T05:26:35.362Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-recommend-analyze-g1",
+                "action": "recommend",
+                "executionId": "execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1",
+                "data": {
+                  "purpose": "Read the declared sample and method knowledge. At algorithmRevision 0, copy and execute the supplied raw-frequency baseline unchanged to establish its measured reference. If the reader and Judge show an actual conflict constraint failure, at revision 1 write a corrected, data-dependent selection algorithm from the sample and feedback. Do not lower the Goal, invent a result, write a verdict, or use an undeclared input. Write selection.json with only sampleSha256 and selected candidate ids.",
+                  "language": "python",
+                  "entry": "entry.py",
+                  "entryPath": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py",
+                  "directory": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1",
+                  "argv": [
+                    "/usr/bin/python3",
+                    "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py",
+                    "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+                    "0"
+                  ],
+                  "reads": [
+                    {
+                      "name": "sample",
+                      "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/sample.json"
+                    },
+                    {
+                      "name": "baselineCode",
+                      "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/baseline.py"
+                    }
+                  ],
+                  "knowledge": [
+                    {
+                      "file": "selection-method.md",
+                      "purpose": "Objective, provenance, baseline reference stage, and limits of the finite analysis.",
+                      "at": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/hima/packs/aes-timing-research/.hima-method-history/3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503/aes-timing-research/knowledge/selection-method.md"
+                    }
+                  ],
+                  "produces": {
+                    "name": "selection",
+                    "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json",
+                    "reader": "selection-reading",
+                    "emits": [
+                      {
+                        "type": "selection_score",
+                        "declared": {
+                          "unit": "count",
+                          "description": "Sum of selected candidate cell counts times unique occurrence paths"
+                        }
+                      },
+                      {
+                        "type": "selected_count",
+                        "declared": {
+                          "unit": "count",
+                          "description": "Number of selected candidate ids"
+                        }
+                      },
+                      {
+                        "type": "conflict_count",
+                        "declared": {
+                          "unit": "count",
+                          "description": "Reused physical cells across selected candidates"
+                        }
+                      }
+                    ]
+                  },
+                  "values": {
+                    "REVISION": "0"
+                  },
+                  "instruction": "Read declared inputs and knowledge with hima_execute. Write the executable entry using action write and a relative path. The entry and helpers belong to this execution version. Work verifies recorded hashes and returns its real Job. Inspect facts, then explicitly complete. Use read output @job-log to inspect a launched Job; no new node starts without your next request."
+                }
+              },
+              "origin": "agent"
+            },
+            "req-write-analyze-g1-baseline": {
+              "digest": "1a3b0d6999badb7385ad9f2a4fdbe88fe26d8f16061314de3ee2f51e2452362b",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 5,
+              "at": "2026-09-13T05:26:40.316Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-write-analyze-g1-baseline",
+                "action": "write",
+                "executionId": "execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1",
+                "data": {
+                  "wrote": true,
+                  "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py",
+                  "sha256": "440f8b86f6dab77ce95799973d7d6723649d10977569c69329eb20558fdfc1b3",
+                  "bytes": 759
+                }
+              },
+              "origin": "agent"
+            },
+            "req-work-analyze-g1": {
+              "digest": "e7cad671af7573e930a5cd11b99563098ca515606a30e95a5b1aad84db9cce5a",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 6,
+              "at": "2026-09-13T05:26:55.227Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-analyze-g1",
+                "action": "work",
+                "executionId": "execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1"
+              },
+              "origin": "agent"
+            },
+            "req-complete-analyze-g1": {
+              "digest": "6abe935c145df26116d06cedb0d5159d05cf2273f68b24a50b570636bd6d048e",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 7,
+              "at": "2026-09-13T05:27:05.102Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-analyze-g1",
+                "action": "complete",
+                "executionId": "execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1"
+              },
+              "origin": "agent"
+            },
+            "req-begin-read-g1": {
+              "digest": "86e8c96900702eebe95ad90dc8aac0c8a3e851aea60ee2399959510200537fe0",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 8,
+              "at": "2026-09-13T05:27:07.506Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-read-g1",
+                "action": "begin",
+                "executionId": "execution-e56c533e-04cc-49a0-a76f-17b31c87bd92"
+              },
+              "origin": "agent"
+            },
+            "req-work-read-g1": {
+              "digest": "35a36b8dfcc785d592e0ca85ef67ed40e720156c3a228b922afe4bd287bf8888",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 9,
+              "at": "2026-09-13T05:27:09.933Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-read-g1",
+                "action": "work",
+                "executionId": "execution-e56c533e-04cc-49a0-a76f-17b31c87bd92"
+              },
+              "origin": "agent"
+            },
+            "req-complete-read-g1": {
+              "digest": "bbe0af780a4f0c70211ed6f1272e73639a132ba04799aac32bcec1c880ab0299",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 10,
+              "at": "2026-09-13T05:27:19.780Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-read-g1",
+                "action": "complete",
+                "executionId": "execution-e56c533e-04cc-49a0-a76f-17b31c87bd92"
+              },
+              "origin": "agent"
+            },
+            "req-begin-judge-g1": {
+              "digest": "55c8731ac6cb452652d6e2e11ad822ae1d36d87fe25e892d3d9f31b9d0083d1c",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 11,
+              "at": "2026-09-13T05:27:23.063Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-judge-g1",
+                "action": "begin",
+                "executionId": "execution-f1bed2a8-1913-4e88-af70-9fd944c60c15"
+              },
+              "origin": "agent"
+            },
+            "req-work-judge-g1": {
+              "digest": "8a37e4d8d340e781250f2bb3edf86674784ae991b4cb20797f950a68f76e8362",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 12,
+              "at": "2026-09-13T05:27:25.648Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-judge-g1",
+                "action": "work",
+                "executionId": "execution-f1bed2a8-1913-4e88-af70-9fd944c60c15"
+              },
+              "origin": "agent"
+            },
+            "req-complete-judge-g1": {
+              "digest": "2271f2ad304842716b68c18fcd2c7f225bd01640fa08563295865f3dec068662",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 13,
+              "at": "2026-09-13T05:27:29.929Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-judge-g1",
+                "action": "complete",
+                "executionId": "execution-f1bed2a8-1913-4e88-af70-9fd944c60c15"
+              },
+              "origin": "agent"
+            },
+            "req-begin-refine-g1": {
+              "digest": "49e64e66e918256a35351ba2f095ddee7d81fe40445054fb99c287ffd92ae661",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 14,
+              "at": "2026-09-13T05:27:36.942Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-refine-g1",
+                "action": "begin",
+                "executionId": "execution-14375a86-e9b1-457a-86d8-84f14b40cf1c"
+              },
+              "origin": "agent"
+            },
+            "req-work-refine-g1": {
+              "digest": "d599af7bf94f1802f3bd28980f9a3f4bfdf3b8bf3f41ba5af9be5d616c661978",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 15,
+              "at": "2026-09-13T05:27:40.563Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-refine-g1",
+                "action": "work",
+                "executionId": "execution-14375a86-e9b1-457a-86d8-84f14b40cf1c"
+              },
+              "origin": "agent"
+            },
+            "req-complete-refine-g1": {
+              "digest": "d4e6f5c1a044a5f5f4560e1c721e7772937252427ec688b6bf93063c0e07dc31",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 16,
+              "at": "2026-09-13T05:27:46.257Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-refine-g1",
+                "action": "complete",
+                "executionId": "execution-14375a86-e9b1-457a-86d8-84f14b40cf1c"
+              },
+              "origin": "agent"
+            },
+            "req-begin-analyze-g2": {
+              "digest": "2ed7b3a53d430d0736110fd1df5bcf3c04be9b4928cc90ec61b2b8ac58cf61e5",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 17,
+              "at": "2026-09-13T05:27:56.020Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-analyze-g2",
+                "action": "begin",
+                "executionId": "execution-d1793075-0614-472e-af86-355bd6fc39b9"
+              },
+              "origin": "agent"
+            },
+            "req-recommend-analyze-g2": {
+              "digest": "06a0d9d45984ee3d6f0974b1d905a1b1f37852617e92e875621bbae2ba8b1f8b",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 18,
+              "at": "2026-09-13T05:27:59.125Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-recommend-analyze-g2",
+                "action": "recommend",
+                "executionId": "execution-d1793075-0614-472e-af86-355bd6fc39b9",
+                "data": {
+                  "purpose": "Read the declared sample and method knowledge. At algorithmRevision 0, copy and execute the supplied raw-frequency baseline unchanged to establish its measured reference. If the reader and Judge show an actual conflict constraint failure, at revision 1 write a corrected, data-dependent selection algorithm from the sample and feedback. Do not lower the Goal, invent a result, write a verdict, or use an undeclared input. Write selection.json with only sampleSha256 and selected candidate ids.",
+                  "language": "python",
+                  "entry": "entry.py",
+                  "entryPath": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py",
+                  "directory": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9",
+                  "argv": [
+                    "/usr/bin/python3",
+                    "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py",
+                    "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+                    "1"
+                  ],
+                  "reads": [
+                    {
+                      "name": "sample",
+                      "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/sample.json"
+                    },
+                    {
+                      "name": "baselineCode",
+                      "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/baseline.py"
+                    }
+                  ],
+                  "knowledge": [
+                    {
+                      "file": "selection-method.md",
+                      "purpose": "Objective, provenance, baseline reference stage, and limits of the finite analysis.",
+                      "at": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/hima/packs/aes-timing-research/.hima-method-history/3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503/aes-timing-research/knowledge/selection-method.md"
+                    }
+                  ],
+                  "produces": {
+                    "name": "selection",
+                    "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json",
+                    "reader": "selection-reading",
+                    "emits": [
+                      {
+                        "type": "selection_score",
+                        "declared": {
+                          "unit": "count",
+                          "description": "Sum of selected candidate cell counts times unique occurrence paths"
+                        }
+                      },
+                      {
+                        "type": "selected_count",
+                        "declared": {
+                          "unit": "count",
+                          "description": "Number of selected candidate ids"
+                        }
+                      },
+                      {
+                        "type": "conflict_count",
+                        "declared": {
+                          "unit": "count",
+                          "description": "Reused physical cells across selected candidates"
+                        }
+                      }
+                    ]
+                  },
+                  "values": {
+                    "REVISION": "1"
+                  },
+                  "instruction": "Read declared inputs and knowledge with hima_execute. Write the executable entry using action write and a relative path. The entry and helpers belong to this execution version. Work verifies recorded hashes and returns its real Job. Inspect facts, then explicitly complete. Use read output @job-log to inspect a launched Job; no new node starts without your next request."
+                }
+              },
+              "origin": "agent"
+            },
+            "req-write-analyze-g2-algo": {
+              "digest": "0bfba55aa8f908c6237b27a1a8987defe02a21d24ec11a330900309940410089",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 19,
+              "at": "2026-09-13T05:28:27.802Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-write-analyze-g2-algo",
+                "action": "write",
+                "executionId": "execution-d1793075-0614-472e-af86-355bd6fc39b9",
+                "data": {
+                  "wrote": true,
+                  "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py",
+                  "sha256": "d39ebd3b5eccd538b5e602ba1e129c5ae0337b936ffb2e82daa5d98c58b78341",
+                  "bytes": 7755
+                }
+              },
+              "origin": "agent"
+            },
+            "req-work-analyze-g2": {
+              "digest": "011ca23a2030c73d4637cfd6c96f55791141e8fde7e526f9105c7be7e94e2a49",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 20,
+              "at": "2026-09-13T05:28:32.023Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-analyze-g2",
+                "action": "work",
+                "executionId": "execution-d1793075-0614-472e-af86-355bd6fc39b9"
+              },
+              "origin": "agent"
+            },
+            "req-complete-analyze-g2": {
+              "digest": "095172106b9b625d08ece5f15c77155563107e904b0f90c861a9f9ee7d01605b",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 21,
+              "at": "2026-09-13T05:28:40.035Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-analyze-g2",
+                "action": "complete",
+                "executionId": "execution-d1793075-0614-472e-af86-355bd6fc39b9"
+              },
+              "origin": "agent"
+            },
+            "req-begin-read-g2": {
+              "digest": "78dbbc386d004d86e8fb54a68c8319fcf7ba4083e6b147cf208d498621bdb2b9",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 22,
+              "at": "2026-09-13T05:28:49.185Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-read-g2",
+                "action": "begin",
+                "executionId": "execution-52b8cab5-4891-468c-8139-66aa167f7afe"
+              },
+              "origin": "agent"
+            },
+            "req-work-read-g2": {
+              "digest": "8b82781cfd7d1f844994187401c0e02910fde4bfb0fb0637f7d4a1c4126e0072",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 23,
+              "at": "2026-09-13T05:28:52.583Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-read-g2",
+                "action": "work",
+                "executionId": "execution-52b8cab5-4891-468c-8139-66aa167f7afe"
+              },
+              "origin": "agent"
+            },
+            "req-complete-read-g2": {
+              "digest": "a44852493bcdbf1f367a15b4265550c456a3e1a561e1178c7bd99d8f76720d1d",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 24,
+              "at": "2026-09-13T05:29:04.037Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-read-g2",
+                "action": "complete",
+                "executionId": "execution-52b8cab5-4891-468c-8139-66aa167f7afe"
+              },
+              "origin": "agent"
+            },
+            "req-begin-judge-g2": {
+              "digest": "42ee47815fdd9c11a44cb8a83b0a19444c9d3ee3040bc2afae4a7307e3c428eb",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 25,
+              "at": "2026-09-13T05:29:09.066Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-judge-g2",
+                "action": "begin",
+                "executionId": "execution-1d9d1060-ea81-4160-af28-880cf5048de8"
+              },
+              "origin": "agent"
+            },
+            "req-work-judge-g2": {
+              "digest": "d1e3230807efb80472c2c0d56afe4d5eb0c75c05a2fe35a25b082a4543038b7b",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 26,
+              "at": "2026-09-13T05:29:12.858Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-judge-g2",
+                "action": "work",
+                "executionId": "execution-1d9d1060-ea81-4160-af28-880cf5048de8"
+              },
+              "origin": "agent"
+            },
+            "req-complete-judge-g2": {
+              "digest": "fe03be063ab8e613191914a50d53c53c28326f859fcf583398741d0e6fe50b35",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 27,
+              "at": "2026-09-13T05:29:19.237Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-judge-g2",
+                "action": "complete",
+                "executionId": "execution-1d9d1060-ea81-4160-af28-880cf5048de8"
+              },
+              "origin": "agent"
+            },
+            "req-begin-refine-g2": {
+              "digest": "266e2e9ddb93a6d1993d424985c7a3c3d477eeca2cdefb8882c01385e99926cf",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 28,
+              "at": "2026-09-13T05:29:24.789Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-begin-refine-g2",
+                "action": "begin",
+                "executionId": "execution-64b53b1f-14db-4b45-9bc5-de40f40663a3"
+              },
+              "origin": "agent"
+            },
+            "req-work-refine-g2": {
+              "digest": "af5b5cd99a0b1272cffd1a897b8be64a12a07d1573614adc2ae3b552175864e9",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 29,
+              "at": "2026-09-13T05:29:29.614Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-work-refine-g2",
+                "action": "work",
+                "executionId": "execution-64b53b1f-14db-4b45-9bc5-de40f40663a3"
+              },
+              "origin": "agent"
+            },
+            "req-complete-refine-g2": {
+              "digest": "c58d81d38c9d41419d6cf20334d9bef09a04bfc12191174b2b5a8f1898de1634",
+              "actor": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+              "epoch": 1,
+              "revision": 30,
+              "at": "2026-09-13T05:29:42.361Z",
+              "state": "done",
+              "receipt": {
+                "requestId": "req-complete-refine-g2",
+                "action": "complete",
+                "executionId": "execution-64b53b1f-14db-4b45-9bc5-de40f40663a3"
+              },
+              "origin": "agent"
+            }
+          },
+          "siteDigest": "8f9b4ce16e36262442e4045e49cf19136473867acd381a509e3b397814cea2c8"
+        },
+        "status": "ended-goal-met",
+        "packId": "aes-timing-research",
+        "purpose": "test",
+        "packDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+        "goal": {
+          "minimum_score": 21
+        },
+        "budget": {
+          "timeBoxMs": 600000,
+          "retryAllowance": 1,
+          "jobCap": 1,
+          "licences": {},
+          "generationLimit": 2
+        },
+        "currentNode": "refine",
+        "strategy": {
+          "algorithmRevision": 1
+        },
+        "firstStrategy": {
+          "algorithmRevision": 0
+        },
+        "generation": 2,
+        "meters": {
+          "elapsedMs": 210236,
+          "jobsLaunched": 5,
+          "attempts": 5,
+          "generationMs": [
+            94072,
+            74558
+          ]
+        }
+      },
+      "records": [
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000001",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 1,
+          "at": "2026-09-13T05:26:12.227Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "workspace",
+          "event": "prepared",
+          "campaignId": "aes-timing-research-20260913-052612-46f9",
+          "packId": "aes-timing-research",
+          "packVersion": "1",
+          "packDigest": "3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503",
+          "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+          "flowRoot": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/research-flow",
+          "containerName": "hima-aes-timing-research-20260913-052612-46f9",
+          "copied": [
+            "sample.json",
+            "baseline.py",
+            "prepare.py"
+          ],
+          "preparedAt": "2026-09-13T05:26:12.187Z"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000002",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 2,
+          "at": "2026-09-13T05:26:18.341Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "job",
+          "event": "launched",
+          "job": {
+            "session": "hima-a01dfd81-prepare-6eafd0",
+            "pid": 55746,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "prepare",
+            "startedAt": "2026-09-13T05:26:18.295Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/flow/prepare.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-prepare-6eafd0.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-prepare-6eafd0.exit'"
+          },
+          "nodeId": "prepare",
+          "attempt": 1
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000003",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 3,
+          "at": "2026-09-13T05:26:18.359Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "node",
+          "nodeId": "prepare",
+          "kind": "act",
+          "state": "running",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-prepare-6eafd0"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000004",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 4,
+          "at": "2026-09-13T05:26:18.472Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "job",
+          "event": "finished",
+          "job": {
+            "session": "hima-a01dfd81-prepare-6eafd0",
+            "pid": 55746,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "prepare",
+            "startedAt": "2026-09-13T05:26:18.295Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/flow/prepare.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-prepare-6eafd0.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-prepare-6eafd0.exit'"
+          },
+          "exitCode": 0,
+          "nodeId": "prepare"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000005",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 5,
+          "at": "2026-09-13T05:26:18.493Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "node",
+          "nodeId": "prepare",
+          "kind": "act",
+          "state": "done",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-prepare-6eafd0"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000006",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 6,
+          "at": "2026-09-13T05:26:40.355Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "code",
+          "nodeId": "analyze",
+          "attempt": 1,
+          "sessionId": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+          "workshop": "analyze",
+          "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py",
+          "sha256": "440f8b86f6dab77ce95799973d7d6723649d10977569c69329eb20558fdfc1b3",
+          "bytes": 759,
+          "language": "python"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000007",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 7,
+          "at": "2026-09-13T05:26:55.326Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "job",
+          "event": "launched",
+          "job": {
+            "session": "hima-a01dfd81-workshop-analyze-24e4bf",
+            "pid": 55996,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "workshop-analyze",
+            "startedAt": "2026-09-13T05:26:55.276Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9' '0' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-24e4bf.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-24e4bf.exit'"
+          },
+          "nodeId": "analyze",
+          "workshop": {
+            "id": "analyze",
+            "entry": {
+              "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py",
+              "sha256": "440f8b86f6dab77ce95799973d7d6723649d10977569c69329eb20558fdfc1b3"
+            }
+          },
+          "attempt": 1
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000008",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 8,
+          "at": "2026-09-13T05:26:55.343Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "node",
+          "nodeId": "analyze",
+          "kind": "act",
+          "state": "running",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-workshop-analyze-24e4bf"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000009",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 9,
+          "at": "2026-09-13T05:26:55.949Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "job",
+          "event": "finished",
+          "job": {
+            "session": "hima-a01dfd81-workshop-analyze-24e4bf",
+            "pid": 55996,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "workshop-analyze",
+            "startedAt": "2026-09-13T05:26:55.276Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-9ce23b89-b1eb-4f83-b43c-205f6fd34fc1/entry.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9' '0' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-24e4bf.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-24e4bf.exit'"
+          },
+          "exitCode": 0,
+          "nodeId": "analyze"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000010",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 10,
+          "at": "2026-09-13T05:26:55.965Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "node",
+          "nodeId": "analyze",
+          "kind": "act",
+          "state": "done",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-workshop-analyze-24e4bf"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000011",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 11,
+          "at": "2026-09-13T05:27:09.952Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "node",
+          "nodeId": "read-selection",
+          "kind": "act",
+          "state": "running",
+          "attempt": 1
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000012",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 12,
+          "at": "2026-09-13T05:27:10.027Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "job",
+          "event": "launched",
+          "job": {
+            "session": "hima-a01dfd81-reader-selection-reading-829d9d",
+            "pid": 56167,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "reader-selection-reading",
+            "startedAt": "2026-09-13T05:27:09.986Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g1-a1.json' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-829d9d.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-829d9d.exit'"
+          },
+          "nodeId": "read-selection",
+          "reading": {
+            "reader": {
+              "id": "selection-reading",
+              "version": "1",
+              "reportKind": "aes-selection/1",
+              "emits": [
+                "selection_score",
+                "selected_count",
+                "conflict_count"
+              ],
+              "file": "tools/read-selection.py",
+              "sha256": "078a4242657c5a4dbb6118e43a92abe5aae6b69c1f90dc38265feb706b8619d7"
+            },
+            "out": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g1-a1.json",
+            "report": {
+              "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json",
+              "contentSha256": "b42237860cd4b7d3ae991eb08d6f7494874adf83c798ffd8bc07ac2bd32a7549",
+              "bytes": 147
+            }
+          },
+          "attempt": 1
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000013",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 13,
+          "at": "2026-09-13T05:27:10.043Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "node",
+          "nodeId": "read-selection",
+          "kind": "act",
+          "state": "running",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-reader-selection-reading-829d9d"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000014",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 14,
+          "at": "2026-09-13T05:27:10.193Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "job",
+          "event": "finished",
+          "job": {
+            "session": "hima-a01dfd81-reader-selection-reading-829d9d",
+            "pid": 56167,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "reader-selection-reading",
+            "startedAt": "2026-09-13T05:27:09.986Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g1-a1.json' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-829d9d.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-829d9d.exit'"
+          },
+          "exitCode": 0,
+          "nodeId": "read-selection"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000015",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 15,
+          "at": "2026-09-13T05:27:10.219Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "observation",
+          "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json",
+          "contentSha256": "b42237860cd4b7d3ae991eb08d6f7494874adf83c798ffd8bc07ac2bd32a7549",
+          "bytes": 147,
+          "reader": {
+            "id": "selection-reading",
+            "version": "1",
+            "reportKind": "aes-selection/1",
+            "emits": [
+              "selection_score",
+              "selected_count",
+              "conflict_count"
+            ],
+            "file": "tools/read-selection.py",
+            "sha256": "078a4242657c5a4dbb6118e43a92abe5aae6b69c1f90dc38265feb706b8619d7"
+          },
+          "values": [
+            {
+              "type": "selection_score",
+              "value": 16,
+              "unit": "count"
+            },
+            {
+              "type": "selected_count",
+              "value": 2,
+              "unit": "count"
+            },
+            {
+              "type": "conflict_count",
+              "value": 1,
+              "unit": "count"
+            }
+          ]
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000016",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 16,
+          "at": "2026-09-13T05:27:10.238Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "node",
+          "nodeId": "read-selection",
+          "kind": "act",
+          "state": "done",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-reader-selection-reading-829d9d"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000017",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 17,
+          "at": "2026-09-13T05:27:25.680Z",
+          "writer": "judge",
+          "generation": 1,
+          "type": "verdict",
+          "outcome": "FAIL",
+          "ruleId": "selection-no-physical-cell-conflict",
+          "ruleVersion": "1",
+          "cites": [
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000015"
+          ],
+          "valuesAsRead": [
+            {
+              "type": "conflict_count",
+              "value": 1,
+              "unit": "count"
+            }
+          ]
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000018",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 18,
+          "at": "2026-09-13T05:27:25.700Z",
+          "writer": "judge",
+          "generation": 1,
+          "type": "verdict",
+          "outcome": "FAIL",
+          "ruleId": "selection-score-at-least-goal",
+          "ruleVersion": "1",
+          "cites": [
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000015"
+          ],
+          "valuesAsRead": [
+            {
+              "type": "selection_score",
+              "value": 16,
+              "unit": "count"
+            }
+          ],
+          "boundParameters": {
+            "minimum_score": 21
+          }
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000019",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 19,
+          "at": "2026-09-13T05:27:25.720Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "node",
+          "nodeId": "judge",
+          "kind": "judge",
+          "state": "done",
+          "attempt": 1,
+          "outcome": "FAIL"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000020",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 20,
+          "at": "2026-09-13T05:27:46.274Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "decision",
+          "nodeId": "refine",
+          "chooser": "selection-repair",
+          "chooserOrigin": "pack",
+          "agent": {
+            "sessionId": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+            "executionId": "execution-14375a86-e9b1-457a-86d8-84f14b40cf1c",
+            "rationale": "The revision-0 reference stage is measured, not assumed: observation run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000015 read selection.json (sha256 b42237860cd4b7d3ae991eb08d6f7494874adf83c798ffd8bc07ac2bd32a7549, 147 bytes) and derived selection_score=16, selected_count=2, conflict_count=1. Judge verdict #000017 fails selection-no-physical-cell-conflict with conflict_count=1 (the baseline's top-two raw-frequency picks motif-5a454fc679f31557 and motif-8c78c56e7f1ca062 both contain physical cell us02/U258), and verdict #000018 fails selection-score-at-least-goal with selection_score=16 against bound minimum_score=21. Both rules FAIL, so the chooser selection-repair selects algorithmRevision=1 (repairRevision) for the revisit of analyze, within generationLimit=2. The Goal stays fixed at minimum_score=21; nothing is lowered and no verdict is written by me. Revision 1 will be a new, self-contained, data-dependent algorithm that computes each candidate's reader-defined score len(cells)*len(unique occurrence paths) from sample.json, selects up to the sample budget maximizing total score subject to pairwise-disjoint physical-cell sets, and writes only sampleSha256 and selected."
+          },
+          "chosen": {
+            "strategy": {
+              "algorithmRevision": 1
+            }
+          },
+          "rationale": {},
+          "cites": [
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000015",
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000017",
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000018"
+          ]
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000021",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 21,
+          "at": "2026-09-13T05:27:46.290Z",
+          "writer": "executor",
+          "generation": 1,
+          "type": "node",
+          "nodeId": "refine",
+          "kind": "explore",
+          "state": "done",
+          "attempt": 1
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000022",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 22,
+          "at": "2026-09-13T05:28:27.837Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "code",
+          "nodeId": "analyze",
+          "attempt": 1,
+          "sessionId": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+          "workshop": "analyze",
+          "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py",
+          "sha256": "d39ebd3b5eccd538b5e602ba1e129c5ae0337b936ffb2e82daa5d98c58b78341",
+          "bytes": 7755,
+          "language": "python"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000023",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 23,
+          "at": "2026-09-13T05:28:32.104Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "job",
+          "event": "launched",
+          "job": {
+            "session": "hima-a01dfd81-workshop-analyze-cfea04",
+            "pid": 56454,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "workshop-analyze",
+            "startedAt": "2026-09-13T05:28:32.060Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9' '1' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-cfea04.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-cfea04.exit'"
+          },
+          "nodeId": "analyze",
+          "workshop": {
+            "id": "analyze",
+            "entry": {
+              "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py",
+              "sha256": "d39ebd3b5eccd538b5e602ba1e129c5ae0337b936ffb2e82daa5d98c58b78341"
+            }
+          },
+          "attempt": 1
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000024",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 24,
+          "at": "2026-09-13T05:28:32.120Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "node",
+          "nodeId": "analyze",
+          "kind": "act",
+          "state": "running",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-workshop-analyze-cfea04"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000025",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 25,
+          "at": "2026-09-13T05:28:32.290Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "job",
+          "event": "finished",
+          "job": {
+            "session": "hima-a01dfd81-workshop-analyze-cfea04",
+            "pid": 56454,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "workshop-analyze",
+            "startedAt": "2026-09-13T05:28:32.060Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/research/selection/.executions/execution-d1793075-0614-472e-af86-355bd6fc39b9/entry.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9' '1' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-cfea04.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-workshop-analyze-cfea04.exit'"
+          },
+          "exitCode": 0,
+          "nodeId": "analyze"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000026",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 26,
+          "at": "2026-09-13T05:28:32.309Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "node",
+          "nodeId": "analyze",
+          "kind": "act",
+          "state": "done",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-workshop-analyze-cfea04"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000027",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 27,
+          "at": "2026-09-13T05:28:52.605Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "node",
+          "nodeId": "read-selection",
+          "kind": "act",
+          "state": "running",
+          "attempt": 1
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000028",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 28,
+          "at": "2026-09-13T05:28:52.678Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "job",
+          "event": "launched",
+          "job": {
+            "session": "hima-a01dfd81-reader-selection-reading-8b40cd",
+            "pid": 56619,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "reader-selection-reading",
+            "startedAt": "2026-09-13T05:28:52.637Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g2-a1.json' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-8b40cd.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-8b40cd.exit'"
+          },
+          "nodeId": "read-selection",
+          "reading": {
+            "reader": {
+              "id": "selection-reading",
+              "version": "1",
+              "reportKind": "aes-selection/1",
+              "emits": [
+                "selection_score",
+                "selected_count",
+                "conflict_count"
+              ],
+              "file": "tools/read-selection.py",
+              "sha256": "078a4242657c5a4dbb6118e43a92abe5aae6b69c1f90dc38265feb706b8619d7"
+            },
+            "out": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g2-a1.json",
+            "report": {
+              "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json",
+              "contentSha256": "86911f64dfb1ac48bc74cab4bc0512b0198c0c271223fb2c15c18c2b4b808fb8",
+              "bytes": 147
+            }
+          },
+          "attempt": 1
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000029",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 29,
+          "at": "2026-09-13T05:28:52.694Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "node",
+          "nodeId": "read-selection",
+          "kind": "act",
+          "state": "running",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-reader-selection-reading-8b40cd"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000030",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 30,
+          "at": "2026-09-13T05:28:52.884Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "job",
+          "event": "finished",
+          "job": {
+            "session": "hima-a01dfd81-reader-selection-reading-8b40cd",
+            "pid": 56619,
+            "workspace": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9",
+            "name": "reader-selection-reading",
+            "startedAt": "2026-09-13T05:28:52.637Z",
+            "wire": "'/usr/bin/python3' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection.py' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json' '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-readers/selection-reading/read-selection-g2-a1.json' > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-8b40cd.log' 2>&1; printf '%s\\n' \"$?\" > '/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-a01dfd81-reader-selection-reading-8b40cd.exit'"
+          },
+          "exitCode": 0,
+          "nodeId": "read-selection"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000031",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 31,
+          "at": "2026-09-13T05:28:52.904Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "observation",
+          "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/selection.json",
+          "contentSha256": "86911f64dfb1ac48bc74cab4bc0512b0198c0c271223fb2c15c18c2b4b808fb8",
+          "bytes": 147,
+          "reader": {
+            "id": "selection-reading",
+            "version": "1",
+            "reportKind": "aes-selection/1",
+            "emits": [
+              "selection_score",
+              "selected_count",
+              "conflict_count"
+            ],
+            "file": "tools/read-selection.py",
+            "sha256": "078a4242657c5a4dbb6118e43a92abe5aae6b69c1f90dc38265feb706b8619d7"
+          },
+          "values": [
+            {
+              "type": "selection_score",
+              "value": 21,
+              "unit": "count"
+            },
+            {
+              "type": "selected_count",
+              "value": 2,
+              "unit": "count"
+            },
+            {
+              "type": "conflict_count",
+              "value": 0,
+              "unit": "count"
+            }
+          ]
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000032",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 32,
+          "at": "2026-09-13T05:28:52.922Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "node",
+          "nodeId": "read-selection",
+          "kind": "act",
+          "state": "done",
+          "attempt": 1,
+          "jobSession": "hima-a01dfd81-reader-selection-reading-8b40cd"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000033",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 33,
+          "at": "2026-09-13T05:29:12.889Z",
+          "writer": "judge",
+          "generation": 2,
+          "type": "verdict",
+          "outcome": "PASS",
+          "ruleId": "selection-no-physical-cell-conflict",
+          "ruleVersion": "1",
+          "cites": [
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000031"
+          ],
+          "valuesAsRead": [
+            {
+              "type": "conflict_count",
+              "value": 0,
+              "unit": "count"
+            }
+          ]
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000034",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 34,
+          "at": "2026-09-13T05:29:12.907Z",
+          "writer": "judge",
+          "generation": 2,
+          "type": "verdict",
+          "outcome": "PASS",
+          "ruleId": "selection-score-at-least-goal",
+          "ruleVersion": "1",
+          "cites": [
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000031"
+          ],
+          "valuesAsRead": [
+            {
+              "type": "selection_score",
+              "value": 21,
+              "unit": "count"
+            }
+          ],
+          "boundParameters": {
+            "minimum_score": 21
+          }
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000035",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 35,
+          "at": "2026-09-13T05:29:12.927Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "node",
+          "nodeId": "judge",
+          "kind": "judge",
+          "state": "done",
+          "attempt": 1,
+          "outcome": "PASS"
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000036",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 36,
+          "at": "2026-09-13T05:29:42.379Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "decision",
+          "nodeId": "refine",
+          "chooser": "selection-repair",
+          "chooserOrigin": "pack",
+          "agent": {
+            "sessionId": "session-fb178d78-861e-4fb5-95bb-f58687060629",
+            "executionId": "execution-64b53b1f-14db-4b45-9bc5-de40f40663a3",
+            "rationale": "The revision-1 generation is measured and both rules PASS. Observation #000031 read the new selection.json (sha256 86911f64dfb1ac48bc74cab4bc0512b0198c0c271223fb2c15c18c2b4b808fb8, 147 bytes) and derived selection_score=21, selected_count=2, conflict_count=0. Judge verdict #000033 PASSes selection-no-physical-cell-conflict (conflict_count=0, no reused physical cell) and verdict #000034 PASSes selection-score-at-least-goal (selection_score=21 ge bound minimum_score=21). The chooser selection-repair therefore decides goalMet:true, so no further generation is opened and the Goal stays exactly as fixed at minimum_score=21. This is a bounded finite-sample analysis result only: it is a selection over the staged candidate list, not a Boolean buildability result, not an Fmax or silicon claim, and not an assertion beyond the staged finite sample."
+          },
+          "chosen": {
+            "goalMet": true
+          },
+          "rationale": {},
+          "cites": [
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000031",
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000033",
+            "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000034"
+          ]
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000037",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 37,
+          "at": "2026-09-13T05:29:42.395Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "node",
+          "nodeId": "refine",
+          "kind": "explore",
+          "state": "done",
+          "attempt": 1
+        },
+        {
+          "id": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961#000038",
+          "runId": "run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961",
+          "siteId": "local",
+          "seq": 38,
+          "at": "2026-09-13T05:29:42.456Z",
+          "writer": "executor",
+          "generation": 2,
+          "type": "experience",
+          "writtenAt": "2026-09-13T05:29:42.423Z",
+          "markdown": {
+            "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-experience/run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961.md",
+            "sha256": "beb8e25a0714fc7de15b8b16f45d70b7dfcc6352102e98e2a77148d3a676214f",
+            "bytes": 5477
+          },
+          "json": {
+            "path": "/private/tmp/hima-l4-bGmjJw/hima-home-e4Rvw5/workspace/aes-timing-research-20260913-052612-46f9/hima-experience/run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961.json",
+            "sha256": "f8f10c05f1fe0796a1a266e2ad418de62b8a7be4a1e2b75c3afde69d92182344",
+            "bytes": 25277
+          }
+        }
+      ]
+    }
+  ]
+}

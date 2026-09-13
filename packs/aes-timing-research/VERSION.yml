@@ -1,0 +1,27 @@
+# The release seal of pack aes-timing-research, written by /hima-release through /hima pack release.
+# Every hash here was computed by the harness over the bytes in this folder; nothing in it was
+# typed by hand. `/hima pack check` holds the folder against this file, and a campaign refuses a
+# pack whose files no longer match it.
+pack: 'aes-timing-research'
+version: '1'
+methodDigest: '3a03125aefe61f4b33041f145dfa4fffdadce6e34ff6ccd349ec929d284b5503'
+released: '2026-09-13T05:41:36.081Z'
+test:
+  record: 'TEST.md'
+  run: 'run-a01dfd81-1ca6-45d1-9f0e-8f47a554a961'
+files:
+  'FABRIC.md': '190c817c5a000323ef27933704217bed964b6f6c5a3cda7ce68fc3c9aaf7edca'
+  'INTENT.md': 'b96d7d19e1984b6f5d1ba6f089c585881c08c5680e68af9bab3e427d596b8cb3'
+  'SPEC.md': '989e3a2d727583c939ca26c9ffefb98b34ae56ac85ebf4646e693265720a8352'
+  'TEST.md': '73b44d77b05937eb533f66639fa970d5f61a0374dcbf538937b3b1c757a8609e'
+  'choosers/selection-repair.yml': '95b5ecd653cf93a11fd37b4e727cd6af5a0eb2db603f2915d1307c2a0ead27de'
+  'contract.yml': 'a1784d340f05469eb626e386470341bec82bf17103f8c539b71c642d7f956093'
+  'graph.yml': '4b96241d33cfc79982837cd9c3b95eb57600fa5748ba0f0a14e134619e0b9173'
+  'knowledge/selection-method.md': 'f77856f49b15386aa15783c1ff0c05ffdc0c9ad86527e9decd14bbeaa32fd623'
+  'readers/selection-reading.yml': '42f856894d591074271525f87bb1afc1155a145335459b0f16b52ea7ff5a76a7'
+  'rules/selection-no-physical-cell-conflict.yml': '418ce08b0c088e57a8c6080c2a3246ac99f4c7370696e88c59d55d5c0cd079ff'
+  'rules/selection-score-at-least-goal.yml': '68c9bf755218f5f5bc45292fc67a867714907f75ce878a09e1be95adeb0d0836'
+  'semantics.yml': '51c9417afcd8c5f9f920db15a939d14a12a53a1f913fec96d486eba29358bd1f'
+  'tools/baseline.py': '440f8b86f6dab77ce95799973d7d6723649d10977569c69329eb20558fdfc1b3'
+  'tools/prepare.py': 'aa26a8259cbd2ccd60452f7d40af065cca59ca75772cde158816f52f6ba06a32'
+  'tools/read-selection.py': '078a4242657c5a4dbb6118e43a92abe5aae6b69c1f90dc38265feb706b8619d7'

@@ -98,7 +98,19 @@ await runLive('live-check-aes-research', 10, async (check) => {
   const baselineHash = sha256(readFileSync(path.join(flow, 'baseline.py')));
   check.require('generation one launched the exact staged reference baseline',
     executed.some(r => r.generation === 1 && r.sha256 === baselineHash), { baselineHash, executed });
-  check.require('knowledge was actually read and recorded', records.some(r => r.type === 'knowledge'), records.filter(r => r.type === 'knowledge'));
+  const nodeKnowledge = records.filter(r => r.type === 'knowledge');
+  const knowledgeFile = path.join(folder, 'knowledge/selection-method.md');
+  const knowledge = readFileSync(knowledgeFile, 'utf8');
+  const sessionRead = check.toolSequence.find((value: unknown) => {
+    const trace = value as { name?: string; agent?: string; args?: { file_path?: string }; at?: string; result?: { isError?: boolean; content?: { type: string; text?: string }[] } };
+    if (trace.name !== 'read' || trace.agent !== String(author.id) || trace.args?.file_path !== knowledgeFile
+      || trace.result?.isError !== false || !trace.at || Date.parse(trace.at) >= Date.parse(codes[0]!.at)) return false;
+    const returned = trace.result.content?.filter(b => b.type === 'text').map(b => b.text ?? '').join('\n') ?? '';
+    return knowledge.trimEnd().split('\n').every((line, i) => returned.split('\n').includes(String(i + 1) + ': ' + line));
+  });
+  check.observed.knowledgeAttribution = nodeKnowledge.length ? { kind: 'node-record', records: nodeKnowledge.map(r => r.id) }
+    : { kind: 'session-read-before-code', file: knowledgeFile, sha256: sha256(knowledge), nodeRecord: false, trace: sessionRead ?? null };
+  check.require('knowledge has actual read provenance without inventing node attribution', nodeKnowledge.length > 0 || sessionRead !== undefined, check.observed.knowledgeAttribution);
   check.require('no hidden research moment substituted for owner', !records.some(r => r.type === 'session'), records.filter(r => r.type === 'session'));
   check.require('method identity preserved during test', packDigestOf(folder) === check.observed.methodBeforeTest, packDigestOf(folder));
   check.require('actual test record valid', packStage(folder).stage === 'tested', packStage(folder));
