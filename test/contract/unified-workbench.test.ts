@@ -10,11 +10,12 @@ import { inspectWindow } from './support/inspect-window.ts';
 import { writeSampleReport } from './support/site.ts';
 import { localHome } from './support/fabric.ts';
 import { installWorkshopPack, packsDirOf, writePackVariant } from './support/pack.ts';
-import { writeMomentScenario } from './support/moments.ts';
+import { appendReplaySession, writeMomentScenario } from './support/moments.ts';
 import { HIMA_INTENT_SECTIONS } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
 import { QUIET_TITLE_ROW } from './support/pipeline.ts';
 import type { RunView } from '@hima/harness';
+import type { ReplayEntry } from '@deepseek-ai/dsh-llm-replay';
 
 type Inspector = Awaited<ReturnType<typeof inspectWindow>>;
 const draft = 'UI validation draft — compare strategies and preserve each experiment’s evidence. Not sent to a model.';
@@ -142,10 +143,13 @@ test('conversation draft, native files and verified reports share one workspace 
     await fillStart(d, browser);
     await capture(d, browser, 'light-start');
     assert.ok((await d.click('studio-start')).ok);
-    assert.ok((await d.wait('studio-status', 'running', 20_000)).ok);
-    await capture(d, browser, 'light-running');
+    // This start route returns after legacy automatic drive settles. Running interaction itself is
+    // held by the controlled Job/replay path below; this case needs a real created Run to inspect.
     assert.ok((await d.wait('studio-status', 'ended — goal met', 35_000)).ok);
     const id = await currentRun(d);
+    const started = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
+    assert.equal(started.run.status, 'ended-goal-met');
+    assert.equal(started.jobs.filter((job) => job.event === 'launched').length, 2, 'the completed Run still proves two actual local Jobs');
     await capture(d, browser, 'light-complete');
     assert.equal(await browser.evaluate('location.href'), url, 'opening and running did not navigate the document');
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
@@ -247,9 +251,24 @@ test('a Pack under authoring and its Workshop code records remain visible beside
   const broken = path.join(packsDirOf(home.h), 'broken-pack');
   await writePackVariant(packsDirOf(home.h), 'broken-pack', []);
   await symlink(home.h.workspace, path.join(broken, '.state'));
-  const scenario = await writeMomentScenario(home.h, 'writes');
+  let scenario = await writeMomentScenario(home.h, 'writes');
+  const contextReplay: ReplayEntry[] = [
+    { kind: 'chunks', chunks: [
+      { type: 'block-start', index: 0, blockType: 'tool-call' },
+      { type: 'block-end', index: 0, block: { type: 'tool-call', id: 'call-native-material-context' as never,
+        name: 'hima_context', arguments: '{"run":"{{fromRequest:(run-[0-9a-f-]+)}}"}' } },
+      { type: 'finish', reason: { kind: 'tool-calls' } },
+    ] },
+    { kind: 'chunks', chunks: [
+      { type: 'block-start', index: 0, blockType: 'text' },
+      { type: 'block-end', index: 0, block: { type: 'text', text: 'Replay: the requested Run context is visible in this conversation.' } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ] },
+  ];
+  scenario = await appendReplaySession(scenario, 'native-material-context', contextReplay);
+  await appendFile(path.join(home.h.profileDir, 'cordis.patch.yml'), QUIET_TITLE_ROW);
   const port = await freePort();
-  const d = await bootDriver(t, { existing: home.h, model: { replay: { file: scenario.file, override: scenario.override } }, remoteDebuggingPort: port });
+  const d = await bootDriver(t, { existing: home.h, model: { replay: { file: scenario.file, override: scenario.override, children: scenario.children } }, remoteDebuggingPort: port });
   if (!d) { await home.h.dispose(); return; }
   let browser: Inspector | undefined;
   try {
@@ -275,9 +294,45 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     assert.ok(status.text.includes('test run'));
     const workshop = await d.read('run-workshop'); assert.ok(workshop.ok);
     assert.ok(view.code.length > 0);
+    assert.ok(view.knowledge.length > 0);
     for (const code of view.code) assert.ok(workshop.text.includes(code.sha256.slice(0, 12)), workshop.text);
+    const material = await d.read('run-material'); assert.ok(material.ok);
+    assert.ok(material.text.includes(view.code[0]!.sha256), material.text);
+    assert.ok(material.text.includes(view.knowledge[0]!.sha256), material.text);
+    const sample = await writeSampleReport(home.h);
+    const probe = await (await api(host, cookie, '/hima/api/observe', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ site: 'local', path: path.join(home.h.workspace, sample.rel) }),
+    })).json() as RunView;
+    await browser.pause(`*/hima/api/runs/${id}/material/*`);
+    assert.ok((await d.click(`material-${view.code[0]!.recordId}`)).ok);
+    const held = await browser.nextPaused();
+    await browser.wait(`[...document.querySelectorAll('[data-hima-control="studio-run"] option')].some((option) => option.value === ${JSON.stringify(probe.run.id)})`);
+    assert.ok((await d.fill('studio-run', probe.run.id)).ok);
+    assert.ok((await d.wait('studio-status', 'No Fabric state recorded', 10_000)).ok);
+    assert.ok((await d.fill('studio-run', id)).ok);
+    assert.ok((await d.wait('run-material', view.code[0]!.sha256, 10_000)).ok);
+    await browser.send('Fetch.continueRequest', { requestId: held.requestId }).catch(() => undefined);
+    await browser.send('Fetch.disable');
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="material-content"]') === null`), true, 'the old A response cannot populate A after A→B→A changed its material selection');
+    assert.ok((await d.click(`material-${view.code[0]!.recordId}`)).ok);
+    assert.ok((await d.wait('material-content', 'set -eu', 12_000)).ok);
     assert.equal(await browser.evaluate('location.href'), url);
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
+    await browser.evaluate(`(() => { const e=document.querySelector('[contenteditable="true"]'); e.focus(); const r=document.createRange(); r.selectNodeContents(e); const s=getSelection(); s.removeAllRanges(); s.addRange(r); })()`);
+    await browser.send('Input.insertText', { text: `Inspect Hima Run ${id} with hima_context and show its recorded materials here.` });
+    await browser.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await browser.wait(`document.body.innerText.includes('Replay: the requested Run context is visible in this conversation.')`, 20_000);
+    await browser.markText('*', '1 tool call', 'expand-material-tool');
+    assert.ok((await d.click('expand-material-tool')).ok);
+    const chatMaterial = `[...document.querySelectorAll('[data-hima-region="run-material"]')].find(e => !e.closest('.hima-studio') && e.getBoundingClientRect().height > 0)`;
+    await browser.wait(`!!${chatMaterial} && ${chatMaterial}.textContent.includes(${JSON.stringify(view.code[0]!.sha256)}) && ${chatMaterial}.textContent.includes(${JSON.stringify(view.knowledge[0]!.sha256)})`);
+    assert.ok(await browser.evaluate<boolean>(`!!${chatMaterial}.querySelector('[data-hima-control="material-${view.code[0]!.recordId}"]')`));
+    await browser.evaluate(`(() => { const section=${chatMaterial}; const button=section.querySelector('[data-hima-control="material-${view.code[0]!.recordId}"]'); button.setAttribute('data-hima-control', 'chat-material-record'); })()`);
+    assert.ok((await d.click('chat-material-record')).ok);
+    await browser.wait(`!!${chatMaterial}.querySelector('[data-hima-region="material-content"]') && ${chatMaterial}.querySelector('[data-hima-region="material-content"]').textContent.includes('set -eu')`, 12_000);
     await capture(d, browser, 'light-workshop');
   } finally { await finish(d, browser); await home.h.dispose(); }
 });

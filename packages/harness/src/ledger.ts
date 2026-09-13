@@ -900,6 +900,27 @@ export const codeRecord = z.strictObject({
   language: ledgerSlug,
 });
 
+/**
+ * A Pack knowledge file an Agent actually read while working one node.  This is deliberately not a
+ * declaration: a Pack may offer many files, but only a successful tool read is evidence that its
+ * contents reached the Agent.  The byte identity is held here so later views never call a changed
+ * file the knowledge that was used.
+ */
+export const knowledgeRecord = z.strictObject({
+  ...base,
+  ...inBranch,
+  type: z.literal('knowledge'),
+  nodeId: z.string().min(1),
+  attempt: z.number().int().positive(),
+  sessionId: z.string().min(1),
+  workshop: ledgerSlug,
+  file: z.string().min(1),
+  purpose: z.string().min(1),
+  path: z.string().min(1),
+  sha256: sha256Hex,
+  bytes: z.number().int().nonnegative(),
+});
+
 export const ledgerRecord = z.discriminatedUnion('type', [
   observationRecord,
   refusalRecord,
@@ -915,6 +936,7 @@ export const ledgerRecord = z.discriminatedUnion('type', [
   experienceRecord,
   sessionRecord,
   codeRecord,
+  knowledgeRecord,
 ]);
 export type ObservationRecord = z.infer<typeof observationRecord>;
 export type RefusalRecord = z.infer<typeof refusalRecord>;
@@ -930,6 +952,7 @@ export type LoopRecord = z.infer<typeof loopRecord>;
 export type ExperienceRecord = z.infer<typeof experienceRecord>;
 export type SessionRecord = z.infer<typeof sessionRecord>;
 export type CodeRecord = z.infer<typeof codeRecord>;
+export type KnowledgeRecord = z.infer<typeof knowledgeRecord>;
 export type LedgerRecord = z.infer<typeof ledgerRecord>;
 
 /** What a caller states about a verdict; the ledger owns identity, sequence, time, and writer. */
@@ -1607,7 +1630,11 @@ export const ledgerSpec = defineDomain({
   // design is optional: generic Packs already wrote its absence (JSON omitted undefined), so this
   // repairs the reader without rewriting those facts or inventing an input. Earlier v20 readers
   // refuse that absence; v19 still fails the version gate and its import schema stays unchanged.
-  version: 20,
+  // 21: a `knowledge` record says a declared Pack file was actually returned to an Agent, including
+  // its purpose, source session and byte identity. This is a new discriminant; a v20 reader would
+  // reject it or lose the fact, so v21 refuses a v20 store until the explicit offline importer has
+  // copied it into an empty v21 home. There is no in-place or automatic upgrade.
+  version: 21,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -1899,6 +1926,11 @@ export class Ledger {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'code', ...data }));
   }
 
+  /** Record only a successful, byte-identified Pack knowledge read. */
+  async appendKnowledge(runId: string, data: Omit<KnowledgeRecord, keyof typeof base | 'type'>): Promise<KnowledgeRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'knowledge', ...data }));
+  }
+
   /** Who refused: the shell for a permit decision (the default), the executor for a reader refusing a report kind. */
   async appendRefusal(runId: string, data: Omit<RefusalRecord, keyof typeof base | 'type'>, writer: WriterRole = 'shell'): Promise<RefusalRecord> {
     return this.#append(runId, writer, (h) => ({ ...h, type: 'refusal', ...data }));
@@ -1995,6 +2027,47 @@ const legacyLedgerDocument = z.strictObject({
   }),
 });
 
+/** The immediately previous domain's complete shapes, before PLS-24 added `knowledge`. */
+const v20LedgerRecord = z.discriminatedUnion('type', [
+  observationRecord, refusalRecord, verdictRecord, jobRecord, workspaceRecord, nodeRecord, blockerRecord,
+  resumedRecord, decisionRecord, cancelRecord, loopRecord, experienceRecord, sessionRecord, codeRecord,
+]);
+const v20LedgerDocument = z.strictObject({
+  unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.literal(20) }),
+  global: z.null(),
+  tables: z.strictObject({ runs: z.record(z.string(), runRecord), records: z.record(z.string(), v20LedgerRecord) }),
+});
+
+type ImportDocument = { readonly tables: { readonly runs: Record<string, RunRecord>; readonly records: Record<string, LedgerRecord> } };
+
+/** Shared relational checks, applied to every source schema before any target is staged. */
+function validateImportDocument(document: ImportDocument): void {
+  const { runs, records } = document.tables;
+  for (const [key, run] of Object.entries(runs)) {
+    if (key !== run.id || !new RegExp(`^${runIdPattern.source}$`).test(key)) throw new Error(`invalid imported Run identity: ${key}`);
+    if (!Number.isSafeInteger(run.nextSeq)) throw new Error(`invalid imported nextSeq: ${key}`);
+  }
+  for (const [key, record] of Object.entries(records)) {
+    const run = runs[record.runId];
+    if (!run || record.siteId !== run.siteId) throw new Error(`invalid imported Run linkage: ${key}`);
+    if (!Number.isSafeInteger(record.seq) || key !== record.id || key !== recordKey(run.id, record.seq) || record.seq >= run.nextSeq) {
+      throw new Error(`invalid imported record identity or sequence: ${key}`);
+    }
+    // A failed append can reserve a sequence number without writing a record. Gaps are kept; only
+    // collision, a mismatched key or a nextSeq that could overwrite a fact is refused.
+    if (record.type === 'workspace' && record.campaignId !== run.campaignId) throw new Error(`invalid imported Campaign linkage: ${key}`);
+    if (record.type === 'verdict' || record.type === 'decision') {
+      for (const id of record.cites) {
+        const cited = records[id];
+        if (!cited || cited.runId !== run.id || cited.seq >= record.seq ||
+          (cited.type !== 'observation' && (record.type !== 'decision' || cited.type !== 'verdict'))) {
+          throw new Error(`invalid imported evidence linkage: ${key} cites ${id}`);
+        }
+      }
+    }
+  }
+}
+
 /** Validate a complete offline v19 JSON snapshot without deleting fields or inventing ownership. */
 function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
   const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
@@ -2002,30 +2075,18 @@ function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
   // Several historical nested schemas strip unknown keys. Refuse such a file rather than silently
   // lose facts, including future execution/control fields hidden inside a legacy-looking record.
   if (!isDeepStrictEqual(input, document)) throw new Error('legacy ledger contains unsupported fields or values; import would change stored facts');
-  const { runs, records } = document.tables;
-  for (const [key, run] of Object.entries(runs)) {
-    if (key !== run.id || !new RegExp(`^${runIdPattern.source}$`).test(key)) throw new Error(`invalid legacy Run identity: ${key}`);
-    if (!Number.isSafeInteger(run.nextSeq)) throw new Error(`invalid legacy nextSeq: ${key}`);
-  }
-  for (const [key, record] of Object.entries(records)) {
-    const run = runs[record.runId];
-    if (!run || record.siteId !== run.siteId) throw new Error(`invalid legacy Run linkage: ${key}`);
-    if (!Number.isSafeInteger(record.seq) || key !== record.id || key !== recordKey(run.id, record.seq) || record.seq >= run.nextSeq) {
-      throw new Error(`invalid legacy record identity or sequence: ${key}`);
-    }
-    // A failed append can reserve a sequence number without writing a record. Gaps are kept; only
-    // collision, a mismatched key or a nextSeq that could overwrite a fact is refused.
-    if (record.type === 'workspace' && record.campaignId !== run.campaignId) throw new Error(`invalid legacy Campaign linkage: ${key}`);
-    if (record.type === 'verdict' || record.type === 'decision') {
-      for (const id of record.cites) {
-        const cited = records[id];
-        if (!cited || cited.runId !== run.id || cited.seq >= record.seq ||
-          (cited.type !== 'observation' && (record.type !== 'decision' || cited.type !== 'verdict'))) {
-          throw new Error(`invalid legacy evidence linkage: ${key} cites ${id}`);
-        }
-      }
-    }
-  }
+  validateImportDocument(document as unknown as ImportDocument);
+  return document;
+}
+
+/** Validate a v19 or v20 offline snapshot without changing fields or pretending it is live. */
+function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> {
+  const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  const document = (input as { unit?: { version?: unknown } } | null)?.unit?.version === 20
+    ? v20LedgerDocument.parse(input)
+    : readLegacyLedger(bytes);
+  if (!isDeepStrictEqual(input, document)) throw new Error('ledger import contains unsupported fields or values; import would change stored facts');
+  validateImportDocument(document as unknown as ImportDocument);
   return document;
 }
 
@@ -2056,7 +2117,7 @@ function sameImportSnapshot(a: BigIntStats, b: BigIntStats): boolean {
 
 export interface LegacyLedgerImportReceipt {
   readonly format: 'hima-ledger-import-v1';
-  readonly source: { readonly path: string; readonly version: 19; readonly sha256: string; readonly bytes: number; readonly backup: string };
+  readonly source: { readonly path: string; readonly version: 19 | 20; readonly sha256: string; readonly bytes: number; readonly backup: string };
   readonly target: { readonly version: number; readonly sha256: string; readonly file: string };
   readonly importedAt: string;
   readonly runs: number;
@@ -2076,7 +2137,7 @@ export interface LegacyLedgerImportReceipt {
  * home is written. The destination parent must already exist; no ancestor is created or repaired.
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
-  if (ledgerSpec.version !== 20) throw new Error('legacy import supports only the reviewed v19-to-v20 transition');
+  if (ledgerSpec.version !== 21) throw new Error('legacy import supports only the reviewed v19/v20-to-v21 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);
@@ -2100,11 +2161,11 @@ export async function importLegacyLedger(request: { readonly sourceFile: string;
     if (!sameImportSnapshot(opened, afterRead) || !sameImportSnapshot(opened, (await importPathState(source))!)) {
       throw new Error('ledger import source changed while reading; stop the old Host and export a stable snapshot');
     }
-    const document = readLegacyLedger(bytes);
+    const document = readImportLedger(bytes);
     const target = Buffer.from(`${JSON.stringify({ ...document, unit: { ...document.unit, version: ledgerSpec.version } }, null, 2)}\n`);
     const receipt: LegacyLedgerImportReceipt = {
       format: 'hima-ledger-import-v1',
-      source: { path: source, version: 19, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, backup: 'ledger-import/source-v19.json' },
+      source: { path: source, version: document.unit.version, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, backup: `ledger-import/source-v${String(document.unit.version)}.json` },
       target: { version: ledgerSpec.version, sha256: createHash('sha256').update(target).digest('hex'), file: 'storages/hima_ledger.json' },
       importedAt: new Date().toISOString(), runs: Object.keys(document.tables.runs).length,
       records: Object.keys(document.tables.records).length, ownership: 'unchanged-unowned',

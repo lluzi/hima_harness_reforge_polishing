@@ -15,7 +15,7 @@
 // browser bundle carries it through `generations.ts`, so a runtime import of the ledger's own module
 // here would pull `node:crypto` and `node:fs` into the client build. The ledger's *types* are
 // imported, and types are erased.
-import type { CodeRecord, DecisionChoice, JobIdentity, JobRecord, LedgerRecord, NodeExecution, NodeKind, NodeRecord, NodeState, ObservationRecord, ReaderRef, RunStrategy, SessionRecord, VerdictRecord } from './ledger.js';
+import type { CodeRecord, DecisionChoice, JobIdentity, JobRecord, KnowledgeRecord, LedgerRecord, NodeExecution, NodeKind, NodeRecord, NodeState, ObservationRecord, ReaderRef, RunStrategy, SessionRecord, VerdictRecord } from './ledger.js';
 import type { SemanticValue } from './semantics.js';
 
 /** One observation as HimaGuide shows it: what was read, from where, by which reader, when. */
@@ -123,6 +123,7 @@ export interface CodeView {
   readonly at: string;
   readonly nodeId: string;
   readonly attempt: number;
+  readonly generation?: number;
   readonly sessionId: string;
   readonly workshop: string;
   readonly path: string;
@@ -140,12 +141,40 @@ export function codeView(record: CodeRecord): CodeView {
     at: record.at,
     nodeId: record.nodeId,
     attempt: record.attempt,
+    ...(record.generation === undefined ? {} : { generation: record.generation }),
     sessionId: record.sessionId,
     workshop: record.workshop,
     path: record.path,
     sha256: record.sha256,
     bytes: record.bytes,
     language: record.language,
+  };
+  return record.branchId === undefined ? head : { ...head, branchId: record.branchId };
+}
+
+/** A Pack knowledge file actually returned to an Agent, with the content identity held at that read. */
+export interface KnowledgeView {
+  readonly recordId: string;
+  readonly at: string;
+  readonly nodeId: string;
+  readonly attempt: number;
+  readonly generation?: number;
+  readonly sessionId: string;
+  readonly workshop: string;
+  readonly file: string;
+  readonly purpose: string;
+  readonly path: string;
+  readonly sha256: string;
+  readonly bytes: number;
+  readonly branchId?: string;
+}
+
+export function knowledgeView(record: KnowledgeRecord): KnowledgeView {
+  const head = {
+    recordId: record.id, at: record.at, nodeId: record.nodeId, attempt: record.attempt,
+    ...(record.generation === undefined ? {} : { generation: record.generation }),
+    sessionId: record.sessionId, workshop: record.workshop, file: record.file, purpose: record.purpose,
+    path: record.path, sha256: record.sha256, bytes: record.bytes,
   };
   return record.branchId === undefined ? head : { ...head, branchId: record.branchId };
 }

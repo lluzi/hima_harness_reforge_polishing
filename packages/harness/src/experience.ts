@@ -22,11 +22,15 @@
 // that have not moved. That is also the idempotence — a Run that carries the record is a Run whose
 // report is written, and this module leaves the Site alone.
 import { createHash } from 'node:crypto';
+import { lstatSync } from 'node:fs';
+import { readFile as readLocalFile } from 'node:fs/promises';
+import path from 'node:path';
 import { channelFor, mustRun, type Channel } from './channel.js';
 import { experienceReport, EXPERIENCE_DIR, type ExperienceJson } from './experience-report.js';
-import { hasEnded, type ExperienceFile, type ExperienceRecord, type Ledger, type RunRecord, type WorkspaceRecord } from './ledger.js';
+import { hasEnded, type CodeRecord, type ExperienceFile, type ExperienceRecord, type KnowledgeRecord, type Ledger, type RunRecord, type WorkspaceRecord } from './ledger.js';
 import { runView, type RunWords } from './remote.js';
 import { runPackWords } from './packs.js';
+import { methodHistoryDirectory } from './pack-folder.js';
 import { existingRun } from './runs.js';
 import { decideRead, decideWrite } from './shell.js';
 import { loadSite, pathsOf, type Site } from './sites.js';
@@ -68,6 +72,13 @@ export type ReadExperienceResult =
   | { readonly kind: 'changed'; readonly file: 'markdown' | 'json'; readonly path: string; readonly recorded: string; readonly found: string }
   /** The Site answered, and what it said was that the file the record names cannot be read. */
   | { readonly kind: 'unreadable'; readonly file: 'markdown' | 'json'; readonly path: string; readonly recorded: string; readonly why: string };
+
+/** A recorded code or knowledge version read back at its own recorded content hash. */
+export type ReadMaterialResult =
+  | { readonly kind: 'read'; readonly record: CodeRecord | KnowledgeRecord; readonly text: string }
+  | { readonly kind: 'none'; readonly why: string }
+  | { readonly kind: 'changed'; readonly path: string; readonly recorded: string; readonly found: string }
+  | { readonly kind: 'unreadable'; readonly path: string; readonly recorded: string; readonly why: string };
 
 /**
  * One write of one Run's report at a time, per Ledger and per Run.
@@ -209,7 +220,7 @@ export async function readExperience(deps: ExperienceDeps, runId: string): Promi
   let document: ExperienceJson;
   try {
     const parsed = JSON.parse(Buffer.from(json.bytes).toString('utf8'));
-    if (parsed === null || typeof parsed !== 'object' || !['hima-experience/1', 'hima-experience/2'].includes(parsed.schema)
+    if (parsed === null || typeof parsed !== 'object' || !['hima-experience/1', 'hima-experience/2', 'hima-experience/3'].includes(parsed.schema)
       || parsed.runId !== runId || parsed.writtenAt !== record.writtenAt) {
       throw new Error('unsupported report schema or report identity does not match the recorded Run and write time');
     }
@@ -245,6 +256,44 @@ async function readFile(
     return { problem: { kind: 'changed', file: which, path: file.path, recorded: file.sha256, found } };
   }
   return { bytes: answer.stdout };
+}
+
+/**
+ * Read one persisted material record only from the Run it belongs to. Code remains on its Site;
+ * Pack knowledge is local to the Host. Neither branch falls back to current content after a hash
+ * mismatch, so a changed file never impersonates the historical version.
+ */
+export async function readMaterial(deps: ExperienceDeps, runId: string, recordId: string): Promise<ReadMaterialResult> {
+  const run = existingRun(deps.ledger, runId);
+  const record = deps.ledger.records({ runId }).find((item) => item.id === recordId && (item.type === 'code' || item.type === 'knowledge'));
+  if (record?.type !== 'code' && record?.type !== 'knowledge') return { kind: 'none', why: `no recorded code or knowledge version ${recordId} belongs to run ${runId}` };
+  if (record.type === 'code') {
+    const site = loadSite(deps.sitesDir, run.siteId);
+    const decision = await decideRead(site, record.path, channelFor(site));
+    if (!decision.ok) return { kind: 'unreadable', path: record.path, recorded: record.sha256, why: decision.reason };
+    const answer = await channelFor(site).exec(['cat', '--', decision.absPath]);
+    if (answer.code !== 0) return { kind: 'unreadable', path: record.path, recorded: record.sha256, why: answer.stderr.trim() || `cat exited ${answer.code} on site ${site.name}` };
+    const found = hashOf(answer.stdout);
+    return found === record.sha256
+      ? { kind: 'read', record, text: Buffer.from(answer.stdout).toString('utf8') }
+      : { kind: 'changed', path: record.path, recorded: record.sha256, found };
+  }
+  const expected = run.packId === undefined || run.packDigest === undefined
+    ? ''
+    : path.resolve(deps.packsDir, run.packId, methodHistoryDirectory, run.packDigest, run.packId, 'knowledge', record.file);
+  if (path.resolve(record.path) !== expected) return { kind: 'unreadable', path: record.path, recorded: record.sha256, why: 'the recorded knowledge path is outside this Run\'s Pack knowledge directory' };
+  try {
+    const stat = lstatSync(record.path, { throwIfNoEntry: false });
+    if (stat === undefined) return { kind: 'unreadable', path: record.path, recorded: record.sha256, why: 'the recorded knowledge file is no longer present' };
+    if (!stat.isFile()) return { kind: 'unreadable', path: record.path, recorded: record.sha256, why: 'the recorded knowledge path is no longer a plain file' };
+    const bytes = await readLocalFile(record.path);
+    const found = hashOf(bytes);
+    return found === record.sha256
+      ? { kind: 'read', record, text: bytes.toString('utf8') }
+      : { kind: 'changed', path: record.path, recorded: record.sha256, found };
+  } catch (err) {
+    return { kind: 'unreadable', path: record.path, recorded: record.sha256, why: (err as Error).message };
+  }
 }
 
 /** Whether this Run is one an ending left without its report — what a reconciliation asks of every

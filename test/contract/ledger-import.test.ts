@@ -48,7 +48,7 @@ before(async () => {
     assert.equal(host.ctx.hima.ledger.records({ runId }).length, 2);
   } finally { await host.dispose(); }
   snapshot = JSON.parse(await readFile(storedAt(oldHome.home), 'utf8')) as Snapshot;
-  assert.equal(snapshot.unit.version, 20);
+  assert.equal(snapshot.unit.version, 21);
   assert.ok(Object.values(snapshot.tables.runs).every((run) => run.control === undefined));
   // v19 ad84d2f wrote these same observation/Run shapes. Only its storage stamp differs, exactly
   // as ledger-version.test.ts generates the prior-version fixture from real persisted facts.
@@ -89,7 +89,7 @@ test('explicit offline CLI imports v19 facts and a source hash receipt into a ne
   assert.equal(receipt.source.sha256, hash(original));
   assert.equal(receipt.source.bytes, original.length);
   assert.equal(receipt.source.version, 19);
-  assert.equal(receipt.target.version, 20);
+  assert.equal(receipt.target.version, 21);
   assert.equal(receipt.runs, 2);
   assert.equal(receipt.records, 2);
   assert.equal(receipt.ownership, 'unchanged-unowned');
@@ -99,7 +99,7 @@ test('explicit offline CLI imports v19 facts and a source hash receipt into a ne
   assert.equal(hash(importedBytes), receipt.target.sha256);
   const imported = JSON.parse(importedBytes.toString()) as Snapshot;
   assert.deepEqual(imported.tables, snapshot.tables);
-  assert.equal(imported.unit.version, 20);
+  assert.equal(imported.unit.version, 21);
   assert.deepEqual((await readdir(home)).sort(), ['ledger-import', 'storages'], 'the offline command did not start or prepare a Host');
   const workspace = path.join(home, 'workspace');
   await mkdir(workspace);
@@ -121,15 +121,54 @@ test('explicit offline CLI imports v19 facts and a source hash receipt into a ne
 });
 
 test('opening the original v19 home still fails the version gate without rewriting it', async () => {
-  await assert.rejects(bootInProcess(oldHome), /version-mismatch|stored version 19 != expected 20/);
+  await assert.rejects(bootInProcess(oldHome), /version-mismatch|stored version 19 != expected 21/);
   assert.deepEqual(await readFile(storedAt(oldHome.home)), original);
+});
+
+test('an explicit v20 snapshot is copied into an empty v21 home while its source stays byte-for-byte intact', async () => {
+  const source = path.join(temporary, 'offline-v20.json');
+  const v20 = { ...structuredClone(snapshot), unit: { name: 'hima_ledger', version: 20 } };
+  const bytes = Buffer.from(`${JSON.stringify(v20, null, 2)}\n`);
+  await writeFile(source, bytes);
+  const home = await freshDestination('v20-readback');
+  const receipt = await importLegacyLedger({ sourceFile: source, home });
+  assert.equal(receipt.source.version, 20);
+  assert.equal(receipt.target.version, 21);
+  assert.deepEqual(await readFile(source), bytes);
+  const copied = JSON.parse(await readFile(storedAt(home), 'utf8')) as Snapshot;
+  assert.equal(copied.unit.version, 21);
+  assert.deepEqual(copied.tables, v20.tables);
+});
+
+test('v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home', async () => {
+  const base = { ...structuredClone(snapshot), unit: { name: 'hima_ledger', version: 20 } };
+  const run = base.tables.runs[runId]!;
+  const observation = Object.values(base.tables.records)[0]!;
+  const other = Object.values(base.tables.runs).find((candidate) => candidate.id !== runId)!;
+  const otherId = `${other.id}#${String(other.nextSeq).padStart(6, '0')}`;
+  base.tables.records[otherId] = { ...observation, id: otherId, runId: other.id, siteId: other.siteId, seq: other.nextSeq } as LedgerRecord;
+  other.nextSeq += 1;
+  const append = (record: Record<string, unknown>) => {
+    const changed = structuredClone(base);
+    const next = changed.tables.runs[runId]!.nextSeq;
+    const id = `${runId}#${String(next).padStart(6, '0')}`;
+    changed.tables.runs[runId]!.nextSeq += 1;
+    changed.tables.records[id] = { ...record, id, runId, siteId: run.siteId, seq: next, at: observation.at, writer: 'executor' } as LedgerRecord;
+    return changed;
+  };
+  const workspace = append({ type: 'workspace', event: 'prepared', campaignId: 'another-campaign', packId: 'fixture', packVersion: '1', packDigest: 'a'.repeat(64), workspace: '/workspace', flowRoot: '/flow', containerName: 'fixture', copied: [], preparedAt: observation.at });
+  await unchangedRefusal(JSON.stringify(workspace), /Campaign linkage/);
+  for (const cites of [['missing-record'], [otherId]]) {
+    const verdict = append({ type: 'verdict', outcome: 'PASS', ruleId: 'fixture-rule', ruleVersion: '1', cites, valuesAsRead: [] });
+    await unchangedRefusal(JSON.stringify(verdict), /evidence linkage/);
+  }
 });
 
 test('wrong formats, future controls and unknown fields cannot be silently dropped during import', async () => {
   await unchangedRefusal('{broken', /JSON/);
   await unchangedRefusal(Buffer.from([0xff]), /encoded data/);
   for (const change of [
-    (s: any) => { s.unit.version = 20; },
+    (s: any) => { s.unit.version = 21; },
     (s: any) => { s.unit.version = 18; },
     (s: any) => { s.unit.name = 'foreign'; },
     (s: any) => { s.unit.future = true; },
@@ -157,7 +196,7 @@ test('Run keys, record identity, site linkage and nextSeq cannot corrupt importe
   ]) {
     const changed = structuredClone(snapshot);
     change(changed);
-    await unchangedRefusal(JSON.stringify(changed), /invalid legacy/);
+    await unchangedRefusal(JSON.stringify(changed), /invalid imported/);
   }
   // A real append reserves nextSeq first: a prior failed write can leave a gap. Preserve it.
   const withGap = structuredClone(snapshot);
@@ -264,14 +303,14 @@ test('mid-write failure and process death cannot publish a partial import or alt
     // The rename may win the race. Every file and every source fact must then be present; an
     // existing directory, a parseable Ledger alone, or an unverified receipt is not a pass.
     const imported = await readFile(storedAt(home));
-    assert.deepEqual(JSON.parse(imported.toString()), { ...changed, unit: { name: 'hima_ledger', version: 20 } });
+    assert.deepEqual(JSON.parse(imported.toString()), { ...changed, unit: { name: 'hima_ledger', version: 21 } });
     assert.deepEqual(await readFile(path.join(home, 'ledger-import/source-v19.json')), before);
     const receipt = JSON.parse(await readFile(path.join(home, 'ledger-import/receipt.json'), 'utf8'));
     assert.match(receipt.importedAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.deepEqual(receipt, {
       format: 'hima-ledger-import-v1',
       source: { path: source, version: 19, sha256: hash(before), bytes: before.length, backup: 'ledger-import/source-v19.json' },
-      target: { version: 20, sha256: hash(imported), file: 'storages/hima_ledger.json' },
+      target: { version: 21, sha256: hash(imported), file: 'storages/hima_ledger.json' },
       importedAt: receipt.importedAt, runs: Object.keys(changed.tables.runs).length,
       records: Object.keys(changed.tables.records).length, ownership: 'unchanged-unowned',
     });

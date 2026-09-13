@@ -7,7 +7,7 @@ import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows
 import { reportBlocks } from '../experience-report.js';
 import { runPath } from '../paths.js';
 import { fetchRun, fetchRuns, fetchStartChoices, startCampaign, type HimaResult } from './api.js';
-import { DecisionRow, ExperienceSection, GenerationsTable, ObservationRow, ReportBlockRow, RunControls, useRunActions, VerdictRow, WorkshopSection } from './HimaRunCard.js';
+import { DecisionRow, ExperienceSection, GenerationsTable, MaterialSection, ObservationRow, ReportBlockRow, RunControls, useRunActions, VerdictRow, WorkshopSection } from './HimaRunCard.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot. */
 export interface WorkbenchProps {
@@ -127,6 +127,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
                 <ExecutionTrace view={view} />
                 <JobActivity view={view} />
                 {view.workshop ? <WorkshopSection view={view} workshop={view.workshop} /> : null}
+                <MaterialSection view={view} />
               </> : section === 'experiments' ? <div className='hima-detail'><h3>Experiment history</h3><p className='hima-small'>Recorded generations, measurements and decisions.</p>{view.generations.length ? <GenerationsTable view={view} /> : <p>No generation has been recorded.</p>}</div>
                 : section === 'evidence' ? <EvidenceTrail view={view} />
                   : <div className='hima-detail hima-report'><h3>Technical report</h3>{saved ? <><button className='hima-button' onClick={() => { savedRead.current?.abort(); setSaved(undefined); }}>← Current ledger preview</button><p className='hima-small'>{saved.markdown !== undefined ? 'Saved Markdown · original bytes verified by the Host' : saved.loading ? 'Reading and verifying the saved file…' : 'Saved file could not be verified'}</p>{saved.loading ? <p>Reading saved report…</p> : saved.error ? <p role='alert' className='hima-notice'>{saved.error}</p> : reportBlocks(saved.markdown!).map((block, index) => <ReportBlockRow key={index} block={block} />)}</> : view.experience ? <ExperienceSection view={view} experience={view.experience} onOpenSaved={() => { void openSaved(); }} /> : <p>{view.experienceUnavailable ?? 'A technical report will appear here when the Run closes.'}</p>}</div>}

@@ -33,6 +33,7 @@ import type {
   ExperienceRecord,
   JobIdentity,
   JobRecord,
+  KnowledgeRecord,
   Ledger,
   LedgerRecord,
   NodeKind,
@@ -62,13 +63,13 @@ import { generationsOf } from './generations.js';
 import type { RemoteCommand } from './channel.js';
 // The three record-to-view mappings a branch row reads too, so both folds are one description
 // (`record-views.ts`). Re-exported below, because a face reading a Run reads them from here.
-import { codeView, jobView, nodeView, observationView, standingWorkshop } from './record-views.js';
-import type { CodeView, JobView, NodeView, ObservationView, WorkshopView } from './record-views.js';
-export type { ObservationView, NodeView, JobView, CodeView, WorkshopView, WorkshopState } from './record-views.js';
+import { codeView, jobView, knowledgeView, nodeView, observationView, standingWorkshop } from './record-views.js';
+import type { CodeView, JobView, KnowledgeView, NodeView, ObservationView, WorkshopView } from './record-views.js';
+export type { ObservationView, NodeView, JobView, CodeView, KnowledgeView, WorkshopView, WorkshopState } from './record-views.js';
 import type { SemanticValue } from './semantics.js';
 import type { ObserveRequest, ObserveResult } from './observe.js';
 import type { ExperienceJson } from './experience-report.js';
-import type { ReadExperienceResult } from './experience.js';
+import type { ReadExperienceResult, ReadMaterialResult } from './experience.js';
 import type { ResumeResult, StartRunRequest, StartRunResult } from './fabric.js';
 import type { CancelResult } from './recovery.js';
 // Type-only, like every other shape here: `moments.ts` reaches dsh's agent seam, and this module is
@@ -140,7 +141,7 @@ export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
  * (`startRunOperation` in this file states which).
  * A failure is never an empty answer: the client renders the code.
  */
-export type HimaErrorCode = 'hima/run-not-found' | 'hima/record-not-found' | 'hima/bad-request' | 'hima/run-not-in-state' | 'hima/run-not-stopped' | 'hima/run-running' | 'hima/workshop-node' | 'hima/experience-changed' | 'hima/not-authorized' | 'hima/site-unreadable' | 'hima/moment-failed' | 'hima/internal';
+export type HimaErrorCode = 'hima/run-not-found' | 'hima/record-not-found' | 'hima/bad-request' | 'hima/run-not-in-state' | 'hima/run-not-stopped' | 'hima/run-running' | 'hima/workshop-node' | 'hima/experience-changed' | 'hima/material-changed' | 'hima/not-authorized' | 'hima/site-unreadable' | 'hima/moment-failed' | 'hima/internal';
 export interface HimaErrorBody { readonly error: { readonly code: HimaErrorCode; readonly message: string } }
 
 /** One refusal as HimaGuide shows it: a Run that read nothing still says why. */
@@ -362,6 +363,8 @@ export interface RunView {
    * of, and the attempt each belongs to is on the row.
    */
   readonly code: readonly CodeView[];
+  /** Pack knowledge actually returned to an Agent. Declarations that were never read are absent. */
+  readonly knowledge: readonly KnowledgeView[];
   /**
    * Where this Run's workshop stands (#62): the workshop node the Run stands at, or — once it has
    * moved past it — the last one it did stand at.
@@ -428,6 +431,9 @@ export interface ExperienceAnswer {
   /** The JSON as the file on the Site holds it, parsed. */
   readonly report: ExperienceJson;
 }
+
+/** One verified historical code or Pack knowledge version, never a current unheld file. */
+export interface MaterialAnswer { readonly record: CodeView | KnowledgeView; readonly text: string }
 
 /**
  * What `POST /hima/api/runs/<id>/moment` answers with (#59): the session a Model moment ran in, and
@@ -522,6 +528,8 @@ export interface RemoteOperations {
    *  `experience` record keeps. Here rather than done in this module, for the reason `installed` is:
    *  this namespace reaches no Site and opens no file of its own. */
   readExperience(runId: string): Promise<ReadExperienceResult>;
+  /** Read one code/knowledge record only within its Run, held to the record's content hash. */
+  readMaterial(runId: string, recordId: string): Promise<ReadMaterialResult>;
   /**
    * Open one Model moment on the node this Run stands at, ask it one turn, and close it (#59).
    *
@@ -723,6 +731,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     cancels: records.filter((r): r is CancelRecord => r.type === 'cancel').map(cancelView),
     decision: decision ? decisionView(decision) : null,
     code: records.filter((r): r is CodeRecord => r.type === 'code').map(codeView),
+    knowledge: records.filter((r): r is KnowledgeRecord => r.type === 'knowledge').map(knowledgeView),
     // Where the Run's current node stands as a workshop, when it is one (#62). An absent key, never
     // an undefined one: a Run standing at an ordinary act node says so by omission. Composed from
     // these same records and nothing else, which is what the comment on `RunView.workshop` promises.
@@ -1152,6 +1161,15 @@ async function experienceOperation(ops: RemoteOperations, runId: string, asMarkd
   return ok({ experience: experienceView(read.record), markdown: read.markdown, report: read.json } satisfies ExperienceAnswer);
 }
 
+async function materialOperation(ops: RemoteOperations, runId: string, recordId: string): Promise<Answer> {
+  if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+  const read = await ops.readMaterial(runId, recordId);
+  if (read.kind === 'none') return failure(404, 'hima/record-not-found', read.why);
+  if (read.kind === 'changed') return failure(409, 'hima/material-changed', `recorded material ${read.path} now hashes to sha256 ${read.found}, not recorded sha256 ${read.recorded}; historical content is unavailable`);
+  if (read.kind === 'unreadable') return failure(503, 'hima/site-unreadable', `recorded material ${read.path} could not be read: ${read.why}; recorded sha256 ${read.recorded}`);
+  return ok({ record: read.record.type === 'code' ? codeView(read.record) : knowledgeView(read.record), text: read.text } satisfies MaterialAnswer);
+}
+
 /**
  * `POST /hima/api/runs/<runId>/moment`: open one Model moment on the node this Run stands at, ask it
  * the instructions, close it, and answer with what the model said (#59).
@@ -1312,6 +1330,12 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   if (experience) {
     if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
     return experienceOperation(ops, decoded(experience[1]!, 'run id'), experience[2] !== undefined);
+  }
+
+  const material = /^\/runs\/([^/]+)\/material\/([^/]+)$/.exec(rest);
+  if (material) {
+    if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
+    return materialOperation(ops, decoded(material[1]!, 'run id'), decoded(material[2]!, 'record id'));
   }
 
   const run = /^\/runs\/([^/]+)(\/records)?$/.exec(rest);
