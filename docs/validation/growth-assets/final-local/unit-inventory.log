@@ -1,0 +1,2 @@
+$ node scripts/run-unit-tests.mjs
+unit tests: 0 files; not run (no coverage claimed); command exit code: 0. Current L1/L2 checks are in test/contract.

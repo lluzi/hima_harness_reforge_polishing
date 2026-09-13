@@ -1,0 +1,26 @@
+{
+  "sourceSha": "2bb9a765c24bdb234796f6c126adc406254ba540",
+  "command": "PATH=/Users/lluzi/.local/node24/bin:$PATH pnpm --config.verifyDepsBeforeRun=false run check:local",
+  "exitCode": 0,
+  "tests": 459,
+  "passed": 459,
+  "failed": 0,
+  "skipped": 0,
+  "elapsedSeconds": 1218.89,
+  "boots": {
+    "hostProcess": 47,
+    "hostInProcess": 410,
+    "electron": 0
+  },
+  "sshSubprocessAttempts": 0,
+  "productModelRequests": 0,
+  "edaJobs": 0,
+  "unitSuite": "0 files, not run; L1/L2 coverage is in test/contract",
+  "diagnosticRound": {
+    "tests": 457,
+    "passed": 452,
+    "failed": 5,
+    "elapsedSeconds": 1395.155,
+    "note": "Old compiled runtime plus new review regressions loaded during the run; diagnostic evidence, not fixed-commit final certification."
+  }
+}

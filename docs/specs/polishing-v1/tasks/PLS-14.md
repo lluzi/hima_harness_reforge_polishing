@@ -33,10 +33,10 @@ Blocked by: [PLS-07 / #8](https://github.com/lluzi/hima_harness_reforge_polishin
 
 ## 验收标准
 
-- [ ] 成功、负结果、预算结束、取消各有资产或明确的缺失/无法交付说明。
-- [ ] 没有 workspace 的早期失败仍可在 Pack 中保留本地已有事实与缺失说明，不伪造不存在的 Site 文件。
-- [ ] 一半文件写完中断、manifest 前后中断、目录只读、文件被篡改、源丢失、重复调用均不出现假的 complete。
-- [ ] 恢复后完整材料 hash 可验证，核心算法可离线阅读；未获授权的 Site 文件不被归档。
+- [x] 成功、负结果、预算结束、取消各有资产或明确的缺失/无法交付说明。
+- [x] 没有 workspace 的早期失败仍可在 Pack 中保留本地已有事实与缺失说明，不伪造不存在的 Site 文件。
+- [x] 一半文件写完中断、manifest 前后中断、目录只读、文件被篡改、源丢失、重复调用均不出现假的 complete。
+- [x] 恢复后完整材料 hash 可验证，核心算法可离线阅读；未获授权的 Site 文件不被归档。
 
 ## 分级测试
 
@@ -56,3 +56,9 @@ Blocked by: [PLS-07 / #8](https://github.com/lluzi/hima_harness_reforge_polishin
 ## 回滚
 
 禁用新归档触发仍保留所有 run-assets 和 manifest；历史读取保持兼容。
+
+## 本次交付
+
+2026-09-13 已完成工程验收。代码基线、修改模块、反例/修复、459/459 全量本地、
+必要 L3/L4、成本及未跑 L5 的边界见[本批交付记录](../../../validation/growth-assets/README.md)。
+历史失败保留；不据本任务声称完整 DTCO pilot、Fmax/PPA 提升或知识复用降本。

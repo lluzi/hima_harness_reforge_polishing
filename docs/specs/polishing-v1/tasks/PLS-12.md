@@ -35,10 +35,10 @@ Blocked by: [PLS-07 / #8](https://github.com/lluzi/hima_harness_reforge_polishin
 
 ## 验收标准
 
-- [ ] 在 Job、模型、回溯、附加节点前后命中预算边界时无超额新实验，已有活动工作按既定停止语义结算。
-- [ ] 未执行的新策略、未完成的分析都明确记录；收尾 reserve 不被计算成额外预算。
-- [ ] 取消、budget exhausted、converged 与 execution fault 不互相冒充；必要材料未生成不显示交付完整。
-- [ ] 分支和 Host 重启不能获得新的总额度，保留正确的资源计量与实际停止状态。
+- [x] 在 Job、模型、回溯、附加节点前后命中预算边界时无超额新实验，已有活动工作按既定停止语义结算。
+- [x] 未执行的新策略、未完成的分析都明确记录；收尾 reserve 不被计算成额外预算。
+- [x] 取消、budget exhausted、converged 与 execution fault 不互相冒充；必要材料未生成不显示交付完整。
+- [x] 分支和 Host 重启不能获得新的总额度，保留正确的资源计量与实际停止状态。
 
 ## 分级测试
 
@@ -69,3 +69,9 @@ Blocked by: [PLS-07 / #8](https://github.com/lluzi/hima_harness_reforge_polishin
 只提供整个 Agent 活动的取消，不能安全地按 Run 取消单个模型请求；因此不按 owner ID
 中断可能包含其他工作的对话，也不新增隐藏 ModelMoment 或第二个 Agent。
 本决定替代原文将原生对话生成本身一并纳入 Campaign 硬截止的表述。
+
+## 本次交付
+
+2026-09-13 已完成工程验收。代码基线、修改模块、反例/修复、459/459 全量本地、
+必要 L3/L4、成本及未跑 L5 的边界见[本批交付记录](../../../validation/growth-assets/README.md)。
+历史失败保留；不据本任务声称完整 DTCO pilot、Fmax/PPA 提升或知识复用降本。
