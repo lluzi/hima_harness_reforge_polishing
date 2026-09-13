@@ -1,0 +1,133 @@
+c44802e2e9ed14ef618e675bc241099cf33e4b10
+$ pnpm -r run build
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json && node scripts/build-client.mjs
+client: lib/client.js (152904 bytes)
+$ tsc -p tsconfig.json
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+$ tsc -p tsconfig.json --noEmit
+$ node scripts/run-contract-tests.mjs local --files test/contract/experience-files.test.ts test/contract/agent-workshop.host.test.ts
+local: 2 selected; 55 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+ok 1 - the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+  ---
+  duration_ms: 6287.097792
+  type: 'test'
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and launches unchanged
+ok 2 - a begun Workshop draft retains its original author's code across handoff and launches unchanged
+  ---
+  duration_ms: 1298.951209
+  type: 'test'
+  ...
+# Subtest: a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+ok 3 - a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+  ---
+  duration_ms: 1025.123
+  type: 'test'
+  ...
+# Subtest: an ended Run without a workspace explains why no report is deliverable through projection and read API
+ok 4 - an ended Run without a workspace explains why no report is deliverable through projection and read API
+  ---
+  duration_ms: 9333.374
+  type: 'test'
+  ...
+# Subtest: an ended Run publishes verified local copies only under its installed Pack, is idempotent, and refuses tampering
+ok 5 - an ended Run publishes verified local copies only under its installed Pack, is idempotent, and refuses tampering
+  ---
+  duration_ms: 712.596417
+  type: 'test'
+  ...
+# Subtest: archive publication refuses a symlinked run-assets ancestor without writing through it
+ok 6 - archive publication refuses a symlinked run-assets ancestor without writing through it
+  ---
+  duration_ms: 505.84775
+  type: 'test'
+  ...
+# Subtest: goal support, measured-negative ending, budget ending and cancellation each receive a verified local delivery
+ok 7 - goal support, measured-negative ending, budget ending and cancellation each receive a verified local delivery
+  ---
+  duration_ms: 863.785708
+  type: 'test'
+  ...
+# Subtest: an ended Run archives byte-identified code under a safe name and reads it offline after the Site source is gone
+ok 8 - an ended Run archives byte-identified code under a safe name and reads it offline after the Site source is gone
+  ---
+  duration_ms: 680.292166
+  type: 'test'
+  ...
+# Subtest: missing recorded code or observation bytes leave an explicit failed delivery and no completion
+ok 9 - missing recorded code or observation bytes leave an explicit failed delivery and no completion
+  ---
+  duration_ms: 591.743
+  type: 'test'
+  ...
+# Subtest: recorded byte counts remain part of report, code and observation identity
+ok 10 - recorded byte counts remain part of report, code and observation identity
+  ---
+  duration_ms: 801.0475
+  type: 'test'
+  ...
+# Subtest: a failure before publication keeps one stable reservation and a retry publishes exactly once
+ok 11 - a failure before publication keeps one stable reservation and a retry publishes exactly once
+  ---
+  duration_ms: 674.2545
+  type: 'test'
+  ...
+# Subtest: concurrent delivery calls publish one directory and one completion record
+ok 12 - concurrent delivery calls publish one directory and one completion record
+  ---
+  duration_ms: 527.645667
+  type: 'test'
+  ...
+# Subtest: restart completes an exact reserved directory published before the prior Host could append completion
+ok 13 - restart completes an exact reserved directory published before the prior Host could append completion
+  ---
+  duration_ms: 1204.924792
+  type: 'test'
+  ...
+# Subtest: a pending hash cannot bless a published directory with another Run, Pack, version, Site or method identity
+ok 14 - a pending hash cannot bless a published directory with another Run, Pack, version, Site or method identity
+  ---
+  duration_ms: 763.755542
+  type: 'test'
+  ...
+# Subtest: a listed optional material must be verified unless its absence is explicitly explained
+ok 15 - a listed optional material must be verified unless its absence is explicitly explained
+  ---
+  duration_ms: 511.804667
+  type: 'test'
+  ...
+# Subtest: schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+ok 16 - schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+  ---
+  duration_ms: 8069.215416
+  type: 'test'
+  ...
+# Subtest: failure between the two report writes leaves no record; the next Host completes and verifies both files
+ok 17 - failure between the two report writes leaves no record; the next Host completes and verifies both files
+  ---
+  duration_ms: 8464.350042
+  type: 'test'
+  ...
+# Subtest: a Site report write failure still preserves local Run facts in the installed Pack
+ok 18 - a Site report write failure still preserves local Run facts in the installed Pack
+  ---
+  duration_ms: 666.780042
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 44092.969166
+Test boot attempts: {"host-process":3,"host-in-process":19,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 44.182 s; pass/fail/skip counts are in the TAP summary above

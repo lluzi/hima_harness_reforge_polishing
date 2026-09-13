@@ -1,0 +1,189 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/experience-files.test.ts test/contract/research-analysis.host.test.ts test/contract/ledger-import.test.ts
+local: 3 selected; 57 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: an ended Run without a workspace explains why no report is deliverable through projection and read API
+ok 1 - an ended Run without a workspace explains why no report is deliverable through projection and read API
+  ---
+  duration_ms: 8217.599375
+  type: 'test'
+  ...
+# Subtest: an ended Run publishes verified local copies only under its installed Pack, is idempotent, and refuses tampering
+ok 2 - an ended Run publishes verified local copies only under its installed Pack, is idempotent, and refuses tampering
+  ---
+  duration_ms: 484.586125
+  type: 'test'
+  ...
+# Subtest: archive publication refuses a symlinked run-assets ancestor without writing through it
+ok 3 - archive publication refuses a symlinked run-assets ancestor without writing through it
+  ---
+  duration_ms: 369.257667
+  type: 'test'
+  ...
+# Subtest: goal support, measured-negative ending, budget ending and cancellation each receive a verified local delivery
+ok 4 - goal support, measured-negative ending, budget ending and cancellation each receive a verified local delivery
+  ---
+  duration_ms: 617.790166
+  type: 'test'
+  ...
+# Subtest: an ended Run archives byte-identified code under a safe name and reads it offline after the Site source is gone
+ok 5 - an ended Run archives byte-identified code under a safe name and reads it offline after the Site source is gone
+  ---
+  duration_ms: 618.052167
+  type: 'test'
+  ...
+# Subtest: missing recorded code or observation bytes leave an explicit failed delivery and no completion
+ok 6 - missing recorded code or observation bytes leave an explicit failed delivery and no completion
+  ---
+  duration_ms: 546.3735
+  type: 'test'
+  ...
+# Subtest: recorded byte counts remain part of report, code and observation identity
+ok 7 - recorded byte counts remain part of report, code and observation identity
+  ---
+  duration_ms: 535.042542
+  type: 'test'
+  ...
+# Subtest: a failure before publication keeps one stable reservation and a retry publishes exactly once
+ok 8 - a failure before publication keeps one stable reservation and a retry publishes exactly once
+  ---
+  duration_ms: 522.571958
+  type: 'test'
+  ...
+# Subtest: concurrent delivery calls publish one directory and one completion record
+ok 9 - concurrent delivery calls publish one directory and one completion record
+  ---
+  duration_ms: 1371.890667
+  type: 'test'
+  ...
+# Subtest: restart completes an exact reserved directory published before the prior Host could append completion
+ok 10 - restart completes an exact reserved directory published before the prior Host could append completion
+  ---
+  duration_ms: 653.103792
+  type: 'test'
+  ...
+# Subtest: a pending hash cannot bless a published directory with another Run, Pack, version, Site or method identity
+ok 11 - a pending hash cannot bless a published directory with another Run, Pack, version, Site or method identity
+  ---
+  duration_ms: 536.856916
+  type: 'test'
+  ...
+# Subtest: a listed optional material must be verified unless its absence is explicitly explained
+ok 12 - a listed optional material must be verified unless its absence is explicitly explained
+  ---
+  duration_ms: 442.644875
+  type: 'test'
+  ...
+# Subtest: schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+ok 13 - schema 1 saved bytes and hashes survive a new renderer, repeat read, write request and restarted Host
+  ---
+  duration_ms: 6345.820667
+  type: 'test'
+  ...
+# Subtest: failure between the two report writes leaves no record; the next Host completes and verifies both files
+ok 14 - failure between the two report writes leaves no record; the next Host completes and verifies both files
+  ---
+  duration_ms: 6692.368
+  type: 'test'
+  ...
+# Subtest: a Site report write failure still preserves local Run facts in the installed Pack
+ok 15 - a Site report write failure still preserves local Run facts in the installed Pack
+  ---
+  duration_ms: 599.280917
+  type: 'test'
+  ...
+# Subtest: offline v21 to v23 polishing facts import into the current domain without rewriting source bytes
+ok 16 - offline v21 to v23 polishing facts import into the current domain without rewriting source bytes
+  ---
+  duration_ms: 1637.554791
+  type: 'test'
+  ...
+# Subtest: explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+ok 17 - explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+  ---
+  duration_ms: 669.791208
+  type: 'test'
+  ...
+# Subtest: opening the original v19 home still fails the version gate without rewriting it
+ok 18 - opening the original v19 home still fails the version gate without rewriting it
+  ---
+  duration_ms: 271.806084
+  type: 'test'
+  ...
+# Subtest: an explicit v20 snapshot is copied into an empty v21 home while its source stays byte-for-byte intact
+ok 19 - an explicit v20 snapshot is copied into an empty v21 home while its source stays byte-for-byte intact
+  ---
+  duration_ms: 35.663292
+  type: 'test'
+  ...
+# Subtest: importing an owned v20 Run preserves its recorded owner and reports that ownership truthfully
+ok 20 - importing an owned v20 Run preserves its recorded owner and reports that ownership truthfully
+  ---
+  duration_ms: 30.157458
+  type: 'test'
+  ...
+# Subtest: v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home
+ok 21 - v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home
+  ---
+  duration_ms: 15.805583
+  type: 'test'
+  ...
+# Subtest: wrong formats, future controls and unknown fields cannot be silently dropped during import
+ok 22 - wrong formats, future controls and unknown fields cannot be silently dropped during import
+  ---
+  duration_ms: 41.040167
+  type: 'test'
+  ...
+# Subtest: Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+ok 23 - Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+  ---
+  duration_ms: 32.426375
+  type: 'test'
+  ...
+# Subtest: v20-only Job, workspace and decision facts are refused even with a v19 header
+ok 24 - v20-only Job, workspace and decision facts are refused even with a v19 header
+  ---
+  duration_ms: 11.698417
+  type: 'test'
+  ...
+# Subtest: symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+ok 25 - symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+  ---
+  duration_ms: 5.259167
+  type: 'test'
+  ...
+# Subtest: mid-write failure and process death cannot publish a partial import or alter the source
+ok 26 - mid-write failure and process death cannot publish a partial import or alter the source
+  ---
+  duration_ms: 796.392125
+  type: 'test'
+  ...
+# Subtest: the offline CLI requires both explicit paths and never defaults to DSH_HOME
+ok 27 - the offline CLI requires both explicit paths and never defaults to DSH_HOME
+  ---
+  duration_ms: 78.3405
+  type: 'test'
+  ...
+# Subtest: two simultaneous imports cannot replace the first complete destination
+ok 28 - two simultaneous imports cannot replace the first complete destination
+  ---
+  duration_ms: 39.940292
+  type: 'test'
+  ...
+# Subtest: only the actual owner can record source-linked research analysis; retries and false numeric claims preserve facts
+ok 29 - only the actual owner can record source-linked research analysis; retries and false numeric claims preserve facts
+  ---
+  duration_ms: 2891.773125
+  type: 'test'
+  ...
+1..29
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 36899.804917
+Test boot attempts: {"host-process":3,"host-in-process":20,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 36.997 s; pass/fail/skip counts are in the TAP summary above

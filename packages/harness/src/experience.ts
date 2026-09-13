@@ -23,7 +23,7 @@
 // report is written, and this module leaves the Site alone.
 import { createHash } from 'node:crypto';
 import { constants, lstatSync } from 'node:fs';
-import { lstat, mkdir, open, readFile as readLocalFile, rename, rm, writeFile as writeLocalFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile as readLocalFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { channelFor, mustRun, type Channel } from './channel.js';
@@ -95,6 +95,7 @@ export type ReadMaterialResult =
  * Ledger, so a disposed host's chains go with it.
  */
 const writesPerRun = new WeakMap<Ledger, Map<string, Promise<unknown>>>();
+const assetsPerRun = new WeakMap<Ledger, Map<string, Promise<unknown>>>();
 
 function writingExperience(ledger: Ledger, runId: string, write: () => Promise<WriteExperienceResult>): Promise<WriteExperienceResult> {
   const chains = writesPerRun.get(ledger) ?? new Map<string, Promise<unknown>>();
@@ -156,16 +157,36 @@ async function writeOnce(deps: ExperienceDeps, runId: string): Promise<WriteExpe
 
   const dir = p.join(prepared.workspace, EXPERIENCE_DIR);
   const directory = await decideWrite(site, dir, channel);
-  if (!directory.ok) return refused(deps, runId, directory.refused, directory.reason);
-  await mustRun(channel, ['mkdir', '-p', '--', directory.absPath], `create ${directory.absPath} on site ${site.name}`);
+  if (!directory.ok) {
+    const result = await refused(deps, runId, directory.refused, directory.reason);
+    await writeRunAssets(deps, runId);
+    return result;
+  }
+  let record: ExperienceRecord;
+  try {
+    await mustRun(channel, ['mkdir', '-p', '--', directory.absPath], `create ${directory.absPath} on site ${site.name}`);
 
-  const markdown = await writeFile(site, channel, p.join(directory.absPath, `${runId}.md`), report.markdown);
-  if ('refusal' in markdown) return refused(deps, runId, markdown.refusal.refused, markdown.refusal.reason);
-  const json = await writeFile(site, channel, p.join(directory.absPath, `${runId}.json`), `${JSON.stringify(report.json, null, 2)}\n`);
-  if ('refusal' in json) return refused(deps, runId, json.refusal.refused, json.refusal.reason);
+    const markdown = await writeFile(site, channel, p.join(directory.absPath, `${runId}.md`), report.markdown);
+    if ('refusal' in markdown) {
+      const result = await refused(deps, runId, markdown.refusal.refused, markdown.refusal.reason);
+      await writeRunAssets(deps, runId);
+      return result;
+    }
+    const json = await writeFile(site, channel, p.join(directory.absPath, `${runId}.json`), `${JSON.stringify(report.json, null, 2)}\n`);
+    if ('refusal' in json) {
+      const result = await refused(deps, runId, json.refusal.refused, json.refusal.reason);
+      await writeRunAssets(deps, runId);
+      return result;
+    }
 
-  // Last, and only now: the record is the claim that both files are there.
-  const record = await deps.ledger.appendExperience(runId, { writtenAt, markdown: markdown.file, json: json.file });
+    // Last, and only now: the record is the claim that both files are there.
+    record = await deps.ledger.appendExperience(runId, { writtenAt, markdown: markdown.file, json: json.file });
+  } catch (error) {
+    // The Site report remains owed, but local ledger facts can still be delivered to the installed
+    // Pack. writeRunAssets records its own failure rather than claiming incomplete bytes complete.
+    await writeRunAssets(deps, runId);
+    throw error;
+  }
   await writeRunAssets(deps, runId);
   return { kind: 'written', record };
 }
@@ -216,15 +237,26 @@ async function refused(deps: ExperienceDeps, runId: string, path: string, reason
  * @returns both files, or that there is no record, or which of the two no longer matches it.
  */
 export async function readExperience(deps: ExperienceDeps, runId: string): Promise<ReadExperienceResult> {
+  return (await readExperienceWithBytes(deps, runId)).result;
+}
+
+/** Keep the exact verified file bytes private to the Site/archive adapter. Public readers receive
+ * the parsed document and original Markdown; the archive needs the bytes the Experience record
+ * actually hashed, including a historical JSON file's formatting and final newline choice. */
+async function readExperienceWithBytes(deps: ExperienceDeps, runId: string): Promise<{
+  readonly result: ReadExperienceResult;
+  readonly markdownBytes?: Uint8Array;
+  readonly jsonBytes?: Uint8Array;
+}> {
   const run = existingRun(deps.ledger, runId);
   const record = experienceOf(deps.ledger, runId);
-  if (record === undefined) return { kind: 'none', why: runView(deps.ledger, run).experienceUnavailable ?? `run ${runId} has not ended and has no saved report` };
+  if (record === undefined) return { result: { kind: 'none', why: runView(deps.ledger, run).experienceUnavailable ?? `run ${runId} has not ended and has no saved report` } };
   const site = loadSite(deps.sitesDir, run.siteId);
   const channel = channelFor(site);
   const markdown = await readFile(site, channel, 'markdown', record.markdown);
-  if ('problem' in markdown) return markdown.problem;
+  if ('problem' in markdown) return { result: markdown.problem };
   const json = await readFile(site, channel, 'json', record.json);
-  if ('problem' in json) return json.problem;
+  if ('problem' in json) return { result: json.problem };
   let document: ExperienceJson;
   try {
     const parsed = JSON.parse(Buffer.from(json.bytes).toString('utf8'));
@@ -234,12 +266,16 @@ export async function readExperience(deps: ExperienceDeps, runId: string): Promi
     }
     document = parsed as ExperienceJson;
   } catch (error) {
-    return { kind: 'unreadable', file: 'json', path: record.json.path, recorded: record.json.sha256, why: `the verified bytes are not a supported report: ${(error as Error).message}` };
+    return { result: { kind: 'unreadable', file: 'json', path: record.json.path, recorded: record.json.sha256, why: `the verified bytes are not a supported report: ${(error as Error).message}` } };
   }
   return {
-    kind: 'read', record,
-    markdown: Buffer.from(markdown.bytes).toString('utf8'),
-    json: document,
+    result: {
+      kind: 'read', record,
+      markdown: Buffer.from(markdown.bytes).toString('utf8'),
+      json: document,
+    },
+    markdownBytes: markdown.bytes,
+    jsonBytes: json.bytes,
   };
 }
 
@@ -263,6 +299,7 @@ async function readFile(
   if (found !== file.sha256) {
     return { problem: { kind: 'changed', file: which, path: file.path, recorded: file.sha256, found } };
   }
+  if (answer.stdout.byteLength !== file.bytes) return unreadable(`recorded size ${String(file.bytes)} differs from found ${String(answer.stdout.byteLength)}`);
   return { bytes: answer.stdout };
 }
 
@@ -282,6 +319,7 @@ export async function readMaterial(deps: ExperienceDeps, runId: string, recordId
     const answer = await channelFor(site).exec(['cat', '--', decision.absPath]);
     if (answer.code !== 0) return archivedOrOriginal(deps, runId, record, { kind: 'unreadable', path: record.path, recorded: record.sha256, why: answer.stderr.trim() || `cat exited ${answer.code} on site ${site.name}` });
     const found = hashOf(answer.stdout);
+    if (found === record.sha256 && answer.stdout.byteLength !== record.bytes) return archivedOrOriginal(deps, runId, record, { kind: 'unreadable', path: record.path, recorded: record.sha256, why: `recorded size ${String(record.bytes)} differs from found ${String(answer.stdout.byteLength)}` });
     return found === record.sha256
       ? { kind: 'read', record, text: Buffer.from(answer.stdout).toString('utf8') }
       : archivedOrOriginal(deps, runId, record, { kind: 'changed', path: record.path, recorded: record.sha256, found });
@@ -296,6 +334,7 @@ export async function readMaterial(deps: ExperienceDeps, runId: string, recordId
     if (!stat.isFile()) return archivedOrOriginal(deps, runId, record, { kind: 'unreadable', path: record.path, recorded: record.sha256, why: 'the recorded knowledge path is no longer a plain file' });
     const bytes = await readLocalFile(record.path);
     const found = hashOf(bytes);
+    if (found === record.sha256 && bytes.byteLength !== record.bytes) return archivedOrOriginal(deps, runId, record, { kind: 'unreadable', path: record.path, recorded: record.sha256, why: `recorded size ${String(record.bytes)} differs from found ${String(bytes.byteLength)}` });
     return found === record.sha256
       ? { kind: 'read', record, text: bytes.toString('utf8') }
       : archivedOrOriginal(deps, runId, record, { kind: 'changed', path: record.path, recorded: record.sha256, found });
@@ -305,7 +344,11 @@ export async function readMaterial(deps: ExperienceDeps, runId: string, recordId
 }
 
 async function archivedOrOriginal(deps: ExperienceDeps, runId: string, record: CodeRecord | KnowledgeRecord, original: Exclude<ReadMaterialResult, { readonly kind: 'read' }>): Promise<ReadMaterialResult> {
-  const archived = await readArchivedMaterial(deps, runId, `materials/${record.id}.txt`);
+  const archive = await readRunAssets(deps, runId);
+  if (archive.kind !== 'read') return original;
+  const held = archive.manifest.materials.find((material) => material.recordId === record.id && material.type === record.type);
+  if (held === undefined) return original;
+  const archived = await readArchivedMaterial(deps, runId, held.path);
   return archived.kind === 'read' && archived.material.sha256 === record.sha256 && archived.material.bytes === record.bytes
     ? { kind: 'read', record, text: archived.text } : original;
 }
@@ -335,6 +378,15 @@ export type ReadArchivedMaterialResult =
   | { readonly kind: 'read'; readonly manifest: RunAssetManifest; readonly material: RunAssetManifest['materials'][number]; readonly text: string }
   | Exclude<ReadRunAssetsResult, { readonly kind: 'read' }>;
 
+function writingRunAssets(ledger: Ledger, runId: string, write: () => Promise<WriteRunAssetsResult>): Promise<WriteRunAssetsResult> {
+  const chains = assetsPerRun.get(ledger) ?? new Map<string, Promise<unknown>>();
+  assetsPerRun.set(ledger, chains);
+  const ahead = chains.get(runId) ?? Promise.resolve();
+  const mine = ahead.then(write);
+  chains.set(runId, mine.then(() => undefined, () => undefined));
+  return mine;
+}
+
 const archiveManifestSchema = z.strictObject({
   schema: z.literal(RUN_ASSET_MANIFEST_SCHEMA), runId: z.string().min(1), campaignId: z.string().min(1), siteId: z.string().min(1),
   pack: z.strictObject({ id: z.string().min(1), version: z.string().min(1) }), methodDigest: z.string().regex(/^[0-9a-f]{64}$/).optional(),
@@ -342,7 +394,11 @@ const archiveManifestSchema = z.strictObject({
   materials: z.array(z.strictObject({ path: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/), source: z.string().min(1), recordId: z.string().min(1).optional(), type: z.enum(['experience', 'observation', 'code', 'knowledge']).optional(), sha256: z.string().regex(/^[0-9a-f]{64}$/), bytes: z.number().int().nonnegative(), required: z.boolean(), missingReason: z.string().min(1).optional() })).min(2),
 }).superRefine((value, ctx) => {
   const paths = new Set<string>();
-  for (const material of value.materials) { if (paths.has(material.path)) ctx.addIssue({ code: 'custom', message: `duplicate material path ${material.path}` }); paths.add(material.path); }
+  for (const material of value.materials) {
+    if (paths.has(material.path)) ctx.addIssue({ code: 'custom', message: `duplicate material path ${material.path}` });
+    paths.add(material.path);
+    if (material.required && material.missingReason !== undefined) ctx.addIssue({ code: 'custom', message: `required material ${material.path} cannot be declared missing` });
+  }
   for (const required of ['experience.md', 'experience.json']) if (!paths.has(required)) ctx.addIssue({ code: 'custom', message: `required report material ${required} is absent` });
 });
 
@@ -355,7 +411,11 @@ const archiveCompleteOf = (ledger: Ledger, runId: string): ArchiveRecord | undef
  * no remote path becomes a substitute for a delivered required file.  A local report composed for
  * an early no-workspace ending remains deliverable when its Pack is installed.
  */
-export async function writeRunAssets(deps: ExperienceDeps, runId: string): Promise<WriteRunAssetsResult> {
+export function writeRunAssets(deps: ExperienceDeps, runId: string): Promise<WriteRunAssetsResult> {
+  return writingRunAssets(deps.ledger, runId, () => writeRunAssetsOnce(deps, runId));
+}
+
+async function writeRunAssetsOnce(deps: ExperienceDeps, runId: string): Promise<WriteRunAssetsResult> {
   const run = existingRun(deps.ledger, runId);
   if (!hasEnded(run.status)) return { kind: 'nothing', why: `run ${runId} has not ended` };
   if (run.packId === undefined) return archiveFailure(deps, runId, deps.packsDir, `run ${runId} has no HimaPack to receive customer assets`);
@@ -366,7 +426,8 @@ export async function writeRunAssets(deps: ExperienceDeps, runId: string): Promi
   const directory = path.join(folder.dir, runAssetsDirectory, runId);
   try { await archivePathSafe(folder.dir, runId, false); }
   catch (error) { return archiveFailure(deps, runId, directory, (error as Error).message); }
-  const existing = await readRunAssetsAt(directory, runId);
+  const recordedPackVersion = runView(deps.ledger, run).run.packVersion ?? 'not recorded';
+  const existing = await readRunAssetsAt(directory, runId, run, undefined, recordedPackVersion);
   if (existing.kind === 'read') {
     try { await completeArchive(deps, runId, directory, existing.manifest, existing.manifestPath); }
     catch (error) { return archiveFailure(deps, runId, directory, `published archive completion could not be recorded: ${(error as Error).message}`); }
@@ -376,23 +437,27 @@ export async function writeRunAssets(deps: ExperienceDeps, runId: string): Promi
 
   let words: RunWords | undefined;
   try { words = runPackWords(deps.packsDir, run); } catch { /* Archive the raw-name fallback. */ }
-  const saved = experienceOf(deps.ledger, runId) === undefined ? undefined : await readExperience(deps, runId);
+  const savedFiles = experienceOf(deps.ledger, runId) === undefined ? undefined : await readExperienceWithBytes(deps, runId);
+  const saved = savedFiles?.result;
   if (saved !== undefined && saved.kind !== 'read') {
     const why = saved.kind === 'changed' ? `${saved.path} changed from ${saved.recorded} to ${saved.found}`
       : saved.kind === 'unreadable' ? `${saved.path}: ${saved.why}` : saved.why ?? 'saved Experience is unavailable';
     return archiveFailure(deps, runId, directory, `required saved Experience cannot be archived: ${why}`);
   }
-  const report = saved?.kind === 'read' ? undefined : experienceReport(runView(deps.ledger, run, words), new Date().toISOString());
+  // A Pack-local fallback can be recomposed after a crash. Its timestamp therefore comes from the
+  // immutable Run row, rather than from whichever retry happened to render it; otherwise an earlier
+  // pending reservation would reject the retry as different content.
+  const report = saved?.kind === 'read' ? undefined : experienceReport(runView(deps.ledger, run, words), run.createdAt);
   const reportFiles = [
-    { path: 'experience.md', source: saved?.kind === 'read' ? `site:${saved.record.markdown.path}` : 'generated:experience-markdown', bytes: Buffer.from(saved?.kind === 'read' ? saved.markdown : report!.markdown, 'utf8') },
-    { path: 'experience.json', source: saved?.kind === 'read' ? `site:${saved.record.json.path}` : 'generated:experience-json', bytes: Buffer.from(`${JSON.stringify(saved?.kind === 'read' ? saved.json : report!.json, null, 2)}\n`, 'utf8') },
+    { path: 'experience.md', source: saved?.kind === 'read' ? `site:${saved.record.markdown.path}` : 'generated:experience-markdown', bytes: saved?.kind === 'read' ? Buffer.from(savedFiles!.markdownBytes!) : Buffer.from(report!.markdown, 'utf8') },
+    { path: 'experience.json', source: saved?.kind === 'read' ? `site:${saved.record.json.path}` : 'generated:experience-json', bytes: saved?.kind === 'read' ? Buffer.from(savedFiles!.jsonBytes!) : Buffer.from(`${JSON.stringify(report!.json, null, 2)}\n`, 'utf8') },
   ] as const;
   const materialFiles: { path: string; source: string; bytes: Buffer; recordId: string; type: 'observation' | 'code' | 'knowledge' }[] = [];
   for (const record of deps.ledger.records({ runId })) {
     if (record.type === 'observation') {
       const observed = await readObservedAsset(deps, run, record);
       if (typeof observed === 'string') return archiveFailure(deps, runId, directory, `required observation ${record.id} cannot be archived: ${observed}`);
-      materialFiles.push({ path: `materials/${record.id}.dat`, source: `observation:${record.path}`, recordId: record.id, type: 'observation', bytes: observed });
+      materialFiles.push({ path: `materials/observation-${String(record.seq)}.dat`, source: `observation:${record.path}`, recordId: record.id, type: 'observation', bytes: observed });
       continue;
     }
     if (record.type !== 'code' && record.type !== 'knowledge') continue;
@@ -402,7 +467,7 @@ export async function writeRunAssets(deps: ExperienceDeps, runId: string): Promi
         ? `${held.path} changed from ${held.recorded} to ${held.found}` : `${held.path}: ${held.why}`;
       return archiveFailure(deps, runId, directory, `required ${record.type} material ${record.id} cannot be archived: ${why}`);
     }
-    materialFiles.push({ path: `materials/${record.id}.txt`, source: `${record.type}:${record.path}`, recordId: record.id, type: record.type, bytes: Buffer.from(held.text, 'utf8') });
+    materialFiles.push({ path: `materials/${record.type}-${String(record.seq)}.txt`, source: `${record.type}:${record.path}`, recordId: record.id, type: record.type, bytes: Buffer.from(held.text, 'utf8') });
   }
   const files = [...reportFiles, ...materialFiles];
   const manifest: RunAssetManifest = {
@@ -417,23 +482,22 @@ export async function writeRunAssets(deps: ExperienceDeps, runId: string): Promi
   try {
     await reserveArchive(deps, runId, directory, manifest);
     await mkdir(parent, { recursive: true });
-    await mkdir(stage, { recursive: false });
+    await mkdir(stage, { recursive: false, mode: 0o700 });
     for (const file of files) {
-      await mkdir(path.dirname(path.join(stage, file.path)), { recursive: true });
-      await writeLocalFile(path.join(stage, file.path), file.bytes, { flag: 'wx' });
+      await writeArchiveFile(stage, file.path, file.bytes);
     }
     for (const material of manifest.materials) {
-      const bytes = await readLocalFile(path.join(stage, material.path));
+      const bytes = await readArchiveFile(stage, material.path);
       if (hashOf(bytes) !== material.sha256 || bytes.byteLength !== material.bytes) throw new Error(`staged material ${material.path} did not verify`);
     }
-    await writeLocalFile(path.join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+    await writeArchiveFile(stage, 'manifest.json', Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
     // Rename publishes one complete directory. A competing publisher is never overwritten.
     await rename(stage, directory);
     await completeArchive(deps, runId, directory, manifest, path.join(directory, 'manifest.json'));
     return { kind: 'written', manifest, directory, manifestPath: path.join(directory, 'manifest.json') };
   } catch (error) {
     await rm(stage, { recursive: true, force: true });
-    const after = await readRunAssetsAt(directory, runId);
+    const after = await readRunAssetsAt(directory, runId, run, undefined, recordedPackVersion);
     if (after.kind === 'read') {
       try { await completeArchive(deps, runId, directory, after.manifest, after.manifestPath); return { kind: 'already', manifest: after.manifest, directory, manifestPath: after.manifestPath }; }
       catch (completionError) { return archiveFailure(deps, runId, directory, `published archive completion could not be recorded: ${(completionError as Error).message}`); }
@@ -454,7 +518,7 @@ export async function readRunAssets(deps: ExperienceDeps, runId: string): Promis
   if (completion === undefined) return { kind: 'none', why: `run ${runId} has no Ledger-confirmed completed archive` };
   try { await archivePathSafe(folder.dir, runId, true); }
   catch (error) { return { kind: 'unreadable', path: path.join(folder.dir, runAssetsDirectory, runId), why: (error as Error).message }; }
-  return readRunAssetsAt(path.join(folder.dir, runAssetsDirectory, runId), runId, run, completion);
+  return readRunAssetsAt(path.join(folder.dir, runAssetsDirectory, runId), runId, run, completion, runView(deps.ledger, run).run.packVersion ?? 'not recorded');
 }
 
 /** Read a named archived byte without contacting its original Site. */
@@ -472,7 +536,7 @@ export async function readArchivedMaterial(deps: ExperienceDeps, runId: string, 
   } catch (error) { return { kind: 'unreadable', path: at, why: (error as Error).message }; }
 }
 
-async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord, completion?: ArchiveRecord): Promise<ReadRunAssetsResult> {
+async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord, completion?: ArchiveRecord, packVersion?: string): Promise<ReadRunAssetsResult> {
   const manifestPath = path.join(directory, 'manifest.json');
   let manifest: RunAssetManifest;
   try {
@@ -485,13 +549,16 @@ async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord
   if (manifest.runId !== runId || manifest.delivery !== 'complete') {
     return { kind: 'unreadable', path: manifestPath, why: 'manifest is not a complete hima-run-assets/1 delivery for this Run' };
   }
-  if (run !== undefined && (manifest.campaignId !== run.campaignId || manifest.siteId !== run.siteId || manifest.pack.id !== run.packId || manifest.methodDigest !== run.packDigest)) return { kind: 'unreadable', path: manifestPath, why: 'manifest identity does not match the ended Run' };
+  if (run !== undefined && (manifest.campaignId !== run.campaignId || manifest.siteId !== run.siteId || manifest.pack.id !== run.packId || manifest.pack.version !== packVersion || manifest.methodDigest !== run.packDigest)) return { kind: 'unreadable', path: manifestPath, why: 'manifest identity does not match the ended Run and recorded method' };
   if (completion !== undefined) {
+    if (completion.directory !== directory) return { kind: 'unreadable', path: manifestPath, why: 'the Ledger-recorded completion names a different archive directory' };
     const raw = await readArchiveFile(directory, 'manifest.json');
     if (completion.manifestSha256 !== hashOf(raw) || JSON.stringify(completion.materials) !== JSON.stringify(manifest.materials)) return { kind: 'unreadable', path: manifestPath, why: 'manifest is not the Ledger-recorded completed delivery' };
   }
   for (const material of manifest.materials) {
-    if (!material.required) continue;
+    // Optional means that absence can be represented with a reason. It does not mean a manifest may
+    // list an allegedly delivered file and then evade integrity verification by setting a flag.
+    if (material.missingReason !== undefined) continue;
     const at = path.resolve(directory, material.path);
     if (!at.startsWith(`${path.resolve(directory)}${path.sep}`)) return { kind: 'unreadable', path: manifestPath, why: `material path escapes archive: ${material.path}` };
     let bytes: Buffer;
@@ -521,7 +588,7 @@ async function archivePathSafe(packDir: string, runId: string, requireRun: boole
 }
 
 async function readArchiveFile(directory: string, relative: string): Promise<Buffer> {
-  const at = path.join(directory, relative);
+  const at = await archiveFilePath(directory, relative, false);
   const state = await lstat(at);
   if (!state.isFile() || state.isSymbolicLink()) throw new Error(`archive material is not a plain file: ${at}`);
   const handle = await open(at, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -530,6 +597,34 @@ async function readArchiveFile(directory: string, relative: string): Promise<Buf
     if (!held.isFile() || held.dev !== state.dev || held.ino !== state.ino) throw new Error(`archive material changed while opening: ${at}`);
     return await handle.readFile();
   } finally { await handle.close(); }
+}
+
+/** Resolve one archive file only through plain directory ancestors. The final open still carries
+ * O_NOFOLLOW, so both a linked parent and a linked leaf are refused. */
+async function archiveFilePath(directory: string, relative: string, createParents: boolean): Promise<string> {
+  const root = path.resolve(directory);
+  const at = path.resolve(root, relative);
+  if (!at.startsWith(`${root}${path.sep}`)) throw new Error(`archive material path escapes ${root}: ${relative}`);
+  const parent = path.dirname(at);
+  if (createParents) await mkdir(parent, { recursive: true, mode: 0o700 });
+  const below = path.relative(root, parent);
+  const ancestors = [root];
+  if (below !== '') {
+    let current = root;
+    for (const part of below.split(path.sep)) { current = path.join(current, part); ancestors.push(current); }
+  }
+  for (const ancestor of ancestors) {
+    const state = await lstat(ancestor);
+    if (state.isSymbolicLink() || !state.isDirectory()) throw new Error(`archive material ancestor is not a plain directory: ${ancestor}`);
+  }
+  return at;
+}
+
+async function writeArchiveFile(directory: string, relative: string, bytes: Uint8Array): Promise<void> {
+  const at = await archiveFilePath(directory, relative, true);
+  const handle = await open(at, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try { await handle.writeFile(bytes); }
+  finally { await handle.close(); }
 }
 
 async function completeArchive(deps: ExperienceDeps, runId: string, directory: string, manifest: RunAssetManifest, manifestPath: string): Promise<void> {
@@ -568,6 +663,8 @@ async function readObservedAsset(deps: ExperienceDeps, run: RunRecord, record: O
   if (!decision.ok) return decision.reason;
   const answer = await channel.exec(['cat', '--', decision.absPath]);
   if (answer.code !== 0) return answer.stderr.trim() || `cat exited ${String(answer.code)} on site ${site.name}`;
-  if (hashOf(answer.stdout) !== record.contentSha256) return `${record.path} changed from ${record.contentSha256} to ${hashOf(answer.stdout)}`;
+  const found = hashOf(answer.stdout);
+  if (found !== record.contentSha256) return `${record.path} changed from ${record.contentSha256} to ${found}`;
+  if (answer.stdout.byteLength !== record.bytes) return `${record.path} recorded size ${String(record.bytes)} differs from found ${String(answer.stdout.byteLength)}`;
   return Buffer.from(answer.stdout);
 }
