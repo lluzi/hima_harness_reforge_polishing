@@ -1,0 +1,57 @@
+$ PATH=/Users/lluzi/.local/node24/bin:$PATH pnpm --config.verifyDepsBeforeRun=false run check:node
+$ node scripts/require-node.mjs
+exit 0
+
+$ PATH=/Users/lluzi/.local/node24/bin:$PATH pnpm --config.verifyDepsBeforeRun=false run check:seams
+$ node scripts/check-seams.mjs
+seams: every dsh-facing source file declares its seam
+exit 0
+
+$ PATH=/Users/lluzi/.local/node24/bin:$PATH pnpm --config.verifyDepsBeforeRun=false run check:boundary
+$ node scripts/check-boundary.mjs
+boundary: nothing under packages/*/src, packages/harness/rules, packages/harness/choosers, packages/harness/skills names a design, a technology, a vendor tool, a mining route or a report of one, beyond 4 exemption(s) each naming its ticket
+exit 0
+
+$ PATH=/Users/lluzi/.local/node24/bin:$PATH pnpm --config.verifyDepsBeforeRun=false run build
+$ pnpm -r run build
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json && node scripts/build-client.mjs
+client: lib/client.js (161502 bytes)
+$ tsc -p tsconfig.json
+exit 0
+
+$ PATH=/Users/lluzi/.local/node24/bin:$PATH pnpm --config.verifyDepsBeforeRun=false run typecheck
+$ pnpm -r run typecheck && tsc -p test/tsconfig.json
+Scope: 2 of 3 workspace projects
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json
+$ tsc -p tsconfig.json --noEmit
+exit 0
+
+$ PATH=/Users/lluzi/.local/node24/bin:$PATH pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/experience-report.test.ts test/contract/agent-workshop.host.test.ts test/contract/knowledge-reuse.host.test.ts
+$ node scripts/run-contract-tests.mjs local --files test/contract/experience-report.test.ts test/contract/agent-workshop.host.test.ts test/contract/knowledge-reuse.host.test.ts
+local: 3 selected; 60 unselected in local; other groups not run (not passes)
+TAP version 13
+ok 1 - the actual conversational owner reads inputs and knowledge, writes a version and launches it without a hidden model session
+ok 2 - a begun Workshop draft retains its original author's code across handoff and launches unchanged
+ok 3 - a begun Workshop draft retains its original author's code across handoff and refuses a changed helper even when the new owner rewrites only entry
+ok 4 - model interpretation cannot turn missing citations or contradictory numbers into report facts
+ok 5 - a goal claim requires completed cited evidence; requested period is not a measured Fmax
+ok 6 - a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+ok 7 - cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+ok 8 - missing, unresolved, stale and undetermined citations cannot establish a definite result
+ok 9 - budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+ok 10 - no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+ok 11 - fork branches retain separate observations and partial branches do not inherit a completed peer
+ok 12 - recommend returns and records the matching negative archive before code, while mismatches and corrupt sources never auto-inject
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19363.734333
+Test boot attempts: {"host-process":0,"host-in-process":4,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 19.442 s; pass/fail/skip counts are in the TAP summary above

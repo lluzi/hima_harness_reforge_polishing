@@ -44,12 +44,22 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const description = await act('recommend', { executionId });
     assert.equal(description.kind, 'accepted');
     assert.match(JSON.stringify(description.data), /result\.txt/);
+    assert.deepEqual((description.data as { history?: { candidates?: unknown[] } }).history?.candidates, [], 'absence of verified relevant history leaves the normal method briefing intact');
+    const capturedInput = host.ctx.hima.ledger.records({ runId, type: 'knowledge' }).find((record) =>
+      record.type === 'knowledge' && record.origin === 'input' && record.exposedBytes === 0);
+    assert.ok(capturedInput?.type === 'knowledge', 'recommend captures only the declared Workshop input bytes for later identity comparison');
+    assert.equal(capturedInput.file, 'numbers');
+    assert.ok(capturedInput.retainedPath, 'the input identity remains readable after its workspace path changes');
     assert.equal(workshopView()?.executionId, executionId);
     assert.equal(workshopView()?.state, 'writing');
     assert.equal(workshopView()?.sessionId, undefined, 'the view does not invent a model-moment session before code exists');
     const input = await act('read', { executionId, output: 'numbers' });
     assert.equal(input.kind, 'accepted');
     assert.match(JSON.stringify(input.data), /3\\n7\\n11/);
+    const deliveredInput = host.ctx.hima.ledger.records({ runId, type: 'knowledge' }).findLast((record) =>
+      record.type === 'knowledge' && record.origin === 'input' && record.exposedBytes !== undefined && record.exposedBytes > 0);
+    assert.ok(deliveredInput?.type === 'knowledge', 'the bytes actually returned to the Agent are distinct from Host-only capture');
+    assert.equal(deliveredInput.sha256, capturedInput.sha256);
     const currentControl = host.ctx.hima.ledger.run(runId)!.control!;
     const nativeRead = await host.ctx.tools.execute({ name: 'hima_execute', agent: owner,
       callId: 'native-compact-read' as never, signal: AbortSignal.timeout(10_000),
@@ -69,7 +79,7 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const knowledge = await act('knowledge', { executionId, file: 'sum.md' });
     assert.equal(knowledge.kind, 'accepted');
     assert.match(JSON.stringify(knowledge.data), /sum/i);
-    const knowledgeRecord = host.ctx.hima.ledger.records({ runId, type: 'knowledge' }).find((record) => record.type === 'knowledge');
+    const knowledgeRecord = host.ctx.hima.ledger.records({ runId, type: 'knowledge' }).find((record) => record.type === 'knowledge' && record.origin === 'legacyPack');
     assert.ok(knowledgeRecord?.type === 'knowledge', 'only the successful tool read is durable knowledge-use evidence');
     if (knowledgeRecord?.type !== 'knowledge') throw new Error('knowledge record missing');
     assert.equal(knowledgeRecord.nodeId, 'analyze');
@@ -160,7 +170,7 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
       assert.equal(report.json.schema, 'hima-experience/4');
       if (report.json.schema === 'hima-experience/4') {
         assert.equal(report.json.code.length, 2);
-        assert.equal(report.json.knowledge.length, 1);
+        assert.ok(report.json.knowledge.length >= 3, 'the report retains Host input capture, actual input delivery and Pack knowledge delivery separately');
       }
     }
   } finally {

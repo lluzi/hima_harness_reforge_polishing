@@ -560,12 +560,16 @@ function codeSection(code: readonly CodeView[]): string[] {
   ), ''];
 }
 
-/** Only successful reads appear: a declared knowledge file is not presented as an Agent citation. */
+/** Provenance records distinguish Host-only input capture (zero exposed bytes) from material that
+ * was actually returned to the Agent. A declaration with neither remains absent. */
 function knowledgeSection(knowledge: readonly KnowledgeView[]): string[] {
   if (knowledge.length === 0) return [];
-  return ['## Knowledge actually read', '', ...table(
-    ['node', 'generation', 'attempt', 'file', 'purpose', 'source', 'sha256'],
-    knowledge.map((item) => [item.nodeId, item.generation === undefined ? NOT_HELD : String(item.generation), String(item.attempt), item.file, item.purpose, item.sessionId, item.sha256]),
+  return ['## Knowledge and input provenance', '', ...table(
+    ['node', 'generation', 'attempt', 'origin', 'file', 'purpose', 'source session', 'returned bytes', 'sha256', 'source run', 'source conclusion', 'source material sha256'],
+    knowledge.map((item) => [item.nodeId, item.generation === undefined ? NOT_HELD : String(item.generation), String(item.attempt),
+      item.origin ?? 'legacy Pack read', item.file, item.purpose, item.sessionId,
+      item.exposedBytes === undefined ? String(item.bytes) : String(item.exposedBytes), item.sha256,
+      item.sourceRun ?? NOT_HELD, item.sourceConclusion ?? NOT_HELD, item.sourceMaterialSha256 ?? NOT_HELD]),
   ), ''];
 }
 
