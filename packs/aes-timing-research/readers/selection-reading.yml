@@ -1,0 +1,6 @@
+id: selection-reading
+version: '1'
+file: tools/read-selection.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}']
+reportKind: aes-selection/1
+emits: [selection_score, selected_count, conflict_count]

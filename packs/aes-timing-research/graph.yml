@@ -1,0 +1,36 @@
+id: aes-timing-research
+version: '1'
+entry: prepare
+nodes:
+  - id: prepare
+    kind: act
+    parameters: { tool: prepare }
+  - id: analyze
+    kind: act
+    parameters:
+      workshop: analyze
+      arguments: { REVISION: { from: strategy, name: algorithmRevision } }
+  - id: read-selection
+    kind: act
+    parameters: { observes: selection }
+  - id: judge
+    kind: judge
+    parameters:
+      rules: [selection-no-physical-cell-conflict, selection-score-at-least-goal]
+      bind: { minimum_score: { from: goal, name: minimum_score } }
+  - id: refine
+    kind: explore
+    parameters:
+      chooser: selection-repair
+      bind: { repairRevision: 1 }
+      converge: { read: selection_score, band: 0, generations: 1, generationLimit: 2 }
+  - id: blocked
+    kind: wait
+    parameters: { blocker: hard-blocker }
+edges:
+  - { from: prepare, to: analyze }
+  - { from: analyze, to: read-selection }
+  - { from: read-selection, to: judge }
+  - { from: judge, to: refine, outcome: PASS }
+  - { from: judge, to: refine, outcome: FAIL }
+  - { from: refine, to: analyze, revisit: true }

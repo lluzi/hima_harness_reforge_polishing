@@ -1,0 +1,6 @@
+id: selection-no-physical-cell-conflict
+version: '1'
+title: Selected candidates do not reuse a physical cell
+requires: [{ type: conflict_count }]
+subject: { type: conflict_count }
+predicate: { op: eq, threshold: 0, unit: count }

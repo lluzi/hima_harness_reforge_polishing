@@ -1,0 +1,55 @@
+id: aes-timing-research
+version: '1'
+title: AES finite timing motif research
+inputs:
+  - { name: flowRoot, description: Site-staged finite AES probe handoff and reference baseline }
+  - { name: workspaceRoot, description: Campaign workspace root }
+outputs:
+  - name: sample
+    path: sample.json
+    description: Site-staged finite source-linked candidate sample.
+  - name: baselineCode
+    path: baseline.py
+    description: Site-staged raw-frequency reference code, available to revision 0 unchanged.
+  - name: selection
+    path: selection.json
+    reader: selection-reading
+    description: Candidate identifiers selected from the finite, source-linked handoff sample.
+environment:
+  wrappers: [/usr/bin/python3]
+workspace:
+  copy: [sample.json, baseline.py, prepare.py]
+tools:
+  - id: prepare
+    file: tools/prepare.py
+    description: Copy the Site-staged sample and raw-frequency reference code into the Campaign workspace.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/prepare.py', '${WORKSPACE}']
+workshops:
+  - id: analyze
+    purpose: >-
+      Read the declared sample and method knowledge. At algorithmRevision 0, copy and execute the
+      supplied raw-frequency baseline unchanged to establish its measured reference. If the reader
+      and Judge show an actual conflict constraint failure, at revision 1 write a corrected,
+      data-dependent selection algorithm from the sample and feedback. Do not lower the Goal,
+      invent a result, write a verdict, or use an undeclared input. Write selection.json with only
+      sampleSha256 and selected candidate ids.
+    directory: research/selection
+    entry: entry.py
+    language: python
+    inputs: [REVISION]
+    reads: [sample, baselineCode]
+    knowledge: [selection-method.md]
+    produces: selection
+    argv: [/usr/bin/python3, '${ENTRY}', '${WORKSPACE}', '${REVISION}']
+rules: [selection-no-physical-cell-conflict, selection-score-at-least-goal]
+knowledge:
+  - file: selection-method.md
+    purpose: Objective, provenance, baseline reference stage, and limits of the finite analysis.
+goal:
+  minimum_score: { type: number, unit: count, min: 1, max: 10000, default: 1 }
+strategy:
+  algorithmRevision: { type: number, unit: count, min: 0, max: 1, default: 0, precision: 0 }
+words:
+  minimum_score: { label: minimum selection score, unit: count }
+  algorithmRevision: { label: algorithm revision, unit: count }

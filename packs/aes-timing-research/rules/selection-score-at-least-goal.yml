@@ -1,0 +1,7 @@
+id: selection-score-at-least-goal
+version: '1'
+title: Selection reaches the declared finite-sample score goal
+parameter: { name: minimum_score, unit: count }
+requires: [{ type: selection_score }]
+subject: { type: selection_score }
+predicate: { op: gte, threshold: { parameter: minimum_score }, unit: count }
