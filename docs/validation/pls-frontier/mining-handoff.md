@@ -155,3 +155,12 @@ reported IMPCCOPT-2440, requiring `clock_opt_design` for the PODv2 database prod
 124.993-second failed attempt is retained (`pnr-foundry-1789294145060443000`); this is an
 unsupported-command compatibility failure, not an accepted routed result. The common template
 needs the current tool's supported clock optimization command before another attempt.
+
+With `clock_opt_design`, Innovus completed actual routing, GDS export and activity SDC output
+with zero error lines in 386.460 seconds, but the adapter rejected the stage because
+`postroute.enc.dat` is a directory, not the single-file fixture used previously. Its rejected
+record is preserved (`pnr-foundry-1789294495638669000`). Format calibration also established
+that `post.summary.gz` is compressed and has no embedded view line; the companion
+`post_all.tarpt.gz` records the actual analysis view. The retained unadmitted outputs are under
+`pls25-physical-site/unadmitted-pnr-output/`. They are calibration evidence, not an accepted
+physical comparison. The actual active SDC parses to 0.5 ns. No result has been resealed.

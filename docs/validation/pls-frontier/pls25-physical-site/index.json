@@ -236,6 +236,24 @@
       "bytes": 62
     },
     {
+      "file": "pnr-foundry-1789294495638669000.receipt.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294495638669000.receipt.json",
+      "sha256": "4e3f1ec6b6845321f27c79ba10795daa20200e8240802e764e04f7c8b1cc6661",
+      "bytes": 948
+    },
+    {
+      "file": "pnr-foundry-1789294495638669000.record.json.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294495638669000.record.json",
+      "sha256": "42f4751ec433c6844f058565e4c6a93aa77d5d4071b46ac7584408760e7bbba5",
+      "bytes": 11941
+    },
+    {
+      "file": "pnr-foundry-1789294495638669000.log.gz",
+      "source": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294495638669000.log",
+      "sha256": "e65c293f48cc26309063fb27ca638306006a51e10bdf6b6fd1105759d1e5246c",
+      "bytes": 222
+    },
+    {
       "file": "tool-logs/characterize-1789287257902765000/charmodel.log.gz",
       "source": "/data/eda/project/hima_harness/polishing-runs/dtco-selected-1789286963812287000/flow/artifacts/characterize/run-bfe84c7387cd441caea9fd6f00b1ecdd/charmodel.log",
       "sha256": "a6be5b64359b83cc59d490ac89480335df0d49cdbf52b83d9b468fb914b319e7",
@@ -330,6 +348,18 @@
       "source": "/data/eda/project/hima_harness/polishing-runs/dtco-sdc-1789294144262648000/flow/artifacts/pnr-foundry/run-3ce81e70e80b4acabd9c18e515580da7/pnr-foundry.log",
       "sha256": "6a1ab58e124d2ad1f35d9e6154a9e410741e0cbd0e2c4940078abc6a08785d3f",
       "bytes": 107718
+    },
+    {
+      "file": "tool-logs/pnr-foundry-1789294495638669000/init-foundry.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-podv2-1789294486195343000/flow/artifacts/pnr-foundry/run-05876f6706b944dca41eb96c02819cde/init-foundry.log",
+      "sha256": "bcd5f65320d01215b2ab26d9991a345b22f86e094c7717b0c68f365a07ec218c",
+      "bytes": 24627
+    },
+    {
+      "file": "tool-logs/pnr-foundry-1789294495638669000/pnr-foundry.log.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-podv2-1789294486195343000/flow/artifacts/pnr-foundry/run-05876f6706b944dca41eb96c02819cde/pnr-foundry.log",
+      "sha256": "45040afbde7301630b934b7d9b0d447042bf49c18c060e9e4c5cecae67693afa",
+      "bytes": 598558
     }
   ],
   "stageInvocations": [
@@ -660,6 +690,25 @@
         "tool_failure_reason": "Innovus returned zero but emitted an error line"
       },
       "record": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294145060443000.record.json"
+    },
+    {
+      "stage": "pnr-foundry",
+      "argv": [
+        "/usr/bin/python3",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-podv2-1789294486195343000/flow/stages.py",
+        "pnr-foundry",
+        "/data/eda/project/hima_harness/polishing-runs/dtco-podv2-1789294486195343000"
+      ],
+      "exitCode": 2,
+      "elapsedSeconds": 386.46,
+      "log": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294495638669000.log",
+      "logSha256": "e65c293f48cc26309063fb27ca638306006a51e10bdf6b6fd1105759d1e5246c",
+      "stagingSha256": "546bbefc2d4a909648d74319da06d4d864590dbcfd49780e0c832e9a8adba124",
+      "status": "rejected",
+      "facts": {
+        "rejected_reason": "postroute_db is missing or is a symlink: /data/eda/project/hima_harness/polishing-runs/dtco-podv2-1789294486195343000/flow/artifacts/pnr-foundry/run-05876f6706b944dca41eb96c02819cde/DBS_foundry/postroute.enc.dat"
+      },
+      "record": ".hima-tmp/pls-frontier/dtco-site-runs/pnr-foundry-1789294495638669000.record.json"
     }
   ]
 }

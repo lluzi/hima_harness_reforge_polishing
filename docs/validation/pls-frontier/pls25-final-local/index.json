@@ -138,5 +138,20 @@
     "file": "final-theme-build.log.gz",
     "uncompressedSha256": "cf2360932c71a3cd5e3dc8830d6f4b4e3fc33152dc9d8fbdf8ec211b2b8add1e",
     "uncompressedBytes": 93
+  },
+  {
+    "file": "pls25-podv2/source-inventory.log.gz",
+    "uncompressedSha256": "fbe9e4a5a8e3b016657068eddaf72c6feb2b4aaceb52e995406b2d403968e2af",
+    "uncompressedBytes": 51
+  },
+  {
+    "file": "pls25-podv2/typecheck.log.gz",
+    "uncompressedSha256": "84a11cb5d035bbb81e6ef3bf736cc142fc93b090e954273ff501dc756cfb440f",
+    "uncompressedBytes": 30
+  },
+  {
+    "file": "pls25-podv2/focused-domain.tap.gz",
+    "uncompressedSha256": "5eeb2e0d8082ae720be7ad19a1ad82cd0c77fdecf01dde50e8c76cb0e65a0d61",
+    "uncompressedBytes": 2403
   }
 ]

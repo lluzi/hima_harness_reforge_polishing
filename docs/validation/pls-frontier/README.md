@@ -1,5 +1,10 @@
 # PLS-23 → 08 → 09 → 25, with PLS-24
 
+Current status: PLS-23, PLS-08, PLS-09 and PLS-24 are closed. PLS-25 implementation,
+actual six-route selection and local full-graph tests are present; bounded physical tool bring-up
+and v3 release remain in progress. See [mining-handoff.md](mining-handoff.md) for current evidence.
+The dated/checkpoint paragraphs below preserve the earlier sequence; they are not current blockers.
+
 Implementation in progress from `main@f8a2a3d`. Issues remain open until their actual gates pass.
 Two reference checkouts remain read-only. Initial account weekly usage: 61%; account usage is shared.
 

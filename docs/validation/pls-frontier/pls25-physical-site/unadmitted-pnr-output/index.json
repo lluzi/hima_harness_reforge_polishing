@@ -1,0 +1,23 @@
+{
+  "scope": "raw outputs of a rejected stage, retained for format calibration only; no accepted PnR/paired result",
+  "files": [
+    {
+      "file": "post.summary.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-podv2-1789294486195343000/flow/artifacts/pnr-foundry/run-05876f6706b944dca41eb96c02819cde/rpt_foundry/postopt/post.summary.gz",
+      "sha256": "a7cf0f48f3f2550aedc900a5f271c3bd3d2e6e80fa659dea2c9dfaaa0960e618",
+      "bytes": 624
+    },
+    {
+      "file": "post_all.tarpt.gz",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-podv2-1789294486195343000/flow/artifacts/pnr-foundry/run-05876f6706b944dca41eb96c02819cde/rpt_foundry/postopt/post_all.tarpt.gz",
+      "sha256": "869e1f4e0dc204259ce4c41854609aa3fb47f0c3b1c9139287f98865c8b139fc",
+      "bytes": 70251
+    },
+    {
+      "file": "postroute-active.sdc",
+      "source": "/data/eda/project/hima_harness/polishing-runs/dtco-podv2-1789294486195343000/flow/artifacts/pnr-foundry/run-05876f6706b944dca41eb96c02819cde/rpt_foundry/postroute-active.sdc",
+      "sha256": "7e60c81b1ce658fd42f3745d5d45e9ea9e2fe62b82351f4f0d03e91c5116d0ba",
+      "bytes": 35199
+    }
+  ]
+}
