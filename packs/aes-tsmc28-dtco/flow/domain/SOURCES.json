@@ -139,7 +139,7 @@
       "path": "shared_synth.tcl",
       "source": "flow/scripts/dc_syn_tsmc28.tcl",
       "sourceSha256": "8280d0dfd7a22464860005cf74a87841800e8e59b357813a602ed7972cbf5ae3",
-      "packSha256": "31440ad3212039a0e58649c553e29bd36530dbfa1ebfc5439ed5536b34b65963",
+      "packSha256": "a4686fbbb2532104bcd2b3be4ca0a37b6af8d19ea750b55088d2809ee3a1d765",
       "adapted": true
     },
     {
@@ -153,7 +153,7 @@
       "path": "init.tcl.tmpl",
       "source": "flow/scripts/init_tsmc28.tcl.tmpl",
       "sourceSha256": "22a491f134ef8f06e1c8a4a49514b38587db1f7e5791ae387f6954148ebf9da7",
-      "packSha256": "a6505206e73113eb9762ba6da7319031b51e462f1d2a8ea82081986f6aadff92",
+      "packSha256": "192f2b20bccd5267597d5e46973d06abfa64cd2cacd9b07d68da1641ba9378bc",
       "adapted": true
     },
     {
@@ -177,6 +177,7 @@
     "shared_synth.tcl accepts an explicit SDC and emits raw library visibility markers for both arms.",
     "init.tcl.tmpl uses documented setNanoRouteMode -routeTopRoutingLayer.",
     "charlib_emit.py writes per-cell prediction outputs and logs inside the Campaign attempt; no fixed /tmp path.",
-    "pnr.tcl.tmpl exports the active post-route SDC for clock evidence; Innovus 23.14 support remains an L4 Site bring-up item."
+    "pnr.tcl.tmpl exports the active post-route SDC for clock evidence; Innovus 23.14 support remains an L4 Site bring-up item.",
+    "Shared DC and Innovus liveness queries use qualified library/cell patterns and collection cardinality rather than Tcl list length."
   ]
 }

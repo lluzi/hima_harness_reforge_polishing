@@ -77,11 +77,16 @@ elif tool == 'dc_shell':
     (run / 'results' / (arm + '.dc.sdc')).write_text('create_clock -name clk -period 0.5 [get_ports clk]\n')
     (run / 'reports' / ('refs_' + arm + '.rpt')).write_text('%s 1\n' % master)
     (run / 'reports' / ('timing_' + arm + '.rpt')).write_text('slack (MET) 0.010\n')
-    print('Version: SYNTHETIC-DC')
+    fixture_flow = script.parents[3]
+    dc_version = 'SYNTHETIC-DC-B' if arm == 'custom' and (fixture_flow / 'synthetic-dc-version-mismatch').exists() else 'SYNTHETIC-DC-A'
+    print('Version %s for synthetic64 SYNTHETIC-FIXTURE' % dc_version)
     print('=== AES_DTCO LIBRARY_VISIBLE_COUNT %d ===' % (1 if arm == 'custom' else 0))
     print('=== AES_DTCO SYNTHESIS_COMPLETE %s ===' % arm)
 elif tool == 'innovus':
     arm = 'generated' if 'generated' in script.name else 'foundry'
+    fixture_flow = script.parents[3]
+    innovus_version = 'vSYNTHETIC-B' if arm == 'generated' and (fixture_flow / 'synthetic-innovus-version-mismatch').exists() else 'vSYNTHETIC-A'
+    print('Version:\t%s, built SYNTHETIC-FIXTURE' % innovus_version)
     if script.name.startswith('init_'):
         target = pathlib.Path(re.search(r'saveDesign\s+([^\s]+)', text).group(1) + '.dat')
         target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(b'SYNTHETIC INIT DB\n')
@@ -97,7 +102,6 @@ elif tool == 'innovus':
         wns = '0.020' if arm == 'generated' else '0.010'
         summary.write_text('SYNTHETIC FIXTURE -- timeDesign Summary\nSetup views included:\n view_%s\n| Setup mode | all | reg2reg | default |\n| WNS (ns): | %s | %s | 0.000 |\n| TNS (ns): | 0.000 | 0.000 | 0.000 |\n| Violating Paths: | 0 | 0 | 0 |\n| All Paths: | 1 | 1 | 0 |\n' % (arm, wns, wns))
         actual_sdc = pathlib.Path(re.search(r'^write_sdc\s+(\S+)', text, re.M).group(1))
-        fixture_flow = script.parents[3]
         if not (fixture_flow / 'synthetic-missing-actual-clock').exists():
             period = '0.4' if (fixture_flow / 'synthetic-changed-actual-clock').exists() else '0.5'
             actual_sdc.parent.mkdir(parents=True, exist_ok=True)

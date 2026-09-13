@@ -38,8 +38,8 @@ setNanoRouteMode -routeTopRoutingLayer @@MAX_ROUTE_LAYER@@
 # zero delay and zero power, so every number this arm produces is worthless. The count is printed
 # in a machine-readable marker; build_geometry_record.py reads it back and the gate refuses to
 # proceed on an unobserved count. It is NOT defaulted to zero anywhere.
-set _xs_libcells [get_lib_cells @@GENERATED_LIB_CELL_PATTERN@@ -quiet]
-set _xs_n [llength $_xs_libcells]
+set _xs_libcells [get_lib_cells -quiet */@@GENERATED_LIB_CELL_PATTERN@@]
+set _xs_n [sizeof_collection $_xs_libcells]
 puts "=== XS28 GENERATED_LIB_CELLS_AFTER_RESTORE $_xs_n ==="
 
 saveDesign @@INIT_DB@@

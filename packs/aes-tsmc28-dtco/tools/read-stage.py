@@ -149,14 +149,104 @@ def mmmc_identity(path):
             "qrc": qrc[0][0], "temperature": qrc[0][1]}
 
 
-def normalized_arm_script(text):
+def dc_version(text):
+    hits = re.findall(r"^Version\s+(\S+)\s+for\s+(\S+)(?:\s+.*)?$", text, re.M)
+    if len(hits) != 1:
+        raise ValueError("DC log has no unambiguous supported Version header")
+    return {"version": hits[0][0], "platform": hits[0][1]}
+
+
+def innovus_version(text):
+    hits = re.findall(r"^Version:\s*(v[^,\s]+),\s+built\s+(.+?)\s*$", text, re.M)
+    if len(hits) != 1:
+        raise ValueError("Innovus log has no unambiguous supported version header")
+    return {"version": hits[0][0], "build": hits[0][1]}
+
+
+def held_identities(refs, exact=(), prefixes=()):
+    selected = [ref for ref in refs if ref.get("role") in exact
+                or any(str(ref.get("role", "")).startswith(prefix) for prefix in prefixes)]
+    roles = [ref.get("role") for ref in selected]
+    if len(roles) != len(set(roles)) or set(exact) - set(roles):
+        raise ValueError("common-condition file identity is incomplete or ambiguous")
+    return [{key: ref[key] for key in ("role", "sha256", "bytes", "sourceType")}
+            for ref in sorted(selected, key=lambda row: row["role"])]
+
+
+def referenced_paths(refs, workspace, roles):
+    paths = []
+    for ref in refs:
+        if ref.get("role") not in roles:
+            continue
+        path = Path(ref["path"])
+        paths.append(str((workspace / path).resolve() if not path.is_absolute() else path.resolve()))
+    return paths
+
+
+def normalized_synth_entry(text):
+    lines = []
+    for line in text.splitlines():
+        if "::env(XS28_CUSTOM_DB)" in line or "::env(XS28_ARM)" in line:
+            continue
+        line = re.sub(r"/[^\s\"]+/flow/artifacts/(?:foundry|custom)-synth/run-[0-9a-f]+", "@RUN@", line)
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def normalized_arm_script(text, excluded_paths=()):
     text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    for path in sorted(excluded_paths, key=len, reverse=True):
+        text = text.replace(" " + path, "")
     text = re.sub(r"\s+/[^\s{}\]]+/generated\.(?:lib|lef)", "", text)
     text = re.sub(r"/[^\s{}\]]+/flow/artifacts/pnr-(?:foundry|generated)/run-[0-9a-f]+", "@RUN@", text)
     text = re.sub(r"/[^\s{}\]]+/(?:base|custom)\.dc\.(?:v|sdc)", "@SYNTH@", text)
     text = re.sub(r"(?:foundry|generated)", "@ARM@", text)
     text = re.sub(r"DBS_@ARM@", "@DB@", text)
     return text
+
+
+def derived_synth_condition(record, workspace, arm):
+    entry = one(record, workspace, "synthesis_entry")
+    log = logs(record, workspace, arm + "-dc_log")
+    return {
+        "schema": "aes-dtco-common-condition/1", "kind": "synthesis",
+        "commonInputs": held_identities(record.get("inputs", []),
+            exact=("FOUNDRY_DB", "shared_synth_template", "shared_synth_constraints", "EDA_WRAPPER"),
+            prefixes=("rtl:",)),
+        "entryContractSha256": hashlib.sha256(normalized_synth_entry(entry.read_text()).encode()).hexdigest(),
+        "tool": dc_version(log.read_text(errors="replace")),
+        "armSpecificExclusions": ["XS28_ARM", "XS28_CUSTOM_DB", "generated_db"],
+    }
+
+
+def derived_pnr_condition(record, workspace, arm):
+    scripts = {kind: one(record, workspace, "%s_script:%s" % (kind, arm))
+               for kind in ("mmmc", "init", "pnr")}
+    init_tool = innovus_version(logs(record, workspace, "init-" + arm + "_log").read_text(errors="replace"))
+    route_tool = innovus_version(logs(record, workspace, "pnr-" + arm + "_log").read_text(errors="replace"))
+    if init_tool != route_tool:
+        raise ValueError("Innovus init and route tool versions differ")
+    excluded = referenced_paths(record.get("inputs", []), workspace,
+                                {"generated_liberty", "generated_lef"})
+    return {
+        "schema": "aes-dtco-common-condition/1", "kind": "place-and-route",
+        "commonInputs": held_identities(record.get("inputs", []), exact=(
+            "TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH",
+            "FOUNDRY_GDS", "XS28_GDS_MAP", "EDA_WRAPPER",
+            "pnr_method_template:init.tcl.tmpl", "pnr_method_template:mmmc.tcl.tmpl",
+            "pnr_method_template:pnr.tcl.tmpl")),
+        "scriptContractSha256": hashlib.sha256("\n".join(
+            normalized_arm_script(scripts[kind].read_text(), excluded) for kind in ("mmmc", "init", "pnr")
+        ).encode()).hexdigest(),
+        "tool": init_tool,
+        "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
+    }
+
+
+def checked_condition(record, workspace, derived):
+    if load(one(record, workspace, "common_condition_identity")) != derived:
+        raise ValueError("published common-condition identity disagrees with held evidence")
+    return derived
 
 
 def values_for(record, workspace, stage):
@@ -211,6 +301,7 @@ def values_for(record, workspace, stage):
     elif stage in ("foundry-synth", "custom-synth"):
         arm = "base" if stage == "foundry-synth" else "custom"
         log = logs(record, workspace, arm + "-dc_log").read_text(errors="replace")
+        checked_condition(record, workspace, derived_synth_condition(record, workspace, arm))
         hits = re.findall(r"=== AES_DTCO LIBRARY_VISIBLE_COUNT (\d+) ===", log)
         if len(hits) != 1 or "=== AES_DTCO SYNTHESIS_COMPLETE %s ===" % arm not in log:
             raise ValueError("synthesis session evidence is incomplete")
@@ -228,6 +319,7 @@ def values_for(record, workspace, stage):
     elif stage in ("pnr-foundry", "pnr-generated"):
         arm = stage.split("-", 1)[1]
         log = logs(record, workspace, "pnr-" + arm + "_log").read_text(errors="replace")
+        checked_condition(record, workspace, derived_pnr_condition(record, workspace, arm))
         one(record, workspace, "postroute_db")
         one(record, workspace, "postroute_gds")
         actual_clock = sdc_period(one(record, workspace, "postroute_sdc"))
@@ -288,19 +380,18 @@ def values_for(record, workspace, stage):
         generated_route = one(record, workspace, "generated_pnr_route_script", "inputs").read_text(errors="replace")
         foundry_synth = load(one(record, workspace, "source_stage_record:foundry-synth", "inputs"))
         custom_synth = load(one(record, workspace, "source_stage_record:custom-synth", "inputs"))
-        fshared = [(ref["role"], ref["sha256"]) for ref in foundry_synth.get("inputs", [])
-                   if str(ref.get("role", "")).startswith("shared_synth")]
-        cshared = [(ref["role"], ref["sha256"]) for ref in custom_synth.get("inputs", [])
-                   if str(ref.get("role", "")).startswith("shared_synth")]
-        frtl = [(ref["role"], ref["sha256"]) for ref in foundry_synth.get("inputs", [])
-                if str(ref.get("role", "")).startswith("rtl:")]
-        crtl = [(ref["role"], ref["sha256"]) for ref in custom_synth.get("inputs", [])
-                if str(ref.get("role", "")).startswith("rtl:")]
-        synth_match = (len(fshared) == len(cshared) == 2 and fshared == cshared and frtl == crtl
-                       and foundry_synth["executions"][0]["argv"][:2]
-                       == custom_synth["executions"][0]["argv"][:2])
-        pnr_match = (normalized_arm_script(foundry_init) == normalized_arm_script(generated_init)
-                     and normalized_arm_script(foundry_route) == normalized_arm_script(generated_route)
+        foundry_synth_condition = checked_condition(
+            foundry_synth, workspace, derived_synth_condition(foundry_synth, workspace, "base"))
+        custom_synth_condition = checked_condition(
+            custom_synth, workspace, derived_synth_condition(custom_synth, workspace, "custom"))
+        foundry_pnr = load(one(record, workspace, "source_stage_record:pnr-foundry", "inputs"))
+        generated_pnr = load(one(record, workspace, "source_stage_record:pnr-generated", "inputs"))
+        foundry_pnr_condition = checked_condition(
+            foundry_pnr, workspace, derived_pnr_condition(foundry_pnr, workspace, "foundry"))
+        generated_pnr_condition = checked_condition(
+            generated_pnr, workspace, derived_pnr_condition(generated_pnr, workspace, "generated"))
+        synth_match = foundry_synth_condition == custom_synth_condition
+        pnr_match = (foundry_pnr_condition == generated_pnr_condition
                      and fm["qrc"] == gm["qrc"] and fm["temperature"] == gm["temperature"])
         matched_derived = synth_match and pnr_match
         netlist = one(record, workspace, "custom_netlist", "inputs").read_text(errors="replace")
