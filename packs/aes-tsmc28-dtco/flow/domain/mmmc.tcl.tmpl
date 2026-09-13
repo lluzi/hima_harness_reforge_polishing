@@ -1,0 +1,28 @@
+# MMMC template for one arm of the TSMC28 generated-standard-cell flow.
+#
+# PROVENANCE. Derived from the golden control asset aes_tsmc28/scripts/mmmc_tsmc28.tcl. The
+# structure is the golden structure. Every site path is now a placeholder that
+# flow/bin/build_arm_scripts.py fills from the run input binding, so this template carries no
+# foundry path.
+#
+# THE LOAD-BEARING LINE IS create_library_set. The generated Liberty must join the LIBRARY SET,
+# not only the LEF list in init. Joining the LEF alone places the generated cells and gives them
+# NO timing and NO power: every generated output pin then reports arrival 0.000, so the whole
+# analysis view is silently worthless. build_arm_scripts.py asserts the substitution landed and
+# records generated_liberty_in_library_set; the run is gated on that signal before Innovus is
+# ever launched.
+#
+# Placeholders (all substituted by build_arm_scripts.py, none optional):
+#   @@LIBRARY_SET_TIMING@@   space-separated Liberty list; for the generated arm this is the
+#                            foundry Liberty PLUS the generated Liberty
+#   @@QRC_TECH_FILE@@        extraction tech file
+#   @@RC_TEMPERATURE@@       extraction corner temperature
+#   @@SDC_FILE@@             this arm's constraint file, written by its own synthesis run
+#   @@ARM@@                  foundry | generated
+
+create_library_set -name libs_@@ARM@@ -timing [list @@LIBRARY_SET_TIMING@@]
+create_rc_corner -name rc_@@ARM@@ -qx_tech_file @@QRC_TECH_FILE@@ -temperature @@RC_TEMPERATURE@@
+create_delay_corner -name delay_@@ARM@@ -library_set libs_@@ARM@@ -rc_corner rc_@@ARM@@
+create_constraint_mode -name func_@@ARM@@ -sdc_files [list @@SDC_FILE@@]
+create_analysis_view -name view_@@ARM@@ -constraint_mode func_@@ARM@@ -delay_corner delay_@@ARM@@
+set_analysis_view -setup {view_@@ARM@@} -hold {view_@@ARM@@}
