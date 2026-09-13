@@ -46,7 +46,7 @@ import gzip, pathlib, re, sys
 def value(flag):
     return sys.argv[sys.argv.index(flag) + 1]
 
-def save_checkpoint(base, label):
+def save_checkpoint(base, label, links):
     base.parent.mkdir(parents=True, exist_ok=True)
     base.write_text('SYNTHETIC FIXTURE RESTORE %s\n' % label)
     data = pathlib.Path(str(base) + '.dat')
@@ -55,6 +55,22 @@ def save_checkpoint(base, label):
     (data / 'design.bin').write_bytes(('SYNTHETIC %s DATA\n' % label).encode())
     (data / 'mmmc' / 'view.tcl').write_text('SYNTHETIC %s VIEW\n' % label)
     (data / 'empty.state').write_bytes(b'')
+    for relative, target in links:
+        link = data / relative
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(target)
+
+def init_checkpoint_links(text, arm):
+    lefs = re.search(r'^set init_lef_file\s+\[list\s+([^\]]+)\]', text, re.M).group(1).split()
+    mmmc_path = pathlib.Path(re.search(r'^set init_mmmc_file\s+\[list\s+([^\]]+)\]', text, re.M).group(1))
+    mmmc = mmmc_path.read_text()
+    libs = re.search(r'create_library_set\s+-name\s+\S+\s+-timing\s+\[list\s+([^\]]+)\]', mmmc).group(1).split()
+    sdc = re.search(r'create_constraint_mode\s+-name\s+\S+\s+-sdc_files\s+\[list\s+([^\]]+)\]', mmmc).group(1)
+    qrc = re.search(r'create_rc_corner\s+-name\s+\S+\s+-qx_tech_file\s+(\S+)', mmmc).group(1)
+    rows = [('libs/lef/' + pathlib.Path(value).name, value) for value in lefs]
+    rows += [('libs/mmmc/' + pathlib.Path(value).name, value) for value in libs + [sdc]]
+    rows += [('libs/mmmc/rc_' + arm + '/' + pathlib.Path(qrc).name, qrc)]
+    return rows
 
 mode = sys.argv[1]
 args = sys.argv[2:]
@@ -100,15 +116,18 @@ elif tool == 'innovus':
     print('Version:\t%s, built SYNTHETIC-FIXTURE' % innovus_version)
     if script.name.startswith('init_'):
         target = pathlib.Path(re.search(r'saveDesign\s+([^\s]+)', text).group(1))
-        save_checkpoint(target, arm + '-init')
+        save_checkpoint(target, arm + '-init', init_checkpoint_links(text, arm))
         print('=== XS28 GENERATED_LIB_CELLS_AFTER_RESTORE %d ===' % (1 if arm == 'generated' else 0))
     elif script.name.startswith('pnr_'):
         target = pathlib.Path(re.search(r'saveDesign\s+([^\s]+)', text).group(1))
+        restored = pathlib.Path(re.search(r'^restoreDesign\s+(\S+)', text, re.M).group(1))
+        links = [(str(link.relative_to(restored)), link.readlink())
+                 for link in restored.rglob('*') if link.is_symlink()]
         gds = pathlib.Path(re.search(r'^streamOut\s+([^\s]+)', text, re.M).group(1))
         report_dir, prefix = re.search(r'^timeDesign -postRoute -outDir\s+(\S+)/postopt -prefix\s+(\S+)', text, re.M).groups()
         summary = pathlib.Path(report_dir) / 'postopt' / (prefix + '.summary.gz')
         paths = pathlib.Path(report_dir) / 'postopt' / (prefix + '_all.tarpt.gz')
-        save_checkpoint(target, arm + '-postroute')
+        save_checkpoint(target, arm + '-postroute', links)
         gds.parent.mkdir(parents=True, exist_ok=True); gds.write_bytes(b'SYNTHETIC GDS\n')
         summary.parent.mkdir(parents=True, exist_ok=True)
         wns = '0.020' if arm == 'generated' else '0.010'

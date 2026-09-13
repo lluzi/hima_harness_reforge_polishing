@@ -128,18 +128,36 @@ def checkpoint_path(workspace, value, what):
     return resolved
 
 
-def checkpoint_snapshot(base_path, workspace):
+def checkpoint_snapshot(base_path, workspace, allowed_links):
     script = checkpoint_path(workspace, base_path, "checkpoint script")
     root = checkpoint_path(workspace, str(base_path) + ".dat", "checkpoint directory")
     if not script.is_file() or script.stat().st_size == 0:
         raise Rejected("checkpoint restore script is absent or empty: %s" % script)
     if not root.is_dir():
         raise Rejected("checkpoint data directory is absent: %s" % root)
-    directories, files = [], []
+    directories, files, links = [], [], []
     for entry in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
         relative = entry.relative_to(root).as_posix()
         if entry.is_symlink():
-            raise Rejected("checkpoint tree contains a symlink: %s" % relative)
+            expected = allowed_links.get(relative)
+            if expected is None:
+                raise Rejected("checkpoint tree contains an undeclared symlink: %s" % relative)
+            link_text = os.readlink(entry)
+            raw_target = Path(link_text) if Path(link_text).is_absolute() else entry.parent / link_text
+            if raw_target.is_symlink():
+                raise Rejected("checkpoint link points through another symlink: %s" % relative)
+            target = raw_target.resolve(strict=True)
+            if target.is_dir() or not target.is_file():
+                raise Rejected("checkpoint link target is not one regular file: %s" % relative)
+            if target != expected["resolvedPath"]:
+                raise Rejected("checkpoint link was retargeted: %s" % relative)
+            raw = target.read_bytes()
+            if sha_bytes(raw) != expected["sha256"] or len(raw) != expected["bytes"]:
+                raise Rejected("checkpoint link target identity changed: %s" % relative)
+            links.append({"path": relative, "linkText": link_text,
+                          "target": {key: expected[key] for key in
+                                     ("role", "path", "sha256", "bytes", "sourceType")}})
+            continue
         if entry.is_dir():
             directories.append(relative)
         elif entry.is_file():
@@ -149,35 +167,38 @@ def checkpoint_snapshot(base_path, workspace):
             raise Rejected("checkpoint tree contains an unsupported member: %s" % relative)
     if not files:
         raise Rejected("checkpoint data directory contains no files")
+    if {row["path"] for row in links} != set(allowed_links):
+        raise Rejected("checkpoint tree is missing one or more declared vendor links")
     script_raw = script.read_bytes()
     body = {
         "script": {"path": str(script.relative_to(workspace)),
                    "sha256": sha_bytes(script_raw), "bytes": len(script_raw)},
         "restorePath": str(root.relative_to(workspace)),
-        "directories": directories, "files": files,
+        "directories": directories, "files": files, "links": links,
     }
     tree_hash = sha_bytes(json.dumps(body, sort_keys=True, separators=(",", ":")).encode())
     return {"schema": "aes-dtco-innovus-checkpoint/1", **body, "treeSha256": tree_hash}
 
 
-def publish_checkpoint(ctx, base_path, role):
-    snapshot = checkpoint_snapshot(base_path, ctx.workspace)
+def publish_checkpoint(ctx, base_path, role, allowed_links):
+    snapshot = checkpoint_snapshot(base_path, ctx.workspace, allowed_links)
     target = ctx.run_dir / (role + ".json")
     atomic_json(target, snapshot)
     ctx.add_artifact(target, role, "innovus-checkpoint-manifest")
     return checkpoint_path(ctx.workspace, snapshot["restorePath"], "checkpoint restore path")
 
 
-def validate_checkpoint(manifest_path, workspace):
+def validate_checkpoint(manifest_path, workspace, allowed_links):
     document = read_json(manifest_path)
-    if set(document) != {"schema", "script", "restorePath", "directories", "files", "treeSha256"}:
+    if set(document) != {"schema", "script", "restorePath", "directories", "files", "links", "treeSha256"}:
         raise Rejected("checkpoint manifest has unexpected fields")
     if document.get("schema") != "aes-dtco-innovus-checkpoint/1":
         raise Rejected("checkpoint manifest schema is unsupported")
     script = document.get("script")
     if not isinstance(script, dict) or set(script) != {"path", "sha256", "bytes"}:
         raise Rejected("checkpoint manifest has no exact restore-script identity")
-    rebuilt = checkpoint_snapshot(checkpoint_path(workspace, script["path"], "checkpoint script"), workspace)
+    rebuilt = checkpoint_snapshot(checkpoint_path(workspace, script["path"], "checkpoint script"),
+                                  workspace, allowed_links)
     if rebuilt != document:
         raise Rejected("checkpoint manifest differs from the complete current tree")
     return checkpoint_path(workspace, document["restorePath"], "checkpoint restore path")
@@ -902,6 +923,49 @@ def fill_template(path, mapping):
     return text
 
 
+def checkpoint_allowed_links(inputs, workspace, init_script, mmmc_script, arm):
+    target_roles = {"TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH",
+                    "generated_liberty", "generated_lef", "pnr_input_sdc"}
+    held = {}
+    for ref in inputs:
+        if ref.get("role") not in target_roles:
+            continue
+        raw = Path(ref["path"])
+        resolved = (workspace / raw).resolve() if not raw.is_absolute() else raw.resolve()
+        if resolved in held:
+            raise Rejected("checkpoint link targets repeat a held path: %s" % resolved)
+        held[resolved] = {**ref, "resolvedPath": resolved}
+    init_text = Path(init_script).read_text(errors="replace")
+    lef_rows = re.findall(r"^set init_lef_file\s+\[list\s+([^\]]+)\]\s*$", init_text, re.M)
+    if len(lef_rows) != 1:
+        raise Rejected("init script has no unambiguous LEF contract")
+    mmmc = parse_mmmc(mmmc_script)
+    categories = [
+        (lef_rows[0].split(), "libs/lef"),
+        (list(mmmc["libraries"]) + [mmmc["sdc"]], "libs/mmmc"),
+        ([mmmc["qrc"]], "libs/mmmc/rc_" + arm),
+    ]
+    allowed = {}
+    for paths, folder in categories:
+        for value in paths:
+            target = Path(value).resolve()
+            expected = held.get(target)
+            if expected is None:
+                raise Rejected("checkpoint script target is not a hash-held arm input: %s" % target)
+            relative = folder + "/" + target.name
+            if relative in allowed:
+                raise Rejected("checkpoint link path collision: %s" % relative)
+            allowed[relative] = expected
+    return allowed
+
+
+def pnr_record_allowed_links(record, workspace, arm):
+    return checkpoint_allowed_links(
+        record.get("inputs", []), workspace,
+        artifact(record, workspace, "init_script:" + arm),
+        artifact(record, workspace, "mmmc_script:" + arm), arm)
+
+
 def merged_lef(ctx, layout):
     lefs = [checked_ref(ref, ctx.workspace) for ref in layout.get("artifacts", [])
             if str(ref.get("role", "")).startswith("abstract_lef:")]
@@ -984,7 +1048,8 @@ def build_arm_files(ctx):
         texts[arm] = {"init": init, "pnr": pnr}
         outputs[arm] = {"mmmc": mmmc_path, "init": init_path, "pnr": pnr_path,
                         "init_checkpoint_base": init_db, "final_checkpoint_base": final_db,
-                        "gds": gds, "postroute_sdc": postroute_sdc}
+                        "gds": gds, "postroute_sdc": postroute_sdc,
+                        "input_sdc": sdc, "input_netlist": netlist}
     matched = all(normalized_arm_script(texts["foundry"][kind]) == normalized_arm_script(texts["generated"][kind])
                   for kind in ("init", "pnr"))
     if not matched:
@@ -1002,6 +1067,12 @@ def stage_pnr(ctx, arm):
     outputs, generated_lef, generated_lib = build_arm_files(ctx)
     chosen = outputs[arm]
     ctx.inputs.extend([
+        file_ref(chosen["input_sdc"], ctx.workspace, "pnr_input_sdc", "design-compiler-output"),
+        file_ref(chosen["input_netlist"], ctx.workspace, "pnr_input_netlist", "design-compiler-output"),
+        file_ref(generated_lib, ctx.workspace, "generated_liberty", "learned-model-prediction"),
+        file_ref(generated_lef, ctx.workspace, "generated_lef", "generated-abstract-collection"),
+    ])
+    ctx.inputs.extend([
         file_ref(DOMAIN / name, ctx.workspace, "pnr_method_template:" + name, "pack-method")
         for name in ("init.tcl.tmpl", "mmmc.tcl.tmpl", "pnr.tcl.tmpl")
     ])
@@ -1010,9 +1081,14 @@ def stage_pnr(ctx, arm):
         for kind in ("mmmc", "init", "pnr"):
             ctx.add_artifact(outputs[other][kind], "%s_script:%s" % (kind, other), "generated-tool-input")
     wrapper = str(ctx.file_binding("EDA_WRAPPER", "tool-wrapper"))
+    allowed_links = checkpoint_allowed_links(ctx.inputs, ctx.workspace,
+                                             chosen["init"], chosen["mmmc"], arm)
     init_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["init"])], cwd=ctx.run_dir,
                        timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="init-" + arm)
-    init_restore = publish_checkpoint(ctx, chosen["init_checkpoint_base"], "init_checkpoint")
+    if tool_error_lines(init_log.read_text(errors="replace")):
+        raise ToolFailure("Innovus init returned zero but emitted an error line")
+    init_restore = publish_checkpoint(ctx, chosen["init_checkpoint_base"],
+                                      "init_checkpoint", allowed_links)
     if str(init_restore) not in chosen["pnr"].read_text(errors="replace"):
         raise Rejected("PnR script does not restore the validated init checkpoint directory")
     pnr_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["pnr"])], cwd=ctx.run_dir,
@@ -1031,7 +1107,8 @@ def stage_pnr(ctx, arm):
         raise Rejected("generated library visibility was not proved after Innovus restore")
     if ("=== XS28 PNR DONE %s (GDS written) ===" % arm) not in pnr_text:
         raise ToolFailure("Innovus P&R log lacks the completion marker for " + arm)
-    publish_checkpoint(ctx, chosen["final_checkpoint_base"], "postroute_checkpoint")
+    publish_checkpoint(ctx, chosen["final_checkpoint_base"],
+                       "postroute_checkpoint", allowed_links)
     timing_summary = ctx.run_dir / ("rpt_" + arm) / "postopt" / "post.summary.gz"
     timing_paths = ctx.run_dir / ("rpt_" + arm) / "postopt" / "post_all.tarpt.gz"
     timing = parse_timing_summary(timing_summary, timing_paths)
@@ -1042,8 +1119,6 @@ def stage_pnr(ctx, arm):
                      (timing_paths, "postroute_timing_paths"),
                      (chosen["postroute_sdc"], "postroute_sdc")):
         ctx.add_artifact(at, role, "innovus-output")
-    ctx.inputs.extend([file_ref(generated_lib, ctx.workspace, "generated_liberty", "learned-model-prediction"),
-                       file_ref(generated_lef, ctx.workspace, "generated_lef", "generated-abstract-collection")])
     publish_condition_identity(ctx, {
         "schema": "aes-dtco-common-condition/1", "kind": "place-and-route",
         "commonInputs": held_identities(ctx.inputs, exact=(
@@ -1089,7 +1164,9 @@ def stage_verify(ctx):
     wrapper = str(ctx.binding("EDA_WRAPPER"))
     for arm, stage in (("foundry", "pnr-foundry"), ("generated", "pnr-generated")):
         pnr_record = prior(ctx, stage)
-        db = validate_checkpoint(artifact(pnr_record, ctx.workspace, "postroute_checkpoint"), ctx.workspace)
+        links = pnr_record_allowed_links(pnr_record, ctx.workspace, arm)
+        db = validate_checkpoint(artifact(pnr_record, ctx.workspace, "postroute_checkpoint"),
+                                 ctx.workspace, links)
         report = ctx.run_dir / (arm + "_verify_drc.rpt")
         script = ctx.run_dir / (arm + "_verify.tcl")
         script.write_text(
@@ -1292,8 +1369,11 @@ def stage_compare(ctx):
 
         pnr_rows = {}
         for arm, record in (("foundry", foundry_pnr), ("generated", generated_pnr)):
-            validate_checkpoint(artifact(record, ctx.workspace, "init_checkpoint"), ctx.workspace)
-            validate_checkpoint(artifact(record, ctx.workspace, "postroute_checkpoint"), ctx.workspace)
+            links = pnr_record_allowed_links(record, ctx.workspace, arm)
+            validate_checkpoint(artifact(record, ctx.workspace, "init_checkpoint"),
+                                ctx.workspace, links)
+            validate_checkpoint(artifact(record, ctx.workspace, "postroute_checkpoint"),
+                                ctx.workspace, links)
             summary = artifact(record, ctx.workspace, "postroute_timing_summary")
             timing_paths = artifact(record, ctx.workspace, "postroute_timing_paths")
             mmmc = artifact(record, ctx.workspace, "mmmc_script:" + arm)
