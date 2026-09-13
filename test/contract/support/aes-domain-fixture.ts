@@ -113,16 +113,22 @@ elif tool == 'innovus':
     arm = 'generated' if 'generated' in script.name else 'foundry'
     fixture_flow = script.parents[3]
     innovus_version = 'vSYNTHETIC-B' if arm == 'generated' and (fixture_flow / 'synthetic-innovus-version-mismatch').exists() else 'vSYNTHETIC-A'
-    print('Version:\t%s, built SYNTHETIC-FIXTURE' % innovus_version)
+    if not (script.name.startswith('init_') and (fixture_flow / 'synthetic-init-missing-version').exists()):
+        print('Version:\t%s, built SYNTHETIC-FIXTURE' % innovus_version)
     if script.name.startswith('init_'):
         target = pathlib.Path(re.search(r'saveDesign\s+([^\s]+)', text).group(1))
         save_checkpoint(target, arm + '-init', init_checkpoint_links(text, arm))
-        print('=== XS28 GENERATED_LIB_CELLS_AFTER_RESTORE %d ===' % (1 if arm == 'generated' else 0))
+        if not (arm == 'generated' and (fixture_flow / 'synthetic-init-missing-visibility').exists()):
+            print('=== XS28 GENERATED_LIB_CELLS_AFTER_RESTORE %d ===' % (1 if arm == 'generated' else 0))
     elif script.name.startswith('pnr_'):
         target = pathlib.Path(re.search(r'saveDesign\s+([^\s]+)', text).group(1))
         restored = pathlib.Path(re.search(r'^restoreDesign\s+(\S+)', text, re.M).group(1))
         links = [(str(link.relative_to(restored)), link.readlink())
                  for link in restored.rglob('*') if link.is_symlink()]
+        links = [row for row in links if not str(row[1]).endswith('.dc.sdc')]
+        rc_model = script.parent / 'rc_model.bin'
+        rc_model.write_bytes(b'SYNTHETIC POSTROUTE RC MODEL\n')
+        links.append(('libs/misc/rc_model.bin', rc_model))
         gds = pathlib.Path(re.search(r'^streamOut\s+([^\s]+)', text, re.M).group(1))
         report_dir, prefix = re.search(r'^timeDesign -postRoute -outDir\s+(\S+)/postopt -prefix\s+(\S+)', text, re.M).groups()
         summary = pathlib.Path(report_dir) / 'postopt' / (prefix + '.summary.gz')

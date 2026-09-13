@@ -154,6 +154,17 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   assert.match(await readFile(path.join(fixture.workspace, verifyScript.path), 'utf8'),
     new RegExp(`^restoreDesign \\{${checkpointRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`, 'm'));
 
+  for (const control of ['synthetic-init-missing-version', 'synthetic-init-missing-visibility']) {
+    await writeFile(path.join(flow, control), 'synthetic init counterexample\n');
+    const refused = fixture.run('pnr-generated');
+    assert.equal(refused.status, 2, `${control}: ${refused.stderr}`);
+    const refusedRecord = JSON.parse(await readFile(path.join(flow, 'records/pnr-generated.json'), 'utf8'));
+    assert.equal(refusedRecord.executions.length, 1,
+      `${control}: init evidence must reject before the expensive route invocation`);
+    await rm(path.join(flow, control));
+  }
+  assert.equal(fixture.run('pnr-generated').status, 0, 'restore valid init identity before later cases');
+
   for (const control of ['synthetic-missing-timing-companion', 'synthetic-mismatched-timing-view',
     'synthetic-corrupt-timing-gzip']) {
     await writeFile(path.join(flow, control), 'synthetic timing counterexample\n');
