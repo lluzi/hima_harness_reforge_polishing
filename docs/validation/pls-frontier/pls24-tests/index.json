@@ -1,0 +1,366 @@
+{
+  "source": "retained Codex CommandExecution captured output; selected test invocations, not a rerun",
+  "deliveredRevision": "0fa00604d1be83469e959860efed8217782470b8",
+  "commands": [
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T01:51:40.732Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/agent-workshop.host.test.ts test/contract/experience-files.test.ts test/contract/experience-report.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 24,
+        "nanos": 156541208
+      },
+      "output": "command-01.txt.gz",
+      "capturedOutputSha256": "01de8d27891ebf6cdc1a2b164307bd3df3f5c54cb2a222a6945abe765d6323b2"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T01:52:10.976Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/agent-workshop.host.test.ts test/contract/experience-report.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 12,
+        "nanos": 820814583
+      },
+      "output": "command-02.txt.gz",
+      "capturedOutputSha256": "1dcb408343106064669ce2f410c4184f376464161e468120cd1ef162452c7e41"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T01:52:48.499Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/agent-workshop.host.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 17,
+        "nanos": 588856125
+      },
+      "output": "command-03.txt.gz",
+      "capturedOutputSha256": "885660193c6f394101faedd1c854c0a732007a178fd9852814f84d1de79f37da"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T01:54:03.560Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/agent-workshop.host.test.ts test/contract/experience-files.test.ts test/contract/experience-report.test.ts test/contract/ledger-import.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 42,
+        "nanos": 182379334
+      },
+      "output": "command-04.txt.gz",
+      "capturedOutputSha256": "f714b844e30ac76d5d3e5237feb953f799624f67325942f72bca1fe45694e304"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T01:54:35.199Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/ledger-import.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 5,
+        "nanos": 953495875
+      },
+      "output": "command-05.txt.gz",
+      "capturedOutputSha256": "b9fff9ddea5b30476263f7cf6cf78524f82d7ce0abf59f7582cf3302f690ae8b"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T01:55:49.305Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/agent-workshop.host.test.ts test/contract/experience-files.test.ts test/contract/experience-report.test.ts test/contract/ledger-import.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 39,
+        "nanos": 593639125
+      },
+      "output": "command-06.txt.gz",
+      "capturedOutputSha256": "e40d50191fbb25164b8f910cdad90e8895cfa0a473934e0c231f73dd1199d835"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T01:57:41.253Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 93,
+        "nanos": 152475166
+      },
+      "output": "command-07.txt.gz",
+      "capturedOutputSha256": "55d7e99b1bc666adcc9d1bffa943c2b806a40080b71cc1eddf57edcbaa2c1803"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:00:20.783Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 93,
+        "nanos": 311135458
+      },
+      "output": "command-08.txt.gz",
+      "capturedOutputSha256": "f2bbc2edc9171a1bb608a4ad7a64e7742d3235a1898896bec44b714e2e517dce"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:01:07.507Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/agent-workshop.host.test.ts test/contract/experience-files.test.ts test/contract/experience-report.test.ts test/contract/ledger-import.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 39,
+        "nanos": 496709625
+      },
+      "output": "command-09.txt.gz",
+      "capturedOutputSha256": "fd6cba7527249c462327fd07dd12fd152f415fedddacd3e53c6588c1f5bc9117"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:04:25.878Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 93,
+        "nanos": 761921834
+      },
+      "output": "command-10.txt.gz",
+      "capturedOutputSha256": "cae8870c561b314f5ec60451de4bac1e370429f197f352efaf7aadfa4fea60af"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:06:06.355Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 96,
+        "nanos": 375978208
+      },
+      "output": "command-11.txt.gz",
+      "capturedOutputSha256": "567b1765fdbc4b4aade4d1743554c66fb754bb39d95e50da3fa7309f002daaa8"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:10:28.240Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/agent-workshop.host.test.ts test/contract/experience-files.test.ts test/contract/experience-report.test.ts test/contract/ledger-import.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 44,
+        "nanos": 141097084
+      },
+      "output": "command-12.txt.gz",
+      "capturedOutputSha256": "72e1c43f76167c74a427c79076df71408519d51ac122f75fab05287830fb4e63"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:11:41.686Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 67,
+        "nanos": 726199709
+      },
+      "output": "command-13.txt.gz",
+      "capturedOutputSha256": "f4cb1cd175f5fa2d39ef2551e8323a9f991ae3dbc19eaf9770fe2a30ac7627c4"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:13:19.016Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 77,
+        "nanos": 524844375
+      },
+      "output": "command-14.txt.gz",
+      "capturedOutputSha256": "44f4d4c741330084d33dcc612b1060b6701972e7d1a040627e7a554104a0fe18"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:14:48.548Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 76,
+        "nanos": 105300125
+      },
+      "output": "command-15.txt.gz",
+      "capturedOutputSha256": "512ae602b159e56b6a947afe9ae5370d582ee5b838347f9e152f6b66cd8b07c5"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:24:37.494Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/ledger-import.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 10,
+        "nanos": 893458208
+      },
+      "output": "command-16.txt.gz",
+      "capturedOutputSha256": "e833e09313dcb331b6c8a460b3bb1155bdb4250951cb40a4c375e0202bb98619"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:25:09.974Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/agent-execution.desktop.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 18,
+        "nanos": 829868750
+      },
+      "output": "command-17.txt.gz",
+      "capturedOutputSha256": "b0c867670f1e5a5e37f5b0d091fefdb678b89a095d94fbabd23ea926e751bbe3"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:26:03.241Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:local --files test/contract/ledger-import.test.ts test/contract/agent-workshop.host.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 18,
+        "nanos": 111246333
+      },
+      "output": "command-18.txt.gz",
+      "capturedOutputSha256": "fb8fc5886fb1175ace393f3d9c31c427c031acde6ed560dcbadcf43ec97a254a"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:30:00.667Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 88,
+        "nanos": 860809209
+      },
+      "output": "command-19.txt.gz",
+      "capturedOutputSha256": "b333ddd1c2db4ec515fcab4c15113cc772345bcec796cd662a7be505a1d26ac2"
+    },
+    {
+      "agent": "/root/pls24_workspace",
+      "at": "2026-09-13T02:32:13.467Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm --config.verifyDepsBeforeRun=false run build && pnpm --config.verifyDepsBeforeRun=false run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 87,
+        "nanos": 115345584
+      },
+      "output": "command-20.txt.gz",
+      "capturedOutputSha256": "db53458f3e156e3e4c846dbbeca8c0194673ba49c2f6bbf6e92cf5ef1e175617"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:39:12.274Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"\npnpm run build\npnpm run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 85,
+        "nanos": 587849167
+      },
+      "output": "command-21.txt.gz",
+      "capturedOutputSha256": "02c385f63cda40c5dd8960fc7a09fb354eb1953ce144780732bfd2bd37186240"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:41:18.650Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"\npnpm run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 1,
+      "duration": {
+        "secs": 83,
+        "nanos": 308584291
+      },
+      "output": "command-22.txt.gz",
+      "capturedOutputSha256": "6be2ac1451a35ffdcd19475ee809bdd3d778ade0c329a477ae8b068713823359"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:42:30.809Z",
+      "command": "task_tmp=$(mktemp -d /tmp/hima-pls24.XXXXXX)\nexport TMPDIR=\"$task_tmp\"\nexport TMUX_TMPDIR=\"$task_tmp\"\nexport DSH_HOME=\"$task_tmp/dsh\"\nexport DSH_AGENTS_HOME=\"$task_tmp/agents\"\nexport HIMA_USER_DATA=\"$task_tmp/electron\"\nexport DSH_TELEMETRY_DISABLED=1\nexport HIMA_TEST_GROUP=desktop\nexport HIMA_TEST_TMPDIR=\"$task_tmp\"\nexport HIMA_TEST_BOOT_LOG=\"$task_tmp/boots.txt\"\nexport HIMA_TEST_LEGACY_AUTO_DRIVE=1\nexport HIMA_TEST_SILENT_AGENT=1\nexport HIMA_SSH_ATTEMPTS=\"$task_tmp/ssh-attempts.jsonl\"\nexport PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"\nexport NODE_OPTIONS=\"${NODE_OPTIONS:-} --import=$PWD/test/contract/support/no-ssh.mjs\"\nunset TMUX\nnode --test --test-reporter=tap --test-concurrency=1 --test-name-pattern='Pack under authoring' test/contract/unified-workbench.test.ts\nstatus=$?\necho \"debug temp retained: $task_tmp\"\nexit \"$status\"",
+      "exitCode": 1,
+      "duration": {
+        "secs": 31,
+        "nanos": 814038791
+      },
+      "output": "command-23.txt.gz",
+      "capturedOutputSha256": "3f4b306eae9c3246944bc93cd3d95f8e681fcdb8a981b912b11ac06f9c171e2e"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:43:04.230Z",
+      "command": "task_tmp=$(mktemp -d /tmp/hima-pls24.XXXXXX)\nexport TMPDIR=\"$task_tmp\"\nexport TMUX_TMPDIR=\"$task_tmp\"\nexport DSH_HOME=\"$task_tmp/dsh\"\nexport DSH_AGENTS_HOME=\"$task_tmp/agents\"\nexport HIMA_USER_DATA=\"$task_tmp/electron\"\nexport DSH_TELEMETRY_DISABLED=1\nexport HIMA_TEST_GROUP=desktop\nexport HIMA_TEST_TMPDIR=\"$task_tmp\"\nexport HIMA_TEST_BOOT_LOG=\"$task_tmp/boots.txt\"\nexport HIMA_TEST_LEGACY_AUTO_DRIVE=1\nexport HIMA_TEST_SILENT_AGENT=1\nexport HIMA_SSH_ATTEMPTS=\"$task_tmp/ssh-attempts.jsonl\"\nexport PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"\nexport NODE_OPTIONS=\"${NODE_OPTIONS:-} --import=$PWD/test/contract/support/no-ssh.mjs\"\nunset TMUX\nnode --test --test-reporter=tap --test-concurrency=1 --test-name-pattern='Pack under authoring' test/contract/unified-workbench.test.ts\ntask_result=$?\necho \"debug temp retained: $task_tmp\"\nexit \"$task_result\"",
+      "exitCode": 1,
+      "duration": {
+        "secs": 12,
+        "nanos": 285024917
+      },
+      "output": "command-24.txt.gz",
+      "capturedOutputSha256": "5ff2a0318b170a81098ee144b8ae8dfaeb23286b802cc3976c01af26a93d892c"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:43:41.374Z",
+      "command": "task_tmp=$(mktemp -d /tmp/hima-pls24.XXXXXX)\nexport TMPDIR=\"$task_tmp\"\nexport TMUX_TMPDIR=\"$task_tmp\"\nexport DSH_HOME=\"$task_tmp/dsh\"\nexport DSH_AGENTS_HOME=\"$task_tmp/agents\"\nexport HIMA_USER_DATA=\"$task_tmp/electron\"\nexport DSH_TELEMETRY_DISABLED=1\nexport HIMA_TEST_GROUP=desktop\nexport HIMA_TEST_TMPDIR=\"$task_tmp\"\nexport HIMA_TEST_BOOT_LOG=\"$task_tmp/boots.txt\"\nexport HIMA_TEST_LEGACY_AUTO_DRIVE=1\nexport HIMA_TEST_SILENT_AGENT=1\nexport HIMA_SSH_ATTEMPTS=\"$task_tmp/ssh-attempts.jsonl\"\nexport PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"\nexport NODE_OPTIONS=\"${NODE_OPTIONS:-} --import=$PWD/test/contract/support/no-ssh.mjs\"\nunset TMUX\nnode --test --test-reporter=tap --test-concurrency=1 --test-name-pattern='Pack under authoring' test/contract/unified-workbench.test.ts\ntask_result=$?\necho \"debug temp retained: $task_tmp\"\nexit \"$task_result\"",
+      "exitCode": 1,
+      "duration": {
+        "secs": 13,
+        "nanos": 770560041
+      },
+      "output": "command-25.txt.gz",
+      "capturedOutputSha256": "00a38cb76fefa739e9b72f4a9021890c889235fe2255b7f5c8efd98093201f7d"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:44:56.762Z",
+      "command": "task_tmp=$(mktemp -d /tmp/hima-pls24.XXXXXX)\nexport TMPDIR=\"$task_tmp\"\nexport TMUX_TMPDIR=\"$task_tmp\"\nexport DSH_HOME=\"$task_tmp/dsh\"\nexport DSH_AGENTS_HOME=\"$task_tmp/agents\"\nexport HIMA_USER_DATA=\"$task_tmp/electron\"\nexport DSH_TELEMETRY_DISABLED=1\nexport HIMA_TEST_GROUP=desktop\nexport HIMA_TEST_TMPDIR=\"$task_tmp\"\nexport HIMA_TEST_BOOT_LOG=\"$task_tmp/boots.txt\"\nexport HIMA_TEST_LEGACY_AUTO_DRIVE=1\nexport HIMA_TEST_SILENT_AGENT=1\nexport HIMA_SSH_ATTEMPTS=\"$task_tmp/ssh-attempts.jsonl\"\nexport PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"\nexport NODE_OPTIONS=\"${NODE_OPTIONS:-} --import=$PWD/test/contract/support/no-ssh.mjs\"\nunset TMUX\nnode --test --test-reporter=tap --test-concurrency=1 --test-name-pattern='Pack under authoring' test/contract/unified-workbench.test.ts\ntask_result=$?\necho \"debug temp retained: $task_tmp\"\nexit \"$task_result\"",
+      "exitCode": 0,
+      "duration": {
+        "secs": 19,
+        "nanos": 841066750
+      },
+      "output": "command-26.txt.gz",
+      "capturedOutputSha256": "7b053aa4e6bfbb0a43024aa54db7ca726a3fe2431837e8d76496c286903d4890"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:45:58.499Z",
+      "command": "task_tmp=$(mktemp -d /tmp/hima-pls24-red.XXXXXX)\nexport TMPDIR=\"$task_tmp\"\nexport TMUX_TMPDIR=\"$task_tmp\"\nexport DSH_HOME=\"$task_tmp/dsh\"\nexport DSH_AGENTS_HOME=\"$task_tmp/agents\"\nexport HIMA_USER_DATA=\"$task_tmp/electron\"\nexport DSH_TELEMETRY_DISABLED=1\nexport HIMA_TEST_GROUP=desktop\nexport HIMA_TEST_TMPDIR=\"$task_tmp\"\nexport HIMA_TEST_BOOT_LOG=\"$task_tmp/boots.txt\"\nexport HIMA_TEST_LEGACY_AUTO_DRIVE=1\nexport HIMA_TEST_SILENT_AGENT=1\nexport HIMA_SSH_ATTEMPTS=\"$task_tmp/ssh-attempts.jsonl\"\nexport PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"\nexport NODE_OPTIONS=\"${NODE_OPTIONS:-} --import=$PWD/test/contract/support/no-ssh.mjs\"\nunset TMUX\nnode --test --test-reporter=tap --test-concurrency=1 --test-name-pattern='Pack under authoring' test/contract/unified-workbench.test.ts\ntask_result=$?\necho \"red-loop temp retained: $task_tmp\"\nexit \"$task_result\"",
+      "exitCode": 1,
+      "duration": {
+        "secs": 28,
+        "nanos": 605152583
+      },
+      "output": "command-27.txt.gz",
+      "capturedOutputSha256": "7aad75a0f0679f4f78e88657665eba13747027337eb6fb764622830551da0a24"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:47:02.590Z",
+      "command": "task_tmp=$(mktemp -d /tmp/hima-pls24-green.XXXXXX)\nexport TMPDIR=\"$task_tmp\"\nexport TMUX_TMPDIR=\"$task_tmp\"\nexport DSH_HOME=\"$task_tmp/dsh\"\nexport DSH_AGENTS_HOME=\"$task_tmp/agents\"\nexport HIMA_USER_DATA=\"$task_tmp/electron\"\nexport DSH_TELEMETRY_DISABLED=1\nexport HIMA_TEST_GROUP=desktop\nexport HIMA_TEST_TMPDIR=\"$task_tmp\"\nexport HIMA_TEST_BOOT_LOG=\"$task_tmp/boots.txt\"\nexport HIMA_TEST_LEGACY_AUTO_DRIVE=1\nexport HIMA_TEST_SILENT_AGENT=1\nexport HIMA_SSH_ATTEMPTS=\"$task_tmp/ssh-attempts.jsonl\"\nexport PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"\nexport NODE_OPTIONS=\"${NODE_OPTIONS:-} --import=$PWD/test/contract/support/no-ssh.mjs\"\nunset TMUX\nnode --test --test-reporter=tap --test-concurrency=1 --test-name-pattern='Pack under authoring' test/contract/unified-workbench.test.ts\ntask_result=$?\necho \"green-loop temp retained: $task_tmp\"\nexit \"$task_result\"",
+      "exitCode": 0,
+      "duration": {
+        "secs": 14,
+        "nanos": 122870750
+      },
+      "output": "command-28.txt.gz",
+      "capturedOutputSha256": "5d78accb45d86b713af13d360b233401344c288054202d0fc1f7b3cd55f5c9fe"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:47:56.774Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm run test:local --files test/contract/experience-report.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 1,
+        "nanos": 670119500
+      },
+      "output": "command-29.txt.gz",
+      "capturedOutputSha256": "36caabe64edfbc2f82adab2c4e533ebfb1945c8fb122e90121b023ec0350e9fc"
+    },
+    {
+      "agent": "/root/pls24_chat_validation",
+      "at": "2026-09-13T02:49:21.282Z",
+      "command": "export PATH=\"/Users/lluzi/.local/node24/bin:$PATH\"; pnpm run test:desktop --files test/contract/unified-workbench.test.ts",
+      "exitCode": 0,
+      "duration": {
+        "secs": 61,
+        "nanos": 897863250
+      },
+      "output": "command-30.txt.gz",
+      "capturedOutputSha256": "e4d24835d6be2cb97f43cc0c92431c59555ecb038e3606c4968669b0d76acfe0"
+    }
+  ]
+}

@@ -2122,7 +2122,8 @@ export interface LegacyLedgerImportReceipt {
   readonly importedAt: string;
   readonly runs: number;
   readonly records: number;
-  readonly ownership: 'unchanged-unowned';
+  /** Recorded ownership is preserved; import never attaches or starts an executor. */
+  readonly ownership: 'unchanged-unowned' | 'unchanged-owned';
 }
 
 /**
@@ -2168,7 +2169,8 @@ export async function importLegacyLedger(request: { readonly sourceFile: string;
       source: { path: source, version: document.unit.version, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, backup: `ledger-import/source-v${String(document.unit.version)}.json` },
       target: { version: ledgerSpec.version, sha256: createHash('sha256').update(target).digest('hex'), file: 'storages/hima_ledger.json' },
       importedAt: new Date().toISOString(), runs: Object.keys(document.tables.runs).length,
-      records: Object.keys(document.tables.records).length, ownership: 'unchanged-unowned',
+      records: Object.keys(document.tables.records).length,
+      ownership: Object.values(document.tables.runs).some((run) => 'control' in run && run.control !== undefined) ? 'unchanged-owned' : 'unchanged-unowned',
     };
     if (!sameImportFile(parentState, await importPathState(parent))) throw new Error('ledger import destination parent changed');
     stage = await mkdtemp(path.join(parent, '.hima-ledger-import-'));

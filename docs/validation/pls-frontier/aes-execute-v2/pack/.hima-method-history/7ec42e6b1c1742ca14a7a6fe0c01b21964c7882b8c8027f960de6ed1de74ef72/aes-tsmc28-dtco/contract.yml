@@ -1,0 +1,108 @@
+# The run contract of the aes-tsmc28-dtco foundry-only Fmax probe: what a Site must bind before this
+# pack can run, what a generation produces in the Campaign workspace, and what the pack runs on the
+# Site. `/hima pack check <pack> --site <site>` reads this file against a Site's own.
+id: aes-tsmc28-dtco
+version: '2'
+title: AES TSMC28 DTCO foundry-only Fmax probe
+
+# What a Site binds, in its own site file under `bindings:`. The same pack runs on another Site by
+# editing that file, never this one. Site linglong-aes binds all three.
+inputs:
+  - name: flowRoot
+    description: >-
+      The Site's separately staged Golden Flow root: the directory holding probe.py, synth.tcl,
+      read-probe.py and a private inputs.json. Read-only to a Campaign — a generation runs in the
+      Campaign's own copy of it, never here.
+  - name: design
+    description: >-
+      The design the flow builds: aes_cipher_top, spelled as the flow's own inputs.json spells it.
+      probe.py refuses any other value.
+  - name: workspaceRoot
+    description: >-
+      Where Campaign workspaces are created. The Site's Permit must allow writes under it; nothing
+      the pack does writes anywhere else.
+
+# What a generation leaves in its Campaign workspace, relative to the workspace. `probe` is the
+# judged file, read into HimaLedger through this pack's own reader; `timingManifest` is the same
+# current manifest left unparsed for evidence access, so later analysis can reach the reports and
+# the netlist by the hashes it names.
+outputs:
+  - name: probe
+    path: flow/probe.json
+    reader: aes-probe-reading
+    description: >-
+      The manifest the synthesis wrote and the judged output: read as clock_period, setup_wns
+      (setup/all) and cell_area.
+  - name: timingManifest
+    path: flow/probe.json
+    description: >-
+      The same current manifest, unparsed, for evidence access. It names the generation's metrics,
+      timing report, qor report, netlist, constraints, reference and check_timing reports, dc log and
+      entry script with a sha256 for each.
+
+# What the Site must let this pack run: the first word of the tool's command line and of the
+# reader's. The Permit's allowedWrappers decides it.
+environment:
+  wrappers:
+    - /usr/bin/python3
+
+# How a Campaign workspace is prepared from the bound flow root, once per Campaign, into
+# `<workspace>/flow/`. inputs.json is the Site's private binding file: it is copied out of flowRoot
+# and is never authored into this pack.
+workspace:
+  copy:
+    - probe.py
+    - synth.tcl
+    - read-probe.py
+    - inputs.json
+
+# The pack's tool. The file under tools/ is the same command written for a person to read and run by
+# hand; `argv` is what HimaFabric launches on the Site.
+tools:
+  - id: synthesize
+    file: tools/probe.py
+    description: >-
+      One bounded foundry-only synthesis of aes_cipher_top at the strategy's clock period, in a fresh
+      trial directory of the Campaign's own copy of the flow. Publishes flow/probe.json only on
+      success; a failed run publishes no new result and keeps its trial and log.
+    inputs: [WORKSPACE, PERIOD_NS]
+    # One Design Compiler seat, held for as long as a Job of this tool runs.
+    licences:
+      Design-Compiler: 1
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/probe.py
+      - --workspace
+      - ${WORKSPACE}
+      - --period
+      - ${PERIOD_NS}
+
+# Every rule this pack's Judge may apply, by reference: the shipped setup constraint first, then the
+# shipped goal rule whose target the Run binds.
+rules:
+  - setup-wns-all-nonnegative
+  - clock-period-at-most
+
+# The domain knowledge this pack carries, one entry per file under its own knowledge/.
+knowledge:
+  - file: aes-probe-method.md
+    purpose: >-
+      How to read this pack's numbers and what they do not say: the zero-slack and violation reading,
+      the measured period versus an estimated one, matching conditions and the manifest's hashes, the
+      two constraints, and the finite hashed timing and netlist samples for later analysis.
+
+# The one number a Campaign binds when it starts: the clock period the design must close at or
+# below. It is the threshold of the goal rule clock-period-at-most.
+goal:
+  target_period_ns: { type: number, unit: ns, min: 0.1, max: 5, default: 0.5 }
+
+# What a run of this pack is set to for one generation. The clock period handed to the synthesis; it
+# is the only thing that changes between generations.
+strategy:
+  periodNs: { type: number, unit: ns, min: 0.1, max: 5, default: 0.35, precision: 3 }
+
+# What this pack's numbers are called on the faces a person reads: the Goal parameter the graph binds
+# and the one knob a run's strategy is made of.
+words:
+  target_period_ns: { label: clock period at most, unit: ns }
+  periodNs: { label: clock period, unit: ns }

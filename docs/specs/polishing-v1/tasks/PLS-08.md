@@ -32,10 +32,10 @@ Blocked by: [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishi
 
 ## 验收标准
 
-- [ ] PLS-20/22/23 的独立证据完整，代码与源目录无共享可写运行依赖。
-- [ ] 已交付 PLS/UI 行为继续成立；外部真实模型/EDA 的来源证据和本地重新验证区分明确。
-- [ ] 正式 probe 的方法版本、test Run、release 和真实输入输出可复核，后续 AI 研究有可用样本及独立 oracle。
-- [ ] 接口清单说明已完成、未完成、未验证；完整挖掘、附加研究、资产交付和 L5 没有因本任务关闭而被暗示完成。
+- [x] PLS-20/22/23 的独立证据完整，代码与源目录无共享可写运行依赖。
+- [x] 已交付 PLS/UI 行为继续成立；外部真实模型/EDA 的来源证据和本地重新验证区分明确。
+- [x] 正式 probe 的方法版本、test Run、release 和真实输入输出可复核，后续 AI 研究有可用样本及独立 oracle。
+- [x] 接口清单说明已完成、未完成、未验证；完整挖掘、附加研究、资产交付和 L5 没有因本任务关闭而被暗示完成。
 
 ## 分级测试
 
@@ -54,3 +54,7 @@ Blocked by: [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishi
 ## 回滚
 
 发现交接缺口时保留集成基线和事实，重开相应依赖；任何回退先核对新旧 Ledger/Pack/资产兼容，不删除客户材料。
+
+## 实施验收
+
+已完成。实际版本、原始失败、分级验证及边界见 [本轮交付](../../../validation/pls-frontier/probe-handoff.md)。不据此声明 PLS-09、PLS-25 或完整 L5 完成。

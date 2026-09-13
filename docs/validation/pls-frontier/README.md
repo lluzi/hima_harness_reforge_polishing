@@ -44,3 +44,5 @@ that Run's remote manifest. No library files or full customer design inputs are 
 The previous Run and its failed reader are unchanged; the corrected method needs a new test Run.
 
 Current probe test/release, real negative measurements, same-screen inspection and executable finite analysis handoff are documented in [probe-handoff.md](probe-handoff.md). PLS-23/08 remain pending integration review at this checkpoint.
+
+PLS-23 v2、PLS-08 交接及 PLS-24 同屏材料已完成验收，见 [最终交接](probe-handoff.md#final-v2-and-integration-closure)。接下来推进 PLS-09，再完成 PLS-25。

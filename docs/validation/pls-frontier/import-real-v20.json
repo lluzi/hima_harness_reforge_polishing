@@ -1,0 +1,19 @@
+{
+  "format": "hima-ledger-import-v1",
+  "source": {
+    "path": "/private/tmp/hima-l4-rpdxAc/hima-home-JTplQi/storages/hima_ledger.json",
+    "version": 20,
+    "sha256": "fee57bba44c786adad1a4e482f6c6e21a1cc2a4e0aef2d66f834db2788e9be7f",
+    "bytes": 60948,
+    "backup": "ledger-import/source-v20.json"
+  },
+  "target": {
+    "version": 21,
+    "sha256": "4fe71c522d966430d67a132aef67943bbfb34a30fbe0d64aec0ff258cf173cc6",
+    "file": "storages/hima_ledger.json"
+  },
+  "importedAt": "2026-09-13T04:15:44.992Z",
+  "runs": 1,
+  "records": 32,
+  "ownership": "unchanged-unowned"
+}

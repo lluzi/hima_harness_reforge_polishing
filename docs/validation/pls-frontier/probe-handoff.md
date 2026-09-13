@@ -33,7 +33,7 @@ oracle is a verification artifact; keep it outside a research model's input root
 
 The checked input is privately retained at `.hima-tmp/pls-frontier/research-input/sample.json`:
 24 actual reported paths, 64 motifs, at most 2 selected motifs, with no shared physical cell.
-SHA-256: `5503504b644d3bc19f5e9aeb87fb5813a00c0730fef3c503d637298080856a1b`.
+SHA-256: `e8b21153b49da2935c8f742618a0b55ce67390b69d921b7f0208936161138570`. This adds the reader trust anchor to the original sample; candidate/path contents are unchanged.
 The source observation is generation 1 of the validated Run. Input data and complete netlists are
 not silently redistributed as Pack method files. `analysis-oracle.json` records 2080 enumerated
 combinations and an optimum score of 21 under this finite heuristic objective.
@@ -53,7 +53,8 @@ python3 scripts/aes-probe-handoff.py \
   --manifest <local-copy-of-observed-trial-manifest.json> \
   --flow <hash-verified-local-flow-copy> \
   --sample-out <model-input-root>/sample.json \
-  --oracle-out <separate-verification-root>/expected.json
+  --oracle-out <separate-verification-root>/expected.json \
+  --reader-sha256 <reader-hash-from-selected-native-release-VERSION.yml>
 ```
 
 `aes-analysis-local.tap.gz`: 1/1 fixture test, no Host/window/SSH, 0.751 s. It checks the known optimum
@@ -71,7 +72,45 @@ or shared writable dependency on the old checkout.
 | Method/version identity | `pack-folder.ts/snapshotPackFolder`, `packDigestOf`; `release.ts` | PLS-13 protections; this native VERSION seal and original test digest |
 | Domain tools/readers | `packs/aes-tsmc28-dtco/{contract.yml,graph.yml,flow,tools,readers,knowledge}` | Real Site precision/area correction, local negative cases, typed observations; no hidden EDA logic added to Harness |
 | Finite research handoff | `scripts/aes-probe-handoff.py`, `aes_probe_netlist.py` | Source-held dataset and independent oracle; AI research itself remains PLS-09 |
-| Code/knowledge display | PLS-24 branch through `0fa0060` | Independently reviewed L2/L3, pending main integration at this document checkpoint |
+| Code/knowledge display | PLS-24 branch through `0fa0060` | Independently reviewed L2/L3; integrated in main bfba565, with receipt follow-up below |
 
 PLS-20/22/19/13 previous evidence is cited at its own SHA and is not relabeled as newly rerun.
 No closure of this handoff implies completion of PLS-09, PLS-25, graph growth, archival, reuse or L5.
+
+## Final v2 and integration closure
+
+Current formal probe is **version 2**, native test/release Run
+`run-7505e553-5cb2-4610-aa5d-a84057532031`, method digest
+`7ec42e6b1c1742ca14a7a6fe0c01b21964c7882b8c8027f960de6ed1de74ef72`.
+`aes-execute-v2/evidence.json`: all six factual checks pass; 67 model request-step events,
+372474 ms Run elapsed, two synthesis plus two reader Jobs, budget exhaustion after two generations.
+`v2-input-identity-audit.json` independently binds both observed manifests to the same input/method,
+wrapper/Python and reported tool/operating-condition identity. v2 refuses changed inputs before
+another synthesis and rechecks after it; the reader refuses a changed pinned identity before
+emitting a comparable observation. This is bounded declared-input checking, not OS attestation.
+All Pack method documents are free of transient deployment paths. v1 evidence and release remain
+in their original snapshots/Git history; they are not overwritten or relabeled as v2 validation.
+Across the three real execution attempts there were five synthesis and five reader Jobs.
+
+`aes-v2-local-final.tap.gz`: 7/7, 3 in-process Hosts, 0 Electron/SSH, 10.927 s.
+`handoff-reader-identity.tap.gz`: validates the mandatory trusted reader hash and wrong-valid-hash
+counterexample, in addition to Run/Pack/method/reader-kind and input-object checks. The analysis
+sample intentionally remains tied to the explicitly identified v1 generation-1 release; it is not
+presented as a v2 output. A current method change does not erase a previously validated input.
+
+`integrated-local.tap.gz`: 31/31, 3 subprocess + 12 in-process Hosts, 0 Electron/SSH, 39.071 s.
+The existing v20 real probe was explicitly imported into an empty v21 home. The source bytes and
+recorded owner stay unchanged. The first receipt incorrectly said unowned; `owned-import-red` /
+`owned-import-green` capture the fix. `import-real-v20-corrected.json` truthfully records preserved
+ownership without attaching an executor. The earlier receipt remains as a diagnosed artifact.
+
+PLS-24 final branch `0fa0060` is integrated; `pls24-tests/index.json` and compressed captured command
+outputs retain selected implementation/replay failures and the final actual-chat 5/5 L3 pass.
+The compact native chat material card, panel and report share actual code/knowledge identities;
+missing/tampered/forbidden files, cancelled/failed history, and A→B→A stale material responses are
+covered. The final L3 pass used five Electron launches; this is not the total across failed attempts.
+
+Independent Standards/Spec review identified portability, input-comparison, provenance, chat-card
+and import-integrity gaps. Each was corrected with a focused counterexample or native path check;
+repeated broad audits were avoided. Full local regression is reserved for the end of this requested
+implementation batch. PLS-23, PLS-08 and PLS-24 acceptance is complete; PLS-09 and PLS-25 remain open.

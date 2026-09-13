@@ -140,6 +140,21 @@ test('an explicit v20 snapshot is copied into an empty v21 home while its source
   assert.deepEqual(copied.tables, v20.tables);
 });
 
+test('importing an owned v20 Run preserves its recorded owner and reports that ownership truthfully', async () => {
+  const source = path.join(temporary, 'offline-owned-v20.json');
+  const v20 = { ...structuredClone(snapshot), unit: { name: 'hima_ledger', version: 20 } };
+  v20.tables.runs[runId]!.control = { mode: 'agent', owner: 'session-recorded-owner', epoch: 1, revision: 0,
+    paused: [], requests: {}, executions: {} };
+  const bytes = Buffer.from(`${JSON.stringify(v20, null, 2)}\n`);
+  await writeFile(source, bytes);
+  const home = await freshDestination('owned-v20-readback');
+  const receipt = await importLegacyLedger({ sourceFile: source, home });
+  assert.equal(receipt.ownership, 'unchanged-owned');
+  const copied = JSON.parse(await readFile(storedAt(home), 'utf8')) as Snapshot;
+  assert.deepEqual(copied.tables.runs[runId]!.control, v20.tables.runs[runId]!.control);
+  assert.deepEqual(await readFile(source), bytes);
+});
+
 test('v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home', async () => {
   const base = { ...structuredClone(snapshot), unit: { name: 'hima_ledger', version: 20 } };
   const run = base.tables.runs[runId]!;

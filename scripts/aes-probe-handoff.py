@@ -121,6 +121,7 @@ def main():
     parser.add_argument('--flow', type=Path, required=True)
     parser.add_argument('--sample-out', type=Path, required=True)
     parser.add_argument('--oracle-out', type=Path, required=True)
+    parser.add_argument('--reader-sha256', required=True, help='expected reader hash from the selected native release seal')
     parser.add_argument('--max-paths', type=int, default=24, choices=range(4, 65))
     parser.add_argument('--max-candidates', type=int, default=64, choices=range(8, 97))
     parser.add_argument('--budget', type=int, default=2, choices=(2, 3))
@@ -147,7 +148,8 @@ def main():
             or not str(observation.get('id', '')).startswith(str(run.get('id')) + '#')
             or reader.get('id') != 'aes-probe-reading' or reader.get('reportKind') != manifest['format']
             or reader.get('version') != manifest['format'].split('/')[1]
-            or not re.fullmatch(r'[a-f0-9]{64}', str(reader.get('sha256', '')))):
+            or not re.fullmatch(r'[a-f0-9]{64}', args.reader_sha256)
+            or reader.get('sha256') != args.reader_sha256):
         raise ValueError('Pack, method, Run or reader identity does not match the validated probe')
     data = {}
     for name in ('timing.rpt', 'netlist.v'):
@@ -164,7 +166,7 @@ def main():
     if len(rows) < 8:
         raise ValueError('insufficient verified motifs for a nontrivial bounded analysis')
     sample = {'schema': 'aes-path-motifs/1', 'source': {'run': run['id'], 'observation': observation['id'],
-        'generation': observation['generation'], 'methodDigest': run['packDigest'], 'manifestSha256': sha(manifest_bytes),
+        'generation': observation['generation'], 'methodDigest': run['packDigest'], 'readerSha256': args.reader_sha256, 'manifestSha256': sha(manifest_bytes),
         'timingSha256': manifest['evidence']['timing.rpt']['sha256'], 'netlistSha256': manifest['evidence']['netlist.v']['sha256']},
         'scope': 'finite reported timing-path motifs; no Boolean buildability or PPA improvement claim',
         'objective': 'maximize sum of cell-count times distinct reported-path incidences; selected motifs may share no physical cell',

@@ -24,7 +24,7 @@ test('analysis handoff verifies actual point-to-netlist identity and solves a kn
   await bind(timing);
   const args = [path.join(repoRoot, 'scripts/aes-probe-handoff.py'), '--evidence', path.join(root, 'evidence.json'),
     '--manifest', path.join(root, 'manifest.json'), '--flow', root, '--sample-out', path.join(root, 'sample.json'),
-    '--oracle-out', path.join(root, 'oracle.json'), '--max-paths', '4', '--max-candidates', '8'];
+    '--oracle-out', path.join(root, 'oracle.json'), '--reader-sha256', '0'.repeat(64), '--max-paths', '4', '--max-candidates', '8'];
   const result = spawnSync('python3', args, { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   const oracle = JSON.parse(await readFile(path.join(root, 'oracle.json'), 'utf8'));
@@ -44,6 +44,7 @@ test('analysis handoff verifies actual point-to-netlist identity and solves a kn
     (doc: typeof saved) => { doc.runs[0].run.packId = 'unrelated-pack'; },
     (doc: typeof saved) => { doc.runs[0].records[0].runId = 'another-run'; },
     (doc: typeof saved) => { doc.runs[0].records[0].reader.reportKind = 'unrelated-report'; },
+    (doc: typeof saved) => { doc.runs[0].records[0].reader.sha256 = '1'.repeat(64); },
     (doc: typeof saved) => { doc.observed.methodDigest = '1'.repeat(64); },
   ]) {
     const doc = structuredClone(saved); mutate(doc);

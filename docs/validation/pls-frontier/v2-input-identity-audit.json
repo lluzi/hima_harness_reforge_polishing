@@ -1,0 +1,176 @@
+{
+  "passed": true,
+  "runId": "run-7505e553-5cb2-4610-aa5d-a84057532031",
+  "methodDigest": "7ec42e6b1c1742ca14a7a6fe0c01b21964c7882b8c8027f960de6ed1de74ef72",
+  "pinSha256": "573f624f68fb7f767d7d5666cf5dd746bd102aa3c5386dfda550fd8222e51bf0",
+  "pin": {
+    "inputs": {
+      "bindingSha256": "c09e7d899481bbf4b03d40ac2872366eab2e9f86ec8e76c42693fe019e5f3a5d",
+      "foundryDb": {
+        "path": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.db",
+        "sha256": "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0"
+      },
+      "rtl": [
+        {
+          "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_cipher_top.v",
+          "sha256": "ab39a4a094dc8cfde90fcaa4c1aaf7dc9bf75b57ed762e11a985b88f6b23996c"
+        },
+        {
+          "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_inv_cipher_top.v",
+          "sha256": "2f629dab66518aac9e76cb7dbbcf9365785e02531aadcca0cff8f4eb62c963a6"
+        },
+        {
+          "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_inv_sbox.v",
+          "sha256": "ce684a8941f3bd0a1b1345bcb4eb1cff01399a28935f89ce5b8e0be31652bbb2"
+        },
+        {
+          "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_key_expand_128.v",
+          "sha256": "bf06921c6fe80a69674f8b38160e8d677e1c4cc1a96befee2ac136bed3fe48c6"
+        },
+        {
+          "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_rcon.v",
+          "sha256": "1e8a0d1f8c3da8d382adb94e98bacfab455683ca3bca282b982179c0f7607e8e"
+        },
+        {
+          "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_sbox.v",
+          "sha256": "7f4fe4173d58017eb2520fb130b3b779d63a373463cb0198bd66c4371184d7fb"
+        },
+        {
+          "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/timescale.v",
+          "sha256": "0833b736793bc11f640ed66357614c0f5cf30a548a7e515333b1e46438b2cb6b"
+        }
+      ]
+    },
+    "method": {
+      "probeSha256": "251478266ed5ba7f2689f3c4f86f14fa4366bba10385cc1281bed20c80dbcdcf",
+      "pythonVersion": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+      "synthSha256": "e49586bae456db313a74020c35624d93e68ffe96e7b665ab0b2680097a733700",
+      "wrapperSha256": "158c7ce79709dee6ff56b94e522c5026b8e3518859bf8d799ce15b138781cc10"
+    },
+    "schema": 1,
+    "tool": {
+      "conditions": "Operating Conditions: tt0p9v25c   Library: tcbn28hpcplusbwp40p140tt0p9v25c",
+      "version": "X-2025.06-SP3"
+    }
+  },
+  "trials": [
+    {
+      "manifestSha256": "6ab68790342ff223f482f9c1ee56ce068b14e74d1aa009158a0b1ff9a8e9fe0d",
+      "period": 0.35,
+      "effectiveIdentity": {
+        "schema": 1,
+        "inputs": {
+          "bindingSha256": "c09e7d899481bbf4b03d40ac2872366eab2e9f86ec8e76c42693fe019e5f3a5d",
+          "foundryDb": {
+            "path": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.db",
+            "sha256": "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0"
+          },
+          "rtl": [
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_cipher_top.v",
+              "sha256": "ab39a4a094dc8cfde90fcaa4c1aaf7dc9bf75b57ed762e11a985b88f6b23996c"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_inv_cipher_top.v",
+              "sha256": "2f629dab66518aac9e76cb7dbbcf9365785e02531aadcca0cff8f4eb62c963a6"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_inv_sbox.v",
+              "sha256": "ce684a8941f3bd0a1b1345bcb4eb1cff01399a28935f89ce5b8e0be31652bbb2"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_key_expand_128.v",
+              "sha256": "bf06921c6fe80a69674f8b38160e8d677e1c4cc1a96befee2ac136bed3fe48c6"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_rcon.v",
+              "sha256": "1e8a0d1f8c3da8d382adb94e98bacfab455683ca3bca282b982179c0f7607e8e"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_sbox.v",
+              "sha256": "7f4fe4173d58017eb2520fb130b3b779d63a373463cb0198bd66c4371184d7fb"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/timescale.v",
+              "sha256": "0833b736793bc11f640ed66357614c0f5cf30a548a7e515333b1e46438b2cb6b"
+            }
+          ]
+        },
+        "method": {
+          "probeSha256": "251478266ed5ba7f2689f3c4f86f14fa4366bba10385cc1281bed20c80dbcdcf",
+          "synthSha256": "e49586bae456db313a74020c35624d93e68ffe96e7b665ab0b2680097a733700",
+          "wrapperSha256": "158c7ce79709dee6ff56b94e522c5026b8e3518859bf8d799ce15b138781cc10",
+          "pythonVersion": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]"
+        },
+        "tool": {
+          "version": "X-2025.06-SP3",
+          "conditions": "Operating Conditions: tt0p9v25c   Library: tcbn28hpcplusbwp40p140tt0p9v25c"
+        }
+      },
+      "identity": {
+        "path": "probe-inputs.json",
+        "sha256": "573f624f68fb7f767d7d5666cf5dd746bd102aa3c5386dfda550fd8222e51bf0"
+      },
+      "observation": "run-7505e553-5cb2-4610-aa5d-a84057532031#000010"
+    },
+    {
+      "manifestSha256": "d4c2605b46c991392423e4d6fa70f23cacf20b2614fc9f3d36fe4d0ec41bb756",
+      "period": 0.341,
+      "effectiveIdentity": {
+        "schema": 1,
+        "inputs": {
+          "bindingSha256": "c09e7d899481bbf4b03d40ac2872366eab2e9f86ec8e76c42693fe019e5f3a5d",
+          "foundryDb": {
+            "path": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.db",
+            "sha256": "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0"
+          },
+          "rtl": [
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_cipher_top.v",
+              "sha256": "ab39a4a094dc8cfde90fcaa4c1aaf7dc9bf75b57ed762e11a985b88f6b23996c"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_inv_cipher_top.v",
+              "sha256": "2f629dab66518aac9e76cb7dbbcf9365785e02531aadcca0cff8f4eb62c963a6"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_inv_sbox.v",
+              "sha256": "ce684a8941f3bd0a1b1345bcb4eb1cff01399a28935f89ce5b8e0be31652bbb2"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_key_expand_128.v",
+              "sha256": "bf06921c6fe80a69674f8b38160e8d677e1c4cc1a96befee2ac136bed3fe48c6"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_rcon.v",
+              "sha256": "1e8a0d1f8c3da8d382adb94e98bacfab455683ca3bca282b982179c0f7607e8e"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_sbox.v",
+              "sha256": "7f4fe4173d58017eb2520fb130b3b779d63a373463cb0198bd66c4371184d7fb"
+            },
+            {
+              "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/timescale.v",
+              "sha256": "0833b736793bc11f640ed66357614c0f5cf30a548a7e515333b1e46438b2cb6b"
+            }
+          ]
+        },
+        "method": {
+          "probeSha256": "251478266ed5ba7f2689f3c4f86f14fa4366bba10385cc1281bed20c80dbcdcf",
+          "synthSha256": "e49586bae456db313a74020c35624d93e68ffe96e7b665ab0b2680097a733700",
+          "wrapperSha256": "158c7ce79709dee6ff56b94e522c5026b8e3518859bf8d799ce15b138781cc10",
+          "pythonVersion": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]"
+        },
+        "tool": {
+          "version": "X-2025.06-SP3",
+          "conditions": "Operating Conditions: tt0p9v25c   Library: tcbn28hpcplusbwp40p140tt0p9v25c"
+        }
+      },
+      "identity": {
+        "path": "probe-inputs.json",
+        "sha256": "573f624f68fb7f767d7d5666cf5dd746bd102aa3c5386dfda550fd8222e51bf0"
+      },
+      "observation": "run-7505e553-5cb2-4610-aa5d-a84057532031#000025"
+    }
+  ]
+}

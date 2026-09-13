@@ -9,7 +9,8 @@
       "PLS-23"
     ],
     "triage": "ready-for-agent",
-    "taskFile": "docs/specs/polishing-v1/tasks/PLS-08.md"
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-08.md",
+    "state": "closed"
   },
   {
     "id": "PLS-09",
@@ -192,7 +193,8 @@
       "PLS-13"
     ],
     "triage": "ready-for-agent",
-    "taskFile": "docs/specs/polishing-v1/tasks/PLS-23.md"
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-23.md",
+    "state": "closed"
   },
   {
     "id": "PLS-24",
@@ -202,7 +204,8 @@
       "PLS-19"
     ],
     "triage": "ready-for-agent",
-    "taskFile": "docs/specs/polishing-v1/tasks/PLS-24.md"
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-24.md",
+    "state": "closed"
   },
   {
     "id": "PLS-25",

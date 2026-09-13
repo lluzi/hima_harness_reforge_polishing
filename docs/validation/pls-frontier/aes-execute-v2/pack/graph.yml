@@ -1,0 +1,76 @@
+# The aes-tsmc28-dtco foundry-only Fmax probe as a HimaFabric graph, and the Loop it explores in:
+# synthesize at the strategy's clock period, read what the measurement states, judge it against the
+# setup constraint and the Goal, choose the next period — and go round again with that period until
+# the Goal is met or the measured periods stop moving.
+#
+# Four node kinds and no more: act, judge, explore, wait. An act node has one unlabelled edge out; a
+# judge node's edges carry the outcome they are taken on. The loop is the last edge below,
+# `next-period` back to `synthesize`, marked `revisit: true`: it is the only edge in this graph that
+# goes backwards, and following it is what opens the next generation.
+id: aes-tsmc28-dtco
+version: '2'
+entry: synthesize
+
+nodes:
+  # Act: run the pack's tool on the Site, in the Campaign workspace, and wait for it.
+  - id: synthesize
+    kind: act
+    parameters:
+      tool: synthesize
+      # Only the strategy knob is chosen per generation. WORKSPACE is the Run's own workspace, which
+      # the fabric holds and a node may not bind.
+      arguments:
+        PERIOD_NS: { from: strategy, name: periodNs }
+
+  # Act: read the manifest that generation produced into HimaLedger, through this pack's own reader.
+  - id: read-probe
+    kind: act
+    parameters:
+      observes: probe
+
+  # Judge: the setup constraint first, then the goal rule whose target the Run's Goal binds. The
+  # outgoing edge is chosen by the outcome of the first rule listed; the second decides only whether
+  # the Campaign is done.
+  - id: judge
+    kind: judge
+    parameters:
+      rules:
+        - setup-wns-all-nonnegative
+        - clock-period-at-most
+      bind:
+        target_period_ns: { from: goal, name: target_period_ns }
+
+  # Explore: the over-constraining push. A met constraint states no margin, so the constraint-PASS
+  # clause tightens by one step without reading one; a violation is a measurement, so the FAIL clause
+  # proposes period + |slack| - stepNs. Only a generation passing both rules may end goal-met.
+  # Convergence means the measured periods stopped moving, band 0.005 over one successive generation.
+  # generationLimit 2 is a budget bound, not a claim that the Goal is reachable.
+  - id: next-period
+    kind: explore
+    parameters:
+      chooser: over-constraining-push
+      bind:
+        stepNs: 0.01
+      converge:
+        read: period
+        band: 0.005
+        generations: 1
+        generationLimit: 2
+
+  # Wait: where a Run stops for a person once its Retry allowance is spent, or a rule is
+  # UNDETERMINED. Nothing draws an edge here: the fabric routes a Hard blocker to the graph's wait
+  # node itself.
+  - id: blocked
+    kind: wait
+    parameters:
+      blocker: hard-blocker
+
+edges:
+  - { from: synthesize, to: read-probe }
+  - { from: read-probe, to: judge }
+  # Both Judge outcomes go on to the next period: a setup failure is a measurement of the shortfall.
+  - { from: judge, to: next-period, outcome: PASS }
+  - { from: judge, to: next-period, outcome: FAIL }
+  # The loop: taken only when the decision chose a next strategy. A decision of goal met or converged
+  # has no edge to take, and the Run ends where it stands.
+  - { from: next-period, to: synthesize, revisit: true }

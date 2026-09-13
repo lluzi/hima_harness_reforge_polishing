@@ -4,7 +4,7 @@ kind: ssh
 workspaceRoot: /data/eda/project/hima_harness/polishing-runs
 permit: ./permit.yml
 bindings:
-  flowRoot: /data/eda/project/hima_harness/polishing-inputs/aes-probe-66e57dc6bfbf
+  flowRoot: /data/eda/project/hima_harness/polishing-inputs/aes-probe-748761b052d8
   design: aes_cipher_top
   workspaceRoot: /data/eda/project/hima_harness/polishing-runs
 ssh:

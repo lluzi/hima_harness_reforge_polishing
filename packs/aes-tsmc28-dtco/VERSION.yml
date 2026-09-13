@@ -1,0 +1,27 @@
+# The release seal of pack aes-tsmc28-dtco, written by /hima-release through /hima pack release.
+# Every hash here was computed by the harness over the bytes in this folder; nothing in it was
+# typed by hand. `/hima pack check` holds the folder against this file, and a campaign refuses a
+# pack whose files no longer match it.
+pack: 'aes-tsmc28-dtco'
+version: '2'
+methodDigest: '7ec42e6b1c1742ca14a7a6fe0c01b21964c7882b8c8027f960de6ed1de74ef72'
+released: '2026-09-13T04:20:59.495Z'
+test:
+  record: 'TEST.md'
+  run: 'run-7505e553-5cb2-4610-aa5d-a84057532031'
+files:
+  'FABRIC.md': 'a73df5fd02f6c6fb1d21b3f3b96846a070e1d336ca64409f401b6791545a16d0'
+  'INTENT.md': '38128fbf986f97b0a3d7483c79e3fbb2f24dda7bd7937e3e3cad1566f7a993eb'
+  'SPEC.md': '131c6be8979cdadc6ee797a99167e4df24205305068d916916ae04fe9441d4be'
+  'TEST.md': 'a792a26202760f674d248c9e4b1a7e3e7cebc4870f27a53c335348570d4edc47'
+  'choosers/over-constraining-push.yml': 'd706e9f6314daa1fe9656c720d5192697e770ff6ab5ef0a7ef311b02764769e0'
+  'contract.yml': 'ffdba429496192969640f0b87a7459a514bf1455e8d7c5a2a7b08855f8014895'
+  'flow/README.md': '2e38e7587375b3f9951b61c40447d979ca4542e7926d7d2e42240272ddf46aec'
+  'flow/probe.py': '251478266ed5ba7f2689f3c4f86f14fa4366bba10385cc1281bed20c80dbcdcf'
+  'flow/read-probe.py': '4dddbecd7f9cb069f15c9f246c118bbab4c10290ab1621ccdb1d595faa80678d'
+  'flow/synth.tcl': 'e49586bae456db313a74020c35624d93e68ffe96e7b665ab0b2680097a733700'
+  'graph.yml': '4de4764e28e22fc3cddcc7974412eb94f6f60bf7bbf01e9cfbdae4bfbe5035f1'
+  'knowledge/aes-probe-method.md': 'aa1f5344f2ceb29d9bd111d9537b97339896633a75c9f3870b9dbce3dc6b4fd2'
+  'readers/aes-probe-reading.yml': '518025f4d4e6faa7446d1cacb014ac1eb6e73562a967da6a1dd03e34c360b702'
+  'tools/probe.py': '51131058f67153cb51f32db5dfcaa4f18ce00cfb403359ee308648e7ffa1fffe'
+  'tools/read-probe.py': '4dddbecd7f9cb069f15c9f246c118bbab4c10290ab1621ccdb1d595faa80678d'
