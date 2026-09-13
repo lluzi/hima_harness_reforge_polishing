@@ -863,6 +863,7 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId }: { block: T
         : <>
           <StatusBanner view={state.view} />
           <RunControls view={state.view} acting={acting} />
+          <MaterialSection view={state.view} />
           <div style={muted}>Snapshot from this card's last read. Open Live Run for updates, experiments and evidence.</div>
         </>) : null}
       {state.error === undefined && state.view === undefined ? <div style={muted}>reading the run…</div> : null}

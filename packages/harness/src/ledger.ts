@@ -2038,6 +2038,36 @@ const v20LedgerDocument = z.strictObject({
   tables: z.strictObject({ runs: z.record(z.string(), runRecord), records: z.record(z.string(), v20LedgerRecord) }),
 });
 
+type ImportDocument = { readonly tables: { readonly runs: Record<string, RunRecord>; readonly records: Record<string, LedgerRecord> } };
+
+/** Shared relational checks, applied to every source schema before any target is staged. */
+function validateImportDocument(document: ImportDocument): void {
+  const { runs, records } = document.tables;
+  for (const [key, run] of Object.entries(runs)) {
+    if (key !== run.id || !new RegExp(`^${runIdPattern.source}$`).test(key)) throw new Error(`invalid imported Run identity: ${key}`);
+    if (!Number.isSafeInteger(run.nextSeq)) throw new Error(`invalid imported nextSeq: ${key}`);
+  }
+  for (const [key, record] of Object.entries(records)) {
+    const run = runs[record.runId];
+    if (!run || record.siteId !== run.siteId) throw new Error(`invalid imported Run linkage: ${key}`);
+    if (!Number.isSafeInteger(record.seq) || key !== record.id || key !== recordKey(run.id, record.seq) || record.seq >= run.nextSeq) {
+      throw new Error(`invalid imported record identity or sequence: ${key}`);
+    }
+    // A failed append can reserve a sequence number without writing a record. Gaps are kept; only
+    // collision, a mismatched key or a nextSeq that could overwrite a fact is refused.
+    if (record.type === 'workspace' && record.campaignId !== run.campaignId) throw new Error(`invalid imported Campaign linkage: ${key}`);
+    if (record.type === 'verdict' || record.type === 'decision') {
+      for (const id of record.cites) {
+        const cited = records[id];
+        if (!cited || cited.runId !== run.id || cited.seq >= record.seq ||
+          (cited.type !== 'observation' && (record.type !== 'decision' || cited.type !== 'verdict'))) {
+          throw new Error(`invalid imported evidence linkage: ${key} cites ${id}`);
+        }
+      }
+    }
+  }
+}
+
 /** Validate a complete offline v19 JSON snapshot without deleting fields or inventing ownership. */
 function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
   const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
@@ -2045,30 +2075,7 @@ function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
   // Several historical nested schemas strip unknown keys. Refuse such a file rather than silently
   // lose facts, including future execution/control fields hidden inside a legacy-looking record.
   if (!isDeepStrictEqual(input, document)) throw new Error('legacy ledger contains unsupported fields or values; import would change stored facts');
-  const { runs, records } = document.tables;
-  for (const [key, run] of Object.entries(runs)) {
-    if (key !== run.id || !new RegExp(`^${runIdPattern.source}$`).test(key)) throw new Error(`invalid legacy Run identity: ${key}`);
-    if (!Number.isSafeInteger(run.nextSeq)) throw new Error(`invalid legacy nextSeq: ${key}`);
-  }
-  for (const [key, record] of Object.entries(records)) {
-    const run = runs[record.runId];
-    if (!run || record.siteId !== run.siteId) throw new Error(`invalid legacy Run linkage: ${key}`);
-    if (!Number.isSafeInteger(record.seq) || key !== record.id || key !== recordKey(run.id, record.seq) || record.seq >= run.nextSeq) {
-      throw new Error(`invalid legacy record identity or sequence: ${key}`);
-    }
-    // A failed append can reserve a sequence number without writing a record. Gaps are kept; only
-    // collision, a mismatched key or a nextSeq that could overwrite a fact is refused.
-    if (record.type === 'workspace' && record.campaignId !== run.campaignId) throw new Error(`invalid legacy Campaign linkage: ${key}`);
-    if (record.type === 'verdict' || record.type === 'decision') {
-      for (const id of record.cites) {
-        const cited = records[id];
-        if (!cited || cited.runId !== run.id || cited.seq >= record.seq ||
-          (cited.type !== 'observation' && (record.type !== 'decision' || cited.type !== 'verdict'))) {
-          throw new Error(`invalid legacy evidence linkage: ${key} cites ${id}`);
-        }
-      }
-    }
-  }
+  validateImportDocument(document as unknown as ImportDocument);
   return document;
 }
 
@@ -2079,14 +2086,7 @@ function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> |
     ? v20LedgerDocument.parse(input)
     : readLegacyLedger(bytes);
   if (!isDeepStrictEqual(input, document)) throw new Error('ledger import contains unsupported fields or values; import would change stored facts');
-  const { runs, records } = document.tables;
-  for (const [key, run] of Object.entries(runs)) {
-    if (key !== run.id || !new RegExp(`^${runIdPattern.source}$`).test(key) || !Number.isSafeInteger(run.nextSeq)) throw new Error(`invalid imported Run identity or nextSeq: ${key}`);
-  }
-  for (const [key, record] of Object.entries(records)) {
-    const run = runs[record.runId];
-    if (!run || record.siteId !== run.siteId || !Number.isSafeInteger(record.seq) || key !== record.id || key !== recordKey(run.id, record.seq) || record.seq >= run.nextSeq) throw new Error(`invalid imported record identity, linkage or sequence: ${key}`);
-  }
+  validateImportDocument(document as unknown as ImportDocument);
   return document;
 }
 

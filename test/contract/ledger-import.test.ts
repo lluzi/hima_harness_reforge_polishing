@@ -140,6 +140,30 @@ test('an explicit v20 snapshot is copied into an empty v21 home while its source
   assert.deepEqual(copied.tables, v20.tables);
 });
 
+test('v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home', async () => {
+  const base = { ...structuredClone(snapshot), unit: { name: 'hima_ledger', version: 20 } };
+  const run = base.tables.runs[runId]!;
+  const observation = Object.values(base.tables.records)[0]!;
+  const other = Object.values(base.tables.runs).find((candidate) => candidate.id !== runId)!;
+  const otherId = `${other.id}#${String(other.nextSeq).padStart(6, '0')}`;
+  base.tables.records[otherId] = { ...observation, id: otherId, runId: other.id, siteId: other.siteId, seq: other.nextSeq } as LedgerRecord;
+  other.nextSeq += 1;
+  const append = (record: Record<string, unknown>) => {
+    const changed = structuredClone(base);
+    const next = changed.tables.runs[runId]!.nextSeq;
+    const id = `${runId}#${String(next).padStart(6, '0')}`;
+    changed.tables.runs[runId]!.nextSeq += 1;
+    changed.tables.records[id] = { ...record, id, runId, siteId: run.siteId, seq: next, at: observation.at, writer: 'executor' } as LedgerRecord;
+    return changed;
+  };
+  const workspace = append({ type: 'workspace', event: 'prepared', campaignId: 'another-campaign', packId: 'fixture', packVersion: '1', packDigest: 'a'.repeat(64), workspace: '/workspace', flowRoot: '/flow', containerName: 'fixture', copied: [], preparedAt: observation.at });
+  await unchangedRefusal(JSON.stringify(workspace), /Campaign linkage/);
+  for (const cites of [['missing-record'], [otherId]]) {
+    const verdict = append({ type: 'verdict', outcome: 'PASS', ruleId: 'fixture-rule', ruleVersion: '1', cites, valuesAsRead: [] });
+    await unchangedRefusal(JSON.stringify(verdict), /evidence linkage/);
+  }
+});
+
 test('wrong formats, future controls and unknown fields cannot be silently dropped during import', async () => {
   await unchangedRefusal('{broken', /JSON/);
   await unchangedRefusal(Buffer.from([0xff]), /encoded data/);
@@ -172,7 +196,7 @@ test('Run keys, record identity, site linkage and nextSeq cannot corrupt importe
   ]) {
     const changed = structuredClone(snapshot);
     change(changed);
-    await unchangedRefusal(JSON.stringify(changed), /invalid legacy/);
+    await unchangedRefusal(JSON.stringify(changed), /invalid imported/);
   }
   // A real append reserves nextSeq first: a prior failed write can leave a gap. Preserve it.
   const withGap = structuredClone(snapshot);
