@@ -126,6 +126,25 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   assert.notEqual(fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated').run.status, 0,
     'a checkpoint symlink is rejected before resolution');
   await rm(linked);
+  const vendorLink = checkpoint.links[0];
+  const vendorLinkPath = path.join(checkpointRoot, vendorLink.path);
+  const vendorTarget = path.isAbsolute(vendorLink.target.path)
+    ? vendorLink.target.path : path.join(fixture.workspace, vendorLink.target.path);
+  const vendorTargetBytes = await readFile(vendorTarget);
+  await rm(vendorLinkPath);
+  assert.notEqual(fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated').run.status, 0,
+    'a missing declared vendor link invalidates the checkpoint');
+  await symlink(vendorLink.linkText, vendorLinkPath);
+  await rm(vendorLinkPath);
+  await symlink(checkpointRoot, vendorLinkPath);
+  assert.notEqual(fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated').run.status, 0,
+    'a declared vendor link cannot be retargeted to a directory');
+  await rm(vendorLinkPath);
+  await symlink(vendorLink.linkText, vendorLinkPath);
+  await writeFile(vendorTarget, Buffer.concat([vendorTargetBytes, Buffer.from('changed') ]));
+  assert.notEqual(fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated').run.status, 0,
+    'a declared vendor link target hash change invalidates the checkpoint');
+  await writeFile(vendorTarget, vendorTargetBytes);
   await rm(member);
   assert.notEqual(fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated').run.status, 0,
     'a missing checkpoint member invalidates the complete tree inventory');
@@ -165,12 +184,13 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   assert.equal(fixture.run('pnr-generated').status, 0);
   assert.equal(fixture.run('compare').status, 0);
   const qrcMismatch = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
-  assert.equal(qrcMismatch.facts.matched_conditions, false);
-  assert.equal(qrcMismatch.facts.full_constraint_failures, 1);
+  assert.equal(qrcMismatch.facts.matched_conditions, null);
+  assert.equal(qrcMismatch.facts.full_constraint_failures, null);
+  assert.match(qrcMismatch.facts.unknownReason.join('; '), /checkpoint link target identity changed/);
   const qrcReading = fixture.read(path.join(flow, 'records/compare.json'), 'compare');
   assert.equal(qrcReading.run.status, 0, qrcReading.run.stderr);
-  const qrcValues = parseReading(await readFile(qrcReading.out, 'utf8')).values as { type: string; value: number }[];
-  assert.equal(qrcValues.find((item) => item.type === 'matched_conditions')!.value, 0);
+  const qrcValues = parseReading(await readFile(qrcReading.out, 'utf8')).values as { type: string; value: number | null }[];
+  assert.equal(qrcValues.find((item) => item.type === 'matched_conditions')!.value, null);
   const qrcFoundry = (await conditionEvidence('pnr-foundry')).commonInputs
     .find((item: { role: string }) => item.role === 'FOUNDRY_QRC_TECH').sha256;
   const qrcGenerated = (await conditionEvidence('pnr-generated')).commonInputs
