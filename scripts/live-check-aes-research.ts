@@ -16,6 +16,10 @@ if (!inputFile) throw new Error('HIMA_AES_SAMPLE must name the verified research
 const sampleBytes = readFileSync(inputFile);
 const expectedHash = 'e8b21153b49da2935c8f742618a0b55ce67390b69d921b7f0208936161138570';
 if (sha256(sampleBytes) !== expectedHash) throw new Error('this acceptance requires the admitted AES sample identity');
+const admittedStage = packStage(path.join(repoRoot, 'packs', packId));
+if (!['compiled', 'tested', 'released'].includes(admittedStage.stage)) {
+  throw new Error('research Pack is not compiled; no Host or model started: ' + JSON.stringify(admittedStage));
+}
 
 await runLive('live-check-aes-research', 10, async (check) => {
   const home = await createHimaHome(); check.home = home;
@@ -55,6 +59,8 @@ await runLive('live-check-aes-research', 10, async (check) => {
     'Use exact Workshop argv and result schema from recommend/knowledge. No oracle, outside files, external Agent/model or alternate executor. The Goal stays fixed. Invalid objects or malformed output cannot support a conclusion. Let real Job completion notifications arrive instead of busy polling.',
     'When done, write TEST.md from hima_status with standalone run/status lines and every code hash. Distinguish copied reference from revised algorithm and bounded analysis from Boolean buildability or Fmax improvement. Preserve method bytes; do not release yet.',
   ].join('\n'));
+  check.require('the first native test turn admitted its actual Run',
+    host.ctx.hima.ledger.runs().some(r => r.packId === packId), host.ctx.hima.ledger.runs());
   for (let i = 0; i < 4 && !existsSync(path.join(folder, 'TEST.md')); i++) {
     await check.until('node work has settled', () => {
       const run = host.ctx.hima.ledger.runs().find(r => r.packId === packId);

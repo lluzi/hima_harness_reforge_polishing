@@ -11,7 +11,7 @@ import { repoRoot } from './support/dsh-home.ts';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { writeLocalSite } from './support/site.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
-import type { ExecutionActionRequest } from '@hima/harness';
+import { packStage, type ExecutionActionRequest } from '@hima/harness';
 
 const reader = path.join(repoRoot, 'packs/aes-timing-research/tools/read-selection.py');
 
@@ -44,6 +44,7 @@ test('owner-controlled two-generation Workshop retains code and turns a measured
   const flow = path.join(home.h.home, 'finite-selection-flow');
   await mkdir(flow, { recursive: true });
   await (await import('node:fs/promises')).cp(path.join(repoRoot, 'packs/aes-timing-research'), packDir, { recursive: true });
+  assert.equal(packStage(packDir).stage, 'compiled', JSON.stringify(packStage(packDir)));
   const sample = { schema: 'aes-path-motifs/1', budget: 2, paths: [
     ...['p1', 'p2', 'p3'].map((id, i) => ({ id, points: [{ instance: 'u1', master: 'M1', sourceLine: i + 1 }] })),
     ...['p4', 'p5'].map((id, i) => ({ id, points: [{ instance: 'u1', master: 'M1', sourceLine: 40 + i * 10 }, { instance: 'u2', master: 'M2', sourceLine: 41 + i * 10 }] })),
@@ -62,7 +63,7 @@ test('owner-controlled two-generation Workshop retains code and turns a measured
   let runId: string | undefined;
   try {
     const owner = await createRootAgent(host.ctx, home.h.workspace);
-    const started = await host.ctx.hima.startRun({ pack: 'aes-timing-research', site: 'local', goal: { minimum_score: 7 },
+    const started = await host.ctx.hima.startRun({ pack: 'aes-timing-research', site: 'local', test: true, goal: { minimum_score: 7 },
       strategy: { algorithmRevision: 0 }, generationLimit: 2, retryAllowance: 1, timeBoxMs: 90_000, ownerSessionId: String(owner.id) });
     assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
     runId = started.run.id;

@@ -48,7 +48,7 @@ revision 1 is an algorithm-correction opportunity.
 
 `selection-method.md` defines the finite source/provenance and significance limits.
 
-## Limits
+**Limits**
 
 The Pack neither writes Judge verdicts nor treats model wording or reported scores as evidence. It
 does not claim V4 authored this Pack, a full AES optimization, Fmax improvement, or significance
