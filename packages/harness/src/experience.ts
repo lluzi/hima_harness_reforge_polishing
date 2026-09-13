@@ -31,8 +31,8 @@ import { experienceReport, EXPERIENCE_DIR, RUN_ASSET_MANIFEST_SCHEMA, type Exper
 import { hasEnded, type ArchiveRecord, type CodeRecord, type ExperienceFile, type ExperienceRecord, type KnowledgeRecord, type Ledger, type ObservationRecord, type RunRecord, type WorkspaceRecord } from './ledger.js';
 import { runView, type RunWords } from './remote.js';
 import { installedPackFolder, runPackWords } from './packs.js';
-import { runAssetsDirectory } from './pack-folder.js';
-import { methodHistoryDirectory } from './pack-folder.js';
+import { methodHistoryDirectory, runAssetsDirectory } from './pack-folder.js';
+import { verifiedPackRelocation } from './release.js';
 import { existingRun } from './runs.js';
 import { decideRead, decideWrite } from './shell.js';
 import { loadSite, pathsOf, type Site } from './sites.js';
@@ -516,9 +516,29 @@ export async function readRunAssets(deps: ExperienceDeps, runId: string): Promis
   if (folder === undefined) return { kind: 'none', why: `installed Pack ${run.packId} is unavailable` };
   const completion = archiveCompleteOf(deps.ledger, runId);
   if (completion === undefined) return { kind: 'none', why: `run ${runId} has no Ledger-confirmed completed archive` };
+  const directory = path.join(folder.dir, runAssetsDirectory, runId);
+  let relocated = false;
+  if (completion.directory !== directory) {
+    try {
+      if (completion.manifestSha256 === undefined
+          || verifiedPackRelocation({ packDir: folder.dir, originalPath: path.join(completion.directory, 'manifest.json'), sha256: completion.manifestSha256 }) !== path.join(directory, 'manifest.json')) {
+        return { kind: 'unreadable', path: path.join(directory, 'manifest.json'), why: 'the Ledger-recorded completion names a different archive directory without an exact reviewed migration' };
+      }
+      for (const material of completion.materials) {
+        if (material.missingReason !== undefined) continue;
+        const current = path.join(directory, material.path);
+        if (verifiedPackRelocation({ packDir: folder.dir, originalPath: path.join(completion.directory, material.path), sha256: material.sha256, bytes: material.bytes }) !== current) {
+          return { kind: 'unreadable', path: current, why: `the migration receipt does not verify Ledger material ${material.path}` };
+        }
+      }
+    } catch (error) {
+      return { kind: 'unreadable', path: path.join(directory, 'manifest.json'), why: (error as Error).message };
+    }
+    relocated = true;
+  }
   try { await archivePathSafe(folder.dir, runId, true); }
-  catch (error) { return { kind: 'unreadable', path: path.join(folder.dir, runAssetsDirectory, runId), why: (error as Error).message }; }
-  return readRunAssetsAt(path.join(folder.dir, runAssetsDirectory, runId), runId, run, completion, runView(deps.ledger, run).run.packVersion ?? 'not recorded');
+  catch (error) { return { kind: 'unreadable', path: directory, why: (error as Error).message }; }
+  return readRunAssetsAt(directory, runId, run, completion, runView(deps.ledger, run).run.packVersion ?? 'not recorded', relocated);
 }
 
 /** Read a named archived byte without contacting its original Site. */
@@ -536,7 +556,7 @@ export async function readArchivedMaterial(deps: ExperienceDeps, runId: string, 
   } catch (error) { return { kind: 'unreadable', path: at, why: (error as Error).message }; }
 }
 
-async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord, completion?: ArchiveRecord, packVersion?: string): Promise<ReadRunAssetsResult> {
+async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord, completion?: ArchiveRecord, packVersion?: string, relocated = false): Promise<ReadRunAssetsResult> {
   const manifestPath = path.join(directory, 'manifest.json');
   let manifest: RunAssetManifest;
   try {
@@ -551,7 +571,7 @@ async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord
   }
   if (run !== undefined && (manifest.campaignId !== run.campaignId || manifest.siteId !== run.siteId || manifest.pack.id !== run.packId || manifest.pack.version !== packVersion || manifest.methodDigest !== run.packDigest)) return { kind: 'unreadable', path: manifestPath, why: 'manifest identity does not match the ended Run and recorded method' };
   if (completion !== undefined) {
-    if (completion.directory !== directory) return { kind: 'unreadable', path: manifestPath, why: 'the Ledger-recorded completion names a different archive directory' };
+    if (completion.directory !== directory && !relocated) return { kind: 'unreadable', path: manifestPath, why: 'the Ledger-recorded completion names a different archive directory' };
     const raw = await readArchiveFile(directory, 'manifest.json');
     if (completion.manifestSha256 !== hashOf(raw) || JSON.stringify(completion.materials) !== JSON.stringify(manifest.materials)) return { kind: 'unreadable', path: manifestPath, why: 'manifest is not the Ledger-recorded completed delivery' };
   }

@@ -1,14 +1,14 @@
 // PLS-13: real files at the agreed installation/export seam; no model, Site, or desktop.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { seedLocalSite, writeConvergingVariant } from '../../packages/desktop/src/local-site.ts';
-import { HIMA_TEST_SECTIONS, exportPackMethod, installPackMethod, loadPack, loadRunPack, packDigestOf, pipelineFiles, releaseIssue, releasePack, snapshotPackFolder } from '@hima/harness';
+import { HIMA_TEST_SECTIONS, exportPackMethod, installPackMethod, loadPack, loadRunPack, packDigestOf, packTransferReceiptFile, pipelineFiles, readPackMigrationReceipt, releaseIssue, releasePack, snapshotPackFolder, verifiedPackRelocation } from '@hima/harness';
 import { packsDirOf, versionFileFor, writePackFiles } from './support/pack.ts';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess } from './support/boot-inprocess.ts';
@@ -119,6 +119,53 @@ test('a reviewed transfer resumes only matching staged files and never publishes
   await rm(conflict);
   applyPackTransfer({ ...request, reviewSha256: review.reviewSha256 });
   for (const file of review.files) assert.equal(createHash('sha256').update(await readFile(path.join(request.to, file.path))).digest('hex'), file.sha256);
+});
+
+test('self migration records only reviewed exact bytes, resumes safely, and gives no arbitrary relocation authority', async (t) => {
+  const { previewPackTransfer, applyPackTransfer } = harness;
+  const { root, installed } = await methodFixture(t);
+  const relative = 'run-assets/run-portable/materials/result.dat';
+  const original = path.join(installed, relative);
+  const bytes = Buffer.from('customer result\n\0exact bytes', 'utf8');
+  await mkdir(path.dirname(original), { recursive: true });
+  await writeFile(original, bytes);
+  const request = { from: installed, to: path.join(root, 'migrated', packId), mode: 'migrate' as const };
+  const review = previewPackTransfer(request);
+  assert.deepEqual(review.sourceRoots, [path.resolve(installed)]);
+  const reviewed = review.files.find(file => file.path === relative);
+  assert.ok(reviewed);
+  applyPackTransfer({ ...request, reviewSha256: review.reviewSha256 });
+  const receipt = readPackMigrationReceipt(request.to);
+  assert.equal(receipt?.reviewSha256, review.reviewSha256);
+  assert.equal(verifiedPackRelocation({ packDir: request.to, originalPath: original, sha256: reviewed!.sha256, bytes: bytes.byteLength }), path.join(request.to, relative));
+  assert.equal(verifiedPackRelocation({ packDir: request.to, originalPath: relative, sha256: reviewed!.sha256 }), undefined);
+  assert.equal(verifiedPackRelocation({ packDir: request.to, originalPath: path.join(root, 'unreviewed', relative), sha256: reviewed!.sha256 }), undefined);
+  assert.equal(verifiedPackRelocation({ packDir: request.to, originalPath: original, sha256: 'a'.repeat(64) }), undefined);
+
+  const publicShare = path.join(root, 'public', packId);
+  previewPackTransfer({ from: request.to, to: publicShare, mode: 'share' });
+  applyPackTransfer({ from: request.to, to: publicShare, mode: 'share', reviewSha256: previewPackTransfer({ from: request.to, to: publicShare, mode: 'share' }).reviewSha256 });
+  await assert.rejects(readFile(path.join(publicShare, packTransferReceiptFile)), { code: 'ENOENT' });
+  await assert.rejects(readFile(path.join(publicShare, relative)), { code: 'ENOENT' });
+
+  const staging = path.join(path.dirname(request.to), `.${packId}.transfer-${review.reviewSha256}`);
+  await rm(request.to, { recursive: true });
+  applyPackTransfer({ ...request, reviewSha256: review.reviewSha256 });
+  await rm(staging, { recursive: true, force: true });
+  await rename(request.to, staging);
+  const conflict = path.join(staging, 'unknown-customer-file');
+  await writeFile(conflict, 'not reviewed');
+  assert.throws(() => applyPackTransfer({ ...request, reviewSha256: review.reviewSha256 }), /not part of this reviewed transfer/);
+  await assert.rejects(readFile(path.join(request.to, relative)), { code: 'ENOENT' });
+  await rm(conflict);
+  applyPackTransfer({ ...request, reviewSha256: review.reviewSha256 });
+  assert.deepEqual(await readFile(path.join(request.to, relative)), bytes);
+
+  const second = { from: request.to, to: path.join(root, 'migrated-again', packId), mode: 'migrate' as const };
+  const secondReview = previewPackTransfer(second);
+  assert.deepEqual(secondReview.sourceRoots, [path.resolve(installed), path.resolve(request.to)]);
+  applyPackTransfer({ ...second, reviewSha256: secondReview.reviewSha256 });
+  assert.equal(verifiedPackRelocation({ packDir: second.to, originalPath: original, sha256: reviewed!.sha256, bytes: bytes.byteLength }), path.join(second.to, relative), 'a later reviewed migration preserves the original source identity');
 });
 
 function legacyDriveFixture(t: import('node:test').TestContext): void {

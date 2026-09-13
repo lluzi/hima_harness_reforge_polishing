@@ -79,6 +79,8 @@ export const runAssetsDirectory = 'run-assets';
 export const methodInstallFile = '.hima-method-install.json';
 export const methodHistoryDirectory = '.hima-method-history';
 export const methodUpdateFile = '.hima-method-update.json';
+/** Private receipt for an owner-reviewed self migration. It is never method or public-share content. */
+export const packTransferReceiptFile = '.hima-pack-transfer.json';
 
 /**
  * The files a pack's digest is taken **without**: the pipeline's own records (#64).
