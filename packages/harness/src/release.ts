@@ -20,7 +20,7 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 import { runIdPattern } from './ledger.js';
 import { PackFolderError, PackNotFoundError } from './errors.js';
-import { methodHistoryDirectory, methodInstallFile, methodUpdateFile, packDigestExcludes, packFilePath, packId, packSha256, pipelineFiles, runAssetsDirectory, snapshotPackFolder, snapshotPackFolderIfThere, type PackFolderSnapshot } from './pack-folder.js';
+import { methodHistoryDirectory, methodInstallFile, methodUpdateFile, packDigestExcludes, packFilePath, packId, packSha256, packTransferReceiptFile, pipelineFiles, runAssetsDirectory, snapshotPackFolder, snapshotPackFolderIfThere, type PackFolderSnapshot } from './pack-folder.js';
 import { checkTestRecord, installedPackFolder, loadPackFrom, packFiles, packStageFrom, runNamedByTestRecord, type Pack, type PackContract, type ReleaseDeps } from './packs.js';
 
 /**
@@ -478,7 +478,7 @@ function verifyInstallOwnership(folder: PackFolderSnapshot, history = true): voi
   const id = path.basename(folder.dir);
   const digests = new Set<string>();
   for (const entry of folder.entries) {
-    if ((history && inTree(entry, runAssetsDirectory)) || entry === methodInstallFile) continue;
+    if ((history && inTree(entry, runAssetsDirectory)) || entry === methodInstallFile || (history && entry === packTransferReceiptFile)) continue;
     if (history && inTree(entry, methodHistoryDirectory)) {
       const [, digest, archivedId] = entry.split('/');
       if (digest === undefined) continue;
@@ -721,9 +721,108 @@ export interface PackTransferReview {
   readonly pack: string;
   readonly methodDigest: string;
   readonly previousDigest?: string;
+  /** Original Pack roots whose exact reviewed suffixes this self migration relocated. */
+  readonly sourceRoots?: readonly string[];
   readonly files: readonly { readonly path: string; readonly sha256: string; readonly bytes: number }[];
   readonly changes: readonly { readonly path: string; readonly before?: string; readonly after?: string }[];
   readonly reviewSha256: string;
+}
+
+const transferPath = z.string().superRefine((value, ctx) => {
+  if (value === '' || value.includes('\\') || value.startsWith('/') || value.split('/').some(part => part === '' || part === '.' || part === '..')
+      || !/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(value)) {
+    ctx.addIssue({ code: 'custom', message: 'a transferred file is a relative Pack path with no empty, "." or ".." segment' });
+  }
+});
+const transferFile = z.strictObject({ path: transferPath, sha256: packSha256, bytes: z.number().int().nonnegative() });
+const transferChange = z.strictObject({ path: transferPath, before: packSha256.optional(), after: packSha256.optional() });
+
+/** A private, content-hashed account of one explicitly reviewed self migration. */
+export const packMigrationReceipt = z.strictObject({
+  schema: z.literal('hima-pack-migration/1'),
+  from: z.string().min(1),
+  to: z.string().min(1),
+  mode: z.literal('migrate'),
+  pack: packId,
+  methodDigest: packSha256,
+  sourceRoots: z.array(z.string().min(1)).min(1),
+  files: z.array(transferFile),
+  changes: z.array(transferChange),
+  reviewSha256: packSha256,
+}).superRefine((receipt, ctx) => {
+  for (const [name, at] of [['from', receipt.from], ['to', receipt.to], ...receipt.sourceRoots.map((root, index) => [`sourceRoots.${String(index)}`, root])] as const) {
+    if (!path.isAbsolute(at) || path.resolve(at) !== at) ctx.addIssue({ code: 'custom', path: [name], message: 'a migration root is an absolute normalized path' });
+  }
+  if (!receipt.sourceRoots.includes(receipt.from)) ctx.addIssue({ code: 'custom', path: ['sourceRoots'], message: 'sourceRoots must include the reviewed source' });
+  if (new Set(receipt.sourceRoots).size !== receipt.sourceRoots.length) ctx.addIssue({ code: 'custom', path: ['sourceRoots'], message: 'sourceRoots must be unique' });
+  if (new Set(receipt.files.map(file => file.path)).size !== receipt.files.length) ctx.addIssue({ code: 'custom', path: ['files'], message: 'transferred file paths must be unique' });
+});
+export type PackMigrationReceipt = z.infer<typeof packMigrationReceipt>;
+
+function reviewFacts(review: Omit<PackTransferReview, 'reviewSha256'>): Omit<PackTransferReview, 'reviewSha256'> {
+  return {
+    from: review.from, to: review.to, mode: review.mode, pack: review.pack, methodDigest: review.methodDigest,
+    ...(review.previousDigest === undefined ? {} : { previousDigest: review.previousDigest }),
+    ...(review.sourceRoots === undefined ? {} : { sourceRoots: review.sourceRoots }),
+    files: review.files, changes: review.changes,
+  };
+}
+
+function reviewHash(review: Omit<PackTransferReview, 'reviewSha256'>): string {
+  return createMethodHash(Buffer.from(JSON.stringify(reviewFacts(review))));
+}
+
+function migrationReceiptBytes(review: PackTransferReview): Buffer {
+  if (review.mode !== 'migrate' || review.sourceRoots === undefined) throw new PackFolderError('only a self migration has a migration receipt');
+  return Buffer.from(`${JSON.stringify({ schema: 'hima-pack-migration/1', ...review }, null, 2)}\n`);
+}
+
+/** Read and authenticate a receipt against its reviewed facts and current destination identity. */
+export function readPackMigrationReceipt(packDir: string): PackMigrationReceipt | undefined {
+  const dir = path.resolve(packDir);
+  plainAncestors(dir);
+  const file = path.join(dir, packTransferReceiptFile);
+  if (lstatSync(file, { throwIfNoEntry: false }) === undefined) return undefined;
+  let document: unknown;
+  try { document = JSON.parse(plainFileBytes(file).toString('utf8')); }
+  catch (error) { throw new PackFolderError(`${file} is not a migration receipt: ${(error as Error).message}`); }
+  const parsed = packMigrationReceipt.safeParse(document);
+  if (!parsed.success) throw new PackFolderError(`${file} is not a migration receipt: ${parsed.error.message}`);
+  const receipt = parsed.data;
+  if (receipt.to !== dir || receipt.pack !== path.basename(dir)) throw new PackFolderError(`${file} does not name this installed Pack destination`);
+  const { schema: _schema, reviewSha256, ...facts } = receipt;
+  if (reviewHash(facts) !== reviewSha256) throw new PackFolderError(`${file} does not match its owner-reviewed transfer manifest`);
+  return receipt;
+}
+
+/**
+ * Rebase one exact migrated byte from a receipt source root to the current configured Pack root.
+ * The caller supplies the authoritative hash (normally from the Ledger); receipt metadata alone
+ * can never bless changed bytes or an arbitrary destination.
+ */
+export function verifiedPackRelocation(request: { readonly packDir: string; readonly originalPath: string; readonly sha256: string; readonly bytes?: number }): string | undefined {
+  const dir = path.resolve(request.packDir);
+  let receipt: PackMigrationReceipt | undefined;
+  try { receipt = readPackMigrationReceipt(dir); }
+  catch { return undefined; }
+  if (receipt === undefined) return undefined;
+  if (!path.isAbsolute(request.originalPath) || path.resolve(request.originalPath) !== request.originalPath) return undefined;
+  const original = path.resolve(request.originalPath);
+  for (const source of receipt.sourceRoots) {
+    const relative = path.relative(source, original);
+    if (relative === '' || relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative)) continue;
+    const portable = relative.split(path.sep).join('/');
+    const reviewed = receipt.files.find(file => file.path === portable);
+    if (reviewed === undefined || reviewed.sha256 !== request.sha256 || (request.bytes !== undefined && reviewed.bytes !== request.bytes)) continue;
+    const current = path.resolve(dir, relative);
+    if (!current.startsWith(`${dir}${path.sep}`)) return undefined;
+    let found: Buffer;
+    try { plainAncestors(path.dirname(current)); found = plainFileBytes(current); }
+    catch { return undefined; }
+    if (createMethodHash(found) !== request.sha256 || (request.bytes !== undefined && found.byteLength !== request.bytes)) return undefined;
+    return current;
+  }
+  return undefined;
 }
 
 /** Review and application share one byte snapshot. The review digest includes source, destination,
@@ -755,9 +854,12 @@ function transferSnapshot(request: PackTransferRequest): { review: PackTransferR
     if (stat.isDirectory()) for (const child of readdirSync(at).sort()) walk(`${relative}/${child}`);
     else take(relative);
   };
+  let sourceRoots: readonly string[] | undefined;
   if (request.mode === 'migrate') {
     if (!owned) throw new PackFolderError('migration requires a verified installed method');
     walk(runAssetsDirectory); walk(methodHistoryDirectory); take(methodInstallFile);
+    const prior = readPackMigrationReceipt(from);
+    sourceRoots = [...new Set([...(prior?.sourceRoots ?? []), from])];
   } else if (request.mode === 'share') {
     for (const relative of new Set(request.assets ?? [])) {
       if (!packFilePath.safeParse(relative).success || !relative.startsWith(`${runAssetsDirectory}/`)) throw new PackFolderError('shared materials must name files inside run-assets');
@@ -779,9 +881,9 @@ function transferSnapshot(request: PackTransferRequest): { review: PackTransferR
     const before = previous?.files[at], after = files.find(file => file.path === at)?.sha256;
     return before === after ? [] : [{ path: at, ...(before ? { before } : {}), ...(after ? { after } : {}) }];
   });
-  const facts = { from, to, mode: request.mode, pack: method.pack, methodDigest: method.digest,
-    ...(previous ? { previousDigest: previous.digest } : {}), files, changes };
-  return { review: { ...facts, reviewSha256: createMethodHash(Buffer.from(JSON.stringify(facts))) }, bytes, modes };
+  const facts = reviewFacts({ from, to, mode: request.mode, pack: method.pack, methodDigest: method.digest,
+    ...(previous ? { previousDigest: previous.digest } : {}), ...(sourceRoots ? { sourceRoots } : {}), files, changes });
+  return { review: { ...facts, reviewSha256: reviewHash(facts) }, bytes, modes };
 }
 
 export function previewPackTransfer(request: PackTransferRequest): PackTransferReview {
@@ -803,12 +905,17 @@ export function applyPackTransfer(request: PackTransferRequest & { readonly revi
   // A retry verifies/reuses its exact files and adds only missing ones, never replaces changed bytes.
   plainAncestors(staging); mkdirSync(staging, { recursive: true });
   const expected = new Set(held.review.files.map(file => file.path));
+  const receiptBytes = request.mode === 'migrate' ? migrationReceiptBytes(held.review) : undefined;
   const verifyExisting = (relative: string): void => {
     const at = path.join(staging, relative), stat = lstatSync(at);
     if (stat.isDirectory()) {
       if (relative && ![...expected].some(file => file.startsWith(`${relative}/`))) throw new PackFolderError(`${at} is not part of this reviewed transfer`);
       for (const child of readdirSync(at)) verifyExisting(relative ? `${relative}/${child}` : child);
     } else {
+      if (relative === packTransferReceiptFile && receiptBytes !== undefined) {
+        if (!plainFileBytes(at).equals(receiptBytes)) throw new PackFolderError(`${at} changed in interrupted transfer`);
+        return;
+      }
       if (!stat.isFile() || !expected.has(relative)) throw new PackFolderError(`${at} is not part of this reviewed transfer`);
       if (createMethodHash(plainFileBytes(at)) !== held.review.files.find(file => file.path === relative)!.sha256) throw new PackFolderError(`${at} changed in interrupted transfer`);
     }
@@ -820,7 +927,13 @@ export function applyPackTransfer(request: PackTransferRequest & { readonly revi
     if (!lstatSync(at, { throwIfNoEntry: false })) writeFileSync(at, held.bytes.get(file.path)!, { flag: 'wx', mode: held.modes.get(file.path) });
     if (createMethodHash(plainFileBytes(at)) !== file.sha256) throw new PackFolderError(`${at} failed transferred content verification`);
   }
+  if (receiptBytes !== undefined) {
+    const receiptAt = path.join(staging, packTransferReceiptFile);
+    if (!lstatSync(receiptAt, { throwIfNoEntry: false })) writeFileSync(receiptAt, receiptBytes, { flag: 'wx', mode: 0o600 });
+    if (!plainFileBytes(receiptAt).equals(receiptBytes)) throw new PackFolderError(`${receiptAt} failed transferred receipt verification`);
+  }
   if (lstatSync(destination, { throwIfNoEntry: false })) throw new PackFolderError('destination appeared during transfer; nothing was replaced');
   renameSync(staging, destination);
+  if (request.mode === 'migrate' && readPackMigrationReceipt(destination)?.reviewSha256 !== held.review.reviewSha256) throw new PackFolderError('migrated Pack receipt failed final verification');
   return held.review;
 }

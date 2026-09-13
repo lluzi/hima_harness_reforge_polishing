@@ -80,14 +80,14 @@ export type { ReleaseDeps, RunLookup, RunRecordSeen, TestRecordCheck, TestRecord
 // `heldToOneInode` is on it for one reason, written down where the test that uses it is: it is the
 // one rule of that reading no arrangement of the filesystem can stage from a second call of this
 // process, so the suite holds the comparison itself rather than a race it cannot win.
-export { heldToOneInode, packDigestExcludes, packDigestOf, snapshotPackFolder } from './pack-folder.js';
+export { heldToOneInode, packDigestExcludes, packDigestOf, packTransferReceiptFile, snapshotPackFolder } from './pack-folder.js';
 export type { PackFolderSnapshot } from './pack-folder.js';
 // The release (#64): the seal a tested folder is versioned with, the verb that writes one, and the
 // check that holds a folder against one. On the surface because the release verb is reached through
 // the command face and the tool face alike, and the acceptance and live-check scripts read a sealed
 // folder back.
-export { exportPackMethod, installPackMethod, recoverPackMethod, previewPackTransfer, applyPackTransfer, loadRunPack, packVersionFile, preservePackMethod, releaseIssue, releasePack } from './release.js';
-export type { PackTransferRequest, PackTransferReview } from './release.js';
+export { exportPackMethod, installPackMethod, recoverPackMethod, previewPackTransfer, applyPackTransfer, loadRunPack, packMigrationReceipt, readPackMigrationReceipt, verifiedPackRelocation, packVersionFile, preservePackMethod, releaseIssue, releasePack } from './release.js';
+export type { PackMigrationReceipt, PackTransferRequest, PackTransferReview } from './release.js';
 export type { PackVersionFile, ReleaseResult } from './release.js';
 // The pack authoring pipeline's five skills (#63): what the bundle puts on a host, and where their
 // bodies and the authoring knowledge they cite live. On the surface because the contract suite holds

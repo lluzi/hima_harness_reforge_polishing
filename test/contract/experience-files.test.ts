@@ -11,7 +11,7 @@ import { bootHimaHost } from './support/boot-host.ts';
 import { api, openSession } from './support/hima-api.ts';
 import { writeLocalSite } from './support/site.ts';
 import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
-import { readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR } from '@hima/harness';
+import { applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR } from '@hima/harness';
 import type { ExperienceJson, ExperienceAnswer, RunAssetManifest, RunView } from '@hima/harness';
 
 const hash = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
@@ -122,6 +122,62 @@ test('an ended Run publishes verified local copies only under its installed Pack
     const redirected = await readRunAssets(f.deps, run.id);
     assert.equal(redirected.kind, 'unreadable', 'a completion record cannot redirect the archive identity to another directory');
     assert.match(redirected.kind === 'unreadable' ? redirected.why : '', /directory/);
+  } finally { await f.close(); await f.h.dispose(); }
+});
+
+test('the same Ledger reads exact migrated Run assets after a method update, while a forged receipt cannot bless changed bytes', async () => {
+  const f = await fixture();
+  try {
+    const installed = await installPack(f.h);
+    const source = path.join(f.h.home, 'source', timingProbePackId);
+    await mkdir(path.dirname(source), { recursive: true });
+    exportPackMethod({ from: installed.dir, to: source });
+    await rm(installed.dir, { recursive: true });
+    installPackMethod({ from: source, to: installed.dir });
+    const digest = packDigestOf(installed.dir);
+    const run = await f.deps.ledger.createRun({ campaignId: 'portable-archive', siteId: 'local', status: 'cancelled', packId: timingProbePackId, packDigest: digest });
+    const archived = await writeRunAssets(f.deps, run.id);
+    assert.equal(archived.kind, 'written', archived.kind === 'failed' ? archived.why : '');
+    if (archived.kind !== 'written') throw new Error(JSON.stringify(archived));
+    const nextPacksDir = path.join(f.h.home, 'migrated-packs');
+    const target = path.join(nextPacksDir, timingProbePackId);
+    const request = { from: installed.dir, to: target, mode: 'migrate' as const };
+    const review = previewPackTransfer(request);
+    applyPackTransfer({ ...request, reviewSha256: review.reviewSha256 });
+    assert.equal((await readRunAssets({ ...f.deps, packsDir: nextPacksDir }, run.id)).kind, 'read');
+
+    const update = path.join(f.h.home, 'update', timingProbePackId);
+    await mkdir(path.dirname(update), { recursive: true });
+    exportPackMethod({ from: target, to: update });
+    for (const file of ['contract.yml', 'graph.yml']) {
+      const at = path.join(update, file);
+      await writeFile(at, (await readFile(at, 'utf8')).replace(/^version: .+$/m, "version: 'portable-next'"));
+    }
+    installPackMethod({ from: update, to: target });
+    assert.notEqual(packDigestOf(target), digest);
+    assert.equal((await readRunAssets({ ...f.deps, packsDir: nextPacksDir }, run.id)).kind, 'read', 'method updates retain the reviewed archive relocation and old Run bytes');
+
+    const materialPath = path.join(target, 'run-assets', run.id, 'experience.md');
+    const materialBytes = await readFile(materialPath);
+    const outside = path.join(f.h.home, 'same-byte-migrated-material.md');
+    await writeFile(outside, materialBytes); await rm(materialPath); await symlink(outside, materialPath);
+    assert.equal((await readRunAssets({ ...f.deps, packsDir: nextPacksDir }, run.id)).kind, 'unreadable', 'a receipt never authorizes a same-byte symlink at the migrated path');
+    await rm(materialPath); await writeFile(materialPath, materialBytes);
+
+    const manifestPath = path.join(target, 'run-assets', run.id, 'manifest.json');
+    const changed = JSON.parse(await readFile(manifestPath, 'utf8')) as { campaignId: string };
+    changed.campaignId = 'self-consistent-forgery';
+    const changedBytes = `${JSON.stringify(changed, null, 2)}\n`;
+    await writeFile(manifestPath, changedBytes);
+    const receiptPath = path.join(target, packTransferReceiptFile);
+    const receipt = JSON.parse(await readFile(receiptPath, 'utf8')) as { schema: string; reviewSha256: string; files: { path: string; sha256: string; bytes: number }[]; [key: string]: unknown };
+    const receiptEntry = receipt.files.find(file => file.path === `run-assets/${run.id}/manifest.json`)!;
+    receiptEntry.sha256 = hash(changedBytes); receiptEntry.bytes = Buffer.byteLength(changedBytes);
+    const { schema: _schema, reviewSha256: _oldReview, ...facts } = receipt;
+    receipt.reviewSha256 = hash(JSON.stringify(facts));
+    await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+    const forged = await readRunAssets({ ...f.deps, packsDir: nextPacksDir }, run.id);
+    assert.equal(forged.kind, 'unreadable', 'a self-consistent transfer receipt remains subordinate to the original Ledger hash');
   } finally { await f.close(); await f.h.dispose(); }
 });
 
