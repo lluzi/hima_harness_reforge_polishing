@@ -218,7 +218,8 @@
       "PLS-22"
     ],
     "triage": "ready-for-agent",
-    "taskFile": "docs/specs/polishing-v1/tasks/PLS-25.md"
+    "taskFile": "docs/specs/polishing-v1/tasks/PLS-25.md",
+    "state": "closed"
   },
   {
     "id": "PLS-26",

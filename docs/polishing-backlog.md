@@ -2,7 +2,7 @@
 
 当前顺序（2026-09-12）：[接收 ca47fa0 并在 polishing 完成 Step 4](specs/step4-takeover/README.md)。PLS-01～07 与 UI-02 保持已完成；新建 PLS-20～26，调整 PLS-08～19 的依赖。PLS-20 集成结果见 [实施证据](assessment/2026-09-12/pls-20/README.md)，后续按 Agent/输入/作者/方法身份→正式 probe→挖掘→资产/完整验收推进，不继续等待上游整体验收。以下 b4ac9d9 分析作为首轮背景，当前开工范围与模块以接续规格为准。
 
-PLS-21/22/13 → PLS-19 已完成实现与验收，完整 local 377/377和安装态作者只读终检11/11通过；当前共完成12/26个PLS。证据、原始失败与独立复核见 [本批验收](assessment/2026-09-12/pls-next/README.md)。依赖已解除的前沿为 PLS-23（正式 AES probe）、PLS-24（代码/知识/结束依据 UI）、PLS-10（附加研究节点）、PLS-14（Pack 内知识归档）；本批不启动这些任务。
+当前进度（2026-09-13）：PLS-23→08→09→25 与 PLS-24 已完成工程交付，累计17/26个PLS完成，剩余9项。v3正式方法、独立分级验证与真实负结果见[最终交接](validation/pls-frontier/mining-handoff.md)。依赖已解除的前沿为PLS-10（附加研究节点）和PLS-14（Pack内知识归档）；完整PLS-18 pilot仍待后续任务。前一批PLS-21/22/13→19的377/377 local与11/11安装态作者终检保留在[原验收记录](assessment/2026-09-12/pls-next/README.md)。
 
 日期：2026-09-11。产品目标以 [已确认定义](product-definition.md) 为准；批次与测试层级沿用 [pilot 方案](pilot-plan.md) 和 [测试方案](testing-strategy.md)。本表保留原规划与产品动机；PLS-01～07 的实际实现、测试及边界见 [批次交付记录](assessment/2026-09-11/pls02-07/README.md)。后续任务仍按其依赖和 Step 4 交接条件开展。
 

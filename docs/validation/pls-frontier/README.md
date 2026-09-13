@@ -1,7 +1,7 @@
 # PLS-23 → 08 → 09 → 25, with PLS-24
 
-Current status: PLS-23, PLS-08, PLS-09 and PLS-24 are closed. PLS-25 engineering acceptance
-and native v3 release are complete. Its real bounded trial is negative: zero generated-cell
+Current status: PLS-23, PLS-08, PLS-09 and PLS-24 are closed. PLS-25 / #28 is also closed after engineering acceptance
+and native v3 release. Its real bounded trial is negative: zero generated-cell
 adoption, setup WNS −0.015 ns in both arms and nonzero cell-mode checker entries. No Fmax gain
 or full pilot acceptance is claimed. See [mining-handoff.md](mining-handoff.md#final-v3-acceptance-and-negative-result-asset).
 The dated/checkpoint paragraphs below preserve the earlier sequence; they are not current blockers.
