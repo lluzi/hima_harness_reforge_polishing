@@ -23,7 +23,7 @@
 // of the ledger's own module here would pull `node:crypto` and `node:fs` into the client build. The
 // ledger's *types* are imported, and types are erased.
 import { chosenSaid } from './card-labels.js';
-import type { DecisionRecord, GrowthRecord, JobRecord, LedgerRecord, LoopOutcome, LoopRecord, NodeRecord, ObservationRecord, RunBranch, RunRecord, RunStrategy, VerdictOutcome, VerdictRecord } from './ledger.js';
+import type { DecisionRecord, GrowthRecord, JobRecord, LedgerRecord, LoopOutcome, LoopRecord, NodeRecord, ObservationRecord, RevisionRecord, RunBranch, RunRecord, RunStrategy, VerdictOutcome, VerdictRecord } from './ledger.js';
 import { jobView, nodeView, observationView, type JobView, type NodeView, type ObservationView } from './record-views.js';
 // Type-only, and erased: the pack's words for its own knobs, which the decision each row carries is
 // said in (#42, #58). Declared in `remote.ts` beside the rest of the run view, which this module is
@@ -97,6 +97,8 @@ export interface GenerationView {
   readonly loops?: readonly LoopView[];
   /** Additive per-Run research branches accepted or refused in this generation. */
   readonly growths?: readonly GrowthBranchView[];
+  /** Applied revision boundaries in this generation. Current row facts exclude their invalidated ids. */
+  readonly revisions?: readonly RevisionHistoryView[];
   /** The branches of the fork this generation ran, in the order the records name them. Absent for a
    *  generation that forked nowhere, which is every generation of a pack that does not fork. */
   readonly branches?: readonly BranchView[];
@@ -105,6 +107,12 @@ export interface GenerationView {
    *  node: a pack that forked in two generations would otherwise show the join's latest transition
    *  on both of their lines, and an open fork would relabel an earlier closed one. */
   readonly join?: GenerationJoinView;
+}
+
+export interface RevisionHistoryView {
+  readonly revisionId: string; readonly version: number; readonly recordId: string;
+  readonly changedNodes: readonly string[]; readonly affectedNodes: readonly string[];
+  readonly invalidatedRecordIds: readonly string[]; readonly reusedRecordIds: readonly string[];
 }
 
 /**
@@ -238,7 +246,9 @@ export function generationsOf(run: RunRecord, all: readonly LedgerRecord[], word
   // workshop's own view is where a person reads what was written (`record-views.ts`), and it reads
   // these records directly rather than through a generation row.
   // Delivery and later provenance reads cannot extend an already completed experiment's duration.
-  const records = all.filter((r) => r.type !== 'experience' && r.type !== 'archive' && r.type !== 'analysis'
+  const applied = all.filter((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied');
+  const invalid = new Set(applied.flatMap((record) => record.invalidates ?? []));
+  const records = all.filter((r) => !invalid.has(r.id) && r.type !== 'experience' && r.type !== 'archive' && r.type !== 'analysis' && r.type !== 'revision'
     && r.type !== 'session' && r.type !== 'code' && r.type !== 'knowledge');
   const opened = run.generation;
   const first = run.firstStrategy;
@@ -261,7 +271,13 @@ export function generationsOf(run: RunRecord, all: readonly LedgerRecord[], word
     const loops = nested.get(row.generation);
     const branches = branchesOf(run, outer, row.generation);
     const growths = growthBranchesOf(outer, row.generation);
-    const withGrowth = growths === undefined ? row : { ...row, growths };
+    const revisions = applied.filter((record) => record.generation === row.generation).map((record): RevisionHistoryView => ({
+      revisionId: record.revisionId, version: record.version, recordId: record.id,
+      changedNodes: record.changedNodes, affectedNodes: record.affectedNodes,
+      invalidatedRecordIds: record.invalidates ?? [], reusedRecordIds: record.reuses ?? [],
+    }));
+    const withRevision = revisions.length === 0 ? row : { ...row, revisions };
+    const withGrowth = growths === undefined ? withRevision : { ...withRevision, growths };
     const withLoops = loops === undefined ? withGrowth : { ...withGrowth, loops };
     if (branches === undefined) return withLoops;
     // The join belongs to the generation whose branches converged into it, and is composed here

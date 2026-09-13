@@ -35,12 +35,13 @@
 import { goalDeclarationOf, boundInputs, checkPack, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from './pack-folder.js';
 import { createHash, randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { loadRunPack, preservePackMethod } from './release.js';
-import { campaignIdFor, prepareWorkspace, type PrepareResult } from './workspace.js';
+import { applyWorkspaceRevision, campaignIdFor, prepareWorkspace, type PrepareResult, type WorkspaceRevisionChange } from './workspace.js';
 import { writeExperience } from './experience.js';
 import { loadSite, pathsOf } from './sites.js';
 import { driving, existingRun, legacyAutomaticAllowed } from './runs.js';
-import { recordNode, researchAnalysis, executionReceipt as receiptSchema, launchIntent as launchIntentSchema } from './ledger.js';
+import { currentRecordsIn, recordNode, researchAnalysis, revisionRecordsIn, executionReceipt as receiptSchema, launchIntent as launchIntentSchema } from './ledger.js';
 import { analysisProblems } from './experience-report.js';
 import { runView as analysisRunView } from './remote.js';
 import { jobStatus, jobTail, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
@@ -64,6 +65,7 @@ import type {
   NodeExecution,
   ExecutionReceipt,
   GrowthRecord,
+  RevisionRecord,
   RunControl,
 } from './ledger.js';
 import { chosenAs, chosenKind, type ChosenKind } from './record-views.js';
@@ -1072,6 +1074,8 @@ export interface ExecutionActionRequest {
   readonly cites?: readonly string[]; readonly origin?: 'agent' | 'human';
   /** Structured PLS-10 proposal for grow, parsed again by Fabric before any acceptance. */
   readonly proposal?: unknown;
+  /** Structured PLS-11 change request for revise. */
+  readonly revision?: unknown;
   /** Settle the currently active optional branch without claiming its required result. */
   readonly growthDisposition?: 'failed' | 'cancelled' | 'abandoned';
   readonly proposalId?: string;
@@ -1084,15 +1088,165 @@ export interface GrowthView {
 export interface ExecutionContext {
   readonly run: RunRecord; readonly nodes: readonly PackNode[];
   readonly method?: { readonly id: string; readonly version: string; readonly digest: string; readonly dir: string; readonly contract: Pack['contract']; readonly reference: Pack['graph'] };
-  readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly growths: readonly GrowthView[]; readonly reason?: string;
+  readonly available: readonly string[]; readonly executions: readonly NodeExecution[]; readonly growths: readonly GrowthView[];
+  readonly revisions: readonly RevisionRecord[]; readonly reason?: string;
 }
 export interface ExecutionActionResult {
   readonly kind: 'accepted' | 'duplicate' | 'refused' | 'unsupported'; readonly context: ExecutionContext;
   readonly receipt?: ExecutionReceipt; readonly reason?: string; readonly data?: unknown;
 }
 
+const revisionProposal = z.strictObject({
+  revisionId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/),
+  method: z.strictObject({ id: z.string().min(1), version: z.string().min(1), digest: z.string().regex(/^[0-9a-f]{64}$/) }),
+  inputThroughSeq: z.number().int().nonnegative(),
+  inputs: z.array(z.strictObject({ recordId: z.string().min(1), contentIdentity: z.string().regex(/^[0-9a-f]{64}$/) })).min(1).max(64),
+  reason: z.string().trim().min(1).max(4000),
+  changedNodes: z.array(z.string().min(1)).min(1).max(256),
+  strategy: z.record(z.string(), z.union([z.number(), z.string().min(1)])).optional(),
+  changes: z.array(z.strictObject({
+    nodeId: z.string().min(1), scope: z.enum(['workshop', 'workspace']),
+    path: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((value) => !value.split('/').includes('..') && !value.startsWith('/')),
+    fromSha256: z.string().regex(/^[0-9a-f]{64}$/), content: z.string().max(1024 * 1024),
+    sourceRecordId: z.string().min(1).optional(),
+  })).max(16),
+  affectedNodes: z.array(z.string().min(1)).min(1).max(256),
+}).refine((proposal) => proposal.changes.length > 0 || proposal.strategy !== undefined,
+  { message: 'revision changes code/input bytes, strategy, or both' });
+export type RevisionProposal = z.infer<typeof revisionProposal>;
+
+/** Exact non-revisit downstream closure in the existing Run graphs. */
+export function revisionImpactOf(pack: Pack, changedNodes: readonly string[]): string[] {
+  const graphs = runGraphsOf(pack).map(({ graph }) => graph);
+  const known = new Set(graphs.flatMap((graph) => graph.nodes.map((node) => node.id)));
+  for (const id of changedNodes) if (!known.has(id)) throw new Error(`changed node "${id}" is not in this Run method`);
+  const affected = new Set(changedNodes);
+  const edges = graphs.flatMap((graph) => graph.edges.filter((edge) => edge.revisit !== true).map((edge) => [edge.from, edge.to] as const));
+  for (const opener of pack.graph.nodes.filter(opensALoop)) {
+    const loop = pack.graph.loops[opener.parameters.opens]; if (loop === undefined) continue;
+    edges.push([opener.id, loop.entry]);
+    for (const decision of loop.nodes.filter((node) => node.kind === 'explore')) {
+      for (const continuation of pack.graph.edges.filter((edge) => edge.from === opener.id).map((edge) => edge.to)) edges.push([decision.id, continuation]);
+    }
+  }
+  for (const growth of pack.growthGraphs ?? []) edges.push([growth.parentNode, growth.graph.entry]);
+  let grew = true;
+  while (grew) { grew = false; for (const [from, to] of edges) if (affected.has(from) && !affected.has(to)) { affected.add(to); grew = true; } }
+  return [...affected];
+}
+
 function proposalJson(proposal: GrowthProposal): Exclude<GrowthRecord['proposal'], undefined> {
   return proposal as Exclude<GrowthRecord['proposal'], undefined>;
+}
+
+function revisionJson(proposal: RevisionProposal): Exclude<RevisionRecord['proposal'], undefined> {
+  return proposal as Exclude<RevisionRecord['proposal'], undefined>;
+}
+
+async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: ExecutionActionRequest,
+  requestDigest: string): Promise<ExecutionActionResult> {
+  const answer = (kind: ExecutionActionResult['kind'], reason?: string, receipt?: ExecutionReceipt): ExecutionActionResult => ({
+    kind, context: executionContext(deps, snapshot.id), ...(reason === undefined ? {} : { reason }), ...(receipt === undefined ? {} : { receipt, data: receipt.data }),
+  });
+  const parsed = revisionProposal.safeParse(req.revision);
+  if (!parsed.success) return answer('refused', `invalid revision request: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'revision'} ${issue.message}`).join('; ')}`);
+  const proposal = parsed.data; const proposalDigest = identityOf(proposal);
+  const run = existingRun(deps.ledger, snapshot.id); const control = run.control!;
+  const all = deps.ledger.records({ runId: run.id });
+  const earlier = all.filter((record): record is RevisionRecord => record.type === 'revision' && record.revisionId === proposal.revisionId);
+  if (earlier.some((record) => record.proposalDigest !== proposalDigest)) return answer('refused', 'this revision identity was already used with different contents');
+  if (run.status !== 'running') return answer('refused', 'revision requires an active Run');
+  if (Object.values(control.executions).some((execution) => execution.phase === 'working' || execution.phase === 'uncertain')
+      || deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === run.id)) return answer('refused', 'revision requires a safe boundary with no live or uncertain Job');
+  const pack = executionPack(deps, run);
+  if (run.packDigest === undefined || proposal.method.id !== pack.id || proposal.method.version !== pack.contract.version || proposal.method.digest !== run.packDigest) {
+    return answer('refused', 'revision method identity does not match this Run retained method');
+  }
+  if (proposal.inputThroughSeq !== run.nextSeq - 1 && earlier.length === 0) return answer('refused', 'revision inputs are stale; inputThroughSeq must name the current Ledger boundary');
+  const current = currentRecordsIn(all);
+  for (const input of proposal.inputs) {
+    const record = current.find((item) => item.id === input.recordId && item.seq <= proposal.inputThroughSeq);
+    if (record === undefined || identityOf(record) !== input.contentIdentity) return answer('refused', `revision input ${input.recordId} is missing, superseded or has a different content identity`);
+  }
+  const changedNodes = [...new Set(proposal.changedNodes)];
+  if (changedNodes.length !== proposal.changedNodes.length || proposal.changes.some((change) => !changedNodes.includes(change.nodeId))) {
+    return answer('refused', 'changedNodes must be distinct and include every node whose material changes');
+  }
+  const nextStrategy = proposal.strategy === undefined ? undefined : strategyFrom(pack.contract.strategy, proposal.strategy);
+  if (nextStrategy !== undefined && 'error' in nextStrategy) return answer('refused', `revision strategy is invalid: ${nextStrategy.error}`);
+  let closure: string[];
+  try { closure = revisionImpactOf(pack, changedNodes); }
+  catch (error) { return answer('refused', (error as Error).message); }
+  if (new Set(proposal.affectedNodes).size !== proposal.affectedNodes.length
+      || closure.length !== proposal.affectedNodes.length || closure.some((id) => !proposal.affectedNodes.includes(id))) {
+    return answer('refused', `affectedNodes must equal the actual non-revisit dependency closure: ${closure.join(', ')}`);
+  }
+  const workspace = all.findLast((record): record is WorkspaceRecord => record.type === 'workspace');
+  if (workspace === undefined) return answer('refused', 'revision requires the actual prepared Campaign workspace');
+  const changeKeys = proposal.changes.map((change) => `${change.scope}:${change.path}`);
+  if (new Set(changeKeys).size !== changeKeys.length) return answer('refused', 'revision changes must name distinct scope and path identities');
+  const workspaceChanges: WorkspaceRevisionChange[] = [];
+  for (const change of proposal.changes) {
+    const node = positionOf(pack, change.nodeId)?.node;
+    if (node === undefined) return answer('refused', `revision change node ${change.nodeId} is unavailable`);
+    if (change.scope === 'workshop') {
+      if (node.kind !== 'act' || node.parameters.workshop === undefined || change.sourceRecordId === undefined) return answer('refused', 'a Workshop revision needs its act node and actual source code record');
+      const source = current.find((record) => record.id === change.sourceRecordId);
+      if (source?.type !== 'code' || source.nodeId !== change.nodeId || source.sha256 !== change.fromSha256) return answer('refused', 'Workshop revision source must be the current byte-identified code record of that node');
+      workspaceChanges.push({ nodeId: change.nodeId, scope: change.scope, logicalPath: change.path,
+        sourcePath: source.path, beforeSha256: change.fromSha256, content: change.content });
+    } else {
+      if (change.path === 'workspace.json' || change.path.startsWith('.hima/')) return answer('refused', 'workspace revision cannot change harness-owned workspace or revision metadata');
+      workspaceChanges.push({ nodeId: change.nodeId, scope: change.scope, logicalPath: change.path,
+        sourcePath: pathsOf(loadSite(deps.sitesDir, run.siteId)).join(workspace.workspace, change.path),
+        beforeSha256: change.fromSha256, content: change.content });
+    }
+  }
+  const superseded = Object.values(control.executions).filter((execution) => execution.supersededBy === undefined
+    && closure.includes(execution.nodeId) && execution.generation === (run.generation ?? 1));
+  const invalidates = new Set<string>();
+  for (const execution of superseded) {
+    const terminal = all.filter((record) => record.type === 'node' && record.nodeId === execution.nodeId
+      && record.attempt === execution.attempt && record.generation === execution.generation
+      && record.loopId === execution.loopId && record.branchId === execution.branchId).at(-1)?.seq ?? execution.inputThroughSeq ?? 0;
+    for (const record of current) if (record.seq > (execution.inputThroughSeq ?? 0) && record.seq <= terminal
+      && record.generation === execution.generation && record.loopId === execution.loopId
+      && (!('branchId' in record) || record.branchId === execution.branchId)) invalidates.add(record.id);
+  }
+  for (const change of proposal.changes) if (change.sourceRecordId !== undefined) invalidates.add(change.sourceRecordId);
+  const reuses = current.filter((record) => record.type !== 'revision' && !invalidates.has(record.id)).map((record) => record.id);
+  const version = all.filter((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied').length + 1;
+  const methodIdentity = identityOf(proposal.method); const sourceIdentity = identityOf({ changes: proposal.changes.map(({ content, ...change }) => ({ ...change, afterSha256: identityOf(content) })), strategy: nextStrategy?.strategy });
+  const inputIdentity = identityOf(proposal.inputs); const environmentIdentity = identityOf({ siteId: run.siteId, siteDigest: control.siteDigest, workspace: identityOf(workspace) });
+  const proposed = earlier.find((record) => record.event === 'proposed') ?? await deps.ledger.appendRevision(run.id, {
+    revisionId: proposal.revisionId, version, event: 'proposed', proposalDigest, proposal: revisionJson(proposal),
+    methodIdentity, sourceIdentity, inputIdentity, environmentIdentity, changedNodes, affectedNodes: closure,
+    supersedes: all.findLast((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied')?.revisionId,
+  });
+  let applied = earlier.find((record) => record.event === 'applied');
+  if (applied === undefined) {
+    try {
+      const assets = await applyWorkspaceRevision(loadSite(deps.sitesDir, run.siteId), workspace.workspace, proposal.revisionId, workspaceChanges);
+      applied = await deps.ledger.appendRevision(run.id, { revisionId: proposal.revisionId, version: proposed.version,
+        event: 'applied', proposalDigest, methodIdentity, sourceIdentity, inputIdentity, environmentIdentity,
+        changedNodes, affectedNodes: closure, assets, invalidates: [...invalidates], reuses,
+        supersedes: proposed.supersedes });
+    } catch (error) {
+      await deps.ledger.appendRevision(run.id, { revisionId: proposal.revisionId, version: proposed.version,
+        event: 'refused', proposalDigest, reason: (error as Error).message, methodIdentity, sourceIdentity,
+        inputIdentity, environmentIdentity, changedNodes, affectedNodes: closure, supersedes: proposed.supersedes });
+      return answer('refused', (error as Error).message);
+    }
+  }
+  const executions = Object.fromEntries(Object.entries(control.executions).map(([id, execution]) =>
+    [id, superseded.some((item) => item.id === id) ? { ...execution, supersededBy: proposal.revisionId } : execution]));
+  const receipt: ExecutionReceipt = { requestId: req.requestId, action: 'revise', data: {
+    revisionId: proposal.revisionId, version: applied.version, recordId: applied.id, changedNodes, affectedNodes: closure,
+    invalidates: applied.invalidates ?? [...invalidates], reuses: applied.reuses ?? reuses,
+  } };
+  await recordExecutionAction(deps, existingRun(deps.ledger, run.id), req, requestDigest,
+    { executions }, receipt, {}, 'done', { currentNode: changedNodes[0], ...(nextStrategy === undefined ? {} : { strategy: nextStrategy.strategy }) });
+  return answer('accepted', undefined, receipt);
 }
 
 async function rejectGrowth(deps: FabricDeps, run: RunRecord, proposal: GrowthProposal, proposalDigest: string, reason: string, existing?: GrowthRecord): Promise<void> {
@@ -1268,11 +1422,12 @@ function executionPack(deps: FabricDeps, run: RunRecord): Pack {
   return withGrowthGraphs(reference, acceptedGrowthGraphs(deps, reference, run.id));
 }
 function inputIdentity(deps: FabricDeps, run: RunRecord, throughSeq = run.nextSeq - 1): string {
+  const records = currentRecordsIn(deps.ledger.records({ runId: run.id }));
   return identityOf({
     method: run.packDigest, site: run.siteId, goal: run.goal, strategy: run.strategy,
     generation: run.generation, loop: run.loop,
-    workspace: deps.ledger.records({ runId: run.id, type: 'workspace' }).findLast((record) => record.type === 'workspace' && record.seq <= throughSeq),
-    evidence: deps.ledger.records({ runId: run.id }).filter((record) => record.seq <= throughSeq && ((record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id || record.type === 'growth')),
+    workspace: records.findLast((record) => record.type === 'workspace' && record.seq <= throughSeq),
+    evidence: records.filter((record) => record.seq <= throughSeq && ((record.type === 'observation' || record.type === 'verdict') && record.generation === (run.loop?.generation ?? run.generation) && record.loopId === run.loop?.id || record.type === 'growth' || record.type === 'revision')),
   });
 }
 /** Pause follows dependency edges, including Loop entry/return, but never a future revisit. */
@@ -1302,7 +1457,7 @@ function executionPauseReason(pack: Pack, run: RunRecord, nodeId: string): strin
 
 function unclearedFailure(run: RunRecord, scope: string): NodeExecution | undefined {
   return Object.values(run.control?.executions ?? {}).findLast((execution) =>
-    execution.phase === 'failed' && execution.humanClearance === undefined
+    execution.supersededBy === undefined && execution.phase === 'failed' && execution.humanClearance === undefined
     && (execution.result?.kind === 'hard-blocker' || execution.result?.kind === 'blocked')
     && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id
     && execution.loopGeneration === run.loop?.generation && (scope === '*' || execution.nodeId === scope));
@@ -1311,7 +1466,8 @@ function unclearedFailure(run: RunRecord, scope: string): NodeExecution | undefi
 export function executionContext(deps: FabricDeps, runId: string): ExecutionContext {
   const run = existingRun(deps.ledger, runId);
   const executions = Object.values(run.control?.executions ?? {});
-  if (run.control === undefined) return { run, nodes: [], available: [], executions, growths: [], reason: 'historical automatic Run; explicit safe ownership migration is required' };
+  const revisions = revisionRecordsIn(deps.ledger, runId);
+  if (run.control === undefined) return { run, nodes: [], available: [], executions, growths: [], revisions, reason: 'historical automatic Run; explicit safe ownership migration is required' };
   try {
     const pack = executionPack(deps, run);
     const nodes = runGraphsOf(pack).flatMap(({ graph }) => graph.nodes);
@@ -1326,10 +1482,10 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
       executionPauseReason(pack, run, nodeId) === undefined && unclearedFailure(run, nodeId) === undefined && !executions.some((execution) =>
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
-        && execution.phase !== 'failed'));
-    return { run, nodes, available, executions, growths: growthViews(deps, pack, run.id), ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
+        && execution.supersededBy === undefined && execution.phase !== 'failed'));
+    return { run, nodes, available, executions, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
-    return { run, nodes: [], available: [], executions, growths: [], reason: (error as Error).message };
+    return { run, nodes: [], available: [], executions, growths: [], revisions, reason: (error as Error).message };
   }
 }
 
@@ -1350,7 +1506,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const before = Object.hasOwn(control.requests, req.requestId) ? control.requests[req.requestId] : undefined;
     if (before !== undefined) return before.digest === digest ? answer('duplicate', { receipt: before.receipt, data: before.receipt.data }) : no('this request identity was already used with different contents');
     if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
-    if (req.action === 'revise') return answer('unsupported', { reason: 'algorithm revision is not implemented yet (PLS-11); no files, history or budget changed' });
+    if (req.action === 'revise') return revisionAction(deps, run, req, digest);
     if (req.action === 'grow') return growthAction(deps, run, req, digest);
     const reading = req.action === 'read' || req.action === 'knowledge' || req.action === 'recommend';
     if (req.action === 'cancel') {
@@ -1443,9 +1599,11 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       await deps.ledger.appendGrowth(run.id, { proposalId: growth.proposalId, proposalDigest: accepted.proposalDigest, event: 'started', proposalRecordId: accepted.id });
     }
     if (control === undefined) return no('this Run lost its conversational owner before node admission');
-    if (context.executions.some((execution) => execution.nodeId === node.id && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation && execution.phase !== 'completed' && execution.phase !== 'failed')) return no('this node already has an admitted execution');
+    if (context.executions.some((execution) => execution.supersededBy === undefined && execution.nodeId === node.id && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation && execution.phase !== 'completed' && execution.phase !== 'failed')) return no('this node already has an admitted execution');
     const retry = retryStanding(deps.ledger, run.id, node.id);
-    if (retry.spent > retry.allowance) return no('this node has spent its retry allowance; a human must clear its blocker');
+    const revised = context.executions.some((execution) => execution.nodeId === node.id && execution.supersededBy !== undefined);
+    const currentFailures = context.executions.filter((execution) => execution.nodeId === node.id && execution.supersededBy === undefined && execution.phase === 'failed').length;
+    if ((!revised && retry.spent > retry.allowance) || (revised && currentFailures > retry.allowance)) return no('this node has spent its retry allowance; a human must clear its blocker');
     const execution: NodeExecution = {
       id: `execution-${randomUUID()}`, nodeId: node.id, kind: node.kind,
       generation: run.generation ?? 1, attempt: attemptOf(deps.ledger, run.id, node.id),
@@ -1477,9 +1635,10 @@ async function clearExecutionBlocker(deps: FabricDeps, run: RunRecord, req: Exec
 async function recordExecutionAction(
   deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest, digest: string,
   change: Partial<RunControl>, receipt: ExecutionReceipt, delta: { attempts?: number } = {}, state: 'admitted' | 'done' | 'uncertain' = 'done',
+  progress: RunProgress = {},
 ): Promise<void> {
   const control = run.control!;
-  await advance(deps.ledger, run.id, delta, { control: {
+  await advance(deps.ledger, run.id, delta, { ...progress, control: {
     ...control, ...change, revision: control.revision + 1,
     requests: { ...control.requests, [req.requestId]: {
       digest, actor: req.actor, epoch: control.epoch, revision: control.revision,

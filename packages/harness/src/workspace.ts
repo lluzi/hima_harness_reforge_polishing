@@ -14,7 +14,7 @@
 // Every write here — the directories, the copy, the `workspace.json` — is decided by the Permit
 // first (`decideWrite`), and a refusal means nothing was sent to the Site at all. The flow being
 // copied *from* is decided as a read (`decideRead`), because that is what it is.
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { channelFor, mustRun, type Channel } from './channel.js';
 import { decideRead, decideWrite } from './shell.js';
@@ -418,4 +418,107 @@ function recordOf(file: WorkspaceFile): Omit<WorkspaceRecord, 'id' | 'runId' | '
     copied: file.copied,
     preparedAt: file.preparedAt,
   };
+}
+
+export interface WorkspaceRevisionChange {
+  readonly nodeId: string;
+  readonly scope: 'workshop' | 'workspace';
+  readonly logicalPath: string;
+  /** Existing path for a workspace file, or the historical codeRecord path for a Workshop. */
+  readonly sourcePath: string;
+  readonly beforeSha256: string;
+  readonly content: string;
+}
+
+export interface WorkspaceRevisionAsset {
+  readonly nodeId: string; readonly scope: 'workshop' | 'workspace'; readonly logicalPath: string;
+  readonly path: string; readonly beforeVersionPath: string; readonly afterVersionPath: string;
+  readonly beforeSha256: string; readonly afterSha256: string; readonly bytes: number;
+}
+
+const sha256Of = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
+
+/** Preserve both byte versions and apply only workspace-scoped changes. Workshop history is never
+ * overwritten; node-turns copies its accepted after-version into each new execution directory. */
+export async function applyWorkspaceRevision(site: ReturnType<typeof loadSite>, workspace: string, revisionId: string,
+  changes: readonly WorkspaceRevisionChange[]): Promise<WorkspaceRevisionAsset[]> {
+  const channel = channelFor(site);
+  const p = pathsOf(site);
+  const root = p.join(workspace, '.hima', 'revisions', revisionId);
+  const inspected: { change: WorkspaceRevisionChange; before: Uint8Array; after: Uint8Array; target: string }[] = [];
+  for (const change of changes) {
+    const after = Buffer.from(change.content, 'utf8');
+    const target = change.scope === 'workspace' ? p.join(workspace, change.logicalPath) : change.sourcePath;
+    const decided = await decideRead(site, target, channel);
+    if (!decided.ok) throw new Error(`revision source ${target} cannot be read: ${decided.reason}`);
+    const current = await channel.readFile(decided.absPath);
+    const currentSha = sha256Of(current);
+    const afterSha = sha256Of(after);
+    if (currentSha !== change.beforeSha256 && !(change.scope === 'workspace' && currentSha === afterSha)) {
+      throw new Error(`revision source ${decided.absPath} is ${currentSha}, not declared ${change.beforeSha256}`);
+    }
+    // A retried workspace application may already show the after bytes; its before bytes must have
+    // reached the immutable store first or this is an unaccountable partial write.
+    let before = current;
+    if (currentSha === afterSha && currentSha !== change.beforeSha256) {
+      const held = p.join(root, 'before', change.logicalPath);
+      const old = await decideRead(site, held, channel);
+      if (!old.ok) throw new Error(`revision target changed but retained before-version ${held} is unavailable`);
+      before = await channel.readFile(old.absPath);
+      if (sha256Of(before) !== change.beforeSha256) throw new Error(`retained before-version ${held} has changed`);
+    }
+    inspected.push({ change, before, after, target: decided.absPath });
+  }
+  const writeVersion = async (at: string, bytes: Uint8Array, expected: string): Promise<string> => {
+    const existing = await decideRead(site, at, channel);
+    if (existing.ok) {
+      if (sha256Of(await channel.readFile(existing.absPath)) !== expected) throw new Error(`retained revision version ${at} has different bytes`);
+      return existing.absPath;
+    }
+    const parent = p.dirname(at);
+    const dir = await decideWrite(site, parent, channel);
+    if (!dir.ok) throw new Error(dir.reason);
+    await mustRun(channel, ['mkdir', '-p', '--', dir.absPath], `create revision directory ${dir.absPath}`);
+    const output = await decideWrite(site, at, channel);
+    if (!output.ok) throw new Error(output.reason);
+    await mustRun(channel, ['tee', '--', output.absPath], `preserve revision bytes at ${output.absPath}`, { stdin: Buffer.from(bytes) });
+    if (sha256Of(await channel.readFile(output.absPath)) !== expected) throw new Error(`retained revision version ${output.absPath} did not verify`);
+    return output.absPath;
+  };
+  const assets: WorkspaceRevisionAsset[] = [];
+  for (const item of inspected) {
+    const afterSha256 = sha256Of(item.after);
+    const beforeVersionPath = await writeVersion(p.join(root, 'before', item.change.logicalPath), item.before, item.change.beforeSha256);
+    const afterVersionPath = await writeVersion(p.join(root, 'after', item.change.logicalPath), item.after, afterSha256);
+    if (item.change.scope === 'workspace') {
+      const output = await decideWrite(site, item.target, channel);
+      if (!output.ok) throw new Error(output.reason);
+      if (sha256Of(await channel.readFile(output.absPath)) !== afterSha256) {
+        await mustRun(channel, ['tee', '--', output.absPath], `apply revision ${revisionId} to ${output.absPath}`, { stdin: Buffer.from(item.after) });
+      }
+      if (sha256Of(await channel.readFile(output.absPath)) !== afterSha256) throw new Error(`applied revision target ${output.absPath} did not verify`);
+    }
+    assets.push({ nodeId: item.change.nodeId, scope: item.change.scope, logicalPath: item.change.logicalPath,
+      path: item.target, beforeVersionPath, afterVersionPath, beforeSha256: item.change.beforeSha256,
+      afterSha256, bytes: item.after.byteLength });
+  }
+  return assets;
+}
+
+/** Copy accepted Workshop algorithm bytes into a new execution's private directory. */
+export async function materializeWorkshopRevision(site: ReturnType<typeof loadSite>, assets: readonly WorkspaceRevisionAsset[],
+  targetRoot: string): Promise<void> {
+  const channel = channelFor(site); const p = pathsOf(site);
+  for (const asset of assets.filter((item) => item.scope === 'workshop')) {
+    const source = await decideRead(site, asset.afterVersionPath, channel);
+    if (!source.ok) throw new Error(`retained Workshop revision is unavailable: ${source.reason}`);
+    const bytes = await channel.readFile(source.absPath);
+    if (sha256Of(bytes) !== asset.afterSha256) throw new Error(`retained Workshop revision ${source.absPath} has changed`);
+    const target = p.join(targetRoot, asset.logicalPath); const parent = p.dirname(target);
+    const dir = await decideWrite(site, parent, channel); if (!dir.ok) throw new Error(dir.reason);
+    await mustRun(channel, ['mkdir', '-p', '--', dir.absPath], `create revised Workshop directory ${dir.absPath}`);
+    const output = await decideWrite(site, target, channel); if (!output.ok) throw new Error(output.reason);
+    await mustRun(channel, ['tee', '--', output.absPath], `materialize revised Workshop file ${output.absPath}`, { stdin: Buffer.from(bytes) });
+    if (sha256Of(await channel.readFile(output.absPath)) !== asset.afterSha256) throw new Error(`materialized Workshop file ${output.absPath} did not verify`);
+  }
 }

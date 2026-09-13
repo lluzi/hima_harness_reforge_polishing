@@ -42,6 +42,7 @@ import type {
   ObservationRecord,
   PackDataOrigin,
   ReaderRef,
+  RevisionRecord,
   RefusalRecord,
   RunBudget,
   RunLoop,
@@ -55,7 +56,7 @@ import type {
   VerdictRecord,
   WorkspaceRecord,
 } from './ledger.js';
-import type { GenerationView } from './generations.js';
+import type { GenerationView, RevisionHistoryView } from './generations.js';
 import { generationsOf } from './generations.js';
 // Type-only, like every other shape here: this module is bundled into the browser half as well, and
 // `channel.ts` reaches for ssh and the filesystem. What the audit routes answer comes through
@@ -349,6 +350,8 @@ export interface RunView {
    * none. Folded by `generations.ts`.
    */
   readonly generations: readonly GenerationView[];
+  /** Applied revision boundaries; invalidated facts remain in their original sections as history. */
+  readonly revisions?: readonly RevisionHistoryView[];
   readonly jobs: readonly JobView[];
   /** Every Hard blocker this Run has hit, in the order it hit them; a resumed one stays on the list. */
   readonly blockers: readonly BlockerView[];
@@ -748,6 +751,14 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     // The generations, each row saying what its Strategy asked for and what its decision chose in
     // the pack's own words (#58), which is why the words go in here rather than being resolved twice.
     generations: generationsOf(run, records, words),
+    ...(() => {
+      const revisions = records.filter((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied').map((record): RevisionHistoryView => ({
+        revisionId: record.revisionId, version: record.version, recordId: record.id,
+        changedNodes: record.changedNodes, affectedNodes: record.affectedNodes,
+        invalidatedRecordIds: record.invalidates ?? [], reusedRecordIds: record.reuses ?? [],
+      }));
+      return revisions.length === 0 ? {} : { revisions };
+    })(),
     jobs: records.filter((r): r is JobRecord => r.type === 'job').map(jobView),
     blockers: records.filter((r): r is BlockerRecord => r.type === 'blocker').map(blockerView),
     cancels: records.filter((r): r is CancelRecord => r.type === 'cancel').map(cancelView),
@@ -782,7 +793,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
 const runAnswer = (ops: RemoteOperations, run: RunRecord): RunView =>
   runView(ops.ledger, run, ops.runWords(run));
 
-const RECORD_TYPES = new Set<LedgerRecord['type']>(['observation', 'refusal', 'verdict', 'job', 'workspace', 'node', 'blocker', 'resumed', 'decision', 'cancel', 'loop', 'experience', 'session', 'code']);
+const RECORD_TYPES = new Set<LedgerRecord['type']>(['observation', 'refusal', 'verdict', 'job', 'workspace', 'node', 'blocker', 'resumed', 'decision', 'cancel', 'loop', 'experience', 'session', 'code', 'revision']);
 
 function recordType(raw: string | null): LedgerRecord['type'] | undefined {
   if (raw === null) return undefined;
