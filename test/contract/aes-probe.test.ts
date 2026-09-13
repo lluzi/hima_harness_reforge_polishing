@@ -67,11 +67,11 @@ test('AES reader holds measured period and slack to original hashed tool output;
 });
 
 for (const variant of ['goal-met', 'goal-missed', 'missing-measurement'] as const) {
-  test(`the authored AES Pack owns a real local Host/Job loop with ${variant} (synthetic EDA measurements)`, async (t) => {
+  test(`the released v2 AES probe owns a real local Host/Job loop with ${variant} (synthetic EDA measurements)`, async (t) => {
     const home = await localHome(t, { sleepSeconds: 0 });
     assert.ok(home);
     const folder = path.join(home.h.home, 'hima/packs/aes-tsmc28-dtco');
-    await cp(path.join(repoRoot, 'packs/aes-tsmc28-dtco'), folder, { recursive: true });
+    await cp(path.join(repoRoot, 'docs/validation/pls-frontier/aes-execute-v2/pack'), folder, { recursive: true });
     const flow = path.join(home.h.home, 'aes-mechanism-flow');
     await mkdir(flow);
     const fixture = `import argparse,json,hashlib,pathlib\np=argparse.ArgumentParser();p.add_argument('--workspace');p.add_argument('--period',type=float);a=p.parse_args()\nf=pathlib.Path(a.workspace)/'flow'\nraw='asked_period_ns\\t'+str(a.period)+'\\nworst_slack_ns\\t0\\ncell_area_um2\\t1024\\n'\n(f/'metrics.tsv').write_text(raw)\nident={'schema':1,'inputs':{'fixture':'fixed'},'method':{'fixture':'fixed'},'tool':{'version':'synthetic'}}\nib=json.dumps(ident)\n(f/'probe-inputs.json').write_text(ib)\n(f/'probe.json').write_text(json.dumps({'effectiveIdentity':ident,'identity':{'path':'probe-inputs.json','sha256':hashlib.sha256(ib.encode()).hexdigest()},'format':'aes-probe/2','toolExit':0,'askedPeriodNs':a.period,'evidence':{'metrics':{'path':'metrics.tsv','sha256':hashlib.sha256(raw.encode()).hexdigest()}}}))\n`;

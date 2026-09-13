@@ -1,0 +1,12 @@
+id: read-characterize
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - characterize
+reportKind: aes-dtco-stage/1
+emits:
+  - predicted_cell_count

@@ -1,0 +1,12 @@
+id: read-compile
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - compile
+reportKind: aes-dtco-stage/1
+emits:
+  - lc_accepted

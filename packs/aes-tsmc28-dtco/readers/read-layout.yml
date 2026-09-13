@@ -1,0 +1,12 @@
+id: read-layout
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - layout
+reportKind: aes-dtco-stage/1
+emits:
+  - abstract_cell_count

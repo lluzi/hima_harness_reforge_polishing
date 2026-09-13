@@ -1,0 +1,12 @@
+id: read-pnr-foundry
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - pnr-foundry
+reportKind: aes-dtco-stage/1
+emits:
+  - pnr_completed

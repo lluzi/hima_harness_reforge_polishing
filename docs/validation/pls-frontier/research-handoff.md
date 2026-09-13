@@ -50,7 +50,9 @@ new research Job. The original failed evidence bytes remain unchanged.
 
 The source run used 71 model request-step events; the earlier no-Run attempt used 21. These are not
 exact billable API requests, and token use/adapter retries remain unmeasured. The closure used one
-Host and zero model/research/EDA requests. Customer sample files stay outside Git/Pack methods.
+Host and zero model/research/EDA requests. Raw library/netlists and the standalone customer sample stay out of the distributed Pack method.
+The retained validation session contains the finite sample text actually inspected by the model;
+it is evidence, not a claim that all customer data was excluded from validation transcripts.
 
 ## Implementation and testing
 

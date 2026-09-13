@@ -1,72 +1,195 @@
-# The run contract of the aes-tsmc28-dtco foundry-only Fmax probe: what a Site must bind before this
-# pack can run, what a generation produces in the Campaign workspace, and what the pack runs on the
-# Site. `/hima pack check <pack> --site <site>` reads this file against a Site's own.
 id: aes-tsmc28-dtco
-version: '2'
-title: AES TSMC28 DTCO foundry-only Fmax probe
-
-# What a Site binds, in its own site file under `bindings:`. The same pack runs on another Site by
-# editing that file, never this one. Site linglong-aes binds all three.
+version: "3"
+title: AES TSMC28 custom Cell research and matched physical implementation
 inputs:
   - name: flowRoot
-    description: >-
-      The Site's separately staged Golden Flow root: the directory holding probe.py, synth.tcl,
-      read-probe.py and a private inputs.json. Read-only to a Campaign — a generation runs in the
-      Campaign's own copy of it, never here.
+    description: "The Site's separately staged Golden Flow root: the directory
+      holding probe.py, synth.tcl, read-probe.py and a private inputs.json.
+      Read-only to a Campaign — a generation runs in the Campaign's own copy of
+      it, never here."
   - name: design
-    description: >-
-      The design the flow builds: aes_cipher_top, spelled as the flow's own inputs.json spells it.
-      probe.py refuses any other value.
+    description: "The design the flow builds: aes_cipher_top, spelled as the flow's
+      own inputs.json spells it. probe.py refuses any other value."
   - name: workspaceRoot
-    description: >-
-      Where Campaign workspaces are created. The Site's Permit must allow writes under it; nothing
-      the pack does writes anywhere else.
-
-# What a generation leaves in its Campaign workspace, relative to the workspace. `probe` is the
-# judged file, read into HimaLedger through this pack's own reader; `timingManifest` is the same
-# current manifest left unparsed for evidence access, so later analysis can reach the reports and
-# the netlist by the hashes it names.
+    description: Where Campaign workspaces are created. The Site's Permit must allow
+      writes under it; nothing the pack does writes anywhere else.
 outputs:
   - name: probe
     path: flow/probe.json
     reader: aes-probe-reading
-    description: >-
-      The manifest the synthesis wrote and the judged output: read as clock_period, setup_wns
-      (setup/all) and cell_area.
+    description: "The manifest the synthesis wrote and the judged output: read as
+      clock_period, setup_wns (setup/all) and cell_area."
   - name: timingManifest
     path: flow/probe.json
-    description: >-
-      The same current manifest, unparsed, for evidence access. It names the generation's metrics,
-      timing report, qor report, netlist, constraints, reference and check_timing reports, dc log and
-      entry script with a sha256 for each.
-
-# What the Site must let this pack run: the first word of the tool's command line and of the
-# reader's. The Permit's allowedWrappers decides it.
+    description: The same current manifest, unparsed, for evidence access. It names
+      the generation's metrics, timing report, qor report, netlist, constraints,
+      reference and check_timing reports, dc log and entry script with a sha256
+      for each.
+  - name: raw_timing_criticality
+    path: flow/mining/timing_criticality/raw.json
+    description: Source-linked timing_criticality candidate requests; no PPA claim.
+  - name: source_timing_criticality
+    path: flow/records/mine-timing_criticality.json
+    description: Executed miner and raw candidate hashes.
+  - name: selected_timing_criticality
+    path: flow/mining/timing_criticality/selected.json
+    description: Agent program selects exact source ids; merge independently
+      validates provenance.
+    reader: read-select-timing-criticality
+  - name: raw_timing_context
+    path: flow/mining/timing_context/raw.json
+    description: Source-linked timing_context candidate requests; no PPA claim.
+  - name: source_timing_context
+    path: flow/records/mine-timing_context.json
+    description: Executed miner and raw candidate hashes.
+  - name: selected_timing_context
+    path: flow/mining/timing_context/selected.json
+    description: Agent program selects exact source ids; merge independently
+      validates provenance.
+    reader: read-select-timing-context
+  - name: raw_structure_frequency
+    path: flow/mining/structure_frequency/raw.json
+    description: Source-linked structure_frequency candidate requests; no PPA claim.
+  - name: source_structure_frequency
+    path: flow/records/mine-structure_frequency.json
+    description: Executed miner and raw candidate hashes.
+  - name: selected_structure_frequency
+    path: flow/mining/structure_frequency/selected.json
+    description: Agent program selects exact source ids; merge independently
+      validates provenance.
+    reader: read-select-structure-frequency
+  - name: raw_structure_compaction
+    path: flow/mining/structure_compaction/raw.json
+    description: Source-linked structure_compaction candidate requests; no PPA claim.
+  - name: source_structure_compaction
+    path: flow/records/mine-structure_compaction.json
+    description: Executed miner and raw candidate hashes.
+  - name: selected_structure_compaction
+    path: flow/mining/structure_compaction/selected.json
+    description: Agent program selects exact source ids; merge independently
+      validates provenance.
+    reader: read-select-structure-compaction
+  - name: raw_mapper_compatibility
+    path: flow/mining/mapper_compatibility/raw.json
+    description: Source-linked mapper_compatibility candidate requests; no PPA claim.
+  - name: source_mapper_compatibility
+    path: flow/records/mine-mapper_compatibility.json
+    description: Executed miner and raw candidate hashes.
+  - name: selected_mapper_compatibility
+    path: flow/mining/mapper_compatibility/selected.json
+    description: Agent program selects exact source ids; merge independently
+      validates provenance.
+    reader: read-select-mapper-compatibility
+  - name: raw_functional_diversity
+    path: flow/mining/functional_diversity/raw.json
+    description: Source-linked functional_diversity candidate requests; no PPA claim.
+  - name: source_functional_diversity
+    path: flow/records/mine-functional_diversity.json
+    description: Executed miner and raw candidate hashes.
+  - name: selected_functional_diversity
+    path: flow/mining/functional_diversity/selected.json
+    description: Agent program selects exact source ids; merge independently
+      validates provenance.
+    reader: read-select-functional-diversity
+  - name: record_merge
+    path: flow/records/merge.json
+    reader: read-merge
+    description: Fresh merge stage evidence; reader verifies held raw artifacts.
+  - name: record_generate
+    path: flow/records/generate.json
+    reader: read-generate
+    description: Fresh generate stage evidence; reader verifies held raw artifacts.
+  - name: record_layout
+    path: flow/records/layout.json
+    reader: read-layout
+    description: Fresh layout stage evidence; reader verifies held raw artifacts.
+  - name: record_characterize
+    path: flow/records/characterize.json
+    reader: read-characterize
+    description: Fresh characterize stage evidence; reader verifies held raw artifacts.
+  - name: record_compile
+    path: flow/records/compile.json
+    reader: read-compile
+    description: Fresh compile stage evidence; reader verifies held raw artifacts.
+  - name: record_foundry_synth
+    path: flow/records/foundry-synth.json
+    reader: read-foundry-synth
+    description: Fresh foundry-synth stage evidence; reader verifies held raw artifacts.
+  - name: record_custom_synth
+    path: flow/records/custom-synth.json
+    reader: read-custom-synth
+    description: Fresh custom-synth stage evidence; reader verifies held raw artifacts.
+  - name: record_adoption
+    path: flow/records/adoption.json
+    reader: read-adoption
+    description: Fresh adoption stage evidence; reader verifies held raw artifacts.
+  - name: record_pnr_foundry
+    path: flow/records/pnr-foundry.json
+    reader: read-pnr-foundry
+    description: Fresh pnr-foundry stage evidence; reader verifies held raw artifacts.
+  - name: record_pnr_generated
+    path: flow/records/pnr-generated.json
+    reader: read-pnr-generated
+    description: Fresh pnr-generated stage evidence; reader verifies held raw artifacts.
+  - name: record_verify
+    path: flow/records/verify.json
+    reader: read-verify
+    description: Fresh verify stage evidence; reader verifies held raw artifacts.
+  - name: record_compare
+    path: flow/records/compare.json
+    reader: read-compare
+    description: Fresh compare stage evidence; reader verifies held raw artifacts.
+  - name: research_timing_criticality
+    path: flow/mining/timing_criticality/research.json
+    description: Compact source-hashed projection of every emitted candidate; raw
+      remains the executable and reader authority.
+  - name: research_timing_context
+    path: flow/mining/timing_context/research.json
+    description: Compact source-hashed projection of every emitted candidate; raw
+      remains the executable and reader authority.
+  - name: research_structure_frequency
+    path: flow/mining/structure_frequency/research.json
+    description: Compact source-hashed projection of every emitted candidate; raw
+      remains the executable and reader authority.
+  - name: research_structure_compaction
+    path: flow/mining/structure_compaction/research.json
+    description: Compact source-hashed projection of every emitted candidate; raw
+      remains the executable and reader authority.
+  - name: research_mapper_compatibility
+    path: flow/mining/mapper_compatibility/research.json
+    description: Compact source-hashed projection of every emitted candidate; raw
+      remains the executable and reader authority.
+  - name: research_functional_diversity
+    path: flow/mining/functional_diversity/research.json
+    description: Compact source-hashed projection of every emitted candidate; raw
+      remains the executable and reader authority.
+  - name: selectionTemplate
+    path: flow/selection-template.py
+    description: Fixed I/O scaffold; implement only choose() for actual research.
+      Its own validator must succeed before this program exits zero.
 environment:
   wrappers:
     - /usr/bin/python3
-
-# How a Campaign workspace is prepared from the bound flow root, once per Campaign, into
-# `<workspace>/flow/`. inputs.json is the Site's private binding file: it is copied out of flowRoot
-# and is never authored into this pack.
 workspace:
   copy:
     - probe.py
     - synth.tcl
     - read-probe.py
     - inputs.json
-
-# The pack's tool. The file under tools/ is the same command written for a person to read and run by
-# hand; `argv` is what HimaFabric launches on the Site.
+    - stages.py
+    - domain
+    - read-stage.py
+    - selection-template.py
 tools:
   - id: synthesize
     file: tools/probe.py
-    description: >-
-      One bounded foundry-only synthesis of aes_cipher_top at the strategy's clock period, in a fresh
-      trial directory of the Campaign's own copy of the flow. Publishes flow/probe.json only on
-      success; a failed run publishes no new result and keeps its trial and log.
-    inputs: [WORKSPACE, PERIOD_NS]
-    # One Design Compiler seat, held for as long as a Job of this tool runs.
+    description: One bounded foundry-only synthesis of aes_cipher_top at the
+      strategy's clock period, in a fresh trial directory of the Campaign's own
+      copy of the flow. Publishes flow/probe.json only on success; a failed run
+      publishes no new result and keeps its trial and log.
+    inputs:
+      - WORKSPACE
+      - PERIOD_NS
     licences:
       Design-Compiler: 1
     argv:
@@ -76,33 +199,481 @@ tools:
       - ${WORKSPACE}
       - --period
       - ${PERIOD_NS}
-
-# Every rule this pack's Judge may apply, by reference: the shipped setup constraint first, then the
-# shipped goal rule whose target the Run binds.
+  - id: mine-timing-criticality
+    file: tools/stages.py
+    description: Enumerate bounded candidates for timing_criticality from the
+      retained probe netlist and Site Liberty.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - mine
+      - ${WORKSPACE}
+      - timing_criticality
+  - id: mine-timing-context
+    file: tools/stages.py
+    description: Enumerate bounded candidates for timing_context from the retained
+      probe netlist and Site Liberty.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - mine
+      - ${WORKSPACE}
+      - timing_context
+  - id: mine-structure-frequency
+    file: tools/stages.py
+    description: Enumerate bounded candidates for structure_frequency from the
+      retained probe netlist and Site Liberty.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - mine
+      - ${WORKSPACE}
+      - structure_frequency
+  - id: mine-structure-compaction
+    file: tools/stages.py
+    description: Enumerate bounded candidates for structure_compaction from the
+      retained probe netlist and Site Liberty.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - mine
+      - ${WORKSPACE}
+      - structure_compaction
+  - id: mine-mapper-compatibility
+    file: tools/stages.py
+    description: Enumerate bounded candidates for mapper_compatibility from the
+      retained probe netlist and Site Liberty.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - mine
+      - ${WORKSPACE}
+      - mapper_compatibility
+  - id: mine-functional-diversity
+    file: tools/stages.py
+    description: Enumerate bounded candidates for functional_diversity from the
+      retained probe netlist and Site Liberty.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - mine
+      - ${WORKSPACE}
+      - functional_diversity
+  - id: merge
+    file: tools/stages.py
+    description: Run the bounded merge stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - merge
+      - ${WORKSPACE}
+  - id: generate
+    file: tools/stages.py
+    description: Run the bounded generate stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - generate
+      - ${WORKSPACE}
+  - id: layout
+    file: tools/stages.py
+    description: Run the bounded layout stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - layout
+      - ${WORKSPACE}
+  - id: characterize
+    file: tools/stages.py
+    description: Run the bounded characterize stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - characterize
+      - ${WORKSPACE}
+  - id: compile
+    file: tools/stages.py
+    description: Run the bounded compile stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - compile
+      - ${WORKSPACE}
+    licences:
+      Library-Compiler: 1
+  - id: foundry-synth
+    file: tools/stages.py
+    description: Run the bounded foundry-synth stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - foundry-synth
+      - ${WORKSPACE}
+    licences:
+      Design-Compiler: 1
+  - id: custom-synth
+    file: tools/stages.py
+    description: Run the bounded custom-synth stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - custom-synth
+      - ${WORKSPACE}
+    licences:
+      Design-Compiler: 1
+  - id: adoption
+    file: tools/stages.py
+    description: Run the bounded adoption stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - adoption
+      - ${WORKSPACE}
+  - id: pnr-foundry
+    file: tools/stages.py
+    description: Run the bounded pnr-foundry stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - pnr-foundry
+      - ${WORKSPACE}
+    licences:
+      Innovus: 1
+  - id: pnr-generated
+    file: tools/stages.py
+    description: Run the bounded pnr-generated stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - pnr-generated
+      - ${WORKSPACE}
+    licences:
+      Innovus: 1
+  - id: verify
+    file: tools/stages.py
+    description: Run the bounded verify stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - verify
+      - ${WORKSPACE}
+    licences:
+      Innovus: 1
+  - id: compare
+    file: tools/stages.py
+    description: Run the bounded compare stage and retain input, code, log and
+      artifact identities. Missing evidence cannot pass.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - compare
+      - ${WORKSPACE}
 rules:
   - setup-wns-all-nonnegative
   - clock-period-at-most
-
-# The domain knowledge this pack carries, one entry per file under its own knowledge/.
+  - full-evidence-valid
+  - route-selection-known
 knowledge:
   - file: aes-probe-method.md
-    purpose: >-
-      How to read this pack's numbers and what they do not say: the zero-slack and violation reading,
-      the measured period versus an estimated one, matching conditions and the manifest's hashes, the
-      two constraints, and the finite hashed timing and netlist samples for later analysis.
-
-# The one number a Campaign binds when it starts: the clock period the design must close at or
-# below. It is the threshold of the goal rule clock-period-at-most.
+    purpose: "How to read this pack's numbers and what they do not say: the
+      zero-slack and violation reading, the measured period versus an estimated
+      one, matching conditions and the manifest's hashes, the two constraints,
+      and the finite hashed timing and netlist samples for later analysis."
+  - file: full-mining-method.md
+    purpose: Six-route candidate research, exact Boolean provenance, bounded
+      selection, library gates and limits of paired measurements.
 goal:
-  target_period_ns: { type: number, unit: ns, min: 0.1, max: 5, default: 0.5 }
-
-# What a run of this pack is set to for one generation. The clock period handed to the synthesis; it
-# is the only thing that changes between generations.
+  target_period_ns:
+    type: number
+    unit: ns
+    min: 0.1
+    max: 5
+    default: 0.5
 strategy:
-  periodNs: { type: number, unit: ns, min: 0.1, max: 5, default: 0.35, precision: 3 }
-
-# What this pack's numbers are called on the faces a person reads: the Goal parameter the graph binds
-# and the one knob a run's strategy is made of.
+  periodNs:
+    type: number
+    unit: ns
+    min: 0.1
+    max: 5
+    default: 0.35
+    precision: 3
+  algorithmRevision:
+    type: number
+    unit: count
+    min: 0
+    max: 99
+    default: 0
+    precision: 0
 words:
-  target_period_ns: { label: clock period at most, unit: ns }
-  periodNs: { label: clock period, unit: ns }
+  target_period_ns:
+    label: clock period at most
+    unit: ns
+  periodNs:
+    label: clock period
+    unit: ns
+  algorithmRevision:
+    label: selection algorithm revision
+    unit: count
+workshops:
+  - id: select-timing-criticality
+    purpose: First read research_timing_criticality for all candidate identities and
+      source-held evidence. The full raw report can exceed the chat read cap;
+      use the complete file in your executable. Read raw_timing_criticality,
+      source_timing_criticality and full-mining-method.md. Write a
+      data-dependent selection algorithm over actual generation_requests, using
+      evidence for timing_criticality. Preserve exact candidate ids and Boolean
+      contracts. Write selected.json in the declared route directory with
+      sourceSha256, selected and codeSha256 (the source miner identity from the
+      source record). Do not fabricate metrics or claim PPA. At most two
+      buildable candidates per route; an empty selection is honest. Algorithm
+      revision is for adapting your code after evidence feedback; preserve
+      previous CodeRecords. Read selectionTemplate, copy it as entry.py and
+      implement choose(candidates, route). Preserve its main() input/output and
+      validation code. Do not launch diagnostic-only entries. The fixed I/O
+      scaffold is not research innovation; your data-dependent choose()
+      algorithm is.
+    directory: research/timing_criticality
+    entry: entry.py
+    language: python
+    inputs:
+      - REVISION
+    reads:
+      - raw_timing_criticality
+      - source_timing_criticality
+      - research_timing_criticality
+      - selectionTemplate
+    knowledge:
+      - full-mining-method.md
+    produces: selected_timing_criticality
+    argv:
+      - /usr/bin/python3
+      - ${ENTRY}
+      - ${WORKSPACE}
+      - timing_criticality
+      - ${REVISION}
+  - id: select-timing-context
+    purpose: First read research_timing_context for all candidate identities and
+      source-held evidence. The full raw report can exceed the chat read cap;
+      use the complete file in your executable. Read raw_timing_context,
+      source_timing_context and full-mining-method.md. Write a data-dependent
+      selection algorithm over actual generation_requests, using evidence for
+      timing_context. Preserve exact candidate ids and Boolean contracts. Write
+      selected.json in the declared route directory with sourceSha256, selected
+      and codeSha256 (the source miner identity from the source record). Do not
+      fabricate metrics or claim PPA. At most two buildable candidates per
+      route; an empty selection is honest. Algorithm revision is for adapting
+      your code after evidence feedback; preserve previous CodeRecords. Read
+      selectionTemplate, copy it as entry.py and implement choose(candidates,
+      route). Preserve its main() input/output and validation code. Do not
+      launch diagnostic-only entries. The fixed I/O scaffold is not research
+      innovation; your data-dependent choose() algorithm is.
+    directory: research/timing_context
+    entry: entry.py
+    language: python
+    inputs:
+      - REVISION
+    reads:
+      - raw_timing_context
+      - source_timing_context
+      - research_timing_context
+      - selectionTemplate
+    knowledge:
+      - full-mining-method.md
+    produces: selected_timing_context
+    argv:
+      - /usr/bin/python3
+      - ${ENTRY}
+      - ${WORKSPACE}
+      - timing_context
+      - ${REVISION}
+  - id: select-structure-frequency
+    purpose: First read research_structure_frequency for all candidate identities
+      and source-held evidence. The full raw report can exceed the chat read
+      cap; use the complete file in your executable. Read
+      raw_structure_frequency, source_structure_frequency and
+      full-mining-method.md. Write a data-dependent selection algorithm over
+      actual generation_requests, using evidence for structure_frequency.
+      Preserve exact candidate ids and Boolean contracts. Write selected.json in
+      the declared route directory with sourceSha256, selected and codeSha256
+      (the source miner identity from the source record). Do not fabricate
+      metrics or claim PPA. At most two buildable candidates per route; an empty
+      selection is honest. Algorithm revision is for adapting your code after
+      evidence feedback; preserve previous CodeRecords. Read selectionTemplate,
+      copy it as entry.py and implement choose(candidates, route). Preserve its
+      main() input/output and validation code. Do not launch diagnostic-only
+      entries. The fixed I/O scaffold is not research innovation; your
+      data-dependent choose() algorithm is.
+    directory: research/structure_frequency
+    entry: entry.py
+    language: python
+    inputs:
+      - REVISION
+    reads:
+      - raw_structure_frequency
+      - source_structure_frequency
+      - research_structure_frequency
+      - selectionTemplate
+    knowledge:
+      - full-mining-method.md
+    produces: selected_structure_frequency
+    argv:
+      - /usr/bin/python3
+      - ${ENTRY}
+      - ${WORKSPACE}
+      - structure_frequency
+      - ${REVISION}
+  - id: select-structure-compaction
+    purpose: First read research_structure_compaction for all candidate identities
+      and source-held evidence. The full raw report can exceed the chat read
+      cap; use the complete file in your executable. Read
+      raw_structure_compaction, source_structure_compaction and
+      full-mining-method.md. Write a data-dependent selection algorithm over
+      actual generation_requests, using evidence for structure_compaction.
+      Preserve exact candidate ids and Boolean contracts. Write selected.json in
+      the declared route directory with sourceSha256, selected and codeSha256
+      (the source miner identity from the source record). Do not fabricate
+      metrics or claim PPA. At most two buildable candidates per route; an empty
+      selection is honest. Algorithm revision is for adapting your code after
+      evidence feedback; preserve previous CodeRecords. Read selectionTemplate,
+      copy it as entry.py and implement choose(candidates, route). Preserve its
+      main() input/output and validation code. Do not launch diagnostic-only
+      entries. The fixed I/O scaffold is not research innovation; your
+      data-dependent choose() algorithm is.
+    directory: research/structure_compaction
+    entry: entry.py
+    language: python
+    inputs:
+      - REVISION
+    reads:
+      - raw_structure_compaction
+      - source_structure_compaction
+      - research_structure_compaction
+      - selectionTemplate
+    knowledge:
+      - full-mining-method.md
+    produces: selected_structure_compaction
+    argv:
+      - /usr/bin/python3
+      - ${ENTRY}
+      - ${WORKSPACE}
+      - structure_compaction
+      - ${REVISION}
+  - id: select-mapper-compatibility
+    purpose: First read research_mapper_compatibility for all candidate identities
+      and source-held evidence. The full raw report can exceed the chat read
+      cap; use the complete file in your executable. Read
+      raw_mapper_compatibility, source_mapper_compatibility and
+      full-mining-method.md. Write a data-dependent selection algorithm over
+      actual generation_requests, using evidence for mapper_compatibility.
+      Preserve exact candidate ids and Boolean contracts. Write selected.json in
+      the declared route directory with sourceSha256, selected and codeSha256
+      (the source miner identity from the source record). Do not fabricate
+      metrics or claim PPA. At most two buildable candidates per route; an empty
+      selection is honest. Algorithm revision is for adapting your code after
+      evidence feedback; preserve previous CodeRecords. Read selectionTemplate,
+      copy it as entry.py and implement choose(candidates, route). Preserve its
+      main() input/output and validation code. Do not launch diagnostic-only
+      entries. The fixed I/O scaffold is not research innovation; your
+      data-dependent choose() algorithm is.
+    directory: research/mapper_compatibility
+    entry: entry.py
+    language: python
+    inputs:
+      - REVISION
+    reads:
+      - raw_mapper_compatibility
+      - source_mapper_compatibility
+      - research_mapper_compatibility
+      - selectionTemplate
+    knowledge:
+      - full-mining-method.md
+    produces: selected_mapper_compatibility
+    argv:
+      - /usr/bin/python3
+      - ${ENTRY}
+      - ${WORKSPACE}
+      - mapper_compatibility
+      - ${REVISION}
+  - id: select-functional-diversity
+    purpose: First read research_functional_diversity for all candidate identities
+      and source-held evidence. The full raw report can exceed the chat read
+      cap; use the complete file in your executable. Read
+      raw_functional_diversity, source_functional_diversity and
+      full-mining-method.md. Write a data-dependent selection algorithm over
+      actual generation_requests, using evidence for functional_diversity.
+      Preserve exact candidate ids and Boolean contracts. Write selected.json in
+      the declared route directory with sourceSha256, selected and codeSha256
+      (the source miner identity from the source record). Do not fabricate
+      metrics or claim PPA. At most two buildable candidates per route; an empty
+      selection is honest. Algorithm revision is for adapting your code after
+      evidence feedback; preserve previous CodeRecords. Read selectionTemplate,
+      copy it as entry.py and implement choose(candidates, route). Preserve its
+      main() input/output and validation code. Do not launch diagnostic-only
+      entries. The fixed I/O scaffold is not research innovation; your
+      data-dependent choose() algorithm is.
+    directory: research/functional_diversity
+    entry: entry.py
+    language: python
+    inputs:
+      - REVISION
+    reads:
+      - raw_functional_diversity
+      - source_functional_diversity
+      - research_functional_diversity
+      - selectionTemplate
+    knowledge:
+      - full-mining-method.md
+    produces: selected_functional_diversity
+    argv:
+      - /usr/bin/python3
+      - ${ENTRY}
+      - ${WORKSPACE}
+      - functional_diversity
+      - ${REVISION}

@@ -1,4 +1,4 @@
-// One opt-in desktop observation of a copied, completed real probe; no model/EDA execution.
+// One opt-in desktop observation of a copied, completed real AES Run; no model/EDA execution.
 import test from 'node:test';
 import type { RunView } from '@hima/harness';
 import assert from 'node:assert/strict';
@@ -11,7 +11,7 @@ import { inspectWindow } from '../test/contract/support/inspect-window.ts';
 import { api } from '../test/contract/support/hima-api.ts';
 import { sha256 } from './live-check-workshop.ts';
 
-test('a completed real AES probe remains observable beside native chat without rerunning it', async (t) => {
+test('a completed real AES Run and its recorded code remain beside native chat without rerunning it', async (t) => {
   const evidenceFile = process.env.HIMA_AES_EVIDENCE;
   const output = process.env.HIMA_AES_DESKTOP_OUT;
   assert.ok(evidenceFile && output, 'explicit evidence and fresh output paths required');
@@ -56,12 +56,19 @@ test('a completed real AES probe remains observable beside native chat without r
     await browser.wait(`document.querySelector('[data-hima-region="studio-status"]')?.getAttribute('data-hima-state-status')===${JSON.stringify(run.status)}`);
     const view = await (await api(host, cookie, `/hima/api/runs/${run.id}`)).json() as RunView;
     assert.equal(view.run.id, run.id); assert.equal(view.run.status, run.status);
-    assert.equal(view.run.generation, 2);
+    assert.equal(view.run.generation, run.generation);
     assert.deepEqual(view.run.meters, run.meters, "desktop inspection launches no additional jobs");
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
+    if (view.code.length) {
+      const code = view.code[0]!;
+      assert.ok((await d.wait('run-material', code.sha256, 10_000)).ok);
+      assert.ok((await d.click(`material-${code.recordId}`)).ok);
+      await browser.wait(`document.querySelector('[data-hima-region="material-content"]')?.getAttribute('data-hima-state-record')===${JSON.stringify(code.recordId)}`, 15_000);
+      assert.ok(await browser.evaluate(`document.querySelector('[data-hima-region="material-content"]').textContent.length > 0`));
+    }
     assert.ok((await d.screenshot(path.join(output, 'aes-probe-light.png'))).ok);
     assert.equal(sha256(readFileSync(originalLedger)), before, 'original evidence home remains byte-identical');
-    writeFileSync(path.join(output, 'evidence.json'), JSON.stringify({ passed: true, runId: run.id, status: run.status, generations: 2,
+    writeFileSync(path.join(output, 'evidence.json'), JSON.stringify({ passed: true, runId: run.id, status: run.status, generations: run.generation,
       originalLedgerSha256: before, copiedHome: home.home, electron: 1, modelTurnsSubmitted: 0, providerRequests: 'not instrumented; key absent and title generation disabled', newEdaJobs: 0, view }, null, 2) + '\n');
   } catch (error) {
     writeFileSync(path.join(output, 'failure.json'), JSON.stringify({ error: String(error), copiedHome: home.home, body: await browser.evaluate('document.body.innerText').catch(() => 'unavailable') }, null, 2));

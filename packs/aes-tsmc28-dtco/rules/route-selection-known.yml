@@ -1,0 +1,11 @@
+id: route-selection-known
+version: "1"
+title: Route selection is a validated finite result, including zero
+requires:
+  - type: selected_count
+subject:
+  type: selected_count
+predicate:
+  op: gte
+  threshold: 0
+  unit: count

@@ -1,0 +1,12 @@
+id: read-generate
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - generate
+reportKind: aes-dtco-stage/1
+emits:
+  - generated_cell_count

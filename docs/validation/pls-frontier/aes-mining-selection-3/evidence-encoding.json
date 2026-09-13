@@ -1,0 +1,8 @@
+{
+  "encoding": "gzip",
+  "file": "evidence.json.gz",
+  "uncompressedSha256": "47a93566c571fe7e1fac9c8da532a356c6d1c1afc279a29a1b3a697c9eb56d84",
+  "uncompressedBytes": 14168800,
+  "status": "failed",
+  "reason": "Byte-preserving compression of repeated native tool context; original raw bytes also retained privately."
+}
