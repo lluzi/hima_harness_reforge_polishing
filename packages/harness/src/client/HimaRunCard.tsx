@@ -617,21 +617,27 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
   };
   const row = (record: CodeView | KnowledgeView, kind: 'code' | 'knowledge') => {
     const location = kind === 'code' ? (record as CodeView).path : (record as KnowledgeView).file;
+    const provenance = kind === 'code' ? 'code' : (record as KnowledgeView).origin === 'input'
+      ? ((record as KnowledgeView).exposedBytes ?? 0) > 0 ? 'input read' : 'input captured'
+      : (record as KnowledgeView).origin === 'history' ? 'history read' : 'method knowledge';
+    const superseded = view.revisions?.some(revision => revision.invalidatedRecordIds.includes(record.recordId));
     return <button type="button" key={record.recordId} onClick={() => open(record)} data-hima-control={`material-${record.recordId}`}
       title={`${location}${kind === 'knowledge' ? `\n${(record as KnowledgeView).purpose}` : ''}\nsource ${record.sessionId}\nsha256 ${record.sha256}`}
       style={{ ...mono, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 104px', gap: 12, alignItems: 'center', width: '100%', textAlign: 'left', border: 0, borderRadius: 5, background: selected === record.recordId ? 'var(--dsw-alias-fill-secondary, #f0f2f5)' : 'transparent', color: plain, cursor: 'pointer', padding: '7px 8px' }}>
-      <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}><strong>{location.split(/[\\/]/).at(-1)}</strong> · {record.nodeId} · g{record.generation ?? '?'} / a{record.attempt}</span>
+      <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}><strong>{location.split(/[\\/]/).at(-1)}</strong> · {provenance}{superseded ? ' · superseded' : ''} · {record.nodeId} · g{record.generation ?? '?'} / a{record.attempt}</span>
       <span style={{ ...muted, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{record.sha256}</span>
     </button>;
   };
   const chosen = [...view.code, ...view.knowledge].find(record => record.recordId === selected);
-  return <Section title="code & knowledge actually used" region="run-material" state={{ code: String(view.code.length), knowledge: String(view.knowledge.length) }}>
+  return <Section title="Code, inputs & knowledge" region="run-material" state={{ code: String(view.code.length), knowledge: String(view.knowledge.length) }}>
     <div style={block}>{view.code.map((record) => row(record, 'code'))}{view.knowledge.map((record) => row(record, 'knowledge'))}</div>
     {selected === undefined || chosen === undefined ? <div style={muted}>Choose a recorded version to verify and read its contents.</div>
       : <div ref={content}>{answer?.loading ? <div style={muted}>Reading the recorded version and verifying its hash…</div>
         : answer?.error ? <div role="alert" style={{ ...muted, color: bad }}>Historical content unavailable: {answer.error}</div>
           : <><details style={muted}><summary>Verified source · {chosen.nodeId}</summary>
             {'purpose' in chosen ? <div>{chosen.purpose}</div> : null}
+            {'purpose' in chosen && chosen.origin === 'input' ? <div>Captured input · {chosen.exposedBytes ?? 0} bytes returned through the read interface.</div> : null}
+            {'purpose' in chosen && chosen.sourceRun ? <div>Historical source: {chosen.sourceRun} · {chosen.sourcePurpose}<br />{chosen.sourceMaterialPath}<br />{chosen.conditions?.join(' ')}</div> : null}
             <div style={{ ...mono, overflowWrap: 'anywhere' }}>{chosen.path}<br />sha256 {chosen.sha256}<br />source {chosen.sessionId}</div>
           </details><pre data-hima-region="material-content" data-hima-state-record={selected} style={logTail}>{answer?.text}</pre></>}</div>}
   </Section>;
@@ -675,6 +681,19 @@ export function GrowthSection({ view }: { view: RunView }): ReactElement | null 
       {growth.reason ? <p style={muted}>{growth.reason}</p> : null}
       {growth.nodes.map(node => <div key={node.recordId} style={mono}>{node.nodeId} · {node.kind} · {node.state}</div>)}
       <details><summary>{growth.evidence.length} evidence references</summary><pre style={logTail}>{growth.evidence.join('\n')}</pre></details>
+    </details>)}
+  </Section>;
+}
+
+export function RevisionSection({ view }: { view: RunView }): ReactElement | null {
+  if (!view.revisions?.length) return null;
+  return <Section title='Revisions · history retained' region='run-revisions'>
+    {view.revisions.map(revision => <details key={revision.recordId} style={block} data-hima-region={`revision-${revision.revisionId}`}>
+      <summary data-hima-control={`revision-expand-${revision.revisionId}`}>Version {revision.version} · {revision.revisionId}</summary>
+      <p style={muted}>Changed: {revision.changedNodes.join(', ')}<br />Rerun affected nodes: {revision.affectedNodes.join(', ')}</p>
+      <p>{revision.invalidatedRecordIds.length} earlier records excluded from current evidence · {revision.reusedRecordIds.length} records reused</p>
+      <p style={muted}>Superseded code remains readable under Code, inputs & knowledge. A new result requires the affected nodes to execute again.</p>
+      <details><summary>Evidence identities</summary><pre style={logTail}>{JSON.stringify({ superseded: revision.invalidatedRecordIds, reused: revision.reusedRecordIds }, null, 2)}</pre></details>
     </details>)}
   </Section>;
 }
@@ -847,6 +866,7 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
       <MaterialSection view={view} />
       <ArchiveSection view={view} />
       <GrowthSection view={view} />
+      <RevisionSection view={view} />
       {view.observations.length === 0
         ? null
         : (
