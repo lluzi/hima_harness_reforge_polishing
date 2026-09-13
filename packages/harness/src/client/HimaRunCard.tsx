@@ -596,6 +596,11 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
   const [answer, setAnswer] = useState<{ recordId: string; text?: string; error?: string; loading?: boolean }>();
   const request = useRef<AbortController | undefined>();
   useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => {
+    request.current?.abort();
+    setSelected(undefined);
+    setAnswer(undefined);
+  }, [view.run.id]);
   if (view.code.length === 0 && view.knowledge.length === 0) return null;
   const open = (record: CodeView | KnowledgeView) => {
     request.current?.abort();

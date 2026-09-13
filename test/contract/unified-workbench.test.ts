@@ -142,10 +142,13 @@ test('conversation draft, native files and verified reports share one workspace 
     await fillStart(d, browser);
     await capture(d, browser, 'light-start');
     assert.ok((await d.click('studio-start')).ok);
-    assert.ok((await d.wait('studio-status', 'running', 20_000)).ok);
-    await capture(d, browser, 'light-running');
+    // This start route returns after legacy automatic drive settles. Running interaction itself is
+    // held by the controlled Job/replay path below; this case needs a real created Run to inspect.
     assert.ok((await d.wait('studio-status', 'ended — goal met', 35_000)).ok);
     const id = await currentRun(d);
+    const started = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
+    assert.equal(started.run.status, 'ended-goal-met');
+    assert.equal(started.jobs.filter((job) => job.event === 'launched').length, 2, 'the completed Run still proves two actual local Jobs');
     await capture(d, browser, 'light-complete');
     assert.equal(await browser.evaluate('location.href'), url, 'opening and running did not navigate the document');
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
@@ -278,6 +281,23 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     for (const code of view.code) assert.ok(workshop.text.includes(code.sha256.slice(0, 12)), workshop.text);
     const material = await d.read('run-material'); assert.ok(material.ok);
     assert.ok(material.text.includes(view.code[0]!.sha256), material.text);
+    const sample = await writeSampleReport(home.h);
+    const probe = await (await api(host, cookie, '/hima/api/observe', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ site: 'local', path: path.join(home.h.workspace, sample.rel) }),
+    })).json() as RunView;
+    await browser.pause(`*/hima/api/runs/${id}/material/*`);
+    assert.ok((await d.click(`material-${view.code[0]!.recordId}`)).ok);
+    const held = await browser.nextPaused();
+    await browser.wait(`[...document.querySelectorAll('[data-hima-control="studio-run"] option')].some((option) => option.value === ${JSON.stringify(probe.run.id)})`);
+    assert.ok((await d.fill('studio-run', probe.run.id)).ok);
+    assert.ok((await d.wait('studio-status', 'No Fabric state recorded', 10_000)).ok);
+    assert.ok((await d.fill('studio-run', id)).ok);
+    assert.ok((await d.wait('run-material', view.code[0]!.sha256, 10_000)).ok);
+    await browser.send('Fetch.continueRequest', { requestId: held.requestId }).catch(() => undefined);
+    await browser.send('Fetch.disable');
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="material-content"]') === null`), true, 'the old A response cannot populate A after A→B→A changed its material selection');
     assert.ok((await d.click(`material-${view.code[0]!.recordId}`)).ok);
     assert.ok((await d.wait('material-content', 'set -eu', 12_000)).ok);
     assert.equal(await browser.evaluate('location.href'), url);

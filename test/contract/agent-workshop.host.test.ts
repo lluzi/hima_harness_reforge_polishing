@@ -1,7 +1,7 @@
 // PLS-19: actual owner, controlled code and local Job; no model or Electron.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { localHome, waitUntil } from './support/fabric.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
@@ -91,8 +91,16 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     assert.equal(heldCode.kind === 'read' ? heldCode.text : '', reviewedScript);
     const otherRun = await host.ctx.hima.ledger.createRun({ campaignId: 'other-material-owner', siteId: 'local' });
     assert.equal((await host.ctx.hima.readMaterial(otherRun.id, code.id)).kind, 'none', 'a record id from this Run cannot expose a different Run\'s file');
+    const forbidden = await host.ctx.hima.ledger.appendCode(otherRun.id, {
+      nodeId: 'outside-permit', attempt: 1, sessionId: 'fixture-owner', workshop: 'fixture-workshop',
+      path: '/outside-the-local-site-permit/recorded.sh', sha256: code.sha256, bytes: code.bytes, language: 'sh',
+    });
+    assert.equal((await host.ctx.hima.readMaterial(otherRun.id, forbidden.id)).kind, 'unreadable', 'the actual Site Permit refuses a recorded path outside its read roots');
     await writeFile(code.path, '# tampered\n');
     assert.equal((await host.ctx.hima.readMaterial(runId, code.id)).kind, 'changed', 'changed current bytes cannot impersonate a recorded version');
+    await writeFile(code.path, reviewedScript);
+    await rm(code.path);
+    assert.equal((await host.ctx.hima.readMaterial(runId, code.id)).kind, 'unreadable', 'a missing recorded version is never replaced with another file');
     await writeFile(code.path, reviewedScript);
     const inspection = await act('read', { executionId, path: 'entry.sh' });
     assert.equal(inspection.kind, 'accepted');
@@ -122,6 +130,7 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     'the declared reader measured exactly 42 count from the generated output');
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'session' }).length, 0, 'no separate model moment was opened or claimed closed');
     await host.ctx.hima.cancelRun(runId);
+    assert.equal((await host.ctx.hima.readMaterial(runId, code.id)).kind, 'read', 'cancelling a Run does not erase its already recorded material history');
     const report = await host.ctx.hima.readExperience(runId);
     assert.equal(report.kind, 'read', JSON.stringify(report));
     if (report.kind === 'read') {
@@ -188,6 +197,9 @@ for (const tamperHelper of [false, true]) test(`a begun Workshop draft retains i
       assert.equal(launches.length, 0, "rewriting entry never drops another author's helper hash from this execution");
       assert.equal(work.context.executions.find((execution) => execution.id === executionId)?.phase, 'failed');
       assert.match(JSON.stringify(host.ctx.hima.ledger.records({ runId, type: 'node' })), /helper.sh.*recorded|recorded.*helper.sh/);
+      const entry = oldCode.find((record) => record.type === 'code' && record.path.endsWith('/entry.sh'));
+      assert.ok(entry?.type === 'code');
+      if (entry?.type === 'code') assert.equal((await host.ctx.hima.readMaterial(runId, entry.id)).kind, 'read', 'a failed node retains readable earlier recorded material');
     } else {
       assert.equal(launches.length, 1, 'the admitted execution owns the unchanged draft after explicit handoff');
       await waitUntil('the unchanged handed-off code finishes', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === executionId && execution.phase === 'ready'));
