@@ -368,7 +368,7 @@ export interface RunView {
    * of, and the attempt each belongs to is on the row.
    */
   readonly code: readonly CodeView[];
-  /** Pack knowledge actually returned to an Agent. Declarations that were never read are absent. */
+  /** Pack/history reads and declared-input provenance. exposedBytes zero marks Host-only capture. */
   readonly knowledge: readonly KnowledgeView[];
   /**
    * Where this Run's workshop stands (#62): the workshop node the Run stands at, or — once it has
@@ -444,7 +444,7 @@ export interface ExperienceAnswer {
   readonly report: ExperienceJson;
 }
 
-/** One verified historical code or Pack knowledge version, never a current unheld file. */
+/** One verified historical code, input capture, Pack read or archived-history delivery. */
 export interface MaterialAnswer { readonly record: CodeView | KnowledgeView; readonly text: string }
 
 /**
@@ -553,7 +553,7 @@ export interface RemoteOperations {
    *  `experience` record keeps. Here rather than done in this module, for the reason `installed` is:
    *  this namespace reaches no Site and opens no file of its own. */
   readExperience(runId: string): Promise<ReadExperienceResult>;
-  /** Read one code/knowledge record only within its Run, held to the record's content hash. */
+  /** Read one code/knowledge/input-provenance record only within its Run, held to its content hash. */
   readMaterial(runId: string, recordId: string): Promise<ReadMaterialResult>;
   /**
    * Open one Model moment on the node this Run stands at, ask it one turn, and close it (#59).

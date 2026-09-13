@@ -156,6 +156,9 @@ export function codeView(record: CodeRecord): CodeView {
 
 /** A Pack knowledge file actually returned to an Agent, with the content identity held at that read. */
 export interface KnowledgeView {
+  readonly origin?: KnowledgeRecord['origin'];
+  readonly retainedPath?: string;
+  readonly exposedBytes?: number;
   readonly recordId: string;
   readonly at: string;
   readonly nodeId: string;
@@ -168,15 +171,40 @@ export interface KnowledgeView {
   readonly path: string;
   readonly sha256: string;
   readonly bytes: number;
+  readonly sourceMaterialSha256?: string;
+  readonly sourceMaterialBytes?: number;
+  readonly sourceRun?: string;
+  readonly sourcePurpose?: KnowledgeRecord['sourcePurpose'];
+  readonly sourceMethod?: KnowledgeRecord['sourceMethod'];
+  readonly sourceManifestSha256?: string;
+  readonly sourceMaterialPath?: string;
+  readonly sourceConclusion?: KnowledgeRecord['sourceConclusion'];
+  readonly sourceCoverage?: string;
+  readonly conditions?: readonly string[];
+  readonly evidenceGrade?: KnowledgeRecord['evidenceGrade'];
   readonly branchId?: string;
 }
 
 export function knowledgeView(record: KnowledgeRecord): KnowledgeView {
   const head = {
     recordId: record.id, at: record.at, nodeId: record.nodeId, attempt: record.attempt,
+    ...(record.origin === undefined ? {} : { origin: record.origin }),
+    ...(record.retainedPath === undefined ? {} : { retainedPath: record.retainedPath }),
+    ...(record.exposedBytes === undefined ? {} : { exposedBytes: record.exposedBytes }),
     ...(record.generation === undefined ? {} : { generation: record.generation }),
     sessionId: record.sessionId, workshop: record.workshop, file: record.file, purpose: record.purpose,
     path: record.path, sha256: record.sha256, bytes: record.bytes,
+    ...(record.sourceMaterialSha256 === undefined ? {} : { sourceMaterialSha256: record.sourceMaterialSha256 }),
+    ...(record.sourceMaterialBytes === undefined ? {} : { sourceMaterialBytes: record.sourceMaterialBytes }),
+    ...(record.sourceRun === undefined ? {} : { sourceRun: record.sourceRun }),
+    ...(record.sourcePurpose === undefined ? {} : { sourcePurpose: record.sourcePurpose }),
+    ...(record.sourceMethod === undefined ? {} : { sourceMethod: record.sourceMethod }),
+    ...(record.sourceManifestSha256 === undefined ? {} : { sourceManifestSha256: record.sourceManifestSha256 }),
+    ...(record.sourceMaterialPath === undefined ? {} : { sourceMaterialPath: record.sourceMaterialPath }),
+    ...(record.sourceConclusion === undefined ? {} : { sourceConclusion: record.sourceConclusion }),
+    ...(record.sourceCoverage === undefined ? {} : { sourceCoverage: record.sourceCoverage }),
+    ...(record.conditions === undefined ? {} : { conditions: record.conditions }),
+    ...(record.evidenceGrade === undefined ? {} : { evidenceGrade: record.evidenceGrade }),
   };
   return record.branchId === undefined ? head : { ...head, branchId: record.branchId };
 }

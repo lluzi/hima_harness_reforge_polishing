@@ -116,8 +116,8 @@ export { cancelRun, reconcileRuns } from './recovery.js';
 export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn, nextMomentAttempt, HIMA_MOMENT_PRESET } from './moments.js';
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
 export { MomentTurnError, NoCurrentNodeError } from './errors.js';
-export { writeExperience, readExperience, readMaterial, writeRunAssets, readRunAssets, readArchivedMaterial } from './experience.js';
-export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult } from './experience.js';
+export { writeExperience, readExperience, readMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge, readRunKnowledge, HISTORY_SUMMARY_CAP, HISTORY_READ_CAP } from './experience.js';
+export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList, ReadRunKnowledgeResult } from './experience.js';
 export { RUN_ASSET_MANIFEST_SCHEMA } from './experience-report.js';
 export type { RunAssetManifest, ExperienceAsset } from './experience-report.js';
 // `attemptOfSession` is exported for the one thing that cannot be shown through a face: which
@@ -255,8 +255,8 @@ export type { LaunchIntent, JobDeps, LaunchRequest, LaunchResult, ReconciledLaun
 export { claimSlotAndLaunch } from './job-cap.js';
 export { toolNode, observeNode, resumeNode, buildWorkshopScope, resolveWorkshop, launchWrittenWorkshop, exploreRecommendation } from './node-turns.js';
 export type { Driving, ResolvedWorkshop, ExploreRecommendation } from './node-turns.js';
-export { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop } from './workshop.js';
-export type { WorkshopScope, WriteAnswer, ReadAnswer, KnowledgeAnswer } from './workshop.js';
+export { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, captureWorkshopInputs } from './workshop.js';
+export type { WorkshopScope, WriteAnswer, ReadAnswer, KnowledgeAnswer, CapturedWorkshopInput } from './workshop.js';
 export type { JobState, KillOutcome } from './jobs.js';
 export type { AnalysisMode, PathScope, SemanticDeclaration, Semantics, SemanticsFile, SemanticValue } from './semantics.js';
 // The value types a reading is held to, and the one validator every reader's output passes through

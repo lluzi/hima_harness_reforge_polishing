@@ -25,7 +25,7 @@ import { channelFor, mustRun, type Channel } from './channel.js';
 import { retainRunMaterial } from './experience.js';
 import { decideRead, decideWrite } from './shell.js';
 import { pathsOf, type Site } from './sites.js';
-import type { Ledger } from './ledger.js';
+import { currentRecordsIn, type KnowledgeRecord, type Ledger } from './ledger.js';
 import type { PackWorkshop } from './packs.js';
 import type { SemanticDeclaration } from './semantics.js';
 
@@ -244,6 +244,64 @@ export async function readBack(site: Site, channel: Channel, at: string, expecte
 export interface WriteAnswer { wrote: boolean; path?: string; sha256?: string; bytes?: number; refused?: string; reason?: string }
 export interface ReadAnswer { read?: boolean; output?: string; path?: string; bytes?: number; text?: string; truncated?: boolean; reason?: string }
 export interface KnowledgeAnswer { read?: boolean; file?: string; purpose?: string; text?: string; reason?: string }
+
+export interface CapturedWorkshopInput {
+  readonly file: string;
+  readonly path: string;
+  readonly sha256: string;
+  readonly bytes: number;
+  readonly recordId: string;
+}
+
+/**
+ * Snapshot only the inputs this Workshop declaration names. This is a Host-side identity capture
+ * for historical applicability checks: exposedBytes is zero because none of these bytes have been
+ * returned to the Agent by this operation.
+ */
+export async function captureWorkshopInputs(scope: WorkshopScope): Promise<{
+  readonly captured: readonly CapturedWorkshopInput[];
+  readonly unavailable: readonly { readonly file: string; readonly reason: string }[];
+}> {
+  const captured: CapturedWorkshopInput[] = [];
+  const unavailable: { file: string; reason: string }[] = [];
+  const sessionId = scope.session.id;
+  if (sessionId === undefined || scope.packsDir === undefined) {
+    return { captured, unavailable: scope.reads.map((input) => ({ file: input.name, reason: 'input identity capture needs a recorded Agent session and installed Pack' })) };
+  }
+  const channel = channelFor(scope.site);
+  for (const input of scope.reads) {
+    try {
+      const decided = await decideRead(scope.site, input.path, channel);
+      if (!decided.ok) {
+        await refuse(scope, input.path, decided.reason);
+        unavailable.push({ file: input.name, reason: decided.reason });
+        continue;
+      }
+      const bytes = Buffer.from(await channel.readFile(decided.absPath));
+      const sha256 = createHash('sha256').update(bytes).digest('hex');
+      const prior = currentRecordsIn(scope.ledger.records({ runId: scope.runId })).findLast((record): record is KnowledgeRecord =>
+        record.type === 'knowledge' && record.origin === 'input' && record.exposedBytes === 0
+        && record.nodeId === scope.nodeId && record.attempt === scope.attempt && record.workshop === scope.declaration.id
+        && record.file === input.name && record.path === decided.absPath && record.sha256 === sha256 && record.bytes === bytes.byteLength);
+      if (prior !== undefined) {
+        captured.push({ file: input.name, path: decided.absPath, sha256, bytes: bytes.byteLength, recordId: prior.id });
+        continue;
+      }
+      const retainedPath = await retainRunMaterial({ ledger: scope.ledger, packsDir: scope.packsDir }, scope.runId, bytes, sha256);
+      const record = await scope.ledger.appendKnowledge(scope.runId, {
+        ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
+        origin: 'input', ...(retainedPath === undefined ? {} : { retainedPath }), exposedBytes: 0,
+        nodeId: scope.nodeId, attempt: scope.attempt, sessionId, workshop: scope.declaration.id,
+        file: input.name, purpose: `Declared Workshop input "${input.name}" captured for content-identity comparison`,
+        path: decided.absPath, sha256, bytes: bytes.byteLength,
+      });
+      captured.push({ file: input.name, path: decided.absPath, sha256, bytes: bytes.byteLength, recordId: record.id });
+    } catch (error) {
+      unavailable.push({ file: input.name, reason: messageOf(error) });
+    }
+  }
+  return { captured, unavailable };
+}
 
 /**
  * The three tools of one workshop, built for one moment.
@@ -498,6 +556,26 @@ export async function readForWorkshop(scope: WorkshopScope, asked: string): Prom
   }
   const whole = Buffer.from(bytes).toString('utf8');
   const truncated = whole.length > WORKSHOP_READ_CAP;
+  const text = truncated ? whole.slice(0, WORKSHOP_READ_CAP) : whole;
+  const returned = Buffer.from(text, 'utf8');
+  const sessionId = scope.session.id;
+  if (sessionId !== undefined && scope.packsDir !== undefined) {
+    try {
+      const sha256 = createHash('sha256').update(returned).digest('hex');
+      const sourceMaterialSha256 = createHash('sha256').update(bytes).digest('hex');
+      const retainedPath = await retainRunMaterial({ ledger: scope.ledger, packsDir: scope.packsDir }, scope.runId, returned, sha256);
+      await scope.ledger.appendKnowledge(scope.runId, {
+        ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
+        origin: 'input', ...(retainedPath === undefined ? {} : { retainedPath }), exposedBytes: returned.byteLength,
+        nodeId: scope.nodeId, attempt: scope.attempt, sessionId, workshop: scope.declaration.id,
+        file: readable.name, purpose: `Declared Workshop input "${readable.name}" returned to the Agent`,
+        path: decided.absPath, sha256, bytes: returned.byteLength,
+        sourceMaterialSha256, sourceMaterialBytes: bytes.byteLength,
+      });
+    } catch (error) {
+      return { read: false, reason: `${decided.absPath} was read but its returned bytes could not be recorded: ${messageOf(error)}` };
+    }
+  }
   // `truncated` always, both ways round — the one answer in this harness that states its false.
   // Everywhere else an absent key is how a fact is not claimed; here the fact is *about the answer
   // the model is reading*, and a model that has to infer "I saw all of it" from a missing key is
@@ -506,7 +584,7 @@ export async function readForWorkshop(scope: WorkshopScope, asked: string): Prom
     output: readable.name,
     path: decided.absPath,
     bytes: bytes.byteLength,
-    text: truncated ? whole.slice(0, WORKSHOP_READ_CAP) : whole,
+    text,
     truncated,
   };
 }
@@ -540,8 +618,11 @@ export async function knowledgeForWorkshop(scope: WorkshopScope, asked: string):
     const sessionId = scope.session.id;
     if (sessionId === undefined) return { read: false, reason: `the knowledge file "${known.file}" was not returned because this workshop has no recorded Agent session` };
     const sha256 = createHash('sha256').update(bytes).digest('hex');
+    const retainedPath = scope.packsDir === undefined ? undefined
+      : await retainRunMaterial({ ledger: scope.ledger, packsDir: scope.packsDir }, scope.runId, bytes, sha256);
     await scope.ledger.appendKnowledge(scope.runId, {
       ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),
+      origin: 'legacyPack', ...(retainedPath === undefined ? {} : { retainedPath }), exposedBytes: bytes.byteLength,
       nodeId: scope.nodeId,
       attempt: scope.attempt,
       sessionId,

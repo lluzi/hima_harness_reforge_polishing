@@ -929,6 +929,12 @@ export const knowledgeRecord = z.strictObject({
   ...base,
   ...inBranch,
   type: z.literal('knowledge'),
+  /** Pack method, declared Site input, or an earlier Campaign's verified archive. Optional for existing v21-v25 history. */
+  origin: z.enum(['input', 'history', 'legacyPack']).optional(),
+  /** Immutable Pack-local copy of exactly the bytes identified by sha256. */
+  retainedPath: z.string().optional(),
+  /** Bytes actually returned to the Agent. Zero distinguishes a Host-only input capture. */
+  exposedBytes: z.number().int().nonnegative().optional(),
   nodeId: z.string().min(1),
   attempt: z.number().int().positive(),
   sessionId: z.string().min(1),
@@ -938,6 +944,19 @@ export const knowledgeRecord = z.strictObject({
   path: z.string().min(1),
   sha256: sha256Hex,
   bytes: z.number().int().nonnegative(),
+  /** Full source identity when returned bytes are a bounded prefix or generated historical summary. */
+  sourceMaterialSha256: sha256Hex.optional(),
+  sourceMaterialBytes: z.number().int().nonnegative().optional(),
+  /** Historical archive provenance. Kept separate from sha256, which always identifies returned bytes. */
+  sourceRun: z.string().min(1).optional(),
+  sourcePurpose: z.enum(['campaign', 'test']).optional(),
+  sourceMethod: z.strictObject({ id: z.string().min(1), version: z.string().min(1), digest: sha256Hex }).optional(),
+  sourceManifestSha256: sha256Hex.optional(),
+  sourceMaterialPath: z.string().min(1).optional(),
+  sourceConclusion: z.enum(['goal-supported', 'measured-negative', 'goal-not-established', 'insufficient-evidence', 'not-recorded']).optional(),
+  sourceCoverage: z.string().min(1).optional(),
+  conditions: z.array(z.string().min(1)).optional(),
+  evidenceGrade: z.enum(['verified-history', 'limited-background']).optional(),
 });
 
 /** Source-linked interpretation is never a Judge verdict or a measured observation. */
