@@ -12,6 +12,37 @@ process.env.HIMA_TEST_SILENT_AGENT = '1';
 
 import { prepared, dispose, identity } from './support/growth.ts';
 
+test('native growth attaches mechanical identities without asking the Agent to copy hashes and keeps retries idempotent', async (t) => {
+  const f = await prepared(t);
+  try {
+    await f.reachGrowth();
+    const { method, parent: _parent, inputThroughSeq: _seq, inputs: _inputs, ...intent } = f.proposal('native-intent');
+    const control = f.context().run.control!;
+    const args = { run: f.runId, action: 'grow', expectedEpoch: control.epoch, expectedRevision: control.revision,
+      requestId: 'native-business-intent', proposal: intent };
+    const execute = async (arguments_: Record<string, unknown>) => {
+      const result = await f.host.ctx.tools.execute({ name: 'hima_execute', arguments: arguments_, agent: f.agent,
+        callId: 'native-growth-check' as never, signal: AbortSignal.timeout(10_000) });
+      assert.equal(result.isError, false);
+      return (result as unknown as { value: { kind: string; reason?: string } }).value;
+    };
+    const accepted = await execute(args);
+    assert.equal(accepted.kind, 'accepted', accepted.reason);
+    assert.equal((await execute(args)).kind, 'duplicate', 'identical retry reuses the original canonical boundary');
+    const proposed = recordsOf(f.host, f.runId).find(record => record.type === 'growth' && record.event === 'proposed');
+    assert.ok(proposed?.type === 'growth');
+    const canonical = proposed.proposal as unknown as GrowthProposal;
+    assert.deepEqual(canonical.method, method);
+    assert.ok(canonical.inputs.length > 0 && canonical.inputs.every(input => /^[0-9a-f]{64}$/.test(input.contentIdentity)));
+    await f.call({ action: 'grow', proposalId: intent.proposalId, growthDisposition: 'abandoned' });
+    const now = f.context().run.control!;
+    const wrong = await execute({ ...args, expectedEpoch: now.epoch, expectedRevision: now.revision, requestId: 'native-explicit-wrong',
+      proposal: { ...intent, proposalId: 'explicit-wrong', method: { ...method, digest: 'f'.repeat(64) } } });
+    assert.equal(wrong.kind, 'refused');
+    assert.match(wrong.reason ?? '', /method/);
+  } finally { await dispose(f); }
+});
+
 test('the Campaign attempt limit refuses valid new growth and strategy-only revision while preserving analysis', async (t) => {
   const f = await prepared(t, 120_000, 2);
   try {

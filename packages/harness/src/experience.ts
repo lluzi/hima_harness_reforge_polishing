@@ -500,8 +500,10 @@ export async function listRunKnowledge(deps: ExperienceDeps, currentRunId: strin
     ];
     let automatic = true;
     if ((source.purpose ?? 'campaign') === 'test') {
-      automatic = false;
-      conditions.push('Source purpose is test; synthetic or authoring evidence is not automatically promoted into Campaign knowledge.');
+      automatic = current.purpose === 'test';
+      conditions.push(current.purpose === 'test'
+        ? 'Source and current purpose are test; matching input evidence may support this test study as limited background, never a production or EDA result.'
+        : 'Source purpose is test; synthetic or authoring evidence is not automatically promoted into Campaign knowledge.');
     }
     if (currentInputs.size === 0 || sourceInputs.size === 0) {
       automatic = false;

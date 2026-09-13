@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--evidence', type=Path, required=True)
     parser.add_argument('--sample', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--generation', type=int, default=2, help='actual executed generation to audit (default preserves the original two-generation check)')
     args = parser.parse_args()
     evidence = json.loads(args.evidence.read_text())
     if evidence.get('status') != 'passed':
@@ -29,9 +30,9 @@ def main():
     sample_raw = args.sample.read_bytes()
     if sha(sample_raw) != evidence['observed']['sample']['sha256'] or sample_raw != original_sample:
         raise ValueError('the admitted original input identity differs')
-    codes = [r for r in evidence['observed']['codeFiles'] if r['generation'] == 2]
+    codes = [r for r in evidence['observed']['codeFiles'] if r['generation'] == args.generation]
     if len(codes) != 1:
-        raise ValueError('this bounded audit expects one self-contained executed revision-2 entry')
+        raise ValueError('this bounded audit expects one self-contained executed entry in the selected generation')
     code = codes[0]
     code_bytes = Path(code['path']).read_bytes()
     if sha(code_bytes) != code['sha256']:

@@ -11,10 +11,10 @@
 // `describePrepare`): one unfit pack told two ways by two faces of one harness is two products.
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import type { VerdictRecord } from './ledger.js';
+import { currentRecordsIn, type VerdictRecord } from './ledger.js';
 import { legacyAutomaticAllowed } from './runs.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { executionAction, executionContext, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
+import { identityOf, executionAction, executionContext, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
 import { checkInstalledPack, runPackWords } from './packs.js';
@@ -25,6 +25,34 @@ import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReaso
 type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]: ToolJson };
 /** Shared execution context crosses the same JSON boundary as the HTTP view. */
 function toolJson(value: object): Record<string, ToolJson> { return JSON.parse(JSON.stringify(value)) as Record<string, ToolJson>; }
+
+/** The Agent supplies research intent. Mechanical identities are attached from this Run before the
+ * existing executor performs its owner, epoch, validity and graph checks. Explicit identities are
+ * never repaired. Replaying a proposal reuses its held defaults, not a later Ledger boundary. */
+function modelGrowthProposal(deps: FabricDeps, runId: string, raw: Record<string, unknown>): Record<string, unknown> {
+  const context = executionContext(deps, runId);
+  const records = deps.ledger.records({ runId });
+  const prior = records.find(record => record.type === 'growth' && record.event === 'proposed' && record.proposalId === raw.proposalId);
+  const held = prior?.type === 'growth' && prior.proposal !== null && typeof prior.proposal === 'object' && !Array.isArray(prior.proposal)
+    ? prior.proposal as Record<string, unknown> : undefined;
+  const available = currentRecordsIn(records);
+  const ref = (value: unknown): unknown => {
+    const object = value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+    const key = object?.recordId ?? value;
+    const record = available.find(record => typeof key === 'number' ? record.seq === key : record.id === key);
+    return { ...(object ?? {}), recordId: record?.id ?? key,
+      ...(object?.contentIdentity !== undefined ? { contentIdentity: object.contentIdentity } : record ? { contentIdentity: identityOf(record) } : {}) };
+  };
+  const inputs = raw.inputs === undefined ? held?.inputs ?? available.filter(record =>
+    record.generation === context.run.generation && ['observation', 'verdict', 'code', 'knowledge'].includes(record.type)).slice(-64).map(record => ({ recordId: record.id, contentIdentity: identityOf(record) }))
+    : Array.isArray(raw.inputs) ? raw.inputs.map(ref) : raw.inputs;
+  return {
+    method: held?.method ?? (context.method ? { id: context.method.id, version: context.method.version, digest: context.method.digest } : undefined),
+    parent: held?.parent ?? { nodeId: context.run.currentNode, generation: context.run.generation },
+    inputThroughSeq: held?.inputThroughSeq ?? context.run.nextSeq - 1,
+    ...raw, inputs,
+  };
+}
 
 /** Keep action data visible to the model; the lossless value remains available to the UI/API. */
 function executionText(value: Record<string, ToolJson>): string {
@@ -42,7 +70,7 @@ function executionText(value: Record<string, ToolJson>): string {
   return JSON.stringify({ runId: value.runId, kind: value.kind, reason: value.reason,
     receipt: value.receipt, data: value.data,
     context: { run: { id: run.id, status: run.status, generation: run.generation,
-      currentNode: run.currentNode, goal: run.goal, strategy: run.strategy, budget: run.budget,
+      currentNode: run.currentNode, nextSeq: run.nextSeq, goal: run.goal, strategy: run.strategy, budget: run.budget,
       loop: run.loop, control: { owner: control.owner, epoch: control.epoch, revision: control.revision,
         paused: control.paused, stop: control.stop } }, available: context.available, executions,
       reason: context.reason, method: { id: method.id, version: method.version, digest: method.digest } },
@@ -239,12 +267,43 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         file: { type: 'string', description: 'Declared knowledge file.' },
         assetRun: { type: 'string', description: 'Optional verified historical source Run. Omit with file to preserve current Pack knowledge reads; omit both to read the best automatically applicable archived source.' },
         assetPath: { type: 'string', description: 'Optional material path from the selected source Run\'s verified archive; defaults to experience.json. It never names an arbitrary filesystem path.' },
-        analysis: { type: 'object', additionalProperties: true, description: 'For analyze before the Run ends: {question, hypotheses: string[], comparisons: string[], limitations: string[], nextExperiments: string[], claims: [{text,cites: recordId[],measurements:[{recordId,field,value,unit?}]}]}. Cite actual records of this Run; quoted numbers must match their observations. Model text remains interpretation, never a Judge verdict.' },
+        analysis: { type: 'object', additionalProperties: false, description: 'For analyze before the Run ends. Cite actual records of this Run; quoted numbers must match their observations. Model text remains interpretation, never a Judge verdict.', properties: {
+          question: { type: 'string', required: true }, hypotheses: { type: 'array', items: { type: 'string' }, required: true },
+          comparisons: { type: 'array', items: { type: 'string' }, required: true }, limitations: { type: 'array', items: { type: 'string' }, required: true },
+          nextExperiments: { type: 'array', items: { type: 'string' }, required: true },
+          claims: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+            text: { type: 'string', required: true }, cites: { type: 'array', items: { type: 'string' }, required: true },
+            measurements: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+              recordId: { type: 'string', required: true }, field: { type: 'string', required: true }, value: { type: 'number', required: true }, unit: { type: 'string' },
+            } } },
+          } } },
+        } },
         decision: { type: 'string', enum: ['goal-met', 'converged', 'next-strategy'], description: 'For an Explore strategy decision, submit this on complete together with rationale and cites. work does not submit a decision.' },
         strategy: { type: 'object', additionalProperties: true, description: 'Declared strategy values supplied with decision next-strategy on Explore complete; omit for goal-met or converged.' },
         rationale: { type: 'string', description: 'Reason for the Explore decision, grounded in cited facts; submit with decision on complete.' },
         cites: { type: 'array', items: { type: 'string' }, description: 'Current-generation observation and required Judge verdict record ids supporting the Explore decision; submit with decision on complete.' },
-        proposal: { type: 'object', additionalProperties: true, description: 'For grow: proposalId, exact method identity, parent/generation, inputThroughSeq and byte-identified input records, impact nodes, expected changes, added nodes/edges, required outputs, end condition, return node and optionality. Take input recordId/contentIdentity pairs from hima_context.evidence, and inputThroughSeq from context.run.nextSeq minus one; a code file sha256 is not its record identity. Fabric applies the strict schema and current facts before acceptance.' },
+        proposal: { type: 'object', additionalProperties: false,
+          description: 'For grow, express the research intent with the exact named fields below. Omit method, parent and inputThroughSeq to let Harness attach current Run identities. Omit inputs to use current-generation evidence, or give record sequence numbers/ids; Harness computes record identities. Reuse proposalId only for identical intent; correcting a refused proposal uses a new proposalId/requestId. Explicit wrong hashes are still refused.',
+          properties: {
+            proposalId: { type: 'string', required: true },
+            impactNodes: { type: 'array', items: { type: 'string' }, required: true },
+            expectedChanges: { type: 'array', items: { type: 'string' }, required: true },
+            nodes: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+              id: { type: 'string', required: true }, kind: { type: 'string', enum: ['act', 'judge', 'explore', 'wait'], required: true },
+              parameters: { type: 'object', additionalProperties: true, required: true, description: 'Existing node parameters: act uses tool/observes/workshop and arguments; judge uses rules and bind; explore/wait retain their Pack semantics.' },
+            } } },
+            edges: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+              from: { type: 'string', required: true }, to: { type: 'string', required: true },
+              outcome: { type: 'string', enum: ['PASS', 'FAIL', 'UNDETERMINED'] }, revisit: { type: 'boolean' },
+            } } },
+            requiredOutputs: { type: 'array', items: { type: 'string' }, required: true },
+            endCondition: { type: 'string', required: true }, returnNode: { type: 'string', required: true }, optional: { type: 'boolean', required: true },
+            method: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, version: { type: 'string', required: true }, digest: { type: 'string', required: true } } },
+            parent: { type: 'object', additionalProperties: false, properties: { nodeId: { type: 'string', required: true }, generation: { type: 'integer', required: true } } },
+            inputThroughSeq: { type: 'integer' },
+            inputs: { type: 'array', items: { oneOf: [{ type: 'string' }, { type: 'integer' }, { type: 'object', additionalProperties: false, properties: { recordId: { type: 'string', required: true }, contentIdentity: { type: 'string' } } }] } },
+          },
+        },
         revision: { type: 'object', additionalProperties: true, description: 'For revise: revisionId, exact method, current inputThroughSeq, byte-identified input records, reason, changedNodes, optional declared strategy, changes [{nodeId,scope workshop|workspace,path,fromSha256,content,sourceRecordId?}], and the exact affectedNodes dependency closure. Take canonical input identities from hima_context.evidence. Workshop sourceRecordId names current code bytes; workspace paths are relative to the Campaign workspace.' },
         proposalId: { type: 'string', description: 'Accepted proposal identity when settling an active optional growth branch.' },
         growthDisposition: { type: 'string', enum: ['failed', 'cancelled', 'abandoned'], description: 'For grow on an active optional branch: preserve this outcome and return to its declared parent after confirming no in-flight Job.' },
@@ -254,7 +313,8 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         if (!execution.agent) throw new Error('this operation requires a live conversational Agent');
         const { run, strategy, ...fields } = args;
         const request: ExecutionActionRequest = { ...fields, runId: run, actor: String(execution.agent.id), origin: 'agent', ...(strategy === undefined ? {} : { strategy: strategyArgument(strategy) }) };
-        return toolJson({ runId: run, ...await executionAction(deps, request) });
+        const bound = request.action === 'grow' && args.proposal !== undefined ? { ...request, proposal: modelGrowthProposal(deps, run, args.proposal) } : request;
+        return toolJson({ runId: run, ...await executionAction(deps, bound) });
       },
     }),
     defineTool({

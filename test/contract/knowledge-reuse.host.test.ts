@@ -137,6 +137,14 @@ test('recommend returns and records the matching negative archive before code, w
     assert.equal(testCandidate?.sourcePurpose, 'test');
     assert.equal(testCandidate?.automatic, false, 'a Pack author test is never automatically promoted into Campaign knowledge');
     assert.ok(testCandidate?.conditions.some((line) => /Source purpose is test/.test(line)));
+    const testTarget = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 }, test: true, ownerSessionId: actor });
+    assert.ok(testTarget.kind === 'ran'); if (testTarget.kind !== 'ran') throw new Error('test research preparation failed');
+    openRuns.add(testTarget.run.id);
+    const testAct = ownerActions(host, testTarget.run.id, actor, 'same-purpose-test');
+    const testBegin = await testAct('begin', { nodeId: 'analyze' }); assert.ok(testBegin.receipt?.executionId);
+    const testRecommendation = await testAct('recommend', { executionId: testBegin.receipt.executionId });
+    const testHistory = (testRecommendation.data as { history: typeof history }).history;
+    assert.equal(testHistory.candidates.find(item => item.sourceRun === authorTest.id)?.automatic, true, 'matching test evidence can support another explicitly test-purpose research Run without being promoted into Campaign evidence');
     assert.equal(history.candidates.some((item) => item.sourceRun === wrongPack.id || item.sourceRun === wrongSite.id), false);
     assert.equal(history.unavailable.some((item) => item.sourceRun === wrongPack.id || item.sourceRun === wrongSite.id), false, 'other Pack/Site identities are not exposed as failed candidates');
     assert.ok(history.candidates[0]?.conditions.some((line) => /Tool versions.*not recorded/.test(line)));

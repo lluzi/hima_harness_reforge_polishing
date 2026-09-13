@@ -1,0 +1,31 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/knowledge-reuse.host.test.ts
+local: 1 selected; 62 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: recommend returns and records the matching negative archive before code, while mismatches and corrupt sources never auto-inject
+not ok 1 - recommend returns and records the matching negative archive before code, while mismatches and corrupt sources never auto-inject
+  ---
+  duration_ms: 9251.066083
+  type: 'test'
+  location: '/Users/lluzi/code/hima_harness_reforge_polishing/test/contract/knowledge-reuse.host.test.ts:80:1'
+  failureType: 'testCodeFailure'
+  error: 'openRuns.push is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/knowledge-reuse.host.test.ts:142:14)
+    async Test.run (node:internal/test_runner/test:1404:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9936.993542
+Test boot attempts: {"host-process":0,"host-in-process":1,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 1; elapsed: 10.058 s; pass/fail/skip counts are in the TAP summary above
+[ELIFECYCLE] Command failed with exit code 1.
