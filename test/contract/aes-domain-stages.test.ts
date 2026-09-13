@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { aesDomainPack, createAesDomainFixture, sha256, writeSyntheticStageRecord } from './support/aes-domain-fixture.ts';
 import { readingDocument, semanticValue } from '../../packages/harness/src/semantics.ts';
 
@@ -111,6 +112,29 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   assert.equal(values.find((item) => item.type === 'full_constraint_failures')!.value, 0);
 
   const generatedPnrRecord = JSON.parse(await readFile(path.join(flow, 'records/pnr-generated.json'), 'utf8'));
+  const generatedPnrRecordPath = path.join(flow, 'records/pnr-generated.json');
+  const generatedPnrRecordBytes = await readFile(generatedPnrRecordPath);
+  const timingSummaryRef = generatedPnrRecord.artifacts
+    .find((item: { role: string }) => item.role === 'postroute_timing_summary');
+  const timingSummaryPath = path.join(fixture.workspace, timingSummaryRef.path);
+  const timingSummaryBytes = await readFile(timingSummaryPath);
+  const missingCount = gzipSync(gunzipSync(timingSummaryBytes).toString('utf8')
+    .replace(/^.*Violating Paths.*\n/m, ''));
+  await writeFile(timingSummaryPath, missingCount);
+  timingSummaryRef.sha256 = sha256(missingCount); timingSummaryRef.bytes = missingCount.length;
+  await writeFile(generatedPnrRecordPath, JSON.stringify(generatedPnrRecord, null, 2) + '\n');
+  assert.notEqual(fixture.read(generatedPnrRecordPath, 'pnr-generated').run.status, 0,
+    'the reader refuses a missing setup/all violating-path count');
+  assert.equal(fixture.run('compare').status, 0);
+  const missingCountComparison = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
+  assert.equal(missingCountComparison.facts.full_constraint_failures, null);
+  assert.match(missingCountComparison.facts.unknownReason.join('; '), /violating-path count/);
+  const missingCountReading = fixture.read(path.join(flow, 'records/compare.json'), 'compare');
+  assert.equal(missingCountReading.run.status, 0, missingCountReading.run.stderr);
+  assert.ok((parseReading(await readFile(missingCountReading.out, 'utf8')).values as { value: number | null }[])
+    .every((value) => value.value === null));
+  await writeFile(timingSummaryPath, timingSummaryBytes);
+  await writeFile(generatedPnrRecordPath, generatedPnrRecordBytes);
   const checkpointRef = generatedPnrRecord.artifacts.find((item: { role: string }) => item.role === 'postroute_checkpoint');
   const checkpoint = JSON.parse(await readFile(path.join(fixture.workspace, checkpointRef.path), 'utf8'));
   const checkpointRoot = await realpath(path.join(fixture.workspace, checkpoint.restorePath));
@@ -173,6 +197,22 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
     await rm(path.join(flow, control));
   }
   assert.equal(fixture.run('pnr-generated').status, 0, 'restore complete synthetic timing evidence');
+
+  await writeFile(path.join(flow, 'synthetic-rounded-zero-violations'), 'rounded WNS counterexample\n');
+  assert.equal(fixture.run('pnr-generated').status, 0);
+  assert.equal(fixture.run('compare').status, 0);
+  const roundedOpen = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
+  assert.equal(roundedOpen.facts.setup_wns, 0);
+  assert.equal(roundedOpen.facts.full_constraint_failures, 1,
+    'positive setup violating paths keep setup open when rounded WNS is zero');
+  const roundedReading = fixture.read(path.join(flow, 'records/compare.json'), 'compare');
+  assert.equal(roundedReading.run.status, 0, roundedReading.run.stderr);
+  const roundedValues = parseReading(await readFile(roundedReading.out, 'utf8')).values as
+    { type: string; value: number }[];
+  assert.equal(roundedValues.find((item) => item.type === 'setup_wns')!.value, 0);
+  assert.equal(roundedValues.find((item) => item.type === 'full_constraint_failures')!.value, 1);
+  await rm(path.join(flow, 'synthetic-rounded-zero-violations'));
+  assert.equal(fixture.run('pnr-generated').status, 0, 'restore closed synthetic setup evidence');
 
   await writeFile(path.join(flow, 'synthetic-custom-input-delay'), 'same clock, different input delay\n');
   assert.equal(fixture.run('custom-synth').status, 0);

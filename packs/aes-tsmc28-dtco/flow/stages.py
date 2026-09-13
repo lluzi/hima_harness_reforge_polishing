@@ -1264,6 +1264,10 @@ def parse_timing_summary(path, companion):
         rows[label] = values
     if "WNS (ns)" not in rows or rows["WNS (ns)"].get("all") is None:
         raise Rejected("post-route timeDesign summary has no observed all-mode WNS")
+    violating = (rows.get("Violating Paths") or {}).get("all")
+    if (not isinstance(violating, (int, float)) or not math.isfinite(violating)
+            or violating < 0 or not float(violating).is_integer()):
+        raise Rejected("post-route timeDesign summary has no finite nonnegative integer setup/all violating-path count")
     if len(views) != 1:
         raise Rejected("post-route path report has no unambiguous setup analysis view")
     path_one = re.search(r"^Path 1:.*?^= Slack Time\s+([0-9.eE+-]+)\s*$", path_text, re.M | re.S)
@@ -1273,6 +1277,7 @@ def parse_timing_summary(path, companion):
     if wns != float(path_one.group(1)):
         raise Rejected("post-route summary WNS differs from Path 1 slack")
     return {"analysisView": next(iter(views)), "setupWnsNs": wns,
+            "setupViolatingPaths": int(violating),
             "command": summary_commands[0], "rows": rows}
 
 
@@ -1482,7 +1487,8 @@ def stage_compare(ctx):
         foundry_wns = left["timing"]["setupWnsNs"]
         matched = synth_method_matched and pnr_method_matched
         library_visible = pnr_visible is not None and pnr_visible > 0 and verify_visible is not None and verify_visible > 0
-        failures = sum((not matched, generated_wns < 0, not library_visible,
+        setup_open = generated_wns < 0 or right["timing"]["setupViolatingPaths"] > 0
+        failures = sum((not matched, setup_open, not library_visible,
                         adoption["adopted_instance_count"] <= 0, verification_errors != 0))
         observations.update({
             "clock_period": requested_clock,
