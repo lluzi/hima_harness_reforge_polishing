@@ -25,6 +25,17 @@ test('library liveness queries use qualified leaf names and collection cardinali
   assert.match(init, /sizeof_collection \$_xs_libcells/);
 });
 
+test('DC version identity accepts the observed indented header and rejects ambiguity', () => {
+  const moduleDir = path.join(aesDomainPack, 'flow');
+  const code = 'import json,sys; sys.path.insert(0, sys.argv[1]); from stages import dc_version; print(json.dumps(dc_version(sys.stdin.read()), sort_keys=True))';
+  const actual = '               Version X-2025.06-SP3 for linux64 - Oct 16, 2025 \n';
+  const parsed = spawnSync('/usr/bin/python3', ['-c', code, moduleDir], { input: actual, encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  assert.deepEqual(JSON.parse(parsed.stdout), { build:'Oct 16, 2025', platform:'linux64', version:'X-2025.06-SP3' });
+  const ambiguous = spawnSync('/usr/bin/python3', ['-c', code, moduleDir], { input: actual + actual, encoding: 'utf8' });
+  assert.notEqual(ambiguous.status, 0);
+});
+
 test('merge records a rejected stage when the six route evidence set is incomplete', async (t) => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'aes-domain-merge-'));
   t.after(() => rm(workspace, { recursive: true, force: true }));

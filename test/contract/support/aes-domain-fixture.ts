@@ -79,7 +79,7 @@ elif tool == 'dc_shell':
     (run / 'reports' / ('timing_' + arm + '.rpt')).write_text('slack (MET) 0.010\n')
     fixture_flow = script.parents[3]
     dc_version = 'SYNTHETIC-DC-B' if arm == 'custom' and (fixture_flow / 'synthetic-dc-version-mismatch').exists() else 'SYNTHETIC-DC-A'
-    print('Version %s for synthetic64 SYNTHETIC-FIXTURE' % dc_version)
+    print('   Version %s for synthetic64 - SYNTHETIC-FIXTURE' % dc_version)
     print('=== AES_DTCO LIBRARY_VISIBLE_COUNT %d ===' % (1 if arm == 'custom' else 0))
     print('=== AES_DTCO SYNTHESIS_COMPLETE %s ===' % arm)
 elif tool == 'innovus':

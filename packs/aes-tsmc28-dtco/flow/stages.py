@@ -247,10 +247,12 @@ def tool_error_lines(text):
 
 
 def dc_version(text):
-    hits = re.findall(r"^Version\s+(\S+)\s+for\s+(\S+)(?:\s+.*)?$", text, re.M)
+    hits = re.findall(
+        r"^[ \t]*Version[ \t]+(\S+)[ \t]+for[ \t]+(\S+)[ \t]+-[ \t]+(.+?)[ \t]*$",
+        text, re.M)
     if len(hits) != 1:
         raise Rejected("DC log has no unambiguous supported Version <version> for <platform> header")
-    return {"version": hits[0][0], "platform": hits[0][1]}
+    return {"version": hits[0][0], "platform": hits[0][1], "build": hits[0][2]}
 
 
 def innovus_version(text):
