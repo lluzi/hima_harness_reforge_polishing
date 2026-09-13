@@ -22,8 +22,8 @@
 // that have not moved. That is also the idempotence — a Run that carries the record is a Run whose
 // report is written, and this module leaves the Site alone.
 import { createHash } from 'node:crypto';
-import { lstatSync } from 'node:fs';
-import { mkdir, readFile as readLocalFile, rename, rm, writeFile as writeLocalFile } from 'node:fs/promises';
+import { constants, lstatSync } from 'node:fs';
+import { lstat, mkdir, open, readFile as readLocalFile, rename, rm, writeFile as writeLocalFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { channelFor, mustRun, type Channel } from './channel.js';
@@ -364,6 +364,8 @@ export async function writeRunAssets(deps: ExperienceDeps, runId: string): Promi
   catch (error) { return archiveFailure(deps, runId, deps.packsDir, (error as Error).message); }
   if (folder === undefined) return archiveFailure(deps, runId, deps.packsDir, `installed Pack ${run.packId} is unavailable; no archive directory was created`);
   const directory = path.join(folder.dir, runAssetsDirectory, runId);
+  try { await archivePathSafe(folder.dir, runId, false); }
+  catch (error) { return archiveFailure(deps, runId, directory, (error as Error).message); }
   const existing = await readRunAssetsAt(directory, runId);
   if (existing.kind === 'read') {
     try { await completeArchive(deps, runId, directory, existing.manifest, existing.manifestPath); }
@@ -407,12 +409,13 @@ export async function writeRunAssets(deps: ExperienceDeps, runId: string): Promi
     schema: RUN_ASSET_MANIFEST_SCHEMA, runId, campaignId: run.campaignId, siteId: run.siteId,
     pack: { id: run.packId, version: runView(deps.ledger, run, words).run.packVersion ?? 'not recorded' },
     ...(run.packDigest === undefined ? {} : { methodDigest: run.packDigest }),
-    createdAt: new Date().toISOString(), delivery: 'complete',
+    createdAt: saved?.kind === 'read' ? saved.json.writtenAt : run.createdAt, delivery: 'complete',
     materials: files.map((file) => ({ path: file.path, source: file.source, ...('recordId' in file ? { recordId: file.recordId, type: file.type } : { type: 'experience' as const }), sha256: hashOf(file.bytes), bytes: file.bytes.byteLength, required: true })),
   };
   const parent = path.dirname(directory);
   const stage = path.join(parent, `.${runId}.stage-${randomSuffix()}`);
   try {
+    await reserveArchive(deps, runId, directory, manifest);
     await mkdir(parent, { recursive: true });
     await mkdir(stage, { recursive: false });
     for (const file of files) {
@@ -449,6 +452,8 @@ export async function readRunAssets(deps: ExperienceDeps, runId: string): Promis
   if (folder === undefined) return { kind: 'none', why: `installed Pack ${run.packId} is unavailable` };
   const completion = archiveCompleteOf(deps.ledger, runId);
   if (completion === undefined) return { kind: 'none', why: `run ${runId} has no Ledger-confirmed completed archive` };
+  try { await archivePathSafe(folder.dir, runId, true); }
+  catch (error) { return { kind: 'unreadable', path: path.join(folder.dir, runAssetsDirectory, runId), why: (error as Error).message }; }
   return readRunAssetsAt(path.join(folder.dir, runAssetsDirectory, runId), runId, run, completion);
 }
 
@@ -460,7 +465,7 @@ export async function readArchivedMaterial(deps: ExperienceDeps, runId: string, 
   if (material === undefined) return { kind: 'none', why: `run ${runId} archive has no material ${materialPath}` };
   const at = path.resolve(archive.directory, material.path);
   try {
-    const bytes = await readLocalFile(at);
+    const bytes = await readArchiveFile(archive.directory, material.path);
     const found = hashOf(bytes);
     if (found !== material.sha256) return { kind: 'changed', path: at, recorded: material.sha256, found };
     return { kind: 'read', manifest: archive.manifest, material, text: bytes.toString('utf8') };
@@ -471,7 +476,7 @@ async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord
   const manifestPath = path.join(directory, 'manifest.json');
   let manifest: RunAssetManifest;
   try {
-    const bytes = await readLocalFile(manifestPath);
+    const bytes = await readArchiveFile(directory, 'manifest.json');
     manifest = archiveManifestSchema.parse(JSON.parse(bytes.toString('utf8'))) as RunAssetManifest;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
@@ -482,7 +487,7 @@ async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord
   }
   if (run !== undefined && (manifest.campaignId !== run.campaignId || manifest.siteId !== run.siteId || manifest.pack.id !== run.packId || manifest.methodDigest !== run.packDigest)) return { kind: 'unreadable', path: manifestPath, why: 'manifest identity does not match the ended Run' };
   if (completion !== undefined) {
-    const raw = await readLocalFile(manifestPath);
+    const raw = await readArchiveFile(directory, 'manifest.json');
     if (completion.manifestSha256 !== hashOf(raw) || JSON.stringify(completion.materials) !== JSON.stringify(manifest.materials)) return { kind: 'unreadable', path: manifestPath, why: 'manifest is not the Ledger-recorded completed delivery' };
   }
   for (const material of manifest.materials) {
@@ -490,7 +495,7 @@ async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord
     const at = path.resolve(directory, material.path);
     if (!at.startsWith(`${path.resolve(directory)}${path.sep}`)) return { kind: 'unreadable', path: manifestPath, why: `material path escapes archive: ${material.path}` };
     let bytes: Buffer;
-    try { bytes = await readLocalFile(at); }
+    try { bytes = await readArchiveFile(directory, material.path); }
     catch (error) { return { kind: 'unreadable', path: at, why: (error as Error).message }; }
     const found = hashOf(bytes);
     if (found !== material.sha256) return { kind: 'changed', path: at, recorded: material.sha256, found };
@@ -501,15 +506,54 @@ async function readRunAssetsAt(directory: string, runId: string, run?: RunRecord
 
 const randomSuffix = (): string => `${process.pid}-${Math.random().toString(16).slice(2)}`;
 
+/** The customer-asset branch is never allowed to cross a link after the Pack snapshot selected it. */
+async function archivePathSafe(packDir: string, runId: string, requireRun: boolean): Promise<void> {
+  for (const at of [packDir, path.join(packDir, runAssetsDirectory), path.join(packDir, runAssetsDirectory, runId)]) {
+    try {
+      const state = await lstat(at);
+      if (state.isSymbolicLink()) throw new Error(`archive path refuses symlink: ${at}`);
+      if (!state.isDirectory()) throw new Error(`archive path is not a directory: ${at}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT' && !requireRun) return;
+      throw error;
+    }
+  }
+}
+
+async function readArchiveFile(directory: string, relative: string): Promise<Buffer> {
+  const at = path.join(directory, relative);
+  const state = await lstat(at);
+  if (!state.isFile() || state.isSymbolicLink()) throw new Error(`archive material is not a plain file: ${at}`);
+  const handle = await open(at, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const held = await handle.stat();
+    if (!held.isFile() || held.dev !== state.dev || held.ino !== state.ino) throw new Error(`archive material changed while opening: ${at}`);
+    return await handle.readFile();
+  } finally { await handle.close(); }
+}
+
 async function completeArchive(deps: ExperienceDeps, runId: string, directory: string, manifest: RunAssetManifest, manifestPath: string): Promise<void> {
   const held = archiveCompleteOf(deps.ledger, runId);
-  const bytes = await readLocalFile(manifestPath);
+  const bytes = await readArchiveFile(directory, 'manifest.json');
   const sha256 = hashOf(bytes);
   if (held !== undefined) {
     if (held.directory !== directory || held.manifestSha256 !== sha256 || JSON.stringify(held.materials) !== JSON.stringify(manifest.materials)) throw new Error('a different completed archive is already recorded for this Run');
     return;
   }
+  const pending = deps.ledger.records({ runId, type: 'archive' }).findLast((record): record is ArchiveRecord => record.type === 'archive' && record.delivery === 'pending');
+  if (pending === undefined || pending.directory !== directory || pending.manifestSha256 !== sha256 || JSON.stringify(pending.materials) !== JSON.stringify(manifest.materials)) throw new Error('no matching pre-publication archive reservation exists');
   await deps.ledger.appendArchive(runId, { delivery: 'complete', directory, manifestSha256: sha256, materials: [...manifest.materials] });
+}
+
+async function reserveArchive(deps: ExperienceDeps, runId: string, directory: string, manifest: RunAssetManifest): Promise<void> {
+  const bytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+  const sha256 = hashOf(bytes);
+  const prior = deps.ledger.records({ runId, type: 'archive' }).findLast((record): record is ArchiveRecord => record.type === 'archive' && record.delivery === 'pending');
+  if (prior !== undefined) {
+    if (prior.directory !== directory || prior.manifestSha256 !== sha256 || JSON.stringify(prior.materials) !== JSON.stringify(manifest.materials)) throw new Error('a different archive publication is already pending for this Run');
+    return;
+  }
+  await deps.ledger.appendArchive(runId, { delivery: 'pending', directory, manifestSha256: sha256, materials: [...manifest.materials] });
 }
 
 async function archiveFailure(deps: ExperienceDeps, runId: string, directory: string, why: string): Promise<WriteRunAssetsResult> {

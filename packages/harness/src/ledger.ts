@@ -777,7 +777,7 @@ export const archiveMaterial = z.strictObject({
 export const archiveRecord = z.object({
   ...base,
   type: z.literal('archive'),
-  delivery: z.enum(['complete', 'failed']),
+  delivery: z.enum(['pending', 'complete', 'failed']),
   directory: z.string().min(1),
   manifestSha256: sha256Hex.optional(),
   materials: z.array(archiveMaterial),
