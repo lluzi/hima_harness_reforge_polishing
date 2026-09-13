@@ -67,6 +67,12 @@ test('an ended Run publishes verified local copies only under its installed Pack
     assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).at(-1)?.delivery, 'complete');
     const read = await readRunAssets(f.deps, run.id);
     assert.equal(read.kind, 'read');
+    const manifestBytes = await readFile(first.manifestPath, 'utf8');
+    const forged = JSON.parse(manifestBytes) as { campaignId: string };
+    forged.campaignId = 'forged-campaign';
+    await writeFile(first.manifestPath, `${JSON.stringify(forged)}\n`);
+    assert.equal((await readRunAssets(f.deps, run.id)).kind, 'unreadable', 'a self-consistent manifest is not accepted without its exact Ledger completion hash');
+    await writeFile(first.manifestPath, manifestBytes);
     assert.equal((await writeRunAssets(f.deps, run.id)).kind, 'already');
     await writeFile(path.join(first.directory, 'experience.md'), 'tampered');
     const tampered = await readRunAssets(f.deps, run.id);
