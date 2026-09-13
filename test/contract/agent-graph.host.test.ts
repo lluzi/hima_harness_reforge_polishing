@@ -2,6 +2,8 @@
 // These cases prove execution mechanics, not model reasoning or EDA results.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { ExecutionActionRequest, ExecutionContext, RunView } from '@hima/harness';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { jobRecords, killSessions, localHome, recordsOf, sessionsOf, waitUntil } from './support/fabric.ts';
@@ -74,7 +76,7 @@ function ownedCalls(host: InProcessHost, runId: string, actor: string) {
 
 async function campaign(
   t: TestContext,
-  options: { variant?: 'fork' | 'loop' | 'bad-advice' | 'wait'; generationLimit?: number; goal?: number; period?: number },
+  options: { variant?: 'fork' | 'fork-consolidated' | 'fork-revisit-missing-judge' | 'loop' | 'bad-advice' | 'wait'; generationLimit?: number; goal?: number; period?: number },
   check: (owner: ReturnType<typeof ownedCalls>, host: InProcessHost, runId: string) => Promise<void>,
 ) {
   const home = await localHome(t, { sleepSeconds: 0.01, parallelJobs: 2, licences: { 'Design-Compiler': 2 } });
@@ -82,11 +84,43 @@ async function campaign(
   let host: InProcessHost | undefined;
   let runId: string | undefined;
   try {
-    let pack = options.variant === 'fork'
+    let pack = options.variant?.startsWith('fork')
       ? await installFork(packsDirOf(home.h), 'agent-graph-fork', 2.2)
       : options.variant === 'loop'
         ? await installDrillDown(packsDirOf(home.h), 'agent-graph-loop', 2)
         : timingProbePackId;
+    if (options.variant === 'fork-consolidated' || options.variant === 'fork-revisit-missing-judge') {
+      const graphFile = path.join(packsDirOf(home.h), pack, 'graph.yml');
+      const graph = await readFile(graphFile, 'utf8');
+      let consolidated = graph.replace('  - id: blocked\n    kind: wait', `  - id: consolidate
+    kind: act
+    parameters: { observes: qorReport }
+  - id: consolidated-judge
+    kind: judge
+    parameters:
+      rules: [setup-wns-all-nonnegative, clock-period-at-most]
+      bind: { target_period_ns: { from: goal, name: target_period_ns } }
+  - id: decide
+    kind: explore
+    parameters:
+      chooser: timing-push
+      bind: { guardBandNs: 0.05 }
+      converge: { read: period, band: 0.05, generations: 1, generationLimit: ${options.generationLimit ?? 1} }
+  - id: blocked
+    kind: wait`) + `
+  - { from: judge, to: consolidate, outcome: PASS }
+  - { from: judge, to: consolidate, outcome: FAIL }
+  - { from: consolidate, to: consolidated-judge }
+  - { from: consolidated-judge, to: decide, outcome: PASS }
+  - { from: consolidated-judge, to: decide, outcome: FAIL }
+  - { from: decide, to: start, revisit: true }
+`;
+      if (options.variant === 'fork-revisit-missing-judge') consolidated = consolidated
+        .replace('  - id: blocked\n    kind: wait', '  - id: repeat-observe\n    kind: act\n    parameters: { observes: qorReport }\n  - id: blocked\n    kind: wait')
+        .replace('from: decide, to: start, revisit: true', 'from: decide, to: repeat-observe, revisit: true')
+        + '  - { from: repeat-observe, to: decide }\n';
+      await writeFile(graphFile, consolidated);
+    }
     if (options.variant === 'bad-advice' || options.variant === 'wait') {
       pack = `agent-graph-${options.variant}`;
       await writePackVariant(packsDirOf(home.h), pack, [], options.variant === 'bad-advice'
@@ -115,6 +149,36 @@ async function campaign(
     try { await host?.dispose(); } finally { await home.h.dispose(); }
   }
 }
+
+test('fork exploration uses a fresh unbranched observation and Judge, never the last branch success', async (t) => {
+  await campaign(t, { variant: 'fork-consolidated', period: 2.0, goal: 2.2, generationLimit: 2 }, async (owner, host, runId) => {
+    for (const node of ['start', 'synthesize', 'read-qor', 'synth-b', 'read-qor-b', 'judge', 'consolidate', 'consolidated-judge']) await owner.node(node);
+    const observations = recordsOf(host, runId).filter(r => r.type === 'observation');
+    const latest = observations.at(-1)!;
+    assert.equal(latest.branchId, undefined);
+    const finalVerdicts = recordsOf(host, runId).filter(r => r.type === 'verdict' && r.cites.includes(latest.id));
+    assert.deepEqual(finalVerdicts.map(r => r.type === 'verdict' && r.outcome), ['FAIL', 'PASS']);
+    assert.ok(recordsOf(host, runId).some(r => r.type === 'verdict' && r.branchId === 'synth-b' && r.outcome === 'PASS'));
+    const executionId = await owner.ready('decide');
+    const lie = await owner.call({ action: 'complete', executionId, decision: 'goal-met', rationale: 'The last branch passed.', cites: owner.cites() });
+    assert.equal(lie.kind, 'refused');
+    await owner.complete('decide', executionId, { decision: 'next-strategy', strategy: { periodNs: 2.3 }, rationale: 'The consolidated reading still fails setup; keep that negative result.', cites: owner.cites() });
+    assert.equal(owner.context().run.generation, 2);
+    const decision = recordsOf(host, runId).findLast(r => r.type === 'decision');
+    assert.ok(decision?.cites.includes(latest.id));
+    assert.equal(owner.launched().length, 2, 'consolidation and explicit decisions launch no new synthesis');
+    for (const node of ['start', 'synthesize', 'read-qor', 'synth-b', 'read-qor-b', 'judge', 'consolidate', 'consolidated-judge']) await owner.node(node);
+    await owner.complete('decide', await owner.ready('decide'), { decision: 'next-strategy', strategy: { periodNs: 2.4 }, rationale: 'Second generation still misses the fixed Goal; preserve the budget ending.', cites: owner.cites() });
+    assert.equal(owner.context().run.status, 'ended-budget-exhausted');
+    assert.equal(owner.launched().length, 4);
+  });
+});
+
+test('fork consolidation cannot bypass its fresh Judge on a revisit', async (t) => {
+  await assert.rejects(campaign(t, { variant: 'fork-revisit-missing-judge', generationLimit: 2 }, async () => {
+    assert.fail('invalid graph must be rejected before a Run exists');
+  }), /has explore node "decide" downstream of "judge"/);
+});
 
 test('explore rejects invented success and invalid strategy, then follows the owner choice and actual goal evidence', async (t) => {
   await campaign(t, { goal: 2.3, period: 2.4 }, async (owner, host, runId) => {

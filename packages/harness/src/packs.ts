@@ -1940,7 +1940,8 @@ export function forkOutcome(outcomes: readonly VerdictOutcome[]): VerdictOutcome
  * inside another fork**, because step 3 runs one level of each (spec, *Out of Scope*): a fork inside
  * a fork is refused by the walk itself, which finds the second fork's node drawing two edges inside
  * a branch; a fork inside a Loop is refused here, where the graph being walked knows it is a Loop.
- * And **nothing a fork's join leads to explores**, for the reason `exploreAfter` states.
+ * After a join, exploration requires a fresh unbranched reading and its own Judge,
+ * for the reason `exploreAfter` states.
  *
  * The act node's own rule is the same rule from the other side, and it is why every act node is
  * asked and not only the ones that look like a fork: an act node has **one** unlabelled edge out, or
@@ -1973,35 +1974,34 @@ function validateForkShape(part: RunGraph, loop: string | undefined, broken: (fi
 }
 
 /**
- * The first explore node a fork's join leads to, when it leads to one at all.
- *
- * Refused at load in step 3, and this is the whole of the reason: a chooser is handed the
- * generation's *own* reading — `exploreNode` narrows the observation and the verdicts it weighs by
- * the Loop it is in and by nothing else — while a fork leaves one reading per branch in that same
- * generation. A chooser standing after a join would therefore decide on whichever branch appended
- * last, which is the site's job scheduling and not the pack's rule, and the decision record would
- * cite a value no person could have predicted from the file. What a fork's several answers mean is
- * a question the pack has not been given a way to answer yet; until it has, the graph may not ask
- * it. Refused where the file can still be read, like every other way a pack contradicts itself.
- *
- * Every node reachable from the join is walked, not only its immediate successors: the explore node
- * two act nodes past the join reads exactly the same branch observations as one drawn straight off
- * it. A revisit edge closes a cycle, so nodes already seen are not walked again.
- *
- * @param graph - the graph the fork belongs to; a Loop is a graph of its own.
- * @param join - the judge node the fork's branches converge into.
- * @returns the id of an explore node the join leads to, or undefined when it leads to none.
+ * Reject an Explore reachable after a join without a fresh unbranched observation and Judge.
+ * A join leaves branch readings and verdicts; those cannot stand for an aggregate conclusion.
+ * A Pack may explicitly produce/read a consolidated report and judge that new reading before
+ * exploring. Runtime exploreEvidence then requires that Judge's verdicts cite the unbranched
+ * observation. Every path must establish both facts; a bypass is not rescued by a safe sibling.
  */
 function exploreAfter(graph: RunGraph, join: string): string | undefined {
-  const kindOf = new Map(graph.nodes.map((n) => [n.id, n.kind]));
-  const seen = new Set<string>([join]);
-  const walking = [join];
+  const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
+  // 0: branch evidence only, 1: fresh reading, 2: that reading has its own constraint/Goal Judge.
+  const walking: { id: string; evidence: 0 | 1 | 2 }[] = [{ id: join, evidence: 0 }];
+  const seen = new Set<string>();
   for (let at = walking.pop(); at !== undefined; at = walking.pop()) {
-    for (const edge of graph.edges.filter((e) => e.from === at)) {
-      if (seen.has(edge.to)) continue;
-      seen.add(edge.to);
-      if (kindOf.get(edge.to) === 'explore') return edge.to;
-      walking.push(edge.to);
+    const key = `${at.id}:${String(at.evidence)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    for (const edge of graph.edges.filter((e) => e.from === at.id)) {
+      const node = nodes.get(edge.to)!;
+      let evidence = edge.revisit ? 0 as const : at.evidence;
+      if (node.kind === 'explore') {
+        if (evidence !== 2) return node.id;
+      }
+      if (node.kind === 'act' && graph.edges.filter((e) => e.from === node.id).length > 1) evidence = 0;
+      else if (node.kind === 'act' && node.parameters.observes !== undefined) evidence = 1;
+      else if (node.kind === 'judge') {
+        evidence = evidence === 1 && node.parameters.rules.length >= 2
+          && forkJoinedAt(graph, node.id) === undefined ? 2 : 0;
+      }
+      walking.push({ id: node.id, evidence });
     }
   }
   return undefined;
