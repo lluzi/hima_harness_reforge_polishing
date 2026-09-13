@@ -39,6 +39,10 @@ export function fetchMaterial(runId: string, recordId: string, signal?: AbortSig
   return runRequest(`${runPath(runId)}/material/${encodeURIComponent(recordId)}`, { signal });
 }
 
+export function fetchArchive(runId: string, material?: string, signal?: AbortSignal): Promise<HimaResult<{ manifest: import('../experience-report.js').RunAssetManifest; text?: string }>> {
+  return runRequest(`${runPath(runId)}/assets${material === undefined ? '' : `?material=${encodeURIComponent(material)}`}`, { signal });
+}
+
 export const fetchRuns = (signal?: AbortSignal): Promise<HimaResult<{ runs: RunHeadView[] }>> =>
   runRequest(HIMA_RUNS_PATH, { signal });
 

@@ -67,3 +67,22 @@ Experience 读取接口。用独立反例验证行为，不另建模拟 Fabric �
 
 实际开发：主任务 Astra/High；两个 worker 仍分别推进 PLS-10 与 PLS-14。
 API token/费用未测量。代码回滚限定这些新增函数、入口和对应测试，已存在资产不删除。
+
+## 报告与归档集成准备
+
+PLS-14 基础实现已合入；来源真实性与文件故障矩阵仍由 Sol/High 独立收口，不据基础
+4/4 测试关闭任务。升级理由是源码审查发现清单锚定、发布中断与权限边界尚不充分。
+
+PLS-15 的 `hima_execute analyze` 使用现有 owner/epoch/revision、幂等与总时间盒检查，
+记录有来源的研究问题、假设、比较条件、限制和下一次实验。引用不存在、数字与引用的
+观测不匹配会拒绝。正文始终标为模型解释，不能替代 Judge 或观察值；schema 4 保留旧
+schema 1～3 报告读取。新增 Ledger 23 支持显式离线复制 v19～22，原 home 不原地改写。
+
+多模块适配范围是 Ledger 记录、Fabric 动作、既有工具参数、RunView、Experience 投影
+和共用材料界面，不增加独立执行/分析服务。Pack 归档材料接入现有 Run API 和同屏卡片。
+
+[report-preparation](report-preparation/)保留当前证据：报告/分析/导入 22/22，14.698 秒，
+4 个 in-process Host、零 Electron/SSH。相邻报告回归首次 16/17：归档记录不应延长已结束
+代际时长，修正该投影后受影响报告文件 9/9，83.399 秒；没有把首轮写成全部通过。
+当前 typecheck 通过。归档窗口、新工具真实模型、完整 local 和批次独立审查仍未完成，
+PLS-15 保持实施中。开发为 Astra/High，Codex token/费用未测量。

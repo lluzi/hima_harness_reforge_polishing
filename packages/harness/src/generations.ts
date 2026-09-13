@@ -220,7 +220,9 @@ export function generationsOf(run: RunRecord, all: readonly LedgerRecord[], word
   // happened inside one turn of one node, and the node's own records already bracket that turn. The
   // workshop's own view is where a person reads what was written (`record-views.ts`), and it reads
   // these records directly rather than through a generation row.
-  const records = all.filter((r) => r.type !== 'experience' && r.type !== 'session' && r.type !== 'code');
+  // Delivery and later provenance reads cannot extend an already completed experiment's duration.
+  const records = all.filter((r) => r.type !== 'experience' && r.type !== 'archive' && r.type !== 'analysis'
+    && r.type !== 'session' && r.type !== 'code' && r.type !== 'knowledge');
   const opened = run.generation;
   const first = run.firstStrategy;
   // Both are written by the one call that opens a Run HimaFabric started, so a row carrying one and

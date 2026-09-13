@@ -334,6 +334,8 @@ export interface RunHeadView {
 
 /** A whole Run as HimaGuide shows it. Every operation that answers with a Run answers with this. */
 export interface RunView {
+  readonly analyses?: readonly AnalysisView[];
+  readonly archive?: { readonly recordId: string; readonly delivery: 'pending' | 'complete' | 'failed'; readonly directory: string; readonly reason?: string };
   readonly run: RunHeadView;
   /** Workspace declarations, not an observed runtime/tool-version inventory. */
   readonly workspace?: { readonly design?: string; readonly flowRoot: string; readonly containerName: string };
@@ -398,6 +400,13 @@ export interface RunView {
   /** Why an ended Campaign has no deliverable report yet. No file is implied by this message. */
   readonly experienceUnavailable?: string;
 }
+
+export type AnalysisView = import('./ledger.js').ResearchAnalysis & {
+  readonly recordId: string;
+  readonly at: string;
+  readonly sessionId: string;
+  readonly nodeId: string;
+};
 
 /** One file of the report as HimaGuide shows it: where it is on the Site, and what it hashes to. */
 export interface ExperienceFileView {
@@ -520,6 +529,8 @@ export interface PackTransferBody {
 }
 
 export interface RemoteOperations {
+  readRunAssets?(runId: string): Promise<import('./experience.js').ReadRunAssetsResult>;
+  readArchivedMaterial?(runId: string, relative: string): Promise<import('./experience.js').ReadArchivedMaterialResult>;
   /** Browser-session owner review only; not an Agent confirmation tool. */
   packTransfer?(request: PackTransferBody): import('./release.js').PackTransferReview;
   readonly ledger: Ledger;
@@ -743,6 +754,8 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     decision: decision ? decisionView(decision) : null,
     code: records.filter((r): r is CodeRecord => r.type === 'code').map(codeView),
     knowledge: records.filter((r): r is KnowledgeRecord => r.type === 'knowledge').map(knowledgeView),
+    analyses: records.flatMap(record => record.type === 'analysis' ? [{ ...record.analysis, recordId: record.id, at: record.at, sessionId: record.sessionId, nodeId: record.nodeId }] : []),
+    ...(() => { const record = records.findLast(record => record.type === 'archive'); return record?.type === 'archive' ? { archive: { recordId: record.id, delivery: record.delivery, directory: record.directory, ...(record.reason ? { reason: record.reason } : {}) } } : {}; })(),
     // Where the Run's current node stands as a workshop, when it is one (#62). An absent key, never
     // an undefined one: a Run standing at an ordinary act node says so by omission. Composed from
     // these same records and nothing else, which is what the comment on `RunView.workshop` promises.
@@ -1319,6 +1332,16 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   }
 
   const execution = /^\/runs\/([^/]+)\/(context|control)$/.exec(rest);
+  const archive = /^\/runs\/([^/]+)\/assets$/.exec(rest);
+  if (archive) {
+    if (method !== 'GET' || !ops.readRunAssets || !ops.readArchivedMaterial) return failure(405, 'hima/bad-request', 'archive reads require GET on a supporting Host');
+    const runId = decoded(archive[1]!, 'run id');
+    if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId}`);
+    const relative = url.searchParams.get('material');
+    const result = relative === null ? await ops.readRunAssets(runId) : await ops.readArchivedMaterial(runId, relative);
+    if (result.kind === 'read') return ok(result);
+    return failure(result.kind === 'none' ? 404 : 409, 'hima/material-changed', `archive is ${result.kind}: ${'why' in result ? result.why : 'path' in result ? result.path : 'required materials unavailable'}`);
+  }
   if (execution) {
     const runId = decoded(execution[1]!, 'run id');
     if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);

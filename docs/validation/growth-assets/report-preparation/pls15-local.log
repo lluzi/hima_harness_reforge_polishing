@@ -1,0 +1,147 @@
+$ node scripts/run-contract-tests.mjs local --files test/contract/experience-report.test.ts test/contract/research-analysis.host.test.ts test/contract/ledger-import.test.ts
+local: 3 selected; 55 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: model interpretation cannot turn missing citations or contradictory numbers into report facts
+ok 1 - model interpretation cannot turn missing citations or contradictory numbers into report facts
+  ---
+  duration_ms: 4.06875
+  type: 'test'
+  ...
+# Subtest: a goal claim requires completed cited evidence; requested period is not a measured Fmax
+ok 2 - a goal claim requires completed cited evidence; requested period is not a measured Fmax
+  ---
+  duration_ms: 11.045166
+  type: 'test'
+  ...
+# Subtest: a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+ok 3 - a successful experiment with a failed constraint is valid negative evidence, independent of convergence
+  ---
+  duration_ms: 0.663042
+  type: 'test'
+  ...
+# Subtest: cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+ok 4 - cancelled or failed execution cannot borrow an earlier completed judge from the same generation
+  ---
+  duration_ms: 0.685166
+  type: 'test'
+  ...
+# Subtest: missing, unresolved, stale and undetermined citations cannot establish a definite result
+ok 5 - missing, unresolved, stale and undetermined citations cannot establish a definite result
+  ---
+  duration_ms: 1.383125
+  type: 'test'
+  ...
+# Subtest: budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+ok 6 - budget truncation labels the next proposal unmeasured, but a strategy already entered is not labelled untested
+  ---
+  duration_ms: 0.989917
+  type: 'test'
+  ...
+# Subtest: no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+ok 7 - no trials, legacy rows without provenance and execution status alone leave the conclusion unknown
+  ---
+  duration_ms: 1.266583
+  type: 'test'
+  ...
+# Subtest: fork branches retain separate observations and partial branches do not inherit a completed peer
+ok 8 - fork branches retain separate observations and partial branches do not inherit a completed peer
+  ---
+  duration_ms: 1.273834
+  type: 'test'
+  ...
+# Subtest: offline v21 and v22 polishing facts import into the current domain without rewriting source bytes
+ok 9 - offline v21 and v22 polishing facts import into the current domain without rewriting source bytes
+  ---
+  duration_ms: 3524.077
+  type: 'test'
+  ...
+# Subtest: explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+ok 10 - explicit offline CLI imports v19 facts and a source hash receipt into a new empty home, read unchanged by a real Host
+  ---
+  duration_ms: 1028.491209
+  type: 'test'
+  ...
+# Subtest: opening the original v19 home still fails the version gate without rewriting it
+ok 11 - opening the original v19 home still fails the version gate without rewriting it
+  ---
+  duration_ms: 311.443458
+  type: 'test'
+  ...
+# Subtest: an explicit v20 snapshot is copied into an empty v21 home while its source stays byte-for-byte intact
+ok 12 - an explicit v20 snapshot is copied into an empty v21 home while its source stays byte-for-byte intact
+  ---
+  duration_ms: 33.29525
+  type: 'test'
+  ...
+# Subtest: importing an owned v20 Run preserves its recorded owner and reports that ownership truthfully
+ok 13 - importing an owned v20 Run preserves its recorded owner and reports that ownership truthfully
+  ---
+  duration_ms: 29.157042
+  type: 'test'
+  ...
+# Subtest: v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home
+ok 14 - v20 import rejects bad workspace ownership and missing or cross-Run evidence citations before staging a home
+  ---
+  duration_ms: 46.049833
+  type: 'test'
+  ...
+# Subtest: wrong formats, future controls and unknown fields cannot be silently dropped during import
+ok 15 - wrong formats, future controls and unknown fields cannot be silently dropped during import
+  ---
+  duration_ms: 139.257
+  type: 'test'
+  ...
+# Subtest: Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+ok 16 - Run keys, record identity, site linkage and nextSeq cannot corrupt imported history
+  ---
+  duration_ms: 55.527833
+  type: 'test'
+  ...
+# Subtest: v20-only Job, workspace and decision facts are refused even with a v19 header
+ok 17 - v20-only Job, workspace and decision facts are refused even with a v19 header
+  ---
+  duration_ms: 29.59575
+  type: 'test'
+  ...
+# Subtest: symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+ok 18 - symlink files, symlink ancestors, occupied targets and source-containing targets are refused unchanged
+  ---
+  duration_ms: 36.642709
+  type: 'test'
+  ...
+# Subtest: mid-write failure and process death cannot publish a partial import or alter the source
+ok 19 - mid-write failure and process death cannot publish a partial import or alter the source
+  ---
+  duration_ms: 1173.699792
+  type: 'test'
+  ...
+# Subtest: the offline CLI requires both explicit paths and never defaults to DSH_HOME
+ok 20 - the offline CLI requires both explicit paths and never defaults to DSH_HOME
+  ---
+  duration_ms: 129.588083
+  type: 'test'
+  ...
+# Subtest: two simultaneous imports cannot replace the first complete destination
+ok 21 - two simultaneous imports cannot replace the first complete destination
+  ---
+  duration_ms: 101.532041
+  type: 'test'
+  ...
+# Subtest: only the actual owner can record source-linked research analysis; retries and false numeric claims preserve facts
+ok 22 - only the actual owner can record source-linked research analysis; retries and false numeric claims preserve facts
+  ---
+  duration_ms: 5611.916167
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14448.465292
+Test boot attempts: {"host-process":0,"host-in-process":4,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 14.698 s; pass/fail/skip counts are in the TAP summary above

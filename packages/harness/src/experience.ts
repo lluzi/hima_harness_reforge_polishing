@@ -228,7 +228,7 @@ export async function readExperience(deps: ExperienceDeps, runId: string): Promi
   let document: ExperienceJson;
   try {
     const parsed = JSON.parse(Buffer.from(json.bytes).toString('utf8'));
-    if (parsed === null || typeof parsed !== 'object' || !['hima-experience/1', 'hima-experience/2', 'hima-experience/3'].includes(parsed.schema)
+    if (parsed === null || typeof parsed !== 'object' || !['hima-experience/1', 'hima-experience/2', 'hima-experience/3', 'hima-experience/4'].includes(parsed.schema)
       || parsed.runId !== runId || parsed.writtenAt !== record.writtenAt) {
       throw new Error('unsupported report schema or report identity does not match the recorded Run and write time');
     }

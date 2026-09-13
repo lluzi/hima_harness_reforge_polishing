@@ -150,8 +150,8 @@ test('the actual conversational owner reads inputs and knowledge, writes a versi
     const report = await host.ctx.hima.readExperience(runId);
     assert.equal(report.kind, 'read', JSON.stringify(report));
     if (report.kind === 'read') {
-      assert.equal(report.json.schema, 'hima-experience/3');
-      if (report.json.schema === 'hima-experience/3') {
+      assert.equal(report.json.schema, 'hima-experience/4');
+      if (report.json.schema === 'hima-experience/4') {
         assert.equal(report.json.code.length, 2);
         assert.equal(report.json.knowledge.length, 1);
       }

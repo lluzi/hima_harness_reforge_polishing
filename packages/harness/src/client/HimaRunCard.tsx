@@ -21,7 +21,7 @@ import type { BlockerView, Citation, CodeView, DecisionView, ExperienceView, Kno
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
 import { bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, good, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, outcomeColour, askedObservedSaid, plain, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, warn, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
-import { actOnRun, controlRun, fetchMaterial, fetchRun, type HimaFailure } from './api.js';
+import { actOnRun, controlRun, fetchArchive, fetchMaterial, fetchRun, type HimaFailure } from './api.js';
 
 /** The slice of the tool block this card reads. The owner passes the frozen call or result node. */
 export interface ToolBlock {
@@ -637,6 +637,34 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
   </Section>;
 }
 
+/** Pack-local delivered bytes, verified on explicit read; no Site polling on each UI refresh. */
+export function ArchiveSection({ view }: { view: RunView }): ReactElement | null {
+  const [manifest, setManifest] = useState<import('../experience-report.js').RunAssetManifest>();
+  const [reading, setReading] = useState<{ path?: string; text?: string; error?: string; loading?: boolean }>({});
+  const pending = useRef<AbortController | undefined>();
+  useEffect(() => { pending.current?.abort(); setManifest(undefined); setReading({}); return () => pending.current?.abort(); }, [view.run.id]);
+  const read = (material?: string) => {
+    pending.current?.abort(); const controller = new AbortController(); pending.current = controller;
+    setReading({ path: material, loading: true });
+    void fetchArchive(view.run.id, material, controller.signal).then(result => {
+      if (controller.signal.aborted) return;
+      if (!result.ok) { setReading({ path: material, error: result.error.message }); return; }
+      setManifest(result.value.manifest); setReading({ path: material, text: result.value.text });
+    });
+  };
+  if (!view.archive) return null;
+  return <Section title='Knowledge archived in this Pack' region='run-archive' state={{ delivery: view.archive.delivery }}>
+    <p style={muted}>Recorded delivery: {view.archive.delivery}{view.archive.reason ? ` · ${view.archive.reason}` : ''}</p>
+    <button className='hima-button' data-hima-control='archive-verify' onClick={() => read()} disabled={reading.loading}>Verify archived materials</button>
+    {reading.loading ? <p style={muted}>Reading and checking recorded content hashes…</p> : null}
+    {reading.error ? <p role='alert' style={{ ...muted, color: bad }}>{reading.error}</p> : null}
+    {manifest ? <><p style={{ ...muted, overflowWrap: 'anywhere' }}>Run {manifest.runId} · Site {manifest.siteId} · Pack {manifest.pack.id}@{manifest.pack.version}</p>
+      {manifest.materials.map(material => <button className='hima-button' key={material.path} data-hima-control={`archive-material-${material.path}`} onClick={() => read(material.path)} style={{ ...mono, display: 'block', width: '100%', textAlign: 'left', margin: '5px 0' }} title={`${material.source}\nsha256 ${material.sha256}`}>{material.path} · {material.bytes} bytes · {material.sha256.slice(0, 12)}</button>)}
+      {reading.text !== undefined ? <div data-hima-region='archive-content'>{reading.path?.endsWith('.md') ? reportBlocks(reading.text).map((block, index) => <ReportBlockRow key={index} block={block} />) : <pre style={logTail}>{reading.text}</pre>}</div> : null}
+    </> : null}
+  </Section>;
+}
+
 /** One record a verdict cited. A citation that did not resolve is shown as such, never dropped. */
 function CitationRow({ citation }: { citation: Citation }): ReactElement {
   return citation.observation === null
@@ -803,6 +831,7 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
       */}
       {view.workshop === undefined ? null : <WorkshopSection view={view} workshop={view.workshop} />}
       <MaterialSection view={view} />
+      <ArchiveSection view={view} />
       {view.observations.length === 0
         ? null
         : (

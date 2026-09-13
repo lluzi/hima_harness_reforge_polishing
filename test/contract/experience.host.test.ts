@@ -155,8 +155,8 @@ test('a Campaign that met its goal leaves both report files on the site, with th
       );
     }
 
-    assert.equal(json.schema, 'hima-experience/3');
-    if (json.schema !== 'hima-experience/3') throw new Error('new reports use schema 3');
+    assert.equal(json.schema, 'hima-experience/4');
+    if (json.schema !== 'hima-experience/4') throw new Error('new reports use schema 4');
     assert.equal(json.research.conclusion, 'goal-supported');
     assert.ok(json.research.trials.every((trial) => trial.status === 'judged'));
     assert.equal(json.research.environment.toolVersions, 'not recorded');

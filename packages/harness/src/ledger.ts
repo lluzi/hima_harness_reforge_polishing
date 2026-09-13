@@ -937,6 +937,22 @@ export const knowledgeRecord = z.strictObject({
   bytes: z.number().int().nonnegative(),
 });
 
+/** Source-linked interpretation is never a Judge verdict or a measured observation. */
+export const researchAnalysis = z.strictObject({
+  question: z.string().min(1).max(4000),
+  hypotheses: z.array(z.string().min(1).max(4000)).max(16),
+  comparisons: z.array(z.string().min(1).max(4000)).max(16),
+  limitations: z.array(z.string().min(1).max(4000)).min(1).max(16),
+  nextExperiments: z.array(z.string().min(1).max(4000)).min(1).max(16),
+  claims: z.array(z.strictObject({
+    text: z.string().min(1).max(4000), cites: z.array(z.string().min(1)).min(1).max(32),
+    measurements: z.array(z.strictObject({ recordId: z.string().min(1), field: z.string().min(1), value: z.number().finite(), unit: z.string().optional() })).max(32),
+  })).max(32),
+});
+export type ResearchAnalysis = z.infer<typeof researchAnalysis>;
+const analysisRecord = z.object({ ...base, type: z.literal('analysis'), sessionId: z.string(), nodeId: z.string(),
+  requestId: z.string(), requestDigest: sha256Hex, analysis: researchAnalysis });
+
 export const ledgerRecord = z.discriminatedUnion('type', [
   observationRecord,
   refusalRecord,
@@ -951,6 +967,7 @@ export const ledgerRecord = z.discriminatedUnion('type', [
   loopRecord,
   experienceRecord,
   archiveRecord,
+  analysisRecord,
   sessionRecord,
   codeRecord,
   knowledgeRecord,
@@ -968,6 +985,7 @@ export type CancelRecord = z.infer<typeof cancelRecord>;
 export type LoopRecord = z.infer<typeof loopRecord>;
 export type ExperienceRecord = z.infer<typeof experienceRecord>;
 export type ArchiveRecord = z.infer<typeof archiveRecord>;
+export type AnalysisRecord = z.infer<typeof analysisRecord>;
 export type SessionRecord = z.infer<typeof sessionRecord>;
 export type CodeRecord = z.infer<typeof codeRecord>;
 export type KnowledgeRecord = z.infer<typeof knowledgeRecord>;
@@ -1655,7 +1673,8 @@ export const ledgerSpec = defineDomain({
   // 22: an `archive` record distinguishes a completed Pack-local delivery from an execution that
   // ended while delivery is still missing or failed. It is a new union arm, so an older reader must
   // refuse rather than erase the evidence lifecycle.
-  version: 22,
+  // 23: source-linked model analysis stays distinct from observed facts and Judge verdicts.
+  version: 23,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -1928,6 +1947,10 @@ export class Ledger {
     return this.#append(runId, 'executor', (h) => ({ ...h, type: 'archive', ...data }));
   }
 
+  async appendAnalysis(runId: string, data: Omit<AnalysisRecord, keyof typeof base | 'type'>): Promise<AnalysisRecord> {
+    return this.#append(runId, 'executor', (h) => ({ ...h, type: 'analysis', ...data }));
+  }
+
   /**
    * That a Model moment opened, and that it closed (#59), appended by the executor.
    *
@@ -2064,6 +2087,17 @@ const v20LedgerDocument = z.strictObject({
   tables: z.strictObject({ runs: z.record(z.string(), runRecord), records: z.record(z.string(), v20LedgerRecord) }),
 });
 
+const priorPolishingDocument = z.strictObject({
+  unit: z.strictObject({ name: z.literal('hima_ledger'), version: z.union([z.literal(21), z.literal(22)]) }),
+  global: z.null(),
+  tables: z.strictObject({ runs: z.record(z.string(), runRecord), records: z.record(z.string(),
+    z.discriminatedUnion('type', [...v20LedgerRecord.options, knowledgeRecord, archiveRecord])) }),
+}).superRefine((document, context) => {
+  if (document.unit.version === 21 && Object.values(document.tables.records).some(record => record.type === 'archive')) {
+    context.addIssue({ code: 'custom', message: 'v21 did not support archive records' });
+  }
+});
+
 type ImportDocument = { readonly tables: { readonly runs: Record<string, RunRecord>; readonly records: Record<string, LedgerRecord> } };
 
 /** Shared relational checks, applied to every source schema before any target is staged. */
@@ -2106,11 +2140,11 @@ function readLegacyLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> {
 }
 
 /** Validate a v19 or v20 offline snapshot without changing fields or pretending it is live. */
-function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> {
+function readImportLedger(bytes: Buffer): z.infer<typeof legacyLedgerDocument> | z.infer<typeof v20LedgerDocument> | z.infer<typeof priorPolishingDocument> {
   const input: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-  const document = (input as { unit?: { version?: unknown } } | null)?.unit?.version === 20
-    ? v20LedgerDocument.parse(input)
-    : readLegacyLedger(bytes);
+  const version = (input as { unit?: { version?: unknown } } | null)?.unit?.version;
+  const document = version === 21 || version === 22 ? priorPolishingDocument.parse(input)
+    : version === 20 ? v20LedgerDocument.parse(input) : readLegacyLedger(bytes);
   if (!isDeepStrictEqual(input, document)) throw new Error('ledger import contains unsupported fields or values; import would change stored facts');
   validateImportDocument(document as unknown as ImportDocument);
   return document;
@@ -2143,7 +2177,7 @@ function sameImportSnapshot(a: BigIntStats, b: BigIntStats): boolean {
 
 export interface LegacyLedgerImportReceipt {
   readonly format: 'hima-ledger-import-v1';
-  readonly source: { readonly path: string; readonly version: 19 | 20; readonly sha256: string; readonly bytes: number; readonly backup: string };
+  readonly source: { readonly path: string; readonly version: 19 | 20 | 21 | 22; readonly sha256: string; readonly bytes: number; readonly backup: string };
   readonly target: { readonly version: number; readonly sha256: string; readonly file: string };
   readonly importedAt: string;
   readonly runs: number;
@@ -2164,7 +2198,7 @@ export interface LegacyLedgerImportReceipt {
  * home is written. The destination parent must already exist; no ancestor is created or repaired.
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
-  if (ledgerSpec.version !== 21) throw new Error('legacy import supports only the reviewed v19/v20-to-v21 transition');
+  if (ledgerSpec.version !== 23) throw new Error('legacy import supports only the reviewed v19-v22-to-v23 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);

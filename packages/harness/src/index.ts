@@ -29,7 +29,7 @@ import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
 import { drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
-import { readExperience, readMaterial, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
+import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
 import { handleHimaCommand, himaCommandDescription } from './commands.js';
 import { himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
@@ -345,6 +345,8 @@ export default class Hima extends Service {
           cancelRun: (runId) => this.cancelRun(runId),
           readExperience: (runId) => this.readExperience(runId),
           readMaterial: (runId, recordId) => this.readMaterial(runId, recordId),
+          readRunAssets: (runId) => readRunAssets(this.deps(), runId),
+          readArchivedMaterial: (runId, relative) => readArchivedMaterial(this.deps(), runId, relative),
           // The one operation of this namespace that reaches dsh's agent seam, and the only one
           // that needs the host itself rather than the ledger: a moment is composed out of this
           // context (#59). Handed in like every other operation, so `remote.ts` stays a module a

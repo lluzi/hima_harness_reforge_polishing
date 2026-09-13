@@ -40,7 +40,9 @@ import { campaignIdFor, prepareWorkspace, type PrepareResult } from './workspace
 import { writeExperience } from './experience.js';
 import { loadSite, pathsOf } from './sites.js';
 import { driving, existingRun, legacyAutomaticAllowed } from './runs.js';
-import { recordNode, executionReceipt as receiptSchema, launchIntent as launchIntentSchema } from './ledger.js';
+import { recordNode, researchAnalysis, executionReceipt as receiptSchema, launchIntent as launchIntentSchema } from './ledger.js';
+import { analysisProblems } from './experience-report.js';
+import { runView as analysisRunView } from './remote.js';
 import { jobStatus, jobTail, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
 import { channelFor } from './channel.js';
 import { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, readBack } from './workshop.js';
@@ -1060,7 +1062,8 @@ async function blockAtEntry(deps: FabricDeps, run: RunRecord, pack: Pack, reason
 export interface ExecutionActionRequest {
   readonly runId: string; readonly actor: string;
   readonly expectedEpoch: number; readonly expectedRevision: number; readonly requestId: string;
-  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'adopt' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend';
+  readonly action: 'begin' | 'work' | 'complete' | 'pause' | 'continue' | 'cancel' | 'handoff' | 'adopt' | 'revise' | 'grow' | 'read' | 'write' | 'knowledge' | 'recommend' | 'analyze';
+  readonly analysis?: unknown;
   readonly nodeId?: string; readonly executionId?: string; readonly targetOwner?: string;
   readonly path?: string; readonly content?: string; readonly output?: string; readonly file?: string;
   readonly decision?: 'goal-met' | 'converged' | 'next-strategy';
@@ -1197,6 +1200,21 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (!reading && Object.values(control.requests).some((request) => request.receipt.action === 'continue' && request.state !== 'done')) return no('an admitted human clearance is incomplete; inspect its original receipt before further business actions');
     if (!reading && control.stop !== undefined) return no('this Run has a stop request; new business actions are fenced until its actual Job facts resolve');
     if (run.status !== 'running' && !reading) return no('this Run is not active');
+    if (req.action === 'analyze') {
+      if (timeBoxSpent(run, 0)) return no('the Campaign hard time box is exhausted; no new model analysis can be recorded');
+      if (!req.nodeId || !executionContext(deps, run.id).nodes.some(node => node.id === req.nodeId)) return no('analysis must name a node of this Run');
+      const parsed = researchAnalysis.safeParse(req.analysis);
+      if (!parsed.success) return no(`analysis needs a bounded question, hypotheses, comparisons, claims, limitations and nextExperiments: ${parsed.error.message}`);
+      const problems = analysisProblems(analysisRunView(deps.ledger, run), parsed.data);
+      if (problems.length) return no(`unverified analysis references or values: ${problems.join(' ')}`);
+      const prior = deps.ledger.records({ runId: run.id }).find(record => record.type === 'analysis' && record.requestId === req.requestId);
+      if (prior && (prior.type !== 'analysis' || prior.requestDigest !== digest)) return no('analysis request identity already names different content');
+      const recorded = prior ?? await deps.ledger.appendAnalysis(run.id, { sessionId: req.actor, nodeId: req.nodeId,
+        requestId: req.requestId, requestDigest: digest, analysis: parsed.data });
+      const receipt: ExecutionReceipt = { requestId: req.requestId, action: 'analyze', data: { recordId: recorded.id, status: 'source-linked interpretation; not a verified causal finding' } };
+      await recordExecutionAction(deps, run, req, digest, {}, receipt);
+      return answer('accepted', { receipt, data: receipt.data });
+    }
     if (req.action === 'pause' || req.action === 'continue' || req.action === 'handoff') {
       const scope = req.nodeId ?? '*';
       const pack = executionPack(deps, run);

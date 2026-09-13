@@ -57,7 +57,7 @@ import type { BlockerView, CancelView, CodeView, KnowledgeView, NodeView, Observ
  * the keys it happens to find. It is versioned separately from the ledger's own domain, because the
  * file outlives the ledger that wrote it — it is the Site owner's, kept beside the results (D44).
  */
-export const EXPERIENCE_SCHEMA = 'hima-experience/3';
+export const EXPERIENCE_SCHEMA = 'hima-experience/4';
 
 /** The directory the two files live in, under the Campaign workspace, beside the results. */
 export const EXPERIENCE_DIR = 'hima-experience';
@@ -151,11 +151,15 @@ export interface ExperienceJsonV2 extends Omit<ExperienceJsonV1, 'schema'> {
 }
 /** New material provenance is schema 3; schema 2 remains an unchanged historical document. */
 export interface ExperienceJsonV3 extends Omit<ExperienceJsonV2, 'schema'> {
-  readonly schema: typeof EXPERIENCE_SCHEMA;
+  readonly schema: 'hima-experience/3';
   readonly code: readonly CodeView[];
   readonly knowledge: readonly KnowledgeView[];
 }
-export type ExperienceJson = ExperienceJsonV1 | ExperienceJsonV2 | ExperienceJsonV3;
+export interface ExperienceJsonV4 extends Omit<ExperienceJsonV3, 'schema'> {
+  readonly schema: typeof EXPERIENCE_SCHEMA;
+  readonly analyses: readonly import('./remote.js').AnalysisView[];
+}
+export type ExperienceJson = ExperienceJsonV1 | ExperienceJsonV2 | ExperienceJsonV3 | ExperienceJsonV4;
 
 export interface ExperienceTrial {
   readonly generation: number;
@@ -189,7 +193,7 @@ export interface ExperienceResearch {
 
 /** The two documents of one newly composed report. Historical files are read without recomposition. */
 export interface ExperienceReport {
-  readonly json: ExperienceJsonV3;
+  readonly json: ExperienceJsonV4;
   readonly markdown: string;
 }
 
@@ -207,7 +211,7 @@ export function experienceReport(view: RunView, writtenAt: string): ExperienceRe
 }
 
 /** The machine's file, from the run view and nothing else. */
-function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV3 {
+function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV4 {
   const { run } = view;
   return {
     schema: EXPERIENCE_SCHEMA,
@@ -226,6 +230,7 @@ function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV3 {
     research: researchOf(view),
     code: view.code ?? [],
     knowledge: view.knowledge ?? [],
+    analyses: view.analyses ?? [],
     generations: view.generations,
     ...(run.meters === undefined ? {} : { meters: run.meters }),
     path: view.nodes,
@@ -236,6 +241,42 @@ function experienceJson(view: RunView, writtenAt: string): ExperienceJsonV3 {
 }
 
 /** Read completed judge evidence, without re-running rules or deciding whether a Run may advance. */
+/** Validate references and explicitly quoted numbers without treating free text as proved causes. */
+export function analysisProblems(view: RunView, analysis: import('./ledger.js').ResearchAnalysis): string[] {
+  const records = new Set([...view.observations, ...view.verdicts, ...view.code, ...view.knowledge].map(record => record.recordId));
+  const problems: string[] = [];
+  for (const claim of analysis.claims) {
+    for (const id of claim.cites) if (!records.has(id)) problems.push(`Citation ${id} is not an available observation, verdict, code or knowledge record of this Run.`);
+    for (const measurement of claim.measurements) {
+      const observation = view.observations.find(record => record.recordId === measurement.recordId);
+      if (!claim.cites.includes(measurement.recordId) || !observation?.values.some(value => value.type === measurement.field
+          && value.value === measurement.value && value.unit === measurement.unit)) {
+        problems.push(`Claimed ${measurement.field}=${measurement.value} ${measurement.unit ?? ''} does not match cited observation ${measurement.recordId}.`);
+      }
+    }
+  }
+  return [...new Set(problems)];
+}
+
+function analysisSection(view: RunView): string[] {
+  const analyses = view.analyses ?? [];
+  const flat = (text: string) => text.replace(/[\r\n]+/g, ' ');
+  return ['## Research interpretation and next experiments', '',
+    ...(analyses.length ? ['Model analysis is an interpretation of cited evidence. Hypotheses, comparisons and causal explanations are not measurements or verified facts.', '']
+      : ['No source-linked AI analysis was recorded. Research hypotheses, comparison assumptions and the next discriminating experiment remain unprovided.', '']),
+    ...analyses.flatMap(analysis => [
+      `Analysis ${analysis.recordId} · node ${analysis.nodeId} · source ${analysis.sessionId}`, '',
+      `Research question: ${flat(analysis.question)}`, '',
+      ...analysis.hypotheses.flatMap(text => [`Hypothesis (unverified): ${flat(text)}`, '']),
+      ...analysis.comparisons.flatMap(text => [`Comparison condition (declared, not independently probed): ${flat(text)}`, '']),
+      ...analysis.claims.flatMap(claim => [`Unverified model interpretation: ${flat(claim.text)}`, `References: ${claim.cites.join(', ')}`, '']),
+      ...analysisProblems(view, analysis).flatMap(problem => [`Unverified / excluded from facts: ${problem}`, '']),
+      ...analysis.limitations.flatMap(text => [`Limitation: ${flat(text)}`, '']),
+      ...analysis.nextExperiments.flatMap(text => [`Proposed next experiment (not executed by this report): ${flat(text)}`, '']),
+    ]),
+  ];
+}
+
 function researchOf(view: RunView): ExperienceResearch {
   const observations = new Map(view.observations.map((observation) => [observation.recordId, observation]));
   const verdicts = new Map(view.verdicts.map((verdict) => [verdict.recordId, verdict]));
@@ -430,7 +471,7 @@ function fenced(text: string): string[] {
 }
 
 /** The person's file, composed from the machine's so the two cannot say different numbers. */
-function experienceMarkdown(json: ExperienceJsonV3, view: RunView): string {
+function experienceMarkdown(json: ExperienceJsonV4, view: RunView): string {
   const mark = runPurposeMark(json.purpose);
   const lines: string[] = [
     `# Campaign ${json.campaignId}`,
@@ -454,6 +495,7 @@ function experienceMarkdown(json: ExperienceJsonV3, view: RunView): string {
     ...researchSection(json.research),
     ...codeSection(json.code),
     ...knowledgeSection(json.knowledge),
+    ...analysisSection(view),
     ...budgetSection(view),
     ...generationsSection(json.generations, view),
     ...reasoningSection(json.generations, view),

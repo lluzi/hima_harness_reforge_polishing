@@ -64,7 +64,8 @@ test('an ended Run publishes verified local copies only under its installed Pack
     assert.equal(first.manifest.delivery, 'complete');
     assert.deepEqual(first.manifest.materials.map((m) => m.path), ['experience.md', 'experience.json']);
     assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).at(-1)?.type, 'archive');
-    assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).at(-1)?.delivery, 'complete');
+    const completed = f.deps.ledger.records({ runId: run.id, type: 'archive' }).at(-1);
+    assert.ok(completed?.type === 'archive' && completed.delivery === 'complete');
     const read = await readRunAssets(f.deps, run.id);
     assert.equal(read.kind, 'read');
     const manifestBytes = await readFile(first.manifestPath, 'utf8');
@@ -146,8 +147,8 @@ test('failure between the two report writes leaves no record; the next Host comp
       }
       assert.equal(result?.status, 200);
       const read = await result!.json() as ExperienceAnswer;
-      assert.equal(read.report.schema, 'hima-experience/3');
-      if (read.report.schema !== 'hima-experience/3') throw new Error('newly recovered report uses schema 3');
+      assert.equal(read.report.schema, 'hima-experience/4');
+      if (read.report.schema !== 'hima-experience/4') throw new Error('newly recovered report uses schema 4');
       assert.equal(read.report.research.environment.declaredDesign, 'declared-design');
       assert.equal(read.report.research.environment.toolVersions, 'not recorded');
       assert.equal(hash(read.markdown), read.experience.markdown.sha256);

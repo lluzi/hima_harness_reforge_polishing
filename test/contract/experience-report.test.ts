@@ -28,10 +28,26 @@ function fixture(): RunView {
 
 function projected(view: RunView) { return experienceReport(view, at).json.research; }
 
+test('model interpretation cannot turn missing citations or contradictory numbers into report facts', () => {
+  const view = fixture();
+  const analysis = { recordId: 'analysis-1', at, sessionId: 'owner', nodeId: 'explore', question: 'Can the measured period support this next experiment?',
+    hypotheses: ['A different selection algorithm may reduce overlap.'], limitations: ['One finite design sample only.'],
+    comparisons: ['Same declared design; tool version has not been probed.'], nextExperiments: ['Hold the input fixed and compare two algorithms.'],
+    claims: [{ text: 'The model claims a period of 1 ns.', cites: ['observation-1'], measurements: [{ recordId: 'observation-1', field: 'clock_period', value: 1, unit: 'ns' }] },
+      { text: 'A nonexistent trial improved the result.', cites: ['invented'], measurements: [] }],
+  };
+  const report = experienceReport({ ...view, analyses: [analysis] }, at);
+  assert.match(report.markdown, /Unverified model interpretation/);
+  assert.match(report.markdown, /invented/);
+  assert.match(report.markdown, /does not match/);
+  assert.equal(report.json.research.trials[0]?.observation?.values[0]?.value, 2.3);
+  assert.match(report.markdown, /Hold the input fixed/);
+});
+
 test('a goal claim requires completed cited evidence; requested period is not a measured Fmax', () => {
   const view = fixture();
   const report = experienceReport(view, at);
-  assert.equal(report.json.schema, 'hima-experience/3');
+  assert.equal(report.json.schema, 'hima-experience/4');
   assert.equal(report.json.research.conclusion, 'goal-supported');
   assert.equal(report.json.research.trials[0]?.constraintOutcome, 'PASS');
   assert.deepEqual(report.json.research.trials[0]?.observation?.values, view.observations[0]?.values);
