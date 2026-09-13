@@ -23,3 +23,7 @@ none
 - Pre-test engineering correction: the reader additionally rejects a manifest whose askedPeriodNs differs from the hashed measured period. This is backed by the mismatched-period counterexample in test/contract/aes-probe.test.ts. The current tools/read-probe.py exactly matches the current flow/read-probe.py; the original native author transcript retains the earlier bytes.
 
 - Pre-test engineering review corrected universal zero-slack and guaranteed-achievable-period wording: positive slack is retained and period/slack arithmetic is only a next-trial hypothesis, especially because IO/latency scale with period. Tcl queries both real and virtual clock periods from the actual design before publishing metrics.
+
+- Real Site correction after retained failed test Run run-5c951580-2ca6-4821-9626-1758090cf31e: X-2025.06-SP3 reports UID-101 for current_design area. synth.tcl now extracts the unique Cell Area field from its actual retained QoR report, instead of querying the nonexistent attribute. The failed trial and its original empty metrics field are unchanged.
+
+- The portable Golden Flow pointer in INTENT/SPEC now resolves to the Pack-local flow/ copy. The native original-author source path and bytes remain in the author checkpoint evidence.

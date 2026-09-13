@@ -64,11 +64,11 @@ is done.
 
 Read in place, never written, and no file of it authored into the Pack:
 
-- The approved Golden Flow root, read with read/glob only: `/private/tmp/hima-l4-DIH2Jm/hima-home-rDFkuk/aes-golden`
-- `README.md` — the method, the exact command, the manifest, the recommended initial period and goal, and the scope caveat: `/private/tmp/hima-l4-DIH2Jm/hima-home-rDFkuk/aes-golden/README.md`
-- `probe.py` — one bounded foundry-only synthesis in a fresh trial directory, writing `flow/probe.json` and its own `manifest.json`: `/private/tmp/hima-l4-DIH2Jm/hima-home-rDFkuk/aes-golden/probe.py`
-- `synth.tcl` — the Design Compiler method (real and virtual clocks, 20% I/O delay, 19.7% clock-latency ratio, `compile_ultra`) and the `metrics.tsv` fields: `/private/tmp/hima-l4-DIH2Jm/hima-home-rDFkuk/aes-golden/synth.tcl`
-- `read-probe.py` — the hashed reader emitting `clock_period`, `setup_wns` (setup/all) and `cell_area`: `/private/tmp/hima-l4-DIH2Jm/hima-home-rDFkuk/aes-golden/read-probe.py`
+- The approved Golden Flow root, read with read/glob only: `./flow`
+- `README.md` — the method, the exact command, the manifest, the recommended initial period and goal, and the scope caveat: `./flow/README.md`
+- `probe.py` — one bounded foundry-only synthesis in a fresh trial directory, writing `flow/probe.json` and its own `manifest.json`: `./flow/probe.py`
+- `synth.tcl` — the Design Compiler method (real and virtual clocks, 20% I/O delay, 19.7% clock-latency ratio, `compile_ultra`) and the `metrics.tsv` fields: `./flow/synth.tcl`
+- `read-probe.py` — the hashed reader emitting `clock_period`, `setup_wns` (setup/all) and `cell_area`: `./flow/read-probe.py`
 - The Site's separately staged `flowRoot` — that directory plus a private `inputs.json` with `design`, `rtlGlob`, `foundryDb`, `edaWrapper`; named by the Site binding `flowRoot`, not by a Pack path: `/private/tmp/hima-l4-DIH2Jm/hima-home-rDFkuk/hima/packs/aes-tsmc28-dtco/flow`
 - The Pack's own existing `flow/` copy (author-supplied method source, kept unchanged, not the Campaign's copy source): `/private/tmp/hima-l4-DIH2Jm/hima-home-rDFkuk/hima/packs/aes-tsmc28-dtco/flow`
 

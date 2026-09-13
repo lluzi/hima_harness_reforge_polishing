@@ -29,3 +29,16 @@ No local result claims real AES Fmax, model research contribution or complete DT
 PLS-23 real Site execution, test/release, desktop observation, PLS-08 handoff, PLS-09 algorithm
 research and PLS-25 full mining remain pending at this checkpoint. PLS-24 is developed separately
 with one Terra/Medium worker and one Sol/High independent reviewer; integration is pending review.
+
+## First real Site trial: retained failure
+
+`aes-execute-1/evidence.json` records the actual V4 Flash owner Run
+`run-5c951580-2ca6-4821-9626-1758090cf31e`: one real DC synthesis (89.793 s), followed by
+one reader Job which failed on an empty area field. No observation/Judge success was fabricated.
+The X-2025.06-SP3 log explicitly reports UID-101: `area` does not exist on current_design.
+The original QoR contains Cell Area 8667.161987, so the Tcl producer now extracts that unique
+reported field. It also retains the precise measured slack: the failed trial's query gave
+-0.000969827 ns even though the rounded QoR critical slack prints 0.00. Rounded zero is not closure.
+Raw data is retained privately under `.hima-tmp/pls-frontier/first-site-artifacts`, with hashes in
+that Run's remote manifest. No library files or full customer design inputs are added to the Pack.
+The previous Run and its failed reader are unchanged; the corrected method needs a new test Run.

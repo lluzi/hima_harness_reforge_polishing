@@ -38,6 +38,13 @@ set actual_period [get_attribute [get_clocks clk] period]
 if {$actual_period != [get_attribute [get_clocks vclk_clk] period]} {error "clock periods disagree"}
 puts $report "asked_period_ns\t$actual_period"
 puts $report "worst_slack_ns\t$worst"
-puts $report "cell_area_um2\t[get_attribute [current_design] area]"
+# X-2025.06-SP3 does not expose area on current_design (UID-101). Use its actual
+# QoR Cell Area field; the source report is retained and hashed beside metrics.
+set qor_file [open qor.rpt r]
+set qor_text [read $qor_file]
+close $qor_file
+set area_matches [regexp -all -inline -line {^[ \t]*Cell Area:[ \t]+([0-9.eE+-]+)[ \t]*$} $qor_text]
+if {[llength $area_matches] != 2} {error "missing or ambiguous Cell Area in QoR"}
+puts $report "cell_area_um2\t[lindex $area_matches 1]"
 close $report
 exit
