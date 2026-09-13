@@ -62,6 +62,32 @@ export const EXPERIENCE_SCHEMA = 'hima-experience/3';
 /** The directory the two files live in, under the Campaign workspace, beside the results. */
 export const EXPERIENCE_DIR = 'hima-experience';
 
+/** The immutable inventory published with a Run's Pack-local delivery. */
+export const RUN_ASSET_MANIFEST_SCHEMA = 'hima-run-assets/1';
+export interface ExperienceAsset {
+  readonly path: string;
+  readonly source: string;
+  readonly recordId?: string;
+  readonly type?: 'experience' | 'observation' | 'code' | 'knowledge';
+  readonly sha256: string;
+  readonly bytes: number;
+  readonly required: boolean;
+  readonly missingReason?: string;
+}
+/** This file is published last. Its presence means every listed required byte was verified. */
+export interface RunAssetManifest {
+  readonly schema: typeof RUN_ASSET_MANIFEST_SCHEMA;
+  readonly runId: string;
+  readonly campaignId: string;
+  readonly siteId: string;
+  readonly pack: ExperiencePack;
+  readonly methodDigest?: string;
+  readonly createdAt: string;
+  readonly delivery: 'complete' | 'pending' | 'failed';
+  readonly materials: readonly ExperienceAsset[];
+  readonly reason?: string;
+}
+
 /** How a Campaign ended: the ledger's own word for it, the meter that ended it where one did, and
  *  the sentence behind it — the same sentence the card's seal shows. */
 export interface ExperienceEnding {

@@ -9,7 +9,8 @@ import { bootInProcess } from './support/boot-inprocess.ts';
 import { bootHimaHost } from './support/boot-host.ts';
 import { api, openSession } from './support/hima-api.ts';
 import { writeLocalSite } from './support/site.ts';
-import { readExperience, writeExperience, EXPERIENCE_DIR } from '@hima/harness';
+import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
+import { readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR } from '@hima/harness';
 import type { ExperienceJson, ExperienceAnswer, RunView } from '@hima/harness';
 
 const hash = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
@@ -19,7 +20,7 @@ async function fixture() {
   const host = await bootInProcess(h);
   const ledger = host.ctx.hima.ledger;
   const run = await ledger.createRun({ campaignId: 'historical-fixture', siteId: 'local', status: 'cancelled', packId: 'recorded-method' });
-  const deps = { ledger, sitesDir, packsDir: path.join(h.profileDir, 'packs') };
+  const deps = { ledger, sitesDir, packsDir: packsDirOf(h) };
   let closed = false;
   const close = async () => { if (!closed) { closed = true; await host.dispose(); } };
   return { h, host, run, deps, close };
@@ -48,6 +49,30 @@ test('an ended Run without a workspace explains why no report is deliverable thr
       const page = await api(next, cookie, `/hima/?run=${f.run.id}`);
       assert.match(await page.text(), /data-hima-state-source="not-written"/);
     } finally { assert.equal(await next.stop(), 0, next.stderr()); }
+  } finally { await f.close(); await f.h.dispose(); }
+});
+
+test('an ended Run publishes verified local copies only under its installed Pack, is idempotent, and refuses tampering', async () => {
+  const f = await fixture();
+  try {
+    await installPack(f.h);
+    const run = await f.deps.ledger.createRun({ campaignId: 'archive-fixture', siteId: 'local', status: 'cancelled', packId: timingProbePackId });
+    const first = await writeRunAssets(f.deps, run.id);
+    assert.equal(first.kind, 'written', first.kind === 'failed' ? first.why : '');
+    if (first.kind !== 'written') throw new Error(JSON.stringify(first));
+    assert.match(first.directory, new RegExp(`hima/packs/${timingProbePackId}/run-assets/${run.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+    assert.equal(first.manifest.delivery, 'complete');
+    assert.deepEqual(first.manifest.materials.map((m) => m.path), ['experience.md', 'experience.json']);
+    assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).at(-1)?.type, 'archive');
+    assert.equal(f.deps.ledger.records({ runId: run.id, type: 'archive' }).at(-1)?.delivery, 'complete');
+    const read = await readRunAssets(f.deps, run.id);
+    assert.equal(read.kind, 'read');
+    assert.equal((await writeRunAssets(f.deps, run.id)).kind, 'already');
+    await writeFile(path.join(first.directory, 'experience.md'), 'tampered');
+    const tampered = await readRunAssets(f.deps, run.id);
+    assert.equal(tampered.kind, 'changed');
+    const retry = await writeRunAssets(f.deps, run.id);
+    assert.equal(retry.kind, 'failed');
   } finally { await f.close(); await f.h.dispose(); }
 });
 

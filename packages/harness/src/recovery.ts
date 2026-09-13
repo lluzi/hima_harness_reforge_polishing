@@ -27,7 +27,7 @@ import { killDidNotTake, type Driving, type FabricDeps } from './node-turns.js';
 import { SiteUnreadableError } from './errors.js';
 import { counted } from './words.js';
 import { drive, controlling, scheduleExecutionDeadline, scheduleExecutionStop, executionDriving, observeExecution, updateExecution, identityOf, executionContext, type ExecutionActionRequest, type ExecutionActionResult } from './fabric.js';
-import { owesAnExperience, writeExperience } from './experience.js';
+import { owesAnExperience, owesRunAssets, writeExperience } from './experience.js';
 import { closeInterruptedMoments } from './moments.js';
 
 // ---------------------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ export async function reconcileRuns(deps: FabricDeps): Promise<ReconcileOutcome[
     if (run.packId === undefined) continue;
     // An ending owes the same mechanical report in every execution mode. Do this before mode
     // dispatch, which deliberately never sends owned/historical Runs into the automatic driver.
-    if (owesAnExperience(deps.ledger, run)) {
+    if (owesAnExperience(deps.ledger, run) || owesRunAssets(deps.ledger, run)) {
       try { out.push(await reportExperience(deps, run)); }
       catch (error) {
         out.push({ runId: run.id, found: error instanceof SiteUnreadableError ? 'site-unreadable' : 'unreadable',

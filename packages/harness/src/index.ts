@@ -116,8 +116,10 @@ export { cancelRun, reconcileRuns } from './recovery.js';
 export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn, nextMomentAttempt, HIMA_MOMENT_PRESET } from './moments.js';
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
 export { MomentTurnError, NoCurrentNodeError } from './errors.js';
-export { writeExperience, readExperience, readMaterial } from './experience.js';
-export type { WriteExperienceResult, ReadExperienceResult } from './experience.js';
+export { writeExperience, readExperience, readMaterial, writeRunAssets, readRunAssets, readArchivedMaterial } from './experience.js';
+export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult } from './experience.js';
+export { RUN_ASSET_MANIFEST_SCHEMA } from './experience-report.js';
+export type { RunAssetManifest, ExperienceAsset } from './experience-report.js';
 // `attemptOfSession` is exported for the one thing that cannot be shown through a face: which
 // attempt a Job belongs to when the host that launched it died before the node record naming its
 // session was written. The contract suite asserts that reading at the ledger object (#62).
