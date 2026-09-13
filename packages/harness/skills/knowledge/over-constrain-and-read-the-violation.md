@@ -1,43 +1,34 @@
 # Over-constrain, and read the violation
 
-**A met constraint states no margin.** When a tool is asked for a target it can reach, it stops
-optimizing the moment it reaches it and reports exactly zero slack — not "zero more was possible",
-just "asked for, met, done". A pass therefore tells you one thing only: the target was reachable. It
-tells you nothing about how much further the design could have gone, and a method that reads a pass
-as a measurement is reading a number that was never measured.
+A passing timing constraint establishes closure at the tested target and conditions. Preserve the
+actual reported slack, whether zero or positive. Some synthesis flows report zero once a target is
+met; that zero does not establish the fastest achievable implementation. A pass alone does not
+prove global optimality, and a negative slack does not prove the tool exhausted every strategy.
 
-**A violation is a measurement.** When the same tool is asked for a target it cannot reach, it
-optimizes as hard as it can and then reports the shortfall. That shortfall is arithmetic you can
-use: the achievable value is `asked + |violation|`. One failing run states the answer that any
-number of passing runs cannot.
+A setup violation is a measured shortfall. For an asked period P and slack V < 0, P + |V| can guide
+the next trial when the timing model makes that approximation useful. It remains a hypothesis:
+resynthesis, path changes, and period-dependent IO delays or clock latency can change the result.
+Only a new valid trial can establish closure at its tested period.
 
-## What this means for a pack you are authoring
+## What this means for a Pack
 
-- **Ask one step tighter than you believe possible, on purpose.** The first generation of a Loop
-  should be expected to fail. That failure is how the Loop learns where the frontier is; a first
-  generation that passes has bought you nothing but a lower bound you already had.
-- **Make the violation a typed value of its own.** The judge and the chooser both need it. A pack
-  whose semantics carry only "passed / failed" has thrown away the one number the method runs on.
-- **Write the chooser in terms of the violation.** On a violation, the next target is
-  `asked + |violation|`, rounded the way the tool prints it. On a pass, the next target is *tighter*
-  — never looser. A chooser that loosens on a pass moves away from the frontier every generation and
-  can only end at its generation limit.
-- **Round the way the report does.** If the tool prints two decimals, the chooser works in two
-  decimals. A move smaller than the printed resolution is a move the next report cannot show, and a
-  Loop that makes one cannot converge.
-- **Say all of this in the pack's own words.** Every face — the card, the decision record, the
-  report — must be able to say "this generation asked for X, the tool was short by Y, so the
-  achievable value is X + Y". A person who has to reconstruct that from two numbers will get it
-  wrong.
+- Keep the requested target, reported clock period, actual slack and proposed next target distinct.
+  Check the report's units, scope and conditions before using it in a decision.
+- A deliberately tighter first trial can expose a shortfall; a passing trial is still useful
+  evidence. Choose the initial pressure from the business question and available budget.
+- A Pack may recommend `P + |V| - step` after failure and `P - step` after a passing trial that
+  misses Goal. Do not systematically relax a zero-slack passing trial by adding a guard band.
+  Validate every candidate against the Pack's bounds and precision before launching it.
+- Use the tool's actual reporting precision. Repeated rounded values can hide differences;
+  convergence is limited to the observed resolution and tested conditions.
+- State: “Trial X measured slack Y; the next proposed period is Z and remains untested.”
+  Claim Goal met only from current, valid measurements and the required Judge verdicts.
+- Execution faults, incomplete reports and changed inputs cannot support a design conclusion.
+  Retain the failure and resolve it before deriving the next strategy.
 
-## Where this came from
+## Source and limits
 
-A reference campaign ran to its generation limit while every one of its generations passed. Its
-chooser read the reported zero slack as "no room left" and loosened the target by its guard band each
-time. The first generation's violation had already stated the answer; nobody read it. The fault was
-the pack's, not the runner's — the runner ran exactly the method it was given.
-
-## Citing it
-
-When this file shaped a decision, cite it by name and say what it changed — "turned 'a pass proves
-the target' into 'a pass states no margin', and made the violation the value the chooser reads".
+The reference opene902 stand-in exposed a chooser that relaxed the period on every zero-slack pass.
+That counterexample motivated the over-constraining recommendation. It does not establish that
+all tools always report zero, or that one failed synthesis reveals the exact achievable period.
+When citing this file, identify the recommendation used and the actual evidence behind the decision.

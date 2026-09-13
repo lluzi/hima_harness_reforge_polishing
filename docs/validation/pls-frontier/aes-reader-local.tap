@@ -1,0 +1,26 @@
+local: 1 selected; 50 unselected in local; other groups not run (not passes)
+TAP version 13
+# Subtest: AES reader holds measured period and slack to original hashed tool output; zero slack is not an estimated Fmax
+ok 1 - AES reader holds measured period and slack to original hashed tool output; zero slack is not an estimated Fmax
+  ---
+  duration_ms: 173.332709
+  type: 'test'
+  ...
+# Subtest: AES reader refuses mismatched periods, incomplete fields, duplicate/nonfinite measurements, failed tools and escaping evidence
+ok 2 - AES reader refuses mismatched periods, incomplete fields, duplicate/nonfinite measurements, failed tools and escaping evidence
+  ---
+  duration_ms: 443.544125
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 790.466792
+Test boot attempts: {"host-process":0,"host-in-process":0,"electron":0}; Electron launches also start their own Host
+SSH subprocess attempts: 0
+local command exit code: 0; elapsed: 0.880 s; pass/fail/skip counts are in the TAP summary above

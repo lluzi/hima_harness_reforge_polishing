@@ -1,0 +1,48 @@
+{
+  "source": "native author evidence plus current local Host tests",
+  "rawEvidenceSha256": "8895598362a51a49a218670195543eb724fae357752dd566194f79e661175e84",
+  "rawStatus": "failed",
+  "finding": "The real author had already reached compiled when the driver incorrectly required exactly specified. No Site jobs were started. The raw failed result is retained.",
+  "nativeStageObserved": {
+    "stage": "compiled",
+    "validated": [
+      "INTENT.md",
+      "SPEC.md",
+      "contract.yml",
+      "graph.yml",
+      "FABRIC.md"
+    ],
+    "next": "tested",
+    "needs": "TEST.md, written by /hima-test"
+  },
+  "originalAuthoredFiles": {
+    "contract.yml": "2ceade03b4406c3d93270790f30053986c7d4c24988daa35c2a42c98ca7e3bbe",
+    "graph.yml": "d176def48933b10639721b79230505c30c5defc92b68cab9d5c42e8b623fbf8b",
+    "FABRIC.md": "de242a6ef3845fb3a6dbc872632a3031342df61d8c3f5982b33210fe7e9f613c",
+    "INTENT.md": "7ee7a18baeea63856b8c89e5370a15b2c7f2093b10f3c733594ab89429b8484c",
+    "SPEC.md": "83f9507094f13f3e57a394b7f6dec519c23b578fbe1ed65a068432971208868c",
+    "tools/read-probe.py": "80fc6ad1e7c43c5ba34dd8f685a1304991ccd77176f72ae442dd95003f20c1f5",
+    "tools/probe.py": "51131058f67153cb51f32db5dfcaa4f18ce00cfb403359ee308648e7ffa1fffe",
+    "knowledge/aes-probe-method.md": "10125c874a589edcc60a2ba6a656cdc0ce8e153d51e35422d89b346a73a7a2f9",
+    "choosers/over-constraining-push.yml": "d706e9f6314daa1fe9656c720d5192697e770ff6ab5ef0a7ef311b02764769e0",
+    "readers/aes-probe-reading.yml": "3d67cfaf4c9a475da547f7e329552dff05757c4049a5a162a81122ae32228c91",
+    "flow/read-probe.py": "80fc6ad1e7c43c5ba34dd8f685a1304991ccd77176f72ae442dd95003f20c1f5",
+    "flow/README.md": "2e38e7587375b3f9951b61c40447d979ca4542e7926d7d2e42240272ddf46aec",
+    "flow/probe.py": "8c76ad1d385d8f94f4fb568a3102a199aa84a08b9fa0eb8d18cd13572cb54759",
+    "flow/synth.tcl": "9258b51076c65c6577c6b7b17c29a40eb651494f09f8a34c29470d079eed0190"
+  },
+  "preTestCorrections": [
+    "requested/measured period identity check",
+    "actual clock period queried from DC",
+    "period/slack arithmetic documented as hypothesis, not guaranteed closure"
+  ],
+  "localValidation": {
+    "command": "node scripts/run-contract-tests.mjs local --files test/contract/aes-probe.test.ts",
+    "passed": 5,
+    "failed": 0,
+    "hosts": 3,
+    "electron": 0,
+    "ssh": 0,
+    "seconds": 11.838
+  }
+}

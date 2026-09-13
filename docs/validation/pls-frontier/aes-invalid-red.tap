@@ -1,0 +1,26 @@
+✔ AES reader holds measured period and slack to original hashed tool output; zero slack is not an estimated Fmax (456.98975ms)
+✖ AES reader refuses mismatched periods, incomplete fields, duplicate/nonfinite measurements, failed tools and escaping evidence (190.809125ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 869.428333
+
+✖ failing tests:
+
+test at test/contract/aes-probe.test.ts:32:1
+✖ AES reader refuses mismatched periods, incomplete fields, duplicate/nonfinite measurements, failed tools and escaping evidence (190.809125ms)
+  AssertionError [ERR_ASSERTION]: counterexample 0 must not yield evidence
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/aes-probe.test.ts:50:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }

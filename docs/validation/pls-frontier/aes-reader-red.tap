@@ -1,0 +1,29 @@
+✖ AES reader holds measured period and slack to original hashed tool output; zero slack is not an estimated Fmax (83.2315ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 239.651333
+
+✖ failing tests:
+
+test at test/contract/aes-probe.test.ts:11:1
+✖ AES reader holds measured period and slack to original hashed tool output; zero slack is not an estimated Fmax (83.2315ms)
+  AssertionError [ERR_ASSERTION]: /Applications/Xcode.app/Contents/Developer/usr/bin/python3: can't open file '/Users/lluzi/code/hima_harness_reforge_polishing/packs/aes-tsmc28-dtco/flow/read-probe.py': [Errno 2] No such file or directory
+  
+  
+  2 !== 0
+  
+      at TestContext.<anonymous> (file:///Users/lluzi/code/hima_harness_reforge_polishing/test/contract/aes-probe.test.ts:21:10)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

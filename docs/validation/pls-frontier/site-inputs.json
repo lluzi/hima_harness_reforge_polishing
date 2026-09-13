@@ -1,0 +1,41 @@
+{
+  "bindings": {
+    "DESIGN_TOP": "aes_cipher_top",
+    "DESIGN_RTL_GLOB": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v",
+    "FOUNDRY_LIB": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib",
+    "FOUNDRY_LEF": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Back_End/lef/tcbn28hpcplusbwp40p140_110a/lef/tcbn28hpcplusbwp40p140.lef",
+    "FOUNDRY_DB": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.db",
+    "LIBRECELL_TECH_PY": "/data/eda/project/tsmc28_work/librecell_tsmc28_tech_900.py",
+    "BOOL2CMOS_PDK_PROFILE": "/data/eda/project/bool2cmos/profiles/tsmc28_lclayout.json",
+    "GEOMETRY_RULE_DECK": "/data/eda/project/hima_harness/site_inputs/xspace_cell_aes_tsmc28/geometry_rule_deck.json",
+    "XS28_CHARMODEL_HELPER_DIR": "/data/eda/project/celluzi/scripts:/data/eda/project/tsmc28_work/charmodel",
+    "BOOL2CMOS_CWD": "/data/eda/project/bool2cmos"
+  },
+  "files": {
+    "FOUNDRY_LIB": {
+      "bytes": 87283165,
+      "sha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5"
+    },
+    "FOUNDRY_LEF": {
+      "bytes": 9201321,
+      "sha256": "44f50b6fcd71f523be5c8e62cd61ed88b27fc3ddd51fd59793fe0103bd393a4e"
+    },
+    "FOUNDRY_DB": {
+      "bytes": 20144128,
+      "sha256": "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0"
+    },
+    "LIBRECELL_TECH_PY": {
+      "bytes": 11346,
+      "sha256": "601e5c22b2f4a7de516a38b0a55c774e61368432f35a221d354bd096f87b0950"
+    },
+    "BOOL2CMOS_PDK_PROFILE": {
+      "bytes": 778,
+      "sha256": "a8f1470eba9adf077f9107bb5d80eb3b81251f1cd3a8710fba75f2cc20a2f2d0"
+    },
+    "GEOMETRY_RULE_DECK": {
+      "bytes": 646,
+      "sha256": "8273fe6faf84ec09b8364be8d6595c840b2a9294ae3c4c43bc0650f91a7cc9d4"
+    }
+  },
+  "host": "linglong"
+}
