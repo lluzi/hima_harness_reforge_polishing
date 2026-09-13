@@ -32,12 +32,12 @@
 // an outcome's edge leads to, and where a Run stops. What a turn itself does is `node-turns.ts`, what
 // a Run may spend `budget.ts`, what a Site will hold `job-cap.ts`, and picking a Run up again or
 // stopping one `recovery.ts`.
-import { goalDeclarationOf, boundInputs, checkPack, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
+import { goalDeclarationOf, boundInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from './pack-folder.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { loadRunPack, preservePackMethod } from './release.js';
-import { applyWorkspaceRevision, campaignIdFor, prepareWorkspace, type PrepareResult, type WorkspaceRevisionChange } from './workspace.js';
+import { applyWorkspaceRevision, campaignIdFor, prepareWorkspace, verifyWorkspaceRevisionSources, type PrepareResult, type WorkspaceRevisionChange } from './workspace.js';
 import { listRunKnowledge, readRunKnowledge, writeExperience } from './experience.js';
 import { loadSite, pathsOf } from './sites.js';
 import { driving, existingRun, legacyAutomaticAllowed } from './runs.js';
@@ -67,6 +67,7 @@ import type {
   GrowthRecord,
   RevisionRecord,
   RunControl,
+  LedgerRecord,
 } from './ledger.js';
 import { chosenAs, chosenKind, type ChosenKind } from './record-views.js';
 import { allowsRunArgument, allowsTimeBoxMs, runArguments, goalFrom, strategyFrom, timeBoxMsBounds, type StrategyValue } from './run-arguments.js';
@@ -1136,6 +1137,92 @@ export function revisionImpactOf(pack: Pack, changedNodes: readonly string[]): s
   return [...affected];
 }
 
+/** A revision must be rooted in the method's actual bindings, not only in the nodes named by its
+ * caller. Strategy bindings are declared in the graph. Workspace inputs have both a declaration
+ * and, once used, a byte-identified Host capture; either can add consumers, while neither means the
+ * caller may assign an unrelated node as the owner of a shared file. */
+function revisionRoots(pack: Pack, run: RunRecord, records: readonly LedgerRecord[],
+  declaredNodes: readonly string[], changes: readonly RevisionProposal['changes'][number][], nextStrategy: RunStrategy | undefined,
+  workspacePaths: ReadonlyMap<string, string>): { readonly roots?: string[]; readonly reason?: string } {
+  const roots = new Set(declaredNodes);
+  const graphs = runGraphsOf(pack).map(({ graph }) => graph);
+  if (nextStrategy !== undefined) {
+    const changedKnobs = Object.keys(nextStrategy).filter((name) => run.strategy?.[name] !== nextStrategy[name]);
+    if (changedKnobs.length === 0 && changes.length === 0) return { reason: 'revision strategy does not change any current value' };
+    for (const graph of graphs) for (const node of graph.nodes) {
+      if (node.kind !== 'act') continue;
+      if (Object.values(node.parameters.arguments).some((argument) => typeof argument === 'object'
+          && argument.from === 'strategy' && changedKnobs.includes(argument.name))) roots.add(node.id);
+    }
+  }
+  for (const change of changes.filter((item) => item.scope === 'workspace')) {
+    const target = workspacePaths.get(`${change.nodeId}:${change.path}`);
+    if (target === undefined) return { reason: `workspace input ${change.path} has no verified target path` };
+    const outputNames = new Set(pack.contract.outputs.filter((output) => output.path === change.path).map((output) => output.name));
+    const consumers = new Set<string>();
+    for (const graph of graphs) for (const node of graph.nodes) {
+      if (node.kind !== 'act') continue;
+      if (node.parameters.observes !== undefined && outputNames.has(node.parameters.observes)) consumers.add(node.id);
+      if (node.parameters.workshop !== undefined) {
+        const workshop = pack.contract.workshops.find((item) => item.id === node.parameters.workshop);
+        if (workshop?.reads.some((name) => outputNames.has(name))) consumers.add(node.id);
+      }
+    }
+    for (const record of records) if (record.type === 'knowledge' && record.origin === 'input'
+        && record.path === target && record.exposedBytes === 0) consumers.add(record.nodeId);
+    if (consumers.size === 0) {
+      return { reason: `workspace input ${change.path} has no declared or recorded consumer; its dependency scope cannot be established` };
+    }
+    if (!consumers.has(change.nodeId)) {
+      return { reason: `workspace input ${change.path} is not owned by claimed node ${change.nodeId}; actual consumers are ${[...consumers].join(', ')}` };
+    }
+    for (const consumer of consumers) roots.add(consumer);
+  }
+  return { roots: [...roots] };
+}
+
+/** Put a revised path back at one representable owner boundary. Independent branches of one fork
+ * are represented together, with unaffected branches already done. Shapes needing two simultaneous
+ * outer positions are rejected before any workspace bytes are written. */
+function revisionPosition(pack: Pack, roots: readonly string[]): { readonly progress?: RunProgress; readonly reason?: string } {
+  const placements = roots.map((nodeId) => ({ nodeId, at: positionOf(pack, nodeId) }));
+  if (placements.some(({ at }) => at === undefined)) return { reason: 'revision roots are not all present in the retained method' };
+  const graphs = new Set(placements.map(({ at }) => at!.graph));
+  if (graphs.size !== 1) return { reason: 'revision roots span multiple graph scopes; this bounded revision cannot restore them together' };
+  const graph = placements[0]!.at!.graph;
+  const forks = graph.nodes.flatMap((node) => {
+    const fork = forkFrom(graph, node);
+    return fork?.ok ? [fork] : [];
+  });
+  const containing = forks.filter((fork) => roots.some((root) => fork.branches.some((branch) => branch.nodes.includes(root))));
+  if (containing.length > 1) return { reason: 'revision roots span multiple forks; nested or separate fork restoration is unsupported' };
+  const fork = containing[0];
+  if (fork !== undefined) {
+    if (roots.includes(fork.from)) return { progress: { currentNode: fork.from, fork: null } };
+    const outside = roots.filter((root) => root !== fork.join && !fork.branches.some((branch) => branch.nodes.includes(root)));
+    if (outside.length > 0) return { reason: `revision roots cross the fork at ${fork.from} and an outer path; revise their common upstream node instead` };
+    const branches = Object.fromEntries(fork.branches.map((branch) => {
+      const indexes = roots.flatMap((root) => branch.nodes.includes(root) ? [branch.nodes.indexOf(root)] : []);
+      return [branch.id, indexes.length === 0
+        ? { currentNode: fork.join, state: 'done' as const }
+        : { currentNode: branch.nodes[Math.min(...indexes)]!, state: 'running' as const }];
+    }));
+    return { progress: { currentNode: fork.join, fork: { from: fork.from, join: fork.join, branches } } };
+  }
+  const reaches = (from: string, to: string): boolean => {
+    const seen = new Set([from]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const edge of graph.edges) if (edge.revisit !== true && seen.has(edge.from) && !seen.has(edge.to)) { seen.add(edge.to); grew = true; }
+    }
+    return seen.has(to);
+  };
+  const common = roots.find((root) => roots.every((other) => reaches(root, other)));
+  return common === undefined
+    ? { reason: 'revision roots need multiple independent run positions; this bounded revision cannot restore them together' }
+    : { progress: { currentNode: common, fork: null } };
+}
+
 function proposalJson(proposal: GrowthProposal): Exclude<GrowthRecord['proposal'], undefined> {
   return proposal as Exclude<GrowthRecord['proposal'], undefined>;
 }
@@ -1163,30 +1250,31 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
   if (run.packDigest === undefined || proposal.method.id !== pack.id || proposal.method.version !== pack.contract.version || proposal.method.digest !== run.packDigest) {
     return answer('refused', 'revision method identity does not match this Run retained method');
   }
+  const alreadyApplied = earlier.find((record) => record.event === 'applied');
+  if (alreadyApplied !== undefined) {
+    const data = { revisionId: alreadyApplied.revisionId, version: alreadyApplied.version, recordId: alreadyApplied.id,
+      changedNodes: alreadyApplied.changedNodes, affectedNodes: alreadyApplied.affectedNodes,
+      invalidates: alreadyApplied.invalidates ?? [], reuses: alreadyApplied.reuses ?? [] };
+    return { kind: 'duplicate', context: executionContext(deps, run.id), receipt: { requestId: req.requestId, action: 'revise', data }, data };
+  }
   if (proposal.inputThroughSeq !== run.nextSeq - 1 && earlier.length === 0) return answer('refused', 'revision inputs are stale; inputThroughSeq must name the current Ledger boundary');
   const current = currentRecordsIn(all);
   for (const input of proposal.inputs) {
     const record = current.find((item) => item.id === input.recordId && item.seq <= proposal.inputThroughSeq);
     if (record === undefined || identityOf(record) !== input.contentIdentity) return answer('refused', `revision input ${input.recordId} is missing, superseded or has a different content identity`);
   }
-  const changedNodes = [...new Set(proposal.changedNodes)];
-  if (changedNodes.length !== proposal.changedNodes.length || proposal.changes.some((change) => !changedNodes.includes(change.nodeId))) {
+  const declaredNodes = [...new Set(proposal.changedNodes)];
+  if (declaredNodes.length !== proposal.changedNodes.length || proposal.changes.some((change) => !declaredNodes.includes(change.nodeId))) {
     return answer('refused', 'changedNodes must be distinct and include every node whose material changes');
   }
   const nextStrategy = proposal.strategy === undefined ? undefined : strategyFrom(pack.contract.strategy, proposal.strategy);
   if (nextStrategy !== undefined && 'error' in nextStrategy) return answer('refused', `revision strategy is invalid: ${nextStrategy.error}`);
-  let closure: string[];
-  try { closure = revisionImpactOf(pack, changedNodes); }
-  catch (error) { return answer('refused', (error as Error).message); }
-  if (new Set(proposal.affectedNodes).size !== proposal.affectedNodes.length
-      || closure.length !== proposal.affectedNodes.length || closure.some((id) => !proposal.affectedNodes.includes(id))) {
-    return answer('refused', `affectedNodes must equal the actual non-revisit dependency closure: ${closure.join(', ')}`);
-  }
   const workspace = all.findLast((record): record is WorkspaceRecord => record.type === 'workspace');
   if (workspace === undefined) return answer('refused', 'revision requires the actual prepared Campaign workspace');
   const changeKeys = proposal.changes.map((change) => `${change.scope}:${change.path}`);
   if (new Set(changeKeys).size !== changeKeys.length) return answer('refused', 'revision changes must name distinct scope and path identities');
   const workspaceChanges: WorkspaceRevisionChange[] = [];
+  const workspacePaths = new Map<string, string>();
   for (const change of proposal.changes) {
     const node = positionOf(pack, change.nodeId)?.node;
     if (node === undefined) return answer('refused', `revision change node ${change.nodeId} is unavailable`);
@@ -1198,11 +1286,28 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
         sourcePath: source.path, beforeSha256: change.fromSha256, content: change.content });
     } else {
       if (change.path === 'workspace.json' || change.path.startsWith('.hima/')) return answer('refused', 'workspace revision cannot change harness-owned workspace or revision metadata');
+      const sourcePath = pathsOf(loadSite(deps.sitesDir, run.siteId)).join(workspace.workspace, change.path);
       workspaceChanges.push({ nodeId: change.nodeId, scope: change.scope, logicalPath: change.path,
-        sourcePath: pathsOf(loadSite(deps.sitesDir, run.siteId)).join(workspace.workspace, change.path),
+        sourcePath,
         beforeSha256: change.fromSha256, content: change.content });
+      workspacePaths.set(`${change.nodeId}:${change.path}`, sourcePath);
     }
   }
+  const actual = revisionRoots(pack, run, current, declaredNodes, proposal.changes,
+    nextStrategy === undefined || 'error' in nextStrategy ? undefined : nextStrategy.strategy, workspacePaths);
+  if (actual.roots === undefined) return answer('refused', actual.reason);
+  const changedNodes = actual.roots;
+  let closure: string[];
+  try { closure = revisionImpactOf(pack, changedNodes); }
+  catch (error) { return answer('refused', (error as Error).message); }
+  if (new Set(proposal.affectedNodes).size !== proposal.affectedNodes.length
+      || closure.length !== proposal.affectedNodes.length || closure.some((id) => !proposal.affectedNodes.includes(id))) {
+    return answer('refused', `affectedNodes must equal the actual declared and recorded dependency closure: ${closure.join(', ')}`);
+  }
+  const restored = revisionPosition(pack, changedNodes);
+  if (restored.progress === undefined) return answer('unsupported', restored.reason);
+  try { await verifyWorkspaceRevisionSources(loadSite(deps.sitesDir, run.siteId), workspace.workspace, proposal.revisionId, workspaceChanges); }
+  catch (error) { return answer('refused', (error as Error).message); }
   const superseded = Object.values(control.executions).filter((execution) => execution.supersededBy === undefined
     && closure.includes(execution.nodeId) && execution.generation === (run.generation ?? 1));
   const invalidates = new Set<string>();
@@ -1222,8 +1327,11 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
   const proposed = earlier.find((record) => record.event === 'proposed') ?? await deps.ledger.appendRevision(run.id, {
     revisionId: proposal.revisionId, version, event: 'proposed', proposalDigest, proposal: revisionJson(proposal),
     methodIdentity, sourceIdentity, inputIdentity, environmentIdentity, changedNodes, affectedNodes: closure,
+    invalidates: [...invalidates], reuses,
     supersedes: all.findLast((record): record is RevisionRecord => record.type === 'revision' && record.event === 'applied')?.revisionId,
   });
+  const admittedReceipt: ExecutionReceipt = { requestId: req.requestId, action: 'revise', data: { revisionId: proposal.revisionId } };
+  await recordExecutionAction(deps, existingRun(deps.ledger, run.id), req, requestDigest, {}, admittedReceipt, {}, 'admitted');
   let applied = earlier.find((record) => record.event === 'applied');
   if (applied === undefined) {
     try {
@@ -1236,6 +1344,11 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
       await deps.ledger.appendRevision(run.id, { revisionId: proposal.revisionId, version: proposed.version,
         event: 'refused', proposalDigest, reason: (error as Error).message, methodIdentity, sourceIdentity,
         inputIdentity, environmentIdentity, changedNodes, affectedNodes: closure, supersedes: proposed.supersedes });
+      const failedRun = existingRun(deps.ledger, run.id); const failedControl = failedRun.control!;
+      const failedRequest = failedControl.requests[req.requestId]!;
+      await deps.ledger.advanceRun(run.id, { control: { ...failedControl, requests: {
+        ...failedControl.requests, [req.requestId]: { ...failedRequest, state: 'uncertain' },
+      } } });
       return answer('refused', (error as Error).message);
     }
   }
@@ -1245,9 +1358,124 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
     revisionId: proposal.revisionId, version: applied.version, recordId: applied.id, changedNodes, affectedNodes: closure,
     invalidates: applied.invalidates ?? [...invalidates], reuses: applied.reuses ?? reuses,
   } };
-  await recordExecutionAction(deps, existingRun(deps.ledger, run.id), req, requestDigest,
-    { executions }, receipt, {}, 'done', { currentNode: changedNodes[0], ...(nextStrategy === undefined ? {} : { strategy: nextStrategy.strategy }) });
+  const completedRun = existingRun(deps.ledger, run.id); const completedControl = completedRun.control!;
+  await deps.ledger.advanceRun(run.id, { ...restored.progress,
+    ...(nextStrategy === undefined ? {} : { strategy: nextStrategy.strategy }),
+    control: { ...completedControl, executions, requests: {
+      ...completedControl.requests, [req.requestId]: { ...completedControl.requests[req.requestId]!, state: 'done', receipt },
+    } },
+  });
   return answer('accepted', undefined, receipt);
+}
+
+/** Finish a revision whose immutable applied record reached storage before its admitted control
+ * request was marked done. This repairs only that recorded effect: no node, Job, observation or
+ * business decision is started during Host recovery. */
+export async function reconcileAppliedRevisions(deps: FabricDeps, runId: string): Promise<{ readonly repaired: string[]; readonly problems: string[] }> {
+  const repaired: string[] = []; const problems: string[] = [];
+  for (;;) {
+    const run = existingRun(deps.ledger, runId); const control = run.control;
+    if (control === undefined) break;
+    const pending = Object.entries(control.requests).find(([, request]) => request.receipt.action === 'revise' && request.state === 'admitted');
+    if (pending === undefined) break;
+    const [requestId, request] = pending;
+    try {
+      const data = request.receipt.data;
+      const revisionId = data && typeof data === 'object' && 'revisionId' in data && typeof data.revisionId === 'string' ? data.revisionId : undefined;
+      if (revisionId === undefined) throw new Error('admitted revision receipt does not identify its revision');
+      const revisions = revisionRecordsIn(deps.ledger, runId).filter((record) => record.revisionId === revisionId);
+      const proposed = revisions.find((record) => record.event === 'proposed');
+      let applied = revisions.find((record) => record.event === 'applied');
+      if (proposed === undefined || proposed.proposal === undefined) break;
+      const parsed = revisionProposal.safeParse(proposed.proposal);
+      if (!parsed.success || identityOf(parsed.data) !== proposed.proposalDigest) throw new Error('stored revision proposal does not match its content identity');
+      const proposal = parsed.data;
+      const pack = executionPack(deps, run);
+      if (proposal.method.id !== pack.id || proposal.method.version !== pack.contract.version || proposal.method.digest !== run.packDigest) {
+        throw new Error('applied revision method does not match this Run retained method');
+      }
+      const records = deps.ledger.records({ runId });
+      const workspace = records.findLast((record): record is WorkspaceRecord => record.type === 'workspace');
+      if (workspace === undefined) throw new Error('admitted revision lost its prepared Campaign workspace');
+      const nextStrategy = proposal.strategy === undefined ? undefined : strategyFrom(pack.contract.strategy, proposal.strategy);
+      if (nextStrategy !== undefined && 'error' in nextStrategy) throw new Error(`applied revision strategy is invalid: ${nextStrategy.error}`);
+      const expectedMethod = identityOf(proposal.method);
+      const expectedSource = identityOf({ changes: proposal.changes.map(({ content, ...change }) => ({ ...change, afterSha256: identityOf(content) })), strategy: nextStrategy?.strategy });
+      const expectedInput = identityOf(proposal.inputs);
+      const expectedEnvironment = identityOf({ siteId: run.siteId, siteDigest: control.siteDigest, workspace: identityOf(workspace) });
+      if (proposed.methodIdentity !== expectedMethod || proposed.sourceIdentity !== expectedSource
+          || proposed.inputIdentity !== expectedInput || proposed.environmentIdentity !== expectedEnvironment) {
+        throw new Error('stored revision identities do not match its admitted proposal and environment');
+      }
+      const closure = revisionImpactOf(pack, proposed.changedNodes);
+      if (closure.length !== proposed.affectedNodes.length || closure.some((nodeId) => !proposed.affectedNodes.includes(nodeId))) {
+        throw new Error('applied revision dependency closure is inconsistent');
+      }
+      if (applied === undefined) {
+        if (proposed.invalidates === undefined || proposed.reuses === undefined) throw new Error('admitted revision lacks the validity sets needed to finish its exact effect');
+        const current = currentRecordsIn(records);
+        const workspaceChanges: WorkspaceRevisionChange[] = [];
+        for (const change of proposal.changes) {
+          if (change.scope === 'workshop') {
+            const source = current.find((record) => record.id === change.sourceRecordId);
+            if (source?.type !== 'code' || source.nodeId !== change.nodeId || source.sha256 !== change.fromSha256) {
+              throw new Error('admitted Workshop revision lost its byte-identified source record');
+            }
+            workspaceChanges.push({ nodeId: change.nodeId, scope: change.scope, logicalPath: change.path,
+              sourcePath: source.path, beforeSha256: change.fromSha256, content: change.content });
+          } else {
+            workspaceChanges.push({ nodeId: change.nodeId, scope: change.scope, logicalPath: change.path,
+              sourcePath: pathsOf(loadSite(deps.sitesDir, run.siteId)).join(workspace.workspace, change.path),
+              beforeSha256: change.fromSha256, content: change.content });
+          }
+        }
+        const assets = await applyWorkspaceRevision(loadSite(deps.sitesDir, run.siteId), workspace.workspace, proposal.revisionId, workspaceChanges);
+        applied = await deps.ledger.appendRevision(runId, { revisionId: proposed.revisionId, version: proposed.version,
+          event: 'applied', proposalDigest: proposed.proposalDigest, methodIdentity: proposed.methodIdentity,
+          sourceIdentity: proposed.sourceIdentity, inputIdentity: proposed.inputIdentity, environmentIdentity: proposed.environmentIdentity,
+          changedNodes: proposed.changedNodes, affectedNodes: proposed.affectedNodes, assets,
+          invalidates: proposed.invalidates, reuses: proposed.reuses, supersedes: proposed.supersedes });
+      }
+      const same = proposed.version === applied.version && proposed.proposalDigest === applied.proposalDigest
+        && proposed.methodIdentity === applied.methodIdentity && proposed.sourceIdentity === applied.sourceIdentity
+        && proposed.inputIdentity === applied.inputIdentity && proposed.environmentIdentity === applied.environmentIdentity
+        && identityOf(proposed.changedNodes) === identityOf(applied.changedNodes)
+        && identityOf(proposed.affectedNodes) === identityOf(applied.affectedNodes)
+        && identityOf(proposed.invalidates ?? []) === identityOf(applied.invalidates ?? [])
+        && identityOf(proposed.reuses ?? []) === identityOf(applied.reuses ?? []);
+      if (!same) throw new Error('applied revision facts do not match the admitted proposal');
+      const appliedClosure = revisionImpactOf(pack, applied.changedNodes);
+      if (appliedClosure.length !== applied.affectedNodes.length || appliedClosure.some((nodeId) => !applied.affectedNodes.includes(nodeId))) {
+        throw new Error('applied revision dependency closure is inconsistent');
+      }
+      const recordIds = new Set(deps.ledger.records({ runId }).filter((record) => record.seq < applied.seq).map((record) => record.id));
+      const invalidates = applied.invalidates ?? []; const reuses = applied.reuses ?? [];
+      if (invalidates.some((id) => !recordIds.has(id)) || reuses.some((id) => !recordIds.has(id))
+          || invalidates.some((id) => reuses.includes(id))) throw new Error('applied revision validity sets are inconsistent with prior Ledger records');
+      const restored = revisionPosition(pack, applied.changedNodes);
+      if (restored.progress === undefined) throw new Error(restored.reason);
+      const latest = existingRun(deps.ledger, runId); const latestControl = latest.control!;
+      const executions = Object.fromEntries(Object.entries(latestControl.executions).map(([id, execution]) => [id,
+        execution.supersededBy === undefined && applied.affectedNodes.includes(execution.nodeId)
+          && execution.generation === (latest.generation ?? 1) ? { ...execution, supersededBy: revisionId } : execution]));
+      const receipt: ExecutionReceipt = { requestId, action: 'revise', data: { revisionId, version: applied.version,
+        recordId: applied.id, changedNodes: applied.changedNodes, affectedNodes: applied.affectedNodes, invalidates, reuses } };
+      await deps.ledger.advanceRun(runId, { ...restored.progress,
+        ...(nextStrategy === undefined ? {} : { strategy: nextStrategy.strategy }),
+        control: { ...latestControl, executions, requests: {
+          ...latestControl.requests, [requestId]: { ...latestControl.requests[requestId]!, state: 'done', receipt },
+        } },
+      });
+      repaired.push(revisionId);
+    } catch (error) {
+      const latest = existingRun(deps.ledger, runId); const latestControl = latest.control!;
+      await deps.ledger.advanceRun(runId, { control: { ...latestControl, requests: {
+        ...latestControl.requests, [requestId]: { ...latestControl.requests[requestId]!, state: 'uncertain' },
+      } } });
+      problems.push(`${requestId}: ${(error as Error).message}`);
+    }
+  }
+  return { repaired, problems };
 }
 
 async function rejectGrowth(deps: FabricDeps, run: RunRecord, proposal: GrowthProposal, proposalDigest: string, reason: string, existing?: GrowthRecord): Promise<void> {
@@ -1478,13 +1706,14 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
       : Object.values(run.fork.branches).every((branch) => branch.state === 'done')
         ? [run.fork.join]
         : Object.values(run.fork.branches).filter((branch) => branch.state !== 'done').map((branch) => branch.currentNode);
-    const incomplete = Object.values(run.control.requests).some((request) => (request.receipt.action === 'complete' || request.receipt.action === 'continue') && request.state !== 'done');
+    const incomplete = Object.values(run.control.requests).some((request) =>
+      (request.receipt.action === 'complete' || request.receipt.action === 'continue' || request.receipt.action === 'revise') && request.state !== 'done');
     const available = run.status !== 'running' || run.control.stop !== undefined || incomplete ? [] : candidates.filter((nodeId) =>
       executionPauseReason(pack, run, nodeId) === undefined && unclearedFailure(run, nodeId) === undefined && !executions.some((execution) =>
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
         && execution.supersededBy === undefined && execution.phase !== 'failed'));
-    return { run, nodes, available, executions, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
+    return { run, nodes, available, executions, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion, revision or human clearance has not finished recording its effect; inspect its receipt before new business work' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
     return { run, nodes: [], available: [], executions, growths: [], revisions, reason: (error as Error).message };
   }
@@ -1501,11 +1730,18 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (req.action === 'adopt') return adoptHistoricalRun(deps, req);
     if (control === undefined) return no('this historical Run has no conversational owner');
     if ((control.owner !== req.actor && !(req.action === 'cancel' && req.origin === 'human')) || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
-    if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
     if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return no('request identity must be a bounded plain identifier');
     const digest = identityOf(req);
     const before = Object.hasOwn(control.requests, req.requestId) ? control.requests[req.requestId] : undefined;
-    if (before !== undefined) return before.digest === digest ? answer('duplicate', { receipt: before.receipt, data: before.receipt.data }) : no('this request identity was already used with different contents');
+    if (before !== undefined && before.receipt.action === 'revise') {
+      if (before.digest !== digest) return no('this request identity was already used with different contents');
+      if (before.state === 'uncertain') return no('the admitted revision has inconsistent or incomplete persisted facts; it cannot be treated as applied');
+      return answer('duplicate', { receipt: before.receipt, data: before.receipt.data });
+    }
+    if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
+    if (before !== undefined) return before.digest === digest
+      ? answer('duplicate', { receipt: before.receipt, data: before.receipt.data })
+      : no('this request identity was already used with different contents');
     if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
     if (req.action === 'revise') return revisionAction(deps, run, req, digest);
     if (req.action === 'grow') return growthAction(deps, run, req, digest);
@@ -1520,7 +1756,10 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       scheduleExecutionStop(deps, run.id);
       return answer('accepted', { receipt });
     }
-    if (!reading && Object.values(control.requests).some((request) => request.receipt.action === 'continue' && request.state !== 'done')) return no('an admitted human clearance is incomplete; inspect its original receipt before further business actions');
+    if (!reading && Object.values(control.requests).some((request) =>
+      (request.receipt.action === 'continue' || request.receipt.action === 'revise') && request.state !== 'done')) {
+      return no('an admitted revision or human clearance is incomplete; inspect its original receipt before further business actions');
+    }
     if (!reading && control.stop !== undefined) return no('this Run has a stop request; new business actions are fenced until its actual Job facts resolve');
     if (run.status !== 'running' && !reading) return no('this Run is not active');
     if (req.action === 'analyze') {
