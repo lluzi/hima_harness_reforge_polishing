@@ -1,6 +1,7 @@
 # HimaHarness Polishing 产品定义与验收目标
 
 状态：用户已于 2026-09-11 以“准确”确认整体共同理解，作为后续 polishing 的产品依据。本文描述产品要求，不是已实现能力或已通过验收的声明。原始问题、建议、回答与代码核查见 [产品访谈](/Users/lluzi/code/hima_harness_reforge_polishing/docs/product-interview.md)。
+真人试用后的新增决定正在[产品升级访谈](/Users/lluzi/code/hima_harness_reforge_polishing/docs/product-upgrade-interview.md)中逐轮收口；访谈完成并经用户确认前，不把尚未解决的分叉折叠为本文的既定要求。
 
 ## 用户与价值
 
