@@ -12,6 +12,10 @@ _Avoid_: 插件、脚本集合、固定 design 自动化（作为整个方法的
 Pack 作者对其交付成熟度的声明；状态供用户判断和界面展示，不改变 Pack 的格式、检查或 Runtime 执行逻辑。
 _Avoid_: 另一种 Pack 类型、独立 Runtime 分支、由 Harness 推断的发布承诺
 
+**Pack Ontology**:
+HimaHarness 核心词汇与 Pack 领域词、别名之间的稳定语义映射，覆盖实体、状态、工具、知识来源和证据结果；它帮助 Agent 理解和展示，不替代 Judge 或 Runtime 规则。
+_Avoid_: 通用 ontology engine、模型自行改写的规范、数值判断规则
+
 **业务能力**:
 客户购买的可验证业务结果：开源模型通过 HimaHarness、HimaPack 与配套 EDA 工具完成一项真实芯片设计任务。
 _Avoid_: Harness、模型、工具或许可证本身（作为客户购买结果的同义词）
@@ -51,6 +55,14 @@ _Avoid_: Pack upgrade、共享方法知识、永久客户知识库（作为默�
 **Harness 兼容版本**:
 HimaPack 声明的最低 HimaHarness 版本；后续 Harness 版本对既有 Pack 保持向前兼容，Pack 状态不参与兼容或执行判断。
 _Avoid_: 精确版本锁、能力协商矩阵、Pack 状态门
+
+**Pack 安装**:
+将一个确定版本的 Pack 放入 HimaHarness 并运行其原样内容；新版本是另一个需要明确安装的包，不存在改变已安装 Pack 的自动更新生命周期。
+_Avoid_: 后台自动更新、远端方法漂移、运行中替换
+
+**现场证据**:
+保存在客户环境中的 Campaign、工具、日志、输入身份、报告和 debug 材料，用于复核、恢复与问题定位；产品默认不自动上传这些材料。
+_Avoid_: 遥测摘要、自动外发的诊断包、只保留成功结果
 
 **Campaign Preparation**:
 HimaGuide 在 Campaign 建立前完成的 Pack、Site、输入、知识和最小工具检查；全部必要条件就绪后才创建 Campaign 和持久 Run。

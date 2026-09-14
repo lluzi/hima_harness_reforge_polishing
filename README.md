@@ -74,6 +74,7 @@ node packages/desktop/lib/hima-home.js \
 - [执行职责：由可见 Campaign Agent 执行业务，并允许独立 Side Talk](docs/adr/0008-visible-campaign-agent-and-side-talk.md)
 - [权限职责：DSH 权限层级不绕过 Site Permit 和删除红线](docs/adr/0009-dsh-permission-does-not-bypass-site-permit.md)
 - [Pack 兼容：只依赖最低的向前兼容 Harness 版本](docs/adr/0010-pack-requires-a-minimum-forward-compatible-harness-version.md)
+- [证据驻留：默认不上传现场材料并保留本地证据](docs/adr/0011-keep-site-evidence-local-by-default.md)
 - [Pilot 进度方案](/Users/lluzi/code/hima_harness_reforge_polishing/docs/pilot-plan.md)
 - [分级测试方案](/Users/lluzi/code/hima_harness_reforge_polishing/docs/testing-strategy.md)
 - [统一工程工作区：原生对话、Live Run、代码和证据同屏](docs/assessment/2026-09-11/unified-ui/README.md)
