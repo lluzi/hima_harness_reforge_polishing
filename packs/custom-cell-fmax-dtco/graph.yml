@@ -1,0 +1,415 @@
+id: custom-cell-fmax-dtco
+version: "1"
+entry: probe
+nodes:
+  - id: probe
+    kind: explore
+    parameters:
+      opens: probe-loop
+  - id: mine-start
+    kind: act
+    parameters:
+      observes: probe
+  - id: mine-timing-criticality
+    kind: act
+    parameters:
+      tool: mine-timing-criticality
+  - id: select-timing-criticality
+    kind: act
+    parameters:
+      workshop: select-timing-criticality
+      arguments:
+        REVISION:
+          from: strategy
+          name: algorithmRevision
+  - id: mine-timing-context
+    kind: act
+    parameters:
+      tool: mine-timing-context
+  - id: select-timing-context
+    kind: act
+    parameters:
+      workshop: select-timing-context
+      arguments:
+        REVISION:
+          from: strategy
+          name: algorithmRevision
+  - id: mine-structure-frequency
+    kind: act
+    parameters:
+      tool: mine-structure-frequency
+  - id: select-structure-frequency
+    kind: act
+    parameters:
+      workshop: select-structure-frequency
+      arguments:
+        REVISION:
+          from: strategy
+          name: algorithmRevision
+  - id: mine-structure-compaction
+    kind: act
+    parameters:
+      tool: mine-structure-compaction
+  - id: select-structure-compaction
+    kind: act
+    parameters:
+      workshop: select-structure-compaction
+      arguments:
+        REVISION:
+          from: strategy
+          name: algorithmRevision
+  - id: mine-mapper-compatibility
+    kind: act
+    parameters:
+      tool: mine-mapper-compatibility
+  - id: select-mapper-compatibility
+    kind: act
+    parameters:
+      workshop: select-mapper-compatibility
+      arguments:
+        REVISION:
+          from: strategy
+          name: algorithmRevision
+  - id: mine-functional-diversity
+    kind: act
+    parameters:
+      tool: mine-functional-diversity
+  - id: select-functional-diversity
+    kind: act
+    parameters:
+      workshop: select-functional-diversity
+      arguments:
+        REVISION:
+          from: strategy
+          name: algorithmRevision
+  - id: merge
+    kind: act
+    parameters:
+      tool: merge
+  - id: read-merge
+    kind: act
+    parameters:
+      observes: record_merge
+  - id: generate
+    kind: act
+    parameters:
+      tool: generate
+  - id: read-generate
+    kind: act
+    parameters:
+      observes: record_generate
+  - id: layout
+    kind: act
+    parameters:
+      tool: layout
+  - id: read-layout
+    kind: act
+    parameters:
+      observes: record_layout
+  - id: characterize
+    kind: act
+    parameters:
+      tool: characterize
+  - id: read-characterize
+    kind: act
+    parameters:
+      observes: record_characterize
+  - id: compile
+    kind: act
+    parameters:
+      tool: compile
+  - id: read-compile
+    kind: act
+    parameters:
+      observes: record_compile
+  - id: foundry-synth
+    kind: act
+    parameters:
+      tool: foundry-synth
+  - id: read-foundry-synth
+    kind: act
+    parameters:
+      observes: record_foundry_synth
+  - id: custom-synth
+    kind: act
+    parameters:
+      tool: custom-synth
+  - id: read-custom-synth
+    kind: act
+    parameters:
+      observes: record_custom_synth
+  - id: adoption
+    kind: act
+    parameters:
+      tool: adoption
+  - id: read-adoption
+    kind: act
+    parameters:
+      observes: record_adoption
+  - id: pnr-foundry
+    kind: act
+    parameters:
+      tool: pnr-foundry
+      arguments:
+        FLOORPLAN_UTILIZATION:
+          from: strategy
+          name: floorplanUtilization
+  - id: read-pnr-foundry
+    kind: act
+    parameters:
+      observes: record_pnr_foundry
+  - id: pnr-generated
+    kind: act
+    parameters:
+      tool: pnr-generated
+      arguments:
+        FLOORPLAN_UTILIZATION:
+          from: strategy
+          name: floorplanUtilization
+  - id: read-pnr-generated
+    kind: act
+    parameters:
+      observes: record_pnr_generated
+  - id: verify
+    kind: act
+    parameters:
+      tool: verify
+  - id: read-verify
+    kind: act
+    parameters:
+      observes: record_verify
+  - id: compare
+    kind: act
+    parameters:
+      tool: compare
+  - id: read-compare
+    kind: act
+    parameters:
+      observes: record_compare
+  - id: final-judge
+    kind: judge
+    parameters:
+      rules:
+        - full-evidence-valid
+        - clock-period-at-most
+      bind:
+        target_period_ns:
+          from: goal
+          name: target_period_ns
+  - id: next-research
+    kind: explore
+    parameters:
+      growth: true
+      chooser: research-next
+      bind:
+        revisionStep: 1
+      converge:
+        read: revision
+        band: 0
+        generations: 1
+        generationLimit: 1
+  - id: blocked
+    kind: wait
+    parameters:
+      blocker: hard-blocker
+  - id: read-select-timing-criticality
+    kind: act
+    parameters:
+      observes: selected_timing_criticality
+  - id: read-select-timing-context
+    kind: act
+    parameters:
+      observes: selected_timing_context
+  - id: read-select-structure-frequency
+    kind: act
+    parameters:
+      observes: selected_structure_frequency
+  - id: read-select-structure-compaction
+    kind: act
+    parameters:
+      observes: selected_structure_compaction
+  - id: read-select-mapper-compatibility
+    kind: act
+    parameters:
+      observes: selected_mapper_compatibility
+  - id: read-select-functional-diversity
+    kind: act
+    parameters:
+      observes: selected_functional_diversity
+  - id: merge-join
+    kind: judge
+    parameters:
+      rules:
+        - route-selection-known
+edges:
+  - from: probe
+    to: mine-start
+    outcome: goal-met
+  - from: probe
+    to: mine-start
+    outcome: converged
+  - from: probe
+    to: mine-start
+    outcome: generation-limit
+  - from: mine-start
+    to: mine-timing-criticality
+  - from: mine-timing-criticality
+    to: select-timing-criticality
+  - from: select-timing-criticality
+    to: read-select-timing-criticality
+  - from: mine-start
+    to: mine-timing-context
+  - from: mine-timing-context
+    to: select-timing-context
+  - from: select-timing-context
+    to: read-select-timing-context
+  - from: mine-start
+    to: mine-structure-frequency
+  - from: mine-structure-frequency
+    to: select-structure-frequency
+  - from: select-structure-frequency
+    to: read-select-structure-frequency
+  - from: mine-start
+    to: mine-structure-compaction
+  - from: mine-structure-compaction
+    to: select-structure-compaction
+  - from: select-structure-compaction
+    to: read-select-structure-compaction
+  - from: mine-start
+    to: mine-mapper-compatibility
+  - from: mine-mapper-compatibility
+    to: select-mapper-compatibility
+  - from: select-mapper-compatibility
+    to: read-select-mapper-compatibility
+  - from: mine-start
+    to: mine-functional-diversity
+  - from: mine-functional-diversity
+    to: select-functional-diversity
+  - from: select-functional-diversity
+    to: read-select-functional-diversity
+  - from: merge
+    to: read-merge
+  - from: read-merge
+    to: generate
+  - from: generate
+    to: read-generate
+  - from: read-generate
+    to: layout
+  - from: layout
+    to: read-layout
+  - from: read-layout
+    to: characterize
+  - from: characterize
+    to: read-characterize
+  - from: read-characterize
+    to: compile
+  - from: compile
+    to: read-compile
+  - from: read-compile
+    to: foundry-synth
+  - from: foundry-synth
+    to: read-foundry-synth
+  - from: read-foundry-synth
+    to: custom-synth
+  - from: custom-synth
+    to: read-custom-synth
+  - from: read-custom-synth
+    to: adoption
+  - from: adoption
+    to: read-adoption
+  - from: read-adoption
+    to: pnr-foundry
+  - from: pnr-foundry
+    to: read-pnr-foundry
+  - from: read-pnr-foundry
+    to: pnr-generated
+  - from: pnr-generated
+    to: read-pnr-generated
+  - from: read-pnr-generated
+    to: verify
+  - from: verify
+    to: read-verify
+  - from: read-verify
+    to: compare
+  - from: compare
+    to: read-compare
+  - from: read-compare
+    to: final-judge
+  - from: final-judge
+    to: next-research
+    outcome: PASS
+  - from: final-judge
+    to: next-research
+    outcome: FAIL
+  - from: next-research
+    to: mine-start
+    revisit: true
+  - from: read-select-timing-criticality
+    to: merge-join
+  - from: read-select-timing-context
+    to: merge-join
+  - from: read-select-structure-frequency
+    to: merge-join
+  - from: read-select-structure-compaction
+    to: merge-join
+  - from: read-select-mapper-compatibility
+    to: merge-join
+  - from: read-select-functional-diversity
+    to: merge-join
+  - from: merge-join
+    to: merge
+    outcome: PASS
+  - from: merge-join
+    to: blocked
+    outcome: FAIL
+loops:
+  probe-loop:
+    entry: synthesize
+    nodes:
+      - id: synthesize
+        kind: act
+        parameters:
+          tool: synthesize
+          arguments:
+            PERIOD_NS:
+              from: strategy
+              name: periodNs
+      - id: read-probe
+        kind: act
+        parameters:
+          observes: probe
+      - id: judge
+        kind: judge
+        parameters:
+          rules:
+            - setup-wns-all-nonnegative
+            - clock-period-at-most
+          bind:
+            target_period_ns:
+              from: goal
+              name: target_period_ns
+      - id: next-period
+        kind: explore
+        parameters:
+          chooser: over-constraining-push
+          bind:
+            stepNs: 0.01
+          converge:
+            read: period
+            band: 0.005
+            generations: 1
+            generationLimit: 2
+    edges:
+      - from: synthesize
+        to: read-probe
+      - from: read-probe
+        to: judge
+      - from: judge
+        to: next-period
+        outcome: PASS
+      - from: judge
+        to: next-period
+        outcome: FAIL
+      - from: next-period
+        to: synthesize
+        revisit: true

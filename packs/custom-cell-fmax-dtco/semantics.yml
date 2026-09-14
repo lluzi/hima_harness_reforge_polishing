@@ -1,0 +1,59 @@
+values:
+  candidate_count:
+    unit: count
+    description: "candidate count: independently read evidence; missing facts stay unknown."
+  generated_cell_count:
+    unit: count
+    description: "generated cell count: independently read evidence; missing facts
+      stay unknown."
+  abstract_cell_count:
+    unit: count
+    description: "abstract cell count: independently read evidence; missing facts
+      stay unknown."
+  predicted_cell_count:
+    unit: count
+    description: "predicted cell count: independently read evidence; missing facts
+      stay unknown."
+  lc_accepted:
+    unit: count
+    description: "lc accepted: independently read evidence; missing facts stay unknown."
+  library_visible:
+    unit: count
+    description: "library visible: independently read evidence; missing facts stay unknown."
+  adopted_instance_count:
+    unit: count
+    description: "adopted instance count: independently read evidence; missing facts
+      stay unknown."
+  pnr_completed:
+    unit: count
+    description: "pnr completed: independently read evidence; missing facts stay unknown."
+  verification_error_count:
+    unit: count
+    description: "verification error count: independently read evidence; missing
+      facts stay unknown."
+  full_constraint_failures:
+    unit: count
+    description: "full constraint failures: independently read evidence; missing
+      facts stay unknown."
+  matched_conditions:
+    unit: count
+    description: "matched conditions: independently read evidence; missing facts
+      stay unknown."
+  foundry_setup_wns:
+    unit: ns
+    description: Matched post-route setup timing; never inferred closed Fmax.
+    mode:
+      - setup
+    scope:
+      - all
+  setup_wns_delta:
+    unit: ns
+    description: Matched post-route setup timing; never inferred closed Fmax.
+    mode:
+      - setup
+    scope:
+      - all
+  selected_count:
+    unit: count
+    description: Exact source-linked buildable candidate ids selected by the
+      executed Workshop program.

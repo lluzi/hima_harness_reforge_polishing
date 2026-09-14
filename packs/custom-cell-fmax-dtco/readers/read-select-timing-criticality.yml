@@ -1,0 +1,12 @@
+id: read-select-timing-criticality
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - select-timing-criticality
+reportKind: custom-cell-fmax-selection/1
+emits:
+  - selected_count

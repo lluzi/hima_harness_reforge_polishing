@@ -1,0 +1,24 @@
+id: research-next
+version: "1"
+title: Conclude from current physical evidence or revise selection
+parameter:
+  name: revisionStep
+  unit: count
+reads:
+  revision:
+    type: full_constraint_failures
+    unit: count
+decide:
+  - when:
+      constraint: PASS
+      goal: PASS
+    goalMet: true
+  - when:
+      constraint: FAIL
+    next:
+      algorithmRevision: revisionStep
+  - when:
+      constraint: PASS
+      goal: FAIL
+    next:
+      algorithmRevision: revisionStep

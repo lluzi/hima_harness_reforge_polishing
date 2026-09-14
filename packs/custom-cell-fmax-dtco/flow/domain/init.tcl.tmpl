@@ -1,0 +1,49 @@
+# Innovus init template for one arm of the current-process generated-standard-cell flow.
+#
+# PROVENANCE. Derived from the site-bound template site_bound_process/scripts/init_current_process.tcl. The
+# ordering rules and the floorplan are the shared ones. Every site path is now a placeholder that
+# flow/bin/build_arm_scripts.py fills from the run input binding.
+#
+# Tech LEF FIRST, then the cell LEF, then (generated arm only) the generated abstract LEF. The
+# tech LEF is a site input because it is not in the standard-cell release and is regenerated at
+# the site for this library's site pitch; a mismatched header misaligns every row and track.
+#
+# Placeholders (all substituted by build_arm_scripts.py):
+#   @@LEF_LIST@@        tech LEF, foundry cell LEF, and for the generated arm the generated LEF
+#   @@NETLIST@@         this arm's synthesis netlist
+#   @@DESIGN_TOP@@      top cell
+#   @@MMMC_FILE@@       this arm's MMMC file
+#   @@PWR_NET@@ / @@GND_NET@@   rail names, from the site tech profile (never written here)
+#   @@PROCESS_NODE@@    setDesignMode -process value
+#   @@MAX_ROUTE_LAYER@@ top routing layer
+#   @@INIT_DB@@         this arm's own init checkpoint
+#   @@ARM@@             foundry | generated
+
+set init_lef_file [list @@LEF_LIST@@]
+set init_verilog   [list @@NETLIST@@]
+set init_top_cell  @@DESIGN_TOP@@
+set init_mmmc_file [list @@MMMC_FILE@@]
+set init_pwr_net {@@PWR_NET@@}
+set init_gnd_net {@@GND_NET@@}
+init_design
+setDesignMode -process @@PROCESS_NODE@@
+globalNetConnect @@PWR_NET@@ -type pgpin -pin @@PWR_NET@@ -inst * -verbose
+globalNetConnect @@GND_NET@@ -type pgpin -pin @@GND_NET@@ -inst * -verbose
+floorPlan -site core -r 1.0 @@FLOORPLAN_UTILIZATION@@ 2.0 2.0 2.0 2.0
+setNanoRouteMode -routeTopRoutingLayer @@MAX_ROUTE_LAYER@@
+
+# ANALYSIS-VIEW LIVENESS, AFTER RESTORE, BEFORE ANY OPTIMISATION.
+# get_lib_cells over the generated library is the only proof that the generated Liberty is LIVE in
+# the analysis view rather than merely named in a file. A zero count means every generated cell has
+# zero delay and zero power, so every number this arm produces is worthless. The count is printed
+# in a machine-readable marker; build_geometry_record.py reads it back and the gate refuses to
+# proceed on an unobserved count. It is NOT defaulted to zero anywhere.
+set _xs_libcells [get_lib_cells -quiet */@@GENERATED_LIB_CELL_PATTERN@@]
+set _xs_n [sizeof_collection $_xs_libcells]
+puts "=== CCFMAX GENERATED_LIB_CELLS_AFTER_RESTORE $_xs_n ==="
+
+saveDesign @@INIT_DB@@
+puts "=== CCFMAX INIT DONE @@ARM@@ ==="
+puts "=== core area: [dbGet top.fPlan.coreBox] ==="
+puts "=== rows: [llength [dbGet top.fPlan.rows]] ==="
+exit

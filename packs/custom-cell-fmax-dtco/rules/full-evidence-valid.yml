@@ -1,0 +1,11 @@
+id: full-evidence-valid
+version: "1"
+title: Complete matched physical evidence and all required constraints
+requires:
+  - type: full_constraint_failures
+subject:
+  type: full_constraint_failures
+predicate:
+  op: eq
+  threshold: 0
+  unit: count

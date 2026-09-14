@@ -1,0 +1,12 @@
+schema: hima-pack-knowledge/1
+documents:
+  - id: custom-cell-fmax-probe-method
+    file: custom-cell-fmax-probe-method.md
+    title: Portable custom Cell Fmax probe method
+    version: "1"
+    mediaType: text/markdown
+  - id: full-mining-method
+    file: full-mining-method.md
+    title: Data-dependent custom Cell mining and matched implementation method
+    version: "1"
+    mediaType: text/markdown

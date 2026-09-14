@@ -1,0 +1,20 @@
+id: read-compare
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - compare
+reportKind: custom-cell-fmax-stage/1
+emits:
+  - clock_period
+  - setup_wns
+  - full_constraint_failures
+  - foundry_setup_wns
+  - setup_wns_delta
+  - matched_conditions
+  - library_visible
+  - adopted_instance_count
+  - verification_error_count

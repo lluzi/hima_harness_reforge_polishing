@@ -1,0 +1,12 @@
+id: read-verify
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - verify
+reportKind: custom-cell-fmax-stage/1
+emits:
+  - verification_error_count

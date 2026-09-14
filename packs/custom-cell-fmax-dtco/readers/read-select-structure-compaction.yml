@@ -1,0 +1,12 @@
+id: read-select-structure-compaction
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - select-structure-compaction
+reportKind: custom-cell-fmax-selection/1
+emits:
+  - selected_count

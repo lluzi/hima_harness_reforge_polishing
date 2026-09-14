@@ -1,0 +1,71 @@
+# Innovus place-and-route template for one arm of the current-process generated-standard-cell flow.
+#
+# PROVENANCE. Derived from the site-bound template site_bound_process/scripts/pnr_current_process.tcl. The step
+# ordering is the reference ordering, including the three steps this technology needs and a tapless
+# library does not:
+#   addWellTap  this library is NOT tapless; taps must be placed BEFORE placement
+#   addFiller   filler/decap cells close the rows after all cell movement is done
+#   streamOut   GDS, using the site-bound layer map
+# Every site path is a placeholder that flow/bin/build_arm_scripts.py fills from the run input
+# binding, and BOTH ARMS ARE GENERATED FROM THIS ONE TEMPLATE with only the arm name, the input
+# checkpoint and the report directory differing. A matched-script assertion is recorded so an arm
+# difference can never be a script difference.
+#
+# SCOPE. This template runs verify_drc and verifyConnectivity as the shared script did, for the
+# route report only. It is NOT the geometry gate. The geometry gate runs in its own virgin
+# session (flow/scripts/checker_session.tcl.tmpl), because a checker invoked a second time in a
+# session that has already run one is incremental and under-reports.
+#
+# Placeholders: @@ARM@@ @@INIT_DB@@ @@DESIGN_TOP@@ @@MULTI_CPU@@ @@TAP_CELL@@ @@TAP_INTERVAL@@
+#   @@FILLER_CELLS@@ @@RPT_DIR@@ @@FINAL_DB@@ @@GDS_OUT@@ @@GDS_MAP@@ @@MERGE_GDS@@
+#   @@SWITCHING_ACTIVITY@@
+
+restoreDesign @@INIT_DB@@ @@DESIGN_TOP@@
+setMultiCpuUsage -localCpu @@MULTI_CPU@@
+file mkdir @@RPT_DIR@@
+setAnalysisMode -analysisType onChipVariation -cppr both
+
+# --- well taps (this library is not tapless; must precede placement) ---
+addWellTap -cell @@TAP_CELL@@ -cellInterval @@TAP_INTERVAL@@ -prefix WELLTAP
+puts "=== CCFMAX well taps placed @@ARM@@ ==="
+
+setPlaceMode -place_global_place_io_pins true
+place_opt_design
+clock_opt_design
+setNanoRouteMode -routeWithTimingDriven true
+setNanoRouteMode -envResistanceFromCapTable true
+routeDesign -globalDetail
+setExtractRCMode -engine postRoute -effortLevel medium
+extractRC
+puts "=== CCFMAX PRE-OPT TIMING @@ARM@@ ==="
+timeDesign -postRoute -outDir @@RPT_DIR@@/preopt -prefix pre
+setOptMode -fixFanoutLoad true
+optDesign -postRoute -setup
+optDesign -postRoute -hold
+
+# --- fillers close the rows after all cell movement is done ---
+addFiller -cell {@@FILLER_CELLS@@} -prefix FILLER
+puts "=== CCFMAX fillers placed @@ARM@@ ==="
+
+extractRC
+puts "=== CCFMAX POST-OPT SETUP @@ARM@@ ==="
+timeDesign -postRoute -outDir @@RPT_DIR@@/postopt -prefix post
+puts "=== CCFMAX POST-OPT HOLD @@ARM@@ ==="
+timeDesign -postRoute -hold -outDir @@RPT_DIR@@/posthold -prefix hold
+# Export the active post-route constraints from this Innovus session. This command
+# still requires the planned real-Site L4 bring-up on Innovus 23.14; local fixture
+# coverage proves only the adapter/evidence contract.
+write_sdc @@POSTROUTE_SDC@@
+set_default_switching_activity -input_activity @@SWITCHING_ACTIVITY@@
+report_power    > @@RPT_DIR@@/power.rpt
+reportGateCount > @@RPT_DIR@@/gatecount.rpt
+summaryReport -noHtml -outfile @@RPT_DIR@@/summary.rpt
+verify_drc -limit 100000 -report @@RPT_DIR@@/route.drc.rpt
+verifyConnectivity -type all -report @@RPT_DIR@@/connectivity.rpt
+
+saveDesign @@FINAL_DB@@
+streamOut @@GDS_OUT@@ \
+  -mapFile @@GDS_MAP@@ \
+  -libName @@DESIGN_TOP@@ -merge [list @@MERGE_GDS@@] -units 1000 -mode ALL
+puts "=== CCFMAX PNR DONE @@ARM@@ (GDS written) ==="
+exit

@@ -1,0 +1,184 @@
+{
+  "schema": "custom-cell-fmax-domain-sources/1",
+  "source": "read-only legacy extension xspace_cell_site_bound_process",
+  "files": [
+    {
+      "path": "mining_strategy_contract.py",
+      "source": "flow/bin/mining_strategy_contract.py",
+      "sourceSha256": "f58befe3cb3dfd19de38d57e0ca5d57491f52cf8816ce325155894cdb35c05ed",
+      "packSha256": "f58befe3cb3dfd19de38d57e0ca5d57491f52cf8816ce325155894cdb35c05ed",
+      "adapted": false
+    },
+    {
+      "path": "mine_patterns.py",
+      "source": "flow/bin/mine_patterns.py",
+      "sourceSha256": "891759fe896d23c6a37f0e5809ad1532122a7baa2bf065aeab125fba0f0add64",
+      "packSha256": "dd7d0254ffd425883d8a52f72feac5c35403c4ac4d39987b849a77cd25af574d",
+      "adapted": true
+    },
+    {
+      "path": "mine_timing_route.py",
+      "source": "flow/bin/mine_timing_route.py",
+      "sourceSha256": "e30d67e5401affb30cde63f4ee0d08225b139365ed5b5861d9f0b2a298124dea",
+      "packSha256": "a29b4b286207330c1b559a1447967972707594e15453e611569e31afeccbc923",
+      "adapted": true
+    },
+    {
+      "path": "verilog_netlist.py",
+      "source": "flow/bin/verilog_netlist.py",
+      "sourceSha256": "d205b31f7cd758d8afe0e086b991d5743417a451a2efa328cb29751d6495a2e8",
+      "packSha256": "d205b31f7cd758d8afe0e086b991d5743417a451a2efa328cb29751d6495a2e8",
+      "adapted": false
+    },
+    {
+      "path": "techprofile.py",
+      "source": "flow/bin/techprofile.py",
+      "sourceSha256": "72a3edd54872b152b8127c220d84fe263ec01af7e7562c890b78538bcb3fac15",
+      "packSha256": "72a3edd54872b152b8127c220d84fe263ec01af7e7562c890b78538bcb3fac15",
+      "adapted": false
+    },
+    {
+      "path": "_generation_projection.py",
+      "source": "flow/bin/_generation_projection.py",
+      "sourceSha256": "f34a734194b529c528856658a0eae95d60d3c71262f15c0b5108d28f359449c0",
+      "packSha256": "f34a734194b529c528856658a0eae95d60d3c71262f15c0b5108d28f359449c0",
+      "adapted": false
+    },
+    {
+      "path": "_cell_adoption_projection.py",
+      "source": "flow/bin/_cell_adoption_projection.py",
+      "sourceSha256": "0bea4fbbe2f9f93ebabe41e41d020055fca68914dbad7490767c14b41e6fe9d6",
+      "packSha256": "0bea4fbbe2f9f93ebabe41e41d020055fca68914dbad7490767c14b41e6fe9d6",
+      "adapted": false
+    },
+    {
+      "path": "abstract_cell.py",
+      "source": "flow/bin/abstract_cell.py",
+      "sourceSha256": "a8d25f2090b61cd274a22db8e3c787e0d8d551f8d20afd55867c660a6284604c",
+      "packSha256": "a8d25f2090b61cd274a22db8e3c787e0d8d551f8d20afd55867c660a6284604c",
+      "adapted": false
+    },
+    {
+      "path": "charlib_emit.py",
+      "source": "flow/bin/charlib_emit.py",
+      "sourceSha256": "bb0f20e2ff51d89a8cba9e9a7f0099f98a09e792ffe5c6585ad9de3774b1a7c9",
+      "packSha256": "e5f1b04272415b235bd93811e18da7f9c55d54590646067fae941f0969c35c1b",
+      "adapted": true
+    },
+    {
+      "path": "predict.py",
+      "source": "flow/bin/predict.py",
+      "sourceSha256": "c50809e3ca57da6dd9d8e247cf0381efa89b351b6c83dd18c01d5d8329a2877e",
+      "packSha256": "c50809e3ca57da6dd9d8e247cf0381efa89b351b6c83dd18c01d5d8329a2877e",
+      "adapted": false
+    },
+    {
+      "path": "features.py",
+      "source": "flow/bin/features.py",
+      "sourceSha256": "3c3ea8ef673fec7aae303d0549bb22b76d7c7e359689e19c2965ae13c5b90abd",
+      "packSha256": "3c3ea8ef673fec7aae303d0549bb22b76d7c7e359689e19c2965ae13c5b90abd",
+      "adapted": false
+    },
+    {
+      "path": "featurize.py",
+      "source": "flow/bin/featurize.py",
+      "sourceSha256": "36ec66580f025a80d0f81b923faf75479b93fa7e55f798faac74d5626aa05242",
+      "packSha256": "36ec66580f025a80d0f81b923faf75479b93fa7e55f798faac74d5626aa05242",
+      "adapted": false
+    },
+    {
+      "path": "cell_need_miner/__init__.py",
+      "source": "flow/bin/cell_need_miner/__init__.py",
+      "sourceSha256": "d1941e7d457a223aa59a93c93b3dbb8eba6c4db7e8f5dab80eff7cd3f44a54cd",
+      "packSha256": "d1941e7d457a223aa59a93c93b3dbb8eba6c4db7e8f5dab80eff7cd3f44a54cd",
+      "adapted": false
+    },
+    {
+      "path": "cell_need_miner/aig.py",
+      "source": "flow/bin/cell_need_miner/aig.py",
+      "sourceSha256": "08eb4f9d2cab99828f6d8a24471db89ffba7847ac82b28a171a01bd0c6191a1a",
+      "packSha256": "08eb4f9d2cab99828f6d8a24471db89ffba7847ac82b28a171a01bd0c6191a1a",
+      "adapted": false
+    },
+    {
+      "path": "cell_need_miner/cuts.py",
+      "source": "flow/bin/cell_need_miner/cuts.py",
+      "sourceSha256": "9270f9f860f8e08e8a8ba587bdc4ff20aa6542c46151b6789af0081d8c62ba07",
+      "packSha256": "9270f9f860f8e08e8a8ba587bdc4ff20aa6542c46151b6789af0081d8c62ba07",
+      "adapted": false
+    },
+    {
+      "path": "cell_need_miner/generator_contract.py",
+      "source": "flow/bin/cell_need_miner/generator_contract.py",
+      "sourceSha256": "f4daac2b21606b58b59cd70d96a923fc2b731c0e262ef4643897794b1f812b67",
+      "packSha256": "f4daac2b21606b58b59cd70d96a923fc2b731c0e262ef4643897794b1f812b67",
+      "adapted": false
+    },
+    {
+      "path": "cell_need_miner/liberty.py",
+      "source": "flow/bin/cell_need_miner/liberty.py",
+      "sourceSha256": "2a43d6a3df45dde2a0d653466ed240ca945aef7ac0441029d76d7f015ebdcf60",
+      "packSha256": "2a43d6a3df45dde2a0d653466ed240ca945aef7ac0441029d76d7f015ebdcf60",
+      "adapted": false
+    },
+    {
+      "path": "cell_need_miner/liberty_timing.py",
+      "source": "flow/bin/cell_need_miner/liberty_timing.py",
+      "sourceSha256": "40e9a488f99997fae39ad44fb8322ddaf7203ab0871d7fb1db924c2082824b9c",
+      "packSha256": "40e9a488f99997fae39ad44fb8322ddaf7203ab0871d7fb1db924c2082824b9c",
+      "adapted": false
+    },
+    {
+      "path": "cell_need_miner/npn.py",
+      "source": "flow/bin/cell_need_miner/npn.py",
+      "sourceSha256": "201776e91e6131cdda44d59065f6862c44ae1e05713961505ffc8aa973ae5d3f",
+      "packSha256": "201776e91e6131cdda44d59065f6862c44ae1e05713961505ffc8aa973ae5d3f",
+      "adapted": false
+    },
+    {
+      "path": "shared_synth.tcl",
+      "source": "flow/scripts/dc_syn_current_process.tcl",
+      "sourceSha256": "8280d0dfd7a22464860005cf74a87841800e8e59b357813a602ed7972cbf5ae3",
+      "packSha256": "a4686fbbb2532104bcd2b3be4ca0a37b6af8d19ea750b55088d2809ee3a1d765",
+      "adapted": true
+    },
+    {
+      "path": "shared_constraints.sdc",
+      "source": "flow/scripts/constraint_current_process.sdc",
+      "sourceSha256": "4664044d3a0db77432cffadb4ad8706eedba079c3a1ce0ab91ac0981278896cc",
+      "packSha256": "4664044d3a0db77432cffadb4ad8706eedba079c3a1ce0ab91ac0981278896cc",
+      "adapted": false
+    },
+    {
+      "path": "init.tcl.tmpl",
+      "source": "flow/scripts/init_current_process.tcl.tmpl",
+      "sourceSha256": "22a491f134ef8f06e1c8a4a49514b38587db1f7e5791ae387f6954148ebf9da7",
+      "packSha256": "192f2b20bccd5267597d5e46973d06abfa64cd2cacd9b07d68da1641ba9378bc",
+      "adapted": true
+    },
+    {
+      "path": "mmmc.tcl.tmpl",
+      "source": "flow/scripts/mmmc_current_process.tcl.tmpl",
+      "sourceSha256": "3b1dce88686b5a68412058659d1e15374c3de1593b2c79118b2dc90b02000b1a",
+      "packSha256": "3b1dce88686b5a68412058659d1e15374c3de1593b2c79118b2dc90b02000b1a",
+      "adapted": false
+    },
+    {
+      "path": "pnr.tcl.tmpl",
+      "source": "flow/scripts/pnr_current_process.tcl.tmpl",
+      "sourceSha256": "e7db357c273593c742f451b3044b5d80aef936dfbe55a019e8eb25ea8b7f682e",
+      "packSha256": "d4ae29d7791a4078858721d457a90672522e002dc27fcead5f1e9a1f9e9ac745",
+      "adapted": true
+    }
+  ],
+  "adaptationNotes": [
+    "Runtime child receipts and legacy workspace layout are excluded.",
+    "Mining arguments require explicit Site technology identifiers.",
+    "shared_synth.tcl accepts an explicit SDC and emits raw library visibility markers for both arms.",
+    "init.tcl.tmpl uses documented setNanoRouteMode -routeTopRoutingLayer.",
+    "charlib_emit.py writes per-cell prediction outputs and logs inside the Campaign attempt; no fixed /tmp path.",
+    "pnr.tcl.tmpl exports the active post-route SDC for clock evidence; Innovus 23.14 support remains an L4 Site bring-up item.",
+    "Shared DC and Innovus liveness queries use qualified library/cell patterns and collection cardinality rather than Tcl list length.",
+    "The Innovus PODv2 PnR method uses clock_opt_design rather than the rejected legacy ccopt_design sequence."
+  ]
+}

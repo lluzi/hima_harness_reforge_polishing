@@ -1,0 +1,15 @@
+# The reader of this pack's judged output. `probe` points it at flow/probe.json, the manifest the
+# synthesis wrote; the script is an portable reader implementation and is launched as
+# `/usr/bin/python3 <script> <report> <out>`. `reportKind` is a word for the record and is never
+# sniffed; `emits` is exactly the set of value types the script writes, all three already declared by
+# this harness, so this pack writes no semantics.yml of its own.
+id: custom-cell-fmax-probe-reading
+version: '2'
+file: tools/read-probe.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+reportKind: custom-cell-fmax-probe/2
+emits: [clock_period, setup_wns, cell_area]
