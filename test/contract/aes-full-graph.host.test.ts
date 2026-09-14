@@ -79,7 +79,9 @@ test('one native owner drives the full AES graph and returns from an evidence re
     const native = await createRootAgent(host.ctx, home.h.workspace);
     const started = await host.ctx.hima.startRun({ pack: 'aes-tsmc28-dtco', site: 'local', test: true,
       goal: { target_period_ns: 0.5 }, strategy: { periodNs: 0.5, algorithmRevision: 0 },
-      generationLimit: 1, retryAllowance: 1, timeBoxMs: 180_000, ownerSessionId: String(native.id) });
+      // This checks graph/evidence coverage, not deadline behavior (covered by budget tests).
+      // Leave room for the 60-second closing reserve and slower complete-suite filesystem work.
+      generationLimit: 1, retryAllowance: 1, timeBoxMs: 300_000, ownerSessionId: String(native.id) });
     assert.equal(started.kind, 'ran', JSON.stringify(started));
     if (started.kind !== 'ran') return;
     runId = started.run.id;
@@ -91,7 +93,9 @@ test('one native owner drives the full AES graph and returns from an evidence re
         expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: `full-graph-${++sequence}`, ...fields });
     };
     const complete = async (nodeId: string) => {
-      assert.ok(context().available.includes(nodeId), `${nodeId} is available: ${JSON.stringify(context().available)}`);
+      assert.ok(context().available.includes(nodeId), `${nodeId} is available: ${JSON.stringify({
+        available: context().available, budget: context().budget, status: context().run.status, reason: context().reason,
+      })}`);
       const begin = await act('begin', { nodeId }); assert.equal(begin.kind, 'accepted', begin.reason);
       const executionId = begin.receipt?.executionId; assert.ok(executionId);
       const worked = await act('work', { executionId }); assert.equal(worked.kind, 'accepted', JSON.stringify({ worked, context: context() }));

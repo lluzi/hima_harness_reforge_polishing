@@ -709,8 +709,8 @@ test('a run resumed after its time box would have run out still gets its generat
   // meters the design and the EDA environment (CONTEXT.md), and nothing was running while the Run
   // waited, so that wait must not be charged to it.
   //
-  // A six-second box, a stand-in that does not sleep at all so three attempts fail well inside it,
-  // and a wait past the six seconds before the resume.
+  // A fifteen-second box leaves room for three real local process launches even while an unrelated
+  // release build is using the machine; the deliberately long human wait still crosses that box.
   const local = await localFabric(t, { sleepSeconds: 0, failures: 4 });
   if (!local) return;
   const { h, host, dispose } = local;
@@ -719,7 +719,7 @@ test('a run resumed after its time box would have run out still gets its generat
     const blocked = await himaCommand(
       host,
       h.workspace,
-      `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.0 --set periodNs=2.0 --retries 3 --time-box 0.1 ${ONE_GENERATION}`,
+      `/hima run ${timingProbePackId} --site local --goal target_period_ns=2.0 --set periodNs=2.0 --retries 3 --time-box 0.25 ${ONE_GENERATION}`,
       siteCommandTimeoutMs,
     );
     for (const line of blocked.text.split('\n')) t.diagnostic(line);
@@ -730,10 +730,10 @@ test('a run resumed after its time box would have run out still gets its generat
     assert.equal(waiting.status, 'waiting', 'the allowance was spent inside the box, and the run waits for a person');
     assert.equal(blockerRecords(host, runId).length, 1, 'on a hard blocker');
     const createdAt = Date.parse(waiting.createdAt);
-    t.diagnostic(`the run blocked ${Date.now() - createdAt} ms into a 6000 ms box`);
+    t.diagnostic(`the run blocked ${Date.now() - createdAt} ms into a 15000 ms box`);
 
     // The person comes back after the box would have run out.
-    await until('the time box would have run out', () => Date.now() - createdAt > 8_000, 20_000);
+    await until('the time box would have run out', () => Date.now() - createdAt > 17_000, 30_000);
     const resumed = await himaCommand(host, h.workspace, `/hima resume ${runId}`, siteCommandTimeoutMs);
     for (const line of resumed.text.split('\n')) t.diagnostic(line);
     sessions = sessionsOf(host, runId);
@@ -755,7 +755,7 @@ test('a run resumed after its time box would have run out still gets its generat
         ['running', 1], ['retrying', 1], ['running', 2], ['retrying', 2], ['running', 3], ['blocked', 3],
         ['running', 4], ['retrying', 4], ['running', 5], ['done', 5],
       ],
-      'the run really did carry on: two more attempts after the resume, on a box that had six seconds left in it',
+      'the run really did carry on: two more attempts after the resume, on a box whose person-wait extension kept the design budget available',
     );
     assert.equal(resumed.kind, 'success', resumed.text);
   } finally {

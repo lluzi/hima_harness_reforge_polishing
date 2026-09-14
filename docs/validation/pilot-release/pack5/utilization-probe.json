@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "scope": "isolated direct adapter check; no Fabric or AI claim",
+  "utilization": 0.5,
+  "elapsedSeconds": 380.417293548584,
+  "returncode": 0,
+  "methodFiles": {
+    "stages.py": "4d06ce7e99ed57a9fc4cc15dc9fd3df087355adfe87233fd4d718fe7c7358773",
+    "domain/init.tcl.tmpl": "d53e1602e8f1562a2f3659fd729134d55ac6eb250f22887dd69cd7b5ec49ea7a"
+  },
+  "inputRecords": {
+    "custom-synth.json": "d1a21e6e2410be3d1733131ffe94649ac3405cd9155485f087e2e067c3d70ef1",
+    "foundry-synth.json": "3fd8fa1ac160779f4acf479ba5d1c674f8645523b4f6d309569bb3a3a282158e",
+    "characterize.json": "c6588ca085096e341941ad03629e34c5b8cc9dd7def0babbedae237593fd6ce9",
+    "layout.json": "834446e09f375e2026abf2e28fa543c815ceac24fcdd51751fa15567ff6ca10b",
+    "compile.json": "cf7a00a12d4090978522609d7b25994db6852abc2289b755b0cba2c78255ec62"
+  },
+  "logSha256": "29e8f964b7c1968cba15f0756ae50dca00d1cd7dbbcc2cadb714bdcffd7a71b7",
+  "limits": "one copied-workspace generated-arm PNR check; not a paired comparison, new Campaign, or PPA improvement claim"
+}

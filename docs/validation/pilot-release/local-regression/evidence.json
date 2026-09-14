@@ -1,0 +1,61 @@
+{
+  "fullSuite": {
+    "sourceTree": "7d874ceda12d6f8d5111f56686ca44441f973a8c",
+    "tests": 465,
+    "pass": 463,
+    "fail": 2,
+    "skip": 0,
+    "exitCode": 1,
+    "elapsedSeconds": 1890.19,
+    "hostProcesses": 47,
+    "inProcessHosts": 413,
+    "electronProcesses": 0,
+    "sshAttempts": 0,
+    "logSha256": "6027edf966194f3a89a1b2cb3fba4a7d00895f381295b31209b7c706398d1ee5"
+  },
+  "focusedRepairs": [
+    {
+      "test": "complete AES graph",
+      "change": "test timeBox 180000 to300000; reserve and all semantic assertions unchanged",
+      "pass": 1,
+      "fail": 0,
+      "exitCode": 0,
+      "elapsedSeconds": 140.181,
+      "hostProcesses": 0,
+      "inProcessHosts": 1,
+      "electronProcesses": 0,
+      "sshAttempts": 0,
+      "logSha256": "8a200fc124f6b49990789be1585159bf39adb7c7059523ed5c2243a418a37bac"
+    },
+    {
+      "test": "legacy human-wait resume accounting",
+      "change": "test timeBox6s to15s; wait past17s; exactattempts/waitaccounting/generation-limit assertions unchanged",
+      "pass": 1,
+      "fail": 0,
+      "exitCode": 0,
+      "elapsedSeconds": 23.12424425,
+      "inProcessHosts": 1,
+      "electronProcesses": 0,
+      "sshAttempts": 0,
+      "logSha256": "96f19dd2fe77b98ddfbb5a4041039aa1b67bf9f2c279a82e5a78821c109fc58d"
+    }
+  ],
+  "auditorDelta": {
+    "pass": 2,
+    "fail": 0,
+    "elapsedSeconds": 6.119,
+    "logSha256": "eaab5d0bc8597530e8b52d11275e2200e6e307bb0f03792ab1f2821c76ba38bf"
+  },
+  "desktopDiagnostics": {
+    "tests": 2,
+    "pass": 2,
+    "fail": 0,
+    "elapsedSeconds": 4.035,
+    "electronProcesses": 2,
+    "windows": 0,
+    "hosts": 0,
+    "sshAttempts": 0,
+    "logSha256": "b80d0a3bd20ede99ae82149bd5f5bd433b17d6b7e79d5687f99ec4e043cf12d0"
+  },
+  "scope": "full-suite original failures retained; focused repairs verified separately, not a claim that465tests reran green; zero real model/EDA inthesechecks"
+}
