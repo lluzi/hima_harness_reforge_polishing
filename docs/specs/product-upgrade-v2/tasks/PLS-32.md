@@ -1,7 +1,8 @@
 # [PLS-32] 复用 DSH 多会话完成 Campaign Agent 与 Side Talk
 
 状态：ready-for-agent
-父规格：[Product Upgrade v2](../spec.md)
+父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
+Issue：[PLS-32 / #36](https://github.com/lluzi/hima_harness_reforge_polishing/issues/36)
 模型：`gpt-5.6-terra` / medium；owner/权限/恢复由 `gpt-5.6-sol` / high 复核
 最低测试：L0 + L2 状态矩阵 + 一条 Catsights L3
 

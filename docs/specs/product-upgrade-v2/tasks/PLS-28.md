@@ -1,7 +1,8 @@
 # [PLS-28] 加深现有 Pack 格式、安装和兼容信息
 
 状态：ready-for-agent
-父规格：[Product Upgrade v2](../spec.md)
+父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
+Issue：[PLS-28 / #32](https://github.com/lluzi/hima_harness_reforge_polishing/issues/32)
 模型：`gpt-5.6-terra` / medium；兼容与方法身份由 `gpt-5.6-sol` / high 定点复核
 最低测试：L0 + L1/L2 Pack 子集
 

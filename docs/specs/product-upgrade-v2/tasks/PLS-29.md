@@ -1,7 +1,8 @@
 # [PLS-29] 从 SSH 发现并保存 safe Site profile
 
 状态：ready-for-agent
-父规格：[Product Upgrade v2](../spec.md)
+父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
+Issue：[PLS-29 / #33](https://github.com/lluzi/hima_harness_reforge_polishing/issues/33)
 模型：`gpt-5.6-terra` / medium；Permit/凭据边界由 `gpt-5.6-sol` / high 复核
 最低测试：L0 + L1/L2；稳定后一次 L4 SSH
 

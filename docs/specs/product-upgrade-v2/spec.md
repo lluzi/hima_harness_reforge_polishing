@@ -1,6 +1,6 @@
 # HimaHarness Product Upgrade v2
 
-状态：ready-for-agent。依据为用户于 2026-09-14 确认的[产品升级访谈](../../product-upgrade-interview.md)。本规格描述待升级行为，不声明当前实现或产品验收已经通过。
+状态：ready-for-agent，发布为 [GitHub #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)。依据为用户于 2026-09-14 确认的[产品升级访谈](../../product-upgrade-interview.md)。本规格描述待升级行为，不声明当前实现或产品验收已经通过。
 
 ## Problem Statement
 

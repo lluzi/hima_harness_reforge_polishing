@@ -1,7 +1,8 @@
 # [PLS-27] 让 HimaGuide 从产品上下文回答自身能力
 
 状态：ready-for-agent
-父规格：[Product Upgrade v2](../spec.md)
+父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
+Issue：[PLS-27 / #31](https://github.com/lluzi/hima_harness_reforge_polishing/issues/31)
 模型：`gpt-5.6-terra` / medium
 最低测试：L0 + 定点 L2；prompt 通过后一次小型 L4 DeepSeek
 

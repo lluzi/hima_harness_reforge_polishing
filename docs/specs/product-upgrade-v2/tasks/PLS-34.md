@@ -1,7 +1,8 @@
 # [PLS-34] 用现有格式交付可迁移的定制 Cell Fmax-DTCO Pack
 
 状态：ready-for-agent
-父规格：[Product Upgrade v2](../spec.md)
+父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
+Issue：[PLS-34 / #38](https://github.com/lluzi/hima_harness_reforge_polishing/issues/38)
 模型：`gpt-5.6-terra` / medium；方法/证据边界由 `gpt-5.6-sol` / high 复核
 最低测试：L0 + Pack L1/L2；稳定后分开的 L4 tool/model probe
 

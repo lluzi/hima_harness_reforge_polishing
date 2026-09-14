@@ -1,7 +1,8 @@
 # [PLS-33] 在现有 Workbench 投影完整业务运行图
 
 状态：ready-for-agent
-父规格：[Product Upgrade v2](../spec.md)
+父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
+Issue：[PLS-33 / #37](https://github.com/lluzi/hima_harness_reforge_polishing/issues/37)
 模型：`gpt-5.6-terra` / medium
 最低测试：L0 + 既有 L2 graph + 一条 Catsights L3
 

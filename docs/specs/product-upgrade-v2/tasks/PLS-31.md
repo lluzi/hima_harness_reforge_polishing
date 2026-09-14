@@ -1,7 +1,8 @@
 # [PLS-31] 将现有检查加深为 Campaign Preparation
 
 状态：ready-for-agent
-父规格：[Product Upgrade v2](../spec.md)
+父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
+Issue：[PLS-31 / #35](https://github.com/lluzi/hima_harness_reforge_polishing/issues/35)
 模型：`gpt-5.6-terra` / medium
 最低测试：L0 + 定点 L2 + 一条 Catsights L3
 

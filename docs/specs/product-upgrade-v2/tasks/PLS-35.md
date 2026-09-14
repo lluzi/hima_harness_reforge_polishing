@@ -1,7 +1,8 @@
 # [PLS-35] 用 held-out design 完成 Matched Comparison 并发布候选
 
 状态：ready-for-agent
-父规格：[Product Upgrade v2](../spec.md)
+父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
+Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/issues/39)
 模型：主集成 `gpt-5.6-terra` / medium；最终证据审查 `gpt-5.6-sol` / high
 最低测试：受影响 L0–L3 + 有界 L4 + 单次 L5 + 用户最终签收
 

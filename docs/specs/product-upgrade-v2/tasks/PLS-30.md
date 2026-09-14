@@ -1,7 +1,8 @@
 # [PLS-30] 在现有知识记录上提供离线 Pack 与当前知识
 
 状态：ready-for-agent
-父规格：[Product Upgrade v2](../spec.md)
+父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
+Issue：[PLS-30 / #34](https://github.com/lluzi/hima_harness_reforge_polishing/issues/34)
 模型：`gpt-5.6-terra` / medium；知识隔离和证据身份由 `gpt-5.6-sol` / high 复核
 最低测试：隔离 POC + L0/L1/L2；接口稳定后一次 L4 模型
 
