@@ -516,7 +516,11 @@ export const packContract = z.strictObject({
   inputs: z.array(contractInput).min(1),
   outputs: z.array(contractOutput).default([]),
   /** What the Site must let this pack run: every wrapper its tools' command lines begin with. */
-  environment: z.strictObject({ wrappers: z.array(z.string().min(1)).default([]) }),
+  environment: z.strictObject({
+    wrappers: z.array(z.string().min(1)).default([]),
+    /** Plain executable names whose presence Site discovery checks for this Pack. */
+    commands: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/)).default([]),
+  }),
   /** What preparing a Campaign workspace copies out of the bound flow root, into `<workspace>/flow/`. */
   workspace: z.strictObject({ copy: z.array(z.string().min(1)).default([]) }),
   tools: z.array(packTool).default([]),
