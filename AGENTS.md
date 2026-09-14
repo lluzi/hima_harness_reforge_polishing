@@ -14,6 +14,12 @@
 架构约束及独立验证责任见 `docs/adr/0001-*`、`docs/adr/0002-*`。
 `docs/upstream/` 是版本化参考材料，不是本仓库的现行指令。
 
+本仓库的默认工作是升级现有产品：先定位现有模块、接口、实现和测试，
+再在原职责内完成最小可验证增量。开始产品改动、缺陷修复、UI、Pack、
+Site、Run、Knowledge 或测试切片前，必须阅读
+`docs/agents/polishing-discipline.md`。只有用户明确改变产品定义，或证据证明
+现有模块无法承载必要行为时，才进入新模块或架构决策。
+
 ## Git synchronization
 
 每次本地 commit 后立即 push 到 GitHub 对应分支，并核对远端 SHA。
