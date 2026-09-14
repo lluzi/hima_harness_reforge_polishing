@@ -596,7 +596,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     `/hima-run ${PACK_ID} on ${SITE_ID} with Goal target_period_ns=0.5, strategy periodNs=0.5 algorithmRevision=0, generations=1, retries=2, timeBox=90.`,
     'You are the only execution owner. Use only hima_context and hima_execute for business actions. Do not start another Run, edit the method, use shell, open another Agent/model, or auto-drive the graph.',
     'Complete the full reference method from actual facts: the probe loop; all six mining branches and all six selection Workshops; merge; generate; layout; predicted characterization; Library Compiler; foundry and custom Design Compiler; adoption; paired foundry/generated PNR; verification; comparison; final Judge; and next-research.',
-    'For each selection Workshop use recommend, read every declared route/raw/source input and current Pack knowledge, then write a self-contained data-dependent entry.py through hima_execute. Run those exact recorded bytes and preserve all failures and retries.',
+    'For each selection Workshop use recommend, read every declared route/raw/source input and current Pack knowledge, then copy the exact selectionTemplate and implement only a deterministic, data-dependent choose() using Python standard-library facilities; write that self-contained entry.py through hima_execute. Run those exact recorded bytes and preserve all failures and retries.',
     'Treat learned characterization as predicted, Site tool outputs as executed tool evidence, and post-route values as measured only where the readers say so. Never turn asked, derived, predicted, missing, failed, or unknown values into measurements or success.',
     'At next-research add exactly one optional growth proposal named independent-comparison-review. Use review-comparison (act observes record_compare) then review-verdict (judge rules full-evidence-valid and clock-period-at-most with target_period_ns bound from Goal); route every PASS/FAIL/UNDETERMINED result back to next-research. Set requiredOutputs=[record_compare], returnNode=next-research, impactNodes=[next-research], and explain that the expected change is an independent consistency re-read. Omit method, parent, inputThroughSeq and explicit input hashes so Harness binds current identities. Execute both nodes and record returned growth evidence. This is not a new PNR experiment.',
     'After the branch returns, call hima_execute analyze on next-research with current-record citations, limitations, and discriminating next experiments. Then complete next-research truthfully. Goal-met requires both final rules to PASS. If physical constraints fail, submit the declared next strategy and let the one-generation bound produce an evidence-backed negative/budget ending. Do not cancel a complete negative merely to rename it.',
@@ -765,8 +765,71 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     packDigestOf(packSource) === sourceDigest && packDigestOf(installedPack) === sourceDigest,
     { source: packDigestOf(packSource), installed: packDigestOf(installedPack), expected: sourceDigest });
 
+  const selectorInputs = path.join(check.out, 'selector-inputs');
+  mkdirSync(selectorInputs, { recursive: false, mode: 0o700 });
+  const copyHeldMaterial = async (record: LedgerRecord, name: string): Promise<string> => {
+    const material = materialByRecord.get(record.id);
+    assert.ok(material, `missing archived material for ${record.id}`);
+    const held = await readArchivedMaterial(experienceDeps(host, home), firstId, material.path);
+    assert.equal(held.kind, 'read');
+    if (held.kind !== 'read') throw new Error('selector input is not readable');
+    const target = path.join(selectorInputs, name);
+    writeFileSync(target, held.text, { mode: 0o600 });
+    return target;
+  };
+  const auditSelectors = [];
+  for (const route of routes) {
+    const nodeId = `select-${route}`;
+    const suffix = route.replaceAll('-', '_');
+    const launch = launchedJobs.findLast(job => job.nodeId === nodeId && firstRecords.some(record =>
+      record.type === 'job' && record.event === 'finished' && record.exitCode === 0
+        && record.job.session === job.job.session));
+    assert.ok(launch?.workshop, `no successful actual selector launch for ${route}`);
+    const code = codeRecords.findLast(record => record.path === launch.workshop!.entry.path
+      && record.sha256 === launch.workshop!.entry.sha256 && record.sessionId === ownerId);
+    const rawRead = firstRecords.findLast(record => record.type === 'knowledge' && record.origin === 'input'
+      && record.file === `raw_${suffix}` && record.nodeId === nodeId && record.sessionId === ownerId
+      && (record.exposedBytes ?? 0) > 0 && record.seq < launch.seq);
+    const sourceRead = firstRecords.findLast(record => record.type === 'knowledge' && record.origin === 'input'
+      && record.file === `source_${suffix}` && record.nodeId === nodeId && record.sessionId === ownerId
+      && (record.exposedBytes ?? 0) > 0 && record.seq < launch.seq);
+    const selection = firstRecords.findLast(record => record.type === 'observation'
+      && record.reader.id === `read-select-${route}` && record.seq > launch.seq);
+    check.require(`the ${route} selector has actual source reads before its recorded execution`,
+      !!code && rawRead?.type === 'knowledge' && sourceRead?.type === 'knowledge'
+        && selection?.type === 'observation', { code, rawRead, sourceRead, selection, launch });
+    if (!code || rawRead?.type !== 'knowledge' || sourceRead?.type !== 'knowledge'
+      || selection?.type !== 'observation') throw new Error('selector provenance is incomplete');
+    // A chat read may expose a prefix. The actual program consumes the complete input;
+    // select its separately held full capture while retaining the model-read provenance above.
+    const fullRaw = firstRecords.findLast(record => record.type === 'knowledge' && record.origin === 'input'
+      && record.file === `raw_${suffix}` && record.nodeId === nodeId && record.seq < launch.seq
+      && record.sha256 === (rawRead.sourceMaterialSha256 ?? rawRead.sha256)
+      && record.bytes === (rawRead.sourceMaterialBytes ?? rawRead.bytes));
+    assert.ok(fullRaw?.type === 'knowledge', `complete raw input not retained for ${route}`);
+    const codeFile = await copyHeldMaterial(code, `${suffix}.py`);
+    const rawFile = await copyHeldMaterial(fullRaw, `${suffix}-raw.json`);
+    const selectionFile = await copyHeldMaterial(selection, `${suffix}-selected.json`);
+    auditSelectors.push({ route: suffix, code: codeFile, codeSha256: code.sha256,
+      raw: rawFile, rawSha256: sha256(readFileSync(rawFile)), selection: selectionFile,
+      selectionSha256: selection.contentSha256, codeRecord: code.id,
+      rawReadRecord: rawRead.id, sourceReadRecord: sourceRead.id, selectionRecord: selection.id,
+      jobSession: launch.job.session });
+  }
+  const selectorManifest = path.join(selectorInputs, 'manifest.json');
+  const subsetEvidence = path.join(check.out, 'selector-subsets.json');
+  writeFileSync(selectorManifest, JSON.stringify({ template: path.join(packSource, 'flow/selection-template.py'),
+    templateSha256, selectors: auditSelectors }, null, 2) + '\n', { mode: 0o600 });
+  execFileSync('/usr/bin/python3', [path.join(repoRoot, 'scripts/audit-dtco-pilot-selectors.py'),
+    selectorManifest, subsetEvidence], { timeout: 30_000, maxBuffer: 1024 * 1024 });
+  const subsetAudit = JSON.parse(readFileSync(subsetEvidence, 'utf8')) as { status?: string };
+  check.require('unchanged executed selectors reproduce results and respond to withheld candidates',
+    subsetAudit.status === 'passed', subsetAudit);
+  check.observed.selectorAudit = { path: subsetEvidence, sha256: sha256(readFileSync(subsetEvidence)),
+    scope: 'finite input-dependence check; no new model, EDA, optimality or PPA claim' };
+
   const firstManifestPath = firstArchive.manifestPath;
-  const firstExperiencePath = path.join(firstArchive.directory, 'experience.json');
+  const firstExperiencePath = path.join(firstArchive.directory, 'experience.md');
   const firstManifestSha256 = firstArchiveRecord?.type === 'archive' ? firstArchiveRecord.manifestSha256 : undefined;
   assert.ok(firstManifestSha256);
   const beforeRestart = sha256(Buffer.from(JSON.stringify(firstRecords)));

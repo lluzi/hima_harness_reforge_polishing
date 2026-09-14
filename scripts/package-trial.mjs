@@ -72,9 +72,33 @@ function smokeRelocatedHost(app) {
   const home = mkdtempSync(path.join(path.dirname(app), '.host-smoke-'));
   try {
     const homeModule = pathToFileURL(path.join(resource, 'lib/hima-home.js')).href;
-    const prepare = `import { himaHomeSources, prepareHimaHome } from ${JSON.stringify(homeModule)}; await prepareHimaHome({ home: ${JSON.stringify(home)}, sources: himaHomeSources(${JSON.stringify(resource)}), bundleMode: 'installed' });`;
-    run(path.join(resource, 'node/bin/node'), ['--input-type=module', '--eval', prepare], { env: { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: path.join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1' } });
-    run(path.join(resource, 'node/bin/node'), [path.join(resource, 'node_modules/@deepseek-ai/dsh/lib/bin.js'), '--profile', 'hima', '--help'], { env: { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: path.join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1' } });
+    const hostModule = pathToFileURL(path.join(resource, 'lib/host-launch.js')).href;
+    const smoke = `
+      import { mkdirSync } from 'node:fs';
+      import { himaHomeSources, prepareHimaHome } from ${JSON.stringify(homeModule)};
+      import { launchHimaHost, stopChild } from ${JSON.stringify(hostModule)};
+      const home = ${JSON.stringify(home)};
+      const workspace = home + '/workspace';
+      mkdirSync(workspace, { recursive: true });
+      // Match ordinary Electron startup, including repairing the profile link on each boot.
+      await prepareHimaHome({ home, sources: himaHomeSources(${JSON.stringify(resource)}) });
+      const host = await launchHimaHost({
+        node: ${JSON.stringify(path.join(resource, 'node/bin/node'))},
+        dshEntry: ${JSON.stringify(path.join(resource, 'node_modules/@deepseek-ai/dsh/lib/bin.js'))},
+        profile: 'hima', cwd: workspace, env: process.env,
+      });
+      try {
+        const opened = await fetch(host.url, { redirect: 'manual' });
+        const cookie = opened.headers.get('set-cookie')?.split(';')[0];
+        if (opened.status !== 303 || !cookie) throw new Error('packaged Host did not authenticate its session');
+        const response = await fetch(new URL('/hima/api/runs', host.url), { headers: { cookie } });
+        if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
+          throw new Error('packaged Host did not serve its Hima API');
+        }
+        await response.json();
+      } finally { await stopChild(host.child); }
+    `;
+    run(path.join(resource, 'node/bin/node'), ['--input-type=module', '--eval', smoke], { env: { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: path.join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1' } });
     process.stdout.write('package-trial: relocated Host smoke passed\n');
   } finally { rmSync(home, { recursive: true, force: true }); }
 }
@@ -93,6 +117,13 @@ if (args.includes('--help') || args.includes('-h')) {
   for (const built of ['packages/desktop/lib/main.js', 'packages/harness/lib/index.js', 'packages/harness/lib/client.js']) {
     if (!existsSync(path.join(root, built))) fail(`release inputs are not built: ${built} (run pnpm run build once before packaging)`);
   }
+  const untrackedInputs = run('git', ['ls-files', '--others', '--exclude-standard', '--',
+    'packages', 'packs', 'profiles']).trim();
+  if (untrackedInputs) fail(`untracked product inputs must be committed before packaging: ${untrackedInputs}`);
+  const ignoredInputs = run('git', ['ls-files', '--others', '--ignored', '--exclude-standard', '--',
+    'packs', 'profiles']).split('\n').filter(Boolean).filter(file => !(file.startsWith('packs/')
+      && file.split('/').some(part => part.startsWith('.') || part === 'run-assets')));
+  if (ignoredInputs.length) fail(`ignored resource inputs are not approved release assets: ${ignoredInputs.join(', ')}`);
   mkdirSync(output, { recursive: true });
   const stage = mkdtempSync(path.join(output, '.stage-'));
   try {

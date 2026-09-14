@@ -37,3 +37,37 @@ test('the selection scaffold retains stale outputs and validates ids before its 
   assert.ok(previous.includes(JSON.stringify(old)), 'old output remains evidence but cannot make an unimplemented program successful');
   assert.equal(await readFile(raw, 'utf8'), rawBytes);
 });
+
+test('the pilot subset audit rejects a hardcoded selector despite matching launch and output hashes', async t => {
+  const fixture = await createAesDomainFixture(); t.after(() => fixture.dispose());
+  const templateFile = path.join(aesDomainPack, 'flow/selection-template.py');
+  const template = await readFile(templateFile, 'utf8');
+  const stub = 'raise NotImplementedError("Implement a data-dependent route selection algorithm here")';
+  const codeFile = path.join(fixture.workspace, 'retained.py');
+  const rawFile = path.join(fixture.workspace, 'raw.json');
+  const selectedFile = path.join(fixture.workspace, 'selected.json');
+  const raw = JSON.stringify({ generation_requests: [
+    { candidate_id: 'stronger', support: 9 }, { candidate_id: 'weaker', support: 2 },
+  ] });
+  const selected = JSON.stringify({ sourceSha256: sha256(raw), selected: ['stronger'] });
+  await writeFile(rawFile, raw); await writeFile(selectedFile, selected);
+  const routes = ['timing_criticality', 'timing_context', 'structure_frequency',
+    'structure_compaction', 'mapper_compatibility', 'functional_diversity'];
+  const runAudit = async (name: string, algorithm: string) => {
+    const code = template.replace(stub, algorithm);
+    await writeFile(codeFile, code);
+    const input = path.join(fixture.workspace, name + '-input.json');
+    await writeFile(input, JSON.stringify({ template: templateFile, templateSha256: sha256(template),
+      selectors: routes.map(route => ({ route, code: codeFile, codeSha256: sha256(code),
+        raw: rawFile, rawSha256: sha256(raw), selection: selectedFile, selectionSha256: sha256(selected) })) }));
+    return spawnSync('/usr/bin/python3', [path.resolve(aesDomainPack, '../../scripts/audit-dtco-pilot-selectors.py'),
+      input, path.join(fixture.workspace, name + '-result.json')], { encoding: 'utf8', timeout: 10_000 });
+  };
+  const fixed = await runAudit('fixed', 'return ["stronger"]');
+  assert.notEqual(fixed.status, 0); assert.match(fixed.stderr, /embeds actual candidate identities/);
+  const dynamic = await runAudit('dynamic', 'return [max(candidates, key=lambda c: c["support"])["candidate_id"]] if candidates else []');
+  assert.equal(dynamic.status, 0, dynamic.stderr);
+  const result = JSON.parse(await readFile(path.join(fixture.workspace, 'dynamic-result.json'), 'utf8'));
+  assert.deepEqual(result.results.map((row: { subsetSelection: string[] }) => row.subsetSelection),
+    routes.map(() => ['weaker']), 'removing the higher-support candidate produces the lower-support candidate');
+});
