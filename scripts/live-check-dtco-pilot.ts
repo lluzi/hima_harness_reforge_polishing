@@ -176,6 +176,32 @@ const isActive = (status: string | undefined): boolean =>
 const sameKeys = (left: Record<string, unknown> | undefined, right: Record<string, unknown> | undefined): boolean =>
   JSON.stringify(Object.keys(left ?? {}).sort()) === JSON.stringify(Object.keys(right ?? {}).sort());
 
+interface PersistedToolResult {
+  failed: boolean;
+  text: string;
+}
+
+function himaResult(result: PersistedToolResult | undefined): {
+  kind?: string;
+  receipt?: { action?: string };
+  existing?: { receipt?: { action?: string } };
+} | undefined {
+  if (!result || result.failed) return undefined;
+  try {
+    return JSON.parse(result.text) as {
+      kind?: string;
+      receipt?: { action?: string };
+      existing?: { receipt?: { action?: string } };
+    };
+  } catch { return undefined; }
+}
+
+function acceptedHimaAction(result: PersistedToolResult | undefined, action: string): boolean {
+  const parsed = himaResult(result);
+  const receipt = parsed?.receipt ?? parsed?.existing?.receipt;
+  return (parsed?.kind === 'accepted' || parsed?.kind === 'duplicate') && receipt?.action === action;
+}
+
 const rawArgs = process.argv.slice(2);
 const usage = [
   'usage:',
@@ -196,7 +222,18 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
   const out = path.resolve(outArgument);
   if (existsSync(out)) throw new Error('the audit evidence directory already exists');
   mkdirSync(out, { recursive: true });
+  const savedSilent = process.env.HIMA_TEST_SILENT_AGENT;
+  const savedLegacy = process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+  process.env.HIMA_TEST_SILENT_AGENT = '1';
+  process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
   let host: InProcessHost | undefined;
+  let modelRequests = 0;
+  const guardModelRequests = (activeHost: InProcessHost): void => {
+    activeHost.ctx.on('agent/request', () => {
+      modelRequests += 1;
+      throw new Error('UI follow-up audit forbids every model request');
+    });
+  };
   try {
     const checkpointFile = realpathSync(path.resolve(checkpointPath));
     const checkpoint = JSON.parse(readFileSync(checkpointFile, 'utf8')) as PilotCheckpoint;
@@ -287,6 +324,7 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
       dispose: async () => undefined,
     };
     host = await bootInProcess(home);
+    guardModelRequests(host);
     const first = host.ctx.hima.ledger.run(checkpoint.firstRun);
     assert.ok(first && isTerminal(first.status), 'first Campaign is absent or no longer terminal');
     assert.equal(first.packDigest, checkpoint.pack.digest);
@@ -315,10 +353,22 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
     assert.equal(second.budget?.closingReserveMs, CLOSING_RESERVE_MS);
     assert.equal(second.budget?.attemptLimit, ATTEMPT_LIMIT);
     const secondRecords = host.ctx.hima.ledger.records({ runId: second.id });
-    assert.ok(!secondRecords.some((record) =>
-      ['job', 'node', 'observation', 'verdict', 'code', 'growth', 'revision'].includes(record.type)),
+    assert.ok(!secondRecords.some((record) => ['job', 'observation', 'verdict', 'code', 'growth',
+      'revision', 'research-write', 'knowledge', 'decision', 'session'].includes(record.type)),
     'history follow-up contains experiment work');
-    assert.ok(secondRecords.some((record) => record.type === 'cancel'), 'history follow-up has no actual cancel record');
+    assert.equal(Object.keys(second.control.executions).length, 0,
+      'history follow-up admitted an execution before cancellation');
+    const cancelRecord = secondRecords.findLast((record) => record.type === 'cancel');
+    assert.ok(cancelRecord?.type === 'cancel', 'history follow-up has no actual cancel record');
+    if (cancelRecord?.type !== 'cancel') throw new Error('history follow-up has no actual cancel record');
+    const cancellationNodes = secondRecords.filter((record): record is NodeRecord => record.type === 'node');
+    assert.ok(cancellationNodes.length <= 1
+      && cancellationNodes.every((record) => record.state === 'cancelled'
+        && record.nodeId === 'probe'
+        && record.generation === 1
+        && record.attempt === 1
+        && record.seq > cancelRecord.seq),
+    'history follow-up has execution work or unexpected cancellation bookkeeping');
     assert.ok(Object.values(second.control.requests).every((request) => request.actor === second.control?.owner),
       'a second owner wrote a follow-up Run action');
     const analysis = secondRecords.findLast((record) => record.type === 'analysis');
@@ -340,12 +390,23 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
       && (call.args?.file_path === checkpoint.archive.manifest || call.args?.path === checkpoint.archive.manifest));
     const experienceRead = calls.findIndex((call) => call.name === 'read'
       && (call.args?.file_path === checkpoint.archive.experience || call.args?.path === checkpoint.archive.experience));
-    const pause = calls.findIndex((call) => call.name === 'hima_execute'
-      && call.args?.run === second.id && call.args?.action === 'pause');
-    const analyzed = calls.findIndex((call) => call.name === 'hima_execute'
-      && call.args?.run === second.id && call.args?.action === 'analyze');
-    const cancelled = calls.findIndex((call) => call.name === 'hima_execute'
-      && call.args?.run === second.id && call.args?.action === 'cancel');
+    const pause = calls.findIndex((call, index) => call.name === 'hima_execute'
+      && call.args?.run === second.id && call.args?.action === 'pause'
+      && acceptedHimaAction(persisted.results[index], 'pause'));
+    const analyzed = calls.findIndex((call, index) => call.name === 'hima_execute'
+      && call.args?.run === second.id && call.args?.action === 'analyze'
+      && acceptedHimaAction(persisted.results[index], 'analyze'));
+    const cancelled = calls.findIndex((call, index) => call.name === 'hima_execute'
+      && call.args?.run === second.id && call.args?.action === 'cancel'
+      && acceptedHimaAction(persisted.results[index], 'cancel'));
+    const priorAttempts = (action: string, acceptedIndex: number) => calls.flatMap((call, index) =>
+      index < acceptedIndex && call.name === 'hima_execute' && call.args?.run === second.id
+        && call.args?.action === action
+        ? [{ index, failed: persisted.results[index]?.failed === true,
+          kind: himaResult(persisted.results[index])?.kind ?? 'tool-error' }]
+        : []);
+    const priorAnalysisAttempts = priorAttempts('analyze', analyzed);
+    const priorCancelAttempts = priorAttempts('cancel', cancelled);
     assert.ok(manifestRead >= 0 && experienceRead >= 0, 'UI Agent did not read both source archive files');
     assert.equal(persisted.calls.length, persisted.results.length, 'persisted tool calls/results are not one-to-one');
     assert.ok(persisted.results[manifestRead]?.failed === false
@@ -375,6 +436,7 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
     };
     await host.dispose();
     host = await bootInProcess(home);
+    guardModelRequests(host);
     const restartedFirstRecords = host.ctx.hima.ledger.records({ runId: checkpoint.firstRun });
     const restartedSecondRecords = host.ctx.hima.ledger.records({ runId: second.id });
     assert.equal(sha256(Buffer.from(JSON.stringify(restartedFirstRecords))), beforeRestart.first);
@@ -388,6 +450,10 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
     assert.equal(sha256(readFileSync(afterFirstArchive.manifestPath)), checkpoint.archive.manifestSha256);
     assert.equal(packDigestOf(path.join(repoRoot, 'packs', PACK_ID)), checkpoint.pack.digest);
     assert.equal(packDigestOf(path.join(home.home, 'hima/packs', PACK_ID)), checkpoint.pack.digest);
+    assert.equal(modelRequests, 0, 'offline UI follow-up audit made a model request');
+
+    await host.dispose();
+    host = undefined;
 
     const evidence = {
       status: 'passed',
@@ -398,17 +464,23 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
       secondRun: second.id,
       secondOwner: second.control.owner,
       historyReads: { manifest: checkpoint.archive.manifest, experience: checkpoint.archive.experience },
-      actionOrder: { pause, manifestRead, experienceRead, analyzed, cancelled },
+      actionOrder: { pause, manifestRead, experienceRead, priorAnalysisAttempts, analyzed,
+        priorCancelAttempts, cancelled },
       successfulHistoryReadResults: {
         manifest: persisted.results[manifestRead]?.failed === false,
         experience: persisted.results[experienceRead]?.failed === false,
       },
       records: beforeRestart,
+      cancellationBookkeeping: cancellationNodes.map((record) => ({
+        id: record.id, seq: record.seq, nodeId: record.nodeId, state: record.state,
+        generation: record.generation, attempt: record.attempt,
+      })),
       sourceIdentityBeforeAfter: {
         methodDigest: checkpoint.pack.digest,
         firstManifestSha256: checkpoint.archive.manifestSha256,
       },
       restart: 'equal bytes and readable archives',
+      offline: { hostBoots: 2, modelRequests, newEdaJobs: 0 },
     };
     writeFileSync(path.join(out, 'evidence.json'), `${JSON.stringify(evidence, null, 2)}\n`);
     writeFileSync(path.join(out, 'README.md'), '# PLS-18 UI follow-up audit\n\nPASS — the separate UI-owned history study read the first archive, recorded bounded no-claims analysis, launched zero Jobs, cancelled, archived, and survived restart with equal records.\n');
@@ -420,6 +492,10 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
     throw error;
   } finally {
     await host?.dispose();
+    if (savedSilent === undefined) delete process.env.HIMA_TEST_SILENT_AGENT;
+    else process.env.HIMA_TEST_SILENT_AGENT = savedSilent;
+    if (savedLegacy === undefined) delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
+    else process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = savedLegacy;
   }
 }
 

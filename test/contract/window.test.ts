@@ -237,7 +237,7 @@ test('clicking cancel while the Job sleeps ends the Run cancelled, the card show
 
     const cancelled = await d.click('cancel');
     assert.ok(cancelled.ok, `the card carries the cancel control while the Run is running: ${JSON.stringify(cancelled)}`);
-    const ended = await d.wait('run-status', 'cancelled by a person', 90_000);
+    const ended = await d.wait('run-status', 'cancelled', 90_000);
     assert.ok(ended.ok, `wait run-status cancelled: ${JSON.stringify(ended)}`);
     assert.equal(ended.state.status, 'cancelled', JSON.stringify(ended));
 

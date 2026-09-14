@@ -438,7 +438,7 @@ test('a cancel in the middle of generation three stops that generation\'s job an
 
     const opened = await d.open(`/hima/?run=${encodeURIComponent(runId)}`);
     assert.ok(opened.ok, JSON.stringify(opened));
-    const status = await d.wait('run-status', 'cancelled by a person');
+    const status = await d.wait('run-status', 'cancelled');
     assert.ok(status.ok, `wait run-status: ${JSON.stringify(status)}`);
     assert.deepEqual(d.unexpectedStdout(), []);
   } finally {

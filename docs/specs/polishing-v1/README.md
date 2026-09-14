@@ -1,6 +1,6 @@
 # Polishing v1 规格与任务索引
 
-2026-09-13：PLS-10～12、PLS-14～17 已完成，累计 24/26 项。当前前沿为 PLS-18 → PLS-26；[本批交付与真实边界](../../validation/growth-assets/README.md)。
+2026-09-13：26/26 个 PLS 实施任务已完成本轮验收；PLS-18 采用分层组合证据，PLS-26 按用户授权由独立 Agent 代操作。当前前沿为用户试用反馈与 Pack 研究质量改进，见[试用交付与真实边界](../../validation/pilot-release/README.md)。
 
 当前开发顺序与任务依赖已于 2026-09-12 更新为“接收 ca47fa0，保留已交付 polish，在 polishing 完成 Step 4”。[当前完整规格](../step4-takeover/spec.md) · [当前任务表](../step4-takeover/README.md) · [上游承接范围](../step4-takeover/upstream-disposition.md) · [父规格 #1](https://github.com/lluzi/hima_harness_reforge_polishing/issues/1)。
 
@@ -30,9 +30,9 @@ PLS-20 已整合并独立验证上述产品行为，见 [快照交付](../../ass
 | [PLS-15：把 AI 研究过程、环境和算法纳入技术报告](tasks/PLS-15.md) | [PLS-15 / #16](https://github.com/lluzi/hima_harness_reforge_polishing/issues/16) | [PLS-09 / #10](https://github.com/lluzi/hima_harness_reforge_polishing/issues/10), [PLS-14 / #15](https://github.com/lluzi/hima_harness_reforge_polishing/issues/15), [PLS-24 / #27](https://github.com/lluzi/hima_harness_reforge_polishing/issues/27) | 已完成；459/459 local 与必要 L3/L4 验证，Git 同步留证 |
 | [PLS-16：下一次研究主动引用相关且获准的历史资产](tasks/PLS-16.md) | [PLS-16 / #17](https://github.com/lluzi/hima_harness_reforge_polishing/issues/17) | [PLS-09 / #10](https://github.com/lluzi/hima_harness_reforge_polishing/issues/10), [PLS-14 / #15](https://github.com/lluzi/hima_harness_reforge_polishing/issues/15), [PLS-15 / #16](https://github.com/lluzi/hima_harness_reforge_polishing/issues/16) | 已完成；459/459 local 与必要 L3/L4 验证，Git 同步留证 |
 | [PLS-17：Pack 升级和分享由 owner 控制并保留客户资产](tasks/PLS-17.md) | [PLS-17 / #18](https://github.com/lluzi/hima_harness_reforge_polishing/issues/18) | [PLS-13 / #14](https://github.com/lluzi/hima_harness_reforge_polishing/issues/14), [PLS-14 / #15](https://github.com/lluzi/hima_harness_reforge_polishing/issues/15) | 已完成；459/459 local 与必要 L3/L4 验证，Git 同步留证 |
-| [PLS-18：完成真实 DTCO 研究 pilot 与第二次知识复用](tasks/PLS-18.md) | [PLS-18 / #19](https://github.com/lluzi/hima_harness_reforge_polishing/issues/19) | [PLS-03 / #4](https://github.com/lluzi/hima_harness_reforge_polishing/issues/4), [PLS-04 / #5](https://github.com/lluzi/hima_harness_reforge_polishing/issues/5), [PLS-05 / #6](https://github.com/lluzi/hima_harness_reforge_polishing/issues/6), [PLS-06 / #7](https://github.com/lluzi/hima_harness_reforge_polishing/issues/7), [PLS-12 / #13](https://github.com/lluzi/hima_harness_reforge_polishing/issues/13), [PLS-15 / #16](https://github.com/lluzi/hima_harness_reforge_polishing/issues/16), [PLS-16 / #17](https://github.com/lluzi/hima_harness_reforge_polishing/issues/17), [PLS-17 / #18](https://github.com/lluzi/hima_harness_reforge_polishing/issues/18), [PLS-25 / #28](https://github.com/lluzi/hima_harness_reforge_polishing/issues/28) | ready-for-agent；不解除依赖/资源门槛 |
+| [PLS-18：完成真实 DTCO 研究 pilot 与第二次知识复用](tasks/PLS-18.md) | [PLS-18 / #19](https://github.com/lluzi/hima_harness_reforge_polishing/issues/19) | [PLS-03 / #4](https://github.com/lluzi/hima_harness_reforge_polishing/issues/4), [PLS-04 / #5](https://github.com/lluzi/hima_harness_reforge_polishing/issues/5), [PLS-05 / #6](https://github.com/lluzi/hima_harness_reforge_polishing/issues/6), [PLS-06 / #7](https://github.com/lluzi/hima_harness_reforge_polishing/issues/7), [PLS-12 / #13](https://github.com/lluzi/hima_harness_reforge_polishing/issues/13), [PLS-15 / #16](https://github.com/lluzi/hima_harness_reforge_polishing/issues/16), [PLS-16 / #17](https://github.com/lluzi/hima_harness_reforge_polishing/issues/17), [PLS-17 / #18](https://github.com/lluzi/hima_harness_reforge_polishing/issues/18), [PLS-25 / #28](https://github.com/lluzi/hima_harness_reforge_polishing/issues/28) | 组合技术验收完成；负结果与限制保留 |
 | [PLS-19：由对话 Agent 执行节点，Fabric 提供约束与事实](tasks/PLS-19.md) | [PLS-19 / #22](https://github.com/lluzi/hima_harness_reforge_polishing/issues/22) | [PLS-20 / #23](https://github.com/lluzi/hima_harness_reforge_polishing/issues/23), [PLS-21 / #24](https://github.com/lluzi/hima_harness_reforge_polishing/issues/24) | 已完成；本批验收通过 |
-| [PLS-26：由未参与开发的工程师验证正式 Pack 的独立使用](tasks/PLS-26.md) | [PLS-26 / #29](https://github.com/lluzi/hima_harness_reforge_polishing/issues/29) | [PLS-18 / #19](https://github.com/lluzi/hima_harness_reforge_polishing/issues/19) | 真人使用；ready-for-human |
+| [PLS-26：独立 Agent 代操作审阅与试用交付](tasks/PLS-26.md) | [PLS-26 / #29](https://github.com/lluzi/hima_harness_reforge_polishing/issues/29) | [PLS-18 / #19](https://github.com/lluzi/hima_harness_reforge_polishing/issues/19) | 用户授权 Agent 审阅通过；真人试用反馈待接续 |
 
 ## 规格与状态
 
@@ -40,4 +40,4 @@ PLS-20 已整合并独立验证上述产品行为，见 [快照交付](../../ass
 
 本目录的 tasks.json、publication.json、remote-verification.json、validation.json 保留首轮18项任务的发布快照，不追加当前任务或改写历史状态。当前 DAG 和本地交付状态以 [step4-takeover/tasks.json](../step4-takeover/tasks.json) 与[当前任务表](../step4-takeover/README.md)为准；实时任务状态以对应 GitHub Issue 为准。
 
-ready-for-agent 表示规格充分，不解除依赖、真实模型/输入/Site/预算前置。PLS-26 为 ready-for-human，必须真实非开发者使用，Agent 不能代签。
+ready-for-agent 表示规格充分，不解除依赖、真实模型/输入/Site/预算前置。PLS-26 的本轮操作由用户明确授权的独立 Agent 完成并录屏，用户真人 Review 与实际试用仍单独记录。

@@ -45,7 +45,7 @@ export interface StateLabel { readonly said: string; readonly colour: string }
 export const runStatusLabel: Readonly<Record<RunStatus, StateLabel>> = {
   running: { said: 'running', colour: plain },
   waiting: { said: 'waiting for a person', colour: warn },
-  cancelled: { said: 'cancelled by a person', colour: warn },
+  cancelled: { said: 'cancelled', colour: warn },
   'ended-goal-met': { said: 'ended — goal met', colour: good },
   'ended-goal-not-met': { said: 'ended — goal not met', colour: bad },
   // Converged is neither of the other two: the Campaign learned what this flow closes at and stopped

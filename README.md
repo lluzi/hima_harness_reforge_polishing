@@ -1,5 +1,7 @@
 # HimaHarness Polishing
 
+当前试用交付目标为 **0.2.0-trial.1（macOS Apple Silicon）**。26/26 个 PLS 实施任务完成本轮验收；当前前沿是用户试用反馈与 Pack 方法质量改进。见[本轮交付、录像与真实限制](docs/validation/pilot-release/README.md)。完整 DTCO 结果未达标，任务完成不代表 Fmax 提升或真人认可。
+
 HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness_reforge_claude`，按用户要求只读；运行和修改在本工作区进行。
 
 用户已于 2026-09-11 确认产品定义。以 prototype 提交 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的固定导入为基线，已完成 PLS-01～07 的实现、分级验证与独立审查，见 [本批交付记录](docs/assessment/2026-09-11/pls02-07/README.md)。Polishing 以当前 prototype 架构为基础，非万不得已不新增组件；旧版架构仅供参考。
@@ -11,7 +13,7 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 - [代码导入清单](docs/assessment/2026-09-11/source-import.json)
 - [Prototype 的版本化参考材料](docs/upstream/README.md)
 
-2026-09-12：PLS-20 已接收固定快照 `ca47fa0`，保留统一工作区 UI-02 和 PLS-01～07，见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。当前工作分支已实现 Pack Goal 声明、安装态编写、方法与资产隔离，以及同一对话 Agent 的节点执行；四项已完成验收：完整 local 377/377、安装态作者只读终检11/11通过，原始失败与适用边界见 [验收记录](docs/assessment/2026-09-12/pls-next/README.md)。当前已完成12/26个PLS，下一依赖前沿为 PLS-23、PLS-24、PLS-10、PLS-14。
+2026-09-12：PLS-20 已接收固定快照 `ca47fa0`，保留统一工作区 UI-02 和 PLS-01～07，见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。当前工作分支已实现 Pack Goal 声明、安装态编写、方法与资产隔离，以及同一对话 Agent 的节点执行；四项已完成验收：完整 local 377/377、安装态作者只读终检11/11通过，原始失败与适用边界见 [验收记录](docs/assessment/2026-09-12/pls-next/README.md)。该历史批次当时完成12/26个PLS，当时依赖前沿为 PLS-23、PLS-24、PLS-10、PLS-14。
 
 开始 Run 会准备工作区并绑定当前对话 Agent。该 Agent 通过 `hima_context` 读取参考图与实际状态，通过 `hima_execute` 开始节点、读写研究代码、提交 Job、检查结果并请求完成。Fabric 验证权限、预算和依赖，追踪已提交的 Job；下一业务节点需要 Agent 再次请求。长 Job 运行时仍可在同一对话中要求暂停或检查；暂停阻止新工作，已启动的 Job 可以继续落下事实，取消则请求实际停止。未交付的增长和修订操作会明确拒绝。
 

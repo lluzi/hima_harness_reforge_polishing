@@ -380,7 +380,7 @@ test('a cancel inside the inner loop ends the whole Run, leaving that loop opene
 
     const page = await d.open(`/hima/?run=${encodeURIComponent(runId)}`);
     assert.ok(page.ok, JSON.stringify(page));
-    const status = await d.wait('run-status', 'cancelled by a person');
+    const status = await d.wait('run-status', 'cancelled');
     assert.ok(status.ok, `wait run-status: ${JSON.stringify(status)}`);
     assert.deepEqual(d.unexpectedStdout(), []);
   } finally {

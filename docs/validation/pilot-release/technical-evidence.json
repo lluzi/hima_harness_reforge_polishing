@@ -1,5 +1,5 @@
 {
-  "status": "technical-audit-passed-ui-pending",
+  "status": "technical-and-authorized-ui-acceptance-passed",
   "formalCampaign": {
     "run": "run-6077b417-daf5-4db3-a1f4-72420fc5d15d",
     "status": "ended-budget-exhausted",
@@ -66,5 +66,6 @@
     "auditorSha256": "72879361648d425bbc9e895ddaf9451a04f41c44df11cd7108a34f56565d4671",
     "selectorAuditSha256": "602f393285be72f1db930ad352d8770f145b4ce58d1b80e899f8ec4073185cbe"
   },
-  "scope": "composed evidence, not a claim that the original formal Campaign returned its rejected branch; UI follow-up still pending"
+  "scope": "composed evidence with independent Agent UI acceptance; original formal Campaign growth stays rejected; user human review and real trial feedback remain pending",
+  "uiAuditSha256": "6e6639c31b620f2cbdf2a5a7fc44dc2a8de9f35eb83385802a2d03333a8a7c1d"
 }

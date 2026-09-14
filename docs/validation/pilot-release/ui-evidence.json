@@ -1,0 +1,176 @@
+{
+  "status": "passed",
+  "scope": "user-authorized independent Agent operation; not human acceptance",
+  "reviewer": "/root/pls25_flow_inventory; runtime model/effort unverified",
+  "applicationSource": "a83a4ec776a868a6d7ce5e00e2dea9c1d82072e4",
+  "display": "Catsights, display 3, secondary",
+  "windowBounds": {
+    "x": -1600,
+    "y": 319,
+    "width": 1280,
+    "height": 860
+  },
+  "firstRun": "run-6077b417-daf5-4db3-a1f4-72420fc5d15d",
+  "secondRun": "run-a1809077-009a-47d0-883f-c57f066f7228",
+  "acceptedActionOrder": {
+    "pause": 1,
+    "manifestRead": 3,
+    "experienceRead": 4,
+    "priorAnalysisAttempts": [
+      {
+        "index": 5,
+        "failed": true,
+        "kind": "tool-error"
+      }
+    ],
+    "analyzed": 6,
+    "priorCancelAttempts": [],
+    "cancelled": 9
+  },
+  "cancellationBookkeeping": [
+    {
+      "id": "run-a1809077-009a-47d0-883f-c57f066f7228#000004",
+      "seq": 4,
+      "nodeId": "probe",
+      "state": "cancelled",
+      "generation": 1,
+      "attempt": 1
+    }
+  ],
+  "offline": {
+    "hostBoots": 2,
+    "modelRequests": 0,
+    "newEdaJobs": 0
+  },
+  "auditSha256": "6e6639c31b620f2cbdf2a5a7fc44dc2a8de9f35eb83385802a2d03333a8a7c1d",
+  "siteScope": "zero experiment Jobs/EDA; Site workspace preparation and archive file I/O still occurred",
+  "media": [
+    {
+      "file": "pls26-coding-recorded.mov",
+      "scope": "ordinary coding, original",
+      "sha256": "9f140933b9335aae792e4e254f612bd6dce485e472140bffbc08c53c2bfca415",
+      "metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 860
+          }
+        ],
+        "format": {
+          "duration": "540.170000",
+          "size": "77549975"
+        }
+      },
+      "location": "private local delivery; not uploaded to public repository"
+    },
+    {
+      "file": "PLS26-coding-review.mp4",
+      "scope": "first 240 seconds of coding, remuxed",
+      "sha256": "8a4671bff1828326406ab4ea66aac2e77e2079faec8f3716a971d6e4bfece559",
+      "metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 860
+          }
+        ],
+        "format": {
+          "duration": "240.303333",
+          "size": "31244198"
+        }
+      },
+      "location": "private local delivery; not uploaded to public repository"
+    },
+    {
+      "file": "PLS26-final-workflow.mov",
+      "scope": "full workflow, original",
+      "sha256": "179793faee745a21567f8ac3a19e6c70a11aaa8d42f2a92b3c22842112fe33e1",
+      "metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 860
+          }
+        ],
+        "format": {
+          "duration": "600.040000",
+          "size": "84001058"
+        }
+      },
+      "location": "private local delivery; not uploaded to public repository"
+    },
+    {
+      "file": "PLS26-workflow-review.mp4",
+      "scope": "first 330 seconds of workflow, remuxed",
+      "sha256": "debf4bc9da961fc026cd8157d0beaf49534d96e61c04b602c12e29e4886285ac",
+      "metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 860
+          }
+        ],
+        "format": {
+          "duration": "334.685000",
+          "size": "48441188"
+        }
+      },
+      "location": "private local delivery; not uploaded to public repository"
+    },
+    {
+      "file": "PLS26-restart.mov",
+      "scope": "restart, original",
+      "sha256": "50fdb0820b1a8fe72d6be7efa78abcae4cf227e0b3f6c39a2e4f0c80e1a38dcd",
+      "metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 860
+          }
+        ],
+        "format": {
+          "duration": "120.000000",
+          "size": "18722808"
+        }
+      },
+      "location": "private local delivery; not uploaded to public repository"
+    },
+    {
+      "file": "PLS26-restart-review.mp4",
+      "scope": "restart, remuxed",
+      "sha256": "bd6ca526dfb385bfd9bfd68135f44e032ecc5f9e117fc0ce14b0e9cc54b067c1",
+      "metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 1280,
+            "height": 860
+          }
+        ],
+        "format": {
+          "duration": "120.035000",
+          "size": "18717246"
+        }
+      },
+      "location": "private local delivery; not uploaded to public repository"
+    }
+  ],
+  "lastLabelDelta": "final release changes cancelled by a person to cancelled; no behavior or data change"
+}
