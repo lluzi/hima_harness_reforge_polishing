@@ -20,7 +20,7 @@
 // Node's type stripping, which resolves specifiers literally — a `./host-launch.js` import would be a
 // file that does not exist in `src/` — so what this module needs, it declares.
 import { cp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -107,6 +107,13 @@ export function resolveDshHome(env: NodeJS.ProcessEnv = process.env): string {
  * @returns the absolute repository root.
  */
 export function checkoutRoot(): string {
+  // Electron also defines resourcesPath while running an unpackaged source app.
+  // The profile template distinguishes the sealed trial layout from that path.
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  if (typeof resourcesPath === 'string' && resourcesPath !== ''
+    && existsSync(path.join(resourcesPath, 'app', PROFILES_DIR, HIMA_PROFILE, PROFILE_MANIFEST))) {
+    return path.join(resourcesPath, 'app');
+  }
   const packageDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   return path.resolve(packageDir, '../..');
 }
@@ -128,10 +135,17 @@ export interface HimaHomeSources {
  * @returns the two source directories.
  */
 export function himaHomeSources(root: string = checkoutRoot()): HimaHomeSources {
+  const deployedHarness = path.join(root, 'node_modules', '@hima', 'harness');
+  // pnpm exposes this package through a symlink. Resolve it before installed-mode
+  // copying, otherwise the home would inherit a relative link into a non-existent
+  // profile node_modules tree.
+  const harnessPackage = existsSync(deployedHarness)
+    ? realpathSync(deployedHarness)
+    : path.join(root, 'packages/harness');
   return {
     profileTemplate: path.join(root, PROFILES_DIR, HIMA_PROFILE),
-    harnessPackage: path.join(root, 'packages/harness'),
-    presets: path.join(root, 'packages/harness/presets'),
+    harnessPackage,
+    presets: path.join(harnessPackage, 'presets'),
   };
 }
 

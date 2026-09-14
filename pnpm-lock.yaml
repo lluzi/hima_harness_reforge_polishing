@@ -50,13 +50,12 @@ importers:
 
   packages/desktop:
     dependencies:
-      '@hima/harness':
-        specifier: workspace:*
-        version: link:../harness
-    devDependencies:
       '@deepseek-ai/dsh':
         specifier: 0.1.5-alpha.1
         version: 0.1.5-alpha.1(1c9e8ed0e4ff5b0f42b3cb2b2ac91844)
+      '@hima/harness':
+        specifier: workspace:*
+        version: link:../harness
       electron:
         specifier: ^44.2.0
         version: 44.2.0

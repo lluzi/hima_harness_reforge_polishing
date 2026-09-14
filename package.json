@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r run typecheck && tsc -p test/tsconfig.json",
     "test:unit": "node scripts/run-unit-tests.mjs",
     "desktop": "pnpm --filter @hima/desktop run build && pnpm --filter @hima/desktop run start",
+    "package:trial": "node scripts/package-trial.mjs",
     "check:local": "pnpm run check:node && pnpm run check:seams && pnpm run check:boundary && pnpm run build && pnpm run typecheck && pnpm run test:local",
     "test:local": "node scripts/run-contract-tests.mjs local",
     "test:desktop": "node scripts/run-contract-tests.mjs desktop",

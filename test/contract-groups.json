@@ -62,7 +62,8 @@
     "test/contract/aes-domain-stages.test.ts",
     "test/contract/aes-full-graph.host.test.ts",
     "test/contract/aes-mining-view.test.ts",
-    "test/contract/aes-selection-template.test.ts"
+    "test/contract/aes-selection-template.test.ts",
+    "test/contract/trial-package.test.ts"
   ],
   "desktop": [
     "test/contract/growth-assets.desktop.test.ts",
@@ -85,7 +86,8 @@
     "test/contract/workshop.test.ts",
     "test/contract/pack-readers.test.ts",
     "test/contract/pipeline-stages.test.ts",
-    "test/contract/agent-execution.desktop.test.ts"
+    "test/contract/agent-execution.desktop.test.ts",
+    "test/contract/display-placement.desktop.test.ts"
   ],
   "live-site": [
     "test/contract/jobs.live.test.ts",

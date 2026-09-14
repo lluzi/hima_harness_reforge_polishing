@@ -7,7 +7,9 @@
   "type": "module",
   "main": "lib/main.js",
   "dependencies": {
-    "@hima/harness": "workspace:*"
+    "@deepseek-ai/dsh": "0.1.5-alpha.1",
+    "@hima/harness": "workspace:*",
+    "electron": "^44.2.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -15,8 +17,5 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "electron lib/main.js"
   },
-  "devDependencies": {
-    "@deepseek-ai/dsh": "0.1.5-alpha.1",
-    "electron": "^44.2.0"
-  }
+  "devDependencies": {}
 }

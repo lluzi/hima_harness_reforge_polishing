@@ -186,6 +186,9 @@ function dshEntry(): string {
 function nodeExecutable(): string {
   const named = process.env.HIMA_NODE;
   if (named !== undefined && named !== '') return named;
+  // Electron is the window runtime, not the dsh runtime. The trial app carries a
+  // separately pinned Node 24 binary because dsh declares Node 24 as its floor.
+  if (app.isPackaged) return path.join(checkoutRoot(), 'node', 'bin', 'node');
   const viaPackageManager = process.env.npm_node_execpath;
   if (viaPackageManager !== undefined && viaPackageManager !== '' && existsSync(viaPackageManager)) return viaPackageManager;
   return 'node';
@@ -202,6 +205,9 @@ function nodeExecutable(): string {
  * where they invoked it, which is the answer.
  */
 function hostWorkspace(): string {
+  if (app.isPackaged && (!process.env.HIMA_WORKSPACE || process.env.HIMA_WORKSPACE.trim() === '')) {
+    return path.join(app.getPath('userData'), 'workspace');
+  }
   return process.env.HIMA_WORKSPACE || process.env.INIT_CWD || process.cwd();
 }
 
@@ -228,23 +234,27 @@ const DRIVER_DISPLAY_VARIABLE = 'HIMA_DRIVER_DISPLAY';
  * position is the centre of the chosen display's work area, so a remembered position from another
  * screen cannot put the window somewhere no display is.
  */
-function driverBounds(remembered: WindowBounds): WindowBounds {
+function requestedDisplayBounds(remembered: WindowBounds): { readonly bounds: WindowBounds; readonly requested: boolean } {
   const displays = screen.getAllDisplays();
   const primary = screen.getPrimaryDisplay();
   const wanted = process.env[DRIVER_DISPLAY_VARIABLE]?.trim().toLowerCase();
+  const requested = wanted !== undefined && wanted !== '';
   const chosen = wanted !== undefined && wanted !== ''
     ? displays.find((d) => d.label.toLowerCase().includes(wanted))
     : displays.find((d) => d.id !== primary.id);
-  if (chosen === undefined) return remembered;
+  if (chosen === undefined) {
+    if (requested) throw new Error(`requested display ${JSON.stringify(process.env[DRIVER_DISPLAY_VARIABLE])} is unavailable; refusing before opening a window or starting a Host`);
+    return { bounds: remembered, requested: false };
+  }
   const area = chosen.workArea;
   const width = Math.min(remembered.width, area.width);
   const height = Math.min(remembered.height, area.height);
-  return {
+  return { bounds: {
     width,
     height,
     x: Math.round(area.x + (area.width - width) / 2),
     y: Math.round(area.y + (area.height - height) / 2),
-  };
+  }, requested };
 }
 
 function readBounds(): WindowBounds {
@@ -462,12 +472,17 @@ function stopHost(): Promise<number | null> {
 
 async function start(): Promise<void> {
   if (theme !== undefined) nativeTheme.themeSource = theme;
-  const bounds = driver ? driverBounds(readBounds()) : readBounds();
+  // An explicit display is an operator safety request in either driver or ordinary
+  // release mode. Resolve it before BrowserWindow/Host work so it never degrades to
+  // the primary display when Catsights disappears.
+  const placement = (driver || process.env[DRIVER_DISPLAY_VARIABLE]?.trim())
+    ? requestedDisplayBounds(readBounds())
+    : { bounds: readBounds(), requested: false };
   const win = new BrowserWindow({
-    ...bounds,
+    ...placement.bounds,
     title: APP_NAME,
     // A driver's window is shown once the page is up, and without taking focus; see the end of `start`.
-    show: !driver,
+    show: !(driver || placement.requested),
     backgroundColor: '#111827',
     icon: path.join(packageDir, 'assets/icon.png'),
     webPreferences: {
@@ -501,6 +516,12 @@ async function start(): Promise<void> {
   // \"hima\" does not exist" — the four steps that fix it existed only inside the contract suite's
   // support code. Now they are one module, this runs them, and it says what it did on the way past.
   const env = hostEnvironment();
+  // A trial never adopts an existing ~/.dsh ledger. A reviewer can still opt
+  // into a prepared home explicitly, which is how pilot validation is run.
+  if (app.isPackaged && (env.DSH_HOME === undefined || env.DSH_HOME.trim() === '')) {
+    env.DSH_HOME = path.join(app.getPath('userData'), 'trial-dsh');
+    env.DSH_AGENTS_HOME = path.join(env.DSH_HOME, 'agents');
+  }
   try {
     const prepared = await prepareHimaHome({ home: resolveDshHome(env) });
     for (const line of [`DSH_HOME is ${prepared.home}`, ...prepared.did]) say(line);
@@ -522,6 +543,7 @@ async function start(): Promise<void> {
   }
 
   try {
+    mkdirSync(hostWorkspace(), { recursive: true });
     host = await launchHimaHost({
       dshEntry: dshEntry(),
       node: nodeExecutable(),
@@ -573,6 +595,7 @@ async function start(): Promise<void> {
     win.showInactive();
     return;
   }
+  if (placement.requested) { win.showInactive(); return; }
   win.show();
 }
 

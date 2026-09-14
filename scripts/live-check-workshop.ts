@@ -44,6 +44,8 @@ export class LiveCheck {
   failure?: string;
   hardTimer: NodeJS.Timeout;
   readonly name: string;
+  private beforeDisposeAction?: () => Promise<void>;
+  private beforeDisposePromise?: Promise<void>;
   constructor(name: string, defaultTurns: number) {
     this.name = name;
     const continuation = name === 'live-check-pipeline-checkpoint';
@@ -78,8 +80,9 @@ export class LiveCheck {
     // reaching test alone. The two-generation Workshop check reached its second Job after 507s,
     // then exhausted its 9m Run while that Job was active. Keep the default at 10m; permit explicit
     // estimated budgets of 20m for the pipeline or 15m for Workshop, including result collection.
-    const maximumMs = finalization ? 300_000 : continuation ? 720_000 : name === 'live-check-pipeline' ? 1_200_000 : 900_000;
-    this.limits = { timeoutMs: bounded('--timeout-ms', defaultMs, maximumMs), maxTurns: bounded('--max-turns', defaultTurns, finalization ? 4 : continuation ? 12 : 32), maxSteps: bounded('--max-steps', defaultSteps, finalization ? 30 : continuation ? 100 : 200) };
+    const pilot = name === 'live-check-dtco-pilot';
+    const maximumMs = pilot ? 6_000_000 : finalization ? 300_000 : continuation ? 720_000 : name === 'live-check-pipeline' ? 1_200_000 : 900_000;
+    this.limits = { timeoutMs: bounded('--timeout-ms', pilot ? 6_000_000 : defaultMs, maximumMs), maxTurns: bounded('--max-turns', pilot ? 120 : defaultTurns, pilot ? 120 : finalization ? 4 : continuation ? 12 : 32), maxSteps: bounded('--max-steps', pilot ? 600 : defaultSteps, pilot ? 600 : finalization ? 30 : continuation ? 100 : 200) };
     this.out = path.resolve(options.get('--out') ?? path.join(repoRoot, 'docs/assessment/2026-09-12/pls-19/live-harness', `${name}-${Date.now()}`));
     if (existsSync(this.out)) throw new Error('the evidence directory already exists; use a fresh --out directory');
     mkdirSync(this.out, { recursive: true });
@@ -99,15 +102,29 @@ export class LiveCheck {
     this.observed.model = 'native configured DeepSeek adapter; no replay';
     // A stuck provider/disposal cannot make the configured time bound unbounded. Snapshot and
     // terminate only this private tmux server. The finally path normally cancels Agents first.
-    this.hardTimer = setTimeout(() => {
-      this.failure = 'hard deadline exceeded';
-      this.stopAgents();
-      this.stopJobs();
-      this.checkpoint();
-      this.emergencyScan();
-      process.stderr.write(`${name}: hard deadline; diagnostic checkpoint: ${this.out}\n`);
-      process.exit(124);
-    }, this.limits.timeoutMs);
+    this.hardTimer = setTimeout(() => { void this.hardStop(); }, this.limits.timeoutMs);
+  }
+  private async hardStop(): Promise<void> {
+    this.failure = 'hard deadline exceeded';
+    // Pilot cleanup owns remote Run cancellation. Give that registered cleanup a short final
+    // opportunity before local Agent/tmux teardown; the ordinary timeout path enters finish five
+    // seconds earlier and normally completes the same cleanup without reaching this fallback.
+    let cleanupSettled = false;
+    try {
+      await Promise.race([
+        this.runBeforeDispose().then(() => { cleanupSettled = true; }),
+        new Promise<void>((resolve) => setTimeout(resolve, 4_000)),
+      ]);
+    } catch (error) {
+      this.observed.hardDeadlineCleanupError = this.clean(String(error));
+    }
+    this.observed.hardDeadlineCleanupSettled = cleanupSettled;
+    this.stopAgents();
+    this.stopJobs();
+    this.checkpoint();
+    this.emergencyScan();
+    process.stderr.write(`${this.name}: hard deadline; diagnostic checkpoint: ${this.out}\n`);
+    process.exit(124);
   }
   emergencyScan(): void {
     const scan = { files: 0, redacted: [] as string[], unreadable: [] as string[] };
@@ -131,6 +148,14 @@ export class LiveCheck {
   require(claim: string, passed: boolean, saw: unknown): void { this.check(claim, passed, saw); if (!passed) throw new Error(claim); }
   track(agent: Agent): Agent { if (!this.agents.includes(agent)) this.agents.push(agent); return agent; }
   trackResumed(agent: Agent): Agent { this.resumedSessions.add(String(agent.id)); return this.track(agent); }
+  beforeDispose(action: () => Promise<void>): void {
+    if (this.beforeDisposeAction !== undefined) throw new Error('only one before-dispose cleanup may be registered');
+    this.beforeDisposeAction = action;
+  }
+  private runBeforeDispose(): Promise<void> {
+    this.beforeDisposePromise ??= this.beforeDisposeAction?.() ?? Promise.resolve();
+    return this.beforeDisposePromise;
+  }
   retainedRoots(): string[] {
     return [this.temporary, this.out, ...(this.home && !within(this.home.home, this.temporary) ? [this.home.home] : [])];
   }
@@ -207,6 +232,8 @@ export class LiveCheck {
   }
   stopJobs(): void { spawnSync('tmux', ['-S', path.join(this.temporary, `tmux-${process.getuid!()}`, 'default'), 'kill-server'], { stdio: 'ignore', timeout: 2000 }); }
   async finish(): Promise<void> {
+    try { await this.runBeforeDispose(); }
+    catch (error) { this.failure ??= `before-dispose cleanup failed: ${this.clean(String(error))}`; }
     this.stopAgents();
     // Snapshot actual product facts before cleanup changes them. Private Job termination is cleanup,
     // never evidence that an Agent cancel/pause succeeded.
@@ -222,10 +249,11 @@ export class LiveCheck {
     const at = path.join(this.out, 'evidence.json');
     const existing = JSON.parse(readFileSync(at, 'utf8')) as Record<string, unknown>;
     const passed = !this.failure && this.checks.every((c) => c.passed);
+    const outcome = passed && typeof this.observed.outcome === 'string' ? this.observed.outcome : passed ? 'PASS' : 'FAIL';
     writeFileSync(at, JSON.stringify(this.clean({ ...existing, finishedAt: new Date().toISOString(), passed, status: passed ? 'passed' : 'failed', failure: this.failure ?? null, observed: this.observed, checks: this.checks }), null, 2) + '\n');
-    writeFileSync(path.join(this.out, 'README.md'), `# ${this.name}\n\n${passed ? 'PASS' : 'FAIL'} — ${this.failure ?? 'see factual checks in evidence.json'}.\n\nOne headless real Host; no Electron, replay or hidden research moment. ${this.observed.realEdaRequested === true ? 'Real Site/EDA was requested; actual Job counts and outcomes are in the Run records.' : 'No EDA was requested.'} Native model sessions: ${this.requestSessions.size}; request steps: ${this.steps}; API request count and token use unmeasured. Private diagnostic home retained at ${this.temporary}. Private local tmux cleanup was attempted; actual Job lifetimes are recorded separately.\n\n${this.checks.map((c) => `- ${c.passed ? 'PASS' : 'FAIL'}: ${c.claim}`).join('\n')}\n`);
+    writeFileSync(path.join(this.out, 'README.md'), `# ${this.name}\n\n${outcome} — ${this.failure ?? 'see factual checks in evidence.json'}.\n\nOne headless real Host; no Electron, replay or hidden research moment. ${this.observed.realEdaRequested === true ? 'Real Site/EDA was requested; actual Job counts and outcomes are in the Run records.' : 'No EDA was requested.'} Native model sessions: ${this.requestSessions.size}; request steps: ${this.steps}; API request count and token use unmeasured. Private diagnostic home retained at ${this.temporary}. Private local tmux cleanup was attempted; actual Job lifetimes are recorded separately.\n\n${this.checks.map((c) => `- ${c.passed ? 'PASS' : 'FAIL'}: ${c.claim}`).join('\n')}\n`);
     clearTimeout(this.hardTimer);
-    process.stdout.write(`${this.name}: ${passed ? 'PASS' : 'FAIL'}; evidence ${this.out}\n`);
+    process.stdout.write(`${this.name}: ${outcome}; evidence ${this.out}\n`);
     process.exitCode = passed ? 0 : 1;
   }
 }

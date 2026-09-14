@@ -273,6 +273,9 @@ export async function bootDriver(t: TestContext, options: BootDriverOptions): Pr
       HIMA_NODE: process.execPath,
       HIMA_WORKSPACE: home.workspace,
       HIMA_USER_DATA: userData,
+      // Desktop evidence belongs on the dedicated Catsights display unless an
+      // operator explicitly selects another display for a controlled test.
+      HIMA_DRIVER_DISPLAY: process.env.HIMA_DRIVER_DISPLAY ?? 'Catsights',
       BROWSER: 'none',
       ...options.env,
     },
