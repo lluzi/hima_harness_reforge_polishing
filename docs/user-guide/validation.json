@@ -1,0 +1,37 @@
+{
+  "status": "passed",
+  "date": "2026-09-14",
+  "scope": "documentation and artifact validation only; not a new product acceptance run",
+  "applicationVersion": "v0.2.0-trial.1",
+  "applicationSource": "207d22f8189acef4d5daa2983897de3befb6ee35",
+  "handbookVersion": "1.0",
+  "pdf": {
+    "pages": 23,
+    "chaptersAndOutlineEntries": 21,
+    "sha256": "3597b2ad8f9214fe880a1e18d8273389c6a3403eeb873e6ff2060b48871d72b3",
+    "allPagesRenderedAndVisuallyReviewed": true,
+    "missingSourceGlyphs": 0,
+    "outOfPageText": 0
+  },
+  "staticChecks": {
+    "htmlNavigationAndLocalLinks": "passed",
+    "htmlBrowserAutomation": "not run",
+    "fixedGitSourceLinks": "resolved",
+    "releaseLink": "verified published prerelease via GitHub CLI",
+    "legacyInputFieldNamesMatched": 54,
+    "scoreDimensions": 8,
+    "syntheticExerciseExpectedArithmetic": "passed",
+    "privatePathAndCredentialLiteralScan": "passed"
+  },
+  "workload": {
+    "productModelRequests": 0,
+    "edaJobs": 0,
+    "desktopTests": 0,
+    "sshSiteChecks": 0
+  },
+  "limits": [
+    "Model/EDA/app capabilities are cited from existing versioned evidence.",
+    "New-machine provisioning and exercise completion depend on the delivered environment; not rerun for this manual.",
+    "Local filled handover card is excluded from the public kit."
+  ]
+}

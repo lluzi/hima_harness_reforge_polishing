@@ -1,0 +1,2 @@
+3597b2ad8f9214fe880a1e18d8273389c6a3403eeb873e6ff2060b48871d72b3  HimaHarness-Evaluation-Handbook-v1.0.pdf
+b61414ec788c22d926142541a58966114c8f2dbd61f26ded6f545c4568b1ace3  HimaHarness-Evaluation-Kit-v1.0.zip
