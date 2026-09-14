@@ -43,6 +43,35 @@ test('native growth attaches mechanical identities without asking the Agent to c
   } finally { await dispose(f); }
 });
 
+test('a ready top-level Explore may open additive growth, but cannot complete until its active branch returns', async (t) => {
+  const f = await prepared(t);
+  try {
+    await f.reachGrowth();
+    const begun = await f.call({ action: 'begin', nodeId: 'next-period' });
+    assert.equal(begun.kind, 'accepted', JSON.stringify(begun));
+    const parentExecutionId = begun.receipt!.executionId!;
+    assert.equal((await f.call({ action: 'work', executionId: parentExecutionId })).kind, 'accepted');
+    await waitUntil('ready Explore parent', () => f.context().executions.some((execution) => execution.id === parentExecutionId && execution.phase === 'ready'), 20_000, 20);
+    const parentBefore = f.context().executions.find((execution) => execution.id === parentExecutionId)!;
+    assert.equal(parentBefore.kind, 'explore');
+    assert.equal(parentBefore.jobSession, undefined);
+    assert.equal(parentBefore.intent, undefined);
+    const accepted = await f.call({ action: 'grow', proposal: f.proposal('ready-parent-growth') });
+    assert.equal(accepted.kind, 'accepted', JSON.stringify(accepted));
+    const parentAfter = f.context().executions.find((execution) => execution.id === parentExecutionId)!;
+    assert.deepEqual(parentAfter, parentBefore, 'growth does not replace the ready parent execution or its input identity');
+    const skipped = await f.call({ action: 'complete', executionId: parentExecutionId, decision: 'next-strategy', strategy: { periodNs: 2.2 }, rationale: 'must wait for declared growth', cites: recordsOf(f.host, f.runId).filter((record) => record.type === 'observation' || record.type === 'verdict').map((record) => record.id) });
+    assert.equal(skipped.kind, 'refused');
+    assert.match(skipped.reason!, /active growth|return/i);
+    for (const nodeId of ['growth-synthesize', 'growth-read', 'growth-judge']) await f.node(nodeId);
+    assert.equal(f.context().run.currentNode, 'next-period');
+    assert.deepEqual(f.context().available, [], 'the returned parent remains held by its original ready execution');
+    assert.equal(f.context().executions.find((execution) => execution.id === parentExecutionId)?.phase, 'ready');
+    const completed = await f.call({ action: 'complete', executionId: parentExecutionId, decision: 'next-strategy', strategy: { periodNs: 2.2 }, rationale: 'growth returned with its declared evidence', cites: recordsOf(f.host, f.runId).filter((record) => record.type === 'observation' || record.type === 'verdict').map((record) => record.id) });
+    assert.equal(completed.kind, 'accepted', completed.reason);
+  } finally { await dispose(f); }
+});
+
 test('the Campaign attempt limit refuses valid new growth and strategy-only revision while preserving analysis', async (t) => {
   const f = await prepared(t, 120_000, 2);
   try {
@@ -180,6 +209,12 @@ test('accepted growth reconstructs after Host restart without insertion or launc
   let second: InProcessHost | undefined;
   try {
     await f.reachGrowth();
+    const begun = await f.call({ action: 'begin', nodeId: 'next-period' });
+    assert.equal(begun.kind, 'accepted', JSON.stringify(begun));
+    const parentExecutionId = begun.receipt!.executionId!;
+    assert.equal((await f.call({ action: 'work', executionId: parentExecutionId })).kind, 'accepted');
+    await waitUntil('ready Explore parent before restart', () => f.context().executions.some((execution) => execution.id === parentExecutionId && execution.phase === 'ready'), 20_000, 20);
+    const parentBefore = f.context().executions.find((execution) => execution.id === parentExecutionId)!;
     assert.equal((await f.call({ action: 'grow', proposal: f.proposal() })).kind, 'accepted');
     // Crash-window counterexample: acceptance is durable before the Run-row move. Put the row back
     // at its parent to model an interruption between those writes; reconstruction must still expose
@@ -190,9 +225,22 @@ test('accepted growth reconstructs after Host restart without insertion or launc
     await f.host.dispose();
     second = await bootInProcess(f.home.h);
     await second.ctx.hima.reconciled;
+    const agents = second.ctx.get('agents');
+    const defaultModel = second.ctx.get('agentDefaultModel');
+    assert.ok(agents && defaultModel);
+    const selection = defaultModel.currentSelection();
+    await agents.resume({ resumeSessionId: String(f.agent.id) as never, agentOptions: { provider: selection.provider, model: selection.model } });
     const context = second.ctx.hima.executionContext(f.runId);
     assert.equal(context.run.currentNode, 'next-period');
     assert.deepEqual(context.available, ['growth-synthesize']);
+    const parentAfter = context.executions.find((execution) => execution.id === parentExecutionId)!;
+    assert.deepEqual(parentAfter, parentBefore, 'restart keeps the original held ready parent and its input identity');
+    const control = context.run.control!;
+    const fenced = await second.ctx.hima.executionAction({ runId: f.runId, actor: String(f.agent.id),
+      expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: 'restart-held-parent-fence',
+      action: 'complete', executionId: parentExecutionId });
+    assert.equal(fenced.kind, 'refused');
+    assert.match(fenced.reason!, /active growth branch.*return/);
     assert.equal(context.growths.find((growth) => growth.event === 'accepted')?.entry, 'growth-synthesize');
     assert.equal(recordsOf(second, f.runId).filter((record) => record.type === 'growth').length, growthCount);
     assert.equal(jobRecords(second, f.runId).filter((record) => record.event === 'launched').length, launches);

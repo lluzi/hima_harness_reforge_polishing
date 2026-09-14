@@ -1,5 +1,7 @@
 # Final local regression
 
-The complete local group produced 463 passes and two failures out of465tests. The failures were test timing assumptions: graphcoverage left only120seconds before its closing reserve, and a legacy resume fixture expected all experiment work to fit6seconds under packaging load. Both tests nowhave adequate isolated budgets; all original owner/graph/evidence/attempt/wait-accounting assertions remain. No production budget, runtime or Pack waschanged. Independent narrowreview foundno weakened intendedassertion.
+The complete local group produced 463 passes and two failures out of 465 tests. The failures exposed test timing assumptions: the graph coverage test allowed only 120 seconds before its closing reserve, and a legacy resume test expected all experiment work to fit within six seconds under packaging load.
 
-Both affectedtests thenpassed independently, with preserved commandlogs and hashes in evidence.json. The full group wasnot rerunafter these test-only corrections. New selector-audit cases and no-window desktop diagnostics passed separately. These checks do not certify actualEDA, AI research, UIoperation or useracceptance.
+Both tests now have adequate budgets for their intended checks. All original owner, graph, evidence, attempt and wait-accounting assertions remain. No production budget, runtime or Pack behavior changed in this test correction. Independent review found no weakened assertion.
+
+Both affected tests then passed independently; command logs and hashes are recorded in `evidence.json`. The full group was not rerun after these test-only corrections. The later ready-parent growth correction has its own focused evidence. Selector-audit cases and no-window desktop diagnostics passed separately. These local checks do not certify actual EDA, AI research, UI operation or user acceptance.

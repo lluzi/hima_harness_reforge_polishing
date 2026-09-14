@@ -131,9 +131,7 @@ interface StagingManifest {
 
 type ArchiveRecord = Extract<LedgerRecord, { type: 'archive' }>;
 
-interface PilotCheckpoint {
-  schema: 1;
-  status: 'first-campaign-passed-ready-for-ui';
+interface PilotCheckpointCommon {
   home: string;
   firstRun: string;
   firstOwner: string;
@@ -148,6 +146,26 @@ interface PilotCheckpoint {
   };
   recordsSha256: string;
 }
+
+interface PilotCheckpointV1 extends PilotCheckpointCommon {
+  schema: 1;
+  status: 'first-campaign-passed-ready-for-ui';
+}
+
+interface PilotCheckpointV2 extends PilotCheckpointCommon {
+  schema: 2;
+  status: 'first-campaign-audited-ready-for-ui';
+  sourceEvidence: { path: string; sha256: string };
+  audit: { evidence: string; sha256: string };
+  growthValidation: {
+    scope: 'separate-L4';
+    path: string;
+    sha256: string;
+    originalRunGrowth: 'rejected';
+  };
+}
+
+type PilotCheckpoint = PilotCheckpointV1 | PilotCheckpointV2;
 
 const isTerminal = (status: string | undefined): boolean =>
   status?.startsWith('ended-') === true || status === 'cancelled';
@@ -182,8 +200,73 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
   try {
     const checkpointFile = realpathSync(path.resolve(checkpointPath));
     const checkpoint = JSON.parse(readFileSync(checkpointFile, 'utf8')) as PilotCheckpoint;
-    assert.equal(checkpoint.schema, 1);
-    assert.equal(checkpoint.status, 'first-campaign-passed-ready-for-ui');
+    assert.ok(checkpoint.schema === 1 || checkpoint.schema === 2, 'unsupported pilot checkpoint schema');
+    assert.equal(checkpoint.status, checkpoint.schema === 1
+      ? 'first-campaign-passed-ready-for-ui'
+      : 'first-campaign-audited-ready-for-ui');
+    if (checkpoint.schema === 2) {
+      const sourceEvidence = realpathSync(checkpoint.sourceEvidence.path);
+      const auditEvidence = realpathSync(checkpoint.audit.evidence);
+      const growthEvidence = realpathSync(checkpoint.growthValidation.path);
+      assert.equal(checkpoint.growthValidation.scope, 'separate-L4');
+      assert.equal(checkpoint.growthValidation.originalRunGrowth, 'rejected');
+      assert.equal(sha256(readFileSync(sourceEvidence)), checkpoint.sourceEvidence.sha256,
+        'schema-2 source evidence identity changed');
+      assert.equal(sha256(readFileSync(auditEvidence)), checkpoint.audit.sha256,
+        'schema-2 completed Campaign audit identity changed');
+      assert.equal(sha256(readFileSync(growthEvidence)), checkpoint.growthValidation.sha256,
+        'schema-2 separate L4 growth evidence identity changed');
+      const audit = JSON.parse(readFileSync(auditEvidence, 'utf8')) as {
+        check?: string;
+        status?: string;
+        passed?: boolean;
+        run?: { id?: string };
+        originalRunGrowth?: string;
+        originalEvidence?: { sha256?: string };
+        growthEvidence?: { sha256?: string };
+        archive?: { manifestSha256?: string };
+        method?: { digest?: string };
+      };
+      const growth = JSON.parse(readFileSync(growthEvidence, 'utf8')) as {
+        check?: string;
+        status?: string;
+        passed?: boolean;
+        checks?: Array<{ passed?: boolean }>;
+        observed?: { readyParentCheck?: boolean; realEdaRequested?: boolean; runId?: string };
+        costs?: { modelRequestSteps?: number };
+        runs?: Array<{
+          run?: RunRecord;
+          records?: LedgerRecord[];
+        }>;
+        toolSequence?: Array<{
+          name?: string;
+          args?: { run?: string; action?: string };
+          result?: { content?: Array<{ type?: string; text?: string }> };
+        }>;
+      };
+      assert.ok(audit.check === 'audit-completed-dtco-pilot' && audit.status === 'passed'
+        && audit.passed === true && audit.run?.id === checkpoint.firstRun
+        && audit.originalRunGrowth === 'rejected'
+        && audit.originalEvidence?.sha256 === checkpoint.sourceEvidence.sha256
+        && audit.growthEvidence?.sha256 === checkpoint.growthValidation.sha256
+        && audit.archive?.manifestSha256 === checkpoint.archive.manifestSha256
+        && audit.method?.digest === checkpoint.pack.digest,
+      'schema-2 completed Campaign audit is invalid');
+      const growthRun = growth.runs?.find((entry) => entry.run?.id === growth.observed?.runId);
+      assert.ok(growth.check === 'live-check-growth-assets' && growth.status === 'passed'
+        && growth.passed === true && growth.observed?.readyParentCheck === true
+        && growth.observed.realEdaRequested === false && (growth.costs?.modelRequestSteps ?? 0) > 0,
+      'schema-2 separate L4 growth evidence is invalid');
+      assert.ok((growth.checks?.length ?? 0) > 1 && growth.checks?.every((check) => check.passed === true)
+        && growthRun?.run?.status === 'ended-goal-met' && growthRun.run.siteId === 'local'
+        && growthRun.records?.some((record) => record.type === 'growth' && record.event === 'returned'
+          && (record.evidence?.length ?? 0) >= 3)
+        && growth.toolSequence?.some((entry) => entry.name === 'hima_execute'
+          && entry.args?.run === growth.observed?.runId && entry.args?.action === 'complete'
+          && entry.result?.content?.some((item) => item.type === 'text' && item.text
+            && /active growth branch must return/.test(item.text))),
+      'schema-2 separate L4 lacks the returned branch or actual parent-fence refusal');
+    }
     assert.equal(checkpoint.pack.id, PACK_ID);
     assert.equal(checkpoint.pack.version, '5');
     assert.equal(checkpoint.site, SITE_ID);

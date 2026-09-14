@@ -1,0 +1,70 @@
+{
+  "status": "technical-audit-passed-ui-pending",
+  "formalCampaign": {
+    "run": "run-6077b417-daf5-4db3-a1f4-72420fc5d15d",
+    "status": "ended-budget-exhausted",
+    "sourceSha": "7d874ceda12d6f8d5111f56686ca44441f973a8c",
+    "pack": {
+      "id": "aes-tsmc28-dtco",
+      "version": "5",
+      "digest": "d1475ce846350cfeec86ad73112a80d707deb1e019a23922abaa83490c11d6db"
+    },
+    "costs": {
+      "hosts": 1,
+      "electron": 0,
+      "nativeSessionsCreated": 1,
+      "nativeSessionsResumed": 0,
+      "modelSessions": 1,
+      "modelRequestSteps": 267,
+      "apiRequests": "unmeasured; request steps exclude adapter retries",
+      "tokens": "unmeasured",
+      "userMessages": 1
+    },
+    "jobsLaunched": 45,
+    "originalLiveCheck": "failed at optional growth gate; retained",
+    "originalEvidenceSha256": "0883e128286d96b249c995ae17051b3f8fbd201c4d0df93b69ed8bd48bc04702",
+    "growthInThisRun": "rejected",
+    "algorithmLimitation": "first three selectors returned empty due to a preserved schema-interpretation defect; not evidence of no opportunities",
+    "inputScope": "AI read source-linked finite research views; executed programs consumed complete raw inputs; no claim of full raw/source chat reads"
+  },
+  "separateGrowthRegression": {
+    "status": "passed",
+    "costs": {
+      "hosts": 1,
+      "electron": 0,
+      "nativeSessionsCreated": 1,
+      "nativeSessionsResumed": 0,
+      "modelSessions": 1,
+      "modelRequestSteps": 57,
+      "apiRequests": "unmeasured; request steps exclude adapter retries",
+      "tokens": "unmeasured",
+      "userMessages": 2
+    },
+    "realEdaRequested": false,
+    "rawSha256": "b200b95be24076170ae73de67d0c8f25244f5f3f09487cb2a4b13a012607656e",
+    "restart": {
+      "status": "passed",
+      "scope": "offline restart of actual L4 ready-parent study; no model, EDA or desktop",
+      "sourceSha256": "b200b95be24076170ae73de67d0c8f25244f5f3f09487cb2a4b13a012607656e",
+      "runId": "run-b190b4e8-2072-41f2-a52e-0914a7a48150",
+      "recordsSha256": "1d27f87946748a3c4e9be1ca9989c4dbb513ef7e1f2f4aab85418fad0dd517bb",
+      "manifestSha256": "6813011e32b177e3547b71c8fdd30bcbdc796ec3ccd09027ec13dc6ec7e04b1b",
+      "materials": 11,
+      "hosts": 1,
+      "modelRequests": 0
+    }
+  },
+  "offlineComposition": {
+    "status": "passed",
+    "checks": 16,
+    "offline": {
+      "hostBoots": 2,
+      "modelRequests": 0,
+      "newEdaJobs": 0
+    },
+    "evidenceSha256": "e6a05903e60df52b6055f82cfbc28270b1a7313ccaa6320894ed74045425ec68",
+    "auditorSha256": "72879361648d425bbc9e895ddaf9451a04f41c44df11cd7108a34f56565d4671",
+    "selectorAuditSha256": "602f393285be72f1db930ad352d8770f145b4ce58d1b80e899f8ec4073185cbe"
+  },
+  "scope": "composed evidence, not a claim that the original formal Campaign returned its rejected branch; UI follow-up still pending"
+}

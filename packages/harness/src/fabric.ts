@@ -1616,7 +1616,16 @@ async function growthAction(deps: FabricDeps, snapshot: RunRecord, req: Executio
   const existingIds = new Set((executionPack(deps, run).growthGraphs ?? []).flatMap((growth) => growth.graph.nodes.map((node) => node.id)));
   const duplicate = proposal.nodes.find((node) => existingIds.has(node.id));
   if (duplicate !== undefined) return reject(`added node "${duplicate.id}" already belongs to an accepted growth branch`);
-  if (Object.values(control.executions).some((execution) => execution.nodeId === proposal.parent.nodeId && execution.generation === run.generation && execution.phase !== 'completed' && execution.phase !== 'failed')) return reject('the declared growth point already has an admitted execution');
+  const heldParents = Object.values(control.executions).filter(execution => execution.supersededBy === undefined
+    && execution.nodeId === proposal.parent.nodeId && execution.generation === run.generation
+    && execution.phase !== 'completed' && execution.phase !== 'failed');
+  // Entering an Explore point only admits a decision; it does not consume that decision.
+  // Keep its original identity while a requested branch gathers additional evidence.
+  if (heldParents.some(execution => execution.kind !== 'explore' || execution.phase !== 'ready'
+    || execution.result?.kind !== 'settled' || execution.intent !== undefined
+    || execution.jobSession !== undefined || execution.workshop !== undefined)) {
+    return reject('the declared growth point has an in-flight or unsettled execution');
+  }
 
   const proposed = earlier.find((record) => record.event === 'proposed')
     ?? await deps.ledger.appendGrowth(run.id, { proposalId: proposal.proposalId, proposalDigest, event: 'proposed', proposal: proposalJson(proposal) });
@@ -2205,6 +2214,10 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
   const run = existingRun(deps.ledger, runId);
   const control = run.control!;
   const no = (reason: string) => executionAnswer(deps, runId, 'refused', { reason });
+  const pendingGrowth = activeGrowth(deps, ctx.pack, run);
+  if (pendingGrowth !== undefined && !pendingGrowth.graph.nodes.some(node => node.id === execution.nodeId)) {
+    return no('the active growth branch must return before completing its reference point');
+  }
   const { node, graph } = positionOf(ctx.pack, execution.nodeId)!;
   const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
   if (execution.phase !== 'ready' || execution.result === undefined || (execution.result.kind !== 'settled' && execution.result.kind !== 'moved')) return no('completion needs the actual successful operation result; an Agent statement is not evidence');
