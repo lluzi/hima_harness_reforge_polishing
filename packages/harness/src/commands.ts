@@ -35,7 +35,7 @@ import { PackFolderError, PackNotFoundError, RunFaultError, RunReferenceError, R
 /** What `/hima` says it is, in the one line a person sees in the host's command list. Here with the
  *  handlers it describes, so a verb added below is a verb named here. */
 export const himaCommandDescription =
-  'HimaHarness: version, observe <site> <path> to read a report into the ledger, judge <runId> --rules <id,...> to rule on what it holds, job launch|status|tail|kill to run a job on a site under its permit, pack check|prepare|release to hold a HimaPack against a site, give a campaign its workspace and seal a tested pack, run <pack> --site <site> --goal <name>=<value> to start a campaign and let HimaFabric execute its graph, resume <runId> to clear a waiting run and carry it on, status <runId> to see where a run stands, and cancel <runId> to stop one';
+  'HimaHarness: keep ordinary DeepSeek Harness chat and coding; inspect and prepare a HimaPack and Site for a chip-design Campaign; let the visible Campaign Agent choose and execute authorized nodes while HimaFabric records the graph, budget, jobs, evidence and recovery. Commands: version; observe; judge; job launch|status|tail|kill; pack check|prepare|release; run; resume; status; cancel';
 
 const require = createRequire(import.meta.url);
 const bundleVersion: string = require('../package.json').version;

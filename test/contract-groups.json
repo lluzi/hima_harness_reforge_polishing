@@ -1,5 +1,8 @@
 {
   "local": [
+    "test/contract/product-context.host.test.ts",
+    "test/contract/site-discovery.test.ts",
+    "test/contract/custom-cell-fmax-pack.test.ts",
     "test/contract/research-analysis.host.test.ts",
     "test/contract/growth.test.ts",
     "test/contract/growth.host.test.ts",

@@ -24,13 +24,13 @@ import z from '@deepseek-ai/schemastery';
 // stand on. What is registered is built in the two face modules, which face those seams themselves.
 import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-commands';
-import { Ledger, ledgerSpec } from './ledger.js';
+import { hasEnded, Ledger, ledgerSpec } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
 import { drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
-import { handleHimaCommand, himaCommandDescription } from './commands.js';
+import { handleHimaCommand, himaCommandDescription, versionLine } from './commands.js';
 import { himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
@@ -290,8 +290,40 @@ export interface Config {
   packsDir: string;
 }
 
+/** Stable product knowledge for ordinary HimaGuide conversations.
+ *
+ * This is intentionally short. It gives the root DSH Agent enough product vocabulary to answer a
+ * first-use question without searching the checkout; live installation facts are contributed by
+ * {@link himaRuntimeContext} separately so this text never becomes a second inventory.
+ */
+export const HIMA_PRODUCT_CONTEXT = [
+  'You are HimaGuide inside HimaHarness. HimaHarness keeps DeepSeek Harness\' general-purpose chat and coding abilities, and adds governed chip-design Campaigns.',
+  'A Campaign is the business task the user wants completed. One persistent Run records its execution. A HimaPack is a transparent, installable method capability: it declares purpose, required inputs and outputs, tools, knowledge, reference graph, limits and evidence rules; it must not be treated as one fixed design replay.',
+  'A Site describes a reachable execution environment and its permit. HimaGuide helps inspect a Pack, discover a Site and prepare the required inputs before asking for one concrete Campaign confirmation.',
+  'The visible Campaign Agent owns execution decisions. HimaFabric constrains the allowed graph, budget, dependencies, jobs, evidence and recovery; it does not replace the Agent with a hidden automatic executor.',
+  'Answer product identity and installed-inventory questions from this context and the current Hima inventory below. Do not search source code, the filesystem or the web for those answers. Never claim readiness, a measured result or an installed item that the current inventory does not state.',
+].join('\n');
+
+/** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
+ * Run id or customer material is exposed. Read afresh for every prompt assembly. */
+export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: string): string {
+  const packs = installedPacks(packsDir);
+  const sites = installedSites(sitesDir);
+  const active = ledger.runs().filter((run) => !hasEnded(run.status)).slice(-5);
+  const packLine = packs.length === 0
+    ? 'Installed HimaPacks: none. Offer to install or inspect a Pack before preparing a Campaign.'
+    : `Installed HimaPacks: ${packs.join(', ')}.`;
+  const siteLine = sites.length === 0
+    ? 'Saved Sites: none. Offer to discover a Site from the user\'s SSH identity and available hints.'
+    : `Saved Sites: ${sites.join(', ')}.`;
+  const campaignLine = active.length === 0
+    ? 'Active Campaigns: none.'
+    : `Active Campaigns: ${active.map((run) => `${run.packId ?? 'unknown Pack'} on ${run.siteId} is ${run.status ?? 'preparing'}${run.currentNode === undefined ? '' : ` at ${run.currentNode}`}`).join('; ')}.`;
+  return [`HimaHarness: ${versionLine()}.`, packLine, siteLine, campaignLine].join('\n');
+}
+
 export default class Hima extends Service {
-  static inject = ['storageDomain', 'commands', 'tools', 'skills'];
+  static inject = ['storageDomain', 'commands', 'tools', 'skills', 'systemPrompt'];
   static Config = z.object({ sitesDir: z.string().required(), packsDir: z.string().required() });
 
   ledger!: Ledger;
@@ -314,6 +346,19 @@ export default class Hima extends Service {
   async [Service.init](): Promise<void> {
     const domain = await this.ctx.storageDomain.open(ledgerSpec);
     this.ledger = new Ledger(domain);
+    // Product identity is a prompt contribution rather than a document the Agent has to discover.
+    // The dynamic inventory is recomputed at assembly time, so installs and Campaign changes are
+    // visible on the next step without restarting the Host or scanning the checkout.
+    this.ctx.effect(() => this.ctx.systemPrompt.section({
+      name: 'hima:product',
+      order: this.ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX') + 10,
+      text: HIMA_PRODUCT_CONTEXT,
+    }), 'hima: product identity');
+    this.ctx.effect(() => this.ctx.systemPrompt.context({
+      name: 'hima:inventory',
+      order: this.ctx.systemPrompt.getContextOrder('SUBAGENT_DELEGATION') + 10,
+      text: () => himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir),
+    }), 'hima: current product inventory');
     this.ctx.effect(() => { this.notificationsActive = true; return () => { this.notificationsActive = false; }; });
     // The judge takes the ledger's one verdict-writer capability here; nothing else can obtain it.
     this.judge = createJudge(this.ledger, this.config.packsDir);
