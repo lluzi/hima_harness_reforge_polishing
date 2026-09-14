@@ -9,3 +9,11 @@ Independent Standards and Spec reviews were performed. Two initial concerns were
 Desktop fixes compose the platform's existing browse directory-picker backend/UI inside Hima. The executable name Electron made isPackaged false and selected system Node. Renaming it HimaHarness and updating Info.plist produces isPackaged true and selects bundled Node 24. Ad-hoc signature and actual Host/API checks pass; commercial signing, notarization and other platforms are not certified.
 
 Standards used Terra/Medium. The runner refused creation of another Agent, so Spec reused an existing independent Agent whose model/effort metadata is unavailable; it is not reported as Sol/High. Root and Terra/Medium implemented the corrections.
+
+The second real v4 attempt completed all 41 launched Jobs, but two generated-arm PNR attempts failed Innovus's density limit (95.04% versus 95.00%). The checker spent 454 model request steps and 99 continuation messages before stopping; it cancelled and archived the owned Run. See `second-live-failure.json`. This is an incomplete physical experiment, not a completed negative PPA comparison.
+
+The next Pack version exposes initial floorplan utilization as one bounded strategy shared by both arms. Native compilation rejected a missing tool-input declaration and then the incomplete words/seal transition before any real Campaign could start; the original failures are retained. These local checks prevented spending model/EDA resources on an unfit Pack. The prior v4 seal is preserved; v5 must obtain its own actual local test and native release receipt.
+
+The pilot coordinator now stops after three unchanged idle execution contexts and permits read-only access to its own native spilled text results. Six native lifecycle/guard and selector tests passed in 9.464 seconds with zero Electron or SSH processes. The selector audit permits non-shadowing pure-declaration helper functions while retaining fixed imports/main/I/O, and binds its launched file hash to the reported audit hash. Ordinary type checking also found a test-only union narrowing omission in the earlier fork counterexample; its explicit Job guard was restored.
+
+The v5 Pack delta received a narrow independent Terra/Medium review with no actionable finding. Physical utilization validation and final full-pilot acceptance remain separate from these local results.

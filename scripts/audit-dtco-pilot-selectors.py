@@ -5,6 +5,7 @@ This proves bounded input dependence and provenance, not optimality or PPA benef
 The input manifest is prepared from hash-verified Pack archive materials by the live audit.
 """
 import ast
+import builtins
 import hashlib
 import importlib.util
 import json
@@ -16,11 +17,28 @@ def sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def scaffold(raw):
+def scaffold(raw, template):
     tree = ast.parse(raw)
+    reference = ast.parse(template)
+    fixed_names = {node.name for node in reference.body if isinstance(node, ast.FunctionDef)}
+    fixed_names.update(alias.asname or alias.name.split('.')[0] for node in reference.body
+                       if isinstance(node, (ast.Import, ast.ImportFrom)) for alias in node.names)
+    retained = []
+    helpers = set()
     for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name not in {'choose', 'main'}:
+            assert node.name not in fixed_names and node.name not in vars(builtins) and node.name not in helpers, 'helper shadows an existing binding'
+            assert not node.decorator_list, 'helper decorators change module initialization'
+            assert node.returns is None and all(arg.annotation is None for arg in
+                node.args.posonlyargs + node.args.args + node.args.kwonlyargs), 'helper annotations must not alter module initialization'
+            for default in node.args.defaults + [value for value in node.args.kw_defaults if value is not None]:
+                ast.literal_eval(default)  # Only literal defaults, with no import-time calls.
+            helpers.add(node.name)
+            continue
         if isinstance(node, ast.FunctionDef) and node.name == 'choose':
             node.body = [ast.Pass()]
+        retained.append(node)
+    tree.body = retained
     return ast.dump(tree)
 
 
@@ -43,7 +61,7 @@ def check(manifest_path, output):
         assert sha(code) == row['codeSha256']
         assert sha(raw_bytes) == row['rawSha256']
         assert sha(selected_bytes) == row['selectionSha256']
-        assert scaffold(code) == scaffold(template), 'only choose() may differ from the declared scaffold'
+        assert scaffold(code, template) == scaffold(template, template), 'fixed imports, main() and I/O must remain unchanged'
         raw = json.loads(raw_bytes)
         actual = json.loads(selected_bytes)
         assert actual['sourceSha256'] == sha(raw_bytes)
@@ -51,7 +69,7 @@ def check(manifest_path, output):
         ids = {candidate['candidate_id'] for candidate in candidates}
         tree = ast.parse(code)
         choice = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'choose')
-        literals = {node.value for node in ast.walk(choice) if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+        literals = {node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)}
         assert not ids.intersection(literals), 'selector embeds actual candidate identities as literals'
         module_spec = importlib.util.spec_from_file_location(f'retained_selector_{index}', code_path)
         module = importlib.util.module_from_spec(module_spec)
@@ -77,7 +95,7 @@ def check(manifest_path, output):
     assert changed >= 1, 'at least one nonempty route must demonstrate changed-input behavior'
     assert manifest_path.read_bytes() == original_manifest
     output.write_text(json.dumps({'status': 'passed', 'scope': 'finite unchanged-code subset audit; no optimality or PPA claim',
-                                  'modelRequests': 0, 'edaJobs': 0, 'results': results}, indent=2) + '\n')
+                                  'modelRequests': 0, 'edaJobs': 0, 'auditorSha256': sha(Path(__file__).read_bytes()), 'results': results}, indent=2) + '\n')
     print('retained selector subset audit PASS; zero model/EDA requests')
 
 

@@ -1,0 +1,34 @@
+{
+  "status": "failed",
+  "scope": "second v4 full-pilot attempt; no complete PPA conclusion",
+  "sourceSha": "aa63d75f186e81c1345d136d28f61f419b3684f4",
+  "pack": {
+    "id": "aes-tsmc28-dtco",
+    "version": "4",
+    "digest": "1aa01c033975dff951e43c26f6a54b1a50517eacc60d61ddf4a9857191e7cfb9",
+    "stage": "released"
+  },
+  "run": "run-e7207276-077b-4db2-9ebf-d5c184a6bead",
+  "settledStatus": "cancelled",
+  "startedAt": "2026-09-14T03:13:58.918Z",
+  "finishedAt": "2026-09-14T04:20:16.524Z",
+  "costs": {
+    "hosts": 1,
+    "electron": 0,
+    "nativeSessionsCreated": 1,
+    "nativeSessionsResumed": 0,
+    "modelSessions": 1,
+    "modelRequestSteps": 454,
+    "apiRequests": "unmeasured; request steps exclude adapter retries",
+    "tokens": "unmeasured",
+    "userMessages": 99
+  },
+  "rawEvidenceSha256": "4fa61170cbc7d1f61b723d9ebdb97868a0616a4f04fefe5a395bc90437541e53",
+  "jobEvents": {
+    "launched": 41,
+    "finished": 41
+  },
+  "failure": "two generated PNR attempts failed Innovus IMPOPT-310 density 95.04% >=95.00%; checker later exhausted continuation budget",
+  "cleanup": "owned Run cancelled and archived before Host disposal; original artifacts preserved",
+  "nextHypothesis": "v5 equal initial utilization 0.50 for both PNR arms; not yet a physical result"
+}

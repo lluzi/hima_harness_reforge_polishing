@@ -185,7 +185,7 @@ async function auditUiFollowup(checkpointPath: string, outArgument: string): Pro
     assert.equal(checkpoint.schema, 1);
     assert.equal(checkpoint.status, 'first-campaign-passed-ready-for-ui');
     assert.equal(checkpoint.pack.id, PACK_ID);
-    assert.equal(checkpoint.pack.version, '4');
+    assert.equal(checkpoint.pack.version, '5');
     assert.equal(checkpoint.site, SITE_ID);
     assert.equal(packDigestOf(path.join(repoRoot, 'packs', PACK_ID)), checkpoint.pack.digest);
     const retainedRoot = realpathSync(path.join(repoRoot, '.hima-tmp/pilot-release/homes'));
@@ -387,8 +387,8 @@ const sourcePack = loadPack(path.join(repoRoot, 'packs'), PACK_ID);
 const sourceStage = packStage(packSource);
 const sourceDigest = packDigestOf(packSource);
 const sourceSite = YAML.parse(readFileSync(siteSource, 'utf8')) as Record<string, unknown>;
-assert.equal(sourcePack.contract.version, '4', 'PLS-18 requires the reviewed v4 Pack');
-assert.equal(sourceStage.stage, 'released', 'PLS-18 requires the sealed v4 release');
+assert.equal(sourcePack.contract.version, '5', 'PLS-18 requires the reviewed v5 Pack');
+assert.equal(sourceStage.stage, 'released', 'PLS-18 requires the sealed v5 release');
 assert.equal(staging.host, REMOTE_HOST);
 assert.deepEqual(staging.sshOptions, [...SSH_OPTIONS]);
 assert.equal(staging.destination, `${REMOTE_ROOT}/${staging.destinationName}`);
@@ -451,6 +451,8 @@ async function continueUntilTerminal(
   prompt: string,
   maximumMessages: number,
 ): Promise<RunRecord | undefined> {
+  let previousState = '';
+  let unchangedContinuations = 0;
   for (let message = 0; message < maximumMessages; message += 1) {
     let run = host.ctx.hima.ledger.run(runId);
     if (!run || isTerminal(run.status)) return run;
@@ -472,6 +474,17 @@ async function continueUntilTerminal(
     if (!run || isTerminal(run.status)) return run;
     const current = host.ctx.hima.executionContext(runId);
     if (current.executions.some((execution) => execution.phase === 'working')) continue;
+    const state = JSON.stringify({ status: run.status, node: run.currentNode, generation: run.generation,
+      paused: run.control?.paused, available: current.available,
+      executions: current.executions.map(e => ({ id: e.id, phase: e.phase, result: e.result })),
+    });
+    unchangedContinuations = state === previousState ? unchangedContinuations + 1 : 0;
+    previousState = state;
+    if (unchangedContinuations >= 3) {
+      check.observed.stalled = { run: runId, node: run.currentNode, unchangedContinuations, context: current };
+      check.checkpoint();
+      throw new Error(`Run ${runId} made no execution progress across three completed continuations; preserve the failure and stop further model requests`);
+    }
     if (run.status === 'waiting' && current.nodes.some(node => node.id === run.currentNode && node.kind === 'wait')) {
       check.observed.humanWait = { run: run.id, node: run.currentNode, status: run.status };
       check.checkpoint();
@@ -543,7 +556,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   let host = await bootInProcess(home);
   check.attach(host);
   const bundle = realpathSync(path.join(home.profileDir, 'node_modules/@hima/harness'));
-  guardInstalled(check, host, [bundle, packsDirOf(home), home.workspace], installedPack);
+  guardInstalled(check, host, [bundle, packsDirOf(home), home.workspace], installedPack, check.temporary);
   host.ctx.tools.guard((execution) => {
     if (execution.name === 'write' || execution.name === 'edit') {
       return 'PLS-18 writes generated research code only through controlled hima_execute write';
@@ -600,7 +613,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   });
 
   const firstPrompt = [
-    `/hima-run ${PACK_ID} on ${SITE_ID} with Goal target_period_ns=0.5, strategy periodNs=0.5 algorithmRevision=0, generations=1, retries=2, timeBox=90.`,
+    `/hima-run ${PACK_ID} on ${SITE_ID} with Goal target_period_ns=0.5, strategy periodNs=0.5 algorithmRevision=0 floorplanUtilization=0.5, generations=1, retries=2, timeBox=90.`,
     'You are the only execution owner. Use only hima_context and hima_execute for business actions. Do not start another Run, edit the method, use shell, open another Agent/model, or auto-drive the graph.',
     'Complete the full reference method from actual facts: the probe loop; all six mining branches and all six selection Workshops; merge; generate; layout; predicted characterization; Library Compiler; foundry and custom Design Compiler; adoption; paired foundry/generated PNR; verification; comparison; final Judge; and next-research.',
     'For each selection Workshop use recommend, read every declared route/raw/source input and current Pack knowledge, then copy the exact selectionTemplate and implement only a deterministic, data-dependent choose() using Python standard-library facilities; write that self-contained entry.py through hima_execute. Run those exact recorded bytes and preserve all failures and retries.',
@@ -622,6 +635,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
       && first.goal?.target_period_ns === 0.5
       && first.firstStrategy?.periodNs === 0.5
       && first.firstStrategy?.algorithmRevision === 0
+      && first.firstStrategy?.floorplanUtilization === 0.5
       && first.budget?.timeBoxMs === FIRST_TIME_BOX_MS
       && first.budget?.closingReserveMs === CLOSING_RESERVE_MS
       && first.budget?.attemptLimit === ATTEMPT_LIMIT
@@ -827,12 +841,17 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const subsetEvidence = path.join(check.out, 'selector-subsets.json');
   writeFileSync(selectorManifest, JSON.stringify({ template: path.join(packSource, 'flow/selection-template.py'),
     templateSha256, selectors: auditSelectors }, null, 2) + '\n', { mode: 0o600 });
-  execFileSync('/usr/bin/python3', [path.join(repoRoot, 'scripts/audit-dtco-pilot-selectors.py'),
+  const auditorFile = path.join(repoRoot, 'scripts/audit-dtco-pilot-selectors.py');
+  const auditorSha256 = sha256(readFileSync(auditorFile));
+  execFileSync('/usr/bin/python3', [auditorFile,
     selectorManifest, subsetEvidence], { timeout: 30_000, maxBuffer: 1024 * 1024 });
-  const subsetAudit = JSON.parse(readFileSync(subsetEvidence, 'utf8')) as { status?: string };
+  const subsetAudit = JSON.parse(readFileSync(subsetEvidence, 'utf8')) as { status?: string; auditorSha256?: string };
+  check.require('the selector audit identifies the exact launched auditor bytes',
+    subsetAudit.auditorSha256 === auditorSha256 && sha256(readFileSync(auditorFile)) === auditorSha256,
+    { expected: auditorSha256, reported: subsetAudit.auditorSha256 });
   check.require('unchanged executed selectors reproduce results and respond to withheld candidates',
     subsetAudit.status === 'passed', subsetAudit);
-  check.observed.selectorAudit = { path: subsetEvidence, sha256: sha256(readFileSync(subsetEvidence)),
+  check.observed.selectorAudit = { path: subsetEvidence, sha256: sha256(readFileSync(subsetEvidence)), auditorSha256,
     scope: 'finite input-dependence check; no new model, EDA, optimality or PPA claim' };
 
   const firstManifestPath = firstArchive.manifestPath;

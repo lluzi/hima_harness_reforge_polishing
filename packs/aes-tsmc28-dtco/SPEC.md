@@ -18,7 +18,9 @@ are never used. P&R/verification options and actual input/report identities are 
 Site inputs: flowRoot, design and workspaceRoot. contract.yml is the executable list of every tool,
 output, reader, Workshop and workspace copy. Site-private flow/inputs.json supplies explicit tool,
 PDK, model and constraint bindings; missing values are refused. Tools invoke the one stages.py adapter
-with a fixed stage name, WORKSPACE and optional fixed route. Only the probe accepts PERIOD_NS.
+with a fixed stage name, WORKSPACE and optional fixed route. Only the probe accepts PERIOD_NS. The
+matched P&R tools also bind one Strategy floorplanUtilization fraction (0.2..0.8, formal default 0.5)
+into both generated init TCL files; the standalone adapter preserves 0.60 only when a human omits it.
 Wrappers: /usr/bin/python3. DC, LC and Innovus tools declare one corresponding licence per Job.
 The Site cap admits one licensed Job at a time; the same owner requests all branch work.
 

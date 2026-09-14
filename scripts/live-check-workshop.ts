@@ -259,12 +259,13 @@ export class LiveCheck {
 }
 
 /** Resolve real paths, including symlinks; reads have four declared data roots, writes one Pack. */
-export function guardInstalled(check: LiveCheck, host: InProcessHost, readRoots: string[], packFolder: string): void {
+export function guardInstalled(check: LiveCheck, host: InProcessHost, readRoots: string[], packFolder: string, spillRoot?: string): void {
   const allowed = readRoots.map((at) => realpathSync(at));
   const pack = realpathSync(packFolder);
   const denied: unknown[] = [];
   check.observed.allowedReadRoots = allowed;
   check.observed.allowedWriteRoot = pack;
+  if (spillRoot) check.observed.allowedSpillReadRoot = realpathSync(spillRoot);
   check.observed.deniedTools = denied;
   host.ctx.tools.guard((execution) => {
     const name = execution.name;
@@ -286,6 +287,9 @@ export function guardInstalled(check: LiveCheck, host: InProcessHost, readRoots:
       real = path.join(realpathSync(ancestor), ...tail);
     }
     const roots = ['write', 'edit'].includes(name) ? [pack] : allowed;
+    // dsh can spill a large native tool result. Permit only text reads in this
+    // check's private spill tree; neither arbitrary temporary files nor writes.
+    if (spillRoot && name === 'read' && /^dsh-spill-[\w-]+\/session-[\w-]+\/[^/]+\.txt$/.test(path.relative(realpathSync(spillRoot), real))) return undefined;
     return roots.some((root) => within(real, root)) ? undefined : refuse(`outside declared ${name} roots: ${candidate}`);
   });
 }

@@ -75,7 +75,7 @@ try {
         process.exitCode = result.status ?? 1;
         const boots = readdirSync(temporary).includes('boots.txt') ? readFileSync(env.HIMA_TEST_BOOT_LOG, 'utf8').trim().split('\n') : [];
         const counts = Object.fromEntries(['host-process', 'host-in-process', 'electron'].map((kind) => [kind, boots.filter((boot) => boot === kind).length]));
-        console.error(`Test boot attempts: ${JSON.stringify(counts)}; Electron launches also start their own Host`);
+        console.error(`Test boot attempts: ${JSON.stringify(counts)}; Electron window launches also start a Host; diagnostics can exit before either`);
         if (group === 'local' && counts.electron !== 0) {
           console.error('local must not start Electron');
           process.exitCode = 1;

@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { electronBinary, whyNoWindow } from './support/driver.ts';
-import { repoRoot } from './support/dsh-home.ts';
+import { repoRoot, recordTestBoot } from './support/dsh-home.ts';
 
 test('an explicit unavailable Catsights display refuses before the desktop shell opens a window or launches a Host', async (t) => {
   if (whyNoWindow() !== undefined) { t.skip('Electron has no window server in this session'); return; }
@@ -14,6 +14,7 @@ test('an explicit unavailable Catsights display refuses before the desktop shell
   if ('missing' in electron) { t.skip(electron.missing); return; }
   const home = await mkdtemp(path.join(os.tmpdir(), 'hima-display-refusal-'));
   try {
+    recordTestBoot('electron');
     const result = spawnSync(electron.at, [path.join(repoRoot, 'packages/desktop/lib/main.js'), '--driver'], {
       cwd: home,
       encoding: 'utf8', timeout: 30_000,

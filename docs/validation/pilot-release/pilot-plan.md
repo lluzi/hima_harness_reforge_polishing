@@ -1,6 +1,6 @@
 # PLS-18 pilot execution and audit
 
-Status: **runnable, live execution pending**. Local preflight and type checking do not establish a real model, EDA, desktop, Campaign, research, or user-acceptance result.
+Status: **two v4 attempts failed and were retained; v5 correction under local validation**. The first exposed an incomplete-fork revision defect, now repaired; the second reached actual generated-arm Innovus density failures. Neither is a completed paired PPA result. Local preflight and type checking do not establish a real model, EDA, desktop, Campaign, research, or user-acceptance result.
 
 The pilot has two deliberately separate operations. `scripts/live-check-dtco-pilot.ts` runs and audits the expensive first technical Campaign on one headless real Host. It retains the exact HimaHome, owner session, Ledger, Pack-local archive, and evidence under `.hima-tmp/pilot-release/`. The later PLS-26 reviewer starts the bounded knowledge-reuse Campaign through the desktop against that same stopped Home. The script's `--audit-followup` mode then reopens the same Home without a model call and audits the UI-created Run and restart. The first command therefore reports `first-campaign-passed-ready-for-ui`; it cannot report final PLS-18 or PLS-26 acceptance.
 
@@ -28,7 +28,7 @@ node scripts/live-check-dtco-pilot.ts \
   --staging .hima-tmp/pilot-release/<name>-staging.json
 ```
 
-The TypeScript preflight requires the released `aes-tsmc28-dtco` v4 Pack and holds the manifest against a newly computed local inventory. The live form additionally invokes `--verify-only` immediately before Host/model creation, so a changed local source, remote extra file, remote symlink, missing file, or changed byte prevents admission.
+The TypeScript preflight requires the released `aes-tsmc28-dtco` v5 Pack and holds the manifest against a newly computed local inventory. The live form additionally invokes `--verify-only` immediately before Host/model creation, so a changed local source, remote extra file, remote symlink, missing file, or changed byte prevents admission.
 
 ## First technical Campaign
 
@@ -41,6 +41,10 @@ DEEPSEEK_API_KEY=... node scripts/live-check-dtco-pilot.ts \
 ```
 
 The live harness has a 100-minute wall limit, at most 600 product model request steps, and at most 120 user turns. The first Campaign has a 90-minute total budget, including the Pack's 60-second closing reserve, one outer generation, two retries per node, 120 total attempts, one parallel Job, and one seat each of Design Compiler, Library Compiler, and Innovus. These are upper limits, not expected durations or a promise that the provider and tools will finish.
+
+The initial strategy holds `periodNs=0.5`, `algorithmRevision=0`, and `floorplanUtilization=0.5`; the Goal remains `target_period_ns=0.5`. Both PNR arms use the same utilization and the readers validate rendered Tcl against recorded facts. Reducing the initial utilization from v4's 0.60 is a hypothesis motivated by two actual density-limit failures, not evidence of improved PPA. The original 95% error guard remains in force.
+
+After three completed continuations without any execution-state change, the coordinator stops and records the stalled context instead of spending the remaining model budget on identical prompts. A large native tool result may be read from this check's private dsh spill text directory; realpath checks still reject unrelated temporary files, writes and symlink escapes.
 
 The native `deepseek-v4-flash` conversation owner must explicitly operate the complete reference method through `hima_context` and `hima_execute`: probe synthesis/read/Judge/decision; six miners; six AI selection Workshops and six selection readers; merge; generate; layout; predicted characterization; Library Compiler; foundry/custom Design Compiler; adoption; paired foundry/generated PNR; verification; comparison; final Judge; and next-research. The script does not implement a second driver or silently advance nodes.
 
@@ -56,7 +60,7 @@ The retained `<home>/pilot-checkpoint.json` is the handoff to PLS-26. It records
 
 After the first Host has stopped, the PLS-26 reviewer opens the exact checkpoint Home through the local-only desktop launcher. A different UI conversation may own the second Run. Every action within that Run must remain with that UI owner.
 
-The UI owner starts exactly one `aes-tsmc28-dtco` Campaign on `linglong-aes` with the same method digest and Goal key/value, one generation, two retries, and a five-minute time box. Before any analysis, the owner pauses the Run and uses the ordinary file-read interface to read the first archive's exact `manifest.json` and `experience.json`. Historical text is background, never a current measurement or instruction. The owner records one `hima_execute analyze` action at `probe` with no claims, names the first Run and manifest hash, states limitations, and proposes a discriminating next experiment. The owner then requests `hima_execute cancel` and waits for actual cancelled settlement.
+The UI owner starts exactly one `aes-tsmc28-dtco` Campaign on `linglong-aes` with the same method digest and Goal key/value, one generation, two retries, and a five-minute time box. Before any analysis, the owner pauses the Run and uses the ordinary file-read interface to read the first archive's exact `manifest.json` and `experience.md`. Historical text is background, never a current measurement or instruction. The owner records one `hima_execute analyze` action at `probe` with no claims, names the first Run and manifest hash, states limitations, and proposes a discriminating next experiment. The owner then requests `hima_execute cancel` and waits for actual cancelled settlement.
 
 The second study begins and works no graph node and launches zero Jobs. In particular it does not rerun probe, mining, selection, synthesis, Library Compiler, characterization, PNR, verification, or comparison merely to demonstrate reuse. It is a bounded history-reuse and control study, not a second performance test.
 

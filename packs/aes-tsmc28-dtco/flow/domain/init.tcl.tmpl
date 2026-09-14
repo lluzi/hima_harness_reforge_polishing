@@ -29,7 +29,7 @@ init_design
 setDesignMode -process @@PROCESS_NODE@@
 globalNetConnect @@PWR_NET@@ -type pgpin -pin @@PWR_NET@@ -inst * -verbose
 globalNetConnect @@GND_NET@@ -type pgpin -pin @@GND_NET@@ -inst * -verbose
-floorPlan -site core -r 1.0 0.60 2.0 2.0 2.0 2.0
+floorPlan -site core -r 1.0 @@FLOORPLAN_UTILIZATION@@ 2.0 2.0 2.0 2.0
 setNanoRouteMode -routeTopRoutingLayer @@MAX_ROUTE_LAYER@@
 
 # ANALYSIS-VIEW LIVENESS, AFTER RESTORE, BEFORE ANY OPTIMISATION.

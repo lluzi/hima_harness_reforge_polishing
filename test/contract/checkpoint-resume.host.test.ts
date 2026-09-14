@@ -1,10 +1,10 @@
 // Native persisted Agent lifecycle, using deterministic replay and the real write tool.
 // The scan sentinel is synthetic test data; no real credential or provider request is used.
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, symlinkSync } from 'node:fs';
 import path from 'node:path';
 import { test, type TestContext } from 'node:test';
-import { LiveCheck } from '../../scripts/live-check-workshop.ts';
+import { LiveCheck, guardInstalled } from '../../scripts/live-check-workshop.ts';
 import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { bootInProcess, createRootAgent, resumeTestAgent, sayAsUser, toolCalls } from './support/boot-inprocess.ts';
 import { createHimaHome } from './support/dsh-home.ts';
@@ -59,6 +59,30 @@ function liveCheck(t: TestContext, out: string) {
   });
   return check;
 }
+
+test('the pilot guard reads its native spilled result but refuses temporary files and symlink escapes', async t => {
+  const { h, id, model } = await persisted(t);
+  const check = liveCheck(t, path.join(h.home, 'spill-guard-evidence'));
+  const host = await bootInProcess(h); check.attach(host);
+  const resumed = await resumeTestAgent(host.ctx, id, model);
+  t.after(() => resumed.dispose());
+  guardInstalled(check, host, [h.workspace], h.workspace, check.temporary);
+  const spill = path.join(check.temporary, 'dsh-spill-test/session-test');
+  mkdirSync(spill, { recursive: true });
+  const valid = path.join(spill, 'context.txt');
+  const outside = path.join(h.home, 'outside.txt');
+  const unrelated = path.join(check.temporary, 'unrelated.txt');
+  writeFileSync(valid, 'actual native context'); writeFileSync(outside, 'private outside root'); writeFileSync(unrelated, 'unrelated');
+  symlinkSync(outside, path.join(spill, 'escape.txt'));
+  const read = (file: string) => host.ctx.tools.execute({ name: 'read', arguments: { file_path: file },
+    agent: resumed.agent, callId: `read-${path.basename(file)}` as never, signal: AbortSignal.timeout(5_000) });
+  assert.equal((await read(valid)).isError, false);
+  assert.equal((await read(unrelated)).isError, true);
+  assert.equal((await read(path.join(spill, 'escape.txt'))).isError, true);
+  assert.equal((await host.ctx.tools.execute({ name: 'write', arguments: { file_path: valid, content: 'changed' },
+    agent: resumed.agent, callId: 'write-spill' as never, signal: AbortSignal.timeout(5_000) })).isError, true);
+  assert.equal(readFileSync(valid, 'utf8'), 'actual native context');
+});
 
 test('native persisted resume restores the explicitly held model and finishes an actual tool before say returns', async (t) => {
   const { h, id, model } = await persisted(t);

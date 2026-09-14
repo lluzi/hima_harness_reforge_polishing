@@ -1,5 +1,5 @@
 id: aes-tsmc28-dtco
-version: "4"
+version: "5"
 title: AES TSMC28 custom Cell research and matched physical implementation
 budget:
   closingReserveMs: 60000
@@ -374,11 +374,13 @@ tools:
       artifact identities. Missing evidence cannot pass.
     inputs:
       - WORKSPACE
+      - FLOORPLAN_UTILIZATION
     argv:
       - /usr/bin/python3
       - ${WORKSPACE}/flow/stages.py
       - pnr-foundry
       - ${WORKSPACE}
+      - ${FLOORPLAN_UTILIZATION}
     licences:
       Innovus: 1
   - id: pnr-generated
@@ -387,11 +389,13 @@ tools:
       artifact identities. Missing evidence cannot pass.
     inputs:
       - WORKSPACE
+      - FLOORPLAN_UTILIZATION
     argv:
       - /usr/bin/python3
       - ${WORKSPACE}/flow/stages.py
       - pnr-generated
       - ${WORKSPACE}
+      - ${FLOORPLAN_UTILIZATION}
     licences:
       Innovus: 1
   - id: verify
@@ -440,6 +444,13 @@ goal:
     max: 5
     default: 0.5
 strategy:
+  floorplanUtilization:
+    type: number
+    unit: fraction
+    min: 0.2
+    max: 0.8
+    default: 0.5
+    precision: 3
   periodNs:
     type: number
     unit: ns
@@ -455,6 +466,9 @@ strategy:
     default: 0
     precision: 0
 words:
+  floorplanUtilization:
+    label: initial floorplan utilization shared by both PNR arms
+    unit: fraction
   target_period_ns:
     label: clock period at most
     unit: ns

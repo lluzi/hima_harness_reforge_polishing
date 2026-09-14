@@ -557,7 +557,7 @@ test('revising a ready branch preserves an unfinished sibling and retires the ol
     await work('read-independent');
     assert.deepEqual(context().available, ['judge']);
     const jobs = host.ctx.hima.ledger.records({ runId, type: 'job' }).filter(r => r.type === 'job' && r.event === 'launched');
-    assert.equal(jobs.filter(r => r.nodeId === 'independent').length, 1, 'the valid sibling computation is reused');
+    assert.equal(jobs.filter(r => r.type === 'job' && r.nodeId === 'independent').length, 1, 'the valid sibling computation is reused');
   } finally {
     if (runId) { killSessions(sessionsOf(host, runId)); await host.ctx.hima.cancelRun(runId); }
     await host.dispose(); await home.h.dispose();

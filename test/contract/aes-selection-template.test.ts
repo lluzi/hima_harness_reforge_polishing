@@ -53,8 +53,13 @@ test('the pilot subset audit rejects a hardcoded selector despite matching launc
   await writeFile(rawFile, raw); await writeFile(selectedFile, selected);
   const routes = ['timing_criticality', 'timing_context', 'structure_frequency',
     'structure_compaction', 'mapper_compatibility', 'functional_diversity'];
-  const runAudit = async (name: string, algorithm: string) => {
-    const code = template.replace(stub, algorithm);
+  const runAudit = async (name: string, algorithm: string, helpers = '', alterInput = false) => {
+    let code = template.replace(stub, algorithm).replace('def choose(', helpers + '\ndef choose(');
+    if (alterInput) {
+      const before = code;
+      code = code.replace('folder / "raw.json"', 'folder / "untracked.json"');
+      assert.notEqual(code, before, 'the counterexample changes the actual input read');
+    }
     await writeFile(codeFile, code);
     const input = path.join(fixture.workspace, name + '-input.json');
     await writeFile(input, JSON.stringify({ template: templateFile, templateSha256: sha256(template),
@@ -70,4 +75,11 @@ test('the pilot subset audit rejects a hardcoded selector despite matching launc
   const result = JSON.parse(await readFile(path.join(fixture.workspace, 'dynamic-result.json'), 'utf8'));
   assert.deepEqual(result.results.map((row: { subsetSelection: string[] }) => row.subsetSelection),
     routes.map(() => ['weaker']), 'removing the higher-support candidate produces the lower-support candidate');
+  const withHelper = await runAudit('helper', 'return [max(candidates, key=_score)["candidate_id"]] if candidates else []',
+    'def _score(candidate):\n    return candidate["support"]\n');
+  assert.equal(withHelper.status, 0, withHelper.stderr);
+  const shadow = await runAudit('shadow', 'return []', 'def Path(value):\n    return value\n');
+  assert.notEqual(shadow.status, 0); assert.match(shadow.stderr, /helper shadows an existing binding/);
+  const changedInput = await runAudit('changed-input', 'return []', '', true);
+  assert.notEqual(changedInput.status, 0); assert.match(changedInput.stderr, /fixed imports, main/);
 });

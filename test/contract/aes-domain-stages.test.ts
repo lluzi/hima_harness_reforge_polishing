@@ -32,6 +32,35 @@ test('PODv2 PnR uses the clock optimization command required by Innovus 23.14', 
   assert.doesNotMatch(pnr, /^create_ccopt_clock_tree_spec$|^ccopt_design$/m);
 });
 
+test('Pack v5 holds a bounded floorplan strategy and preserves the manual PnR default', async () => {
+  const contract = await readFile(path.join(aesDomainPack, 'contract.yml'), 'utf8');
+  const graph = await readFile(path.join(aesDomainPack, 'graph.yml'), 'utf8');
+  const init = await readFile(path.join(aesDomainPack, 'flow/domain/init.tcl.tmpl'), 'utf8');
+  assert.match(contract, /floorplanUtilization:\n\s+type: number\n\s+unit: fraction\n\s+min: 0\.2\n\s+max: 0\.8\n\s+default: 0\.5/);
+  assert.equal((graph.match(/name: floorplanUtilization/g) ?? []).length, 2, 'both PnR arms bind the one strategy value');
+  assert.match(init, /floorPlan -site core -r 1\.0 @@FLOORPLAN_UTILIZATION@@ 2\.0 2\.0 2\.0 2\.0/);
+  const code = 'import json,sys; sys.path.insert(0, sys.argv[1]); from stages import floorplan_utilization, Rejected; out=[]\nfor value in ["0.5","0.2","0.8","0.19","0.81","bad"]:\n try: out.append([value,floorplan_utilization(value)])\n except Rejected as e: out.append([value,"rejected:"+str(e)])\nprint(json.dumps(out))';
+  const parsed = spawnSync('/usr/bin/python3', ['-c', code, path.join(aesDomainPack, 'flow')], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  assert.deepEqual(JSON.parse(parsed.stdout), [
+    ['0.5', '0.500'], ['0.2', '0.200'], ['0.8', '0.800'],
+    ['0.19', 'rejected:floorplan utilization must be within [0.2, 0.8]'],
+    ['0.81', 'rejected:floorplan utilization must be within [0.2, 0.8]'],
+    ['bad', 'rejected:floorplan utilization must be a finite fraction'],
+  ]);
+});
+
+test('PnR strict-error reporting retains the density line and the held inner log location', async () => {
+  const code = 'import sys; sys.path.insert(0, sys.argv[1]); from stages import tool_error_lines; print("\\n".join(tool_error_lines(sys.stdin.read())))';
+  const density = '**ERROR: (IMPOPT-310): Design density (95.04%) exceeds/equals limit (95.00%).\n';
+  const parsed = spawnSync('/usr/bin/python3', ['-c', code, path.join(aesDomainPack, 'flow')], { input: density, encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  assert.match(parsed.stdout, /IMPOPT-310/);
+  const source = await readFile(path.join(aesDomainPack, 'flow/stages.py'), 'utf8');
+  assert.match(source, /Innovus P&R error in %s: %s/);
+  assert.match(source, /tool_error_lines\(pnr_text\)\[:8\]/);
+});
+
 test('DC version identity accepts the observed indented header and rejects ambiguity', () => {
   const moduleDir = path.join(aesDomainPack, 'flow');
   const code = 'import json,sys; sys.path.insert(0, sys.argv[1]); from stages import dc_version; print(json.dumps(dc_version(sys.stdin.read()), sort_keys=True))';
@@ -88,7 +117,10 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   await writeSyntheticStageRecord(fixture.workspace, 'layout', [
     { role: 'abstract_lef:XS_FIX_ZN', path: lef }, { role: 'abstract_metadata:XS_FIX_ZN', path: meta },
   ], { abstract_cell_count: 1 });
-  for (const stage of ['pnr-foundry', 'pnr-generated', 'verify', 'adoption', 'compare']) {
+  for (const [stage, utilization] of [['pnr-foundry', '0.5'], ['pnr-generated', '0.5']] as const) {
+    const ran = fixture.run(stage, utilization); assert.equal(ran.status, 0, `${stage}: ${ran.stderr}`);
+  }
+  for (const stage of ['verify', 'adoption', 'compare']) {
     const ran = fixture.run(stage); assert.equal(ran.status, 0, `${stage}: ${ran.stderr}`);
   }
   const comparison = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
@@ -105,15 +137,43 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
     clock: comparison.facts.clock_period, setup: comparison.facts.setup_wns,
     delta: comparison.facts.setup_wns_delta, failures: comparison.facts.full_constraint_failures,
   }, { clock: 0.5, setup: 0.02, delta: 0.01, failures: 0 }, conditionDiagnostic);
+  const foundryPnrCondition = await conditionEvidence('pnr-foundry');
+  const generatedPnrCondition = await conditionEvidence('pnr-generated');
+  assert.equal(foundryPnrCondition.floorplanUtilization, 0.5, conditionDiagnostic);
+  assert.equal(generatedPnrCondition.floorplanUtilization, 0.5, conditionDiagnostic);
+  assert.match(await readFile(path.join(fixture.workspace, (JSON.parse(await readFile(path.join(flow, 'records/pnr-generated.json'), 'utf8')).artifacts
+    .find((item: { role: string }) => item.role === 'init_script:generated')).path), 'utf8'), /floorPlan -site core -r 1\.0 0\.500 2\.0 2\.0 2\.0 2\.0/);
   const read = fixture.read(path.join(flow, 'records/compare.json'), 'compare');
   assert.equal(read.run.status, 0, read.run.stderr);
   const values = parseReading(await readFile(read.out, 'utf8')).values as { type: string; value: number }[];
   assert.equal(values.find((item) => item.type === 'setup_wns')!.value, 0.02);
   assert.equal(values.find((item) => item.type === 'full_constraint_failures')!.value, 0);
 
+  // Both PnR records are independently generated, hash-held records. Re-running
+  // only one arm at .6 creates a genuine valid-record mismatch, which comparison
+  // must reject rather than treating as matched physical evidence.
+  const mismatchedArm = fixture.run('pnr-generated', '0.6');
+  assert.equal(mismatchedArm.status, 0, mismatchedArm.stderr);
+  const mismatchedCompare = fixture.run('compare');
+  assert.equal(mismatchedCompare.status, 0, mismatchedCompare.stderr);
+  const mismatchedRecord = path.join(flow, 'records/compare.json');
+  const mismatchedRead = fixture.read(mismatchedRecord, 'compare');
+  assert.notEqual(mismatchedRead.run.status, 0, 'the independent comparison reader rejects two otherwise valid PnR records with .5/.6 utilization');
+  assert.match(mismatchedRead.run.stderr, /different floorplan utilizations/);
+  const restoredArm = fixture.run('pnr-generated', '0.5');
+  assert.equal(restoredArm.status, 0, restoredArm.stderr);
+  assert.equal(fixture.run('verify').status, 0, 'verification follows the restored matched generated PnR record');
+  assert.equal(fixture.run('compare').status, 0, 'the same .5 pair is accepted again');
+
   const generatedPnrRecord = JSON.parse(await readFile(path.join(flow, 'records/pnr-generated.json'), 'utf8'));
   const generatedPnrRecordPath = path.join(flow, 'records/pnr-generated.json');
   const generatedPnrRecordBytes = await readFile(generatedPnrRecordPath);
+  generatedPnrRecord.facts.floorplan_utilization = 0.6;
+  await writeFile(generatedPnrRecordPath, JSON.stringify(generatedPnrRecord, null, 2) + '\n');
+  const factMismatch = fixture.read(generatedPnrRecordPath, 'pnr-generated');
+  assert.notEqual(factMismatch.run.status, 0, 'the reader rejects a record fact that disagrees with its still hash-held init script');
+  assert.match(factMismatch.run.stderr, /utilization disagrees with generated init script/);
+  await writeFile(generatedPnrRecordPath, generatedPnrRecordBytes);
   const timingSummaryRef = generatedPnrRecord.artifacts
     .find((item: { role: string }) => item.role === 'postroute_timing_summary');
   const timingSummaryPath = path.join(fixture.workspace, timingSummaryRef.path);
@@ -180,26 +240,26 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
 
   for (const control of ['synthetic-init-missing-version', 'synthetic-init-missing-visibility']) {
     await writeFile(path.join(flow, control), 'synthetic init counterexample\n');
-    const refused = fixture.run('pnr-generated');
+    const refused = fixture.run('pnr-generated', '0.5');
     assert.equal(refused.status, 2, `${control}: ${refused.stderr}`);
     const refusedRecord = JSON.parse(await readFile(path.join(flow, 'records/pnr-generated.json'), 'utf8'));
     assert.equal(refusedRecord.executions.length, 1,
       `${control}: init evidence must reject before the expensive route invocation`);
     await rm(path.join(flow, control));
   }
-  assert.equal(fixture.run('pnr-generated').status, 0, 'restore valid init identity before later cases');
+  assert.equal(fixture.run('pnr-generated', '0.5').status, 0, 'restore valid init identity before later cases');
 
   for (const control of ['synthetic-missing-timing-companion', 'synthetic-mismatched-timing-view',
     'synthetic-corrupt-timing-gzip']) {
     await writeFile(path.join(flow, control), 'synthetic timing counterexample\n');
-    const refused = fixture.run('pnr-generated');
+    const refused = fixture.run('pnr-generated', '0.5');
     assert.equal(refused.status, 2, `${control}: ${refused.stderr}`);
     await rm(path.join(flow, control));
   }
-  assert.equal(fixture.run('pnr-generated').status, 0, 'restore complete synthetic timing evidence');
+  assert.equal(fixture.run('pnr-generated', '0.5').status, 0, 'restore complete synthetic timing evidence');
 
   await writeFile(path.join(flow, 'synthetic-rounded-zero-violations'), 'rounded WNS counterexample\n');
-  assert.equal(fixture.run('pnr-generated').status, 0);
+  assert.equal(fixture.run('pnr-generated', '0.5').status, 0);
   assert.equal(fixture.run('compare').status, 0);
   const roundedOpen = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
   assert.equal(roundedOpen.facts.setup_wns, 0);
@@ -212,11 +272,11 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   assert.equal(roundedValues.find((item) => item.type === 'setup_wns')!.value, 0);
   assert.equal(roundedValues.find((item) => item.type === 'full_constraint_failures')!.value, 1);
   await rm(path.join(flow, 'synthetic-rounded-zero-violations'));
-  assert.equal(fixture.run('pnr-generated').status, 0, 'restore closed synthetic setup evidence');
+  assert.equal(fixture.run('pnr-generated', '0.5').status, 0, 'restore closed synthetic setup evidence');
 
   await writeFile(path.join(flow, 'synthetic-custom-input-delay'), 'same clock, different input delay\n');
   assert.equal(fixture.run('custom-synth').status, 0);
-  assert.equal(fixture.run('pnr-generated').status, 0);
+  assert.equal(fixture.run('pnr-generated', '0.5').status, 0);
   assert.equal(fixture.run('compare').status, 0);
   const delayMismatch = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
   assert.equal(delayMismatch.facts.clock_period, 0.5);
@@ -228,11 +288,11 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
   assert.equal(delayValues.find((item) => item.type === 'matched_conditions')!.value, 0);
   await rm(path.join(flow, 'synthetic-custom-input-delay'));
   assert.equal(fixture.run('custom-synth').status, 0, 'restore the matching generated-arm SDC');
-  assert.equal(fixture.run('pnr-generated').status, 0, 'restore PnR with the matching generated-arm SDC');
+  assert.equal(fixture.run('pnr-generated', '0.5').status, 0, 'restore PnR with the matching generated-arm SDC');
 
   const qrc = String((fixture.inputs.legacy as Record<string, unknown>).FOUNDRY_QRC_TECH);
   await writeFile(qrc, 'SYNTHETIC QRC CHANGED BETWEEN ARMS\n');
-  assert.equal(fixture.run('pnr-generated').status, 0);
+  assert.equal(fixture.run('pnr-generated', '0.5').status, 0);
   assert.equal(fixture.run('compare').status, 0);
   const qrcMismatch = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
   assert.equal(qrcMismatch.facts.matched_conditions, null);
@@ -248,19 +308,19 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
     .find((item: { role: string }) => item.role === 'FOUNDRY_QRC_TECH').sha256;
   assert.notEqual(qrcFoundry, qrcGenerated, 'same QRC path with changed bytes is not a matched condition');
 
-  assert.equal(fixture.run('pnr-foundry').status, 0, 'refresh the control on the changed synthetic QRC');
+  assert.equal(fixture.run('pnr-foundry', '0.5').status, 0, 'refresh the control on the changed synthetic QRC');
   await writeFile(path.join(flow, 'synthetic-innovus-version-mismatch'), 'synthetic counterexample\n');
-  assert.equal(fixture.run('pnr-generated').status, 0);
+  assert.equal(fixture.run('pnr-generated', '0.5').status, 0);
   assert.equal(fixture.run('compare').status, 0);
   const versionMismatch = JSON.parse(await readFile(path.join(flow, 'records/compare.json'), 'utf8'));
   assert.equal(versionMismatch.facts.matched_conditions, false);
   assert.notDeepEqual((await conditionEvidence('pnr-foundry')).tool,
     (await conditionEvidence('pnr-generated')).tool, 'raw Innovus version headers differ');
   await rm(path.join(flow, 'synthetic-innovus-version-mismatch'));
-  assert.equal(fixture.run('pnr-generated').status, 0, 'restore the matched synthetic tool version');
+  assert.equal(fixture.run('pnr-generated', '0.5').status, 0, 'restore the matched synthetic tool version');
 
   await writeFile(path.join(flow, 'synthetic-changed-actual-clock'), 'synthetic counterexample\n');
-  const changedPnr = fixture.run('pnr-generated');
+  const changedPnr = fixture.run('pnr-generated', '0.5');
   assert.equal(changedPnr.status, 0, changedPnr.stderr);
   const changedPnrReading = fixture.read(path.join(flow, 'records/pnr-generated.json'), 'pnr-generated');
   assert.notEqual(changedPnrReading.run.status, 0, 'the PnR reader must reject an exported clock that differs from its input SDC');
@@ -276,7 +336,7 @@ test('paired synthesis, PnR, verification and comparison derive post-route facts
 
   await rm(path.join(flow, 'synthetic-changed-actual-clock'));
   await writeFile(path.join(flow, 'synthetic-missing-actual-clock'), 'synthetic counterexample\n');
-  const missingPnr = fixture.run('pnr-generated');
+  const missingPnr = fixture.run('pnr-generated', '0.5');
   assert.equal(missingPnr.status, 2, missingPnr.stderr);
   const missingRecord = JSON.parse(await readFile(path.join(flow, 'records/pnr-generated.json'), 'utf8'));
   assert.equal(missingRecord.status, 'rejected');

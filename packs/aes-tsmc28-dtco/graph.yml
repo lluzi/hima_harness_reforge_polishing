@@ -1,5 +1,5 @@
 id: aes-tsmc28-dtco
-version: "4"
+version: "5"
 entry: probe
 nodes:
   - id: probe
@@ -150,6 +150,10 @@ nodes:
     kind: act
     parameters:
       tool: pnr-foundry
+      arguments:
+        FLOORPLAN_UTILIZATION:
+          from: strategy
+          name: floorplanUtilization
   - id: read-pnr-foundry
     kind: act
     parameters:
@@ -158,6 +162,10 @@ nodes:
     kind: act
     parameters:
       tool: pnr-generated
+      arguments:
+        FLOORPLAN_UTILIZATION:
+          from: strategy
+          name: floorplanUtilization
   - id: read-pnr-generated
     kind: act
     parameters:

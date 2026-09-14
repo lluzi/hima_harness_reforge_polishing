@@ -1020,7 +1020,17 @@ def normalized_arm_script(text, excluded_paths=()):
     return text
 
 
-def build_arm_files(ctx):
+def floorplan_utilization(value):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise Rejected("floorplan utilization must be a finite fraction")
+    if not math.isfinite(parsed) or parsed < 0.2 or parsed > 0.8:
+        raise Rejected("floorplan utilization must be within [0.2, 0.8]")
+    return "%.3f" % parsed
+
+
+def build_arm_files(ctx, utilization):
     foundry_synth, custom_synth = prior(ctx, "foundry-synth"), prior(ctx, "custom-synth")
     layout, char = prior(ctx, "layout"), prior(ctx, "characterize")
     generated_lef = merged_lef(ctx, layout)
@@ -1049,6 +1059,7 @@ def build_arm_files(ctx):
             "GND_NET": ctx.binding("XS28_GROUND_PIN"), "PROCESS_NODE": ctx.binding("XS28_PROCESS_NODE"),
             "MAX_ROUTE_LAYER": ctx.binding("XS28_MAX_ROUTE_LAYER"), "INIT_DB": init_db,
             "GENERATED_LIB_CELL_PATTERN": ctx.binding("GENERATED_LIB_CELL_PATTERN"), "ARM": arm,
+            "FLOORPLAN_UTILIZATION": utilization,
         })
         rpt = ctx.run_dir / ("rpt_" + arm)
         final_db = ctx.run_dir / ("DBS_" + arm) / "postroute.enc"
@@ -1083,8 +1094,10 @@ def build_arm_files(ctx):
     return outputs, generated_lef, generated_lib
 
 
-def stage_pnr(ctx, arm):
-    outputs, generated_lef, generated_lib = build_arm_files(ctx)
+def stage_pnr(ctx, arm, utilization="0.60"):
+    utilization = floorplan_utilization(utilization)
+    outputs, generated_lef, generated_lib = build_arm_files(ctx, utilization)
+    ctx.facts["floorplan_utilization"] = float(utilization)
     chosen = outputs[arm]
     ctx.inputs.extend([
         file_ref(chosen["input_sdc"], ctx.workspace, "pnr_input_sdc", "design-compiler-output"),
@@ -1107,7 +1120,7 @@ def stage_pnr(ctx, arm):
                        timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="init-" + arm)
     text = init_log.read_text(errors="replace")
     if tool_error_lines(text):
-        raise ToolFailure("Innovus init returned zero but emitted an error line")
+        raise ToolFailure("Innovus init error in %s: %s" % (init_log, " | ".join(tool_error_lines(text)[:8])))
     init_version = innovus_version(text)
     visible_hits = re.findall(r"=== XS28 GENERATED_LIB_CELLS_AFTER_RESTORE (\d+) ===", text)
     visible = int(visible_hits[0]) if len(visible_hits) == 1 else None
@@ -1121,7 +1134,7 @@ def stage_pnr(ctx, arm):
                       timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="pnr-" + arm)
     pnr_text = pnr_log.read_text(errors="replace")
     if tool_error_lines(pnr_text):
-        raise ToolFailure("Innovus returned zero but emitted an error line")
+        raise ToolFailure("Innovus P&R error in %s: %s" % (pnr_log, " | ".join(tool_error_lines(pnr_text)[:8])))
     route_version = innovus_version(pnr_text)
     if init_version != route_version:
         raise Rejected("Innovus init and route tool versions differ")
@@ -1157,6 +1170,7 @@ def stage_pnr(ctx, arm):
             for kind in ("mmmc", "init", "pnr")
         ).encode()),
         "tool": init_version,
+        "floorplanUtilization": float(utilization),
         "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
     })
     ctx.facts.update({"arm": arm, "pnr_completed": 1, "library_visible": visible,
@@ -1350,6 +1364,12 @@ def derived_pnr_condition(record, workspace, arm):
         raise Rejected("Innovus init and route tool versions differ in held evidence")
     excluded = referenced_paths(record.get("inputs", []), workspace,
                                 {"generated_liberty", "generated_lef"})
+    utilization = re.findall(r"(?m)^\s*floorPlan\s+-site\s+core\s+-r\s+1\.0\s+([0-9.]+)\s+2\.0\s+2\.0\s+2\.0\s+2\.0\s*$", scripts["init"].read_text(errors="replace"))
+    if len(utilization) != 1 or not (0.2 <= float(utilization[0]) <= 0.8):
+        raise Rejected("PnR init script lacks one bounded floorplan utilization")
+    published = record.get("facts", {}).get("floorplan_utilization")
+    if not isinstance(published, (int, float)) or float(published) != float(utilization[0]):
+        raise Rejected("PnR record utilization disagrees with generated init script")
     return {
         "schema": "aes-dtco-common-condition/1", "kind": "place-and-route",
         "commonInputs": held_identities(record.get("inputs", []), exact=(
@@ -1361,6 +1381,7 @@ def derived_pnr_condition(record, workspace, arm):
             normalized_arm_script(scripts[kind].read_text(), excluded) for kind in ("mmmc", "init", "pnr")
         ).encode()),
         "tool": init_tool,
+        "floorplanUtilization": float(utilization[0]),
         "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
     }
 
@@ -1538,9 +1559,9 @@ def dispatch(ctx, stage, route):
     elif stage == "adoption":
         stage_adoption(ctx)
     elif stage == "pnr-foundry":
-        stage_pnr(ctx, "foundry")
+        stage_pnr(ctx, "foundry", route or "0.60")
     elif stage == "pnr-generated":
-        stage_pnr(ctx, "generated")
+        stage_pnr(ctx, "generated", route or "0.60")
     elif stage == "verify":
         stage_verify(ctx)
     elif stage == "compare":
@@ -1561,8 +1582,8 @@ def main(argv=None):
     record_stage = "mine-" + route if stage == "mine" and route else stage
     ctx = None
     try:
-        if stage != "mine" and route is not None:
-            raise Rejected("ROUTE is accepted only for mine")
+        if stage not in ("mine", "pnr-foundry", "pnr-generated") and route is not None:
+            raise Rejected("third argument is accepted only for mine or P&R utilization")
         if stage == "mine" and route is None:
             raise Rejected("mine requires ROUTE")
         ctx = Context(record_stage, workspace)

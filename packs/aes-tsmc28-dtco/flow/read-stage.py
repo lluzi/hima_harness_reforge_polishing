@@ -409,6 +409,13 @@ def derived_pnr_condition(record, workspace, arm):
         raise ValueError("Innovus init and route tool versions differ")
     excluded = referenced_paths(record.get("inputs", []), workspace,
                                 {"generated_liberty", "generated_lef"})
+    init_text = scripts["init"].read_text(errors="replace")
+    utilization = re.findall(r"(?m)^\s*floorPlan\s+-site\s+core\s+-r\s+1\.0\s+([0-9.]+)\s+2\.0\s+2\.0\s+2\.0\s+2\.0\s*$", init_text)
+    if len(utilization) != 1 or not (0.2 <= float(utilization[0]) <= 0.8):
+        raise ValueError("PnR init script lacks one bounded floorplan utilization")
+    published = record.get("facts", {}).get("floorplan_utilization")
+    if not isinstance(published, (int, float)) or float(published) != float(utilization[0]):
+        raise ValueError("PnR record utilization disagrees with generated init script")
     return {
         "schema": "aes-dtco-common-condition/1", "kind": "place-and-route",
         "commonInputs": held_identities(record.get("inputs", []), exact=(
@@ -420,6 +427,7 @@ def derived_pnr_condition(record, workspace, arm):
             normalized_arm_script(scripts[kind].read_text(), excluded) for kind in ("mmmc", "init", "pnr")
         ).encode()).hexdigest(),
         "tool": init_tool,
+        "floorplanUtilization": float(utilization[0]),
         "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
     }
 
@@ -589,6 +597,8 @@ def values_for(record, workspace, stage):
         generated_pnr_condition = checked_condition(
             generated_pnr, workspace, derived_pnr_condition(generated_pnr, workspace, "generated"))
         synth_match = foundry_synth_condition == custom_synth_condition
+        if foundry_pnr_condition.get("floorplanUtilization") != generated_pnr_condition.get("floorplanUtilization"):
+            raise ValueError("matched PnR arms use different floorplan utilizations")
         pnr_match = (foundry_pnr_condition == generated_pnr_condition
                      and input_sdc_matched
                      and fm["qrc"] == gm["qrc"] and fm["temperature"] == gm["temperature"])

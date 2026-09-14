@@ -1,0 +1,28 @@
+{
+  "status": "passed",
+  "scope": "L2 complete graph with explicit synthetic external boundaries",
+  "runId": "run-d541982b-2665-4da2-877a-bfe874410082",
+  "methodDigest": "d1475ce846350cfeec86ad73112a80d707deb1e019a23922abaa83490c11d6db",
+  "hosts": 1,
+  "modelRequests": 0,
+  "newResearchJobs": 0,
+  "realEdaJobs": 0,
+  "testSha256": "cbf3e2d7e993a57c3fc2407cbbdcd9aba600f3b5a27a8584f1bccf43babca26a",
+  "versionSha256": "26dd47a27931a831b4c8b3496d604e0d7c24108eca370822894cbf4d07ee9f6d",
+  "nativeEvidenceSha256": "af5347adf5ebb8808d76c3c989517fa12eaefed66b5869801c57f1ed63261e40",
+  "fullGraph": {
+    "status": "passed",
+    "tests": 1,
+    "elapsedSeconds": 81.635,
+    "hosts": 1,
+    "modelRequests": 0,
+    "realEdaJobs": 0,
+    "logSha256": "85ca33a7831b885f7feb0a0a627340b0b18319a29956ad2871c080f72f39baea"
+  },
+  "counterexamples": {
+    "status": "passed",
+    "tests": 11,
+    "elapsedSeconds": 18.12,
+    "scope": "synthetic adapter and independent reader, matched0.5, mismatched0.5/0.6 and tampered utilization facts"
+  }
+}
