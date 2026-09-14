@@ -89,3 +89,26 @@
 - 当前 Hima profile 已继承 DSH session 级 permission presets、sandbox、approval 和 credentials，无需另建权限系统。锁定版本内置 `workspace-write`（workspace sandbox + ask）和 `danger-full-access`（无文件 sandbox + never ask）；profile 可以增加 `read-only` 等 preset。这里的 `never` 表示审批请求自动拒绝，不是自动允许。
 - DSH 权限控制本机 Agent 工具的粗粒度 file-effect；Hima Site Permit 继续控制特定 EDA Site 的 read/write roots、Pack wrapper 和固定 Channel verbs。两者不能互相生成或覆盖。
 - SSH 继续复用用户 OpenSSH 配置、key 和 agent；需要保存的模型等凭据可以使用 DSH credentials provider，secret 不进入 Site 或 Pack。
+
+## 第 4 轮：Preparation、Pack 形态与试用签收
+
+### 已确认
+
+45. **最高权限仍受业务约束。** 接受 Observe、Standard、Full 三层方向；Full 不绕过 Hima Site Permit和删除红线。
+46. **Fmax 结果保留最低真实性门。** route 正常完成、数据库与 timing 身份一致、新 Cell 有有效实例、A/B 输入和设置一致，且不存在已知会使结论失效的约束或执行故障。
+47. **HimaGuide 提出 Campaign。** 用户用自然语言表达任务；HimaGuide 完成检查并给出简短 proposal，用户一次确认后当前会话成为 Campaign Agent，高级运行参数不作为默认入口。
+48. **复用现有侧栏。** Campaign 身份叠加在现有 DSH Session 行，不新增 Campaign 管理系统；Run ID 留在诊断层。
+49. **导航不改变执行。** 关闭 Live Run 或切换 Side Talk 不停止 Campaign；退出 App 后本地 Agent停止新决策，已启动的远端 Job继续，重启后恢复；只有 Pause、Stop、End 改变 Campaign 状态。
+50. **先 Preparation，后 Campaign。** Pack、Site、输入、知识和最小工具 probe 全部完备后才建立 Campaign，避免把准备错误变成无意义的业务运行。
+51. **Site 自动保存、凭据可选保存。** 发现完成后保存可修改的 safe Site profile；secret 与 Site 分离，用户决定仅本次使用或安全保存。
+52. **知识归属自动选择。** Pack、用户 supplemental、Campaign 和 Site knowledge 按来源归属；HimaGuide 只在归属含糊或分享时询问。
+53. **Harness 软件与 Pack 分开交付。** Pack 使用固定格式封装自己的知识库，HimaHarness 负责读取；产品本身不与 Pack 打成一个交付物。
+54. **Pack 状态不分叉 Runtime。** Pack 作者声明开发或其他状态，界面展示该状态；所有状态使用同一种 Pack 格式、检查和执行逻辑，不增加 Runtime 负担。
+55. **团队先完成低层产品验收。** 下一候选先按干净安装、无手册、Site 发现、新 design、Matched Comparison、Side Talk 和控制标准自行测试；用户最终亲自签收，并把注意力放在品味和高级产品问题上。
+
+### 新分叉
+
+- Pack 固定知识格式需要确定原文、结构化内容、索引和可重建关系；Q53 没有直接回答是否完全离线或允许自动取得本地模型。
+- Pack 状态由作者声明但不改变 Runtime，还需确定状态 vocabulary、测试证据和界面信任表达是否完全自由。
+- Preparation 不创建 Campaign，需要定义失败、恢复、缓存和可审阅结果怎样保存，同时避免引入新的用户管理对象。
+- Fmax 是唯一收益指标且其他 PPA 可变化，仍需确认其他 PPA 是否必须完整报告，以及功能/物理有效性的最低门。

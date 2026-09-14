@@ -8,6 +8,10 @@
 由产品 AE、PE 或方法学专家制作的独立业务能力交付资产；在声明的输入、指定工具和 Site 能力满足时，承载方法、测量、判断、知识及 AI 探索位置，而不绑定某个客户 design 或精确工具版本。
 _Avoid_: 插件、脚本集合、固定 design 自动化（作为整个方法的同义词）
 
+**Pack 状态**:
+Pack 作者对其交付成熟度的声明；状态供用户判断和界面展示，不改变 Pack 的格式、检查或 Runtime 执行逻辑。
+_Avoid_: 另一种 Pack 类型、独立 Runtime 分支、由 Harness 推断的发布承诺
+
 **业务能力**:
 客户购买的可验证业务结果：开源模型通过 HimaHarness、HimaPack 与配套 EDA 工具完成一项真实芯片设计任务。
 _Avoid_: Harness、模型、工具或许可证本身（作为客户购买结果的同义词）
@@ -39,6 +43,14 @@ _Avoid_: 成功报告（作为唯一含义）、无依据的解释
 **知识基础设施**:
 HimaHarness 自带的文档到知识能力，承载 Pack 内置知识和用户追加材料；材料在其获准所在环境中处理和读取，普通用户不负责部署独立知识服务。
 _Avoid_: Pack 的一个 Markdown 文件、客户必须维护的 RAG 服务
+
+**Campaign Preparation**:
+HimaGuide 在 Campaign 建立前完成的 Pack、Site、输入、知识和最小工具检查；全部必要条件就绪后才创建 Campaign 和持久 Run。
+_Avoid_: Campaign 的第一批实验节点、正式业务结果、要求用户填写的配置表
+
+**权限层级**:
+用户为 DSH Agent 选择的本机操作范围；最高层级仍受 Hima Site Permit 和删除红线约束，不改变 Campaign 的远端业务权限。
+_Avoid_: Site Permit、凭据、绕过业务约束的开关
 
 **参考运行图**:
 Pack 提供的业务环节与依赖关系所构成的方法基线，AI 不改写或删除它；研究可基于它回溯、调整节点策略并生长附加工作。
