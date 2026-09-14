@@ -53,8 +53,9 @@ test('the pilot subset audit rejects a hardcoded selector despite matching launc
   await writeFile(rawFile, raw); await writeFile(selectedFile, selected);
   const routes = ['timing_criticality', 'timing_context', 'structure_frequency',
     'structure_compaction', 'mapper_compatibility', 'functional_diversity'];
-  const runAudit = async (name: string, algorithm: string, helpers = '', alterInput = false) => {
-    let code = template.replace(stub, algorithm).replace('def choose(', helpers + '\ndef choose(');
+  const runAudit = async (name: string, algorithm: string, helpers = '', alterInput = false, constants = '', documentRevision = false) => {
+    let code = template.replace(stub, algorithm).replace('def choose(', constants + helpers + '\ndef choose(');
+    if (documentRevision) code = code.replace('The fixed I/O is Pack scaffolding.', 'Revision note: rank by actual support. The fixed I/O is Pack scaffolding.');
     if (alterInput) {
       const before = code;
       code = code.replace('folder / "raw.json"', 'folder / "untracked.json"');
@@ -78,8 +79,19 @@ test('the pilot subset audit rejects a hardcoded selector despite matching launc
   const withHelper = await runAudit('helper', 'return [max(candidates, key=_score)["candidate_id"]] if candidates else []',
     'def _score(candidate):\n    return candidate["support"]\n');
   assert.equal(withHelper.status, 0, withHelper.stderr);
+  const withConstants = await runAudit('constants', 'return [max(candidates, key=lambda c: c["support"]) ["candidate_id"]] if candidates else []', '', false,
+    'BUILDABLE_ROUTES = ("fusion", "cluster_compose", "boolean_synthesis")\nROUTE_PRIORITY = {"timing_criticality": (("support", True),)}\nGENERIC_PRIORITY = ("support",)\n', true);
+  assert.equal(withConstants.status, 0, withConstants.stderr);
   const shadow = await runAudit('shadow', 'return []', 'def Path(value):\n    return value\n');
   assert.notEqual(shadow.status, 0); assert.match(shadow.stderr, /helper shadows an existing binding/);
+  const constantShadow = await runAudit('constant-shadow', 'return []', '', false, 'Path = "shadow"\n');
+  assert.notEqual(constantShadow.status, 0); assert.match(constantShadow.stderr, /constant shadows an existing binding/);
+  const fileShadow = await runAudit('file-shadow', 'return []', '', false, '__file__ = "other.py"\n');
+  assert.notEqual(fileShadow.status, 0); assert.match(fileShadow.stderr, /constant shadows an existing binding/);
+  const duplicate = await runAudit('duplicate', 'return []', '', false, 'LIMIT = 1\nLIMIT = 2\n');
+  assert.notEqual(duplicate.status, 0); assert.match(duplicate.stderr, /bound more than once/);
+  const importTimeCall = await runAudit('import-time-call', 'return []', '', false, 'NOW = time.time()\n');
+  assert.notEqual(importTimeCall.status, 0); assert.match(importTimeCall.stderr, /malformed node or string|literal/);
   const changedInput = await runAudit('changed-input', 'return []', '', true);
   assert.notEqual(changedInput.status, 0); assert.match(changedInput.stderr, /fixed imports, main/);
 });

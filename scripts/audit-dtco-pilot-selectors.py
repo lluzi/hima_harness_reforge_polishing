@@ -24,16 +24,29 @@ def scaffold(raw, template):
     fixed_names.update(alias.asname or alias.name.split('.')[0] for node in reference.body
                        if isinstance(node, (ast.Import, ast.ImportFrom)) for alias in node.names)
     retained = []
-    helpers = set()
-    for node in tree.body:
+    helper_names = [node.name for node in tree.body
+                    if isinstance(node, ast.FunctionDef) and node.name not in {'choose', 'main'}]
+    assert len(helper_names) == len(set(helper_names)), 'helper is bound more than once'
+    helpers = set(helper_names)
+    constants = set()
+    for index, node in enumerate(tree.body):
+        if index == 0 and isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            continue  # Module documentation can explain the research revision; it performs no I/O.
+        if isinstance(node, ast.Assign):
+            assert len(node.targets) == 1 and isinstance(node.targets[0], ast.Name), 'module constants need one simple name'
+            name = node.targets[0].id
+            assert not name.startswith('__') and name not in fixed_names and name not in vars(builtins) and name not in helpers, 'constant shadows an existing binding'
+            assert name not in constants, 'module constant is bound more than once'
+            ast.literal_eval(node.value)  # No calls, comprehensions, names, or computed values at import time.
+            constants.add(name)
+            continue
         if isinstance(node, ast.FunctionDef) and node.name not in {'choose', 'main'}:
-            assert node.name not in fixed_names and node.name not in vars(builtins) and node.name not in helpers, 'helper shadows an existing binding'
+            assert not node.name.startswith('__') and node.name not in fixed_names and node.name not in vars(builtins), 'helper shadows an existing binding'
             assert not node.decorator_list, 'helper decorators change module initialization'
             assert node.returns is None and all(arg.annotation is None for arg in
                 node.args.posonlyargs + node.args.args + node.args.kwonlyargs), 'helper annotations must not alter module initialization'
             for default in node.args.defaults + [value for value in node.args.kw_defaults if value is not None]:
                 ast.literal_eval(default)  # Only literal defaults, with no import-time calls.
-            helpers.add(node.name)
             continue
         if isinstance(node, ast.FunctionDef) and node.name == 'choose':
             node.body = [ast.Pass()]
