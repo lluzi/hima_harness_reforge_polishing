@@ -710,7 +710,7 @@ function installMethodSnapshot(source: PackFolderSnapshot, next: MethodManifest,
 export interface PackTransferRequest {
   readonly from: string;
   readonly to: string;
-  readonly mode: 'share' | 'migrate' | 'upgrade';
+  readonly mode: 'install' | 'share' | 'migrate' | 'upgrade';
   /** Explicit relative material paths; absent for method-only sharing. Migration carries all assets. */
   readonly assets?: readonly string[];
 }
@@ -829,7 +829,7 @@ export function verifiedPackRelocation(request: { readonly packDir: string; read
  * mode, selected material bytes and previous method identity, so earlier approval is not reusable
  * for changed contents. This is a local owner operation, not a multi-tenant permission system. */
 function transferSnapshot(request: PackTransferRequest): { review: PackTransferReview; bytes: Map<string, Uint8Array>; modes: Map<string, number> } {
-  if (!['share', 'migrate', 'upgrade'].includes(request.mode)) throw new PackFolderError('unknown Pack transfer mode');
+  if (!['install', 'share', 'migrate', 'upgrade'].includes(request.mode)) throw new PackFolderError('unknown Pack transfer mode');
   const from = path.resolve(request.from), to = path.resolve(request.to);
   if (to === from || to.startsWith(`${from}${path.sep}`) || from.startsWith(`${to}${path.sep}`)) throw new PackFolderError('source and destination must be separate Pack directories');
   plainAncestors(from); plainAncestors(to);
@@ -894,7 +894,7 @@ export function previewPackTransfer(request: PackTransferRequest): PackTransferR
 export function applyPackTransfer(request: PackTransferRequest & { readonly reviewSha256: string }): PackTransferReview {
   const held = transferSnapshot(request);
   if (held.review.reviewSha256 !== request.reviewSha256) throw new PackFolderError('Pack transfer contents changed since review; inspect and confirm a fresh manifest');
-  if (request.mode === 'upgrade') {
+  if (request.mode === 'install' || request.mode === 'upgrade') {
     installPackMethod({ from: held.review.from, to: held.review.to });
     return held.review;
   }

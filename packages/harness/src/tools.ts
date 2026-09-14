@@ -20,6 +20,7 @@ import { describePackCheck, describePackCheckResult, describePrepare, packCheckF
 import { checkInstalledPack, runPackWords } from './packs.js';
 import { releasePack } from './release.js';
 import { runView, type RunWords } from './remote.js';
+import type { PreparationView } from './workbench.js';
 import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyValue } from './run-arguments.js';
 
 type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]: ToolJson };
@@ -236,7 +237,8 @@ function resumeToolValue(result: ResumeResult): ResumeToolValue {
  * effect — a tool registration unwinds when the plugin unloads, the way dsh's own plugins do it —
  * and this module has nothing to say about that.
  */
-export function himaTools(deps: FabricDeps, author?: (request: { pack: string; create?: boolean }, agent?: Agent) => Promise<{ pack: string; folder: string; sessionId: string; created: boolean }>): ToolDefinition[] {
+export function himaTools(deps: FabricDeps, author?: (request: { pack: string; create?: boolean }, agent?: Agent) => Promise<{ pack: string; folder: string; sessionId: string; created: boolean }>,
+  prepare?: (pack: string, site?: string) => PreparationView): ToolDefinition[] {
   return [
     ...author ? [defineTool({
       name: 'hima_author',
@@ -405,9 +407,23 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       },
     }),
     defineTool({
+      name: 'hima_prepare',
+      description: 'Inspect one installed HimaPack and, when named, one saved Site. Returns a read-only Campaign proposal with purpose, inputs, tools, knowledge, reference graph, unknowns and next actions. Creates no Campaign, Run, workspace, Job, Ledger row or hidden Agent. Use this before hima_run; ask the user only for unresolved business choices or facts Hima cannot discover.',
+      parameters: {
+        pack: { type: 'string', required: true, description: 'Installed HimaPack id.' },
+        site: { type: 'string', description: 'Saved Site name. Omit while helping the user connect one.' },
+      },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      execute: (args) => {
+        if (!prepare) throw new Error('Campaign preparation is unavailable on this Host');
+        return Promise.resolve(toolJson(prepare(args.pack, args.site)));
+      },
+    }),
+    defineTool({
       name: 'hima_run',
       description: 'Prepare a Campaign on the named Site and bind it to this actual conversational Agent. Returns promptly with the Run and execution context; starts no business node or hidden Agent. You remain the execution owner: use hima_context and hima_execute to choose and perform each node, inspect real evidence, and decide the next action. Goal and total budget remain fixed.',
       parameters: {
+        proposalId: { type: 'string', description: 'The current id returned by hima_prepare. Supply it when confirming a prepared Campaign.' },
         pack: { type: 'string', required: true, description: 'Pack id, as the packs directory holds it.' },
         site: { type: 'string', required: true, description: 'Site name, as in the site file.' },
         goal: {
@@ -448,12 +464,19 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       },
       execute: async (args, execution) => {
         if (!execution.agent) throw new Error('hima_run requires a live conversational Agent');
+        if (args.proposalId !== undefined) {
+          const current = prepare?.(args.pack, args.site);
+          if (current === undefined || !current.ready || current.id !== args.proposalId) {
+            throw new Error('Campaign preparation changed or is no longer ready; call hima_prepare again before confirming');
+          }
+        }
         const goal = strategyArgument(args.goal, 'goal') ?? {};
         // The same checks the command face and the route make, from the same tables: a tool call is
         // a caller like any other, and a time box no person could type must not be one a model can.
         const timeBox = toolNumber('timeBox', args.timeBox);
         const result = await startRun(deps, {
           ownerSessionId: legacyAutomaticAllowed() ? undefined : String(execution.agent.id),
+          ...(args.proposalId === undefined ? {} : { proposalId: args.proposalId }),
           pack: args.pack,
           site: args.site,
           goal,

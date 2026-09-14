@@ -277,7 +277,7 @@ describe('the reference site over SSH', { skip: probeSite() }, () => {
     clearRemoteCommands();
     try {
       const site = loadSite(sitesDir, 'linglong');
-      const draft = await discoverSshSite({ name: 'linglong-discovery', ssh: site.ssh!, hints: { workspaceRoot: site.workspaceRoot } });
+      const draft = await discoverSshSite({ name: 'linglong-discovery', ssh: site.ssh!, hints: { workspaceRoot: site.workspaceRoot, toolCommands: ['genus'] } });
       assert.ok(draft.site.discovery.facts.some((fact) => fact.probe.join(' ') === 'uname -s' && fact.code === 0), 'the live host supplied an OS fact');
       assert.ok(draft.site.discovery.facts.some((fact) => fact.probe.join(' ') === 'which genus'), 'the limited tool probe records either a path or an actionable unknown');
       assert.equal(draft.site.discovery.stale, false);

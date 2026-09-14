@@ -36,7 +36,7 @@ test('owner reviews selected knowledge files and confirms the exact local sharin
     await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
     await browser.markText('button', 'New Session', 'owner-new-session'); assert.ok((await d.click('owner-new-session')).ok);
     await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
-    assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio', 'Research workspace')).ok);
+    assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio', 'Campaign workspace')).ok);
     assert.ok((await d.click('studio-pack-owner')).ok);
     for (const [control, value] of Object.entries({ 'owner-pack': pack, 'owner-location': destination, 'owner-assets': relative })) assert.ok((await d.fill(control, value)).ok);
     assert.ok((await d.click('owner-review')).ok);

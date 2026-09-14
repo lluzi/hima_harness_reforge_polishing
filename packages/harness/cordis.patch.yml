@@ -9,3 +9,5 @@
         # Installed HimaPacks, one directory per pack id. Packs ship in the repository under `packs/`
         # and are installed here the way a site file is, so the harness reads one place for both.
         packsDir: !!js dshHomePath('hima/packs')
+        # User-selected current documents and derived indexes live beside Packs, never inside one.
+        knowledgeDir: !!js dshHomePath('hima/knowledge/current')

@@ -41,8 +41,8 @@ test('discovery executes exactly the fixed safe probe list and keeps missing com
       return { code: argv[0] === 'which' && argv[1] === 'genus' ? 1 : 0, stdout: Buffer.from(argv.join(' ')), stderr: '' };
     },
   };
-  const facts = await discoverSiteFacts(channel);
-  assert.deepEqual(seen, siteDiscoveryProbes.map((probe) => [...probe]));
+  const facts = await discoverSiteFacts(channel, ['genus']);
+  assert.deepEqual(seen, [...siteDiscoveryProbes.map((probe) => [...probe]), ['which', 'genus']]);
   assert.equal(facts.find((fact) => fact.probe.join(' ') === 'which genus')?.code, 1, 'a missing tool is an explicit fact, not a fallback shell command');
   assert.ok(seen.every(([verb]) => !['rm', 'mkdir', 'tee', 'cp', 'sh', 'bash', 'sudo'].includes(verb!)), 'discovery contains neither writes nor an unbounded shell');
 });

@@ -59,7 +59,9 @@ export const siteDiscoveryRequestSchema = z.object({
     allowedReadRoots: z.array(absolutePosixPath).max(8).default([]),
     allowedWriteRoots: z.array(absolutePosixPath).max(8).default([]),
     allowedWrappers: z.array(z.string().min(1)).max(16).default([]),
-  }).default({ allowedReadRoots: [], allowedWriteRoots: [], allowedWrappers: [] }),
+    /** Executable names requested by the selected Pack; discovery never invents vendor tools. */
+    toolCommands: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/)).max(32).default([]),
+  }).default({ allowedReadRoots: [], allowedWriteRoots: [], allowedWrappers: [], toolCommands: [] }),
 });
 export type SiteDiscoveryRequest = z.input<typeof siteDiscoveryRequestSchema>;
 
@@ -152,10 +154,7 @@ function unknownsFrom(facts: readonly SiteDiscoveryFact[]): string[] {
   const answered = (verb: string, arg?: string) => facts.some((fact) => fact.probe[0] === verb && (arg === undefined || fact.probe[1] === arg) && fact.code === 0);
   if (!answered('uname')) unknowns.push('host operating-system facts were not available');
   if (!answered('tmux')) unknowns.push('tmux availability/version was not available');
-  for (const tool of ['genus', 'innovus', 'dc_shell', 'pt_shell']) {
-    if (!answered('which', tool)) unknowns.push(`${tool} command/version was not identified`);
-  }
-  if (!answered('which', 'lmutil')) unknowns.push('licence utility was not identified; no licence claim was made');
+  for (const fact of facts.filter((item) => item.probe[0] === 'which' && item.code !== 0)) unknowns.push(`${fact.probe[1]} command was not identified`);
   return unknowns;
 }
 
@@ -165,7 +164,7 @@ function unknownsFrom(facts: readonly SiteDiscoveryFact[]): string[] {
  */
 export async function discoverSshSite(input: SiteDiscoveryRequest): Promise<SiteDiscoveryResult> {
   const request = siteDiscoveryRequestSchema.parse(input);
-  const facts = await discoverSiteFacts(new SshChannel(request.name, request.ssh));
+  const facts = await discoverSiteFacts(new SshChannel(request.name, request.ssh), request.hints.toolCommands);
   const unknowns = unknownsFrom(facts);
   const workspaceRoot = request.hints.workspaceRoot ?? '/';
   const conflicts = request.hints.workspaceRoot === undefined

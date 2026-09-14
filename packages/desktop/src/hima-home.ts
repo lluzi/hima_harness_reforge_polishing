@@ -175,6 +175,11 @@ export function himaSitesDir(home: string): string {
   return path.join(path.resolve(home), 'hima', 'sites');
 }
 
+/** Hima-owned current document root; Pack methods remain under the sibling packs directory. */
+export function himaKnowledgeDir(home: string): string {
+  return path.join(path.resolve(home), 'hima', 'knowledge', 'current');
+}
+
 /** A home with the hima profile in it, and what preparing it did. */
 export interface PreparedHimaHome {
   readonly home: string;
@@ -238,10 +243,13 @@ export async function prepareHimaHome(req: PrepareHimaHomeRequest): Promise<Prep
   const home = path.resolve(req.home);
   const profileDir = himaProfileDir(home);
   const sitesDir = himaSitesDir(home);
+  const knowledgeDir = himaKnowledgeDir(home);
   const did: string[] = [];
 
   await mkdir(sitesDir, { recursive: true });
   did.push(`prepared the shared Hima Site directory at ${sitesDir}`);
+  await mkdir(knowledgeDir, { recursive: true });
+  did.push(`prepared the Hima current-knowledge directory at ${knowledgeDir}`);
 
   if (existsSync(profileDir)) {
     did.push(`the ${HIMA_PROFILE} profile is already at ${profileDir}`);

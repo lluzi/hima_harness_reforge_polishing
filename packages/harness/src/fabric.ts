@@ -145,6 +145,10 @@ function packPurpose(folder: PackFolderSnapshot): RunPurpose {
 export interface StartRunRequest {
   /** Internal Host admission: the actual calling conversation, never a model-chosen identity. */
   readonly ownerSessionId?: string;
+  /** Confirmed read-only preparation identity. One identity may open at most one persistent Run. */
+  readonly proposalId?: string;
+  /** Web intake asks the Host to notify the recorded owner after durable preparation. */
+  readonly notifyOwnerOnOpen?: boolean;
   readonly pack: string;
   readonly site: string;
   /** The Goal as bound parameters, typed and checkable, immutable for the Campaign (D3). */
@@ -213,7 +217,23 @@ export type StartRunResult =
  *         SiteNotFoundError for a pack or Site that is not installed; RunFaultError when a node's
  *         turn threw, after the fault has been recorded against the Run.
  */
-export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<StartRunResult> {
+const proposalStarts = new WeakMap<Ledger, Map<string, Promise<StartRunResult>>>();
+
+/** Serialize confirmations of the same proposal inside one Host; the durable Run row below keeps
+ * the identity idempotent after restart. */
+export function startRun(deps: FabricDeps, req: StartRunRequest): Promise<StartRunResult> {
+  if (req.proposalId === undefined) return startRunOnce(deps, req);
+  const starts = proposalStarts.get(deps.ledger) ?? new Map<string, Promise<StartRunResult>>();
+  proposalStarts.set(deps.ledger, starts);
+  const held = starts.get(req.proposalId);
+  if (held !== undefined) return held;
+  const started = startRunOnce(deps, req);
+  starts.set(req.proposalId, started);
+  void started.then(() => starts.delete(req.proposalId!), () => starts.delete(req.proposalId!));
+  return started;
+}
+
+async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<StartRunResult> {
   if (req.ownerSessionId === undefined && !legacyAutomaticAllowed()) throw new RunStartError('preparing a Run requires a live conversational owner');
   if (req.ownerSessionId !== undefined && !deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.ownerSessionId)) {
     throw new RunStartError('the execution owner must be a live conversation on this Host');
@@ -253,6 +273,19 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
   const first = strategyFrom(pack.contract.strategy, req.strategy);
   if ('error' in first) throw new RunStartError(first.error);
   const strategy = first.strategy;
+
+  if (req.proposalId !== undefined) {
+    const existing = deps.ledger.runs().find((run) => run.proposalId === req.proposalId);
+    if (existing !== undefined) {
+      if (existing.packId !== pack.id || existing.siteId !== site.name || identityOf(existing.goal) !== identityOf(goal)
+          || identityOf(existing.firstStrategy) !== identityOf(strategy)) {
+        throw new RunStartError('this Campaign proposal already belongs to a Run with different Pack, Site, Goal or Strategy facts');
+      }
+      const workspace = deps.ledger.records({ runId: existing.id, type: 'workspace' }).findLast((record) => record.type === 'workspace');
+      if (workspace === undefined) throw new RunStartError(`Campaign proposal ${req.proposalId} already opened ${existing.id}, which has no prepared workspace; inspect that Run instead of creating another`);
+      return { kind: 'ran', run: existing, workspace: workspace.workspace };
+    }
+  }
 
   const campaignId = campaignIdFor(pack, new Date());
   const budget = {
@@ -327,7 +360,7 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
     throw new RunStartError(`pack ${req.pack} cannot preserve its method for this Run: ${(err as Error).message}`);
   }
   const control = req.ownerSessionId === undefined ? {} : { control: { mode: 'agent' as const, owner: req.ownerSessionId, epoch: 1, revision: 0, paused: [], executions: {}, requests: {}, siteDigest: identityOf(site) } };
-  const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1, ...control });
+  const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, ...(req.proposalId === undefined ? {} : { proposalId: req.proposalId }), packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1, ...control });
   // Said as soon as it is true, and before the preparation below can take seconds over a 56 MB copy:
   // a caller that answers on the Run's existence must have the Run before anything else can happen
   // to it.
@@ -376,6 +409,11 @@ export async function startRun(deps: FabricDeps, req: StartRunRequest): Promise<
     strategy,
     meters: { elapsedMs: 0, jobsLaunched: 0, attempts: 0 },
   });
+
+  if (req.notifyOwnerOnOpen === true && opened.control !== undefined) {
+    deps.notify?.(opened.control.owner, opened.id, `start:${req.proposalId ?? opened.id}`,
+      'This prepared Campaign is now owned by this conversation. Read hima_context, inspect the reference graph and current facts, then choose each authorized node with hima_execute. Do not create another Run or hidden execution Agent.');
+  }
 
   const driving: Driving = {
     deps,
@@ -1829,6 +1867,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       await recordExecutionAction(deps, run, req, digest, {
         paused: [...new Set([...control.paused, '*'])], stop: { reason: 'cancel', requestId: req.requestId, status: 'requested' },
       }, receipt, {}, 'admitted');
+      deps.notify?.(control.owner, run.id, req.requestId, 'The user requested that this Campaign stop. The request is recorded and new node decisions are fenced while the actual Job stop is established. Acknowledge the request and inspect current Hima facts; do not start another node.');
       scheduleExecutionStop(deps, run.id);
       return answer('accepted', { receipt });
     }
@@ -1888,6 +1927,12 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
         } else changed = { paused: control.paused.filter((paused) => paused !== scope) };
       }
       await recordExecutionAction(deps, run, req, digest, changed, receipt);
+      const notifiedOwner = req.action === 'handoff' ? receipt.owner! : control.owner;
+      deps.notify?.(notifiedOwner, run.id, req.requestId, req.action === 'handoff'
+        ? 'Campaign ownership was handed to this conversation at a safe boundary. Read hima_context before deciding; the prior owner is fenced.'
+        : req.action === 'pause'
+          ? `The user paused ${scope === '*' ? 'this Campaign' : `node ${scope}`}. The control fact is recorded; acknowledge it and start no affected node until continued.`
+          : `The user continued ${scope === '*' ? 'this Campaign' : `node ${scope}`}. Read current facts before choosing the next action.`);
       return answer('accepted', { receipt });
     }
     if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || reading) return actOnExecution(deps, run, req, digest);

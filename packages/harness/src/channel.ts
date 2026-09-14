@@ -116,8 +116,7 @@ export const siteDiscoveryProbes: readonly (readonly string[])[] = [
   ['tmux', '-V'],
   ['getconf', '_NPROCESSORS_ONLN'], ['getconf', 'PAGE_SIZE'],
   ['cat', '--', '/proc/meminfo'],
-  ['which', 'tmux'], ['which', 'genus'], ['which', 'innovus'], ['which', 'dc_shell'], ['which', 'pt_shell'], ['which', 'make'],
-  ['which', 'lmutil'],
+  ['which', 'tmux'], ['which', 'make'],
 ];
 
 export interface SiteDiscoveryFact {
@@ -128,9 +127,13 @@ export interface SiteDiscoveryFact {
 }
 
 /** Run only the fixed Site discovery questions and retain unsuccessful answers as facts, not errors. */
-export async function discoverSiteFacts(on: Channel): Promise<readonly SiteDiscoveryFact[]> {
+export async function discoverSiteFacts(on: Channel, toolCommands: readonly string[] = []): Promise<readonly SiteDiscoveryFact[]> {
   const facts: SiteDiscoveryFact[] = [];
-  for (const probe of siteDiscoveryProbes) {
+  const commands = [...new Set(toolCommands)];
+  if (commands.length > 32 || commands.some((command) => !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/.test(command))) {
+    throw new Error('Site tool discovery accepts at most 32 plain executable names supplied by a Pack');
+  }
+  for (const probe of [...siteDiscoveryProbes, ...commands.map((command) => ['which', command] as const)]) {
     const result = await on.exec(probe);
     // Bound both diagnostics and output: a broken login banner or a surprising pseudo-file must not
     // turn a small profile into an unbounded copy of remote state.

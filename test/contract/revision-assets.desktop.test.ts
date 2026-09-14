@@ -104,7 +104,7 @@ test('the native workbench keeps a superseded Workshop version readable beside i
       await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
       await browser.markText('button', 'New Session', 'revision-assets-session'); assert.ok((await driver.click('revision-assets-session')).ok);
       await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
-      assert.ok((await driver.click('open-workbench')).ok); assert.ok((await driver.wait('studio', 'Research workspace')).ok);
+      assert.ok((await driver.click('open-workbench')).ok); assert.ok((await driver.wait('studio', 'Campaign workspace')).ok);
       assert.ok((await driver.fill('studio-run', runId)).ok);
       assert.ok((await driver.wait('run-revisions', 'audit-analysis-v2')).ok);
       assert.ok((await driver.click('revision-expand-audit-analysis-v2')).ok);

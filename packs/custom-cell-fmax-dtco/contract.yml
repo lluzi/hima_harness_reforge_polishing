@@ -194,6 +194,10 @@ outputs:
 environment:
   wrappers:
     - /usr/bin/python3
+  commands:
+    - dc_shell
+    - lc_shell
+    - innovus
 workspace:
   copy:
     - probe.py

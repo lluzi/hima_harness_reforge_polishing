@@ -10,7 +10,7 @@ import { api } from './support/hima-api.ts';
 import { inspectWindow } from './support/inspect-window.ts';
 import { writeSampleReport } from './support/site.ts';
 import { localHome } from './support/fabric.ts';
-import { installWorkshopPack, packsDirOf, writePackVariant } from './support/pack.ts';
+import { installWorkshopPack, packsDirOf, timingProbePackId, writePackVariant } from './support/pack.ts';
 import { appendReplaySession, writeMomentScenario } from './support/moments.ts';
 import { HIMA_INTENT_SECTIONS } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
@@ -49,13 +49,16 @@ async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = 
   await browser.send('Input.insertText', { text: draft });
   assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
   assert.ok((await d.click('open-workbench')).ok);
-  assert.ok((await d.wait('studio', 'Research workspace', 12_000)).ok);
+  assert.ok((await d.wait('studio', 'Campaign workspace', 12_000)).ok);
   return { host, cookie };
 }
 
 async function fillStart(d: BootedDriver, browser: Inspector, target = '2.25', retries = '0') {
   assert.ok((await d.click('studio-new')).ok);
-  await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status')==='fit'`);
+  assert.ok((await d.fill('studio-pack', timingProbePackId)).ok);
+  assert.ok((await d.fill('studio-site', 'local')).ok);
+  await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status')==='ready'`);
+  await browser.mark('.hima-advanced>summary', 'studio-advanced'); assert.ok((await d.click('studio-advanced')).ok);
   for (const [key, value] of Object.entries({ 'studio-target': target, 'studio-knob-periodNs': '2.3', 'studio-timeBox': '5', 'studio-retries': retries, 'studio-generations': '6' })) {
     assert.ok((await d.fill(key, value)).ok);
   }
@@ -214,7 +217,7 @@ test('preparation retries preserve drafts, pending starts cannot be replaced, an
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="studio-start"]').disabled`), true);
     await browser.send('Fetch.disable');
     assert.ok((await d.click('studio-recheck')).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]').getAttribute('data-hima-state-status')==='fit'`);
+    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]').getAttribute('data-hima-state-status')==='ready'`);
     await browser.pause('*/hima/api/runs/start');
     assert.ok((await d.click('studio-start')).ok);
     const starting = await browser.nextPaused();
@@ -283,7 +286,7 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     assert.equal(options.find((o) => o.value === 'broken-pack')?.disabled, true);
     assert.ok(options.find((o) => o.value === 'broken-pack')?.text.includes('unreadable'));
     assert.ok((await d.fill('studio-pack', pack)).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]').getAttribute('data-hima-state-status')==='fit'`);
+    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]').getAttribute('data-hima-state-status')==='ready'`);
     assert.ok((await d.click('studio-start')).ok);
     assert.ok((await d.wait('run-workshop', 'miner.sh', 40_000)).ok);
     assert.ok((await d.wait('studio-status', 'ended', 40_000)).ok);
@@ -358,7 +361,7 @@ test('a native declared improvement Goal shows its units, refuses precision loss
     assert.ok((await d.click('studio-new')).ok);
     await browser.wait(`!!document.querySelector('[data-hima-control="studio-pack"] option[value="relative-goal"]')`);
     assert.ok((await d.fill('studio-pack', pack)).ok);
-    await browser.wait(`document.querySelector('[data-hima-control="studio-goal-improvement_pct"]') && document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status') === 'fit'`);
+    await browser.wait(`document.querySelector('[data-hima-control="studio-goal-improvement_pct"]') && document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status') === 'ready'`);
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="studio-target"]') === null`), true);
     assert.ok((await d.wait('studio-start', 'relative improvement (%)', 10_000)).ok);
     assert.ok((await d.fill('studio-goal-improvement_pct', '1.001')).ok);

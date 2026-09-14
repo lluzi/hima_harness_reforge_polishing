@@ -125,7 +125,7 @@
 //   data-hima-control="start"           submits the form
 import { legacyPeriodGoal } from './run-arguments.js';
 import { answeredWithNoCode, bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchPointSaid, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, couldNotReach, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, good, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, askedObservedSaid, startGoalField, startKnobField, NO_FABRIC_STATE, NO_RUNS, NOT_HELD, NOT_RECORDED, NOTHING_JUDGED, NOTHING_TO_DO_ENDED, NOTHING_TO_DO_NO_FABRIC, nodeStateLabel, workshopStateLabel, workshopSaid, workshopState, codeSaid, codeOfWorkshop, readerSaid, outcomeColour, pathColumns, plain, plotLabels, plotValue, runColumns, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, START_HEADING, START_NO_PACK, START_NO_SITE, START_STATIC_FIT, START_STATIC_UNFIT, START_STATIC_LIMIT, startControl, startForm, tailSaid, warn } from './card-labels.js';
-import type { PackCheck } from './packs.js';
+import type { PackCheck, PackOverview } from './packs.js';
 import type { LedgerBranchRow, LedgerGenerationRow, LedgerJoinRow, LedgerRow, MeterRow, StartField } from './card-labels.js';
 import { experienceReport, reportBlocks } from './experience-report.js';
 import { HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_WORKBENCH_PATH, runCardPath } from './paths.js';
@@ -1237,6 +1237,8 @@ export interface StartChoices {
   readonly goal?: import('./run-arguments.js').GoalDeclaration;
   readonly strategy?: StrategyDeclaration;
   readonly words?: RunWords;
+  /** One read-only Campaign preparation. It creates no Run, workspace, Job or Ledger row. */
+  readonly proposal?: PreparationView;
   /**
    * What each pack's option is marked with, by pack id (#64): `test pack (<stage>)` for a folder the
    * authoring pipeline has started and not finished, `unreadable: <why>` for one whose own reading
@@ -1260,6 +1262,26 @@ export interface StartChoices {
   readonly cannotStart?: readonly string[];
 }
 
+export interface PreparationView {
+  readonly id: string;
+  readonly ready: boolean;
+  readonly pack: PackOverview;
+  readonly site?: {
+    readonly name: string;
+    readonly kind: 'local' | 'ssh';
+    readonly readiness: 'ready' | 'needs-discovery' | 'stale';
+    readonly resources: { readonly cores: number; readonly memoryGiB: number; readonly parallelJobs: number };
+  };
+  readonly inputs: readonly { readonly name: string; readonly description: string; readonly value?: string; readonly ready: boolean }[];
+  readonly knowledge: { readonly documents: number; readonly ready: boolean; readonly currentDocuments: number };
+  readonly probe: { readonly status: 'declaration-only' | 'discovered' | 'needed' | 'stale'; readonly observedAt?: string };
+  readonly goal: Readonly<Record<string, number>>;
+  readonly strategy: Readonly<Record<string, string | number>>;
+  readonly referenceGraph: { readonly entry: string; readonly nodes: readonly { readonly id: string; readonly kind: string }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly outcome?: string; readonly revisit?: boolean }[] };
+  readonly unknowns: readonly string[];
+  readonly nextActions: readonly string[];
+}
+
 /** One `<option>` per installed thing; the value is the identity a route takes, which is also the
  *  word a person reads, because a pack id and a Site name are what they are called everywhere else.
  *  An option in `unchoosable` is rendered `disabled`: it is still on the list, with its mark saying
@@ -1270,7 +1292,8 @@ const options = (
   marks: Readonly<Record<string, string>> = {},
   unchoosable: readonly string[] = [],
 ): string =>
-  (selected !== undefined && !values.includes(selected) ? [selected, ...values] : values).map((v) => {
+  (selected === undefined ? '<option value="" selected disabled>Choose…</option>' : '')
+  + (selected !== undefined && !values.includes(selected) ? [selected, ...values] : values).map((v) => {
     // The value is the pack id whatever the option reads, because the value is what the start route
     // takes: a mark is something a person reads, never something a request carries.
     const mark = marks[v];
@@ -1695,7 +1718,7 @@ function page(title: string, crumb: string, body: string, above = '', script = '
 /** `GET /hima/`, and `GET /hima/?pack=<id>` for the same page with that pack's knobs on its form
  *  (#58): the start form, and the run list under it. */
 export const runsPage = (runs: readonly RunHeadView[], choices: StartChoices): string =>
-  page('HimaHarness workbench', '', renderRunList(runs), '<div class="page-heading"><h2>Research workbench</h2><p>Choose a method, set a goal and budget, then follow each experiment back to its evidence.</p></div>' + renderStartForm(choices), START_FORM);
+  page('HimaHarness workbench', '', renderRunList(runs), '<div class="page-heading"><h2>Campaign workbench</h2><p>Inspect a HimaPack and Site, prepare one proposal, then follow the Campaign graph back to its evidence.</p></div>' + renderStartForm(choices), START_FORM);
 
 /** `GET /hima/?run=<id>`: that Run's card, with the controls a person acts on it through. */
 export const runPage = (view: RunView): string =>

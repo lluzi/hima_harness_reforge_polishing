@@ -507,6 +507,8 @@ export interface ObserveBody extends ObserveRequest {
 export interface StartRunBody {
   /** Actual native conversation selection, validated against Host registry before binding. */
   readonly sessionId?: string;
+  /** Current read-only Campaign proposal. When present it is re-read before any Run is created. */
+  readonly proposalId?: string;
   readonly pack: string;
   readonly site: string;
   readonly goal: Readonly<Record<string, number | string>>;
@@ -531,7 +533,7 @@ export interface StartRunBody {
 /** What this namespace needs from the Hima service. Nothing here reaches for the plugin itself. */
 export interface PackTransferBody {
   readonly pack: string;
-  readonly mode: 'share' | 'migrate' | 'upgrade';
+  readonly mode: 'install' | 'share' | 'migrate' | 'upgrade';
   readonly to: string;
   readonly source?: string;
   readonly assets?: readonly string[];
@@ -595,7 +597,7 @@ export interface RemoteOperations {
   runWords(run: RunRecord): RunWords | undefined;
   /** Read local Pack/Site declarations once. Loading faults identify their preparation owner;
    * unexpected checking faults still propagate to the Host's internal error boundary. */
-  startPreparation(packId: string, siteName: string | undefined): Pick<StartChoices, 'goal' | 'strategy' | 'words' | 'check' | 'preparation'>;
+  startPreparation(packId: string, siteName: string | undefined): Pick<StartChoices, 'goal' | 'strategy' | 'words' | 'check' | 'preparation' | 'proposal'>;
   /**
    * How far up the pack authoring pipeline each installed pack folder has come (#64), by pack id —
    * or, for a folder nothing can read, the reading's own refusal naming the path.
@@ -1009,6 +1011,7 @@ async function readStartBody(req: IncomingMessage): Promise<StartRunBody> {
   const body = await readJsonBody(req);
   return {
     sessionId: optionalString(body, 'sessionId'),
+    proposalId: optionalString(body, 'proposalId'),
     pack: requiredString(body, 'pack'),
     site: requiredString(body, 'site'),
     goal: strategyRecord(body, 'goal') ?? {},
@@ -1024,8 +1027,10 @@ async function readStartBody(req: IncomingMessage): Promise<StartRunBody> {
  *  time box converted from the minutes every face spells it in to the milliseconds it is stored in. */
 const startRequestOf = (request: StartRunBody): StartRunRequest => ({
   ownerSessionId: legacyAutomaticAllowed() ? undefined : request.sessionId,
+  notifyOwnerOnOpen: true,
   pack: request.pack,
   site: request.site,
+  ...(request.proposalId === undefined ? {} : { proposalId: request.proposalId }),
   goal: request.goal,
   strategy: request.strategy,
   test: request.test,
@@ -1038,6 +1043,12 @@ const startRequestOf = (request: StartRunBody): StartRunRequest => ({
 async function startRunOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
   const request = await readStartBody(req);
   validateStartSession(ops, request);
+  if (request.proposalId !== undefined) {
+    const current = ops.startPreparation(request.pack, request.site).proposal;
+    if (current === undefined || !current.ready || current.id !== request.proposalId) {
+      throw new BadRequest('Campaign preparation changed or is no longer ready; inspect the current proposal before confirming');
+    }
+  }
   let result: StartRunResult;
   try {
     result = await ops.startRun(startRequestOf(request));
@@ -1344,7 +1355,7 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     const body = await readJsonBody(req);
     if (typeof body.sessionId !== 'string' || !ops.validateSession?.(body.sessionId)) throw new BadRequest('select a live owner conversation before reviewing Pack contents');
     if (Object.keys(body).some(key => !['sessionId', 'pack', 'mode', 'to', 'source', 'assets', 'reviewSha256'].includes(key))) throw new BadRequest('unknown Pack transfer field');
-    if (typeof body.pack !== 'string' || typeof body.to !== 'string' || !['share', 'migrate', 'upgrade'].includes(String(body.mode))
+    if (typeof body.pack !== 'string' || typeof body.to !== 'string' || !['install', 'share', 'migrate', 'upgrade'].includes(String(body.mode))
         || (body.source !== undefined && typeof body.source !== 'string')
         || (body.reviewSha256 !== undefined && (typeof body.reviewSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(body.reviewSha256)))
         || (body.assets !== undefined && (!Array.isArray(body.assets) || !body.assets.every(item => typeof item === 'string')))) throw new BadRequest('invalid Pack transfer request');
@@ -1476,8 +1487,8 @@ function startChoices(ops: RemoteOperations, askedPack: string | null, askedSite
   });
   const cannotStart = Object.entries(stagesOf).filter(([, stage]) => typeof stage !== 'string').map(([id]) => id);
   const startable = installed.packs.filter((id) => !cannotStart.includes(id));
-  const pack = askedPack ?? startable[0];
-  const site = askedSite ?? installed.sites[0];
+  const pack = askedPack ?? undefined;
+  const site = askedSite ?? undefined;
   const selected: StartChoices = {
     ...installed,
     ...(marked.length === 0 ? {} : { marks: Object.fromEntries(marked) }),

@@ -3,17 +3,18 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import type { RunView } from '../remote.js';
 import type { StartChoices } from '../workbench.js';
+import type { ExecutionContext } from '../fabric.js';
 import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows, nodeStateLabel, runPurposeMark, runStatusLabel, startForm, startGoalField, startKnobField, START_STATIC_LIMIT } from '../card-labels.js';
 import { reportBlocks } from '../experience-report.js';
 import { runPath } from '../paths.js';
-import { fetchRun, fetchRuns, fetchStartChoices, reviewPackTransfer, startCampaign, type HimaResult } from './api.js';
+import { fetchExecutionContext, fetchRun, fetchRuns, fetchStartChoices, reviewPackTransfer, startCampaign, type HimaResult } from './api.js';
 import { ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection, MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, RunControls, useRunActions, VerdictRow, WorkshopSection } from './HimaRunCard.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot. */
 export interface WorkbenchProps {
   sessionId: string;
+  useSessions<T>(selector: (state: { current?: string }) => T): T;
   openOwner(id: string): void;
-  sendToOwner(id: string, text: string): Promise<void>;
   useTabInfo(): { tab: { visible: boolean; navigation: { revision: number; params: unknown } } };
   openFiles(): void;
 }
@@ -50,7 +51,8 @@ const stateGlyph = (state: string): string => {
   return '○';
 };
 
-export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sendToOwner }: WorkbenchProps): ReactElement {
+export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, openOwner }: WorkbenchProps): ReactElement {
+  const activeSessionId = useSessions((state) => state.current) ?? sessionId;
   const { tab } = useTabInfo();
   const params = tab.navigation.params as { runId?: unknown } | undefined;
   const requested = typeof params?.runId === 'string' ? params.runId : undefined;
@@ -67,13 +69,10 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
   const list = usePollingRead('runs', fetchRuns, tab.visible);
   const read = useCallback((signal: AbortSignal) => fetchRun(selected!, signal), [selected]);
   const snapshot = usePollingRead(selected ?? '', read, selected !== undefined && tab.visible && !creating);
+  const readContext = useCallback((signal: AbortSignal) => fetchExecutionContext(selected!, signal), [selected]);
+  const execution = usePollingRead(selected ?? '', readContext, selected !== undefined && tab.visible && !creating);
   const view = snapshot.value;
-  const acting = useRunActions(selected, (updated, action, nodeId) => {
-    snapshot.refresh(); list.refresh();
-    if (updated.run.control) void sendToOwner(updated.run.control.owner,
-      `I requested ${action} for Hima Run ${updated.run.id}${nodeId ? `, node ${nodeId}` : ''} in Live Run. The control request was accepted; read hima_context for its actual effect and any in-flight Jobs. ${action === 'continue' ? 'Continue the authorized work in this conversation from current facts.' : 'Honor the recorded control state before starting any new work.'}`,
-    ).catch((error: unknown) => setNotice(`The control request was accepted, but its conversation notification failed: ${(error as Error).message}. The Run's recorded control state still applies.`));
-  }, sessionId, view);
+  const acting = useRunActions(selected, () => { snapshot.refresh(); list.refresh(); }, activeSessionId, view);
 
   useEffect(() => {
     if (requested !== undefined && !startPending.current) { setSelected(requested); setCreating(false); setSection('live'); }
@@ -81,7 +80,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
   useEffect(() => {
     setSaved(undefined);
     return () => { savedRead.current?.abort(); };
-  }, [selected, sessionId]);
+  }, [selected, activeSessionId]);
   const openSaved = async () => {
     if (selected === undefined) return;
     savedRead.current?.abort();
@@ -95,17 +94,17 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
     } catch (error) { if (!own.signal.aborted) setSaved({ error: (error as Error).message }); }
   };
 
-  return <div className='hima-studio' data-hima-region='studio' data-hima-state-session={sessionId} data-hima-state-run={selected ?? ''} data-stale={snapshot.error !== undefined}>
+  return <div className='hima-studio' data-hima-region='studio' data-hima-state-session={activeSessionId} data-hima-state-run={selected ?? ''} data-stale={snapshot.error !== undefined}>
     <header className='hima-studio-header'>
-      <div><h2>Research workspace</h2></div>
+      <div><h2>Campaign workspace</h2></div>
       <button className='hima-button' disabled={starting} onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
       <button className='hima-button' disabled={starting} data-hima-control='studio-pack-owner' onClick={() => setManagingPack(value => !value)}>Pack & assets</button>
-      <button className='hima-button hima-primary' disabled={starting} data-hima-control='studio-new' onClick={() => { if (!startPending.current) setCreating(true); }}>＋ New run</button>
+      <button className='hima-button hima-primary' disabled={starting} data-hima-control='studio-new' onClick={() => { if (!startPending.current) setCreating(true); }}>＋ New Campaign</button>
     </header>
     <div className='hima-run-picker'>
-      <span className='hima-studio-eyebrow'>VIEWED RUN</span>
-      <select aria-label='Run on this host' disabled={starting} data-hima-control='studio-run' value={selected ?? ''} onChange={(e) => { if (!startPending.current) { setSelected(e.target.value || undefined); setCreating(false); } }}>
-        <option value=''>Select a run on this host</option>
+      <span className='hima-studio-eyebrow'>CAMPAIGN</span>
+      <select aria-label='Campaign on this host' disabled={starting} data-hima-control='studio-run' value={selected ?? ''} onChange={(e) => { if (!startPending.current) { setSelected(e.target.value || undefined); setCreating(false); } }}>
+        <option value=''>Select a Campaign</option>
         {selected && !list.value?.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
         {list.value?.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
       </select>
@@ -113,10 +112,10 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
     </div>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
     {notice ? <p role='alert' className='hima-error'>{notice}</p> : null}
-    {managingPack ? <PackOwnerPanel key={sessionId} sessionId={sessionId} initialPack={view?.run.packId ?? ''} /> : null}
-    {view?.run.control && view.run.control.owner !== sessionId ? <button type='button' className='hima-button' data-hima-control='open-owner' onClick={() => openOwner(view.run.control!.owner)}>Open owning conversation</button> : null}
-    {creating ? <StartRunForm key={sessionId} sessionId={sessionId} onBusy={startBusy} onClose={() => { if (!startPending.current) setCreating(false); }} onStarted={(run) => { setSelected(run.run.id); setCreating(false); setSection('live'); list.refresh(); snapshot.refresh(); setNotice(undefined); if (run.run.control) void sendToOwner(run.run.control.owner, `Start the prepared Hima Run ${run.run.id} in this conversation. Read hima_context, inspect the Pack reference nodes and current facts, then use hima_execute to admit and perform each authorized node. You are the execution owner; choose the next step from actual evidence. Keep this conversation available during Jobs and honor pause/stop instructions. Do not create another Run or hidden execution Agent.`).catch((error: unknown) => setNotice(`Run ${run.run.id} is prepared, but the conversation message was not delivered: ${(error as Error).message}. Ask this conversation to inspect the Run; do not start a duplicate.`)); }} />
-      : selected === undefined ? <div className='hima-empty'><div className='hima-empty-glyph'>⌘</div><h3>Explore. Experiment. Build evidence.</h3><p>Keep the engineering conversation here while Hima tracks each experiment beside it.</p><button className='hima-button hima-primary' onClick={() => setCreating(true)}>Start a research run</button><p className='hima-small'>Choose an existing run above, or start from an installed Pack.</p></div>
+    {managingPack ? <PackOwnerPanel key={activeSessionId} sessionId={activeSessionId} initialPack={view?.run.packId ?? ''} /> : null}
+    {view?.run.control && view.run.control.owner !== activeSessionId ? <button type='button' className='hima-button' data-hima-control='open-owner' onClick={() => openOwner(view.run.control!.owner)}>Open Campaign Agent</button> : null}
+    {creating ? <StartRunForm key={activeSessionId} sessionId={activeSessionId} onBusy={startBusy} onClose={() => { if (!startPending.current) setCreating(false); }} onStarted={(run) => { setSelected(run.run.id); setCreating(false); setSection('live'); list.refresh(); snapshot.refresh(); setNotice(undefined); }} />
+      : selected === undefined ? <div className='hima-empty'><div className='hima-empty-glyph'>⌘</div><h3>Complete a chip-design Campaign.</h3><p>Keep coding and conversation available while HimaGuide prepares the inputs and the Campaign Agent executes the method.</p><button className='hima-button hima-primary' onClick={() => setCreating(true)}>Prepare a Campaign</button><p className='hima-small'>Choose an existing Campaign above, install a HimaPack, or connect a Site.</p></div>
         : <>
           {snapshot.error ? <div className='hima-notice' role='alert'>Updates unavailable. {snapshot.at ? `Showing the last successful read at ${shortTime(snapshot.at)}.` : 'No Run data has been read.'} {snapshot.error}</div> : null}
           {view === undefined ? <div className='hima-empty'><p>{snapshot.error ? 'Retry the data read to continue.' : 'Reading Run records…'}</p></div> : <>
@@ -127,7 +126,7 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
               {section === 'live' ? <>
                 <RunSummary view={view} />
                 <div className='hima-run-controls'><RunControls view={view} acting={acting} /></div>
-                <ExecutionTrace view={view} />
+                <CampaignGraph view={view} context={execution.value} owner={view.run.control?.owner === activeSessionId} />
                 <GrowthSection view={view} />
                 <RevisionSection view={view} />
                 <JobActivity view={view} />
@@ -148,12 +147,13 @@ export function HimaWorkbench({ sessionId, useTabInfo, openFiles, openOwner, sen
 /** Same-session owner reviews actual local file hashes before applying a transfer. */
 function PackOwnerPanel({ sessionId, initialPack }: { sessionId: string; initialPack: string }): ReactElement {
   const [pack, setPack] = useState(initialPack);
-  const [mode, setMode] = useState<'share' | 'migrate' | 'upgrade'>('share');
+  const [mode, setMode] = useState<'install' | 'share' | 'migrate' | 'upgrade'>(initialPack ? 'share' : 'install');
   const [location, setLocation] = useState('');
   const [assets, setAssets] = useState('');
   const [review, setReview] = useState<import('../release.js').PackTransferReview>();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const fromSource = mode === 'install' || mode === 'upgrade';
   const pending = useRef(false);
   const controller = useRef<AbortController | undefined>();
   useEffect(() => () => controller.current?.abort(), []);
@@ -162,8 +162,8 @@ function PackOwnerPanel({ sessionId, initialPack }: { sessionId: string; initial
     if (pending.current || (confirm && !review)) return;
     pending.current = true; setBusy(true); setMessage('');
     const own = new AbortController(); controller.current = own;
-    const result = await reviewPackTransfer({ sessionId, pack, mode, to: mode === 'upgrade' ? '' : location,
-      ...(mode === 'upgrade' ? { source: location } : {}),
+    const result = await reviewPackTransfer({ sessionId, pack, mode, to: fromSource ? '' : location,
+      ...(fromSource ? { source: location } : {}),
       ...(mode === 'share' ? { assets: assets.split('\n').map(line => line.trim()).filter(Boolean) } : {}),
       ...(confirm ? { reviewSha256: review!.reviewSha256 } : {}) }, own.signal);
     if (own.signal.aborted) return;
@@ -175,17 +175,17 @@ function PackOwnerPanel({ sessionId, initialPack }: { sessionId: string; initial
   };
   return <section className='hima-detail' data-hima-region='pack-owner'>
     <h3>Pack & knowledge assets</h3>
-    <p className='hima-small'>This local owner controls method upgrades and which research materials leave the installed Pack.</p>
+    <p className='hima-small'>Install a transparent Pack folder, then inspect or move its method and local research assets.</p>
     <fieldset disabled={busy} style={{ border: 0, padding: 0, minWidth: 0, display: 'grid', gap: 14 }}>
       <div className='hima-fields'>
         <label>Installed Pack<input data-hima-control='owner-pack' value={pack} onChange={event => { invalidate(); setPack(event.target.value); }} /></label>
         <label>Action<select data-hima-control='owner-mode' value={mode} onChange={event => { invalidate(); setMode(event.target.value as typeof mode); }}>
-          <option value='share'>Share method / selected materials</option><option value='migrate'>Migrate my Pack with all assets</option><option value='upgrade'>Install tested method upgrade</option>
+          <option value='install'>Install Pack from folder</option><option value='share'>Share method / selected materials</option><option value='migrate'>Migrate my Pack with all assets</option><option value='upgrade'>Install tested method upgrade</option>
         </select></label>
-        <label>{mode === 'upgrade' ? 'Tested release source folder' : 'New destination Pack folder'}<input data-hima-control='owner-location' value={location} onChange={event => { invalidate(); setLocation(event.target.value); }} /></label>
+        <label>{fromSource ? (mode === 'install' ? 'Pack source folder' : 'Tested release source folder') : 'New destination Pack folder'}<input data-hima-control='owner-location' value={location} onChange={event => { invalidate(); setLocation(event.target.value); }} /></label>
       </div>
       {mode === 'share' ? <label style={{ display: 'grid', gap: 8 }}>Optional material paths, one per line<textarea style={{ boxSizing: 'border-box', width: '100%', minHeight: 72, resize: 'vertical', padding: 10, font: 'inherit', color: 'inherit', background: 'transparent', border: '1px solid var(--dsw-alias-border-primary, #ddd)', borderRadius: 6 }} data-hima-control='owner-assets' value={assets} placeholder='Empty shares only the method. Select paths inside run-assets/ to include research.' onChange={event => { invalidate(); setAssets(event.target.value); }} /></label>
-        : <p className='hima-small'>{mode === 'migrate' ? 'Migration includes your private run-assets and historical methods. Use only your own destination.' : 'The current method remains unchanged until you confirm a tested release. Old methods and run-assets are retained.'}</p>}
+        : <p className='hima-small'>{mode === 'install' ? 'Review shows every method and knowledge file before this fixed Pack is installed. Author status is displayed and does not change execution.' : mode === 'migrate' ? 'Migration includes your private run-assets and historical methods. Use only your own destination.' : 'The current method remains unchanged until you confirm a tested release. Old methods and run-assets are retained.'}</p>}
       <button style={{ justifySelf: 'start' }} className='hima-button' data-hima-control='owner-review' disabled={!pack || !location} onClick={() => { void submit(false); }}>Review files</button>
       {review ? <div data-hima-region='pack-review'>
         <p style={{ overflowWrap: 'anywhere' }}>Destination: <code>{review.to}</code></p>
@@ -207,7 +207,7 @@ function RunSummary({ view }: { view: RunView }): ReactElement {
   return <section className='hima-run-summary' data-hima-region='studio-status' data-hima-state-status={run.status ?? 'unknown'} data-hima-state-purpose={run.purpose ?? 'campaign'}>
     <div className='hima-run-title'><h3>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''}</h3><span className='hima-state' data-state={run.status}>{stateGlyph(run.status ?? 'unknown')} {status?.said ?? 'No Fabric state recorded'}</span></div>
     <p className='hima-run-context'>{view.workspace?.design ?? 'Design not recorded'} <span>·</span> {run.siteId} {run.packVersion ? <><span>·</span> Pack v{run.packVersion}</> : null}</p>
-    <div className='hima-headlines'><div><span className='hima-studio-eyebrow'>RESEARCH GOAL</span><p>{lines.goal ?? 'No goal recorded'}</p></div><div><span className='hima-studio-eyebrow'>CURRENT STEP</span><p>{run.currentNode ?? 'No current node recorded'}</p></div></div>
+    <div className='hima-headlines'><div><span className='hima-studio-eyebrow'>CAMPAIGN GOAL</span><p>{lines.goal ?? 'No goal recorded'}</p></div><div><span className='hima-studio-eyebrow'>CURRENT STEP</span><p>{run.currentNode ?? 'No current node recorded'}</p></div></div>
     <div className='hima-metrics'>
       <div><span>Generation</span><strong>{run.generation ?? '—'} <small>/ {run.budget?.generationLimit ?? '—'}</small></strong></div>
       <div><span>Elapsed</span><strong>{run.meters ? duration(run.meters.elapsedMs) : '—'}</strong></div>
@@ -218,15 +218,85 @@ function RunSummary({ view }: { view: RunView }): ReactElement {
   </section>;
 }
 
-function ExecutionTrace({ view }: { view: RunView }): ReactElement {
-  return <section className='hima-fabric'>
-    <div className='hima-section-heading'><h3>Execution trace</h3><span>Recorded order · {view.nodes.filter((node) => node.state === 'done').length} / {view.nodes.length} done</span></div>
-    <div className='hima-trace-scroll'><ol className='hima-trace'>{view.nodes.map((node) => <li key={node.nodeId} data-state={node.state}>
-      <span className='hima-station' aria-hidden='true'>{stateGlyph(node.state)}</span><strong>{node.nodeId}</strong><span>{labelled(nodeStateLabel, node.state).said}</span><small>{node.kind} · attempt {node.attempt}</small>
-    </li>)}</ol></div>
-    {view.nodes.length === 0 ? <p className='hima-small'>No node transition has been recorded.</p> : null}
-    {view.run.fork ? <p className='hima-small'>Parallel work at {view.run.fork.from}. Inspect Experiments for each branch.</p> : null}
-    <div className='hima-trace-caption'><span>✓ Done</span><span>◉ Running</span><span>◇ Waiting</span><span>× Stopped / blocked</span></div>
+type CampaignNodeState = 'planned' | 'available' | 'running' | 'waiting' | 'done' | 'blocked' | 'cancelled' | 'invalidated' | 'added';
+type GraphNode = ExecutionContext['nodes'][number];
+interface GraphEdge { readonly from: string; readonly to: string; readonly outcome?: string; readonly revisit?: boolean }
+
+function graphNodeSummary(node: GraphNode): string {
+  const parameters = (node.parameters ?? {}) as Record<string, unknown>;
+  const action = parameters.tool ?? parameters.workshop ?? parameters.observes ?? parameters.chooser ?? parameters.opens;
+  return `${node.kind}${typeof action === 'string' ? ` · ${action}` : ''}`;
+}
+
+function campaignNodeState(node: GraphNode, referenceIds: ReadonlySet<string>, context: ExecutionContext, view: RunView): CampaignNodeState {
+  const execution = context.executions.filter((item) => item.nodeId === node.id).at(-1);
+  if (execution?.supersededBy !== undefined) return 'invalidated';
+  if (execution?.phase === 'working') return 'running';
+  if (execution?.phase === 'ready') return 'waiting';
+  if (execution?.phase === 'completed') return 'done';
+  if (execution?.phase === 'failed' || execution?.phase === 'uncertain') return 'blocked';
+  const transition = view.nodes.filter((item) => item.nodeId === node.id).at(-1);
+  if (transition?.state === 'done') return 'done';
+  if (transition?.state === 'running') return 'running';
+  if (transition?.state === 'cancelled') return 'cancelled';
+  if (transition && ['blocked', 'retrying', 'waiting-for-slot'].includes(transition.state)) return 'blocked';
+  if (view.run.currentNode === node.id && view.run.status === 'waiting') return 'waiting';
+  if (context.available.includes(node.id)) return 'available';
+  return referenceIds.has(node.id) ? 'planned' : 'added';
+}
+
+function CampaignGraph({ view, context, owner }: { view: RunView; context?: ExecutionContext; owner: boolean }): ReactElement {
+  const [selected, setSelected] = useState<string>();
+  const [zoom, setZoom] = useState(100);
+  const graphRef = useRef<HTMLDivElement>(null);
+  if (!context?.method) return <section className='hima-fabric'><div className='hima-section-heading'><h3>Campaign graph</h3></div><p className='hima-small'>{context?.reason ?? 'Reading the complete reference graph…'}</p></section>;
+  const reference = context.method.reference;
+  const loopGraphs = Object.values(reference.loops ?? {});
+  const nodes = [...reference.nodes, ...loopGraphs.flatMap((loop) => loop.nodes)];
+  const referenceIds = new Set(nodes.map((node) => node.id));
+  const added = context.nodes.filter((node) => !referenceIds.has(node.id));
+  nodes.push(...added);
+  const edges: GraphEdge[] = [...reference.edges, ...loopGraphs.flatMap((loop) => loop.edges)];
+  for (const opener of reference.nodes) {
+    const opens = opener.kind === 'explore' ? opener.parameters.opens : undefined;
+    const loop = opens === undefined ? undefined : reference.loops?.[opens];
+    if (loop) edges.push({ from: opener.id, to: loop.entry });
+  }
+  for (const growth of context.growths.filter((item) => item.event === 'accepted' && item.entry && item.parentNode)) edges.push({ from: growth.parentNode!, to: growth.entry! });
+  const ranks = new Map<string, number>(nodes.map((node) => [node.id, node.id === reference.entry ? 0 : 0]));
+  for (let pass = 0; pass < nodes.length; pass++) for (const edge of edges) {
+    if (edge.revisit) continue;
+    const next = Math.min(nodes.length, (ranks.get(edge.from) ?? 0) + 1);
+    if (next > (ranks.get(edge.to) ?? 0)) ranks.set(edge.to, next);
+  }
+  const columns = new Map<number, GraphNode[]>();
+  for (const node of nodes) { const rank = ranks.get(node.id) ?? 0; columns.set(rank, [...columns.get(rank) ?? [], node]); }
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const [rank, column] of columns) column.forEach((node, row) => positions.set(node.id, { x: 34 + rank * 190, y: 34 + row * 104 }));
+  const width = 80 + (Math.max(0, ...columns.keys()) + 1) * 190;
+  const height = 80 + Math.max(1, ...[...columns.values()].map((column) => column.length)) * 104;
+  const chosen = nodes.find((node) => node.id === (selected ?? view.run.currentNode));
+  const chosenState = chosen ? campaignNodeState(chosen, referenceIds, context, view) : undefined;
+  const chosenEvidence = chosen ? context.evidence?.filter((item) => item.nodeId === chosen.id) ?? [] : [];
+  const chosenJobs = chosen ? view.jobs.filter((job) => job.nodeId === chosen.id) : [];
+  const locate = () => {
+    const current = view.run.currentNode;
+    if (!current) return;
+    setSelected(current);
+    graphRef.current?.querySelector<HTMLElement>(`[data-hima-node="${CSS.escape(current)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  };
+  return <section className='hima-fabric' data-hima-region='campaign-graph' data-hima-state-nodes={String(nodes.length)} data-hima-state-current={view.run.currentNode ?? ''}>
+    <div className='hima-section-heading'><div><h3>Campaign graph</h3><p className='hima-small'>Complete Pack method with actual execution, growth and revision facts.</p></div><div className='hima-graph-tools'><button className='hima-button' onClick={locate}>Locate current</button><label>Zoom <input aria-label='Campaign graph zoom' type='range' min='65' max='135' value={zoom} onChange={(event) => setZoom(Number(event.target.value))}/></label></div></div>
+    <div className='hima-graph-scroll' ref={graphRef}><div className='hima-graph-canvas' style={{ width: width * zoom / 100, height: height * zoom / 100 }}><div style={{ width, height, transform: `scale(${zoom / 100})`, transformOrigin: 'top left', position: 'relative' }}>
+      <svg width={width} height={height} aria-hidden='true'><defs><marker id='hima-arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='5' markerHeight='5' orient='auto-start-reverse'><path d='M 0 0 L 10 5 L 0 10 z'/></marker></defs>{edges.map((edge, index) => { const from = positions.get(edge.from), to = positions.get(edge.to); if (!from || !to) return null; return <g key={`${edge.from}-${edge.to}-${index}`}><path d={`M ${from.x + 146} ${from.y + 32} C ${from.x + 168} ${from.y + 32}, ${to.x - 22} ${to.y + 32}, ${to.x} ${to.y + 32}`} className={edge.revisit ? 'hima-graph-edge hima-revisit' : 'hima-graph-edge'} markerEnd='url(#hima-arrow)'/>{edge.outcome ? <text x={(from.x + to.x + 146) / 2} y={(from.y + to.y) / 2 + 22}>{edge.outcome}</text> : null}</g>; })}</svg>
+      {nodes.map((node) => { const at = positions.get(node.id)!; const state = campaignNodeState(node, referenceIds, context, view); return <button key={node.id} type='button' className='hima-graph-node' data-state={state} data-hima-node={node.id} title={`${node.id}: ${graphNodeSummary(node)} · ${state}`} style={{ left: at.x, top: at.y }} onClick={() => setSelected(node.id)}><span>{stateGlyph(state)}</span><strong>{node.id}</strong><small>{graphNodeSummary(node)}</small></button>; })}
+    </div></div></div>
+    <div className='hima-trace-caption'><span>○ Planned</span><span>＋ Available / added</span><span>◉ Running</span><span>✓ Done</span><span>◇ Waiting</span><span>× Blocked / stopped</span></div>
+    {chosen ? <aside className='hima-node-inspector' data-hima-region='campaign-node-inspector' data-hima-state-node={chosen.id}>
+      <header><div><span className='hima-studio-eyebrow'>NODE</span><h4>{chosen.id}</h4></div><span className='hima-state' data-state={chosenState}>{stateGlyph(chosenState ?? 'planned')} {chosenState}</span></header>
+      <p>{graphNodeSummary(chosen)}. {owner ? 'Campaign Agent controls are available when Fabric admits this node.' : 'Open the Campaign Agent to perform owner actions.'}</p>
+      <dl><div><dt>Inputs / action</dt><dd><pre>{JSON.stringify(chosen.parameters, null, 2)}</pre></dd></div><div><dt>Evidence</dt><dd>{chosenEvidence.length ? chosenEvidence.map((item) => item.recordId).join(', ') : 'No evidence formed for this node.'}</dd></div><div><dt>Jobs</dt><dd>{chosenJobs.length ? chosenJobs.map((job) => `${job.event} · ${job.job.session}`).join('; ') : 'No Job recorded for this node.'}</dd></div></dl>
+    </aside> : null}
   </section>;
 }
 
@@ -296,24 +366,31 @@ function StartRunForm({ sessionId, onStarted, onClose, onBusy }: { sessionId: st
   useEffect(() => () => { request.current?.abort(); onBusy(false); }, [onBusy]);
   const numeric = (raw: string | undefined): number | string | undefined => raw?.trim() ? (Number.isFinite(Number(raw)) ? Number(raw) : raw) : undefined;
   const submit = async () => {
-    if (request.current || checkPending.current || prepared?.check?.fit !== true) return;
+    if (request.current || checkPending.current || prepared?.proposal?.ready !== true) return;
     const own = new AbortController(); request.current = own; setSubmitting(true); onBusy(true); setError(undefined);
     const strategy = Object.fromEntries(Object.entries(prepared.strategy ?? {}).map(([name, knob]) => [name, knobs[name]]));
-    const result = await startCampaign({ sessionId, pack: prepared.pack, site: prepared.site, goal: goals, strategy, timeBox: numeric(values.timeBox), retries: numeric(values.retries), generations: numeric(values.generations) }, own.signal);
+    const result = await startCampaign({ sessionId, proposalId: prepared.proposal.id, pack: prepared.pack, site: prepared.site, goal: goals, strategy, timeBox: numeric(values.timeBox), retries: numeric(values.retries), generations: numeric(values.generations) }, own.signal);
     if (own.signal.aborted) return;
     request.current = undefined; setSubmitting(false); onBusy(false);
     if (result.ok) onStarted(result.value); else setError(result.error.message);
   };
   return <form className='hima-start-form' data-hima-region='studio-start' onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-    <div className='hima-section-heading'><h3>New research run</h3><button type='button' className='hima-icon-button' aria-label='Close new Run form' disabled={submitting} onClick={onClose}>×</button></div>
-    <p className='hima-small'>The Pack supplies the method. Set the objective and bounds for this experiment.</p>
+    <div className='hima-section-heading'><h3>Prepare a Campaign</h3><button type='button' className='hima-icon-button' aria-label='Close Campaign preparation' disabled={submitting} onClick={onClose}>×</button></div>
+    <p className='hima-small'>Choose a business capability and execution Site. HimaGuide checks the method, inputs, knowledge and environment before one confirmation creates the Campaign.</p>
+    {prepared?.packs.length === 0 ? <div className='hima-notice' data-hima-region='studio-empty-pack'><strong>No HimaPack is installed.</strong><p>Ask HimaGuide to install a Pack, or open Pack &amp; assets to review and install a fixed Pack folder.</p></div> : null}
+    {prepared?.sites.length === 0 ? <div className='hima-notice' data-hima-region='studio-empty-site'><strong>No execution Site is saved.</strong><p>Give HimaGuide an SSH host or OpenSSH alias. It can discover a safe Site profile before Campaign preparation.</p></div> : null}
     <div className='hima-fields'>{(['pack', 'site'] as const).map((kind) => <label key={kind}>{kind === 'pack' ? 'Method / Pack' : 'Execution Site'}<select data-hima-control={`studio-${kind}`} disabled={submitting} value={selection[kind] ?? prepared?.[kind] ?? ''} onChange={(event) => { checkPending.current = true; setChecking(true); setSelection({ pack: prepared?.pack, site: prepared?.site, ...selection, [kind]: event.target.value }); }}><option value='' disabled>Choose…</option>{(kind === 'pack' ? prepared?.packs : prepared?.sites)?.map((value) => <option key={value} value={value} disabled={kind === 'pack' && prepared?.cannotStart?.includes(value)}>{value}{kind === 'pack' && prepared?.marks?.[value] ? ` — ${prepared.marks[value]}` : ''}</option>)}</select></label>)}</div>
-    <div className='hima-fields'>{Object.entries(prepared?.goal ?? {}).map(([name, parameter]) => { const field = startGoalField(name, parameter, prepared?.words?.goal[name]); return <label key={name}>{field.said}<input data-hima-control={field.control.replace('start-', 'studio-')} value={goals[name] ?? ''} onChange={(event) => setGoals({ ...goals, [name]: event.target.value })} /><small>{field.hint}</small></label>; })}
-      {Object.entries(prepared?.strategy ?? {}).map(([name, knob]) => { const field = startKnobField(name, knob, prepared?.words?.strategy[name]); return <label key={name}>{field.said}{knob.type === 'choice' ? <select data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })}>{knob.options.map((option) => <option key={option}>{option}</option>)}</select> : <input data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })} />}<small>{field.hint}</small></label>; })}
-    </div>
-    <h4>Exploration budget</h4><div className='hima-fields'>{(['timeBox', 'retries', 'generations'] as const).map((name) => <label key={name}>{startForm[name].said}<input data-hima-control={`studio-${name}`} value={values[name] ?? ''} onChange={(event) => setValues({ ...values, [name]: event.target.value })} placeholder='Default' /></label>)}</div>
-    <div className='hima-preflight' role='status' data-hima-region='studio-preflight' data-hima-state-status={checking ? 'checking' : checkPending.current ? 'unavailable' : prepared?.check?.fit ? 'fit' : 'unfit'}>{checking ? 'Checking Pack and Site…' : checkPending.current ? 'Preparation check unavailable; retry before starting.' : prepared?.check?.fit ? '✓ Pack and Site declarations match' : prepared?.preparation?.message ?? 'Pack and Site declarations need attention.'}{prepared?.check?.errors.map((message) => <p key={message}>{message}</p>)}</div>
+    {prepared?.proposal ? <section className='hima-preparation' data-hima-region='studio-proposal' data-hima-state-ready={String(prepared.proposal.ready)}>
+      <h4>{prepared.proposal.pack.title}</h4><p className='hima-small'>Pack {prepared.proposal.pack.id}@{prepared.proposal.pack.version}{prepared.proposal.pack.status ? ` · ${prepared.proposal.pack.status.raw}` : ''}</p>
+      <div className='hima-headlines'><div><strong>Business goal</strong><p>{Object.entries(prepared.proposal.goal).map(([name, value]) => `${prepared.words?.goal[name]?.label ?? name}: ${String(value)}${prepared.words?.goal[name]?.unit ? ` ${prepared.words.goal[name]!.unit}` : ''}`).join(' · ') || 'Pack-defined goal'}</p></div><div><strong>Method</strong><p>{prepared.proposal.referenceGraph.nodes.length} reference nodes · {prepared.proposal.knowledge.documents} Pack knowledge documents · {prepared.proposal.site?.kind ?? 'Site needed'}</p></div></div>
+      <details><summary>Inputs and readiness</summary>{prepared.proposal.inputs.map((input) => <p key={input.name}>{input.ready ? '✓' : '○'} <strong>{input.name}</strong>{input.value ? ` · ${input.value}` : ''}<br/><span className='hima-small'>{input.description}</span></p>)}{prepared.proposal.unknowns.map((unknown) => <p key={unknown} className='hima-notice'>{unknown}</p>)}</details>
+      <details><summary>Reference graph and tools</summary><p>{prepared.proposal.referenceGraph.nodes.map((node) => `${node.id} (${node.kind})`).join(' → ')}</p><p className='hima-small'>{prepared.proposal.pack.tools.map((tool) => `${tool.id}${tool.recommendedVersion ? ` · ${tool.recommendedVersion}` : ''}`).join('; ') || 'No external tool declared.'}</p></details>
+    </section> : null}
+    <details className='hima-advanced'><summary>Advanced Campaign settings</summary><div className='hima-fields'>{Object.entries(prepared?.goal ?? {}).map(([name, parameter]) => { const field = startGoalField(name, parameter, prepared?.words?.goal[name]); return <label key={name}>{field.said}<input data-hima-control={field.control.replace('start-', 'studio-')} value={goals[name] ?? ''} onChange={(event) => setGoals({ ...goals, [name]: event.target.value })} /><small>{field.hint}</small></label>; })}
+      {Object.entries(prepared?.strategy ?? {}).map(([name, knob]) => { const field = startKnobField(name, knob, prepared?.words?.strategy[name]); return <label key={name}>{field.said}{knob.type === 'choice' ? <select data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })}>{knob.options.map((option) => <option key={option}>{option}</option>)}</select> : <input data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })} />}<small>{field.hint}</small></label>; })}</div>
+      <h4>Budget</h4><div className='hima-fields'>{(['timeBox', 'retries', 'generations'] as const).map((name) => <label key={name}>{startForm[name].said}<input data-hima-control={`studio-${name}`} value={values[name] ?? ''} onChange={(event) => setValues({ ...values, [name]: event.target.value })} placeholder='Pack default' /></label>)}</div></details>
+    <div className='hima-preflight' role='status' data-hima-region='studio-preflight' data-hima-state-status={checking ? 'checking' : checkPending.current ? 'unavailable' : prepared?.proposal?.ready ? 'ready' : 'needs-input'}>{checking ? 'Preparing Campaign proposal…' : checkPending.current ? 'Preparation unavailable; retry before confirming.' : prepared?.proposal?.ready ? '✓ Inputs, Pack, Site and method are ready for one Campaign confirmation.' : prepared?.preparation?.message ?? prepared?.proposal?.nextActions.join(' ') ?? 'Choose a Pack and Site to continue.'}</div>
     {error ? <div className='hima-notice' role='alert'><p>{error}</p><button type='button' className='hima-button' data-hima-control='studio-recheck' onClick={() => { checkPending.current = true; setCheckRevision((value) => value + 1); }}>Retry preparation check</button></div> : null}
-    <div className='hima-start-footer'><button className='hima-button hima-primary' data-hima-control='studio-start' disabled={checking || checkPending.current || submitting || prepared?.check?.fit !== true}>{submitting ? 'Starting…' : 'Start experiment →'}</button><details><summary>Checks and data source</summary><p>{START_STATIC_LIMIT}</p></details></div>
+    <div className='hima-start-footer'><button className='hima-button hima-primary' data-hima-control='studio-start' disabled={checking || checkPending.current || submitting || prepared?.proposal?.ready !== true}>{submitting ? 'Creating Campaign…' : 'Confirm and start Campaign →'}</button><details><summary>Checks and data source</summary><p>{START_STATIC_LIMIT}</p></details></div>
   </form>;
 }

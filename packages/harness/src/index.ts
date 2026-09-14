@@ -26,7 +26,7 @@ import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-commands';
 import { hasEnded, Ledger, ledgerSpec } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
+import { identityOf, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
 import { drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
@@ -35,7 +35,7 @@ import { himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
 import { previewPackTransfer, applyPackTransfer } from './release.js';
-import { packId as validPackId } from './pack-folder.js';
+import { packDigestExcludes, packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
 import { installedSites, loadSite } from './sites.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
@@ -44,6 +44,7 @@ import { registerHimaSkills } from './skills.js';
 import { openAuthoringSession, registerAuthoringGuard } from './authoring.js';
 // The audit the routes answer with: the module-level pair every channel in this process records into.
 import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from './channel.js';
+import type { PreparationView } from './workbench.js';
 
 // The Site-facing pieces are part of the bundle's surface: an operator inspects a Site's warm channel
 // and the commands it has run, and the contract suite reads both.
@@ -290,6 +291,8 @@ export interface Config {
   sitesDir: string;
   /** Directory holding one directory per installed HimaPack, named by the pack's id. */
   packsDir: string;
+  /** Hima-owned local root for user-selected current documents and rebuildable indexes. */
+  knowledgeDir: string;
 }
 
 /** Stable product knowledge for ordinary HimaGuide conversations.
@@ -333,7 +336,7 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
 
 export default class Hima extends Service {
   static inject = ['storageDomain', 'commands', 'tools', 'skills', 'systemPrompt'];
-  static Config = z.object({ sitesDir: z.string().required(), packsDir: z.string().required() });
+  static Config = z.object({ sitesDir: z.string().required(), packsDir: z.string().required(), knowledgeDir: z.string().required() });
 
   ledger!: Ledger;
   judge!: Judge;
@@ -387,10 +390,11 @@ export default class Hima extends Service {
           validateSession: (id) => this.ctx.get('agents')?.list().some((agent) => String(agent.id) === id) === true,
           packTransfer: (request) => {
             const installed = path.resolve(this.config.packsDir, validPackId.parse(request.pack));
-            if (request.mode === 'upgrade' && !request.source) throw new Error('choose a tested release source for upgrade');
-            if (request.mode !== 'upgrade' && request.source !== undefined) throw new Error('sharing and migration read only the installed Pack');
-            const operation = { from: request.mode === 'upgrade' ? request.source! : installed,
-              to: request.mode === 'upgrade' ? installed : request.to, mode: request.mode, assets: request.assets };
+            if ((request.mode === 'install' || request.mode === 'upgrade') && !request.source) throw new Error(`choose a Pack source for ${request.mode}`);
+            if (request.mode !== 'install' && request.mode !== 'upgrade' && request.source !== undefined) throw new Error('sharing and migration read only the installed Pack');
+            const fromSource = request.mode === 'install' || request.mode === 'upgrade';
+            const operation = { from: fromSource ? request.source! : installed,
+              to: fromSource ? installed : request.to, mode: request.mode, assets: request.assets };
             return request.reviewSha256 === undefined ? previewPackTransfer(operation)
               : applyPackTransfer({ ...operation, reviewSha256: request.reviewSha256 });
           },
@@ -436,14 +440,14 @@ export default class Hima extends Service {
               return { preparation: { kind: 'pack', message: `Pack owner: repair Pack ${packId} files: ${err instanceof Error ? err.message : String(err)}` } };
             }
             const fields = { goal: goalDeclarationOf(pack), strategy: pack.contract.strategy, words: packWords(pack) };
-            if (siteName === undefined) return fields;
+            if (siteName === undefined) return { ...fields, proposal: this.preparation(pack, undefined) };
             let site;
             try { site = loadSite(this.config.sitesDir, siteName); }
             catch (err) {
               return { ...fields, preparation: { kind: 'site', message: `Site owner: repair configuration for ${siteName}: ${err instanceof Error ? err.message : String(err)}` } };
             }
             // Only local declarations are read. Fabric rechecks them when a Run is actually started.
-            return { ...fields, check: checkPack(pack, site) };
+            return { ...fields, check: checkPack(pack, site), proposal: this.preparation(pack, site) };
           },
           packStages: () => installedPackStages(this.config.packsDir),
         }),
@@ -460,7 +464,11 @@ export default class Hima extends Service {
         handler: (inv) => handleHimaCommand(this.deps(), inv),
       }),
     );
-    for (const tool of himaTools(this.deps(), (request, agent) => openAuthoringSession(this.ctx, this.config.packsDir, request, agent))) this.ctx.effect(() => this.ctx.tools.register(tool));
+    for (const tool of himaTools(this.deps(), (request, agent) => openAuthoringSession(this.ctx, this.config.packsDir, request, agent),
+      (pack, site) => {
+        const loadedPack = loadPack(this.config.packsDir, pack);
+        return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site));
+      })) this.ctx.effect(() => this.ctx.tools.register(tool));
     // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
     // A person invokes one by typing its name; the model never chooses one for itself, because a
     // stage is a person's decision about their own pack folder.
@@ -556,12 +564,52 @@ export default class Hima extends Service {
       stopSignal: this.factStop.signal,
       beforeSlotClaim: (siteName) => reconcileExecutionIntents(this.deps(), siteName),
       log: (line) => this.ctx.logger.info(line),
-      notify: (owner, runId, executionId) => {
+      notify: (owner, runId, executionId, detail) => {
         if (!this.notificationsActive || (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_SILENT_AGENT === '1')) return;
         const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === owner);
         if (!agent) return;
-        agent.followup(createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `Hima recorded new execution facts for Run ${runId}, execution ${executionId}. Read hima_context to inspect the actual Job and evidence. You remain this Run's conversational owner. Respect pause and user instructions; this notification grants no new authority or budget.` }] }));
+        agent.followup(createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `Hima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context to inspect the actual Job and evidence. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] }));
       },
+    };
+  }
+
+  /** Compose the deterministic, non-creating Campaign proposal used by the route and HimaGuide. */
+  private preparation(pack: ReturnType<typeof loadPack>, site: ReturnType<typeof loadSite> | undefined): PreparationView {
+    // Authoring records and PACK.md remain inspectable Pack assets. The proposal carries their
+    // compact declared structure, never entire documents on every HimaGuide turn.
+    const { intent: _intent, spec: _spec, pack: _packDocument, ...overview } = packOverview(pack);
+    const check = site === undefined ? undefined : checkPack(pack, site);
+    const requiredCommands = new Set(pack.contract.environment.commands);
+    const discoveredCommands = new Set(site?.discovery?.facts
+      .filter((fact) => fact.probe[0] === 'which' && fact.code === 0 && fact.probe[1] !== undefined)
+      .map((fact) => fact.probe[1]!) ?? []);
+    const missingCommands = site?.kind === 'ssh' ? [...requiredCommands].filter((command) => !discoveredCommands.has(command)) : [];
+    const siteReadiness = site === undefined ? undefined : site.kind === 'local' ? 'ready' as const
+      : site.discovery === undefined ? 'needs-discovery' as const : site.discovery.stale ? 'stale' as const : 'ready' as const;
+    const unknowns = [
+      ...(site === undefined ? ['No Site is selected.'] : []),
+      ...(check?.errors ?? []),
+      ...(siteReadiness === 'needs-discovery' ? ['The SSH Site has not completed bounded discovery.'] : []),
+      ...(siteReadiness === 'stale' ? ['The saved SSH Site discovery is stale.'] : []),
+      ...missingCommands.map((command) => `Required command ${command} was not found by Site discovery.`),
+    ];
+    const goal = Object.fromEntries(Object.entries(goalDeclarationOf(pack)).map(([name, declaration]) => [name, declaration.default]));
+    const strategy = Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, declaration.default]));
+    const referenceGraph = { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
+      edges: pack.graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === undefined ? {} : { revisit: edge.revisit }) })) };
+    const identity = { pack: { id: pack.id, version: pack.contract.version, digest: pack.folder.digest(packDigestExcludes) },
+      site: site === undefined ? undefined : identityOf(site), goal, strategy, referenceGraph, inputs: check?.inputs.map((input) => ({ name: input.name, bound: input.bound })) };
+    const ready = check?.fit === true && siteReadiness === 'ready' && missingCommands.length === 0;
+    return {
+      id: identityOf(identity), ready, pack: overview,
+      ...(site === undefined ? {} : { site: { name: site.name, kind: site.kind, readiness: siteReadiness!, resources: { cores: site.capacity.cores, memoryGiB: site.capacity.memoryGiB, parallelJobs: site.capacity.parallelJobs } } }),
+      inputs: pack.contract.inputs.map((input) => { const found = check?.inputs.find((item) => item.name === input.name); return { name: input.name, description: input.description, ...(found?.bound === undefined ? {} : { value: found.bound }), ready: found?.bound !== undefined }; }),
+      knowledge: { documents: pack.contract.knowledge.length, ready: true, currentDocuments: 0 },
+      probe: site === undefined ? { status: 'needed' } : site.kind === 'local' ? { status: 'declaration-only' } : siteReadiness === 'stale'
+        ? { status: 'stale', observedAt: site.discovery?.observedAt } : site.discovery === undefined ? { status: 'needed' } : { status: 'discovered', observedAt: site.discovery.observedAt },
+      goal, strategy, referenceGraph, unknowns,
+      nextActions: ready ? ['Review this proposal and confirm once to create the Campaign.']
+        : unknowns.length > 0 ? unknowns : ['Ask HimaGuide to complete Campaign preparation.'],
     };
   }
 }

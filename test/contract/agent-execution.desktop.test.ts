@@ -10,6 +10,7 @@ import { freePort } from './support/boot-host.ts';
 import { api } from './support/hima-api.ts';
 import { inspectWindow } from './support/inspect-window.ts';
 import { writeExecutionReplay, replayJobStarted, replayPaused, replayCompleted } from './support/agent-execution-replay.ts';
+import { timingProbePackId } from './support/pack.ts';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -50,12 +51,15 @@ test('native selected conversation runs one explicit Job, accepts typed steering
     await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
     await browser.send('Input.insertText', { text: initialDraft });
     assert.ok((await d.click('open-workbench')).ok);
-    assert.ok((await d.wait('studio', 'Research workspace', 12_000)).ok);
+    assert.ok((await d.wait('studio', 'Campaign workspace', 12_000)).ok);
     const studio = await d.read('studio'); assert.ok(studio.ok);
     const selectedSession = studio.state.session;
     const url = await browser.evaluate<string>('location.href');
     assert.ok((await d.click('studio-new')).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status')==='fit'`);
+    assert.ok((await d.fill('studio-pack', timingProbePackId)).ok);
+    assert.ok((await d.fill('studio-site', 'local')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status')==='ready'`);
+    await browser.mark('.hima-advanced>summary', 'studio-advanced'); assert.ok((await d.click('studio-advanced')).ok);
     for (const [control, value] of Object.entries({ 'studio-target': '2.0', 'studio-knob-periodNs': '2.3', 'studio-timeBox': '2', 'studio-generations': '2' })) {
       assert.ok((await d.fill(control, value)).ok);
     }

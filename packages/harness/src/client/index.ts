@@ -24,7 +24,7 @@ export interface ClientContext {
   readonly sidebarRight: { openTab(kind: string, options?: { params?: { runId?: string } }): void };
   readonly sidebarRightTabs: { register(definition: { id: string; kind: string; title(address: string): string; guide: { order: number; title(): string; description(): string }[] }): () => void };
   readonly layout: { toggleSidebar(): void };
-  readonly sessions: { open(id: string): void; scope(id: string): { get(name: 'conversation'): { send(text: string): Promise<void> } | undefined } | undefined };
+  readonly sessions: { open(id: string): void };
   effect(callback: () => (() => void)): unknown;
 }
 
@@ -58,7 +58,7 @@ function AuthoringCard({ block, openAuthor }: { block: ToolBlock; openAuthor(id:
       createElement('button', { type: 'button', 'data-hima-control': 'open-authoring', onClick: () => {
         try { openAuthor(value!.sessionId); setError(undefined); } catch (failure) { setError((failure as Error).message); }
       } }, 'Open authoring session'),
-      createElement('p', null, 'Begin with /hima-grill. Live Run and Files remain beside the conversation.'))
+      createElement('p', null, 'Begin with /hima-grill. Campaign and Files remain beside the conversation.'))
       : createElement('pre', null, (block.content ?? []).map((item) => item.text ?? '').join('\n') || 'Preparing Pack workspace…'),
     error ? createElement('p', { role: 'alert' }, error) : null);
 }
@@ -75,23 +75,23 @@ function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
     createElement('style', null, STUDIO_STYLE),
     createElement('button', {
       type: 'button', disabled: current === undefined,
-      title: current === undefined ? 'Choose a workspace and session to open Live Run' : 'Live Run — beside the conversation',
-      'aria-label': 'Open Live Run beside the conversation', 'data-hima-control': 'open-workbench',
+      title: current === undefined ? 'Choose a workspace and session to open Campaign' : 'Campaign — beside the conversation',
+      'aria-label': 'Open Campaign beside the conversation', 'data-hima-control': 'open-workbench',
       onClick: () => { try { open(wide); setError(undefined); } catch (failure) { setError((failure as Error).message); } },
-    }, createElement(HimaMark, { size: 18 }), wide ? 'Live Run' : null),
+    }, createElement(HimaMark, { size: 18 }), wide ? 'Campaign' : null),
     error ? createElement('p', { role: 'alert' }, error) : null,
     wide && current === undefined ? createElement('p', null, 'Choose a workspace to begin') : null);
 }
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.sidebarRightTabs.register({
-    id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'Live Run',
-    guide: [{ order: 0, title: () => 'Hima Live Run', description: () => 'Research, execution and evidence beside the conversation.' }],
+    id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'Campaign',
+    guide: [{ order: 0, title: () => 'Hima Campaign', description: () => 'Preparation, execution, code and evidence beside the conversation.' }],
   }));
   const openRun = (runId?: string) => ctx.sidebarRight.openTab(WORKBENCH_KIND, runId === undefined ? undefined : { params: { runId } });
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: WORKBENCH_ID,
-    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id), sendToOwner: async (id: string, text: string) => { const owner = ctx.sessions.scope(id); if (owner === undefined) throw new Error(`The owning conversation ${id} is unavailable in this window.`); const conversation = owner.get('conversation'); if (conversation === undefined) throw new Error('The native conversation service is unavailable.'); await conversation.send(text); } }),
+    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id) }),
   }, HimaWorkbench));
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'hima-workbench',

@@ -4,6 +4,8 @@
     "test/contract/site-discovery.test.ts",
     "test/contract/custom-cell-fmax-pack.test.ts",
     "test/contract/knowledge-documents.test.ts",
+    "test/contract/side-talk.host.test.ts",
+    "test/contract/preparation.host.test.ts",
     "test/contract/research-analysis.host.test.ts",
     "test/contract/growth.test.ts",
     "test/contract/growth.host.test.ts",
@@ -70,6 +72,7 @@
     "test/contract/trial-package.test.ts"
   ],
   "desktop": [
+    "test/contract/campaign-graph.desktop.test.ts",
     "test/contract/growth-assets.desktop.test.ts",
     "test/contract/revision-assets.desktop.test.ts",
     "test/contract/pack-owner.desktop.test.ts",

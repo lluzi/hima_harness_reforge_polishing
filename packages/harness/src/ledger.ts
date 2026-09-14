@@ -1507,6 +1507,8 @@ export type RunControl = z.infer<typeof runControl>;
 export const runRecord = z.object({
   id: z.string(),
   campaignId: z.string(),
+  /** Read-only Campaign proposal confirmed to create this one Run. */
+  proposalId: sha256Hex.optional(),
   siteId: z.string(),
   createdAt: z.string(),
   nextSeq: z.number().int().positive(),
@@ -1582,7 +1584,7 @@ export type RunRecord = z.infer<typeof runRecord>;
 
 /** What a caller states about a Run when it opens one; the ledger owns the id, the time, and the sequence.
  *  Not `loop`: a Run opens in its pack's own graph, and drills down only once an Explore node says so. */
-export type RunOpening = Pick<RunRecord, 'campaignId' | 'siteId'> & Partial<Pick<RunRecord, 'status' | 'packId' | 'purpose' | 'packDigest' | 'goal' | 'budget' | 'currentNode' | 'strategy' | 'firstStrategy' | 'generation' | 'meters' | 'control'>>;
+export type RunOpening = Pick<RunRecord, 'campaignId' | 'siteId'> & Partial<Pick<RunRecord, 'proposalId' | 'status' | 'packId' | 'purpose' | 'packDigest' | 'goal' | 'budget' | 'currentNode' | 'strategy' | 'firstStrategy' | 'generation' | 'meters' | 'control'>>;
 
 /** What HimaFabric may change about a Run as it moves. Never its identity, its Goal, its Budget, the
  *  Strategy it started with, or its sequence — a field this type does not name is one no advance can
