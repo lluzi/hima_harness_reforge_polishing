@@ -865,12 +865,13 @@ const safeDocumentId = (id: string): string => {
   if (!/^[a-f0-9]{64}$/.test(id)) throw new Error(`invalid knowledge document id ${JSON.stringify(id)}`);
   return id;
 };
+const canonicalKnowledgeRoot = (root: string): string => {
+  const resolved = path.resolve(root);
+  try { return realpathSync(resolved); } catch { return resolved; }
+};
 const scopeDirectory = (root: string, scope: string): string => {
   if (scope.trim() === '' || scope.length > 512) throw new Error('knowledge scope must be a non-empty bounded identity');
-  const resolved = path.resolve(root);
-  let canonical = resolved;
-  try { canonical = realpathSync(resolved); } catch { /* import creates the root before first use */ }
-  return path.join(canonical, hash(scope));
+  return path.join(canonicalKnowledgeRoot(root), hash(scope));
 };
 
 /** The full issued proposal is the current-document scope. Repeated reads of one pending proposal
@@ -1031,19 +1032,19 @@ async function currentDocumentMetadata(root: string, scope: string, id: string):
   const at = currentMetadataAt(root, scope, id);
   let document: KnowledgeDocumentIdentity;
   try {
-    await plainPath(path.resolve(root), at, 'file');
+    await plainPath(canonicalKnowledgeRoot(root), at, 'file');
     document = parseCurrentDocumentIdentity(JSON.parse(await readFile(at, 'utf8')) as unknown, at, scope, id);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     // v1 stored identity beside the cache. Migrate only after validating the source under the owned
     // root; subsequent reads no longer depend on that cache for metadata.
     const legacyAt = currentIndexAt(root, scope, id);
-    await plainPath(path.resolve(root), legacyAt, 'file');
+    await plainPath(canonicalKnowledgeRoot(root), legacyAt, 'file');
     const legacy = parseKnowledgeIndex(JSON.parse(await readFile(legacyAt, 'utf8')) as unknown, legacyAt);
     document = parseCurrentDocumentIdentity(legacy.document, legacyAt, scope, id);
     await writeFile(at, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
   }
-  await plainPath(path.resolve(root), document.sourcePath, 'file');
+  await plainPath(canonicalKnowledgeRoot(root), document.sourcePath, 'file');
   const bytes = await readFile(document.sourcePath);
   if (hash(bytes) !== document.sha256 || bytes.byteLength !== document.bytes) {
     throw new Error(`knowledge source bytes do not match durable identity at ${document.sourcePath}`);
@@ -1069,7 +1070,7 @@ async function readCurrentIndex(root: string, scope: string, id: string): Promis
   let valid = false;
   // Path safety is distinct from cache validity. A link or a path escape is never repaired through;
   // an ordinary malformed, truncated or forged index is just a cache miss and is rebuilt below.
-  try { await plainPath(path.resolve(root), at, 'file'); }
+  try { await plainPath(canonicalKnowledgeRoot(root), at, 'file'); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
@@ -1104,7 +1105,7 @@ export async function importCurrentKnowledge(input: {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   await mkdir(scopeDir, { recursive: true });
-  await plainPath(path.resolve(input.root), scopeDir, 'directory');
+  await plainPath(canonicalKnowledgeRoot(input.root), scopeDir, 'directory');
   const staged = `${target}.next-${process.pid}-${Date.now()}`;
   await mkdir(staged, { recursive: false });
   try {
@@ -1134,7 +1135,7 @@ export async function listCurrentKnowledge(root: string, scope: string): Promise
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
-  await plainPath(path.resolve(root), directory, 'directory');
+  await plainPath(canonicalKnowledgeRoot(root), directory, 'directory');
   const documents: KnowledgeDocumentIdentity[] = [];
   for (const id of names.filter((name) => /^[a-f0-9]{64}$/.test(name)).sort()) documents.push((await readCurrentIndex(root, scope, id)).document);
   return documents;
@@ -1144,7 +1145,7 @@ export async function listCurrentKnowledge(root: string, scope: string): Promise
  * unreachable from this path. */
 export async function clearCurrentKnowledge(root: string, scope: string, id: string): Promise<boolean> {
   const directory = path.dirname(currentIndexAt(root, scope, id));
-  try { await plainPath(path.resolve(root), directory, 'directory'); } catch (error) {
+  try { await plainPath(canonicalKnowledgeRoot(root), directory, 'directory'); } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
   }
