@@ -8,8 +8,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const node24 = '/Users/lluzi/.local/node24/bin/node';
-const trialVersion = '0.2.0-trial.1';
-const macVersion = '0.2.0';
+const trialVersion = JSON.parse(readFileSync(path.join(root, 'packages/desktop/package.json'), 'utf8')).version;
+const macVersion = trialVersion.split('-')[0];
+const trialPackId = 'custom-cell-fmax-dtco';
+const trialPackRelative = path.join('packs', trialPackId);
 const args = process.argv.slice(2);
 const value = (flag) => { const at = args.indexOf(flag); return at < 0 ? undefined : args[at + 1]; };
 const fail = (message) => { throw new Error(`package-trial: ${message}`); };
@@ -20,6 +22,38 @@ const run = (command, commandArgs, options = {}) => {
 };
 const relative = (base, file) => path.relative(base, file).split(path.sep).join('/');
 const hash = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
+
+/**
+ * The trial is only useful when it carries the portable DTCO method it claims to
+ * demonstrate. Keep this check in the packager, beside the release manifest,
+ * instead of silently accepting a copied `packs/` directory that happens to
+ * omit a method file. This is deliberately a structural release check: the
+ * normal Pack loader remains the authority for YAML semantics at Host startup.
+ */
+function assertTrialPackAssets(packsRoot) {
+  const pack = path.join(packsRoot, trialPackId);
+  const required = ['contract.yml', 'graph.yml', 'knowledge/manifest.yml'];
+  for (const relativeFile of required) {
+    const file = path.join(pack, relativeFile);
+    if (!existsSync(file) || !lstatSync(file).isFile()) fail(`trial Pack ${trialPackId} is missing required asset ${relativeFile}`);
+  }
+  const contract = readFileSync(path.join(pack, 'contract.yml'), 'utf8');
+  const graph = readFileSync(path.join(pack, 'graph.yml'), 'utf8');
+  const manifest = readFileSync(path.join(pack, 'knowledge/manifest.yml'), 'utf8');
+  if (!new RegExp(`^id: ${trialPackId}$`, 'm').test(contract)) fail(`trial Pack ${trialPackId} contract identity is missing`);
+  if (!/^knowledgeManifest: knowledge\/manifest\.yml$/m.test(contract)) fail(`trial Pack ${trialPackId} contract does not declare its knowledge manifest`);
+  if (!new RegExp(`^id: ${trialPackId}$`, 'm').test(graph) || !/^entry: \S+$/m.test(graph)) fail(`trial Pack ${trialPackId} graph identity or entry is missing`);
+  if (!/^schema: hima-pack-knowledge\/1$/m.test(manifest)) fail(`trial Pack ${trialPackId} knowledge manifest schema is missing`);
+  const documents = [...manifest.matchAll(/^\s*-\s+file:\s+([^\s#]+)\s*$/gm), ...manifest.matchAll(/^\s+file:\s+([^\s#]+)\s*$/gm)]
+    .map((match) => match[1])
+    .filter((value, index, values) => values.indexOf(value) === index);
+  if (documents.length === 0) fail(`trial Pack ${trialPackId} knowledge manifest declares no documents`);
+  for (const document of documents) {
+    const file = path.join(pack, 'knowledge', document);
+    if (!existsSync(file) || !lstatSync(file).isFile()) fail(`trial Pack ${trialPackId} knowledge manifest names missing document ${document}`);
+  }
+  return { pack, documents };
+}
 
 function assertSourceTreeIsSafe(base, current = base) {
   for (const name of readdirSync(current)) {
@@ -55,9 +89,10 @@ function verify(app) {
   const resource = path.join(app, 'Contents/Resources/app');
   const actual = collect(app);
   if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) fail('manifest hashes or release file list do not match');
-  for (const required of ['Contents/MacOS/HimaHarness', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', 'Contents/Resources/app/packs/aes-tsmc28-dtco/graph.yml']) {
+  for (const required of ['Contents/MacOS/HimaHarness', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', `Contents/Resources/app/${trialPackRelative}/contract.yml`, `Contents/Resources/app/${trialPackRelative}/graph.yml`, `Contents/Resources/app/${trialPackRelative}/knowledge/manifest.yml`]) {
     if (!existsSync(path.join(app, required))) fail(`required release file missing: ${required}`);
   }
+  assertTrialPackAssets(path.join(resource, 'packs'));
   const architecture = run('file', [path.join(app, 'Contents/MacOS/HimaHarness')]);
   if (!architecture.includes('arm64')) fail(`launcher is not arm64: ${architecture.trim()}`);
   const nodeVersion = run(path.join(resource, 'node/bin/node'), ['--version']).trim();
@@ -79,19 +114,35 @@ function verify(app) {
 
 function smokeRelocatedHost(app) {
   const resource = path.join(app, 'Contents/Resources/app');
+  const pdfFixture = readFileSync(path.join(root, 'test/fixtures/knowledge/eda-clock-guide.pdf')).toString('base64');
   const home = mkdtempSync(path.join(path.dirname(app), '.host-smoke-'));
   try {
     const homeModule = pathToFileURL(path.join(resource, 'lib/hima-home.js')).href;
     const hostModule = pathToFileURL(path.join(resource, 'lib/host-launch.js')).href;
     const smoke = `
-      import { mkdirSync } from 'node:fs';
+      import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
       import { himaHomeSources, prepareHimaHome } from ${JSON.stringify(homeModule)};
       import { launchHimaHost, stopChild } from ${JSON.stringify(hostModule)};
       const home = ${JSON.stringify(home)};
       const workspace = home + '/workspace';
+      const bundledPack = ${JSON.stringify(path.join(resource, trialPackRelative))};
+      const installedPack = home + '/hima/packs/${trialPackId}';
       mkdirSync(workspace, { recursive: true });
       // Match ordinary Electron startup, including repairing the profile link on each boot.
       await prepareHimaHome({ home, sources: himaHomeSources(${JSON.stringify(resource)}) });
+      // This is the same explicit install boundary a person uses, but its source
+      // is inside the candidate's Resources directory. It proves the candidate
+      // neither needs a developer checkout nor adopts a pre-existing user home.
+      if (!existsSync(bundledPack)) throw new Error('candidate does not carry its DTCO Pack');
+      cpSync(bundledPack, installedPack, { recursive: true, dereference: false });
+      const knowledgeRuntime = await import(${JSON.stringify(pathToFileURL(path.join(resource, 'node_modules/@hima/harness/lib/index.js')).href)});
+      const pdf = home + '/runtime-knowledge.pdf';
+      writeFileSync(pdf, Buffer.from(${JSON.stringify(pdfFixture)}, 'base64'));
+      const indexed = await knowledgeRuntime.importCurrentKnowledge({ root: home + '/hima/current-knowledge', scope: 'relocated-smoke', file: pdf });
+      const hits = await knowledgeRuntime.searchCurrentKnowledge(home + '/hima/current-knowledge', 'relocated-smoke', 'final routed database');
+      if (!hits.length || hits[0].page !== 1) throw new Error('packaged PDF knowledge runtime did not return a page-cited hit');
+      const excerpt = await knowledgeRuntime.readCurrentKnowledge(home + '/hima/current-knowledge', 'relocated-smoke', indexed.document.id, hits[0].id);
+      if (!/routed database/i.test(excerpt.text)) throw new Error('packaged PDF knowledge runtime did not read the selected source excerpt');
       const host = await launchHimaHost({
         node: ${JSON.stringify(path.join(resource, 'node/bin/node'))},
         dshEntry: ${JSON.stringify(path.join(resource, 'node_modules/@deepseek-ai/dsh/lib/bin.js'))},
@@ -106,6 +157,16 @@ function smokeRelocatedHost(app) {
           throw new Error('packaged Host did not serve its Hima API');
         }
         await response.json();
+        const start = await fetch(new URL('/hima/api/start-options?pack=${trialPackId}', host.url), { headers: { cookie } });
+        if (!start.ok) throw new Error('packaged Host did not read the bundled DTCO Pack');
+        const choices = await start.json();
+        if (!Array.isArray(choices.packs) || !choices.packs.includes('${trialPackId}')) throw new Error('cold candidate inventory omitted its installed DTCO Pack');
+        if (choices.proposal?.pack?.id !== '${trialPackId}' || choices.proposal?.knowledge?.ready !== true || choices.proposal?.referenceGraph?.nodes?.length < 1) {
+          throw new Error('cold candidate did not expose Pack preparation and knowledge readiness');
+        }
+        if (choices.proposal?.ready !== false || !Array.isArray(choices.proposal?.unknowns) || !choices.proposal.unknowns.some((item) => /No Site is selected/.test(item))) {
+          throw new Error('cold candidate claimed Campaign readiness without a Site');
+        }
       } finally { await stopChild(host.child); }
     `;
     run(path.join(resource, 'node/bin/node'), ['--input-type=module', '--eval', smoke], { env: { ...process.env, DSH_HOME: home, DSH_AGENTS_HOME: path.join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1' } });
@@ -115,6 +176,11 @@ function smokeRelocatedHost(app) {
 
 if (args.includes('--help') || args.includes('-h')) {
   process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] | --verify <HimaHarness.app>\n');
+} else if (args[0] === '--check-pack-assets') {
+  const packs = value('--check-pack-assets');
+  if (!packs) fail('--check-pack-assets needs a packs directory');
+  assertTrialPackAssets(path.resolve(packs));
+  process.stdout.write(`package-trial: checked ${trialPackId} assets\n`);
 } else if (args[0] === '--verify') {
   const app = value('--verify');
   if (!app) fail('--verify needs an app path');
@@ -153,6 +219,7 @@ if (args.includes('--help') || args.includes('-h')) {
     } });
     assertSourceTreeIsSafe(path.join(root, 'profiles'));
     assertSourceTreeIsSafe(path.join(root, 'packs'));
+    assertTrialPackAssets(path.join(root, 'packs'));
     cpSync(path.join(root, 'profiles'), path.join(resource, 'profiles'), { recursive: true });
     cpSync(path.join(root, 'packs'), path.join(resource, 'packs'), { recursive: true, filter: (source) => {
       const name = path.basename(source);
