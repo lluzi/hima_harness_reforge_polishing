@@ -6,3 +6,14 @@
     enabled: false
 - id: session-telemetry-otel
   disabled: true
+
+# The web-app auto chooser selects the renderless native backend for every
+# loopback macOS Host. HimaHarness is already a native window around that Host,
+# so pin the vendor's paired in-app browse backend and client surface instead.
+- id: directory-picker
+  disabled: true
+- insert:
+    - id: directory-picker-browse
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+    - id: directory-picker-browse-ui
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'

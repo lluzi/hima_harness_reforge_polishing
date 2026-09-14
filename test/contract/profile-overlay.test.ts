@@ -62,6 +62,12 @@ test('dsh --dump-config on a seeded home: the DeepSeek adapter is composed and t
     assert.ok(plain.has(DEEPSEEK_ROW), `the product profile composes dsh's DeepSeek adapter: ${[...plain.keys()].join(', ')}`);
     assert.ok(!plain.get(DEEPSEEK_ROW)!.includes('disabled: true'), `and composes it enabled: ${plain.get(DEEPSEEK_ROW)!}`);
     assert.ok(!plain.has(REPLAY_ROW), 'and composes no replay adapter at all');
+    const picker = plain.get('directory-picker');
+    assert.ok(picker?.includes('disabled: true'), `the profile disables the auto native picker: ${picker}`);
+    const pickerHost = plain.get('directory-picker-browse');
+    assert.ok(pickerHost?.includes('@deepseek-ai/dsh-host-directory-picker-browse'), `the profile pins the in-app directory backend: ${pickerHost}`);
+    const pickerUi = plain.get('directory-picker-browse-ui');
+    assert.ok(pickerUi?.includes('@deepseek-ai/dsh-client-ui-directory-picker-browse'), `and composes its paired in-app surface: ${pickerUi}`);
 
     const fixture = await writeMomentFixture(h, 'one-turn');
     const said = await writeReplayOverlay(h.home, { file: fixture.file, overrideFile: fixture.override });

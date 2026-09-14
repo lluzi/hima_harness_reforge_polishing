@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "counterexample": "ignored untracked Profile resource rejected before packaging/deploy",
+  "returnCode": 1,
+  "outputDirectoryCreated": false,
+  "elapsedSeconds": 0.21436841599999998,
+  "modelRequests": 0,
+  "edaJobs": 0,
+  "hosts": 0,
+  "windows": 0
+}

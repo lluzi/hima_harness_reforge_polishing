@@ -87,7 +87,8 @@
     "test/contract/pack-readers.test.ts",
     "test/contract/pipeline-stages.test.ts",
     "test/contract/agent-execution.desktop.test.ts",
-    "test/contract/display-placement.desktop.test.ts"
+    "test/contract/display-placement.desktop.test.ts",
+    "test/contract/runtime-info.desktop.test.ts"
   ],
   "live-site": [
     "test/contract/jobs.live.test.ts",

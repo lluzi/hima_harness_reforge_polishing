@@ -1,0 +1,23 @@
+{
+  "status": "failed",
+  "scope": "first real Campaign attempt; not a valid DTCO conclusion",
+  "runId": "run-a920d87b-6cc9-4506-bbc3-62df37c6355c",
+  "owner": "session-f81cc793-0fbd-4e27-951c-04b2fc8eb252",
+  "finalStatus": "cancelled",
+  "failure": "Error: continuation budget exhausted before Run run-a920d87b-6cc9-4506-bbc3-62df37c6355c reached a terminal state\n    at continueUntilTerminal (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-dtco-pilot.ts:475:9)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-dtco-pilot.ts:629:22\n    at async LiveCheck.wait (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:184:18)\n    at async runLive (file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-workshop.ts:441:9)\n    at async file:///Users/lluzi/code/hima_harness_reforge_polishing/scripts/live-check-dtco-pilot.ts:482:1",
+  "costs": {
+    "hosts": 1,
+    "electron": 0,
+    "nativeSessionsCreated": 1,
+    "nativeSessionsResumed": 0,
+    "modelSessions": 1,
+    "modelRequestSteps": 262,
+    "apiRequests": "unmeasured; request steps exclude adapter retries",
+    "tokens": "unmeasured",
+    "userMessages": 99
+  },
+  "completedJobs": 16,
+  "cause": "An admitted selector revision treated unfinished sibling branches as complete; the join became undetermined. The checker repeated continuation prompts at a Pack human-wait node.",
+  "correction": "Preserve active-fork positions and stop the checker at explicit human waits. The original cancelled Run and evidence remain unchanged.",
+  "privateEvidence": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pilot-release/live-1/evidence.json"
+}

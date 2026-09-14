@@ -500,3 +500,66 @@ test('restart finishes admitted Workshop bytes interrupted before the applied re
     await host.dispose(); await home.h.dispose();
   }
 });
+
+test('revising a ready branch preserves an unfinished sibling and retires the old ready execution', async t => {
+  const home = await localHome(t, { sleepSeconds: 0 }); assert.ok(home);
+  await installRevisionFork(home.flow.root, path.join(home.h.home, 'hima/packs/revision-fork'));
+  const host = await bootInProcess(home.h); let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: 'revision-fork', site: 'local',
+      goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran'); if (started.kind !== 'ran') return; runId = started.run.id;
+    let request = 0;
+    const context = () => host.ctx.hima.executionContext(runId!);
+    const act = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) =>
+      host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), action,
+        expectedEpoch: context().run.control!.epoch, expectedRevision: context().run.control!.revision,
+        requestId: `unfinished-fork-${++request}`, ...fields });
+    const work = async (nodeId: string, code?: string, finish = true) => {
+      const begun = await act('begin', { nodeId }); assert.equal(begun.kind, 'accepted', begun.reason);
+      const executionId = begun.receipt!.executionId!;
+      const node = context().nodes.find(item => item.id === nodeId);
+      if (node?.kind === 'act' && node.parameters.workshop !== undefined) {
+        assert.equal((await act('recommend', { executionId })).kind, 'accepted');
+      }
+      if (code !== undefined) assert.equal((await act('write', { executionId, path: 'entry.sh', content: code })).kind, 'accepted');
+      assert.equal((await act('work', { executionId })).kind, 'accepted');
+      await waitUntil(`${nodeId} settled`, () => ['ready', 'failed'].includes(context().executions.find(e => e.id === executionId)?.phase ?? ''), 10_000);
+      assert.equal(context().executions.find(e => e.id === executionId)?.phase, 'ready', JSON.stringify(context().executions.find(e => e.id === executionId)));
+      if (finish) assert.equal((await act('complete', { executionId })).kind, 'accepted');
+      return executionId;
+    };
+    const codeA = 'mkdir -p "$2/research/analysis"\nprintf "42\\n" > "$2/research/analysis/result.txt"\n';
+    const codeB = 'mkdir -p "$2/research/independent"\nprintf "42\\n" > "$2/research/independent/result.txt"\n';
+    await work('start');
+    const oldA = await work('analyze', codeA, false);
+    await work('independent', codeB);
+    assert.ok(context().available.includes('read-independent'), 'the sibling still needs its own reader');
+    const records = host.ctx.hima.ledger.records({ runId });
+    const source = records.findLast(r => r.type === 'code' && r.nodeId === 'analyze'); assert.ok(source?.type === 'code');
+    const workspace = records.find(r => r.type === 'workspace'); assert.ok(workspace);
+    const before = context();
+    const revision: RevisionProposal = { revisionId: 'ready-a-v2', method: { id: before.method!.id,
+      version: before.method!.version, digest: before.method!.digest }, inputThroughSeq: before.run.nextSeq - 1,
+      inputs: [{ recordId: workspace.id, contentIdentity: identity(workspace) }],
+      reason: 'revise A after its result, while B still needs an independent reader',
+      changedNodes: ['analyze'], affectedNodes: ['analyze', 'read-analysis', 'judge'],
+      changes: [{ nodeId: 'analyze', scope: 'workshop', path: 'entry.sh', fromSha256: source.sha256,
+        sourceRecordId: source.id, content: `${codeA}# revised implementation\n` }] };
+    const admitted = await act('revise', { revision }); assert.equal(admitted.kind, 'accepted', admitted.reason);
+    assert.ok(context().available.includes('read-independent'), 'revision must not silently mark an unfinished sibling done');
+    assert.equal(context().executions.find(e => e.id === oldA)?.supersededBy, revision.revisionId,
+      'the prior ready result is historical after replacement, not an outstanding execution');
+    assert.ok(!context().available.includes('judge'), 'the join still waits for both current readers');
+    await work('analyze'); await work('read-analysis');
+    assert.deepEqual(context().available, ['read-independent']);
+    await work('read-independent');
+    assert.deepEqual(context().available, ['judge']);
+    const jobs = host.ctx.hima.ledger.records({ runId, type: 'job' }).filter(r => r.type === 'job' && r.event === 'launched');
+    assert.equal(jobs.filter(r => r.nodeId === 'independent').length, 1, 'the valid sibling computation is reused');
+  } finally {
+    if (runId) { killSessions(sessionsOf(host, runId)); await host.ctx.hima.cancelRun(runId); }
+    await host.dispose(); await home.h.dispose();
+  }
+});

@@ -12,6 +12,7 @@ import {
   packStage,
   readArchivedMaterial,
   readRunAssets,
+  currentRecordsIn,
   type CodeRecord,
   type JobRecord,
   type LedgerRecord,
@@ -469,7 +470,13 @@ async function continueUntilTerminal(
     await check.wait(owner.whenIdle());
     run = host.ctx.hima.ledger.run(runId);
     if (!run || isTerminal(run.status)) return run;
-    if (host.ctx.hima.executionContext(runId).executions.some((execution) => execution.phase === 'working')) continue;
+    const current = host.ctx.hima.executionContext(runId);
+    if (current.executions.some((execution) => execution.phase === 'working')) continue;
+    if (run.status === 'waiting' && current.nodes.some(node => node.id === run.currentNode && node.kind === 'wait')) {
+      check.observed.humanWait = { run: run.id, node: run.currentNode, status: run.status };
+      check.checkpoint();
+      throw new Error(`Run ${runId} reached Pack wait node ${run.currentNode}; stop without repeating model continuations that cannot supply human clearance`);
+    }
     await check.say(owner, prompt);
   }
   throw new Error(`continuation budget exhausted before Run ${runId} reached a terminal state`);
@@ -642,14 +649,14 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const firstRun = host.ctx.hima.ledger.run(firstId)!;
   const firstContext = host.ctx.hima.executionContext(firstId);
   const firstRecords = host.ctx.hima.ledger.records({ runId: firstId });
-  const doneNodes = new Set(firstRecords
+  const doneNodes = new Set(currentRecordsIn(firstRecords)
     .filter((record): record is NodeRecord => record.type === 'node' && record.state === 'done')
     .map((record) => record.nodeId));
   const missingNodes = requiredReferenceNodes.filter((node) => !doneNodes.has(node));
   check.require('the first Campaign completed every required reference stage', missingNodes.length === 0, { missingNodes, doneNodes: [...doneNodes] });
 
-  const unsettledExecutions = firstContext.executions.filter((execution) =>
-    execution.phase === 'begun' || execution.phase === 'working' || execution.phase === 'ready' || execution.phase === 'uncertain');
+  const unsettledExecutions = firstContext.executions.filter((execution) => execution.supersededBy === undefined
+    && (execution.phase === 'begun' || execution.phase === 'working' || execution.phase === 'ready' || execution.phase === 'uncertain'));
   const launchedJobs = firstRecords.filter((record): record is JobRecord => record.type === 'job' && record.event === 'launched');
   const openJobs = launchedJobs.filter((launch) => !firstRecords.some((record) =>
     record.type === 'job'
@@ -707,7 +714,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
       && firstAnalysis.analysis.nextExperiments.length > 0,
     firstRecords.filter((record) => record.type === 'analysis'));
 
-  const valueTypes = new Set(firstRecords.flatMap((record) => record.type === 'observation'
+  const valueTypes = new Set(currentRecordsIn(firstRecords).flatMap((record) => record.type === 'observation'
     ? record.values.map((value) => value.type)
     : []));
   const missingValueTypes = requiredValueTypes.filter((type) => !valueTypes.has(type));

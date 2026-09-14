@@ -133,6 +133,21 @@ const site = ((argv: readonly string[]): string | undefined => {
   return named;
 })(process.argv);
 
+/** A pre-window diagnostic for release triage; it never prepares a home or starts dsh. */
+const runtimeInfo = process.argv.includes('--runtime-info');
+
+function nodeSelection(): { readonly source: 'HIMA_NODE' | 'bundled-node24' | 'npm_node_execpath' | 'PATH'; readonly available: boolean } {
+  const named = process.env.HIMA_NODE;
+  if (named !== undefined && named !== '') return { source: 'HIMA_NODE', available: existsSync(named) };
+  if (app.isPackaged) {
+    const bundled = path.join(checkoutRoot(), 'node', 'bin', 'node');
+    return { source: 'bundled-node24', available: existsSync(bundled) };
+  }
+  const viaPackageManager = process.env.npm_node_execpath;
+  if (viaPackageManager !== undefined && viaPackageManager !== '' && existsSync(viaPackageManager)) return { source: 'npm_node_execpath', available: true };
+  return { source: 'PATH', available: true };
+}
+
 /**
  * What the shell says about what it did. On stdout for a person, where `pnpm run desktop` shows
  * it; on stderr in driver mode, where stdout carries the driver's answers and nothing else.
@@ -192,6 +207,18 @@ function nodeExecutable(): string {
   const viaPackageManager = process.env.npm_node_execpath;
   if (viaPackageManager !== undefined && viaPackageManager !== '' && existsSync(viaPackageManager)) return viaPackageManager;
   return 'node';
+}
+
+if (runtimeInfo) {
+  const resourcesRoot = typeof process.resourcesPath === 'string' ? process.resourcesPath : undefined;
+  const packagedRoot = checkoutRoot();
+  process.stdout.write(`${JSON.stringify({
+    isPackaged: app.isPackaged,
+    resourcesLayout: resourcesRoot !== undefined && existsSync(path.join(resourcesRoot, 'app', 'profiles', HIMA_PROFILE, 'package.json')),
+    packagedRuntimeRoot: resourcesRoot !== undefined && packagedRoot === path.join(resourcesRoot, 'app'),
+    node: nodeSelection(),
+  })}\n`);
+  process.exit(0);
 }
 
 /**

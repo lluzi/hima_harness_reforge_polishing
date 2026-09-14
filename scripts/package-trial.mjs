@@ -1,7 +1,7 @@
 // Build a bounded, unsigned macOS arm64 trial app. This intentionally produces no
 // archive or network release: GitHub publication happens only after acceptance.
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -33,7 +33,7 @@ function assertSourceTreeIsSafe(base, current = base) {
 function collect(base, current = base, files = {}) {
   for (const name of readdirSync(current).sort()) {
     const at = path.join(current, name);
-    if (name === '.DS_Store' || relative(base, at) === 'Contents/Resources/app/trial-manifest.json') continue;
+    if (name === '.DS_Store') continue;
     const stat = lstatSync(at);
     const nameInManifest = relative(base, at);
     if (stat.isSymbolicLink()) {
@@ -49,21 +49,31 @@ function collect(base, current = base, files = {}) {
 }
 
 function verify(app) {
-  const manifestAt = path.join(app, 'Contents/Resources/app/trial-manifest.json');
+  const manifestAt = path.join(path.dirname(app), 'trial-manifest.json');
   if (!existsSync(manifestAt)) fail(`manifest missing: ${manifestAt}`);
   const manifest = JSON.parse(readFileSync(manifestAt, 'utf8'));
-  const resource = path.dirname(manifestAt);
+  const resource = path.join(app, 'Contents/Resources/app');
   const actual = collect(app);
   if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) fail('manifest hashes or release file list do not match');
-  for (const required of ['Contents/MacOS/Electron', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', 'Contents/Resources/app/packs/aes-tsmc28-dtco/graph.yml']) {
+  for (const required of ['Contents/MacOS/HimaHarness', 'Contents/Resources/app/lib/main.js', 'Contents/Resources/app/node/bin/node', 'Contents/Resources/app/profiles/hima/package.json', 'Contents/Resources/app/packs/aes-tsmc28-dtco/graph.yml']) {
     if (!existsSync(path.join(app, required))) fail(`required release file missing: ${required}`);
   }
-  const architecture = run('file', [path.join(app, 'Contents/MacOS/Electron')]);
+  const architecture = run('file', [path.join(app, 'Contents/MacOS/HimaHarness')]);
   if (!architecture.includes('arm64')) fail(`launcher is not arm64: ${architecture.trim()}`);
   const nodeVersion = run(path.join(resource, 'node/bin/node'), ['--version']).trim();
   if (!/^v24\./.test(nodeVersion)) fail(`bundled Node is not Node 24: ${nodeVersion}`);
   const dylibs = run('otool', ['-L', path.join(resource, 'node/bin/node')]);
   if (/\/(opt\/homebrew|usr\/local)\//.test(dylibs)) fail(`bundled Node links a local dylib:\n${dylibs}`);
+  run('codesign', ['--verify', '--deep', '--strict', app]);
+  const runtimeData = mkdtempSync(path.join(path.dirname(app), '.runtime-info-'));
+  try {
+    const runtime = JSON.parse(run(path.join(app, 'Contents/MacOS/HimaHarness'), ['--runtime-info'], {
+      env: { ...process.env, HIMA_USER_DATA: runtimeData, HIMA_NODE: '', npm_node_execpath: '' },
+    }));
+    if (runtime.isPackaged !== true || runtime.node?.source !== 'bundled-node24' || runtime.node?.available !== true) {
+      fail('native application does not select its own packaged Node 24');
+    }
+  } finally { rmSync(runtimeData, { recursive: true, force: true }); }
   process.stdout.write(`package-trial: verified ${app}\n`);
 }
 
@@ -113,7 +123,7 @@ if (args.includes('--help') || args.includes('-h')) {
   const output = path.resolve(value('--output') ?? path.join(root, '.hima-tmp/pilot-release'));
   if (process.platform !== 'darwin' || process.arch !== 'arm64') fail('this builder must run on macOS arm64');
   if (!existsSync(node24)) fail(`Node 24 is unavailable at ${node24}`);
-  if (existsSync(path.join(output, 'HimaHarness.app'))) fail(`refusing to overwrite existing ${path.join(output, 'HimaHarness.app')}`);
+  if (existsSync(path.join(output, 'HimaHarness.app')) || existsSync(path.join(output, 'trial-manifest.json'))) fail(`refusing to overwrite an existing trial artifact in ${output}`);
   for (const built of ['packages/desktop/lib/main.js', 'packages/harness/lib/index.js', 'packages/harness/lib/client.js']) {
     if (!existsSync(path.join(root, built))) fail(`release inputs are not built: ${built} (run pnpm run build once before packaging)`);
   }
@@ -133,6 +143,8 @@ if (args.includes('--help') || args.includes('-h')) {
     if (!existsSync(electronApp)) fail('Electron 44.2 app template is absent from deployed dependencies');
     const app = path.join(output, 'HimaHarness.app');
     cpSync(electronApp, app, { recursive: true, dereference: false, verbatimSymlinks: true });
+    // Electron uses its executable name to distinguish a packaged app from its SDK.
+    renameSync(path.join(app, 'Contents/MacOS/Electron'), path.join(app, 'Contents/MacOS/HimaHarness'));
     const resource = path.join(app, 'Contents/Resources/app');
     cpSync(deployed, resource, { recursive: true, dereference: false, verbatimSymlinks: true, filter: (source) => {
       const parts = relative(deployed, source).split('/');
@@ -155,14 +167,21 @@ if (args.includes('--help') || args.includes('-h')) {
     const diffSha256 = createHash('sha256').update(run('git', ['diff', '--binary', 'HEAD'])).digest('hex');
     const info = path.join(app, 'Contents/Info.plist');
     const plist = readFileSync(info, 'utf8')
+      .replace(/<key>CFBundleExecutable<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleExecutable</key><string>HimaHarness</string>')
       .replace(/<key>CFBundleDisplayName<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleDisplayName</key><string>HimaHarness</string>')
       .replace(/<key>CFBundleIdentifier<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleIdentifier</key><string>com.hima.harness.trial</string>')
       .replace(/<key>CFBundleName<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleName</key><string>HimaHarness</string>')
       .replace(/<key>CFBundleShortVersionString<\/key>\s*<string>[^<]*<\/string>/, `<key>CFBundleShortVersionString</key><string>${macVersion}</string>`)
       .replace(/<key>CFBundleVersion<\/key>\s*<string>[^<]*<\/string>/, '<key>CFBundleVersion</key><string>1</string>');
     writeFileSync(info, plist);
-    const manifest = { format: 1, version: trialVersion, source: { sha: sourceSha, dirty, diffSha256 }, files: collect(app) };
-    writeFileSync(path.join(resource, 'trial-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    // Branding changes invalidate the template signature. Ad-hoc signing keeps the bundle
+    // structurally verifiable; it is not commercial signing or notarization. The checksum
+    // manifest is external so signing and manifest creation do not invalidate each other.
+    run('codesign', ['--force', '--deep', '--sign', '-', '--timestamp=none',
+      '--preserve-metadata=entitlements,flags', app]);
+    const manifest = { format: 2, version: trialVersion, signing: 'ad-hoc, not notarized',
+      source: { sha: sourceSha, dirty, diffSha256 }, files: collect(app) };
+    writeFileSync(path.join(output, 'trial-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     verify(app);
     smokeRelocatedHost(app);
   } finally {

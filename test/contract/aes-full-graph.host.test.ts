@@ -145,8 +145,9 @@ test('one native owner drives the full AES graph and returns from an evidence re
     assert.deepEqual(routes.filter(route => context().available.includes(`mine-${route}`)), [...routes]);
     assert.ok(routes.every(route => !context().executions.some(e => e.nodeId === `mine-${route}`)),
       'Fabric exposes every branch but does not auto-start one');
+    // The Agent may collect all six routes before coding their selectors.
+    for (const route of routes) await complete(`mine-${route}`);
     for (const [index, route] of routes.entries()) {
-      await complete(`mine-${route}`);
       assert.ok(context().available.includes(`select-${route}`));
       assert.ok(!context().executions.some(e => e.nodeId === `select-${route}`), 'Fabric did not auto-start the Workshop');
       await workshop(route);
