@@ -874,12 +874,28 @@ test('through a booted host with the replay stand-in: an absent packs directory 
     //    does not resolve for a reason that is not "nothing is there" — and a session inside no pack
     //    folder that cannot be placed is refused, not waved through.
     const notAFolder = path.join(packsDir, 'not-a-folder');
-    await mkdir(packsDir, { recursive: true });
-    await writeFile(notAFolder, 'a file where a pack folder would be\n');
-    const beneath = await answers(path.join(notAFolder, 'inside'));
-    assert.ok(beneath[1]!.failed, `a session standing below a file is not an authoring session and is not an ordinary one either: ${beneath[1]!.text}`);
-    assert.ok(beneath[1]!.text.includes(`working directory ${path.join(notAFolder, 'inside')}`),
-      `and the refusal is about the working directory, named: ${beneath[1]!.text}`);
+    const beneathPath = path.join(notAFolder, 'inside');
+    await mkdir(beneathPath, { recursive: true });
+    await replayStage(h, 'posture');
+    const host = await bootInProcess(h);
+    try {
+      const agent = await createRootAgent(host.ctx, beneathPath);
+      await rm(notAFolder, { recursive: true, force: true });
+      await writeFile(notAFolder, 'a file where a pack folder would be\n');
+      // dsh itself cannot compose a model turn once an ancestor of cwd has become a file. Invoke
+      // the governed tool through the same booted registry so this case reaches the Hima guard it
+      // is about, rather than stopping earlier in dsh's unrelated turn setup.
+      const refused = await host.ctx.tools.execute({
+        name: 'write', arguments: { file_path: outsideFile, content: 'must not land\n' }, agent,
+        callId: 'posture-not-a-folder' as never, signal: AbortSignal.timeout(10_000),
+      });
+      const refusedText = refused.content.filter((item) => item.type === 'text').map((item) => item.text).join('\n');
+      assert.ok(refused.isError, `a session standing below a file is not an authoring session and is not an ordinary one either: ${refusedText}`);
+      assert.ok(refusedText.includes(`working directory ${beneathPath}`),
+        `and the refusal is about the working directory, named: ${refusedText}`);
+    } finally {
+      await host.dispose();
+    }
 
     assert.equal(await readFile(outsideFile, 'utf8'), rewritten,
       'and the three refused sessions left the file exactly as the first one left it');
