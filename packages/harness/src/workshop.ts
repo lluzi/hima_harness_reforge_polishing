@@ -18,7 +18,7 @@
 // design and no route — every one of those words comes out of the pack's own declaration, and the
 // purpose the model is given is the pack author's sentence carried through verbatim.
 import { createHash } from 'node:crypto';
-import { lstatSync, readdirSync } from 'node:fs';
+import { lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { extractText } from 'unpdf';
@@ -867,7 +867,10 @@ const safeDocumentId = (id: string): string => {
 };
 const scopeDirectory = (root: string, scope: string): string => {
   if (scope.trim() === '' || scope.length > 512) throw new Error('knowledge scope must be a non-empty bounded identity');
-  return path.join(path.resolve(root), hash(scope));
+  const resolved = path.resolve(root);
+  let canonical = resolved;
+  try { canonical = realpathSync(resolved); } catch { /* import creates the root before first use */ }
+  return path.join(canonical, hash(scope));
 };
 
 /** The full issued proposal is the current-document scope. Repeated reads of one pending proposal
@@ -1092,7 +1095,8 @@ export async function importCurrentKnowledge(input: {
 }): Promise<KnowledgeDocumentIndex> {
   const sourceFile = await plainSource(input.file);
   await mkdir(path.resolve(input.root), { recursive: true });
-  await plainPath(path.parse(path.resolve(input.root)).root, path.resolve(input.root), 'directory');
+  const ownedRoot = await realpath(path.resolve(input.root));
+  await plainPath(path.parse(ownedRoot).root, ownedRoot, 'directory');
   const parsed = await indexKnowledgeDocument({ ...input, file: sourceFile, source: 'current' });
   const scopeDir = scopeDirectory(input.root, input.scope);
   const target = path.join(scopeDir, parsed.document.id);
