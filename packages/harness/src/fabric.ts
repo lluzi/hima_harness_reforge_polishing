@@ -34,12 +34,12 @@
 // stopping one `recovery.ts`.
 import { goalDeclarationOf, boundInputs, checkPack, forkFrom, growthProposal, loadInstalledPack, loadPackFrom, packStageFrom, positionOf, outputPath, runGraphsOf, validateGrowthGraph, withGrowthGraphs, type GrowthGraph, type GrowthProposal, type Pack, type PackCheck, type PackConverge, type PackNode, type RunGraph } from './packs.js';
 import { packDigestExcludes, snapshotPackFolder, type PackFolderSnapshot } from './pack-folder.js';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { loadRunPack, preservePackMethod } from './release.js';
 import { applyWorkspaceRevision, campaignIdFor, prepareWorkspace, verifyWorkspaceRevisionSources, type PrepareResult, type WorkspaceRevisionChange } from './workspace.js';
 import { listRunKnowledge, readRunKnowledge, writeExperience } from './experience.js';
-import { loadSite, pathsOf } from './sites.js';
+import { loadSite, pathsOf, type Site } from './sites.js';
 import { driving, existingRun, legacyAutomaticAllowed } from './runs.js';
 import { currentRecordsIn, recordNode, researchAnalysis, revisionRecordsIn, executionReceipt as receiptSchema, launchIntent as launchIntentSchema } from './ledger.js';
 import { analysisProblems } from './experience-report.js';
@@ -207,6 +207,50 @@ export type StartRunResult =
   /** The graph was executed. The Run carries where it got to; `ended-*` and `waiting` are all here. */
   | { readonly kind: 'ran'; readonly run: RunRecord; readonly workspace: string };
 
+/** Facts a preparation promises, computed again from the final Pack/Site snapshots at admission. */
+export function campaignProposalFactsIdentity(pack: Pack, site?: Site): string {
+  const check = site === undefined ? undefined : checkPack(pack, site);
+  const goal = Object.fromEntries(Object.entries(goalDeclarationOf(pack)).map(([name, declaration]) => [name, declaration.default]));
+  const strategy = Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, declaration.default]));
+  const referenceGraph = { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
+    edges: pack.graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === undefined ? {} : { revisit: edge.revisit }) })) };
+  return identityOf({ pack: { id: pack.id, version: pack.contract.version, digest: pack.folder.digest(packDigestExcludes) },
+    site: site === undefined ? undefined : identityOf(site), goal, strategy, referenceGraph,
+    inputs: check?.inputs.map((input) => ({ name: input.name, bound: input.bound })) });
+}
+
+/** Each preparation is confirmable once while retaining a recomputable facts prefix. */
+export function newCampaignProposalId(pack: Pack, site?: Site): string {
+  const facts = campaignProposalFactsIdentity(pack, site);
+  const nonce = randomBytes(16).toString('hex');
+  const message = `${facts}.${nonce}`;
+  return `${message}.${createHmac('sha256', proposalSigningKey).update(message).digest('hex')}`;
+}
+
+/** Pending proposals are process-local; exact confirmed tokens remain idempotent in the Ledger. */
+const proposalSigningKey = randomBytes(32);
+
+function proposalFactsPart(proposalId: string): string | undefined {
+  const [facts, nonce, signature, ...extra] = proposalId.split('.');
+  if (extra.length || !/^[a-f0-9]{64}$/.test(facts ?? '')) return undefined;
+  if (nonce === undefined && signature === undefined) return facts;
+  if (!/^[a-f0-9]{32}$/.test(nonce ?? '') || !/^[a-f0-9]{64}$/.test(signature ?? '')) return undefined;
+  return facts;
+}
+
+/** Compare proposal facts while allowing a fresh preparation to issue a new one-shot nonce. */
+export function sameCampaignProposalFacts(left: string, right: string): boolean {
+  const a = proposalFactsPart(left), b = proposalFactsPart(right);
+  return a !== undefined && a === b;
+}
+
+function proposalMatchesCurrentFacts(proposalId: string, pack: Pack, site: Site): boolean {
+  const [facts, nonce, signature] = proposalId.split('.');
+  if (proposalFactsPart(proposalId) !== campaignProposalFactsIdentity(pack, site) || nonce === undefined || signature === undefined) return false;
+  const expected = createHmac('sha256', proposalSigningKey).update(`${facts}.${nonce}`).digest();
+  return timingSafeEqual(expected, Buffer.from(signature, 'hex'));
+}
+
 /**
  * Start a Campaign of `pack` on `site` toward `goal`, and execute its graph.
  *
@@ -258,6 +302,13 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   // A pack the Site cannot host is answered before a Campaign exists, exactly as preparation does:
   // nothing was attempted anywhere, so nothing is recorded anywhere.
   const check = checkPack(pack, site);
+  const existingProposal = req.proposalId === undefined ? undefined : deps.ledger.runs().find((run) => run.proposalId === req.proposalId);
+  if (req.proposalId !== undefined && existingProposal === undefined && !proposalMatchesCurrentFacts(req.proposalId, pack, site)) {
+    throw new RunStartError('Campaign preparation changed after confirmation; inspect a fresh proposal before starting');
+  }
+  if (req.proposalId !== undefined && req.test === true) {
+    throw new RunStartError('a confirmed product Campaign cannot be changed into a Pack test');
+  }
   if (!check.fit) return { kind: 'unfit', check };
 
   const admittedGoal = goalFrom(goalDeclarationOf(pack), req.goal);
@@ -1153,6 +1204,7 @@ export interface ExecutionContext {
 export interface ExecutionActionResult {
   readonly kind: 'accepted' | 'duplicate' | 'refused' | 'unsupported'; readonly context: ExecutionContext;
   readonly receipt?: ExecutionReceipt; readonly reason?: string; readonly data?: unknown;
+  readonly notification?: import('./node-turns.js').NotificationDelivery;
 }
 
 const revisionProposal = z.strictObject({
@@ -1838,23 +1890,29 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
   return controlling(deps, req.runId, async () => {
     const answer = (kind: ExecutionActionResult['kind'], extra: { receipt?: ExecutionReceipt; reason?: string; data?: unknown } = {}): ExecutionActionResult => ({ kind, context: executionContext(deps, req.runId), ...extra });
     const no = (reason: string): ExecutionActionResult => answer('refused', { reason });
+    const repeatedNotification = { status: 'not-repeated' as const,
+      message: 'This control request was already recorded. Hima did not notify the Campaign Agent again; the original delivery outcome is not durable.' };
     let run = existingRun(deps.ledger, req.runId);
     let control = run.control;
     if (deps.stopSignal?.aborted) return no('the Host is stopping; no new business action was admitted');
     if (req.action === 'adopt') return adoptHistoricalRun(deps, req);
     if (control === undefined) return no('this historical Run has no conversational owner');
-    if ((control.owner !== req.actor && !(req.action === 'cancel' && req.origin === 'human')) || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
+    // A human may urgently pause or stop a Campaign from a Side Talk, but that does not make the
+    // Side Talk an execution owner.  Every node action, continuation, revision and handoff remains
+    // fenced to the recorded owner and epoch below.
+    const humanEmergencyControl = req.origin === 'human' && (req.action === 'pause' || req.action === 'cancel');
+    if ((control.owner !== req.actor && !humanEmergencyControl) || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
     if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return no('request identity must be a bounded plain identifier');
     const digest = identityOf(req);
     const before = Object.hasOwn(control.requests, req.requestId) ? control.requests[req.requestId] : undefined;
     if (before !== undefined && before.receipt.action === 'revise') {
       if (before.digest !== digest) return no('this request identity was already used with different contents');
       if (before.state === 'uncertain') return no('the admitted revision has inconsistent or incomplete persisted facts; it cannot be treated as applied');
-      return answer('duplicate', { receipt: before.receipt, data: before.receipt.data });
+      return { ...answer('duplicate', { receipt: before.receipt, data: before.receipt.data }), notification: repeatedNotification };
     }
     if (!deps.host?.get('agents')?.list().some((agent) => String(agent.id) === req.actor)) return no('the calling conversation is not live on this Host');
     if (before !== undefined) return before.digest === digest
-      ? answer('duplicate', { receipt: before.receipt, data: before.receipt.data })
+      ? { ...answer('duplicate', { receipt: before.receipt, data: before.receipt.data }), notification: repeatedNotification }
       : no('this request identity was already used with different contents');
     if (req.expectedRevision !== control.revision) return no('control revision is stale; inspect the current context before deciding again');
     if (req.action === 'revise') return revisionAction(deps, run, req, digest);
@@ -1867,9 +1925,9 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       await recordExecutionAction(deps, run, req, digest, {
         paused: [...new Set([...control.paused, '*'])], stop: { reason: 'cancel', requestId: req.requestId, status: 'requested' },
       }, receipt, {}, 'admitted');
-      deps.notify?.(control.owner, run.id, req.requestId, 'The user requested that this Campaign stop. The request is recorded and new node decisions are fenced while the actual Job stop is established. Acknowledge the request and inspect current Hima facts; do not start another node.');
+      const notification = deps.notify?.(control.owner, run.id, req.requestId, 'The user requested that this Campaign stop. The request is recorded and new node decisions are fenced while the actual Job stop is established. Acknowledge the request and inspect current Hima facts; do not start another node.');
       scheduleExecutionStop(deps, run.id);
-      return answer('accepted', { receipt });
+      return { ...answer('accepted', { receipt }), ...(notification === undefined ? {} : { notification }) };
     }
     if (!reading && Object.values(control.requests).some((request) =>
       (request.receipt.action === 'continue' || request.receipt.action === 'revise') && request.state !== 'done')) {
@@ -1928,12 +1986,12 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       }
       await recordExecutionAction(deps, run, req, digest, changed, receipt);
       const notifiedOwner = req.action === 'handoff' ? receipt.owner! : control.owner;
-      deps.notify?.(notifiedOwner, run.id, req.requestId, req.action === 'handoff'
+      const notification = deps.notify?.(notifiedOwner, run.id, req.requestId, req.action === 'handoff'
         ? 'Campaign ownership was handed to this conversation at a safe boundary. Read hima_context before deciding; the prior owner is fenced.'
         : req.action === 'pause'
           ? `The user paused ${scope === '*' ? 'this Campaign' : `node ${scope}`}. The control fact is recorded; acknowledge it and start no affected node until continued.`
           : `The user continued ${scope === '*' ? 'this Campaign' : `node ${scope}`}. Read current facts before choosing the next action.`);
-      return answer('accepted', { receipt });
+      return { ...answer('accepted', { receipt }), ...(notification === undefined ? {} : { notification }) };
     }
     if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || reading) return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');

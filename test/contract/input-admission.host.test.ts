@@ -19,11 +19,11 @@ test('command and tool inputs reject duplicate names and numeric spellings that 
     }
     const agent = await createRootAgent(host.ctx, h.workspace);
     for (const goal of [{ target_period_ns: NaN }, { target_period_ns: Infinity }, { target_period_ns: -1 }, { unknown: 2 }, { target_period_ns: '2.00000000000000001' }]) {
-      const result = await host.ctx.tools.execute({ callId: 'admission-test' as never, name: 'hima_run', arguments: { pack: timingProbePackId, site: 'local', goal, generations: 1 }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
+      const result = await host.ctx.tools.execute({ callId: 'admission-test' as never, name: 'hima_run', arguments: { pack: timingProbePackId, site: 'local', goal, generations: 1, test: true }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
       assert.equal(result.isError, true, JSON.stringify(result));
     }
     assert.deepEqual(host.ctx.hima.ledger.runs(), []);
-    const result = await host.ctx.tools.execute({ callId: 'admission-valid' as never, name: 'hima_run', arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: '2.30' }, generations: 1 }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
+    const result = await host.ctx.tools.execute({ callId: 'admission-valid' as never, name: 'hima_run', arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: '2.30' }, generations: 1, test: true }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
     assert.equal(result.isError, false, JSON.stringify(result));
     assert.deepEqual(host.ctx.hima.ledger.runs()[0]?.goal, { target_period_ns: 2.3 });
   } finally { await dispose(); }
@@ -142,7 +142,7 @@ test('the command and model tool both bind a newly declared relative Goal by its
     const command = await himaCommand(host, h.workspace, `/hima run ${pack} --site local --goal improvement_pct=25 --generations 1`);
     assert.equal(command.kind, 'success', command.text);
     const agent = await createRootAgent(host.ctx, h.workspace);
-    const result = await host.ctx.tools.execute({ callId: 'relative-goal-tool' as never, name: 'hima_run', arguments: { pack, site: 'local', goal: { improvement_pct: '5.25' }, generations: 1 }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
+    const result = await host.ctx.tools.execute({ callId: 'relative-goal-tool' as never, name: 'hima_run', arguments: { pack, site: 'local', goal: { improvement_pct: '5.25' }, generations: 1, test: true }, agent, signal: AbortSignal.timeout(siteCommandTimeoutMs) });
     assert.equal(result.isError, false, JSON.stringify(result));
     assert.deepEqual(host.ctx.hima.ledger.runs().map((run) => run.goal?.improvement_pct).sort((a, b) => a! - b!), [5.25, 25]);
   } finally { await dispose(); }

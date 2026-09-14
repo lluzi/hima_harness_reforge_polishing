@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from 'rea
 import type { RunView } from '../remote.js';
 import type { StartChoices } from '../workbench.js';
 import type { ExecutionContext } from '../fabric.js';
-import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows, nodeStateLabel, runPurposeMark, runStatusLabel, startForm, startGoalField, startKnobField, START_STATIC_LIMIT } from '../card-labels.js';
+import { bannerLines, cancelAsked, cancelObserved, duration, labelled, meterRows, nodeStateLabel, runPurposeMark, runStatusLabel, START_STATIC_LIMIT } from '../card-labels.js';
 import { reportBlocks } from '../experience-report.js';
 import { runPath } from '../paths.js';
 import { fetchExecutionContext, fetchRun, fetchRuns, fetchStartChoices, reviewPackTransfer, startCampaign, type HimaResult } from './api.js';
@@ -331,16 +331,12 @@ function EvidenceTrail({ view }: { view: RunView }): ReactElement {
 function StartRunForm({ sessionId, onStarted, onClose, onBusy }: { sessionId: string; onStarted(view: RunView): void; onClose(): void; onBusy(busy: boolean): void }): ReactElement {
   const [selection, setSelection] = useState<{ pack?: string; site?: string }>({});
   const [prepared, setPrepared] = useState<StartChoices>();
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [goals, setGoals] = useState<Record<string, string>>({});
-  const [knobs, setKnobs] = useState<Record<string, string>>({});
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [checkRevision, setCheckRevision] = useState(0);
   const checkPending = useRef(true);
   const request = useRef<AbortController | undefined>(undefined);
-  const previous = useRef<StartChoices | undefined>(undefined);
   useEffect(() => {
     const own = new AbortController();
     checkPending.current = true; setChecking(true); setError(undefined);
@@ -349,27 +345,16 @@ function StartRunForm({ sessionId, onStarted, onClose, onBusy }: { sessionId: st
       setChecking(false);
       if (!result.ok) { setError(result.error.message); return; }
       const next = result.value;
-      const prior = previous.current;
-      setKnobs((current) => Object.fromEntries(Object.entries(next.strategy ?? {}).map(([name, knob]) => {
-        const old = prior?.strategy?.[name];
-        const held = current[name];
-        const compatible = old?.type === knob.type && (knob.type === 'choice' ? held !== undefined && knob.options.includes(held) : old?.type === 'number' && old.unit === knob.unit);
-        return [name, compatible && held !== undefined ? held : String(knob.default)];
-      })));
-      setGoals((current) => Object.fromEntries(Object.entries(next.goal ?? {}).map(([name, parameter]) => [name,
-        prior?.goal?.[name]?.unit === parameter.unit && current[name] !== undefined ? current[name] : String(parameter.default),
-      ])));
-      previous.current = next; setPrepared(next); checkPending.current = false;
+      setPrepared(next); checkPending.current = false;
     });
     return () => own.abort();
   }, [selection.pack, selection.site, checkRevision]);
   useEffect(() => () => { request.current?.abort(); onBusy(false); }, [onBusy]);
-  const numeric = (raw: string | undefined): number | string | undefined => raw?.trim() ? (Number.isFinite(Number(raw)) ? Number(raw) : raw) : undefined;
   const submit = async () => {
     if (request.current || checkPending.current || prepared?.proposal?.ready !== true) return;
     const own = new AbortController(); request.current = own; setSubmitting(true); onBusy(true); setError(undefined);
-    const strategy = Object.fromEntries(Object.entries(prepared.strategy ?? {}).map(([name, knob]) => [name, knobs[name]]));
-    const result = await startCampaign({ sessionId, proposalId: prepared.proposal.id, pack: prepared.pack, site: prepared.site, goal: goals, strategy, timeBox: numeric(values.timeBox), retries: numeric(values.retries), generations: numeric(values.generations) }, own.signal);
+    const result = await startCampaign({ sessionId, proposalId: prepared.proposal.id, pack: prepared.pack, site: prepared.site,
+      goal: prepared.proposal.goal, strategy: prepared.proposal.strategy }, own.signal);
     if (own.signal.aborted) return;
     request.current = undefined; setSubmitting(false); onBusy(false);
     if (result.ok) onStarted(result.value); else setError(result.error.message);
@@ -386,9 +371,11 @@ function StartRunForm({ sessionId, onStarted, onClose, onBusy }: { sessionId: st
       <details><summary>Inputs and readiness</summary>{prepared.proposal.inputs.map((input) => <p key={input.name}>{input.ready ? '✓' : '○'} <strong>{input.name}</strong>{input.value ? ` · ${input.value}` : ''}<br/><span className='hima-small'>{input.description}</span></p>)}{prepared.proposal.unknowns.map((unknown) => <p key={unknown} className='hima-notice'>{unknown}</p>)}</details>
       <details><summary>Reference graph and tools</summary><p>{prepared.proposal.referenceGraph.nodes.map((node) => `${node.id} (${node.kind})`).join(' → ')}</p><p className='hima-small'>{prepared.proposal.pack.tools.map((tool) => `${tool.id}${tool.recommendedVersion ? ` · ${tool.recommendedVersion}` : ''}`).join('; ') || 'No external tool declared.'}</p></details>
     </section> : null}
-    <details className='hima-advanced'><summary>Advanced Campaign settings</summary><div className='hima-fields'>{Object.entries(prepared?.goal ?? {}).map(([name, parameter]) => { const field = startGoalField(name, parameter, prepared?.words?.goal[name]); return <label key={name}>{field.said}<input data-hima-control={field.control.replace('start-', 'studio-')} value={goals[name] ?? ''} onChange={(event) => setGoals({ ...goals, [name]: event.target.value })} /><small>{field.hint}</small></label>; })}
-      {Object.entries(prepared?.strategy ?? {}).map(([name, knob]) => { const field = startKnobField(name, knob, prepared?.words?.strategy[name]); return <label key={name}>{field.said}{knob.type === 'choice' ? <select data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })}>{knob.options.map((option) => <option key={option}>{option}</option>)}</select> : <input data-hima-control={`studio-knob-${name}`} value={knobs[name] ?? ''} onChange={(event) => setKnobs({ ...knobs, [name]: event.target.value })} />}<small>{field.hint}</small></label>; })}</div>
-      <h4>Budget</h4><div className='hima-fields'>{(['timeBox', 'retries', 'generations'] as const).map((name) => <label key={name}>{startForm[name].said}<input data-hima-control={`studio-${name}`} value={values[name] ?? ''} onChange={(event) => setValues({ ...values, [name]: event.target.value })} placeholder='Pack default' /></label>)}</div></details>
+    <details className='hima-advanced'><summary>Proposed Campaign settings</summary>
+      <p className='hima-small'>HimaGuide selected the Pack defaults after checking the actual inputs and Site. Confirming uses these exact values and the Pack budget.</p>
+      <div className='hima-headlines'><div><strong>Goal</strong><p>{Object.entries(prepared?.proposal?.goal ?? {}).map(([name, value]) => `${name}: ${String(value)}`).join(' · ') || 'Unavailable'}</p></div>
+        <div><strong>Initial strategy</strong><p>{Object.entries(prepared?.proposal?.strategy ?? {}).map(([name, value]) => `${name}: ${String(value)}`).join(' · ') || 'Unavailable'}</p></div></div>
+    </details>
     <div className='hima-preflight' role='status' data-hima-region='studio-preflight' data-hima-state-status={checking ? 'checking' : checkPending.current ? 'unavailable' : prepared?.proposal?.ready ? 'ready' : 'needs-input'}>{checking ? 'Preparing Campaign proposal…' : checkPending.current ? 'Preparation unavailable; retry before confirming.' : prepared?.proposal?.ready ? '✓ Inputs, Pack, Site and method are ready for one Campaign confirmation.' : prepared?.preparation?.message ?? prepared?.proposal?.nextActions.join(' ') ?? 'Choose a Pack and Site to continue.'}</div>
     {error ? <div className='hima-notice' role='alert'><p>{error}</p><button type='button' className='hima-button' data-hima-control='studio-recheck' onClick={() => { checkPending.current = true; setCheckRevision((value) => value + 1); }}>Retry preparation check</button></div> : null}
     <div className='hima-start-footer'><button className='hima-button hima-primary' data-hima-control='studio-start' disabled={checking || checkPending.current || submitting || prepared?.proposal?.ready !== true}>{submitting ? 'Creating Campaign…' : 'Confirm and start Campaign →'}</button><details><summary>Checks and data source</summary><p>{START_STATIC_LIMIT}</p></details></div>

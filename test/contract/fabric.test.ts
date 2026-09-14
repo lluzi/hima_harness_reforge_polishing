@@ -427,7 +427,7 @@ test('the hima_run tool starts the same run as the command, and answers with the
     const result = await host.ctx.tools.execute({
       callId: 'call-hima-run' as never,
       name: 'hima_run',
-      arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: 2.0 }, generations: 1 },
+      arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: 2.0 }, generations: 1, test: true },
       agent,
       signal: AbortSignal.timeout(siteCommandTimeoutMs),
     });
@@ -462,7 +462,7 @@ test('the command face and the tool face refuse a number the same way, in the sa
     const result = await host.ctx.tools.execute({
       callId: 'call-hima-run-bad-period' as never,
       name: 'hima_run',
-      arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: -5 } },
+      arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: -5 }, test: true },
       agent,
       signal: AbortSignal.timeout(siteCommandTimeoutMs),
     });
@@ -488,7 +488,7 @@ test('the command face and the tool face refuse a number the same way, in the sa
     const retries = await host.ctx.tools.execute({
       callId: 'call-hima-run-bad-retries' as never,
       name: 'hima_run',
-      arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: 2.0 }, retries: -1 },
+      arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: 2.0 }, retries: -1, test: true },
       agent,
       signal: AbortSignal.timeout(siteCommandTimeoutMs),
     });
@@ -525,7 +525,7 @@ test('a --time-box the shared validator accepts but that converts to a milliseco
     const toolResult = await host.ctx.tools.execute({
       callId: 'call-hima-run-bad-timebox' as never,
       name: 'hima_run',
-      arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: 2.0 }, timeBox: 1e15 },
+      arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.0 }, strategy: { periodNs: 2.0 }, timeBox: 1e15, test: true },
       agent,
       signal: AbortSignal.timeout(siteCommandTimeoutMs),
     });

@@ -12,10 +12,14 @@ process.env.HIMA_TEST_SILENT_AGENT = '1';
 test('hima_run prepares for the actual calling Agent and returns the same conversation context', async (t) => {
   const local = await localHome(t, { sleepSeconds: 0 });
   assert.ok(local);
-  const host = await bootInProcess(local.h);
+    const host = await bootInProcess(local.h);
   try {
     const agent = await createRootAgent(host.ctx, local.h.workspace);
-    const result = await host.ctx.tools.execute({ callId: 'prepare-owned' as never, name: 'hima_run', arguments: { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, generations: 1 }, agent, signal: AbortSignal.timeout(30000) });
+    const prepared = await host.ctx.tools.execute({ callId: 'prepare-owned' as never, name: 'hima_prepare', arguments: { pack: timingProbePackId, site: 'local' }, agent, signal: AbortSignal.timeout(30000) });
+    const proposal = JSON.parse(prepared.content.filter((item) => item.type === 'text').map((item) => item.text).join(''));
+    const result = await host.ctx.tools.execute({ callId: 'start-owned' as never, name: 'hima_run', arguments: {
+      proposalId: proposal.id, pack: timingProbePackId, site: 'local', goal: proposal.goal, strategy: proposal.strategy,
+    }, agent, signal: AbortSignal.timeout(30000) });
     assert.equal(result.isError, false, JSON.stringify(result));
     const run = host.ctx.hima.ledger.runs()[0];
     assert.equal(run?.control?.owner, String(agent.id));
@@ -46,7 +50,8 @@ test('controlled tools derive ownership, deduplicate admission, and refuse legac
     const execute = schemas.find((schema) => schema.name === 'hima_execute');
     assert.ok(execute);
     assert.ok(!JSON.stringify(execute.parameters).includes('"actor"'), 'the model cannot fill in actor');
-    const started = value(await call('hima_run', { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, generations: 1 }));
+    const proposal = value(await call('hima_prepare', { pack: timingProbePackId, site: 'local' }));
+    const started = value(await call('hima_run', { proposalId: proposal.id, pack: timingProbePackId, site: 'local', goal: proposal.goal, strategy: proposal.strategy }));
     const run = started.runId;
     const request = { run, action: 'begin', nodeId: started.context.run.currentNode, expectedEpoch: 1, expectedRevision: 0, requestId: 'first-admission' };
     const denied = value(await call('hima_execute', request, other));
@@ -96,12 +101,15 @@ test('native preparation validates a live selected session and exposes durable c
     assert.equal(native.result.ok, true, JSON.stringify(native));
     const owner = native.result.value.sessionId;
     const post = (route: string, body: object) => api(host, cookie, `/hima/api${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const input = { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, generations: 1 };
+    const input = { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 } };
     assert.equal((await post('/runs/start', input)).status, 400);
     assert.equal((await post('/runs/start', { ...input, sessionId: 'session-forged' })).status, 400);
     const empty = await api(host, cookie, '/hima/api/runs');
     assert.deepEqual(await empty.json(), { runs: [] });
-    const prepared = await post('/runs/start', { ...input, sessionId: owner });
+    const choicesResponse = await api(host, cookie, `/hima/api/start-options?pack=${timingProbePackId}&site=local`);
+    const choices = await choicesResponse.json() as { proposal: { id: string; goal: Record<string, number>; strategy: Record<string, number | string> } };
+    const prepared = await post('/runs/start', { ...input, proposalId: choices.proposal.id, goal: choices.proposal.goal,
+      strategy: choices.proposal.strategy, sessionId: owner });
     const preparedText = await prepared.text();
     assert.equal(prepared.status, 200, preparedText);
     const view = JSON.parse(preparedText);
@@ -118,6 +126,19 @@ test('native preparation validates a live selected session and exposes durable c
     assert.match(momentBody.error.message, /controlled by its conversation Agent/);
     const sessions = await api(host, cookie, `/hima/api/runs/${view.run.id}/records?type=session`);
     assert.deepEqual((await sessions.json() as RecordsView).records, [], 'a policy refusal opens no separate model session');
+    const pauseRequest = { action: 'pause', sessionId: owner, expectedEpoch: 1, expectedRevision: 0, requestId: 'human-pause' };
+    const paused = await post(`/runs/${view.run.id}/control`, pauseRequest);
+    const pausedBody = await paused.json() as { run: { run: { control: { owner: string; paused: string[] } } }; notification: { status: string; message: string } };
+    assert.equal(paused.status, 200, JSON.stringify(pausedBody));
+    assert.equal(pausedBody.run.run.control.owner, owner);
+    assert.deepEqual(pausedBody.run.run.control.paused, ['*']);
+    assert.equal(pausedBody.notification.status, 'inactive');
+    assert.match(pausedBody.notification.message, /control fact is recorded/i);
+    const repeatedPause = await post(`/runs/${view.run.id}/control`, pauseRequest);
+    const repeatedBody = await repeatedPause.json() as { notification: { status: string; message: string } };
+    assert.equal(repeatedPause.status, 200, JSON.stringify(repeatedBody));
+    assert.equal(repeatedBody.notification.status, 'not-repeated');
+    assert.match(repeatedBody.notification.message, /original delivery outcome is not durable/i);
     assert.equal((await post(`/runs/${view.run.id}/cancel`, {})).status, 400);
     assert.equal((await post(`/runs/${view.run.id}/control`, { action: 'work', sessionId: owner, expectedEpoch: 1, expectedRevision: 0, requestId: 'human-work' })).status, 400);
     assert.equal(contextBody.run.control.revision, 0);

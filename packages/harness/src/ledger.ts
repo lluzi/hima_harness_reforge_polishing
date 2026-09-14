@@ -1508,7 +1508,7 @@ export const runRecord = z.object({
   id: z.string(),
   campaignId: z.string(),
   /** Read-only Campaign proposal confirmed to create this one Run. */
-  proposalId: sha256Hex.optional(),
+  proposalId: z.string().regex(/^[a-f0-9]{64}(?:\.[a-f0-9]{32}\.[a-f0-9]{64})?$/).optional(),
   siteId: z.string(),
   createdAt: z.string(),
   nextSeq: z.number().int().positive(),

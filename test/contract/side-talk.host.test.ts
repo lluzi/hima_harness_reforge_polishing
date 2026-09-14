@@ -70,19 +70,36 @@ test('a Side Talk can read and code during one owner Run, but only a safe handof
     assert.match(stolen.reason ?? '', /owner or owner epoch is stale/);
     assert.equal(host.ctx.hima.ledger.runs().length, 1, 'two conversations do not create or replace the Campaign Run');
 
+    // A Side Talk is not allowed to begin node work, but a human using it may pause the Campaign
+    // immediately.  The durable owner and epoch stay with A; only an explicit safe handoff changes
+    // them.
+    const pauseContext = host.ctx.hima.executionContext(runId).run.control!;
+    const paused = await host.ctx.hima.executionAction({
+      runId, actor: String(sideTalk.id), origin: 'human', expectedEpoch: pauseContext.epoch, expectedRevision: pauseContext.revision,
+      requestId: 'side-talk-pause', action: 'pause',
+    });
+    assert.equal(paused.kind, 'accepted', paused.reason);
+    assert.equal(paused.context.run.control?.owner, String(owner.id));
+    assert.equal(paused.context.run.control?.epoch, pauseContext.epoch);
+    assert.deepEqual(paused.context.run.control?.paused, ['*']);
+
     await waitUntil('the owner Job settles at a handoff boundary', () =>
       host.ctx.hima.executionContext(runId).executions.some((execution) => execution.id === executionId && execution.phase === 'ready'), 8_000);
     const boundary = host.ctx.hima.executionContext(runId).run.control!;
     const notifications: Array<{ owner: string; detail?: string }> = [];
     const handoff = await performExecutionAction({ ledger: host.ctx.hima.ledger, judge: host.ctx.hima.judge,
       sitesDir: path.join(home.h.home, 'hima/sites'), packsDir: path.join(home.h.home, 'hima/packs'), host: host.ctx,
-      notify: (notified, _run, _execution, detail) => notifications.push({ owner: notified, ...(detail === undefined ? {} : { detail }) }) }, {
+      notify: (notified, _run, _execution, detail) => {
+        notifications.push({ owner: notified, ...(detail === undefined ? {} : { detail }) });
+        return { status: 'queued', message: 'Campaign Agent notification queued.' };
+      } }, {
       runId, actor: String(owner.id), expectedEpoch: boundary.epoch, expectedRevision: boundary.revision,
       requestId: 'safe-handoff', action: 'handoff', targetOwner: String(sideTalk.id),
     });
     assert.equal(handoff.kind, 'accepted', handoff.reason);
     assert.equal(handoff.context.run.control?.owner, String(sideTalk.id));
     assert.equal(handoff.context.run.control?.epoch, boundary.epoch + 1);
+    assert.equal(handoff.notification?.status, 'queued');
     assert.deepEqual(notifications.map((item) => item.owner), [String(sideTalk.id)], 'Host notification follows the durable handoff owner');
     assert.match(notifications[0]?.detail ?? '', /handed to this conversation.*prior owner is fenced/i);
     const staleOwner = await host.ctx.hima.executionAction({

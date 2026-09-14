@@ -26,7 +26,7 @@ import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-commands';
 import { hasEnded, Ledger, ledgerSpec } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { identityOf, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
+import { newCampaignProposalId, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
 import { drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
@@ -35,7 +35,7 @@ import { himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
 import { previewPackTransfer, applyPackTransfer } from './release.js';
-import { packDigestExcludes, packId as validPackId } from './pack-folder.js';
+import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
 import { installedSites, loadSite } from './sites.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
@@ -565,10 +565,18 @@ export default class Hima extends Service {
       beforeSlotClaim: (siteName) => reconcileExecutionIntents(this.deps(), siteName),
       log: (line) => this.ctx.logger.info(line),
       notify: (owner, runId, executionId, detail) => {
-        if (!this.notificationsActive || (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_SILENT_AGENT === '1')) return;
+        if (!this.notificationsActive || (process.env.NODE_TEST_CONTEXT !== undefined && process.env.HIMA_TEST_SILENT_AGENT === '1')) {
+          return { status: 'inactive', message: 'The control fact is recorded; Campaign Agent notification is inactive on this Host.' };
+        }
         const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === owner);
-        if (!agent) return;
-        agent.followup(createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `Hima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context to inspect the actual Job and evidence. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] }));
+        if (!agent) return { status: 'owner-unavailable', message: 'The control fact is recorded; the owning Campaign Agent is not currently live.' };
+        try {
+          agent.followup(createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `Hima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context to inspect the actual Job and evidence. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] }));
+          return { status: 'queued', message: 'The control fact is recorded and the Campaign Agent notification was queued.' };
+        } catch (error) {
+          this.ctx.logger.warn(`Campaign Agent notification failed after control was recorded: ${(error as Error).message}`);
+          return { status: 'failed', message: 'The control fact is recorded, but the Campaign Agent notification could not be queued.' };
+        }
       },
     };
   }
@@ -597,11 +605,9 @@ export default class Hima extends Service {
     const strategy = Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, declaration.default]));
     const referenceGraph = { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
       edges: pack.graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === undefined ? {} : { revisit: edge.revisit }) })) };
-    const identity = { pack: { id: pack.id, version: pack.contract.version, digest: pack.folder.digest(packDigestExcludes) },
-      site: site === undefined ? undefined : identityOf(site), goal, strategy, referenceGraph, inputs: check?.inputs.map((input) => ({ name: input.name, bound: input.bound })) };
     const ready = check?.fit === true && siteReadiness === 'ready' && missingCommands.length === 0;
     return {
-      id: identityOf(identity), ready, pack: overview,
+      id: newCampaignProposalId(pack, site), ready, pack: overview,
       ...(site === undefined ? {} : { site: { name: site.name, kind: site.kind, readiness: siteReadiness!, resources: { cores: site.capacity.cores, memoryGiB: site.capacity.memoryGiB, parallelJobs: site.capacity.parallelJobs } } }),
       inputs: pack.contract.inputs.map((input) => { const found = check?.inputs.find((item) => item.name === input.name); return { name: input.name, description: input.description, ...(found?.bound === undefined ? {} : { value: found.bound }), ready: found?.bound !== undefined }; }),
       knowledge: { documents: pack.contract.knowledge.length, ready: true, currentDocuments: 0 },

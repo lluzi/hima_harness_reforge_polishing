@@ -14,7 +14,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent';
 import { currentRecordsIn, type VerdictRecord } from './ledger.js';
 import { legacyAutomaticAllowed } from './runs.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { identityOf, revisionImpactForRun, executionAction, executionContext, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
+import { identityOf, revisionImpactForRun, executionAction, executionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
 import { checkInstalledPack, loadPack, runPackWords } from './packs.js';
@@ -140,6 +140,17 @@ function strategyArgument(raw: unknown, what = 'strategy'): Record<string, Strat
     strategy[name] = value as StrategyValue;
   }
   return strategy;
+}
+
+/** Preparation values are shallow contract scalars; canonicalise numeric strings and key order. */
+function samePreparedFacts(expected: Readonly<Record<string, unknown>>, actual: Readonly<Record<string, unknown>>): boolean {
+  const scalar = (value: unknown): unknown => {
+    if (typeof value !== 'string' || value.trim() === '') return value;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : value;
+  };
+  const ordered = (value: Readonly<Record<string, unknown>>) => Object.fromEntries(Object.keys(value).sort().map((key) => [key, scalar(value[key])]));
+  return JSON.stringify(ordered(expected)) === JSON.stringify(ordered(actual));
 }
 
 interface VerdictToolValue { outcome: VerdictRecord['outcome']; ruleId: string; ruleVersion: string; recordId: string; cites: string[]; reason?: string; boundParameters?: Record<string, number> }
@@ -495,13 +506,12 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
           additionalProperties: true,
           description: 'What to set the pack\'s own strategy knobs to for the first generation, by the names its contract declares, e.g. { "<knob>": <value> }. A knob left out takes the default that pack declares; a knob it does not declare, or a value outside the bounds or the list it declares, is refused and no run is started.',
         },
-        test: {
-          type: 'boolean',
-          description: 'Start this run as the test run of its pack, whatever stage the pack folder stands at. Omitted, the folder decides: a pack the authoring pipeline is still carrying an author through is a test run, and a released or hand-written pack is an ordinary campaign.',
-        },
-        timeBox: { type: 'number', description: 'The time box in minutes. Omitted, sixty.' },
-        retries: { type: 'integer', description: 'The retry allowance per node per generation. Omitted, three.' },
-        generations: { type: 'integer', description: "How many generations this campaign's loop may open. Omitted, the pack's own limit, then six." },
+        ...(legacyAutomaticAllowed() ? {
+          test: { type: 'boolean', description: 'Contract-test purpose only.' },
+          timeBox: { type: 'number', description: 'Contract-test budget only.' },
+          retries: { type: 'integer', description: 'Contract-test budget only.' },
+          generations: { type: 'integer', description: 'Contract-test budget only.' },
+        } : {}),
       },
       output: {
         schema: {
@@ -522,13 +532,24 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       },
       execute: async (args, execution) => {
         if (!execution.agent) throw new Error('hima_run requires a live conversational Agent');
-        if (args.proposalId !== undefined) {
-          const current = prepare?.(args.pack, args.site);
-          if (current === undefined || !current.ready || current.id !== args.proposalId) {
-            throw new Error('Campaign preparation changed or is no longer ready; call hima_prepare again before confirming');
-          }
+        if (args.proposalId === undefined && !legacyAutomaticAllowed()) {
+          throw new Error('confirm the current Campaign proposal returned by hima_prepare before starting a Run');
         }
         const goal = strategyArgument(args.goal, 'goal') ?? {};
+        const strategy = strategyArgument(args.strategy);
+        if (args.proposalId !== undefined) {
+          if (args.test === true) throw new Error('a confirmed product Campaign cannot be changed into a Pack test');
+          const current = prepare?.(args.pack, args.site);
+          if (current === undefined || !current.ready || !sameCampaignProposalFacts(current.id, args.proposalId)) {
+            throw new Error('Campaign preparation changed or is no longer ready; call hima_prepare again before confirming');
+          }
+          if (!samePreparedFacts(current.goal, goal) || !samePreparedFacts(current.strategy, strategy ?? current.strategy)) {
+            throw new Error('the submitted Goal or Strategy differs from the reviewed Campaign proposal; prepare the edited Campaign again before confirming');
+          }
+          if (args.timeBox !== undefined || args.retries !== undefined || args.generations !== undefined) {
+            throw new Error('a confirmed Campaign uses the reviewed Pack budget; budget overrides require a new preparation and are unavailable in this product path');
+          }
+        }
         // The same checks the command face and the route make, from the same tables: a tool call is
         // a caller like any other, and a time box no person could type must not be one a model can.
         const timeBox = toolNumber('timeBox', args.timeBox);
@@ -538,7 +559,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
           pack: args.pack,
           site: args.site,
           goal,
-          strategy: strategyArgument(args.strategy),
+          strategy,
           // An absent key, never an undefined one, as everywhere else a request is composed here:
           // the schema above has already held it to a boolean, so a caller that said nothing has
           // said nothing and the pack folder decides.

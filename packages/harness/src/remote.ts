@@ -1043,10 +1043,26 @@ const startRequestOf = (request: StartRunBody): StartRunRequest => ({
 async function startRunOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
   const request = await readStartBody(req);
   validateStartSession(ops, request);
+  // A production Campaign is always the confirmation of one current preparation.  The old
+  // automatic fixtures and an explicitly marked Pack test remain narrow escapes: they exercise
+  // lower-level Fabric behaviour and are not a second user-facing start path.
+  if (request.proposalId === undefined && !legacyAutomaticAllowed()) {
+    throw new BadRequest('confirm the current Campaign proposal before starting a Run');
+  }
   if (request.proposalId !== undefined) {
+    if (request.test === true) throw new BadRequest('a confirmed product Campaign cannot be changed into a Pack test');
     const current = ops.startPreparation(request.pack, request.site).proposal;
-    if (current === undefined || !current.ready || current.id !== request.proposalId) {
+    if (current === undefined || !current.ready || !sameProposalFacts(current.id, request.proposalId)) {
       throw new BadRequest('Campaign preparation changed or is no longer ready; inspect the current proposal before confirming');
+    }
+    // The opaque identity is only meaningful if it names the exact Goal and initial Strategy that
+    // become durable.  Do not let an advanced form silently substitute values after the proposal
+    // was reviewed; it must obtain a proposal for those values first.
+    if (!sameStartFacts(current.goal, request.goal) || !sameStartFacts(current.strategy, request.strategy ?? current.strategy)) {
+      throw new BadRequest('the submitted Goal or Strategy differs from the reviewed Campaign proposal; prepare the edited Campaign again before confirming');
+    }
+    if (request.timeBox !== undefined || request.retries !== undefined || request.generations !== undefined) {
+      throw new BadRequest('a confirmed Campaign uses the reviewed Pack budget; budget overrides require a new preparation and are unavailable in this product path');
     }
   }
   let result: StartRunResult;
@@ -1058,6 +1074,26 @@ async function startRunOperation(ops: RemoteOperations, req: IncomingMessage): P
   if (result.kind !== 'ran') return startedNothing(request, result);
   return ok(runAnswer(ops, result.run));
 }
+
+/** Goal and Strategy are shallow, scalar contract values.  Sort their names so object insertion
+ * order cannot turn the same reviewed facts into a false stale-proposal refusal. */
+function sameStartFacts(expected: Readonly<Record<string, unknown>>, actual: Readonly<Record<string, unknown>>): boolean {
+  const scalar = (value: unknown): unknown => {
+    if (typeof value !== 'string' || value.trim() === '') return value;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : value;
+  };
+  const ordered = (value: Readonly<Record<string, unknown>>) => Object.fromEntries(Object.keys(value).sort().map((key) => [key, scalar(value[key])]));
+  return JSON.stringify(ordered(expected)) === JSON.stringify(ordered(actual));
+}
+
+const proposalFacts = (id: string): string | undefined => {
+  const [facts, nonce, signature, ...extra] = id.split('.');
+  return extra.length === 0 && /^[a-f0-9]{64}$/.test(facts ?? '')
+    && /^[a-f0-9]{32}$/.test(nonce ?? '') && /^[a-f0-9]{64}$/.test(signature ?? '') ? facts : undefined;
+};
+const sameProposalFacts = (left: string, right: string): boolean =>
+  proposalFacts(left) !== undefined && proposalFacts(left) === proposalFacts(right);
 
 /**
  * What a start that threw answers with, for both start routes: a caller who chose the other answer
@@ -1120,7 +1156,9 @@ async function controlOperation(ops: RemoteOperations, runId: string, req: Incom
     requestId: requiredString(body, 'requestId'), ...(body.nodeId === undefined ? {} : { nodeId: requiredString(body, 'nodeId') }),
   });
   if (result.kind === 'refused' || result.kind === 'unsupported') return failure(409, 'hima/run-not-in-state', result.reason ?? result.kind);
-  return ok(runAnswer(ops, result.context.run));
+  return ok({ run: runAnswer(ops, result.context.run), notification: result.notification ?? {
+    status: 'not-requested', message: 'This accepted action did not request a Campaign Agent notification.' },
+  });
 }
 
 /**

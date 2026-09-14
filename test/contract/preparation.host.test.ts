@@ -12,6 +12,9 @@ import { localFabric } from './support/fabric.ts';
 import { applyPackTransfer, clearRemoteCommands, loadPack, packOverview, previewPackTransfer, remoteCommands } from '@hima/harness';
 import path from 'node:path';
 
+process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
+process.env.HIMA_TEST_SILENT_AGENT = '1';
+
 const jsonOf = (result: { content?: readonly { type: string; text?: string }[] }): Record<string, any> =>
   JSON.parse(result.content?.find((item) => item.type === 'text')?.text ?? '{}') as Record<string, any>;
 const textOf = (result: { content?: readonly { type: string; text?: string }[] }): string =>
@@ -53,7 +56,7 @@ test('start choices do not invent a Pack or Site selection and a concrete select
     assert.equal(choices.site, undefined, 'a saved Site is an option, not inferred user intent');
     const selected = await (await api(host, cookie, `/hima/api/start-options?pack=${timingProbePackId}&site=local`)).json() as any;
     assert.equal(selected.proposal.ready, true, JSON.stringify(selected));
-    assert.match(selected.proposal.id, /^[a-f0-9]{64}$/);
+    assert.match(selected.proposal.id, /^[a-f0-9]{64}\.[a-f0-9]{32}\.[a-f0-9]{64}$/);
     assert.equal(selected.proposal.pack.id, timingProbePackId);
     assert.ok(selected.proposal.referenceGraph.nodes.length > 0);
     assert.deepEqual((await (await api(host, cookie, '/hima/api/runs')).json() as { runs: unknown[] }).runs, []);
@@ -68,6 +71,12 @@ test('HimaGuide preparation creates no facts, stale confirmation is refused, and
   try {
     const agent = await createRootAgent(host.ctx, h.workspace);
     clearRemoteCommands();
+    const bypass = await host.ctx.tools.execute({ callId: 'unprepared-start' as never, name: 'hima_run', arguments: {
+      pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2.3 }, strategy: { periodNs: 2.3 },
+    }, agent, signal: AbortSignal.timeout(20_000) });
+    assert.equal(bypass.isError, true, JSON.stringify(bypass));
+    assert.match(textOf(bypass), /confirm the current Campaign proposal/);
+    assert.deepEqual(host.ctx.hima.ledger.runs(), []);
     const preparedAnswer = await host.ctx.tools.execute({ callId: 'prepare-1' as never, name: 'hima_prepare', arguments: { pack: timingProbePackId, site: 'local' }, agent, signal: AbortSignal.timeout(20_000) });
     assert.equal(preparedAnswer.isError, false, JSON.stringify(preparedAnswer));
     const prepared = jsonOf(preparedAnswer);
@@ -76,8 +85,11 @@ test('HimaGuide preparation creates no facts, stale confirmation is refused, and
     assert.deepEqual(remoteCommands(), []);
 
     await writeLocalSite(h, { ...siteOptions, bindings: { flowRoot: h.workspace, design: 'fixture' } });
+    await assert.rejects(() => host.ctx.hima.startRun({ proposalId: prepared.id, pack: timingProbePackId, site: 'local',
+      goal: prepared.goal, strategy: prepared.strategy, ownerSessionId: String(agent.id) }), /preparation changed after confirmation/,
+    'Fabric rechecks proposal facts against the final Pack and Site snapshots');
     const stale = await host.ctx.tools.execute({ callId: 'stale-confirm' as never, name: 'hima_run', arguments: {
-      proposalId: prepared.id, pack: timingProbePackId, site: 'local', goal: prepared.goal, strategy: prepared.strategy, generations: 1,
+      proposalId: prepared.id, pack: timingProbePackId, site: 'local', goal: prepared.goal, strategy: prepared.strategy,
     }, agent, signal: AbortSignal.timeout(20_000) });
     assert.equal(stale.isError, true, JSON.stringify(stale));
     assert.match(textOf(stale), /preparation changed|no longer ready/i);
@@ -85,8 +97,30 @@ test('HimaGuide preparation creates no facts, stale confirmation is refused, and
 
     await writeLocalSite(h, siteOptions);
     const fresh = jsonOf(await host.ctx.tools.execute({ callId: 'prepare-2' as never, name: 'hima_prepare', arguments: { pack: timingProbePackId, site: 'local' }, agent, signal: AbortSignal.timeout(20_000) }));
-    const start = () => host.ctx.tools.execute({ callId: `confirm-${crypto.randomUUID()}` as never, name: 'hima_run', arguments: {
+    const changedGoal = await host.ctx.tools.execute({ callId: 'changed-goal' as never, name: 'hima_run', arguments: {
+      proposalId: fresh.id, pack: timingProbePackId, site: 'local', goal: { ...fresh.goal, target_period_ns: 2 }, strategy: fresh.strategy,
+    }, agent, signal: AbortSignal.timeout(20_000) });
+    assert.equal(changedGoal.isError, true, JSON.stringify(changedGoal));
+    assert.match(textOf(changedGoal), /differs from the reviewed Campaign proposal/);
+    const changedBudget = await host.ctx.tools.execute({ callId: 'changed-budget' as never, name: 'hima_run', arguments: {
       proposalId: fresh.id, pack: timingProbePackId, site: 'local', goal: fresh.goal, strategy: fresh.strategy, generations: 1,
+    }, agent, signal: AbortSignal.timeout(20_000) });
+    assert.equal(changedBudget.isError, true, JSON.stringify(changedBudget));
+    assert.match(textOf(changedBudget), /reviewed Pack budget/);
+    const stripped = await host.ctx.tools.execute({ callId: 'stripped-proposal' as never, name: 'hima_run', arguments: {
+      proposalId: fresh.id.split('.')[0], pack: timingProbePackId, site: 'local', goal: fresh.goal, strategy: fresh.strategy,
+    }, agent, signal: AbortSignal.timeout(20_000) });
+    assert.equal(stripped.isError, true, JSON.stringify(stripped));
+    const [facts, _nonce, signature] = fresh.id.split('.');
+    const forged = await host.ctx.tools.execute({ callId: 'forged-proposal' as never, name: 'hima_run', arguments: {
+      proposalId: `${facts}.${'0'.repeat(32)}.${signature}`, pack: timingProbePackId, site: 'local', goal: fresh.goal, strategy: fresh.strategy,
+    }, agent, signal: AbortSignal.timeout(20_000) });
+    assert.equal(forged.isError, true, JSON.stringify(forged));
+    await assert.rejects(() => host.ctx.hima.startRun({ proposalId: fresh.id, pack: timingProbePackId, site: 'local',
+      goal: fresh.goal, strategy: fresh.strategy, ownerSessionId: String(agent.id), test: true }), /cannot be changed into a Pack test/);
+    assert.deepEqual(host.ctx.hima.ledger.runs(), []);
+    const start = () => host.ctx.tools.execute({ callId: `confirm-${crypto.randomUUID()}` as never, name: 'hima_run', arguments: {
+      proposalId: fresh.id, pack: timingProbePackId, site: 'local', goal: fresh.goal, strategy: fresh.strategy,
     }, agent, signal: AbortSignal.timeout(20_000) });
     const first = jsonOf(await start());
     assert.match(first.runId, /^run-/);
@@ -96,5 +130,14 @@ test('HimaGuide preparation creates no facts, stale confirmation is refused, and
     assert.equal(second.runId, first.runId);
     assert.equal(host.ctx.hima.ledger.runs().length, 1);
     assert.equal(host.ctx.hima.ledger.runs()[0]?.proposalId, fresh.id);
+    const nextProposal = jsonOf(await host.ctx.tools.execute({ callId: 'prepare-next-campaign' as never, name: 'hima_prepare',
+      arguments: { pack: timingProbePackId, site: 'local' }, agent, signal: AbortSignal.timeout(20_000) }));
+    assert.notEqual(nextProposal.id, fresh.id, 'a new preparation can create a later independent Campaign');
+    assert.equal(nextProposal.id.split('.')[0], fresh.id.split('.')[0], 'unchanged preparation facts retain their identity');
+    const next = jsonOf(await host.ctx.tools.execute({ callId: 'confirm-next-campaign' as never, name: 'hima_run', arguments: {
+      proposalId: nextProposal.id, pack: timingProbePackId, site: 'local', goal: nextProposal.goal, strategy: nextProposal.strategy,
+    }, agent, signal: AbortSignal.timeout(20_000) }));
+    assert.notEqual(next.runId, first.runId);
+    assert.equal(host.ctx.hima.ledger.runs().length, 2);
   } finally { await local.dispose(); }
 });

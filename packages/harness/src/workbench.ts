@@ -1358,7 +1358,7 @@ function renderStartCheck(choices: StartChoices): string {
     ...(choices.preparation === undefined ? [] : [choices.preparation.message]),
     ...(choices.check === undefined ? [] : [choices.check.fit ? START_STATIC_FIT : START_STATIC_UNFIT]),
   ];
-  return `<div role="status" aria-live="polite"${attributes({ 'data-hima-region': 'start-check', 'data-hima-state-pack': choices.pack ?? '', 'data-hima-state-site': choices.site ?? '', 'data-hima-state-status': status })}>`
+  return `<div role="status" aria-live="polite"${attributes({ 'data-hima-region': 'start-check', 'data-hima-state-pack': choices.pack ?? '', 'data-hima-state-site': choices.site ?? '', 'data-hima-state-status': status, 'data-hima-state-proposal': choices.proposal?.id ?? '' })}>`
     + messages.map((message) => `<p>${escape(message)}</p>`).join('')
     + (choices.check !== undefined && !choices.check.fit ? `<ul>${choices.check.errors.map((error) => `<li>${escape(error)}</li>`).join('')}</ul>` : '')
     + `<p class="faint">${escape(START_STATIC_LIMIT)}</p></div>`;
@@ -1637,6 +1637,7 @@ const START_FORM = `(() => {
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({
+        proposalId: currentCheck()?.getAttribute('data-hima-state-proposal') || undefined,
         pack: held('start-pack'),
         site: held('start-site'),
         goal: Object.fromEntries(Array.from(form.querySelectorAll('[data-hima-goal]')).map((el) => [el.getAttribute('data-hima-goal'), el.value])),

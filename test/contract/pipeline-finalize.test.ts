@@ -46,7 +46,7 @@ test('actual native tools cannot start a Run or write method/version files durin
     let serial = 0;
     const call = (name: string, args: object) => host.ctx.tools.execute({ name, arguments: args, agent: author, callId: `finalize-${++serial}` as never, signal: AbortSignal.timeout(5000) });
     assert.equal((await call('read', { file_path: 'TEST.md' })).isError, false, 'native edits require an observed file');
-    const deniedRun = await call('hima_run', { pack: 'authored-numeric', site: 'local', goal: { minimum: 1 } });
+    const deniedRun = await call('hima_run', { pack: 'authored-numeric', site: 'local', goal: { minimum: 1 }, test: true });
     assert.equal(deniedRun.isError, true);
     assert.match(JSON.stringify(deniedRun), /finalization forbids/);
     for (const file of ['contract.yml', 'VERSION.yml']) assert.equal((await call('write', { file_path: file, content: 'not authorized' })).isError, true);
@@ -57,7 +57,7 @@ test('actual native tools cannot start a Run or write method/version files durin
     assert.equal(readFileSync(path.join(h.workspace, 'TEST.md'), 'utf8'), repaired);
     phase = 'release';
     assert.equal((await call('write', { file_path: 'TEST.md', content: repaired })).isError, true);
-    assert.equal((await call('hima_run', { pack: 'authored-numeric', site: 'local', goal: { minimum: 1 } })).isError, true);
+    assert.equal((await call('hima_run', { pack: 'authored-numeric', site: 'local', goal: { minimum: 1 }, test: true })).isError, true);
     assert.equal(host.ctx.hima.ledger.runs().length, 0); assert.equal(requests, 0);
   } finally { await host.dispose(); await h.dispose(); }
 });

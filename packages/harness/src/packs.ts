@@ -521,8 +521,12 @@ export const packContract = z.strictObject({
     /** Plain executable names whose presence Site discovery checks for this Pack. */
     commands: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/)).default([]),
   }),
-  /** What preparing a Campaign workspace copies out of the bound flow root, into `<workspace>/flow/`. */
-  workspace: z.strictObject({ copy: z.array(z.string().min(1)).default([]) }),
+  /** What preparing a Campaign workspace places into `<workspace>/flow/`. */
+  workspace: z.strictObject({
+    /** `pack` deploys reviewed bytes from the installed Pack; legacy methods copy a Site source. */
+    source: z.enum(['site', 'pack']).default('site'),
+    copy: z.array(z.string().min(1)).default([]),
+  }),
   tools: z.array(packTool).default([]),
   /**
    * The workshops of this pack (#62): the scopes where the AI writes code and the fabric runs it,
@@ -622,9 +626,12 @@ const semverAtLeast = (actual: string, minimum: string): boolean => {
 // The graph: four node kinds and outcome-labelled edges, and nothing else (CONTEXT.md).
 // ---------------------------------------------------------------------------------------------
 
-/** A value a node takes from the Run rather than from the pack: the current strategy, or the goal. */
-export const runReference = z.strictObject({ from: z.enum(['strategy', 'goal']), name: declaredName });
+/** A value a node takes from the Run or the selected Site binding. */
+export const runReference = z.strictObject({ from: z.enum(['strategy', 'goal', 'input']), name: declaredName });
 export type RunReference = z.infer<typeof runReference>;
+
+/** A Judge reads durable Run values. Site inputs are materialized only for act-node arguments. */
+const judgeRunReference = z.strictObject({ from: z.enum(['strategy', 'goal']), name: declaredName });
 
 /** What a node parameter may be: a number or a word the pack fixes, or a value the Run supplies. */
 export const nodeArgument = z.union([z.number(), z.string(), runReference]);
@@ -658,7 +665,7 @@ const judgeNode = z.strictObject({
     /** The rules to apply, in order. The outgoing edge is chosen by the outcome of the first. */
     rules: z.array(z.string().min(1)).min(1),
     /** What binds each parameter a rule declares — the Run's goal, for the goal rule. */
-    bind: z.record(declaredName, runReference).default({}),
+    bind: z.record(declaredName, judgeRunReference).default({}),
   }),
 });
 
@@ -1850,12 +1857,15 @@ function validatePack(folder: PackFolderSnapshot, pack: Pack): void {
         // the pack, so an argument taken `{ from: goal }` is decided when the Run supplies one and
         // the node says which argument it could not bind.
         for (const [argument, value] of Object.entries(node.parameters.arguments)) {
-          if (typeof value !== 'object' || value.from !== 'strategy') continue;
-          if (Object.hasOwn(contract.strategy, value.name)) continue;
+          if (typeof value !== 'object' || value.from === 'goal') continue;
+          const declarations = value.from === 'strategy'
+            ? contract.strategy
+            : Object.fromEntries(contract.inputs.map((input) => [input.name, input]));
+          if (Object.hasOwn(declarations, value.name)) continue;
           broken(
             packFiles.graph,
-            `node "${node.id}" takes argument "${argument}" from strategy knob "${value.name}", which ${packFiles.contract} does not declare; `
-            + `it declares ${Object.keys(contract.strategy).map((n) => `"${n}"`).join(', ')}`,
+            `node "${node.id}" takes argument "${argument}" from ${value.from}${value.from === 'strategy' ? ' knob' : ''} "${value.name}", which ${packFiles.contract} does not declare; `
+            + `it declares ${Object.keys(declarations).map((n) => `"${n}"`).join(', ')}`,
           );
         }
       }

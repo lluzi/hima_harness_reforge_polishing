@@ -35,7 +35,7 @@ import { PackFolderError, PackNotFoundError, RunFaultError, RunReferenceError, R
 /** What `/hima` says it is, in the one line a person sees in the host's command list. Here with the
  *  handlers it describes, so a verb added below is a verb named here. */
 export const himaCommandDescription =
-  'HimaHarness: keep ordinary DeepSeek Harness chat and coding; inspect and prepare a HimaPack and Site for a chip-design Campaign; let the visible Campaign Agent choose and execute authorized nodes while HimaFabric records the graph, budget, jobs, evidence and recovery. Commands: version; observe; judge; job launch|status|tail|kill; pack check|prepare|release; run; resume; status; cancel';
+  'HimaHarness: keep ordinary DeepSeek Harness chat and coding; inspect and prepare a HimaPack and Site for a chip-design Campaign; let the visible Campaign Agent choose and execute authorized nodes while HimaFabric records the graph, budget, jobs, evidence and recovery. Commands: version; observe; judge; job launch|status|tail|kill; pack check|prepare|release; resume; status; cancel. Start Campaigns through HimaGuide preparation and one proposal confirmation.';
 
 const require = createRequire(import.meta.url);
 const bundleVersion: string = require('../package.json').version;
@@ -619,11 +619,12 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
   if (sub === 'resume') return handleResume(deps, rest, String(agent.id));
   if (sub === 'status') return handleStatus(deps, rest);
   if (sub === 'cancel') return handleCancel(deps, rest);
-  return { kind: 'error', text: `unknown hima command "${sub}"; try /hima version, /hima observe <site> <path>, /hima judge <runId> --rules <id,...>, /hima job launch|status|tail|kill, /hima pack check|prepare|release, /hima run <pack> --site <site> --goal <name>=<value>, /hima resume <runId>, /hima status <runId>, or /hima cancel <runId>` };
+  return { kind: 'error', text: `unknown hima command "${sub}"; try /hima version, /hima observe <site> <path>, /hima judge <runId> --rules <id,...>, /hima job launch|status|tail|kill, /hima pack check|prepare|release, /hima resume <runId>, /hima status <runId>, or /hima cancel <runId>. Ask HimaGuide to prepare and start a Campaign.` };
 }
 
 /** Prepare a Campaign for this actual command conversation; business nodes remain Agent-owned. */
 async function handleRun(deps: FabricDeps, rest: readonly string[], ownerSessionId: string): Promise<CommandResult> {
+  if (!legacyAutomaticAllowed()) return { kind: 'error', text: '/hima run is a legacy test interface. Ask HimaGuide to prepare the Campaign, review its proposal, then confirm once.' };
   const [pack = '', ...flags] = rest;
   const usage = 'usage: /hima run <pack> --site <site> --goal <name>=<value>... [--set <knob>=<value>]... [--test] [--time-box <minutes>] [--retries <n>] [--generations <n>]';
   const wrong = { kind: 'error', text: usage } as const;

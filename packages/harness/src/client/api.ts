@@ -62,7 +62,12 @@ export const reviewPackTransfer = (body: import('../remote.js').PackTransferBody
 export const fetchExecutionContext = (runId: string, signal?: AbortSignal): Promise<HimaResult<ExecutionContext>> =>
   runRequest(`${runPath(runId)}/context`, { signal });
 
-export function controlRun(view: RunView, sessionId: string, action: 'pause' | 'continue' | 'cancel', nodeId?: string, signal?: AbortSignal): Promise<HimaResult<RunView>> {
+export interface ControlRunResult {
+  readonly run: RunView;
+  readonly notification: { readonly status: 'queued' | 'inactive' | 'owner-unavailable' | 'failed' | 'not-repeated' | 'not-requested'; readonly message: string };
+}
+
+export function controlRun(view: RunView, sessionId: string, action: 'pause' | 'continue' | 'cancel', nodeId?: string, signal?: AbortSignal): Promise<HimaResult<ControlRunResult>> {
   const control = view.run.control;
   if (!control) return Promise.resolve({ ok: false, error: { code: 'hima/run-not-in-state', message: 'This Run has no conversational owner.' } });
   return runRequest(`${runPath(view.run.id)}/control`, { method: 'POST', signal,

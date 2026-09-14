@@ -120,7 +120,13 @@ export interface FabricDeps {
    * (the acceptance script, a test) has no host log to write to, and the Run is unaffected either way.
    */
   readonly log?: (line: string) => void;
-  readonly notify?: (owner: string, runId: string, executionId: string, detail?: string) => void;
+  readonly notify?: (owner: string, runId: string, executionId: string, detail?: string) => NotificationDelivery;
+}
+
+/** Immediate Host delivery result. Control facts are already durable whatever this says. */
+export interface NotificationDelivery {
+  readonly status: 'queued' | 'inactive' | 'owner-unavailable' | 'failed' | 'not-repeated' | 'not-requested';
+  readonly message: string;
 }
 
 /**
@@ -224,7 +230,7 @@ export async function toolNode(ctx: Driving, run: RunRecord, node: Extract<PackN
   // What the node takes from the Run, resolved before anything is sent anywhere. An argument the Run
   // cannot bind is the pack's fault and is named as such: never a substituted empty string, and
   // never a bare `blocked` a person has to read the code to explain.
-  const taken = nodeArguments(node, run);
+  const taken = nodeArguments(node, run, ctx.bindings);
   if (!taken.ok) return blocked(taken.reason);
   let argv: string[];
   try {
@@ -1130,7 +1136,7 @@ export async function resolveWorkshop(
     knowledge.push({ file, purpose: entry.purpose, at });
   }
 
-  const taken = nodeArguments(node, existingRun(ctx.deps.ledger, ctx.runId));
+  const taken = nodeArguments(node, existingRun(ctx.deps.ledger, ctx.runId), ctx.bindings);
   if (!taken.ok) return no(taken.reason);
 
   // The directory, decided and then made — and then held to being **the declared path and nothing
@@ -1632,14 +1638,15 @@ export async function resumeNode(ctx: Driving, node: PackNode, attempt: number, 
 export function nodeArguments(
   node: Extract<PackNode, { kind: 'act' }>,
   run: RunRecord,
+  bindings: Readonly<Record<string, string>> = {},
 ): { readonly ok: true; readonly values: Record<string, string> } | { readonly ok: false; readonly reason: string } {
   const values: Record<string, string> = {};
   for (const [name, argument] of Object.entries(node.parameters.arguments)) {
     if (typeof argument === 'string') { values[name] = argument; continue; }
     if (typeof argument === 'number') { values[name] = String(argument); continue; }
-    const resolved = runValue(run, argument);
+    const resolved = argument.from === 'input' ? bindings[argument.name] : runValue(run, argument);
     if (resolved === undefined) {
-      return { ok: false, reason: `node ${node.id} names argument ${name} that neither the Run's strategy nor its Goal binds: ${argument.from} "${argument.name}"` };
+      return { ok: false, reason: `node ${node.id} names argument ${name} that the ${argument.from} binding does not supply: "${argument.name}"` };
     }
     values[name] = String(resolved);
   }

@@ -309,14 +309,16 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
     // Substituted once, before anything is asked of the Site: this is both what a copy made now
     // would carry and what a workspace prepared earlier is held against, so the two cannot drift.
     const askedCopy = pack.contract.workspace.copy.map((entry) => substitute(entry, bindings, `workspace copy entry "${entry}"`));
+    const methodDigest = folder.digest(packDigestExcludes);
+    const flowSource = pack.contract.workspace.source === 'pack' ? `pack:${pack.id}@${methodDigest}` : bindings.flowRoot!;
     const identity: PreparationIdentity = {
       campaign: campaignId,
       packId: pack.id,
       packVersion: pack.contract.version,
-      packDigest: folder.digest(packDigestExcludes),
+      packDigest: methodDigest,
       site: site.name,
       ...(bindings.design === undefined ? {} : { design: bindings.design }),
-      flowRoot: bindings.flowRoot!,
+      flowRoot: flowSource,
       copied: askedCopy,
     };
     const already = await existingWorkspaceFile(channel, p.join(workspace, workspaceFileName));
@@ -356,6 +358,26 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
     const flowDir = await mkdirAt(p.join(workspace, flowDirName));
     const copied: string[] = [];
     for (const rel of askedCopy) {
+      if (pack.contract.workspace.source === 'pack') {
+        const sourcePrefix = `${flowDirName}/${rel}`;
+        const files = [...folder.files].filter(([name]) => name === sourcePrefix || name.startsWith(`${sourcePrefix}/`));
+        if (files.length === 0) throw new Refusal(sourcePrefix, `installed Pack ${pack.id} does not hold the declared flow entry ${sourcePrefix}`);
+        for (const [name, bytes] of files) {
+          const relative = name.slice(`${flowDirName}/`.length);
+          const target = p.join(flowDir, relative);
+          const parent = p.dirname(target);
+          if (parent !== flowDir) await mkdirAt(parent);
+          const destination = await decideWrite(site, target, channel);
+          if (!destination.ok) throw new Refusal(destination.refused, destination.reason);
+          await mustRun(channel, ['tee', '--', destination.absPath], `deploy ${name} into ${flowDir}`, { stdin: bytes });
+          const landed = await channel.readFile(destination.absPath);
+          if (createHash('sha256').update(landed).digest('hex') !== createHash('sha256').update(bytes).digest('hex')) {
+            throw new Error(`deployed Pack flow file failed read-back identity: ${destination.absPath}`);
+          }
+        }
+        copied.push(rel);
+        continue;
+      }
       // The Site's own flow is read, never written: the source is a read decision, exactly as a
       // report the harness observes is.
       const source = await decideRead(site, p.join(bindings.flowRoot!, rel), channel);
