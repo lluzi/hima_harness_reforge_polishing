@@ -17,7 +17,7 @@ HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness
 
 2026-09-12：PLS-20 已接收固定快照 `ca47fa0`，保留统一工作区 UI-02 和 PLS-01～07，见 [PLS-20](docs/assessment/2026-09-12/pls-20/README.md)。当前工作分支已实现 Pack Goal 声明、安装态编写、方法与资产隔离，以及同一对话 Agent 的节点执行；四项已完成验收：完整 local 377/377、安装态作者只读终检11/11通过，原始失败与适用边界见 [验收记录](docs/assessment/2026-09-12/pls-next/README.md)。该历史批次当时完成12/26个PLS，当时依赖前沿为 PLS-23、PLS-24、PLS-10、PLS-14。
 
-开始 Run 会准备工作区并绑定当前对话 Agent。该 Agent 通过 `hima_context` 读取参考图与实际状态，通过 `hima_execute` 开始节点、读写研究代码、提交 Job、检查结果并请求完成。Fabric 验证权限、预算和依赖，追踪已提交的 Job；下一业务节点需要 Agent 再次请求。长 Job 运行时仍可在同一对话中要求暂停或检查；暂停阻止新工作，已启动的 Job 可以继续落下事实，取消则请求实际停止。未交付的增长和修订操作会明确拒绝。
+开始 Campaign 会准备一个持久 Run 并绑定当前可见的 Campaign Agent。该 Agent 通过 `hima_context` 读取参考图与实际状态，通过 `hima_execute` 开始节点、读写研究代码、提交 Job、检查结果并请求完成。Fabric 验证权限、预算和依赖，追踪已提交的 Job；下一业务节点需要 Agent 再次请求。用户可以在同一产品中新开 Side Talk 继续普通对话或 Coding，切换会话不改变 Campaign owner；显式 handoff 才转移执行。暂停阻止新工作，已启动的 Job 可以继续落下事实，取消则请求实际停止。
 
 ## 本地准备
 
@@ -71,7 +71,7 @@ node packages/desktop/lib/hima-home.js \
 
 - [产品访谈与决定记录](/Users/lluzi/code/hima_harness_reforge_polishing/docs/product-interview.md)
 - [产品定义与验收目标](/Users/lluzi/code/hima_harness_reforge_polishing/docs/product-definition.md)
-- [执行职责：由同一个对话 Agent 执行业务节点](docs/adr/0006-conversational-agent-owns-business-execution.md)
+- [执行职责：由可见 Campaign Agent 执行业务，并允许独立 Side Talk](docs/adr/0008-visible-campaign-agent-and-side-talk.md)
 - [Pilot 进度方案](/Users/lluzi/code/hima_harness_reforge_polishing/docs/pilot-plan.md)
 - [分级测试方案](/Users/lluzi/code/hima_harness_reforge_polishing/docs/testing-strategy.md)
 - [统一工程工作区：原生对话、Live Run、代码和证据同屏](docs/assessment/2026-09-11/unified-ui/README.md)

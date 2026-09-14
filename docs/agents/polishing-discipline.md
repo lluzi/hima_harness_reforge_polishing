@@ -45,7 +45,7 @@
 | Site 声明与检查 | `sites.ts` 的 schema、`loadSite`、`installedSites` | 校验、导入和保存同一 Site 文件模型 |
 | 本地/SSH 执行 | `channel.ts` 的 `LocalChannel`、`SshChannel`、命令白名单 | 增加有界 probe 或复用现有 Channel，不建立另一远程执行层 |
 | Run 准备 | `index.ts:startPreparation`、`remote.ts:startChoices`、`packs.ts:checkPack` | 加深已有准备结果；表单和对话读取同一结果 |
-| Agent 业务执行 | DSH Agent Loop；`tools.ts:hima_execute`；`fabric.ts:executionAction` | 继续使用同一对话 Agent 和现有动作，不建立第二 Agent Loop |
+| Agent 业务执行 | DSH Agent Loop；`tools.ts:hima_execute`；`fabric.ts:executionAction` | 一个可见 Campaign Agent 是 Run 的唯一 owner；Side Talk 复用 DSH 多会话，不建立第二 Agent Loop |
 | 运行图与状态 | `fabric.ts:executionContext`、`remote.ts:RunView` | 投影现有 reference/growth graph 和 Ledger 状态，不建立第二图引擎 |
 | 人类控制与通知 | `client/api.ts:controlRun`、`remote.ts:controlOperation`、`fabric.ts:executionAction`、`index.ts` 的 `agent.followup` | 让 Host 负责控制落账后的可靠通知；UI 负责呈现 |
 | 研究代码与策略变化 | Workshop、`analyze`、`grow`、`revise`、Judge、Chooser | 用 Pack 方法和实测数据改善决策；新增 Runtime 动作需要通用缺口证据 |

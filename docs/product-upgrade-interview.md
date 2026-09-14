@@ -56,3 +56,36 @@
 - Q20 同时要求本地内置知识和 Site 内处理客户材料，需要定义知识索引、检索结果及原始材料分别留在哪里。
 - Q21 的系统目录权限与现有 Hima Permit 的关系尚未确定：Permit 是额外读取授权，还是只负责限制写入和执行。
 - Q25 以 PPA 改善为结果，还需定义一个指标改善、其他指标退化时的 Goal 表达和试用验收。
+
+## 第 3 轮：权限、对照与产品携带能力
+
+### 已确认
+
+27. **同等环境按能力判断。** 不按 IP、路径或精确版本判断；指定工具、许可证、PDK/库输入、Channel 行为、资源和最小 probe 满足 Pack 即为同等环境。第二 Site 由 HimaGuide重新发现，不复制原 Site YAML。
+31. **HimaGuide、Campaign Agent 与 Side Talk 分层。** 所有对话具备 HimaGuide/Coding 能力；绑定 Campaign 的可见会话成为唯一 Campaign Agent，其他会话是非 owner Side Talk，显式 handoff 才转移执行。
+32. **应用内通知足够。** Campaign Agent 保留完整上下文；当前活动会话和 Live Run 提供提醒与返回入口，不要求操作系统通知。
+33. **系统权限允许读取和传输。** 账号和目录读权限就是实际允许；通过跳板机访问不改变此原则，系统不增加一套阻止已获系统权限读取或复制的授权流程。
+34. **两种知识来源、一个产品。** HimaHarness/Pack 使用自有知识体系；Site 私有知识由 Site 提供接口，Hima可以像 Coding Agent 一样对接。Pack 只声明知识类别，不关心存储位置。
+35. **权限层级复用 DSH。** 参考 Claude Code、Codex、OpenCode 和 DeepSeek Harness 的既有权限分级；允许最高权限模式，也提供更受限层级，不另造一套普通用户授权体系。
+36. **现场 adapter 留在 Campaign。** Agent 可在私有 workspace 中适配和验证；成功后形成 Pack upgrade candidate，由 Pack Owner确认，不能直接改已安装 Pack。
+37. **首版只做当前工具栈。** 不要求同时支持其他综合或实现工具；未来 adapter 另行讨论。
+38. **Fmax 是唯一首要收益指标。** 其他 PPA 指标允许变化；本 Campaign 只要求证据显示新增 Cell 后 Fmax 提升。
+39. **物理采用看最终数据库。** 最终 route database 中存在新 Cell，并且下频率结论的最终阶段使用该数据库，即构成采用证据。
+40. **唯一变量只能是新 Cell。** Matched Comparison 的流程、设置和工具全部一致，不允许通过其他参数或流程变化获得提升；否则比较数据不可信。
+41. **知识广泛检索、分级使用。** 接受按来源与适用条件表达当前、跨 design、跨版本和共享经验；当前结论仍由本次结果决定。
+42. **知识后台无用户运维。** HimaHarness 可以自动部署和管理随产品携带的后台进程；用户不配置数据库、Embedding、端口或生命周期。
+43. **未来 EDA 工具不扩大当前范围。** 先完成当前 Harness 与 Pack 任务；自研工具 roadmap 建立在本产品已经产生业务能力之后。
+44. **当前只交付 macOS。** Linux/Rocky/CentOS EDA 环境留作未来迁移规划；当前 Desktop 工作只要求 macOS。
+
+### 新分叉
+
+- 系统权限作为实际授权已经确认；仍需决定最高 DSH 权限是否可以绕过 Hima Site Permit 和删除红线。
+- EDA Site 私有材料可按系统权限读取和复制；知识运行位置仍需根据“Pack 自有知识本地、Site 私有知识走对接接口”确定统一 URI、引用和缓存语义。
+- Fmax 是首要收益且其他指标可变；仍需确认功能错误、无效时序约束或不可实现物理数据库是否允许被报告为有效 Fmax 结果。
+- 当前工具栈范围明确，但 Pack 对工具小版本差异的现场 adapter、测试和升级候选需要转成具体契约。
+
+### 代码事实补充
+
+- 当前 Hima profile 已继承 DSH session 级 permission presets、sandbox、approval 和 credentials，无需另建权限系统。锁定版本内置 `workspace-write`（workspace sandbox + ask）和 `danger-full-access`（无文件 sandbox + never ask）；profile 可以增加 `read-only` 等 preset。这里的 `never` 表示审批请求自动拒绝，不是自动允许。
+- DSH 权限控制本机 Agent 工具的粗粒度 file-effect；Hima Site Permit 继续控制特定 EDA Site 的 read/write roots、Pack wrapper 和固定 Channel verbs。两者不能互相生成或覆盖。
+- SSH 继续复用用户 OpenSSH 配置、key 和 agent；需要保存的模型等凭据可以使用 DSH credentials provider，secret 不进入 Site 或 Pack。
