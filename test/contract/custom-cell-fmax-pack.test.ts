@@ -197,6 +197,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     await waitUntil('the Pack input adapter finishes', () => host.ctx.hima.executionContext(started.run.id).executions.some(item => item.id === executionId && item.phase === 'ready'));
     const materialized = JSON.parse(await readFile(path.join(started.workspace, 'flow/inputs.json'), 'utf8')) as Record<string, unknown>;
     assert.equal(materialized.designTop, 'held_out'); assert.equal(materialized.DESIGN_TOP, 'held_out');
+    assert.equal(materialized.edaWrapper, '/usr/bin/true');
     assert.equal(materialized.rtlGlob, rtl); assert.equal(materialized.legacy, undefined);
     assert.equal(await readFile(path.join(started.workspace, 'flow/stages.py'), 'utf8'), await readFile(path.join(packDir, 'flow/stages.py'), 'utf8'));
     await host.ctx.hima.cancelRun(started.run.id);

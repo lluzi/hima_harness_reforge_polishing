@@ -152,6 +152,7 @@ def main():
         "foundryDb": str(foundry_db),
         "constraintsTcl": str(constraints),
         "clockName": physical.get("CLOCK_NAME"),
+        "edaWrapper": tools.get("EDA_WRAPPER"),
         "evidenceClass": "site-run",
         "DESIGN_TOP": ns.design_top,
         "DESIGN_RTL_GLOB": ns.rtl_glob,
@@ -160,6 +161,8 @@ def main():
     }
     if not isinstance(primary["clockName"], str) or not primary["clockName"]:
         raise ValueError("physicalInputs must declare CLOCK_NAME")
+    if not isinstance(primary["edaWrapper"], str) or not primary["edaWrapper"]:
+        raise ValueError("toolStack must declare EDA_WRAPPER")
     collision = (set(primary) & set(physical)) | (set(primary) & set(tools))
     if collision:
         raise ValueError("Site profiles redefine Campaign identity: " + ", ".join(sorted(collision)))
