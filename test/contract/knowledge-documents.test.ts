@@ -94,6 +94,12 @@ test('Campaign-attached document evidence is bound to one owner execution and it
     assert.equal(started.isError, false, JSON.stringify(started));
     const run = JSON.parse(started.content.filter((item) => item.type === 'text').map((item) => item.text).join('')) as Record<string, any>;
     assert.equal(run.kind, 'ran', JSON.stringify(run));
+    const laterPreparation = await product('hima_prepare', { pack: timingProbePackId, site: 'local' });
+    const laterProposal = JSON.parse(laterPreparation.content.filter((item) => item.type === 'text').map((item) => item.text).join('')) as Record<string, any>;
+    assert.notEqual(laterProposal.id, proposal.id, 'a later Campaign with the same facts has a distinct current-knowledge scope');
+    const crossCampaignSearch = await invoke(owner, { action: 'search', source: 'current', scope: laterProposal.id, query: 'final routed database' });
+    assert.equal(crossCampaignSearch.isError, false, JSON.stringify(crossCampaignSearch));
+    assert.deepEqual(JSON.parse(crossCampaignSearch.content.filter((item) => item.type === 'text').map((item) => item.text).join('')).hits, []);
     const control = host.ctx.hima.ledger.run(run.runId)!.control!;
     const begun = await host.ctx.hima.executionAction({ runId: run.runId, actor: String(owner.id), expectedEpoch: control.epoch,
       expectedRevision: control.revision, requestId: 'knowledge-begin', action: 'begin', nodeId: host.ctx.hima.ledger.run(run.runId)!.currentNode });
@@ -119,6 +125,10 @@ test('Campaign-attached document evidence is bound to one owner execution and it
     const ended = await invoke(owner, readArgs);
     assert.equal(ended.isError, true);
     assert.match(JSON.stringify(ended.content), /active writable Campaign/);
+    const endedClear = await invoke(owner, { action: 'clear', source: 'current', scope: proposal.id, run: run.runId,
+      documentId: imported.document.id });
+    assert.equal(endedClear.isError, true);
+    assert.match(JSON.stringify(endedClear.content), /active writable Campaign/);
   } finally { await host.dispose(); await home.h.dispose(); }
 });
 

@@ -222,13 +222,18 @@ export function campaignProposalFactsIdentity(pack: Pack, site?: Site): string {
 /** Each preparation is confirmable once while retaining a recomputable facts prefix. */
 export function newCampaignProposalId(pack: Pack, site?: Site): string {
   const facts = campaignProposalFactsIdentity(pack, site);
+  const pending = pendingProposalIds.get(facts);
+  if (pending !== undefined && authenticCampaignProposalId(pending)) return pending;
   const nonce = randomBytes(16).toString('hex');
   const message = `${facts}.${nonce}`;
-  return `${message}.${createHmac('sha256', proposalSigningKey).update(message).digest('hex')}`;
+  const issued = `${message}.${createHmac('sha256', proposalSigningKey).update(message).digest('hex')}`;
+  pendingProposalIds.set(facts, issued);
+  return issued;
 }
 
 /** Pending proposals are process-local; exact confirmed tokens remain idempotent in the Ledger. */
 const proposalSigningKey = randomBytes(32);
+const pendingProposalIds = new Map<string, string>();
 
 function proposalFactsPart(proposalId: string): string | undefined {
   const [facts, nonce, signature, ...extra] = proposalId.split('.');
@@ -422,6 +427,10 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   }
   const control = req.ownerSessionId === undefined ? {} : { control: { mode: 'agent' as const, owner: req.ownerSessionId, epoch: 1, revision: 0, paused: [], executions: {}, requests: {}, siteDigest: identityOf(site) } };
   const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, ...(req.proposalId === undefined ? {} : { proposalId: req.proposalId }), packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1, ...control });
+  if (req.proposalId !== undefined) {
+    const facts = campaignProposalFactsIdentity(pack, site);
+    if (pendingProposalIds.get(facts) === req.proposalId) pendingProposalIds.delete(facts);
+  }
   // Said as soon as it is true, and before the preparation below can take seconds over a 56 MB copy:
   // a caller that answers on the Run's existence must have the Run before anything else can happen
   // to it.

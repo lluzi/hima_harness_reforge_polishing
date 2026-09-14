@@ -870,16 +870,15 @@ const scopeDirectory = (root: string, scope: string): string => {
   return path.join(path.resolve(root), hash(scope));
 };
 
-/** The stable facts portion of a product Campaign proposal is the only current-document scope that
- * crosses Preparation into the accepted Campaign.  The nonce is intentionally excluded: preparing
- * again against unchanged Pack/Site facts does not hide documents already selected for that work. */
+/** The full issued proposal is the current-document scope. Repeated reads of one pending proposal
+ * share it; a later Campaign with identical Pack/Site facts receives a different nonce and scope. */
 export function campaignKnowledgeScope(proposalId: string): string {
   const [facts, nonce, signature, ...extra] = proposalId.split('.');
   if (extra.length !== 0 || !/^[a-f0-9]{64}$/.test(facts ?? '')
     || (nonce !== undefined && (!/^[a-f0-9]{32}$/.test(nonce) || !/^[a-f0-9]{64}$/.test(signature ?? '')))) {
     throw new Error('current knowledge scope must be the id returned by HimaGuide Campaign preparation');
   }
-  return facts!;
+  return nonce === undefined ? facts! : proposalId;
 }
 
 /** A small preparation projection, not a search: the later read still validates every identity. */
@@ -1022,7 +1021,7 @@ function parseCurrentDocumentIdentity(value: unknown, at: string, scope: string,
   return document as KnowledgeDocumentIdentity;
 }
 
-async function currentDocumentMetadata(root: string, scope: string, id: string): Promise<KnowledgeDocumentIdentity> {
+async function currentDocumentMetadata(root: string, scope: string, id: string): Promise<{ readonly document: KnowledgeDocumentIdentity; readonly bytes: Uint8Array }> {
   const at = currentMetadataAt(root, scope, id);
   let document: KnowledgeDocumentIdentity;
   try {
@@ -1043,7 +1042,7 @@ async function currentDocumentMetadata(root: string, scope: string, id: string):
   if (hash(bytes) !== document.sha256 || bytes.byteLength !== document.bytes) {
     throw new Error(`knowledge source bytes do not match durable identity at ${document.sourcePath}`);
   }
-  return document;
+  return { document, bytes };
 }
 
 function parseKnowledgeIndex(value: unknown, at: string): KnowledgeDocumentIndex {
@@ -1056,8 +1055,9 @@ function parseKnowledgeIndex(value: unknown, at: string): KnowledgeDocumentIndex
 
 async function readCurrentIndex(root: string, scope: string, id: string): Promise<KnowledgeDocumentIndex> {
   const at = currentIndexAt(root, scope, id);
-  const document = await currentDocumentMetadata(root, scope, id);
-  const rebuilt = await indexKnowledgeDocument({ file: document.sourcePath, title: document.title,
+  const held = await currentDocumentMetadata(root, scope, id);
+  const document = held.document;
+  const rebuilt = await indexKnowledgeBytes({ sourcePath: document.sourcePath, bytes: held.bytes, title: document.title,
     ...(document.version === undefined ? {} : { version: document.version }), scope, source: 'current' });
   const durable = { ...rebuilt, document };
   let valid = false;

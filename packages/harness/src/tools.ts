@@ -342,7 +342,10 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
           return toolJson({ documents: await listCurrentKnowledge(knowledge.root, currentScope) });
         }
         if (args.action === 'clear') {
-          if (source !== 'current' || currentScope === undefined || !args.documentId) throw new Error('clear requires current source, prepared Campaign scope and documentId');
+          if (source !== 'current' || currentScope === undefined || !args.documentId || !args.run || !execution.agent) {
+            throw new Error('clear requires current source, an active owning Campaign, its proposal scope and documentId');
+          }
+          writableCampaignKnowledgeExecution(deps, args.run, execution.agent, currentScope);
           return toolJson({ cleared: await clearCurrentKnowledge(knowledge.root, currentScope, args.documentId) });
         }
         if (args.action === 'search') {
