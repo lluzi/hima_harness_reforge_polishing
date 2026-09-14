@@ -1,0 +1,64 @@
+{
+  "status": "passed",
+  "scope": "L2 full reference flow and additional comparison review; synthetic external tools only",
+  "runId": "run-c1fe6961-b50a-4cfd-b2f9-7a51f2c983f2",
+  "methodDigest": "1aa01c033975dff951e43c26f6a54b1a50517eacc60d61ddf4a9857191e7cfb9",
+  "runStatus": "ended-goal-met",
+  "growthEvents": [
+    "proposed",
+    "accepted",
+    "started",
+    "completed",
+    "returned"
+  ],
+  "modelRequests": 0,
+  "edaJobs": 0,
+  "electron": 0,
+  "nativeSeal": {
+    "status": "passed",
+    "scope": "L2 complete graph with explicit synthetic external boundaries",
+    "from": {
+      "path": "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/pilot-release/pack4-final-local/evidence.json",
+      "sha256": "38e7bba4dd815e9744f491b1921d69feedbebf29b74422056d4b2afd0eac2838"
+    },
+    "runId": "run-c1fe6961-b50a-4cfd-b2f9-7a51f2c983f2",
+    "methodDigest": "1aa01c033975dff951e43c26f6a54b1a50517eacc60d61ddf4a9857191e7cfb9",
+    "owner": "session-36fdc7b7-f909-4c32-a949-d9eaab3397bc",
+    "packFolder": "/private/tmp/hima-home-1iD7ms/hima/packs/aes-tsmc28-dtco",
+    "hosts": 1,
+    "modelRequests": 0,
+    "newResearchJobs": 0,
+    "realEdaJobs": 0,
+    "release": {
+      "isError": false,
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"kind\":\"released\",\"pack\":\"aes-tsmc28-dtco\",\"version\":\"4\",\"released\":\"2026-09-14T00:41:33.303Z\",\"run\":\"run-c1fe6961-b50a-4cfd-b2f9-7a51f2c983f2\",\"files\":68,\"file\":\"/private/tmp/hima-home-1iD7ms/hima/packs/aes-tsmc28-dtco/VERSION.yml\",\"rewritten\":false}"
+        }
+      ],
+      "value": {
+        "kind": "released",
+        "pack": "aes-tsmc28-dtco",
+        "version": "4",
+        "released": "2026-09-14T00:41:33.303Z",
+        "run": "run-c1fe6961-b50a-4cfd-b2f9-7a51f2c983f2",
+        "files": 68,
+        "file": "/private/tmp/hima-home-1iD7ms/hima/packs/aes-tsmc28-dtco/VERSION.yml",
+        "rewritten": false
+      }
+    },
+    "testSha256": "d2834909850eaee91d44e22fc31b9024f9668ad114a3b45a1745710b3140903a",
+    "versionSha256": "4637136421dfa8ded53a2aae8d8bc636964b5f08d9adcfcc5e01e9041f113e7e"
+  },
+  "earlierChecks": [
+    {
+      "path": ".hima-tmp/pilot-release/pack4-green.log",
+      "status": "passed on earlier documentation digest"
+    },
+    {
+      "path": ".hima-tmp/pilot-release/pack4-native-release.log",
+      "status": "failed before Host: unsupported SPEC section; corrected to subsection and revalidated exact new method"
+    }
+  ]
+}

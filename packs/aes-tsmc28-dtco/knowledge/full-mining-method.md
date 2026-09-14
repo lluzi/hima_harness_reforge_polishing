@@ -79,3 +79,7 @@ Complete comparative research and a measured Fmax-improvement claim require the 
 Use the Run's current context/status to continue after interruption; never infer from a failed
 partial output. The same-screen materials and evidence expose the code and knowledge reads; the
 report/export and Pack experience archive preserve the resulting research asset.
+
+## Additional evidence review and delivery
+
+Before completing next-research, consider whether the comparison needs an additional independent read/Judge. The Pack declares growth only there. State impact (normally next-research), exact current inputs and why the check is useful. Use record_compare and the existing full-evidence-valid/clock-period-at-most rules, return to next-research, and report the difference between a consistency re-read and a fresh experiment. Never delete reference nodes, promise a positive result, or repeat expensive P&R only to demonstrate growth. Submit source-linked analysis, limitations and next experiments before completing the Campaign; retain negative/unknown findings. The next bounded study can explicitly read the prior completed Pack archive as background, with source identity and applicability, without claiming its measurements are new.

@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
-import type { ExecutionActionRequest } from '@hima/harness';
+import { packDigestOf, type ExecutionActionRequest, type GrowthProposal } from '@hima/harness';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { createAesDomainFixture } from './support/aes-domain-fixture.ts';
 import { installAesFullGraphFixture } from './support/aes-full-graph-fixture.ts';
@@ -35,7 +35,7 @@ const implementSelection = (template: string): string => {
     return [row["candidate_id"] for row in ranked[:1]]`);
 };
 
-test('one native owner explicitly drives the bounded v3 AES graph through the Host', async (t) => {
+test('one native owner drives the full AES graph and returns from an evidence review branch', async (t) => {
   const capture = process.env.HIMA_AES_CAPTURE_OUT ? path.resolve(process.env.HIMA_AES_CAPTURE_OUT) : undefined;
   const { home, fixture } = await (async () => {
     const previousTmpdir = process.env.TMPDIR;
@@ -160,6 +160,30 @@ test('one native owner explicitly drives the bounded v3 AES graph through the Ho
       'pnr-foundry', 'read-pnr-foundry', 'pnr-generated', 'read-pnr-generated', 'verify', 'read-verify', 'compare', 'read-compare', 'final-judge']) await complete(node);
     assert.ok(context().available.includes('next-research'));
     assert.ok(!context().executions.some(e => e.nodeId === 'next-research'), 'Fabric did not auto-start the final owner decision');
+    const digestBeforeGrowth = packDigestOf(installedPack);
+    const facts = context().evidence!.filter(e => recordsOf(host!, runId!).some(r => r.id === e.recordId
+      && (r.type === 'observation' || r.type === 'verdict') && r.generation === 1 && r.loopId === undefined));
+    const proposal: GrowthProposal = {
+      proposalId: 'independent-comparison-review', method: { id: context().method!.id,
+        version: context().method!.version, digest: digestBeforeGrowth },
+      parent: { nodeId: 'next-research', generation: 1 }, inputThroughSeq: context().run.nextSeq - 1,
+      inputs: facts.map(e => ({ recordId: e.recordId, contentIdentity: e.contentIdentity })),
+      impactNodes: ['next-research'], expectedChanges: ['independently re-read the current comparison before concluding'],
+      nodes: [
+        { id: 'review-comparison', kind: 'act', parameters: { observes: 'record_compare', arguments: {} } },
+        { id: 'review-verdict', kind: 'judge', parameters: { rules: ['full-evidence-valid', 'clock-period-at-most'],
+          bind: { target_period_ns: { from: 'goal', name: 'target_period_ns' } } } },
+      ],
+      edges: [{ from: 'review-comparison', to: 'review-verdict' },
+        ...(['PASS', 'FAIL', 'UNDETERMINED'] as const).map(outcome => ({ from: 'review-verdict', to: 'next-research', outcome }))],
+      requiredOutputs: ['record_compare'], endCondition: 'a new comparison observation and verdict are recorded',
+      returnNode: 'next-research', optional: true,
+    };
+    const grown = await act('grow', { proposal });
+    assert.equal(grown.kind, 'accepted', grown.reason);
+    await complete('review-comparison'); await complete('review-verdict');
+    assert.ok(recordsOf(host, runId).some(r => r.type === 'growth' && r.event === 'returned'));
+    assert.equal(packDigestOf(installedPack), digestBeforeGrowth, 'additional review preserves the entire reference method');
     const final = await act('begin', { nodeId: 'next-research' }); assert.equal(final.kind, 'accepted', final.reason);
     const finalId = final.receipt?.executionId; assert.ok(finalId); assert.equal((await act('work', { executionId: finalId })).kind, 'accepted');
     const finalCites = recordsOf(host, runId).filter(r => (r.type === 'observation' || r.type === 'verdict')

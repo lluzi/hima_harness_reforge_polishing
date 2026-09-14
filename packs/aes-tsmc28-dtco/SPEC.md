@@ -75,3 +75,9 @@ The two declared knowledge files explain measured versus predicted/proxy evidenc
 Read provenance and code materials are available in the same conversation/Run screen via PLS-24.
 Existing report/export, continuation and Pack experience archive are the audit and knowledge entry
 points; failed hypotheses and algorithms are assets with their conditions, not new reference methods.
+
+### Bounded additional research
+
+At next-research, the owner may declare an additional evidence review before concluding: record its input identities, affected decisions, required outputs, ending and return node. Preserve reference nodes and prior results; read the existing comparison and independently Judge it without repeating P&R merely to exercise the feature. Such a re-read is a consistency check, not a new physical experiment or new Fmax measurement. Other growth locations remain undeclared.
+
+The shared Campaign pool allows at most 120 act attempts and reserves the final 60 seconds inside the original time box for analysis and deterministic closing. Budget expiry stops Campaign work and new analysis writes while conversation can continue.

@@ -1,6 +1,9 @@
 id: aes-tsmc28-dtco
-version: "3"
+version: "4"
 title: AES TSMC28 custom Cell research and matched physical implementation
+budget:
+  closingReserveMs: 60000
+  attemptLimit: 120
 inputs:
   - name: flowRoot
     description: "The Site's separately staged Golden Flow root: the directory

@@ -1,5 +1,5 @@
 id: aes-tsmc28-dtco
-version: "3"
+version: "4"
 entry: probe
 nodes:
   - id: probe
@@ -191,6 +191,7 @@ nodes:
   - id: next-research
     kind: explore
     parameters:
+      growth: true
       chooser: research-next
       bind:
         revisionStep: 1

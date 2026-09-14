@@ -1,6 +1,6 @@
 ## Files written
 
-Version 3 contract.yml/graph.yml preserve the v2 probe as probe-loop and add six fork branches,
+Version 4 contract.yml/graph.yml preserve the v2 probe as probe-loop and add six fork branches,
 select Workshops, merge and domain stages through compare/final-judge/next-research. Domain business
 is under flow/; tools/read-stage.py and readers/ admit held artifacts. semantics.yml, rules/ and
 choosers/research-next.yml declare the full physical-evidence constraint and bounded ending.
@@ -19,3 +19,5 @@ must stop custom synthesis. The final comparator reads post-route facts from bot
 no proxy score or DC slack supplies missing physical evidence. Predicted Liberty/abstract layout are
 explicitly labelled. Independent tests and bounded live dependency evidence are recorded outside this
 method in docs/validation/pls-frontier; absence of a full PLS-18 pilot is not hidden by local fixtures.
+
+The top-level next-research Explore declares the single additive growth point. A bounded additional observation/Judge branch may return here before the owner concludes, with explicit inputs and impact. The reference nodes/edges stay fixed during a Campaign. The Pack reserves 60 seconds within the time box for closing and admits at most 120 act attempts across generations, retries and growth.
