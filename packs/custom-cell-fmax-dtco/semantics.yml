@@ -45,6 +45,27 @@ values:
   connectivity_violations:
     unit: count
     description: Connectivity violations reread from the retained arm report.
+  postroute_power:
+    unit: mw
+    description: Total post-route power from the retained Innovus report whose unit is 1mW.
+  gate_count:
+    unit: count
+    description: Equivalent gate count from the retained Innovus gate-count report.
+  cell_count:
+    unit: count
+    description: Cell count from the retained Innovus gate-count report.
+  postroute_cell_area:
+    unit: um2
+    description: Cell area in square micrometres from the retained Innovus gate-count report.
+  route_instance_count:
+    unit: count
+    description: Routed instance count from the retained Innovus summary report.
+  route_density:
+    unit: percent
+    description: Pure gate density number 6 from the retained Innovus summary report.
+  congestion_overflow:
+    unit: count
+    description: Congestion overflow when a verified report format is available; otherwise explicitly unknown.
   full_constraint_failures:
     unit: count
     description: "full constraint failures: independently read evidence; missing

@@ -157,8 +157,8 @@ elif tool == 'innovus':
             with gzip.open(summary, 'wt') as handle: handle.write(summary_text)
         if not (fixture_flow / 'synthetic-missing-timing-companion').exists():
             with gzip.open(paths, 'wt') as handle: handle.write(path_text)
-        hold_summary = pathlib.Path(report_dir) / 'posthold' / (prefix.replace('post', 'hold') + '.summary.gz')
-        hold_paths = pathlib.Path(report_dir) / 'posthold' / (prefix.replace('post', 'hold') + '_all.tarpt.gz')
+        hold_summary = pathlib.Path(report_dir) / 'posthold' / (prefix.replace('post', 'hold') + '_hold.summary.gz')
+        hold_paths = pathlib.Path(report_dir) / 'posthold' / (prefix.replace('post', 'hold') + '_all_hold.tarpt.gz')
         hold_summary.parent.mkdir(parents=True, exist_ok=True)
         hold_wns = '-0.010' if (fixture_flow / 'synthetic-hold-violation').exists() else '0.010'
         hold_paths_count = '1' if hold_wns.startswith('-') else '0'
@@ -171,9 +171,9 @@ elif tool == 'innovus':
         route_drc.write_text('# Command: verify_drc -limit 100000 -report %s\n%s\n' % (route_drc, 'Total Violations: 2' if (fixture_flow / 'synthetic-route-drc').exists() else 'No DRC violations were found'))
         connectivity = pathlib.Path(report_dir) / 'connectivity.rpt'
         connectivity.write_text('%s\n' % ('Total connectivity violations: 3' if (fixture_flow / 'synthetic-connectivity').exists() else 'No connectivity violations'))
-        (pathlib.Path(report_dir) / 'power.rpt').write_text('SYNTHETIC POWER: not a measured EDA value\n')
-        (pathlib.Path(report_dir) / 'gatecount.rpt').write_text('SYNTHETIC GATE COUNT: not a measured EDA value\n')
-        (pathlib.Path(report_dir) / 'summary.rpt').write_text('SYNTHETIC ROUTE SUMMARY: not a measured EDA value\n')
+        (pathlib.Path(report_dir) / 'power.rpt').write_text('Power Units = 1mW\nTotal Power: 1.25\n')
+        (pathlib.Path(report_dir) / 'gatecount.rpt').write_text('[0] held_out_datapath Gates=42 Cells=21 Area=12.5 um^2\n')
+        (pathlib.Path(report_dir) / 'summary.rpt').write_text('# Instances: 25\n% Pure Gate Density #6 ((fixture)): 55.5%\n')
         actual_sdc = pathlib.Path(re.search(r'^write_sdc\s+(\S+)', text, re.M).group(1))
         if not (fixture_flow / 'synthetic-missing-actual-clock').exists():
             period = '0.4' if (fixture_flow / 'synthetic-changed-actual-clock').exists() else '0.5'

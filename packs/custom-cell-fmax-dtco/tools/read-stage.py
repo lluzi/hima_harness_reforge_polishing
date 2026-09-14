@@ -201,12 +201,33 @@ def connectivity_count(path):
     text = path.read_text(errors="replace")
     counts = [int(value) for value in re.findall(
         r"(?:Total(?: number of)? (?:connectivity )?violations|Total Violations)\s*[:=]\s*(\d+)", text, re.I)]
+    counts.extend(int(value) for value in re.findall(r"^\s*(\d+)\s+Problem\(s\)", text, re.I | re.M))
     clean = bool(re.search(r"(?:no connectivity violations|0\s+connectivity violations)", text, re.I))
     if counts and len(set(counts)) == 1:
         return counts[0]
     if not counts and clean:
         return 0
     raise ValueError("connectivity report has no unambiguous violation total")
+
+
+def secondary_pnr(power_path, gatecount_path, summary_path):
+    power = Path(power_path).read_text(errors="replace")
+    gatecount = Path(gatecount_path).read_text(errors="replace")
+    summary = Path(summary_path).read_text(errors="replace")
+    if len(re.findall(r"Power Units\s*=\s*1mW", power)) != 1:
+        raise ValueError("post-route power report does not declare one 1mW unit")
+    totals = re.findall(r"^Total Power:\s*([0-9.eE+-]+)\s*$", power, re.M)
+    gates = re.findall(r"^\[0\]\s+\S+\s+Gates=(\d+)\s+Cells=(\d+)\s+Area=([0-9.eE+-]+)\s+um\^2\s*$", gatecount, re.M)
+    instances = re.findall(r"^# Instances:\s*(\d+)\s*$", summary, re.M)
+    density = re.findall(r"^% Pure Gate Density #6 .*:\s*([0-9.eE+-]+)%\s*$", summary, re.M)
+    if len(totals) != 1 or len(gates) != 1 or len(instances) != 1 or len(density) != 1:
+        raise ValueError("post-route power, gate-count or density report has no unambiguous summary")
+    values = [float(totals[0]), float(gates[0][2]), float(density[0])]
+    if any(not math.isfinite(value) or value < 0 for value in values):
+        raise ValueError("post-route power, area or density is not a finite nonnegative value")
+    return {"postroute_power_mw": values[0], "gate_count": int(gates[0][0]),
+            "cell_count": int(gates[0][1]), "postroute_cell_area_um2": values[1],
+            "route_instance_count": int(instances[0]), "route_density_pct": values[2]}
 
 
 def report_text(path):
@@ -540,18 +561,28 @@ def values_for(record, workspace, stage):
                                                        one(record, workspace, "postroute_hold_paths"), mode="Hold")
         route_drc = drc_count(one(record, workspace, "route_drc_report"), 100000)
         connectivity = connectivity_count(one(record, workspace, "connectivity_report"))
+        secondary = secondary_pnr(one(record, workspace, "postroute_power_report"),
+                                  one(record, workspace, "postroute_gatecount_report"),
+                                  one(record, workspace, "postroute_summary_report"))
         facts = record.get("facts", {})
         for key, actual in (("hold_wns_ns", hold_wns), ("hold_violating_paths", hold_violating),
                             ("route_drc_violations", route_drc), ("connectivity_violations", connectivity)):
             if facts.get(key) != actual:
                 raise ValueError("PnR physical fact disagrees with retained report: " + key)
+        for key, actual in secondary.items():
+            if facts.get(key) != actual:
+                raise ValueError("PnR secondary fact disagrees with retained report: " + key)
         if view != mmmc["view"]:
             raise ValueError("post-route timing companion names the wrong analysis view")
         if "=== CCFMAX PNR DONE %s (GDS written) ===" % arm not in log:
             raise ValueError("PnR completion marker is absent")
         values.extend([number("pnr_completed", 1), number("hold_wns", hold_wns, "ns", mode="hold", scope="all"),
                        number("hold_violating_paths", hold_violating), number("route_drc_violations", route_drc),
-                       number("connectivity_violations", connectivity)])
+                       number("connectivity_violations", connectivity), number("postroute_power", secondary["postroute_power_mw"], "mw"),
+                       number("gate_count", secondary["gate_count"]), number("cell_count", secondary["cell_count"]),
+                       number("postroute_cell_area", secondary["postroute_cell_area_um2"], "um2"),
+                       number("route_instance_count", secondary["route_instance_count"]), number("route_density", secondary["route_density_pct"], "percent"),
+                       unknown("congestion_overflow", "current Innovus summary has no verified congestion-overflow metric")])
     elif stage == "verify":
         count = 0
         for arm in ("foundry", "generated"):

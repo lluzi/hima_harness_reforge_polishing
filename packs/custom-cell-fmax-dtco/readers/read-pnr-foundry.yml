@@ -14,3 +14,10 @@ emits:
   - hold_violating_paths
   - route_drc_violations
   - connectivity_violations
+  - postroute_power
+  - gate_count
+  - cell_count
+  - postroute_cell_area
+  - route_instance_count
+  - route_density
+  - congestion_overflow

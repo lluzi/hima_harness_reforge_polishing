@@ -1154,8 +1154,9 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     timing = parse_timing_summary(timing_summary, timing_paths)
     if timing["analysisView"] != "view_" + arm:
         raise Rejected("post-route timing companion names the wrong analysis view")
-    hold_summary = ctx.run_dir / ("rpt_" + arm) / "posthold" / "hold.summary.gz"
-    hold_paths = ctx.run_dir / ("rpt_" + arm) / "posthold" / "hold_all.tarpt.gz"
+    # Innovus 23.14 appends `_hold` to the prefix for hold-mode files.
+    hold_summary = ctx.run_dir / ("rpt_" + arm) / "posthold" / "hold_hold.summary.gz"
+    hold_paths = ctx.run_dir / ("rpt_" + arm) / "posthold" / "hold_all_hold.tarpt.gz"
     hold = parse_timing_summary(hold_summary, hold_paths, mode="Hold")
     route_drc = ctx.run_dir / ("rpt_" + arm) / "route.drc.rpt"
     connectivity = ctx.run_dir / ("rpt_" + arm) / "connectivity.rpt"
@@ -1164,6 +1165,7 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     route_summary = ctx.run_dir / ("rpt_" + arm) / "summary.rpt"
     route_drc_count = parse_drc(route_drc, 100000)
     connectivity_count = parse_connectivity(connectivity)
+    secondary = parse_secondary_pnr(power_report, gatecount_report, route_summary)
     for at, role in ((chosen["gds"], "postroute_gds"),
                      (timing_summary, "postroute_timing_summary"),
                      (timing_paths, "postroute_timing_paths"),
@@ -1196,6 +1198,8 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     ctx.facts.update({"arm": arm, "pnr_completed": 1, "library_visible": visible,
                       "hold_wns_ns": hold["setupWnsNs"], "hold_violating_paths": hold["setupViolatingPaths"],
                       "route_drc_violations": route_drc_count, "connectivity_violations": connectivity_count,
+                      **secondary, "congestion_overflow": None,
+                      "congestion_unknown_reason": "current Innovus summary has no verified congestion-overflow metric",
                       "arm_scripts_matched": True, "toolVersion": init_version,
                       "templateSha256": {name: sha_file(DOMAIN / name) for name in
                                          ("init.tcl.tmpl", "mmmc.tcl.tmpl", "pnr.tcl.tmpl")}})
@@ -1222,6 +1226,7 @@ def parse_connectivity(path):
     text = Path(path).read_text(errors="replace")
     counts = [int(value) for value in re.findall(
         r"(?:Total(?: number of)? (?:connectivity )?violations|Total Violations)\s*[:=]\s*(\d+)", text, re.I)]
+    counts.extend(int(value) for value in re.findall(r"^\s*(\d+)\s+Problem\(s\)", text, re.I | re.M))
     clean = bool(re.search(r"(?:no connectivity violations|0\s+connectivity violations)", text, re.I))
     if counts and len(set(counts)) != 1:
         raise Rejected("connectivity report carries conflicting violation totals")
@@ -1230,6 +1235,26 @@ def parse_connectivity(path):
     if clean:
         return 0
     raise Rejected("connectivity report has no unambiguous violation total")
+
+
+def parse_secondary_pnr(power_path, gatecount_path, summary_path):
+    power = Path(power_path).read_text(errors="replace")
+    gatecount = Path(gatecount_path).read_text(errors="replace")
+    summary = Path(summary_path).read_text(errors="replace")
+    if len(re.findall(r"Power Units\s*=\s*1mW", power)) != 1:
+        raise Rejected("post-route power report does not declare one 1mW unit")
+    totals = re.findall(r"^Total Power:\s*([0-9.eE+-]+)\s*$", power, re.M)
+    gates = re.findall(r"^\[0\]\s+\S+\s+Gates=(\d+)\s+Cells=(\d+)\s+Area=([0-9.eE+-]+)\s+um\^2\s*$", gatecount, re.M)
+    instances = re.findall(r"^# Instances:\s*(\d+)\s*$", summary, re.M)
+    density = re.findall(r"^% Pure Gate Density #6 .*:\s*([0-9.eE+-]+)%\s*$", summary, re.M)
+    if len(totals) != 1 or len(gates) != 1 or len(instances) != 1 or len(density) != 1:
+        raise Rejected("post-route power, gate-count or density report has no unambiguous summary")
+    values = [float(totals[0]), float(gates[0][2]), float(density[0])]
+    if any(not math.isfinite(value) or value < 0 for value in values):
+        raise Rejected("post-route power, area or density is not a finite nonnegative value")
+    return {"postroute_power_mw": values[0], "gate_count": int(gates[0][0]),
+            "cell_count": int(gates[0][1]), "postroute_cell_area_um2": values[1],
+            "route_instance_count": int(instances[0]), "route_density_pct": values[2]}
 
 
 def stage_verify(ctx):

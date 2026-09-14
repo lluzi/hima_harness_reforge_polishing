@@ -137,6 +137,17 @@ test('the Pack miner changes its source-linked candidates when the held-out netl
   assert.match(second.candidates[0].candidate_id, /^CAND_STRUCTURE_FREQUENCY_/);
 });
 
+test('Innovus 23.14 connectivity summary grammar is read as a physical violation count', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hima-connectivity-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const report = path.join(directory, 'connectivity.rpt');
+  await writeFile(report, 'Begin Summary\n    2 Problem(s) (IMPVFC-98): Net has no global routing.\n    2 total info(s) created.\nEnd Summary\n');
+  for (const [module, functionName] of [['flow/stages.py', 'parse_connectivity'], ['flow/read-stage.py', 'connectivity_count']] as const) {
+    const read = spawnSync('/usr/bin/python3', ['-c', `import importlib.util,pathlib,sys;spec=importlib.util.spec_from_file_location('checked',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);print(getattr(m,sys.argv[2])(pathlib.Path(sys.argv[3])))`,
+      path.join(packDir, module), functionName, report], { encoding: 'utf8' });
+    assert.equal(read.status, 0, `${module}: ${read.stderr}`); assert.equal(read.stdout.trim(), '2');
+  }
+});
+
 test('a real Pack-sourced workspace materializes declared Site inputs without a Golden Flow or legacy object', async (t) => {
   const h = await createHimaHome(); t.after(() => h.dispose());
   const designRoot = path.join(h.home, 'held-out-design'); await mkdir(designRoot);
@@ -239,7 +250,8 @@ test('held-out flat bindings accept only a matched final-database custom-Cell Fm
   const pnrRead = fixture.read(path.join(fixture.workspace, 'flow/records/pnr-generated.json'), 'pnr-generated');
   assert.equal(pnrRead.run.status, 0, pnrRead.run.stderr);
   const physicalTypes = new Set((JSON.parse(await readFile(pnrRead.out, 'utf8')).values as { type: string }[]).map((value) => value.type));
-  for (const type of ['hold_wns', 'hold_violating_paths', 'route_drc_violations', 'connectivity_violations']) assert.ok(physicalTypes.has(type), type);
+  for (const type of ['hold_wns', 'hold_violating_paths', 'route_drc_violations', 'connectivity_violations',
+    'postroute_power', 'gate_count', 'cell_count', 'postroute_cell_area', 'route_instance_count', 'route_density', 'congestion_overflow']) assert.ok(physicalTypes.has(type), type);
 });
 
 test('final comparison re-reads physical reports and rejects a stage record that contradicts them', async (t) => {
