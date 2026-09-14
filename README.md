@@ -1,6 +1,6 @@
 # HimaHarness Polishing
 
-当前试用交付目标为 **0.2.0-trial.1（macOS Apple Silicon）**。26/26 个 PLS 实施任务完成本轮验收；当前前沿是用户试用反馈与 Pack 方法质量改进。见[本轮交付、录像与真实限制](docs/validation/pilot-release/README.md)。完整 DTCO 结果未达标，任务完成不代表 Fmax 提升或真人认可。
+已发布 [**0.2.0-trial.1（macOS Apple Silicon）**](https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.2.0-trial.1)。26/26 个 PLS 实施任务完成本轮验收；当前前沿是用户试用反馈与 Pack 方法质量改进。见[本轮交付、录像与真实限制](docs/validation/pilot-release/README.md)。完整 DTCO 结果未达标，任务完成不代表 Fmax 提升或真人认可。
 
 HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness_reforge_claude`，按用户要求只读；运行和修改在本工作区进行。
 

@@ -1,6 +1,6 @@
 # PLS-18 / PLS-26 试用交付
 
-本轮组合技术验收与用户授权的独立 Agent 代操作验收已完成。试用目标版本为 `0.2.0-trial.1`，macOS Apple Silicon，自带 Node 24；用户的录像 Review、实际试用和研究价值反馈另行记录。
+本轮组合技术验收与用户授权的独立 Agent 代操作验收已完成。已发布试用版 [`0.2.0-trial.1`](https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.2.0-trial.1)，macOS Apple Silicon，自带 Node 24；用户的录像 Review、实际试用和研究价值反馈另行记录。
 
 完整真实 DTCO Campaign 使用 Pack 5、DeepSeek V4 Flash 和指定 Site，完成 51 个参考节点及 45 个 Job，形成有证据支持的负结果。时钟周期规则通过，完整约束检查有两类未达标条件；不宣称 Fmax/PPA 收益或物理签核通过。前三路空选择源于模型程序对输入结构的理解错误，不能解释为没有优化机会。
 
@@ -25,3 +25,5 @@
 发布包、SHA-256 和源码见 [GitHub Releases](https://github.com/lluzi/hima_harness_reforge_polishing/releases)。本机另有读取现有凭据、打开保留历史 Home 的专用启动器；本地录屏和完整研究报告通过交付消息提供，不上传公开仓库。
 
 通用发行包不含凭据、私有 Site/PDK 输入或研究资产。应用采用 ad-hoc 签名，尚无商业签名或公证；其他系统/架构未认证。知识复用证明历史引用和控制可操作，不是第二次 PPA 实验。原始模型错误与试验局限仍可回查，用户后续反馈作为下一开发前沿。
+
+发行源为 `207d22f`，见[发行附件与远端 hash](release.json)。最后的取消词条改为中性 `cancelled`，已在发行 App 上实际核对；操作录屏仍保留验收候选的原画面。PLS-18 #19 与 PLS-26 #29 已关闭，父规格 #1 保留用于接续用户试用反馈。

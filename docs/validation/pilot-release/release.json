@@ -1,0 +1,49 @@
+{
+  "tag_name": "v0.2.0-trial.1",
+  "published_at": "2026-09-14T07:09:57Z",
+  "html_url": "https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.2.0-trial.1",
+  "draft": false,
+  "prerelease": true,
+  "applicationSource": "207d22f8189acef4d5daa2983897de3befb6ee35",
+  "tagCommit": "207d22f8189acef4d5daa2983897de3befb6ee35",
+  "signing": "ad-hoc; not notarized",
+  "assets": [
+    {
+      "name": "HimaHarness-0.2.0-trial.1-macos-arm64.zip",
+      "size": 271694896,
+      "state": "uploaded",
+      "digest": "sha256:cb33cbc1ea385288887337808b8024ce3744580861072c368e2578136b8671fb",
+      "browser_download_url": "https://github.com/lluzi/hima_harness_reforge_polishing/releases/download/v0.2.0-trial.1/HimaHarness-0.2.0-trial.1-macos-arm64.zip"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 194,
+      "state": "uploaded",
+      "digest": "sha256:6198eb3fee138edd41e0aade0be7cbbfc80305c28100abe4365111b01a1f6863",
+      "browser_download_url": "https://github.com/lluzi/hima_harness_reforge_polishing/releases/download/v0.2.0-trial.1/SHA256SUMS.txt"
+    },
+    {
+      "name": "trial-manifest.json",
+      "size": 6461375,
+      "state": "uploaded",
+      "digest": "sha256:1fbfb64bd64f383f745915010f4050d77e67660798ab41951d0160c9125c035c",
+      "browser_download_url": "https://github.com/lluzi/hima_harness_reforge_polishing/releases/download/v0.2.0-trial.1/trial-manifest.json"
+    }
+  ],
+  "archiveManifestVerification": {
+    "status": "passed",
+    "filesAndLinks": 28730,
+    "source": {
+      "sha": "207d22f8189acef4d5daa2983897de3befb6ee35",
+      "dirty": false,
+      "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "scope": "every archived application file/link equals the verified signed app manifest; no extra application files"
+  },
+  "finalUiLabel": {
+    "source": "207d22f8189acef4d5daa2983897de3befb6ee35",
+    "observed": "\u00d7 cancelled",
+    "surface": "actual release app on Catsights",
+    "scope": "label-only correction after recorded review; no new Run/Job"
+  }
+}
