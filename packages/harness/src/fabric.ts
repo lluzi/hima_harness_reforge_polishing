@@ -248,7 +248,17 @@ function proposalMatchesCurrentFacts(proposalId: string, pack: Pack, site: Site)
   const [facts, nonce, signature] = proposalId.split('.');
   if (proposalFactsPart(proposalId) !== campaignProposalFactsIdentity(pack, site) || nonce === undefined || signature === undefined) return false;
   const expected = createHmac('sha256', proposalSigningKey).update(`${facts}.${nonce}`).digest();
-  return timingSafeEqual(expected, Buffer.from(signature, 'hex'));
+  return timingSafeEqual(expected, Buffer.from(signature!, 'hex'));
+}
+
+/** A proposal token is a Host-issued capability, not merely a hash-shaped scope supplied by a
+ * caller.  Product faces may validate the token before a Campaign exists; Fabric still compares
+ * its facts with the Pack and Site at final admission. */
+export function authenticCampaignProposalId(proposalId: string): boolean {
+  const [facts, nonce, signature, ...extra] = proposalId.split('.');
+  if (extra.length !== 0 || !/^[a-f0-9]{64}$/.test(facts ?? '') || !/^[a-f0-9]{32}$/.test(nonce ?? '') || !/^[a-f0-9]{64}$/.test(signature ?? '')) return false;
+  const expected = createHmac('sha256', proposalSigningKey).update(`${facts}.${nonce}`).digest();
+  return timingSafeEqual(expected, Buffer.from(signature!, 'hex'));
 }
 
 /**

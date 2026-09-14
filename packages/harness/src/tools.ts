@@ -11,14 +11,15 @@
 // `describePrepare`): one unfit pack told two ways by two faces of one harness is two products.
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import { currentRecordsIn, type VerdictRecord } from './ledger.js';
+import path from 'node:path';
+import { currentRecordsIn, type NodeExecution, type VerdictRecord } from './ledger.js';
 import { legacyAutomaticAllowed } from './runs.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { identityOf, revisionImpactForRun, executionAction, executionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
+import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
 import { checkInstalledPack, loadPack, runPackWords } from './packs.js';
-import { clearCurrentKnowledge, importCurrentKnowledge, listCurrentKnowledge, readCurrentKnowledge, readPackKnowledge, recordDocumentKnowledgeRead, searchCurrentKnowledge, searchPackKnowledge } from './workshop.js';
+import { campaignKnowledgeScope, clearCurrentKnowledge, importCurrentKnowledge, listCurrentKnowledge, readCurrentKnowledge, readPackKnowledge, recordDocumentKnowledgeRead, searchCurrentKnowledge, searchPackKnowledge } from './workshop.js';
 import { releasePack } from './release.js';
 import { runView, type RunWords } from './remote.js';
 import type { PreparationView } from './workbench.js';
@@ -27,6 +28,52 @@ import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReaso
 type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]: ToolJson };
 /** Shared execution context crosses the same JSON boundary as the HTTP view. */
 function toolJson(value: object): Record<string, ToolJson> { return JSON.parse(JSON.stringify(value)) as Record<string, ToolJson>; }
+
+/** DSH already gives each Agent a workspace. Current knowledge import is confined to that workspace
+ * instead of turning HimaGuide into a general local-file scanner. An explicit native picker can be
+ * passed here later through the same `allowedRoots` seam without changing the knowledge runtime. */
+function knowledgeImportRoots(agent: Agent): readonly string[] {
+  const carrier = agent as unknown as { meta?: { cwd?: unknown }; session?: { header?: { cwd?: unknown } } };
+  const cwd = carrier.session?.header?.cwd ?? carrier.meta?.cwd;
+  return typeof cwd === 'string' && cwd.trim() !== '' ? [path.resolve(cwd)] : [];
+}
+
+function authorizedKnowledgeImport(agent: Agent, file: string): string | undefined {
+  for (const root of knowledgeImportRoots(agent)) {
+    const candidate = path.isAbsolute(file) ? path.resolve(file) : path.resolve(root, file);
+    const relative = path.relative(root, candidate);
+    if (relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) return candidate;
+  }
+  return undefined;
+}
+
+/** Before a Campaign exists, only the opaque HMAC-bearing token HimaGuide just returned may select
+ * current knowledge.  Once a Campaign exists, its durable proposal token is the authority across a
+ * Host restart; a bare facts hash alone never becomes a general-purpose scope capability. */
+function productKnowledgeScope(given: string | undefined, runProposalId?: string): string | undefined {
+  if (given === undefined) return undefined;
+  if (runProposalId !== undefined && (given === runProposalId || given === campaignKnowledgeScope(runProposalId))) return campaignKnowledgeScope(runProposalId);
+  if (!authenticCampaignProposalId(given)) throw new Error('current knowledge scope must be the full, current HimaGuide Campaign proposal token');
+  return campaignKnowledgeScope(given);
+}
+
+/** A knowledge read that becomes Campaign evidence must name the actual owner execution.  The
+ * record is therefore attached to the attempt Fabric admitted, rather than a tool-local default. */
+function writableCampaignKnowledgeExecution(deps: FabricDeps, runId: string, agent: Agent, scope: string): { readonly execution: NodeExecution; readonly scope: string } {
+  const context = executionContext(deps, runId);
+  const run = context.run;
+  if (run.status !== 'running' || run.control === undefined || run.control.stop !== undefined || context.budget.phase !== 'active') {
+    throw new Error('Campaign knowledge evidence requires an active writable Campaign');
+  }
+  if (run.control.owner !== String(agent.id)) throw new Error('Campaign knowledge evidence belongs to the current owning Campaign Agent');
+  if (run.proposalId === undefined) throw new Error('Campaign knowledge evidence requires the confirmed Campaign proposal identity');
+  const expectedScope = campaignKnowledgeScope(run.proposalId);
+  if (scope !== expectedScope) throw new Error('current knowledge scope does not belong to this Campaign proposal');
+  const executions = context.executions.filter((item) => item.supersededBy === undefined && item.nodeId === run.currentNode
+    && item.generation === (run.generation ?? 1) && ['begun', 'working', 'ready'].includes(item.phase));
+  if (executions.length !== 1) throw new Error('Campaign knowledge evidence requires exactly one currently admitted node execution');
+  return { execution: executions[0]!, scope: expectedScope };
+}
 
 /** The Agent supplies research intent. Mechanical identities are attached from this Run before the
  * existing executor performs its owner, epoch, validity and graph checks. Explicit identities are
@@ -267,11 +314,11 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     })] : [],
     ...knowledge === undefined ? [] : [defineTool({
       name: 'hima_knowledge',
-      description: 'Manage Hima-owned offline knowledge without any upload. import copies one explicitly selected PDF, Markdown or text file into the named current-knowledge scope. list and search return identities and bounded snippets only. read returns bounded exact source text; when run is supplied, only that successful read appends a KnowledgeRecord to the Campaign. clear removes one exact current document. Pack knowledge remains read-only and is selected with source=pack and pack.',
+      description: 'Manage Hima-owned offline knowledge without any upload. import copies one explicitly selected PDF, Markdown or text file from this Agent workspace into the Campaign proposal scope returned by hima_prepare. list and search return identities and bounded snippets only. read returns bounded exact source text; when run is supplied, only the owning Agent at its currently admitted node may append a KnowledgeRecord. clear removes one exact current document. Pack knowledge remains read-only and is selected with source=pack and pack.',
       parameters: {
         action: { type: 'string', required: true, enum: ['import', 'list', 'search', 'read', 'clear'] },
         source: { type: 'string', enum: ['current', 'pack'], description: 'Defaults to current. Pack source is read-only.' },
-        scope: { type: 'string', description: 'Required for current knowledge; a workspace, proposal or Campaign identity.' },
+        scope: { type: 'string', description: 'Required for current knowledge and Campaign-attached Pack reads: the full proposal token returned by hima_prepare. It is never a filesystem path.' },
         file: { type: 'string', description: 'Local source path for import only.' },
         title: { type: 'string' }, version: { type: 'string' }, query: { type: 'string' }, limit: { type: 'integer' },
         documentId: { type: 'string', description: 'Exact identity returned by list or search.' },
@@ -282,41 +329,49 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args, execution) => {
         const source = args.source === 'pack' ? 'pack' : 'current';
+        const attachedRun = args.run === undefined ? undefined : deps.ledger.run(args.run);
+        const currentScope = productKnowledgeScope(args.scope, attachedRun?.proposalId);
         if (args.action === 'import') {
-          if (source !== 'current' || !args.scope || !args.file) throw new Error('import requires current source, scope and file');
-          return toolJson(await importCurrentKnowledge({ root: knowledge.root, scope: args.scope, file: args.file, ...(args.title === undefined ? {} : { title: args.title }), ...(args.version === undefined ? {} : { version: args.version }) }));
+          if (source !== 'current' || currentScope === undefined || !args.file || !execution.agent) throw new Error('import requires current source, a prepared Campaign scope, a file and a live Agent');
+          const authorized = authorizedKnowledgeImport(execution.agent, args.file);
+          if (authorized === undefined) throw new Error('knowledge import is limited to this Agent workspace or an explicit product-selected path');
+          return toolJson(await importCurrentKnowledge({ root: knowledge.root, scope: currentScope, file: authorized, ...(args.title === undefined ? {} : { title: args.title }), ...(args.version === undefined ? {} : { version: args.version }) }));
         }
         if (args.action === 'list') {
-          if (source !== 'current' || !args.scope) throw new Error('list requires current source and scope');
-          return toolJson({ documents: await listCurrentKnowledge(knowledge.root, args.scope) });
+          if (source !== 'current' || currentScope === undefined) throw new Error('list requires current source and a prepared Campaign scope');
+          return toolJson({ documents: await listCurrentKnowledge(knowledge.root, currentScope) });
         }
         if (args.action === 'clear') {
-          if (source !== 'current' || !args.scope || !args.documentId) throw new Error('clear requires current source, scope and documentId');
-          return toolJson({ cleared: await clearCurrentKnowledge(knowledge.root, args.scope, args.documentId) });
+          if (source !== 'current' || currentScope === undefined || !args.documentId) throw new Error('clear requires current source, prepared Campaign scope and documentId');
+          return toolJson({ cleared: await clearCurrentKnowledge(knowledge.root, currentScope, args.documentId) });
         }
         if (args.action === 'search') {
           if (!args.query) throw new Error('search requires query');
           const limit = args.limit === undefined ? undefined : args.limit;
           if (source === 'current') {
-            if (!args.scope) throw new Error('current search requires scope');
-            return toolJson({ hits: await searchCurrentKnowledge(knowledge.root, args.scope, args.query, limit) });
+            if (currentScope === undefined) throw new Error('current search requires a prepared Campaign scope');
+            return toolJson({ hits: await searchCurrentKnowledge(knowledge.root, currentScope, args.query, limit) });
           }
           if (!args.pack) throw new Error('Pack search requires pack');
           return toolJson({ hits: await searchPackKnowledge(loadPack(deps.packsDir, args.pack), args.query, limit) });
         }
         if (!args.documentId || !args.chunkId) throw new Error('read requires documentId and chunkId');
-        const hit = source === 'current'
-          ? !args.scope ? undefined : await readCurrentKnowledge(knowledge.root, args.scope, args.documentId, args.chunkId)
-          : !args.pack ? undefined : await readPackKnowledge(loadPack(deps.packsDir, args.pack), args.documentId, args.chunkId);
-        if (!hit) throw new Error(source === 'current' ? 'current read requires scope' : 'Pack read requires pack');
-        if (args.run !== undefined) {
+        const attached = args.run === undefined ? undefined : (() => {
           if (!execution.agent) throw new Error('a Campaign knowledge read requires a live conversational Agent');
-          const run = deps.ledger.run(args.run);
-          if (!run) throw new Error(`unknown Campaign ${args.run}`);
+          if (currentScope === undefined) throw new Error('a Campaign knowledge read requires the Campaign proposal scope');
+          return writableCampaignKnowledgeExecution(deps, args.run, execution.agent, currentScope);
+        })();
+        const hit = source === 'current'
+          ? currentScope === undefined ? undefined : await readCurrentKnowledge(knowledge.root, currentScope, args.documentId, args.chunkId)
+          : !args.pack ? undefined : await readPackKnowledge(loadPack(deps.packsDir, args.pack), args.documentId, args.chunkId);
+        if (!hit) throw new Error(source === 'current' ? 'current read requires a prepared Campaign scope' : 'Pack read requires pack');
+        if (args.run !== undefined) {
+          const binding = attached!;
+          const agent = execution.agent!;
           const record = await recordDocumentKnowledgeRead({ ledger: deps.ledger, packsDir: deps.packsDir, runId: args.run,
-            nodeId: run.currentNode ?? 'knowledge', attempt: 1, sessionId: String(execution.agent.id), workshop: 'knowledge', hit,
+            nodeId: binding.execution.nodeId, attempt: binding.execution.attempt, sessionId: String(agent.id), workshop: 'knowledge', hit,
             root: knowledge.root,
-            origin: source === 'current' ? 'current' : 'document' });
+            origin: source === 'current' ? 'current' : 'document', ...(binding.execution.branchId === undefined ? {} : { branchId: binding.execution.branchId }) });
           return toolJson({ ...hit, recordId: record.id });
         }
         return toolJson(hit);

@@ -42,6 +42,7 @@ import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
 import { registerHimaSkills } from './skills.js';
 import { openAuthoringSession, registerAuthoringGuard } from './authoring.js';
+import { campaignKnowledgeScope, currentKnowledgeDocumentCount } from './workshop.js';
 // The audit the routes answer with: the module-level pair every channel in this process records into.
 import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from './channel.js';
 import type { PreparationView } from './workbench.js';
@@ -111,7 +112,7 @@ export type { PrepareRequest, PrepareResult, WorkspaceFile, WorkspaceRevisionCha
 // HimaFabric and the choosers an Explore node picks a next strategy with: part of the surface
 // because the acceptance script and the contract suite start runs the same way the faces do.
 export { versionLine, packStageSaid } from './commands.js';
-export { startRun, resumeRun, executionAction, executionContext, revisionImpactOf } from './fabric.js';
+export { startRun, resumeRun, executionAction, executionContext, revisionImpactOf, authenticCampaignProposalId } from './fabric.js';
 export { cancelRun, reconcileRuns } from './recovery.js';
 // Model moments (#59): the one generic element a model needs, on the surface because the contract
 // suite and the live check both open one, and because the acceptance record names the preset.
@@ -606,11 +607,14 @@ export default class Hima extends Service {
     const referenceGraph = { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
       edges: pack.graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === undefined ? {} : { revisit: edge.revisit }) })) };
     const ready = check?.fit === true && siteReadiness === 'ready' && missingCommands.length === 0;
+    const proposalId = newCampaignProposalId(pack, site);
+    const knowledgeScope = campaignKnowledgeScope(proposalId);
     return {
-      id: newCampaignProposalId(pack, site), ready, pack: overview,
+      id: proposalId, ready, pack: overview,
       ...(site === undefined ? {} : { site: { name: site.name, kind: site.kind, readiness: siteReadiness!, resources: { cores: site.capacity.cores, memoryGiB: site.capacity.memoryGiB, parallelJobs: site.capacity.parallelJobs } } }),
       inputs: pack.contract.inputs.map((input) => { const found = check?.inputs.find((item) => item.name === input.name); return { name: input.name, description: input.description, ...(found?.bound === undefined ? {} : { value: found.bound }), ready: found?.bound !== undefined }; }),
-      knowledge: { documents: pack.contract.knowledge.length, ready: true, currentDocuments: 0 },
+      knowledge: { documents: pack.contract.knowledge.length, ready: true,
+        currentDocuments: currentKnowledgeDocumentCount(this.config.knowledgeDir, knowledgeScope) },
       probe: site === undefined ? { status: 'needed' } : site.kind === 'local' ? { status: 'declaration-only' } : siteReadiness === 'stale'
         ? { status: 'stale', observedAt: site.discovery?.observedAt } : site.discovery === undefined ? { status: 'needed' } : { status: 'discovered', observedAt: site.discovery.observedAt },
       goal, strategy, referenceGraph, unknowns,

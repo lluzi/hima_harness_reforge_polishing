@@ -18,7 +18,7 @@
 // design and no route — every one of those words comes out of the pack's own declaration, and the
 // purpose the model is given is the pack author's sentence carried through verbatim.
 import { createHash } from 'node:crypto';
-import { lstatSync } from 'node:fs';
+import { lstatSync, readdirSync } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { extractText } from 'unpdf';
@@ -820,6 +820,10 @@ export interface KnowledgeDocumentIdentity {
   readonly bytes: number;
   readonly scope: string;
   readonly source: 'pack' | 'current';
+  /** PDF extraction is deliberately visible: an empty page is not silently treated as read. */
+  readonly pages?: number;
+  readonly extractedPages?: readonly number[];
+  readonly extractionWarnings?: readonly string[];
 }
 
 export interface KnowledgeDocumentChunk {
@@ -865,6 +869,34 @@ const scopeDirectory = (root: string, scope: string): string => {
   if (scope.trim() === '' || scope.length > 512) throw new Error('knowledge scope must be a non-empty bounded identity');
   return path.join(path.resolve(root), hash(scope));
 };
+
+/** The stable facts portion of a product Campaign proposal is the only current-document scope that
+ * crosses Preparation into the accepted Campaign.  The nonce is intentionally excluded: preparing
+ * again against unchanged Pack/Site facts does not hide documents already selected for that work. */
+export function campaignKnowledgeScope(proposalId: string): string {
+  const [facts, nonce, signature, ...extra] = proposalId.split('.');
+  if (extra.length !== 0 || !/^[a-f0-9]{64}$/.test(facts ?? '')
+    || (nonce !== undefined && (!/^[a-f0-9]{32}$/.test(nonce) || !/^[a-f0-9]{64}$/.test(signature ?? '')))) {
+    throw new Error('current knowledge scope must be the id returned by HimaGuide Campaign preparation');
+  }
+  return facts!;
+}
+
+/** A small preparation projection, not a search: the later read still validates every identity. */
+export function currentKnowledgeDocumentCount(root: string, proposalId: string): number {
+  try {
+    const directory = scopeDirectory(root, campaignKnowledgeScope(proposalId));
+    const base = path.resolve(root);
+    if (!lstatSync(base).isDirectory() || lstatSync(base).isSymbolicLink()) return 0;
+    if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink()) return 0;
+    return readdirSync(directory).filter((name) => /^[a-f0-9]{64}$/.test(name)).filter((id) => {
+      try {
+        const entry = path.join(directory, id);
+        return lstatSync(entry).isDirectory() && !lstatSync(entry).isSymbolicLink();
+      } catch { return false; }
+    }).length;
+  } catch { return 0; }
+}
 
 /** Reject links in every owned path component.  `path.resolve` alone only constrains spelling. */
 async function plainPath(root: string, target: string, kind: 'file' | 'directory'): Promise<void> {
@@ -949,9 +981,14 @@ async function indexKnowledgeBytes(input: {
   } else {
     pages = [new TextDecoder('utf-8', { fatal: true }).decode(bytes)];
   }
+  const extractedPages = mediaType === 'application/pdf'
+    ? pages.flatMap((text, index) => text.trim() === '' ? [] : [index + 1]) : undefined;
+  const extractionWarnings = mediaType === 'application/pdf'
+    ? pages.flatMap((text, index) => text.trim() === '' ? [`page ${index + 1} has no extractable text`] : []) : undefined;
   const document: KnowledgeDocumentIdentity = {
     id, title: input.title?.trim() || path.basename(sourcePath), ...(input.version === undefined ? {} : { version: input.version }),
     mediaType, sourcePath, sha256: id, bytes: bytes.byteLength, scope: input.scope, source: input.source,
+    ...(mediaType === 'application/pdf' ? { pages: pages.length, extractedPages, ...(extractionWarnings!.length === 0 ? {} : { extractionWarnings }) } : {}),
   };
   const chunks: KnowledgeDocumentChunk[] = [];
   for (let page = 0; page < pages.length; page++) chunks.push(...chunksOfPage(id, pages[page]!, mediaType === 'application/pdf' ? page + 1 : undefined, chunks.length));
@@ -969,6 +1006,45 @@ export async function indexKnowledgeDocument(input: {
 }
 
 const currentIndexAt = (root: string, scope: string, id: string): string => path.join(scopeDirectory(root, scope), safeDocumentId(id), 'index.json');
+const currentMetadataAt = (root: string, scope: string, id: string): string => path.join(scopeDirectory(root, scope), safeDocumentId(id), 'document.json');
+
+/** Metadata is separate from the rebuildable index.  A damaged search cache never loses a title,
+ * version, scope or source identity, while source bytes remain the authority for the actual text. */
+function parseCurrentDocumentIdentity(value: unknown, at: string, scope: string, id: string): KnowledgeDocumentIdentity {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`invalid knowledge document metadata at ${at}`);
+  const document = value as Partial<KnowledgeDocumentIdentity>;
+  if (document.id !== safeDocumentId(id) || document.source !== 'current' || document.scope !== scope
+    || typeof document.title !== 'string' || document.title.trim() === '' || typeof document.sourcePath !== 'string'
+    || !/^[a-f0-9]{64}$/.test(document.sha256 ?? '') || typeof document.bytes !== 'number' || !Number.isInteger(document.bytes) || document.bytes < 0
+    || !['text/markdown', 'text/plain', 'application/pdf'].includes(String(document.mediaType))) {
+    throw new Error(`knowledge document metadata does not match its durable scope at ${at}`);
+  }
+  return document as KnowledgeDocumentIdentity;
+}
+
+async function currentDocumentMetadata(root: string, scope: string, id: string): Promise<KnowledgeDocumentIdentity> {
+  const at = currentMetadataAt(root, scope, id);
+  let document: KnowledgeDocumentIdentity;
+  try {
+    await plainPath(path.resolve(root), at, 'file');
+    document = parseCurrentDocumentIdentity(JSON.parse(await readFile(at, 'utf8')) as unknown, at, scope, id);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    // v1 stored identity beside the cache. Migrate only after validating the source under the owned
+    // root; subsequent reads no longer depend on that cache for metadata.
+    const legacyAt = currentIndexAt(root, scope, id);
+    await plainPath(path.resolve(root), legacyAt, 'file');
+    const legacy = parseKnowledgeIndex(JSON.parse(await readFile(legacyAt, 'utf8')) as unknown, legacyAt);
+    document = parseCurrentDocumentIdentity(legacy.document, legacyAt, scope, id);
+    await writeFile(at, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
+  }
+  await plainPath(path.resolve(root), document.sourcePath, 'file');
+  const bytes = await readFile(document.sourcePath);
+  if (hash(bytes) !== document.sha256 || bytes.byteLength !== document.bytes) {
+    throw new Error(`knowledge source bytes do not match durable identity at ${document.sourcePath}`);
+  }
+  return document;
+}
 
 function parseKnowledgeIndex(value: unknown, at: string): KnowledgeDocumentIndex {
   const index = value as Partial<KnowledgeDocumentIndex>;
@@ -980,27 +1056,30 @@ function parseKnowledgeIndex(value: unknown, at: string): KnowledgeDocumentIndex
 
 async function readCurrentIndex(root: string, scope: string, id: string): Promise<KnowledgeDocumentIndex> {
   const at = currentIndexAt(root, scope, id);
-  await plainPath(path.resolve(root), at, 'file');
-  const index = parseKnowledgeIndex(JSON.parse(await readFile(at, 'utf8')) as unknown, at);
-  if (index.document.source !== 'current' || index.document.scope !== scope || index.document.id !== safeDocumentId(id)) {
-    throw new Error(`knowledge index identity does not match its durable scope at ${at}`);
+  const document = await currentDocumentMetadata(root, scope, id);
+  const rebuilt = await indexKnowledgeDocument({ file: document.sourcePath, title: document.title,
+    ...(document.version === undefined ? {} : { version: document.version }), scope, source: 'current' });
+  const durable = { ...rebuilt, document };
+  let valid = false;
+  // Path safety is distinct from cache validity. A link or a path escape is never repaired through;
+  // an ordinary malformed, truncated or forged index is just a cache miss and is rebuilt below.
+  try { await plainPath(path.resolve(root), at, 'file'); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  await plainPath(path.resolve(root), index.document.sourcePath, 'file');
-  const bytes = await readFile(index.document.sourcePath);
-  if (hash(bytes) !== index.document.sha256 || bytes.byteLength !== index.document.bytes) {
-    throw new Error(`knowledge source bytes do not match index identity at ${index.document.sourcePath}`);
+  try {
+    const index = parseKnowledgeIndex(JSON.parse(await readFile(at, 'utf8')) as unknown, at);
+    valid = index.document.id === document.id && index.document.sha256 === document.sha256
+      && JSON.stringify(index.chunks) === JSON.stringify(rebuilt.chunks);
+  } catch { /* all ordinary index failures are rebuildable after source verification */ }
+  // `index.json` is a cache. Rebuild it only after the separately stored identity and source bytes
+  // have both verified; a forged cache is never returned, and a corrupt source remains a refusal.
+  if (!valid) {
+    const staged = `${at}.next-${process.pid}-${Date.now()}`;
+    await writeFile(staged, `${JSON.stringify(durable, null, 2)}\n`, { mode: 0o600 });
+    await rename(staged, at);
   }
-  // `index.json` is a cache, never the text authority.  A syntactically valid forged chunk must
-  // not become searchable merely because it hashes itself consistently.
-  const rebuilt = await indexKnowledgeDocument({ file: index.document.sourcePath, title: index.document.title,
-    ...(index.document.version === undefined ? {} : { version: index.document.version }), scope, source: 'current' });
-  if (rebuilt.document.id !== index.document.id || rebuilt.chunks.length !== index.chunks.length
-    || rebuilt.chunks.some((chunk, ordinal) => {
-      const held = index.chunks[ordinal];
-      return held === undefined || chunk.id !== held.id || chunk.sha256 !== held.sha256 || chunk.text !== held.text
-        || chunk.page !== held.page || chunk.section !== held.section;
-    })) throw new Error(`knowledge index chunks do not match durable source bytes at ${at}`);
-  return index;
+  return durable;
 }
 
 /** Copy a user-selected document into Hima's current-knowledge root and publish its index atomically.
@@ -1031,6 +1110,7 @@ export async function importCurrentKnowledge(input: {
       throw new Error('knowledge source changed while it was being imported');
     }
     const durable: KnowledgeDocumentIndex = { ...parsed, document: { ...parsed.document, sourcePath } };
+    await writeFile(path.join(staged, 'document.json'), `${JSON.stringify(durable.document, null, 2)}\n`, { mode: 0o600 });
     await writeFile(path.join(staged, 'index.json'), `${JSON.stringify(durable, null, 2)}\n`, { mode: 0o600 });
     await rename(staged, target);
     return durable;
@@ -1160,6 +1240,10 @@ export async function recordDocumentKnowledgeRead(input: {
     documentId: verified.document.id, ...(verified.document.version === undefined ? {} : { documentVersion: verified.document.version }),
     chunkId: verified.id, ...(verified.page === undefined ? {} : { page: verified.page }),
     ...(verified.section === undefined ? {} : { section: verified.section }), knowledgeScope: verified.document.scope,
+    conditions: [
+      `Background knowledge selected for node ${input.nodeId}; current Campaign conclusions still require current execution evidence.`,
+      `Source scope ${verified.document.scope}; document ${verified.document.id}${verified.document.version === undefined ? '' : ` version ${verified.document.version}`}.`,
+    ],
   });
 }
 
