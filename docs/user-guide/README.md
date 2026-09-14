@@ -1,6 +1,6 @@
 # HimaHarness 使用评估资料包
 
-[下载完整资料包 ZIP](../../output/pdf/HimaHarness-Evaluation-Kit-v1.0.zip)。
+[从 Release 下载完整资料包 ZIP](https://github.com/lluzi/hima_harness_reforge_polishing/releases/download/v0.2.0-trial.1/HimaHarness-Evaluation-Kit-v1.0.zip)，或使用[仓库中的副本](../../output/pdf/HimaHarness-Evaluation-Kit-v1.0.zip)。附件远端 hash 已核对，见[发布记录](publication.json)。
 
 面向没有项目背景的评估者，固定对应 **v0.2.0-trial.1 / AES DTCO Pack 5**。产品要求、已验证能力和未知范围分别说明。
 

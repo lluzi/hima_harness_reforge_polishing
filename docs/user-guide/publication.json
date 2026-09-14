@@ -1,0 +1,26 @@
+{
+  "status": "published",
+  "release": "https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.2.0-trial.1",
+  "handbookSource": "c862a5c7038b7eec23523969f8dd278b6709b9d0",
+  "assets": [
+    {
+      "name": "HimaHarness-Evaluation-Handbook-v1.0.pdf",
+      "size": 387608,
+      "digest": "sha256:3597b2ad8f9214fe880a1e18d8273389c6a3403eeb873e6ff2060b48871d72b3",
+      "browser_download_url": "https://github.com/lluzi/hima_harness_reforge_polishing/releases/download/v0.2.0-trial.1/HimaHarness-Evaluation-Handbook-v1.0.pdf"
+    },
+    {
+      "name": "HimaHarness-Evaluation-Kit-v1.0.zip",
+      "size": 413077,
+      "digest": "sha256:b61414ec788c22d926142541a58966114c8f2dbd61f26ded6f545c4568b1ace3",
+      "browser_download_url": "https://github.com/lluzi/hima_harness_reforge_polishing/releases/download/v0.2.0-trial.1/HimaHarness-Evaluation-Kit-v1.0.zip"
+    },
+    {
+      "name": "HimaHarness-Evaluation-Kit-v1.0-SHA256SUMS.txt",
+      "size": 209,
+      "digest": "sha256:0e12fb77c1afd130a44f8c1ed146e24e875ec9262914c2c5103540e0a26c1b1c",
+      "browser_download_url": "https://github.com/lluzi/hima_harness_reforge_polishing/releases/download/v0.2.0-trial.1/HimaHarness-Evaluation-Kit-v1.0-SHA256SUMS.txt"
+    }
+  ],
+  "scope": "documentation additions only; existing application assets unchanged"
+}
