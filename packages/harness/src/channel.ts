@@ -59,7 +59,7 @@ export interface Channel extends PathResolver {
  *  agent may look; this says that looking is all these two can do. Kept to what is actually run
  *  rather than to what would be harmless — every extra verb here is permission granted on a
  *  customer's Site ahead of any caller needing it. */
-export const readOnlyProbes: ReadonlySet<string> = new Set(['cat', 'realpath']);
+export const readOnlyProbes: ReadonlySet<string> = new Set(['cat', 'realpath', 'uname', 'getconf', 'which']);
 
 /** The job plumbing: what the job operations themselves run on a Site to put a command in a detached
  *  tmux session and find out what became of it — `tmux` for the session, `test` and `cat` for the
@@ -100,6 +100,46 @@ export const jobPlumbing: ReadonlySet<string> = new Set(['tmux', 'test', 'cat', 
  * preparation means. `ssh.test.ts` holds all three lists against the reference Permit's wrappers.
  */
 export const workspacePlumbing: ReadonlySet<string> = new Set(['mkdir', 'cp', 'tee']);
+
+/**
+ * A deliberately closed set of questions used while learning enough about a new Site to make a
+ * draft profile.  This is data rather than a caller-supplied command language: callers can choose
+ * whether to run discovery, but cannot add a shell fragment, path, tool, or option to it.
+ *
+ * Tool discovery uses `which`, not an invocation of an EDA binary.  A version that needs a licence
+ * or starts a vendor runtime is not a harmless first-contact probe; the resulting unknown is handed
+ * to the Site owner rather than hidden by a speculative batch invocation.
+ */
+export const siteDiscoveryProbes: readonly (readonly string[])[] = [
+  ['uname', '-s'], ['uname', '-r'], ['uname', '-m'],
+  ['cat', '--', '/etc/os-release'],
+  ['tmux', '-V'],
+  ['getconf', '_NPROCESSORS_ONLN'], ['getconf', 'PAGE_SIZE'],
+  ['cat', '--', '/proc/meminfo'],
+  ['which', 'tmux'], ['which', 'genus'], ['which', 'innovus'], ['which', 'dc_shell'], ['which', 'pt_shell'], ['which', 'make'],
+  ['which', 'lmutil'],
+];
+
+export interface SiteDiscoveryFact {
+  readonly probe: readonly string[];
+  readonly code: number;
+  readonly stdout: string;
+  readonly stderr?: string;
+}
+
+/** Run only the fixed Site discovery questions and retain unsuccessful answers as facts, not errors. */
+export async function discoverSiteFacts(on: Channel): Promise<readonly SiteDiscoveryFact[]> {
+  const facts: SiteDiscoveryFact[] = [];
+  for (const probe of siteDiscoveryProbes) {
+    const result = await on.exec(probe);
+    // Bound both diagnostics and output: a broken login banner or a surprising pseudo-file must not
+    // turn a small profile into an unbounded copy of remote state.
+    const stdout = Buffer.from(result.stdout).toString('utf8').slice(0, 16_384);
+    const stderr = result.stderr.trim().slice(0, 4_096);
+    facts.push({ probe: [...probe], code: result.code, stdout, ...(stderr ? { stderr } : {}) });
+  }
+  return facts;
+}
 
 /** Everything a HimaChannel may run on a Site, and the whole of it. */
 const channelVerbs: ReadonlySet<string> = new Set([...readOnlyProbes, ...jobPlumbing, ...workspacePlumbing]);

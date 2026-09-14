@@ -169,6 +169,12 @@ export function himaProfileDir(home: string): string {
   return path.join(path.resolve(home), PROFILES_DIR, HIMA_PROFILE);
 }
 
+/** The ordinary Site profile location shared by the desktop and Host. Preparing a home creates only
+ * this empty directory; it never invents a private local Site or copies credentials into one. */
+export function himaSitesDir(home: string): string {
+  return path.join(path.resolve(home), 'hima', 'sites');
+}
+
 /** A home with the hima profile in it, and what preparing it did. */
 export interface PreparedHimaHome {
   readonly home: string;
@@ -231,7 +237,11 @@ export async function prepareHimaHome(req: PrepareHimaHomeRequest): Promise<Prep
 
   const home = path.resolve(req.home);
   const profileDir = himaProfileDir(home);
+  const sitesDir = himaSitesDir(home);
   const did: string[] = [];
+
+  await mkdir(sitesDir, { recursive: true });
+  did.push(`prepared the shared Hima Site directory at ${sitesDir}`);
 
   if (existsSync(profileDir)) {
     did.push(`the ${HIMA_PROFILE} profile is already at ${profileDir}`);

@@ -9,7 +9,7 @@ import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent, type InProcessHost } from './support/boot-inprocess.ts';
 import { himaCommand, siteCommandTimeoutMs } from './support/command.ts';
 import { installReferenceSite, writeReferenceSiteVariant } from './support/site.ts';
-import { channelFor, controlPathFor, loadSite, remoteCommands, clearRemoteCommands, quote, SshChannel } from '@hima/harness';
+import { channelFor, controlPathFor, discoverSshSite, loadSite, remoteCommands, clearRemoteCommands, quote, SshChannel } from '@hima/harness';
 import type { RemoteCommand } from '@hima/harness';
 
 import { requireLiveSite, ownControlPath } from './support/live-site.ts';
@@ -28,7 +28,7 @@ const manifest = JSON.parse(readFileSync(path.join(repoRoot, 'test/fixtures/open
 
 /** The test's own judgement of what a read-only probe is, kept apart from the channel's list on
  *  purpose: the last test holds both against it. */
-const readOnlyVerbs = new Set(['cat', 'realpath', 'readlink', 'stat', 'ls', 'test', 'true']);
+const readOnlyVerbs = new Set(['cat', 'realpath', 'readlink', 'stat', 'ls', 'test', 'true', 'uname', 'getconf', 'which']);
 
 /** The test's own POSIX single-quoting, reimplemented independently of `channel.ts`'s `quote` so a
  *  bug shared between the implementation and the check that verifies it cannot hide a regression. */
@@ -271,6 +271,22 @@ describe('the reference site over SSH', { skip: probeSite() }, () => {
     }
   });
 
+  test('bounded discovery reads current host and tool facts without creating a Campaign or running EDA', async () => {
+    const h = await createHimaHome();
+    const { sitesDir } = await installReferenceSite(h);
+    clearRemoteCommands();
+    try {
+      const site = loadSite(sitesDir, 'linglong');
+      const draft = await discoverSshSite({ name: 'linglong-discovery', ssh: site.ssh!, hints: { workspaceRoot: site.workspaceRoot } });
+      assert.ok(draft.site.discovery.facts.some((fact) => fact.probe.join(' ') === 'uname -s' && fact.code === 0), 'the live host supplied an OS fact');
+      assert.ok(draft.site.discovery.facts.some((fact) => fact.probe.join(' ') === 'which genus'), 'the limited tool probe records either a path or an actionable unknown');
+      assert.equal(draft.site.discovery.stale, false);
+      const ran = collectRemoteCommands();
+      assert.ok(ran.length > 0, 'the fixed discovery probes reached the Site');
+      assert.ok(ran.every(({ argv }) => argv[0] !== 'rm' && argv[0] !== 'mkdir' && argv[0] !== 'tee' && argv[0] !== 'cp'), `discovery issued no writes: ${JSON.stringify(ran)}`);
+    } finally { await h.dispose(); }
+  });
+
   test('the channel refuses to run anything that is not a read-only probe', async () => {
     const h = await createHimaHome();
     const { sitesDir } = await installReferenceSite(h);
@@ -316,8 +332,8 @@ describe('the reference site over SSH', { skip: probeSite() }, () => {
     for (const { argv } of sentToTheSite) t.diagnostic(`asked the site to run: ${argv.join(' ')}`);
     for (const { argv, wire } of sentToTheSite) {
       const verb = argv[0] ?? '';
-      assert.ok(readOnlyVerbs.has(verb), `not a read-only probe: ${JSON.stringify(argv)}`);
-      assert.doesNotMatch(verb, changesTheSite, `changes the site: ${JSON.stringify(argv)}`);
+      assert.ok(readOnlyVerbs.has(verb) || (verb === 'tmux' && argv[1] === '-V'), `not a read-only probe: ${JSON.stringify(argv)}`);
+      if (!(verb === 'tmux' && argv[1] === '-V')) assert.doesNotMatch(verb, changesTheSite, `changes the site: ${JSON.stringify(argv)}`);
       // The audit records the argv the channel decided on and the wire ssh actually received; this
       // ties them together so deleting the quoting step (`.map(quote)`) cannot pass unnoticed. Full
       // equality on the whole wire, not just a prefix check on the verb: `wire.startsWith(quote(verb))`
@@ -332,6 +348,6 @@ describe('the reference site over SSH', { skip: probeSite() }, () => {
       );
     }
     const verbs = [...new Set(sentToTheSite.map(({ argv }) => argv[0]))].sort();
-    assert.deepEqual(verbs, ['cat', 'realpath'], 'the whole command set this ticket runs on a Site');
+    assert.deepEqual(verbs, ['cat', 'getconf', 'realpath', 'tmux', 'uname', 'which'], 'the whole bounded command set this ticket runs on a Site');
   });
 });

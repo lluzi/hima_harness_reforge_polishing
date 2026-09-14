@@ -47,10 +47,10 @@ import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from '
 
 // The Site-facing pieces are part of the bundle's surface: an operator inspects a Site's warm channel
 // and the commands it has run, and the contract suite reads both.
-export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remoteCommandWindow, remoteCommandWindowFilled, readOnlyProbes, jobPlumbing, workspacePlumbing, quote, LocalChannel, SshChannel } from './channel.js';
-export type { Channel, ExecResult, ExecOptions, RemoteCommand } from './channel.js';
-export { loadSite, installedSites } from './sites.js';
-export type { Site, SshTarget, Permit } from './sites.js';
+export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remoteCommandWindow, remoteCommandWindowFilled, readOnlyProbes, siteDiscoveryProbes, discoverSiteFacts, jobPlumbing, workspacePlumbing, quote, LocalChannel, SshChannel } from './channel.js';
+export type { Channel, ExecResult, ExecOptions, RemoteCommand, SiteDiscoveryFact } from './channel.js';
+export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale } from './sites.js';
+export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, SiteDiscoveryResult } from './sites.js';
 
 // A HimaPack is data, and reading it is part of the bundle's surface: an operator inspects a pack
 // against a Site before starting a Campaign, and the contract suite reads the same answer.

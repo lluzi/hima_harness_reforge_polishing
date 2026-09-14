@@ -1,8 +1,10 @@
 // A Site is one file; its Permit is another the site owner edits. Both are plain YAML.
-import { readdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { parse } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { z } from 'zod';
+import { SshChannel, discoverSiteFacts, type SiteDiscoveryFact } from './channel.js';
 import { SiteNotFoundError } from './errors.js';
 
 export const permitSchema = z.object({
@@ -45,6 +47,38 @@ export const sshSchema = z.object({
 });
 export type SshTarget = z.infer<typeof sshSchema>;
 
+const absolutePosixPath = z.string().regex(/^\//, 'a discovered Site path must be absolute');
+
+/** The small amount of non-secret direction a person may give discovery. It is intentionally not a
+ * free-form command, environment, credential, or YAML escape hatch. */
+export const siteDiscoveryRequestSchema = z.object({
+  name: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]*$/, 'a Site name starts with a letter and uses letters, digits, ".", "_" or "-"'),
+  ssh: sshSchema,
+  hints: z.object({
+    workspaceRoot: absolutePosixPath.optional(),
+    allowedReadRoots: z.array(absolutePosixPath).max(8).default([]),
+    allowedWriteRoots: z.array(absolutePosixPath).max(8).default([]),
+    allowedWrappers: z.array(z.string().min(1)).max(16).default([]),
+  }).default({ allowedReadRoots: [], allowedWriteRoots: [], allowedWrappers: [] }),
+});
+export type SiteDiscoveryRequest = z.input<typeof siteDiscoveryRequestSchema>;
+
+export const discoveryFactSchema = z.object({
+  probe: z.array(z.string()),
+  code: z.number().int(),
+  stdout: z.string(),
+  stderr: z.string().optional(),
+});
+
+export const discoverySchema = z.object({
+  observedAt: z.string().datetime(),
+  inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+  facts: z.array(discoveryFactSchema),
+  unknowns: z.array(z.string()),
+  stale: z.boolean().default(false),
+});
+export type SiteDiscovery = z.infer<typeof discoverySchema>;
+
 /**
  * What a licence is called. One shape for both the file that declares seats of it and the pack whose
  * tool asks for them, because the two are matched by exact string: one name in a site file and that
@@ -73,6 +107,8 @@ export const siteSchema = z
      */
     bindings: z.record(z.string(), z.string()).default({}),
     ssh: sshSchema.optional(),
+    /** Facts seen during the last bounded profile discovery. They are descriptive, never a Permit. */
+    discovery: discoverySchema.optional(),
     capacity: z.object({
       cores: z.number().int().positive(),
       memoryGiB: z.number().positive(),
@@ -96,6 +132,103 @@ export const siteSchema = z
     path: ['ssh'],
   });
 export interface Site extends z.infer<typeof siteSchema> { readonly file: string; readonly permitFile: string; readonly permitRules: Permit }
+
+export interface SiteDiscoveryResult {
+  readonly site: Omit<z.input<typeof siteSchema>, 'discovery'> & { readonly discovery: SiteDiscovery };
+  readonly permit: Permit;
+  readonly unknowns: readonly string[];
+  readonly conflicts: readonly string[];
+}
+
+const discoveryFingerprint = (request: z.infer<typeof siteDiscoveryRequestSchema>): string =>
+  createHash('sha256').update(JSON.stringify({ name: request.name, ssh: request.ssh, hints: request.hints })).digest('hex');
+
+const nonSecret = (value: string): string => value
+  .replace(/(password|token|secret|private[_ -]?key)\s*[:=]\s*[^\s]+/gi, '$1=[redacted]')
+  .slice(0, 16_384);
+
+function unknownsFrom(facts: readonly SiteDiscoveryFact[]): string[] {
+  const unknowns: string[] = [];
+  const answered = (verb: string, arg?: string) => facts.some((fact) => fact.probe[0] === verb && (arg === undefined || fact.probe[1] === arg) && fact.code === 0);
+  if (!answered('uname')) unknowns.push('host operating-system facts were not available');
+  if (!answered('tmux')) unknowns.push('tmux availability/version was not available');
+  for (const tool of ['genus', 'innovus', 'dc_shell', 'pt_shell']) {
+    if (!answered('which', tool)) unknowns.push(`${tool} command/version was not identified`);
+  }
+  if (!answered('which', 'lmutil')) unknowns.push('licence utility was not identified; no licence claim was made');
+  return unknowns;
+}
+
+/**
+ * Learn a draft Site profile through SshChannel's closed probe vocabulary. This is deliberately not
+ * a Campaign action: it creates no Run, workspace, Job, or Ledger record.
+ */
+export async function discoverSshSite(input: SiteDiscoveryRequest): Promise<SiteDiscoveryResult> {
+  const request = siteDiscoveryRequestSchema.parse(input);
+  const facts = await discoverSiteFacts(new SshChannel(request.name, request.ssh));
+  const unknowns = unknownsFrom(facts);
+  const workspaceRoot = request.hints.workspaceRoot ?? '/';
+  const conflicts = request.hints.workspaceRoot === undefined
+    ? ['workspaceRoot was not supplied; profile is saved with no permitted read/write roots until the Site owner chooses one']
+    : [];
+  const discovery = discoverySchema.parse({
+    observedAt: new Date().toISOString(),
+    inputFingerprint: discoveryFingerprint(request),
+    facts: facts.map((fact) => ({ ...fact, stdout: nonSecret(fact.stdout), ...(fact.stderr ? { stderr: nonSecret(fact.stderr) } : {}) })),
+    unknowns,
+    stale: false,
+  });
+  const permit: Permit = {
+    allowedReadRoots: request.hints.allowedReadRoots,
+    allowedWriteRoots: request.hints.allowedWriteRoots,
+    allowedWrappers: request.hints.allowedWrappers,
+    forbidden: ['deletions'],
+  };
+  return {
+    site: { name: request.name, kind: 'ssh', workspaceRoot, permit: `./${request.name}.permit.yml`, bindings: {}, ssh: request.ssh,
+      discovery, capacity: { cores: 1, memoryGiB: 1, parallelJobs: 1, licences: {} } },
+    permit,
+    unknowns,
+    conflicts,
+  };
+}
+
+/** Save a reviewed discovery result as the ordinary Site and Permit files consumed by existing checks. */
+export function saveDiscoveredSite(sitesDir: string, result: SiteDiscoveryResult): Site {
+  const name = siteDiscoveryRequestSchema.shape.name.parse(result.site.name);
+  const file = path.join(sitesDir, `${name}.yml`);
+  const permitFile = path.join(sitesDir, `${name}.permit.yml`);
+  const safeDiscovery = {
+    ...result.site.discovery,
+    facts: result.site.discovery.facts.map((fact) => ({
+      ...fact,
+      stdout: nonSecret(fact.stdout),
+      ...(fact.stderr === undefined ? {} : { stderr: nonSecret(fact.stderr) }),
+    })),
+  };
+  const safeSite = siteSchema.parse({ ...result.site, discovery: safeDiscovery, permit: `./${name}.permit.yml` });
+  const safePermit = permitSchema.parse(result.permit);
+  mkdirSync(sitesDir, { recursive: true });
+  // Atomic replacements mean readers see the old complete profile or the new complete profile, never
+  // a partly-written YAML document. The credentials remain with OpenSSH/DSH; these data structures
+  // have no credential fields and fact text is redacted before it reaches this writer.
+  const writeAtomic = (at: string, value: unknown) => {
+    const next = `${at}.next`;
+    writeFileSync(next, stringify(value), { mode: 0o600 });
+    renameSync(next, at);
+  };
+  writeAtomic(permitFile, safePermit);
+  writeAtomic(file, safeSite);
+  return loadSite(sitesDir, name);
+}
+
+/** Whether a loaded profile is stale against the current connection input. Facts stay readable; only
+ * readiness changes, so an old Campaign can keep its recorded Site identity. */
+export function discoveryIsStale(site: Site, input: SiteDiscoveryRequest): boolean {
+  if (!site.discovery) return true;
+  const request = siteDiscoveryRequestSchema.parse(input);
+  return site.discovery.stale || site.discovery.inputFingerprint !== discoveryFingerprint(request);
+}
 
 /** How paths on this Site are spelled. A remote Site's are POSIX whatever this machine is, so every
  *  decision, every workspace path, and every command argument is joined the Site's own way and not
