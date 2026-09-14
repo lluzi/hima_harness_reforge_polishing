@@ -112,3 +112,27 @@
 - Pack 状态由作者声明但不改变 Runtime，还需确定状态 vocabulary、测试证据和界面信任表达是否完全自由。
 - Preparation 不创建 Campaign，需要定义失败、恢复、缓存和可审阅结果怎样保存，同时避免引入新的用户管理对象。
 - Fmax 是唯一收益指标且其他 PPA 可变化，仍需确认其他 PPA 是否必须完整报告，以及功能/物理有效性的最低门。
+
+## 第 5 轮：Pack 固定格式与知识交付
+
+### 已确认
+
+56. **统一使用 HimaPack/Pack。** 产品能力资产称 HimaPack 或 Pack；Package 只表示磁盘发布包，不增加用户领域概念。
+57. **加深现有 Pack 格式。** 接受 identity、version、status、方法文件、contract、graph、tools/readers/rules/choosers、知识原文/manifest、可选索引、测试记录和独立 run-assets 的既有目录形态；没有必要时不新增交付件。
+58. **Pack 当前保持透明。** 安装后方法、知识、图、规则和算法可读，不采用不透明加密 Pack。
+59. **知识引擎随软件离线提供。** 接受 Harness 携带 parser、索引、检索 runtime 和基础本地能力；不把模型或知识服务配置交给用户，也不把引擎重复放进每个 Pack。
+60. **用户文档只进入当前知识。** 追加文档作为当前、临时知识使用，不写回 Pack，不因该特性改变 Pack 方法、digest 或产品结构。
+61. **Pack 状态由 ontology 辅助规范。** 提供推荐词汇但不强制；AI 可将不清晰作者词汇映射为稳定语义，同时保留原声明。状态不改变 Runtime。
+62. **其他 PPA 完整报告但不作门槛。** Fmax 是成败指标；能取得的面积、功耗、拥塞和物理信息仍如实展示，缺失标为未测量。
+63. **Preparation 不新增管理对象。** Site profile、实时 Pack check 和当前 HimaGuide proposal draft 承载准备结果；确认时写入 Campaign，相关输入变化使检查失效。
+64. **Golden Flow 不是客户输入。** 客户提供真实生产资料；Golden Flow只用于 Pack 作者学习、开发、校准和测试方法。
+65. **模型配置完全归 DSH。** HimaHarness 直接使用 DeepSeek Harness 当前选择和配置的模型，不为 base URL 或部署位置增加另一套兼容层或验收主线。
+66. **作者能力保留但不占主路径。** 普通用户看到安装、理解和运行；Pack 作者继续使用现有 authoring pipeline，本轮只修复阻碍当前 Pack 的问题。
+67. **兼容使用普通最低版本依赖。** Pack 声明最低 Harness 版本，Harness 工具版本向前兼容；不建立严格 capability negotiation，Pack 状态不参与执行判断。
+
+### 新分叉
+
+- 用户明确要求建立稳定语义体系和 ontology，仍需确定它覆盖产品词汇、Pack 状态、工具名称、知识类别、证据类型还是全部；优先复用 `CONTEXT.md`、Pack semantics 和现有字段，不默认建设 ontology engine。
+- 当前知识不进入 Pack，但“临时/当前”的恢复、自动清理和跨会话可见范围尚未确定。
+- Pack 知识引擎随软件离线提供，仍需选择原文、结构化文档、倒排/向量索引和本地模型的最小组合；这是实现调研，不要求用户运维。
+- Pack 最低 Harness 版本尚需选择字段位置和版本策略；当前 `@hima/harness` 已有 `0.1.0` 软件版本，现有 Pack contract 只有自身版本。

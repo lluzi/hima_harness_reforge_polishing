@@ -5,7 +5,7 @@
 ## Language
 
 **HimaPack**:
-由产品 AE、PE 或方法学专家制作的独立业务能力交付资产；在声明的输入、指定工具和 Site 能力满足时，承载方法、测量、判断、知识及 AI 探索位置，而不绑定某个客户 design 或精确工具版本。
+由产品 AE、PE 或方法学专家制作的透明、固定格式业务能力交付资产；在声明的输入、指定工具和 Site 能力满足时，承载方法、测量、判断、知识及 AI 探索位置，而不绑定某个客户 design 或精确工具版本。
 _Avoid_: 插件、脚本集合、固定 design 自动化（作为整个方法的同义词）
 
 **Pack 状态**:
@@ -41,8 +41,16 @@ _Avoid_: 独立业务决策者、第二执行主脑
 _Avoid_: 成功报告（作为唯一含义）、无依据的解释
 
 **知识基础设施**:
-HimaHarness 自带的文档到知识能力，承载 Pack 内置知识和用户追加材料；材料在其获准所在环境中处理和读取，普通用户不负责部署独立知识服务。
+HimaHarness 软件离线自带的文档到知识能力，读取 Pack 内置知识并承载用户追加材料；材料在其获准所在环境中处理和读取，普通用户不负责部署独立知识服务。
 _Avoid_: Pack 的一个 Markdown 文件、客户必须维护的 RAG 服务
+
+**当前知识**:
+用户为当前工作追加的临时文档知识，与相关会话、Campaign 或 Site 一起使用，不自动写回 HimaPack 方法或内置知识。
+_Avoid_: Pack upgrade、共享方法知识、永久客户知识库（作为默认含义）
+
+**Harness 兼容版本**:
+HimaPack 声明的最低 HimaHarness 版本；后续 Harness 版本对既有 Pack 保持向前兼容，Pack 状态不参与兼容或执行判断。
+_Avoid_: 精确版本锁、能力协商矩阵、Pack 状态门
 
 **Campaign Preparation**:
 HimaGuide 在 Campaign 建立前完成的 Pack、Site、输入、知识和最小工具检查；全部必要条件就绪后才创建 Campaign 和持久 Run。
@@ -94,7 +102,7 @@ _Avoid_: 工程演示、机制验证包、需要开发者预配置才能运行�
 
 **Golden Flow**:
 用于学习业务方法和核对 HimaPack 行为的参考工程流程。
-_Avoid_: HimaPack、探索目标
+_Avoid_: HimaPack、探索目标、客户运行 Pack 的必要输入
 
 **Goal**:
 一次 Campaign 的主要目标及其声明的约束，含义明确、可检查，在该 Campaign 内保持不变。
