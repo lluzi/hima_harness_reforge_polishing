@@ -1,14 +1,15 @@
 # HimaHarness Polishing
 
-已发布 [**0.2.0-trial.1（macOS Apple Silicon）**](https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.2.0-trial.1)。26/26 个 PLS 实施任务完成本轮验收；当前前沿是用户试用反馈与 Pack 方法质量改进。见[本轮交付、录像与真实限制](docs/validation/pilot-release/README.md)。完整 DTCO 结果未达标，任务完成不代表 Fmax 提升或真人认可。
+已发布的 [**0.2.0-trial.1（macOS Apple Silicon）**](https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.2.0-trial.1) 保留为历史工程预览。真人试用已否定其产品准入；它不代表当前可推荐的试用版、Fmax 提升或真人认可。当前前沿是[Product Upgrade v2](docs/specs/product-upgrade-v2/README.md)：在现有架构内修复产品入口、Pack/Site/知识/运行图，并用 held-out design 的 Matched Comparison 重新验收业务能力。
 
-首次试用请阅读[使用评估手册与配套记录表](docs/user-guide/README.md)，由交接人先确认启动方式和环境，再按低成本路线开展评估。
+原[使用评估手册与配套记录表](docs/user-guide/README.md)作为失败试用的历史材料保留，不作为下一候选的正常用户路径。
 
 HimaHarness 产品打磨工作区。原型位于 `/Users/lluzi/code/hima_harness_reforge_claude`，按用户要求只读；运行和修改在本工作区进行。
 
 用户已于 2026-09-11 确认产品定义。以 prototype 提交 `b4ac9d9360ad6da68b5fd2824621ba6edab7408b` 的固定导入为基线，已完成 PLS-01～07 的实现、分级验证与独立审查，见 [本批交付记录](docs/assessment/2026-09-11/pls02-07/README.md)。Polishing 以当前 prototype 架构为基础，非万不得已不新增组件；旧版架构仅供参考。
 
 - [当前开发计划：接收上游快照并完成 Step 4](docs/specs/step4-takeover/README.md)
+- [当前产品升级规格与并行任务](docs/specs/product-upgrade-v2/README.md)
 - [Polishing v1 规格与任务索引](docs/specs/polishing-v1/README.md)
 - [具体工作顺序与验收要求](docs/polishing-backlog.md)
 - [本地基线结果及未验证范围](docs/assessment/2026-09-11/local-baseline/README.md)

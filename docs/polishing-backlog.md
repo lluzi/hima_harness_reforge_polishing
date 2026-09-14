@@ -1,5 +1,9 @@
 # Polishing 工作单与 Step 4 接续
 
+当前顺序（2026-09-14）：用户真人试用否定 `v0.2.0-trial.1` 的产品准入，并确认[产品升级设计树](product-upgrade-interview.md)。后续唯一现行计划是 [Product Upgrade v2](specs/product-upgrade-v2/README.md)：PLS-27～35 在现有模块上完成产品上下文、Pack、Site、离线知识、Campaign Preparation、Campaign Agent/Side Talk、完整图、可迁移 Fmax-DTCO Pack 和 held-out design 候选验收。此前 26/26 表示历史工程任务完成，不代表当前产品升级已经开始或通过。
+
+本轮规格优先于下文 2026-09-11～13 的旧前沿和“同一个对话窗口”描述；既有实现、测试和证据继续复用。一个可见 Campaign Agent 保持唯一 Run owner，用户可在同一 DSH App 中新开独立 Side Talk，见 [ADR-0008](adr/0008-visible-campaign-agent-and-side-talk.md)。
+
 当前顺序（2026-09-12）：[接收 ca47fa0 并在 polishing 完成 Step 4](specs/step4-takeover/README.md)。PLS-01～07 与 UI-02 保持已完成；新建 PLS-20～26，调整 PLS-08～19 的依赖。PLS-20 集成结果见 [实施证据](assessment/2026-09-12/pls-20/README.md)，后续按 Agent/输入/作者/方法身份→正式 probe→挖掘→资产/完整验收推进，不继续等待上游整体验收。以下 b4ac9d9 分析作为首轮背景，当前开工范围与模块以接续规格为准。
 
 当前进度（2026-09-13）：26/26 个 PLS 实施任务已完成本轮验收。完整真实研究为有证据的负结果；增长控制使用独立真实模型补验，桌面使用由用户授权的独立 Agent 完成并录屏。前沿转为用户实际试用反馈与 Pack 方法质量改进，见[试用交付](validation/pilot-release/README.md)。不得把任务完成称为已验证 Fmax 提升或真人认可。
@@ -12,7 +16,7 @@
 
 用户随后否定 UI-01 的分离页面与视觉方向，明确以旧版 himaharness 的视觉系统构建统一工程桌面。新的现行方向及实现见 [UI-02 #21](https://github.com/lluzi/hima_harness_reforge_polishing/issues/21) 和 [同屏工作区验证](assessment/2026-09-11/unified-ui/README.md)；UI-01 记录保留为历史，不是产品体验已获认可的证明。
 
-用户最新明确：由同一个对话 Agent 执行节点内业务并决定后续动作，Fabric 提供约束与事实。已据 [ADR-0006](adr/0006-conversational-agent-owns-business-execution.md) 改写[执行补充规格](specs/polishing-v1/node-intervention.md)和 [PLS-19](specs/polishing-v1/tasks/PLS-19.md)，替代此前仅增加外部介入接口的方案，并调整 PLS-08～12 的职责衔接。以下原 POL 动机仍可参考，但执行归属以最新规格为准；运行代码已按该职责迁移；当前批次的实际验证和剩余边界见 [验收记录](assessment/2026-09-12/pls-next/README.md)。
+2026-09-12 的执行迁移由同一个 owning conversation Agent 执行节点、Fabric 提供约束与事实，见已被后续决定收紧的 [ADR-0006](adr/0006-conversational-agent-owns-business-execution.md)、[执行补充规格](specs/polishing-v1/node-intervention.md)和 [PLS-19](specs/polishing-v1/tasks/PLS-19.md)。2026-09-14 继续保留一个 owner，但允许独立 Side Talk；当前执行归属以 ADR-0008 和 Product Upgrade v2 为准。
 
 ## 起点与判断
 

@@ -1,0 +1,15 @@
+{
+  "schema": "hima-product-upgrade-tasks/1",
+  "baseline": "2a1a311519757a4fb6eb5ab46858e2e669ae0df2",
+  "tasks": [
+    { "id": "PLS-27", "dependsOn": [], "owner": "host-context" },
+    { "id": "PLS-28", "dependsOn": [], "owner": "pack-core" },
+    { "id": "PLS-29", "dependsOn": [], "owner": "site-channel" },
+    { "id": "PLS-30", "dependsOn": [], "owner": "knowledge-core" },
+    { "id": "PLS-31", "dependsOn": ["PLS-28", "PLS-29", "PLS-30"], "owner": "shared-integration" },
+    { "id": "PLS-32", "dependsOn": ["PLS-27", "PLS-31"], "owner": "execution-control" },
+    { "id": "PLS-33", "dependsOn": ["PLS-31", "PLS-32"], "owner": "client-ui" },
+    { "id": "PLS-34", "dependsOn": ["PLS-28", "PLS-30"], "owner": "pack-method" },
+    { "id": "PLS-35", "dependsOn": ["PLS-27", "PLS-28", "PLS-29", "PLS-30", "PLS-31", "PLS-32", "PLS-33", "PLS-34"], "owner": "pilot-release" }
+  ]
+}

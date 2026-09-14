@@ -1,0 +1,70 @@
+# [PLS-35] 用 held-out design 完成 Matched Comparison 并发布候选
+
+状态：ready-for-agent
+父规格：[Product Upgrade v2](../spec.md)
+模型：主集成 `gpt-5.6-terra` / medium；最终证据审查 `gpt-5.6-sol` / high
+最低测试：受影响 L0–L3 + 有界 L4 + 单次 L5 + 用户最终签收
+
+## 用户场景
+
+团队从干净 macOS发行物开始，不读手册、不使用开发者私有 Home，安装正式 Pack，从 SSH发现第二个同等能力 Site，为 Pack制作阶段没见过的新 design完成 Preparation、Campaign、Side Talk、完整图与控制，以及定制 Cell最终route采用和更高Fmax；处理完低级问题后交给用户本人签收。
+
+## 当前证据
+
+- `v0.2.0-trial.1` 保留为历史 prerelease，但真人试用判定产品失败。
+- 当前正式 AES Campaign是有证据的负结果，前三路selector有输入结构错误，不能作为正向价值证明。
+- `scripts/live-check-dtco-pilot.ts`、`audit-completed-dtco-pilot.ts`、`package-trial.mjs`和 `docs/validation/pilot-release/` 已有真实验证/打包骨架。
+- 当前 Desktop/Pack/Site/Run历史只能作为 prior art，不替代本任务新候选证据。
+
+## 固定代码范围
+
+- 产品代码不在本任务顺手修改。发现缺口返回 PLS-27～34对应模块，以独立修复/测试提交合入后重跑受影响门。
+- `scripts/live-check-dtco-pilot.ts`：适配新 Campaign/Pack身份和最少L5步骤。
+- `scripts/audit-completed-dtco-pilot.ts`：审计 proposal、owner/Side Talk、graph、A/B唯一变量、adoption、database/report和Fmax。
+- `scripts/package-trial.mjs`、`packages/desktop/package.json`、`test/contract/trial-package.test.ts`：打包自带runtime/Pack入口和冷启动。
+- `docs/validation/pilot-release/`：新增候选目录，不改写旧证据；本地私有 Site/凭据/材料不提交。
+- GitHub Release：保留旧 prerelease；先准备本地候选和可审阅 draft，用户最终签收后才发布新的 trial。
+
+## 保持项
+
+- 不在验收任务中顺手修改产品模块；缺口返回其原所有者和最低测试层修复。
+- 不改写旧 prerelease、AES Campaign、失败记录、客户输入或已保存现场证据。
+- 不将 replay、stand-in、Agent 代操作或准备好的私有 Home 当作真人产品通过。
+- 不上传 Site、design、模型凭据、日志、报告或 debug 材料。
+
+## 精确执行
+
+1. 选择一个未被 `custom-cell-fmax-dtco` 方法或测试使用的 held-out design，记录来源、hash和选择依据；不得使用 AES重命名副本。
+2. 从全新 DSH/Hima user-data开始，安装/读取 Pack，不使用预准备私有 Home。
+3. 仅从 SSH/jump/账号和少量提示发现第二 Site；验证其与 Pack的能力等价，不复制原 Site YAML。
+4. 由 HimaGuide完成 Preparation，所有必要条件 ready后生成 proposal并一次确认创建一个 Campaign/Run。
+5. Campaign Agent执行；另建 Side Talk完成普通Coding/对话并返回owner；验证pause/cancel/handoff和关闭pane不改变事实。
+6. 运行完整定制 Cell方法。Matched A/B除新Cell/library content外，RTL、约束、工具、核数、流程和设置一致。
+7. 验证route成功、最终database含新Cell有效实例、timing读取同一database、自定义臂Fmax更高；其他PPA如实报告。
+8. 归档算法、代码、输入身份、图、Jobs、知识引用、database/report身份、结果和debug现场；默认不上传客户内容。
+9. 完成受影响L0–L3、知识/模型与Site L4、单次L5；通过/失败/未跑分开。
+10. 打包、冷启动、hash和重启读回通过后准备本地候选与 draft release，提交试用说明和用户签收入口；用户本人确认后才发布trial。
+
+## 验收标准
+
+- 用户不看手册即可理解产品、Pack和下一行动。
+- 安装内容非空，Pack/Site/Preparation都可由产品完成。
+- held-out design不是Pack作者已编码实例。
+- 一个Campaign只有一个Run和一个owner，Side Talk不阻塞也不夺权。
+- 完整参考图、实际状态、代码、知识、evidence和report可达。
+- 新Cell是A/B唯一变量，最终route database实际采用它，结果Fmax更高。
+- route/constraint/database/report身份没有已知无效条件。
+- 团队在交付前修复所有主路径/低级问题；只允许定义内的少量trial缺陷。
+
+任一门失败时不发布trial；保留失败证据并回流所属任务。负结果可以成为知识，但不能满足本任务正向产品价值门。
+
+## 测试与成本
+
+- 受影响L0/L2按各任务文件选择；只在整合checkpoint运行一次完整 `pnpm run check:local`。
+- Catsights L3只跑：干净入口/Pack/Site/Preparation、Campaign+Side Talk、完整图/控制、报告/知识读回。录制集中一次。
+- L4模型、Site/tool各做一次最小验证；模型配置沿用DSH。
+- L5完整EDA Campaign只运行一次。若失败，先在最低可复现层修复，不重复整套直到根因解决。
+
+## 回滚与交付
+
+候选发布以固定commit、Pack digest、软件/Pack版本、Site能力、design输入和SHA清单为身份。回滚到上一个候选不删除新Campaign或现场证据。所有commit立即push并核对remote SHA；最终用户签收与Agent/团队验收分开记录。
