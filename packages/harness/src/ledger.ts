@@ -950,8 +950,8 @@ export const knowledgeRecord = z.strictObject({
   ...base,
   ...inBranch,
   type: z.literal('knowledge'),
-  /** Pack method, declared Site input, or an earlier Campaign's verified archive. Optional for existing v21-v25 history. */
-  origin: z.enum(['input', 'history', 'legacyPack']).optional(),
+  /** Pack method, current document, declared Site input, or earlier verified archive. */
+  origin: z.enum(['input', 'history', 'legacyPack', 'document', 'current']).optional(),
   /** Immutable Pack-local copy of exactly the bytes identified by sha256. */
   retainedPath: z.string().optional(),
   /** Bytes actually returned to the Agent. Zero distinguishes a Host-only input capture. */
@@ -968,6 +968,13 @@ export const knowledgeRecord = z.strictObject({
   /** Full source identity when returned bytes are a bounded prefix or generated historical summary. */
   sourceMaterialSha256: sha256Hex.optional(),
   sourceMaterialBytes: z.number().int().nonnegative().optional(),
+  /** Document retrieval identity. Optional so v21-v26 records remain readable unchanged. */
+  documentId: sha256Hex.optional(),
+  documentVersion: z.string().min(1).optional(),
+  chunkId: z.string().min(1).optional(),
+  page: z.number().int().positive().optional(),
+  section: z.string().min(1).optional(),
+  knowledgeScope: z.string().min(1).optional(),
   /** Historical archive provenance. Kept separate from sha256, which always identifies returned bytes. */
   sourceRun: z.string().min(1).optional(),
   sourcePurpose: z.enum(['campaign', 'test']).optional(),

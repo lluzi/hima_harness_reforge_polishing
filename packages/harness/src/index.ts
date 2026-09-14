@@ -54,13 +54,14 @@ export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, Site
 
 // A HimaPack is data, and reading it is part of the bundle's surface: an operator inspects a pack
 // against a Site before starting a Campaign, and the contract suite reads the same answer.
-export { loadPack, installedPacks, checkPack, packOverview, normalizePackAuthorStatus, harnessVersion, flowDirName, workspaceFileName, packFiles, toolArgv, outputPath, boundInputs, strategyKnobsOf, resolveRule, resolveChooser, packReadersDir, packKnowledgeDir, growthProposal, validateGrowthGraph, withGrowthGraphs, runGraphsOf } from './packs.js';
-export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackWorkshop, ContractOutput, PackCheck, PackOverview, PackAuthorStatus, ChooserCheck, KnowledgeCheck, WorkshopCheck, PackDataAt, GrowthProposal, GrowthGraph, GrowthGraphValidation } from './packs.js';
+export { loadPack, installedPacks, checkPack, packOverview, packKnowledgeManifestOf, packKnowledgeManifest, normalizePackAuthorStatus, harnessVersion, flowDirName, workspaceFileName, packFiles, toolArgv, outputPath, boundInputs, strategyKnobsOf, resolveRule, resolveChooser, packReadersDir, packKnowledgeDir, growthProposal, validateGrowthGraph, withGrowthGraphs, runGraphsOf } from './packs.js';
+export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackWorkshop, PackKnowledgeManifest, ContractOutput, PackCheck, PackOverview, PackAuthorStatus, ChooserCheck, KnowledgeCheck, WorkshopCheck, PackDataAt, GrowthProposal, GrowthGraph, GrowthGraphValidation } from './packs.js';
 // The workshop (#62): the act node where the AI writes a script inside its declared directory and the
 // fabric runs it. On the surface because the contract suite asserts which three tools a workshop's
 // moment reaches and the live check opens one against the real model route.
 export { workshopArgv, readersDirName } from './packs.js';
-export { WORKSHOP_WRITE_TOOL, WORKSHOP_READ_TOOL, WORKSHOP_KNOWLEDGE_TOOL, WORKSHOP_READ_CAP } from './workshop.js';
+export { WORKSHOP_WRITE_TOOL, WORKSHOP_READ_TOOL, WORKSHOP_KNOWLEDGE_TOOL, WORKSHOP_READ_CAP, KNOWLEDGE_INDEX_SCHEMA, KNOWLEDGE_CHUNK_CHARS, KNOWLEDGE_SEARCH_LIMIT, indexKnowledgeDocument, importCurrentKnowledge, listCurrentKnowledge, clearCurrentKnowledge, searchKnowledgeIndexes, searchCurrentKnowledge, readCurrentKnowledge, searchPackKnowledge, recordDocumentKnowledgeRead } from './workshop.js';
+export type { KnowledgeDocumentIdentity, KnowledgeDocumentChunk, KnowledgeDocumentIndex, KnowledgeSearchHit } from './workshop.js';
 // How far up the pack authoring pipeline a folder has come (#63). On the surface because the pack
 // check reports it, the `/hima pack check` words print it, and the contract suite holds a folder the
 // pipeline authored against the sections the two stages are required to write.

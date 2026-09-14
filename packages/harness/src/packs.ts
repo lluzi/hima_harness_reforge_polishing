@@ -85,7 +85,7 @@ export const contractInput = z.strictObject({ name: declaredName, description: z
  * under its own `knowledge/`, and a name with a directory in it would be a pack reaching outside
  * its own folder for the knowledge it claims to be made of.
  */
-const knowledgeFileName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/, 'a knowledge file is a plain Markdown file name under the pack\'s knowledge/, as in `push-method.md`');
+const knowledgeFileName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|txt|pdf)$/i, 'a knowledge file is a plain Markdown, text or PDF file name under the pack\'s knowledge/, as in `push-method.md`');
 
 /**
  * One knowledge file this pack carries (#57): the file under its own `knowledge/`, and what it is
@@ -511,6 +511,8 @@ export const packContract = z.strictObject({
   minimumHarnessVersion: z.string().regex(/^\d+\.\d+\.\d+$/, 'minimumHarnessVersion is major.minor.patch').optional(),
   /** Domain terms a Pack author maps to stable product vocabulary; mappings remain author-owned. */
   ontology: z.strictObject({ aliases: z.record(declaredName, z.array(z.string().min(1)).min(1)).default({}) }).default({ aliases: {} }),
+  /** Optional transparent document inventory. The conventional path keeps one Pack format. */
+  knowledgeManifest: z.literal('knowledge/manifest.yml').optional(),
   inputs: z.array(contractInput).min(1),
   outputs: z.array(contractOutput).default([]),
   /** What the Site must let this pack run: every wrapper its tools' command lines begin with. */
@@ -574,6 +576,18 @@ export const packContract = z.strictObject({
 export type PackContract = z.infer<typeof packContract>;
 export type PackTool = z.infer<typeof packTool>;
 export type ContractOutput = z.infer<typeof contractOutput>;
+
+export const packKnowledgeManifest = z.strictObject({
+  schema: z.literal('hima-pack-knowledge/1'),
+  documents: z.array(z.strictObject({
+    id: packId,
+    file: knowledgeFileName,
+    title: z.string().min(1),
+    version: z.string().min(1).optional(),
+    mediaType: z.enum(['text/markdown', 'text/plain', 'application/pdf']),
+  })),
+});
+export type PackKnowledgeManifest = z.infer<typeof packKnowledgeManifest>;
 
 /** The Harness version against which Pack minimum versions are compared. */
 export const harnessVersion = '0.1.0';
@@ -855,6 +869,7 @@ export interface PackOverview {
   readonly tools: readonly { readonly id: string; readonly recommendedVersion?: string }[];
   readonly ontologyAliases: Readonly<Record<string, readonly string[]>>;
   readonly knowledge: readonly { readonly file: string; readonly purpose: string }[];
+  readonly knowledgeManifest?: PackKnowledgeManifest;
   readonly stage: PackStage;
   readonly referenceGraph: { readonly entry: string; readonly nodes: readonly string[] };
   readonly intent?: string;
@@ -874,12 +889,29 @@ export function packOverview(pack: Pack): PackOverview {
     tools: pack.contract.tools.map((tool) => ({ id: tool.id, ...(tool.recommendedVersion === undefined ? {} : { recommendedVersion: tool.recommendedVersion }) })),
     ontologyAliases: pack.contract.ontology.aliases,
     knowledge: pack.contract.knowledge,
+    ...(packKnowledgeManifestOf(pack) === undefined ? {} : { knowledgeManifest: packKnowledgeManifestOf(pack) }),
     stage: packStageFrom(pack.folder),
     referenceGraph: { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => node.id) },
     ...(pack.folder.text(pipelineFiles.intent) === undefined ? {} : { intent: pack.folder.text(pipelineFiles.intent) }),
     ...(pack.folder.text(pipelineFiles.spec) === undefined ? {} : { spec: pack.folder.text(pipelineFiles.spec) }),
     ...(pack.folder.text(packFiles.spec) === undefined ? {} : { pack: pack.folder.text(packFiles.spec) }),
   };
+}
+
+/** Read the optional Pack document inventory from the same immutable folder snapshot as its contract. */
+export function packKnowledgeManifestOf(pack: Pack): PackKnowledgeManifest | undefined {
+  if (pack.contract.knowledgeManifest === undefined) return undefined;
+  const text = pack.folder.text(pack.contract.knowledgeManifest);
+  if (text === undefined) throw new Error(`${packFiles.contract} declares ${pack.contract.knowledgeManifest}, but the Pack does not hold that file`);
+  let input: unknown;
+  try { input = parse(text); } catch (error) { throw new Error(`${pack.contract.knowledgeManifest} is not YAML: ${(error as Error).message}`); }
+  const manifest = packKnowledgeManifest.parse(input);
+  const declared = new Set(pack.contract.knowledge.map((item) => item.file));
+  for (const document of manifest.documents) {
+    if (!declared.has(document.file)) throw new Error(`${pack.contract.knowledgeManifest} names ${document.file}, which contract.yml does not declare under knowledge`);
+    if (!pack.folder.files.has(`knowledge/${document.file}`)) throw new Error(`${pack.contract.knowledgeManifest} names missing knowledge/${document.file}`);
+  }
+  return manifest;
 }
 
 /**
@@ -1611,6 +1643,7 @@ export function loadPackFrom(folder: PackFolderSnapshot): Pack {
     chooserDirs: [path.join(dir, packDataDirs.choosers), shippedChoosersDir],
   };
   validatePack(folder, pack);
+  packKnowledgeManifestOf(pack);
   return pack;
 }
 
