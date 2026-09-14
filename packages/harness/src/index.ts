@@ -36,7 +36,7 @@ import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
 import { previewPackTransfer, applyPackTransfer } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
-import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks } from './packs.js';
+import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
 import { installedSites, loadSite } from './sites.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
@@ -54,8 +54,8 @@ export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, Site
 
 // A HimaPack is data, and reading it is part of the bundle's surface: an operator inspects a pack
 // against a Site before starting a Campaign, and the contract suite reads the same answer.
-export { loadPack, installedPacks, checkPack, flowDirName, workspaceFileName, packFiles, toolArgv, outputPath, boundInputs, strategyKnobsOf, resolveRule, resolveChooser, packReadersDir, packKnowledgeDir, growthProposal, validateGrowthGraph, withGrowthGraphs, runGraphsOf } from './packs.js';
-export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackWorkshop, ContractOutput, PackCheck, ChooserCheck, KnowledgeCheck, WorkshopCheck, PackDataAt, GrowthProposal, GrowthGraph, GrowthGraphValidation } from './packs.js';
+export { loadPack, installedPacks, checkPack, packOverview, normalizePackAuthorStatus, harnessVersion, flowDirName, workspaceFileName, packFiles, toolArgv, outputPath, boundInputs, strategyKnobsOf, resolveRule, resolveChooser, packReadersDir, packKnowledgeDir, growthProposal, validateGrowthGraph, withGrowthGraphs, runGraphsOf } from './packs.js';
+export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackWorkshop, ContractOutput, PackCheck, PackOverview, PackAuthorStatus, ChooserCheck, KnowledgeCheck, WorkshopCheck, PackDataAt, GrowthProposal, GrowthGraph, GrowthGraphValidation } from './packs.js';
 // The workshop (#62): the act node where the AI writes a script inside its declared directory and the
 // fabric runs it. On the surface because the contract suite asserts which three tools a workshop's
 // moment reaches and the live check opens one against the real model route.
@@ -202,6 +202,7 @@ export { branchSaid, branchJobsSaid, branchLines, branchesIn, branchesState, bra
 // and the contract suite, which asserts on what the route answered rather than on a rendering of it.
 export { metersState, meterLines, endedByLabel } from './card-labels.js';
 export type { MeteredRun } from './card-labels.js';
+export { packAuthorStatusLabel, packOntologyLabel } from './card-labels.js';
 
 // What the ledger holds, for a caller reading records back through the namespace. `hasEnded` is the
 // one predicate over a Run's status every face shares: what counts as an ending is the ledger's to
@@ -312,7 +313,14 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
   const active = ledger.runs().filter((run) => !hasEnded(run.status)).slice(-5);
   const packLine = packs.length === 0
     ? 'Installed HimaPacks: none. Offer to install or inspect a Pack before preparing a Campaign.'
-    : `Installed HimaPacks: ${packs.join(', ')}.`;
+    : `Installed HimaPacks: ${packs.map((id) => {
+      try {
+        const overview = packOverview(loadPack(packsDir, id));
+        return `${id}${overview.status === undefined ? '' : ` (${overview.status.raw})`}`;
+      } catch {
+        return `${id} (unreadable; do not claim ready)`;
+      }
+    }).join(', ')}.`;
   const siteLine = sites.length === 0
     ? 'Saved Sites: none. Offer to discover a Site from the user\'s SSH identity and available hints.'
     : `Saved Sites: ${sites.join(', ')}.`;

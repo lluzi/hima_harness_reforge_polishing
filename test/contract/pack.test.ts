@@ -196,6 +196,40 @@ test('the check on a site that binds every input reports the inputs, the tool, t
   }
 });
 
+test('optional Pack metadata is readable, normalised only for display, and a higher Harness minimum is a preparation error', async (t) => {
+  const local = await localPackHome(t);
+  if (!local) return;
+  const { h, dispose } = local;
+  try {
+    const packsDir = packsDirOf(h);
+    const site = loadSite(path.join(h.home, 'hima/sites'), 'local');
+    const metadata = `title: opene902 timing probe
+status: Preview Candidate
+minimumHarnessVersion: 0.1.0
+ontology:
+  aliases:
+    target_period_ns: [clock target, timing target]`;
+    await writePackVariant(packsDir, 'metadata-preview', [
+      ['title: opene902 timing probe', metadata],
+      ['  - id: synth', '  - id: synth\n    recommendedVersion: "S-2024.03"'],
+    ]);
+    const preview = loadPack(packsDir, 'metadata-preview');
+    const checked = checkPack(preview, site);
+    assert.equal(checked.fit, true, checked.errors.join('\n'));
+    assert.equal(checked.minimumHarnessVersion, '0.1.0');
+    assert.equal(preview.contract.status, 'Preview Candidate');
+    assert.equal(preview.contract.tools[0]?.recommendedVersion, 'S-2024.03');
+    assert.deepEqual(preview.contract.ontology.aliases, { target_period_ns: ['clock target', 'timing target'] });
+
+    await writePackVariant(packsDir, 'metadata-too-new', [['title: opene902 timing probe', `title: opene902 timing probe\nstatus: released\nminimumHarnessVersion: 0.2.0`]]);
+    const tooNew = checkPack(loadPack(packsDir, 'metadata-too-new'), site);
+    assert.equal(tooNew.fit, false);
+    assert.match(tooNew.errors.join('\n'), /requires HimaHarness 0\.2\.0 or later, but this Harness is 0\.1\.0/);
+  } finally {
+    await dispose();
+  }
+});
+
 test('a site that binds only some of the pack\'s inputs fails the check, naming the input it did not bind', async (t) => {
   const local = await localPackHome(t, { bindings: () => ({ design: 'opene902' }) });
   if (!local) return;

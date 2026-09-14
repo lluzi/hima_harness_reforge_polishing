@@ -36,6 +36,23 @@ export const outcomeColour: Readonly<Record<string, string>> = { PASS: good, FAI
 /** What a state is called on screen, and the colour it is said in. */
 export interface StateLabel { readonly said: string; readonly colour: string }
 
+/** Recommended display words for a Pack author's raw status; unknown author words remain visible. */
+export function packAuthorStatusLabel(raw: string): string {
+  const status = raw.trim().toLowerCase();
+  if (['development', 'dev', 'draft', 'alpha', 'beta'].includes(status)) return 'development';
+  if (['trial', 'preview', 'candidate', 'rc'].includes(status)) return 'trial';
+  if (['released', 'release', 'stable', 'production', 'ga'].includes(status)) return 'released';
+  if (['deprecated', 'retired', 'obsolete', 'archived'].includes(status)) return 'deprecated';
+  return raw;
+}
+
+/** Render an author alias under its Pack-declared product term, leaving unknown words untouched. */
+export function packOntologyLabel(term: string, aliases: Readonly<Record<string, readonly string[]>>): string {
+  const wanted = term.trim().toLowerCase();
+  return Object.entries(aliases).find(([canonical, words]) => canonical.toLowerCase() === wanted
+    || words.some((word) => word.trim().toLowerCase() === wanted))?.[0] ?? term;
+}
+
 /**
  * Where a Run stands, in the ledger's own seven words plus what each of them means to a person.
  *

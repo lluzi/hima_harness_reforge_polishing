@@ -205,6 +205,8 @@ export const contractOutput = z.strictObject({
  */
 export const packTool = z.strictObject({
   id: packId,
+  /** The executable a Pack author recommends for this tool. It is advice for review, not a lock. */
+  recommendedVersion: z.string().min(1).optional(),
   file: z.string().min(1),
   description: z.string().default(''),
   /** The variables the tool's script reads, and the only names `argv` may reference. */
@@ -503,6 +505,12 @@ export const packContract = z.strictObject({
   id: packId,
   version: z.string(),
   title: z.string(),
+  /** The author's own release word. It is displayed, never used to choose execution behaviour. */
+  status: z.string().min(1).optional(),
+  /** The oldest forward-compatible Harness release that can read this method. */
+  minimumHarnessVersion: z.string().regex(/^\d+\.\d+\.\d+$/, 'minimumHarnessVersion is major.minor.patch').optional(),
+  /** Domain terms a Pack author maps to stable product vocabulary; mappings remain author-owned. */
+  ontology: z.strictObject({ aliases: z.record(declaredName, z.array(z.string().min(1)).min(1)).default({}) }).default({ aliases: {} }),
   inputs: z.array(contractInput).min(1),
   outputs: z.array(contractOutput).default([]),
   /** What the Site must let this pack run: every wrapper its tools' command lines begin with. */
@@ -566,6 +574,31 @@ export const packContract = z.strictObject({
 export type PackContract = z.infer<typeof packContract>;
 export type PackTool = z.infer<typeof packTool>;
 export type ContractOutput = z.infer<typeof contractOutput>;
+
+/** The Harness version against which Pack minimum versions are compared. */
+export const harnessVersion = '0.1.0';
+
+export type PackAuthorStatus = 'development' | 'trial' | 'released' | 'deprecated' | 'other';
+
+/** Map common author words to stable display vocabulary while retaining the raw contract value. */
+export function normalizePackAuthorStatus(status: string | undefined): PackAuthorStatus | undefined {
+  if (status === undefined) return undefined;
+  const word = status.trim().toLowerCase();
+  if (['development', 'dev', 'draft', 'alpha', 'beta'].includes(word)) return 'development';
+  if (['trial', 'preview', 'candidate', 'rc'].includes(word)) return 'trial';
+  if (['released', 'release', 'stable', 'production', 'ga'].includes(word)) return 'released';
+  if (['deprecated', 'retired', 'obsolete', 'archived'].includes(word)) return 'deprecated';
+  return 'other';
+}
+
+type Semver = readonly [number, number, number];
+const semver = (value: string): Semver => value.split('.').map(Number) as unknown as Semver;
+const semverAtLeast = (actual: string, minimum: string): boolean => {
+  const have = semver(actual), need = semver(minimum);
+  return have[0] === need[0]
+    ? have[1] === need[1] ? have[2] >= need[2] : have[1] >= need[1]
+    : have[0] > need[0];
+};
 
 // ---------------------------------------------------------------------------------------------
 // The graph: four node kinds and outcome-labelled edges, and nothing else (CONTEXT.md).
@@ -810,6 +843,43 @@ export interface Pack {
   /** Accepted per-Run additions, attached to an in-memory Pack reading by Fabric. Never persisted in
    *  or hashed with the Pack folder. */
   readonly growthGraphs?: readonly GrowthGraph[];
+}
+
+/** A read-only product view derived from the Pack's one folder snapshot; it owns no second manifest. */
+export interface PackOverview {
+  readonly id: string;
+  readonly title: string;
+  readonly version: string;
+  readonly status?: { readonly raw: string; readonly normalized: PackAuthorStatus };
+  readonly minimumHarnessVersion?: string;
+  readonly tools: readonly { readonly id: string; readonly recommendedVersion?: string }[];
+  readonly ontologyAliases: Readonly<Record<string, readonly string[]>>;
+  readonly knowledge: readonly { readonly file: string; readonly purpose: string }[];
+  readonly stage: PackStage;
+  readonly referenceGraph: { readonly entry: string; readonly nodes: readonly string[] };
+  readonly intent?: string;
+  readonly spec?: string;
+  readonly pack?: string;
+}
+
+/** Summarise the existing Pack files and declarations without re-reading its directory. */
+export function packOverview(pack: Pack): PackOverview {
+  const rawStatus = pack.contract.status;
+  return {
+    id: pack.id,
+    title: pack.contract.title,
+    version: pack.contract.version,
+    ...(rawStatus === undefined ? {} : { status: { raw: rawStatus, normalized: normalizePackAuthorStatus(rawStatus)! } }),
+    ...(pack.contract.minimumHarnessVersion === undefined ? {} : { minimumHarnessVersion: pack.contract.minimumHarnessVersion }),
+    tools: pack.contract.tools.map((tool) => ({ id: tool.id, ...(tool.recommendedVersion === undefined ? {} : { recommendedVersion: tool.recommendedVersion }) })),
+    ontologyAliases: pack.contract.ontology.aliases,
+    knowledge: pack.contract.knowledge,
+    stage: packStageFrom(pack.folder),
+    referenceGraph: { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => node.id) },
+    ...(pack.folder.text(pipelineFiles.intent) === undefined ? {} : { intent: pack.folder.text(pipelineFiles.intent) }),
+    ...(pack.folder.text(pipelineFiles.spec) === undefined ? {} : { spec: pack.folder.text(pipelineFiles.spec) }),
+    ...(pack.folder.text(packFiles.spec) === undefined ? {} : { pack: pack.folder.text(packFiles.spec) }),
+  };
 }
 
 /**
@@ -2327,6 +2397,8 @@ export interface SemanticsCheck {
 export interface PackCheck {
   readonly packId: string;
   readonly packVersion: string;
+  /** The declared Pack requirement, if any. It is a preparation fact, not a status policy. */
+  readonly minimumHarnessVersion?: string;
   readonly siteName: string;
   /**
    * How far up the pack authoring pipeline this folder has come, and what the next stage needs (#63).
@@ -2418,6 +2490,11 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
   const folder = pack.folder;
   const errors: string[] = [];
   const fail = <T>(entry: T, message: string): T => { errors.push(message); return entry; };
+
+  const minimumHarnessVersion = pack.contract.minimumHarnessVersion;
+  if (minimumHarnessVersion !== undefined && !semverAtLeast(harnessVersion, minimumHarnessVersion)) {
+    errors.push(`pack requires HimaHarness ${minimumHarnessVersion} or later, but this Harness is ${harnessVersion}; install a compatible Harness before preparing a Campaign`);
+  }
 
   const inputs: InputCheck[] = pack.contract.inputs.map((input) => {
     const bound = site.bindings[input.name];
@@ -2858,6 +2935,7 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
   return {
     packId: pack.id,
     packVersion: pack.contract.version,
+    ...(minimumHarnessVersion === undefined ? {} : { minimumHarnessVersion }),
     siteName: site.name,
     stage: packStageFrom(folder),
     inputs,
