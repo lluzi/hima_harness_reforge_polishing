@@ -17,7 +17,8 @@ import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { identityOf, revisionImpactForRun, executionAction, executionContext, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
-import { checkInstalledPack, runPackWords } from './packs.js';
+import { checkInstalledPack, loadPack, runPackWords } from './packs.js';
+import { clearCurrentKnowledge, importCurrentKnowledge, listCurrentKnowledge, readCurrentKnowledge, readPackKnowledge, recordDocumentKnowledgeRead, searchCurrentKnowledge, searchPackKnowledge } from './workshop.js';
 import { releasePack } from './release.js';
 import { runView, type RunWords } from './remote.js';
 import type { PreparationView } from './workbench.js';
@@ -238,7 +239,7 @@ function resumeToolValue(result: ResumeResult): ResumeToolValue {
  * and this module has nothing to say about that.
  */
 export function himaTools(deps: FabricDeps, author?: (request: { pack: string; create?: boolean }, agent?: Agent) => Promise<{ pack: string; folder: string; sessionId: string; created: boolean }>,
-  prepare?: (pack: string, site?: string) => PreparationView): ToolDefinition[] {
+  prepare?: (pack: string, site?: string) => PreparationView, knowledge?: { root: string }): ToolDefinition[] {
   return [
     ...author ? [defineTool({
       name: 'hima_author',
@@ -253,6 +254,63 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       } }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: (args, execution) => author(args, execution.agent),
     })] : [],
+    ...knowledge === undefined ? [] : [defineTool({
+      name: 'hima_knowledge',
+      description: 'Manage Hima-owned offline knowledge without any upload. import copies one explicitly selected PDF, Markdown or text file into the named current-knowledge scope. list and search return identities and bounded snippets only. read returns bounded exact source text; when run is supplied, only that successful read appends a KnowledgeRecord to the Campaign. clear removes one exact current document. Pack knowledge remains read-only and is selected with source=pack and pack.',
+      parameters: {
+        action: { type: 'string', required: true, enum: ['import', 'list', 'search', 'read', 'clear'] },
+        source: { type: 'string', enum: ['current', 'pack'], description: 'Defaults to current. Pack source is read-only.' },
+        scope: { type: 'string', description: 'Required for current knowledge; a workspace, proposal or Campaign identity.' },
+        file: { type: 'string', description: 'Local source path for import only.' },
+        title: { type: 'string' }, version: { type: 'string' }, query: { type: 'string' }, limit: { type: 'integer' },
+        documentId: { type: 'string', description: 'Exact identity returned by list or search.' },
+        chunkId: { type: 'string', description: 'Exact identity returned by search.' },
+        pack: { type: 'string', description: 'Installed Pack id for Pack knowledge.' },
+        run: { type: 'string', description: 'Optional attached Campaign. Only read records evidence, and only with a live Agent.' },
+      },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      execute: async (args, execution) => {
+        const source = args.source === 'pack' ? 'pack' : 'current';
+        if (args.action === 'import') {
+          if (source !== 'current' || !args.scope || !args.file) throw new Error('import requires current source, scope and file');
+          return toolJson(await importCurrentKnowledge({ root: knowledge.root, scope: args.scope, file: args.file, ...(args.title === undefined ? {} : { title: args.title }), ...(args.version === undefined ? {} : { version: args.version }) }));
+        }
+        if (args.action === 'list') {
+          if (source !== 'current' || !args.scope) throw new Error('list requires current source and scope');
+          return toolJson({ documents: await listCurrentKnowledge(knowledge.root, args.scope) });
+        }
+        if (args.action === 'clear') {
+          if (source !== 'current' || !args.scope || !args.documentId) throw new Error('clear requires current source, scope and documentId');
+          return toolJson({ cleared: await clearCurrentKnowledge(knowledge.root, args.scope, args.documentId) });
+        }
+        if (args.action === 'search') {
+          if (!args.query) throw new Error('search requires query');
+          const limit = args.limit === undefined ? undefined : args.limit;
+          if (source === 'current') {
+            if (!args.scope) throw new Error('current search requires scope');
+            return toolJson({ hits: await searchCurrentKnowledge(knowledge.root, args.scope, args.query, limit) });
+          }
+          if (!args.pack) throw new Error('Pack search requires pack');
+          return toolJson({ hits: await searchPackKnowledge(loadPack(deps.packsDir, args.pack), args.query, limit) });
+        }
+        if (!args.documentId || !args.chunkId) throw new Error('read requires documentId and chunkId');
+        const hit = source === 'current'
+          ? !args.scope ? undefined : await readCurrentKnowledge(knowledge.root, args.scope, args.documentId, args.chunkId)
+          : !args.pack ? undefined : await readPackKnowledge(loadPack(deps.packsDir, args.pack), args.documentId, args.chunkId);
+        if (!hit) throw new Error(source === 'current' ? 'current read requires scope' : 'Pack read requires pack');
+        if (args.run !== undefined) {
+          if (!execution.agent) throw new Error('a Campaign knowledge read requires a live conversational Agent');
+          const run = deps.ledger.run(args.run);
+          if (!run) throw new Error(`unknown Campaign ${args.run}`);
+          const record = await recordDocumentKnowledgeRead({ ledger: deps.ledger, packsDir: deps.packsDir, runId: args.run,
+            nodeId: run.currentNode ?? 'knowledge', attempt: 1, sessionId: String(execution.agent.id), workshop: 'knowledge', hit,
+            root: knowledge.root,
+            origin: source === 'current' ? 'current' : 'document' });
+          return toolJson({ ...hit, recordId: record.id });
+        }
+        return toolJson(hit);
+      },
+    })],
     defineTool({
       name: 'hima_context',
       description: 'Read current Run execution facts, owner/epoch/revision, reference nodes, available node ids and admitted executions, plus recorded Jobs, code, observations and verdicts. This read starts no business work. Use the current context already returned by hima_run or hima_execute for the next action; refresh here when asynchronous facts change or that context is missing or stale. A different selected Run does not change its owner.',

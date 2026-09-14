@@ -805,6 +805,10 @@ export const workshopAsk = (entry: string): string => `Write ${entry} now, and s
 export const KNOWLEDGE_INDEX_SCHEMA = 'hima-knowledge-index/1' as const;
 export const KNOWLEDGE_CHUNK_CHARS = 2_400;
 export const KNOWLEDGE_SEARCH_LIMIT = 8;
+/** Search is discovery only.  A short preview prevents a result list from becoming a document read. */
+export const KNOWLEDGE_SNIPPET_CHARS = 360;
+/** The text a read may expose to an Agent or record as used evidence. */
+export const KNOWLEDGE_READ_CAP = 2_400;
 
 export interface KnowledgeDocumentIdentity {
   readonly id: string;
@@ -839,6 +843,19 @@ export interface KnowledgeSearchHit extends KnowledgeDocumentChunk {
   readonly score: number;
 }
 
+/** A search candidate deliberately has no chunk body.  Call read with its identities for bytes. */
+export interface KnowledgeSearchCandidate {
+  readonly id: string;
+  readonly documentId: string;
+  readonly ordinal: number;
+  readonly page?: number;
+  readonly section?: string;
+  readonly sha256: string;
+  readonly document: KnowledgeDocumentIdentity;
+  readonly score: number;
+  readonly snippet: string;
+}
+
 const hash = (bytes: string | Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 const safeDocumentId = (id: string): string => {
   if (!/^[a-f0-9]{64}$/.test(id)) throw new Error(`invalid knowledge document id ${JSON.stringify(id)}`);
@@ -848,6 +865,34 @@ const scopeDirectory = (root: string, scope: string): string => {
   if (scope.trim() === '' || scope.length > 512) throw new Error('knowledge scope must be a non-empty bounded identity');
   return path.join(path.resolve(root), hash(scope));
 };
+
+/** Reject links in every owned path component.  `path.resolve` alone only constrains spelling. */
+async function plainPath(root: string, target: string, kind: 'file' | 'directory'): Promise<void> {
+  const base = path.resolve(root);
+  const resolved = path.resolve(target);
+  const relative = path.relative(base, resolved);
+  if (relative === '' ? kind === 'file' : relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`knowledge path escapes its root: ${resolved}`);
+  }
+  let at = base;
+  const rootState = await lstat(at);
+  if (rootState.isSymbolicLink() || !rootState.isDirectory()) throw new Error(`knowledge root is not a plain directory: ${base}`);
+  for (const part of relative.split(path.sep).filter(Boolean)) {
+    at = path.join(at, part);
+    const state = await lstat(at);
+    if (state.isSymbolicLink()) throw new Error(`knowledge path contains a symbolic link: ${at}`);
+  }
+  const state = await lstat(resolved);
+  if ((kind === 'file' ? !state.isFile() : !state.isDirectory()) || state.isSymbolicLink()) {
+    throw new Error(`knowledge source is not a plain ${kind}: ${resolved}`);
+  }
+}
+
+async function plainSource(file: string): Promise<void> {
+  const resolved = path.resolve(file);
+  const parsed = path.parse(resolved);
+  await plainPath(parsed.root, resolved, 'file');
+}
 
 function mediaTypeOf(file: string): KnowledgeDocumentIdentity['mediaType'] {
   const extension = path.extname(file).toLowerCase();
@@ -888,14 +933,12 @@ function chunksOfPage(documentId: string, text: string, page: number | undefined
 
 /** Parse one local document entirely offline. PDF pages remain separate so every hit can cite a
  * page. The source bytes remain authoritative; this object is only a rebuildable search index. */
-export async function indexKnowledgeDocument(input: {
-  readonly file: string; readonly title?: string; readonly version?: string;
+async function indexKnowledgeBytes(input: {
+  readonly bytes: Uint8Array; readonly sourcePath: string; readonly title?: string; readonly version?: string;
   readonly scope: string; readonly source: 'pack' | 'current';
 }): Promise<KnowledgeDocumentIndex> {
-  const sourcePath = path.resolve(input.file);
-  const state = await lstat(sourcePath);
-  if (!state.isFile() || state.isSymbolicLink()) throw new Error(`knowledge source is not a plain file: ${sourcePath}`);
-  const bytes = await readFile(sourcePath);
+  const sourcePath = path.resolve(input.sourcePath);
+  const bytes = input.bytes;
   const mediaType = mediaTypeOf(sourcePath);
   const id = hash(bytes);
   let pages: string[];
@@ -916,6 +959,15 @@ export async function indexKnowledgeDocument(input: {
   return { schema: KNOWLEDGE_INDEX_SCHEMA, document, chunks };
 }
 
+export async function indexKnowledgeDocument(input: {
+  readonly file: string; readonly title?: string; readonly version?: string;
+  readonly scope: string; readonly source: 'pack' | 'current';
+}): Promise<KnowledgeDocumentIndex> {
+  const sourcePath = path.resolve(input.file);
+  await plainSource(sourcePath);
+  return indexKnowledgeBytes({ ...input, sourcePath, bytes: await readFile(sourcePath) });
+}
+
 const currentIndexAt = (root: string, scope: string, id: string): string => path.join(scopeDirectory(root, scope), safeDocumentId(id), 'index.json');
 
 function parseKnowledgeIndex(value: unknown, at: string): KnowledgeDocumentIndex {
@@ -928,7 +980,27 @@ function parseKnowledgeIndex(value: unknown, at: string): KnowledgeDocumentIndex
 
 async function readCurrentIndex(root: string, scope: string, id: string): Promise<KnowledgeDocumentIndex> {
   const at = currentIndexAt(root, scope, id);
-  return parseKnowledgeIndex(JSON.parse(await readFile(at, 'utf8')) as unknown, at);
+  await plainPath(path.resolve(root), at, 'file');
+  const index = parseKnowledgeIndex(JSON.parse(await readFile(at, 'utf8')) as unknown, at);
+  if (index.document.source !== 'current' || index.document.scope !== scope || index.document.id !== safeDocumentId(id)) {
+    throw new Error(`knowledge index identity does not match its durable scope at ${at}`);
+  }
+  await plainPath(path.resolve(root), index.document.sourcePath, 'file');
+  const bytes = await readFile(index.document.sourcePath);
+  if (hash(bytes) !== index.document.sha256 || bytes.byteLength !== index.document.bytes) {
+    throw new Error(`knowledge source bytes do not match index identity at ${index.document.sourcePath}`);
+  }
+  // `index.json` is a cache, never the text authority.  A syntactically valid forged chunk must
+  // not become searchable merely because it hashes itself consistently.
+  const rebuilt = await indexKnowledgeDocument({ file: index.document.sourcePath, title: index.document.title,
+    ...(index.document.version === undefined ? {} : { version: index.document.version }), scope, source: 'current' });
+  if (rebuilt.document.id !== index.document.id || rebuilt.chunks.length !== index.chunks.length
+    || rebuilt.chunks.some((chunk, ordinal) => {
+      const held = index.chunks[ordinal];
+      return held === undefined || chunk.id !== held.id || chunk.sha256 !== held.sha256 || chunk.text !== held.text
+        || chunk.page !== held.page || chunk.section !== held.section;
+    })) throw new Error(`knowledge index chunks do not match durable source bytes at ${at}`);
+  return index;
 }
 
 /** Copy a user-selected document into Hima's current-knowledge root and publish its index atomically.
@@ -936,6 +1008,9 @@ async function readCurrentIndex(root: string, scope: string, id: string): Promis
 export async function importCurrentKnowledge(input: {
   readonly root: string; readonly scope: string; readonly file: string; readonly title?: string; readonly version?: string;
 }): Promise<KnowledgeDocumentIndex> {
+  await plainSource(input.file);
+  await mkdir(path.resolve(input.root), { recursive: true });
+  await plainPath(path.parse(path.resolve(input.root)).root, path.resolve(input.root), 'directory');
   const parsed = await indexKnowledgeDocument({ ...input, source: 'current' });
   const scopeDir = scopeDirectory(input.root, input.scope);
   const target = path.join(scopeDir, parsed.document.id);
@@ -943,13 +1018,18 @@ export async function importCurrentKnowledge(input: {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   await mkdir(scopeDir, { recursive: true });
+  await plainPath(path.resolve(input.root), scopeDir, 'directory');
   const staged = `${target}.next-${process.pid}-${Date.now()}`;
   await mkdir(staged, { recursive: false });
   try {
     const extension = path.extname(input.file).toLowerCase();
     const stagedSourcePath = path.join(staged, `source${extension}`);
     const sourcePath = path.join(target, `source${extension}`);
-    await copyFile(path.resolve(input.file), stagedSourcePath);
+    await copyFile(path.resolve(input.file), stagedSourcePath, 0);
+    const copied = await readFile(stagedSourcePath);
+    if (hash(copied) !== parsed.document.sha256 || copied.byteLength !== parsed.document.bytes) {
+      throw new Error('knowledge source changed while it was being imported');
+    }
     const durable: KnowledgeDocumentIndex = { ...parsed, document: { ...parsed.document, sourcePath } };
     await writeFile(path.join(staged, 'index.json'), `${JSON.stringify(durable, null, 2)}\n`, { mode: 0o600 });
     await rename(staged, target);
@@ -967,6 +1047,7 @@ export async function listCurrentKnowledge(root: string, scope: string): Promise
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
+  await plainPath(path.resolve(root), directory, 'directory');
   const documents: KnowledgeDocumentIdentity[] = [];
   for (const id of names.filter((name) => /^[a-f0-9]{64}$/.test(name)).sort()) documents.push((await readCurrentIndex(root, scope, id)).document);
   return documents;
@@ -976,7 +1057,7 @@ export async function listCurrentKnowledge(root: string, scope: string): Promise
  * unreachable from this path. */
 export async function clearCurrentKnowledge(root: string, scope: string, id: string): Promise<boolean> {
   const directory = path.dirname(currentIndexAt(root, scope, id));
-  try { await lstat(directory); } catch (error) {
+  try { await plainPath(path.resolve(root), directory, 'directory'); } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
   }
@@ -986,11 +1067,13 @@ export async function clearCurrentKnowledge(root: string, scope: string, id: str
 
 const queryTerms = (query: string): string[] => [...new Set(query.toLowerCase().match(/[\p{L}\p{N}_.-]{2,}/gu) ?? [])];
 
-export function searchKnowledgeIndexes(indexes: readonly KnowledgeDocumentIndex[], query: string, limit = 5): readonly KnowledgeSearchHit[] {
+const snippetOf = (text: string): string => text.replace(/\s+/g, ' ').trim().slice(0, KNOWLEDGE_SNIPPET_CHARS);
+
+export function searchKnowledgeIndexes(indexes: readonly KnowledgeDocumentIndex[], query: string, limit = 5): readonly KnowledgeSearchCandidate[] {
   const terms = queryTerms(query);
   if (terms.length === 0) return [];
   const phrase = query.trim().toLowerCase();
-  const hits: KnowledgeSearchHit[] = [];
+  const hits: KnowledgeSearchCandidate[] = [];
   for (const index of indexes) for (const chunk of index.chunks) {
     const text = chunk.text.toLowerCase();
     let score = phrase.length > 2 && text.includes(phrase) ? 20 : 0;
@@ -999,13 +1082,15 @@ export function searchKnowledgeIndexes(indexes: readonly KnowledgeDocumentIndex[
       while (at >= 0 && count < 8) { count++; at = text.indexOf(term, at + term.length); }
       score += count;
     }
-    if (score > 0) hits.push({ ...chunk, document: index.document, score });
+    if (score > 0) hits.push({ id: chunk.id, documentId: chunk.documentId, ordinal: chunk.ordinal,
+      ...(chunk.page === undefined ? {} : { page: chunk.page }), ...(chunk.section === undefined ? {} : { section: chunk.section }),
+      sha256: chunk.sha256, document: index.document, score, snippet: snippetOf(chunk.text) });
   }
   return hits.sort((a, b) => b.score - a.score || a.document.id.localeCompare(b.document.id) || a.ordinal - b.ordinal)
     .slice(0, Math.max(1, Math.min(KNOWLEDGE_SEARCH_LIMIT, Math.floor(limit))));
 }
 
-export async function searchCurrentKnowledge(root: string, scope: string, query: string, limit = 5): Promise<readonly KnowledgeSearchHit[]> {
+export async function searchCurrentKnowledge(root: string, scope: string, query: string, limit = 5): Promise<readonly KnowledgeSearchCandidate[]> {
   const documents = await listCurrentKnowledge(root, scope);
   const indexes = await Promise.all(documents.map((document) => readCurrentIndex(root, scope, document.id)));
   return searchKnowledgeIndexes(indexes, query, limit);
@@ -1015,28 +1100,53 @@ export async function readCurrentKnowledge(root: string, scope: string, document
   const index = await readCurrentIndex(root, scope, documentId);
   const chunk = index.chunks.find((item) => item.id === chunkId);
   if (!chunk) throw new Error(`unknown knowledge chunk ${JSON.stringify(chunkId)} in document ${documentId}`);
-  return { ...chunk, document: index.document, score: 0 };
+  return { ...chunk, text: chunk.text.slice(0, KNOWLEDGE_READ_CAP), sha256: hash(chunk.text.slice(0, KNOWLEDGE_READ_CAP)), document: index.document, score: 0 };
 }
 
 /** Build a bounded search view from the transparent knowledge files in one loaded Pack. */
-export async function searchPackKnowledge(pack: Pack, query: string, limit = 5): Promise<readonly KnowledgeSearchHit[]> {
+async function packKnowledgeIndex(pack: Pack): Promise<readonly KnowledgeDocumentIndex[]> {
   const manifest = packKnowledgeManifestOf(pack);
   const metadata = new Map(manifest?.documents.map((document) => [document.file, document]) ?? []);
-  const indexes = await Promise.all(pack.contract.knowledge.map((declared) => {
+  return Promise.all(pack.contract.knowledge.map(async (declared) => {
     const found = metadata.get(declared.file);
-    return indexKnowledgeDocument({ file: path.join(pack.dir, 'knowledge', declared.file), title: found?.title ?? declared.purpose,
+    const relative = `knowledge/${declared.file}`;
+    const bytes = pack.folder.files.get(relative);
+    if (bytes === undefined) throw new Error(`Pack ${pack.id} does not hold ${relative} in its loaded snapshot`);
+    return indexKnowledgeBytes({ bytes, sourcePath: path.join(pack.dir, relative), title: found?.title ?? declared.purpose,
       ...(found?.version === undefined ? {} : { version: found.version }), scope: `pack:${pack.id}@${pack.contract.version}`, source: 'pack' });
   }));
+}
+
+export async function searchPackKnowledge(pack: Pack, query: string, limit = 5): Promise<readonly KnowledgeSearchCandidate[]> {
+  const indexes = await packKnowledgeIndex(pack);
   return searchKnowledgeIndexes(indexes, query, limit);
+}
+
+export async function readPackKnowledge(pack: Pack, documentId: string, chunkId: string): Promise<KnowledgeSearchHit> {
+  const index = (await packKnowledgeIndex(pack)).find(item => item.document.id === safeDocumentId(documentId));
+  if (!index) throw new Error(`unknown Pack knowledge document ${JSON.stringify(documentId)}`);
+  const chunk = index.chunks.find(item => item.id === chunkId);
+  if (!chunk) throw new Error(`unknown knowledge chunk ${JSON.stringify(chunkId)} in document ${documentId}`);
+  const text = chunk.text.slice(0, KNOWLEDGE_READ_CAP);
+  return { ...chunk, text, sha256: hash(text), document: index.document, score: 0 };
 }
 
 /** Record the exact excerpt that reached a Campaign Agent. Search hits alone are never evidence. */
 export async function recordDocumentKnowledgeRead(input: {
   readonly ledger: Ledger; readonly packsDir?: string; readonly runId: string; readonly nodeId: string;
   readonly attempt: number; readonly sessionId: string; readonly workshop: string;
-  readonly hit: KnowledgeSearchHit; readonly origin: 'document' | 'current'; readonly branchId?: string;
+  /** Required for current documents: the Hima-owned root that selected this read. */
+  readonly root?: string;
+  readonly hit: KnowledgeSearchHit | KnowledgeSearchCandidate; readonly origin: 'document' | 'current'; readonly branchId?: string;
 }): Promise<KnowledgeRecord> {
-  const bytes = Buffer.from(input.hit.text, 'utf8');
+  const verified = input.hit.document.source === 'current'
+    ? input.root === undefined ? (() => { throw new Error('current knowledge evidence requires its Hima-owned root'); })()
+      : await readCurrentKnowledge(input.root, input.hit.document.scope, input.hit.document.id, input.hit.id)
+    : await readPackDocumentIdentity(input.hit.document, input.hit.id);
+  if (verified.document.id !== input.hit.document.id || verified.id !== input.hit.id || verified.sha256 !== input.hit.sha256) {
+    throw new Error('knowledge read identity was not verified against durable source bytes');
+  }
+  const bytes = Buffer.from(verified.text, 'utf8');
   const sha256 = hash(bytes);
   const retainedPath = input.packsDir === undefined ? undefined
     : await retainRunMaterial({ ledger: input.ledger, packsDir: input.packsDir }, input.runId, bytes, sha256);
@@ -1044,11 +1154,26 @@ export async function recordDocumentKnowledgeRead(input: {
     ...(input.branchId === undefined ? {} : { branchId: input.branchId }), origin: input.origin,
     ...(retainedPath === undefined ? {} : { retainedPath }), exposedBytes: bytes.byteLength,
     nodeId: input.nodeId, attempt: input.attempt, sessionId: input.sessionId, workshop: input.workshop,
-    file: path.basename(input.hit.document.sourcePath), purpose: input.hit.document.title,
-    path: input.hit.document.sourcePath, sha256, bytes: bytes.byteLength,
-    sourceMaterialSha256: input.hit.document.sha256, sourceMaterialBytes: input.hit.document.bytes,
-    documentId: input.hit.document.id, ...(input.hit.document.version === undefined ? {} : { documentVersion: input.hit.document.version }),
-    chunkId: input.hit.id, ...(input.hit.page === undefined ? {} : { page: input.hit.page }),
-    ...(input.hit.section === undefined ? {} : { section: input.hit.section }), knowledgeScope: input.hit.document.scope,
+    file: path.basename(verified.document.sourcePath), purpose: verified.document.title,
+    path: verified.document.sourcePath, sha256, bytes: bytes.byteLength,
+    sourceMaterialSha256: verified.document.sha256, sourceMaterialBytes: verified.document.bytes,
+    documentId: verified.document.id, ...(verified.document.version === undefined ? {} : { documentVersion: verified.document.version }),
+    chunkId: verified.id, ...(verified.page === undefined ? {} : { page: verified.page }),
+    ...(verified.section === undefined ? {} : { section: verified.section }), knowledgeScope: verified.document.scope,
   });
+}
+
+/** Rebuild the requested Pack chunk from its source before accepting it as Campaign evidence. */
+async function readPackDocumentIdentity(document: KnowledgeDocumentIdentity, chunkId: string): Promise<KnowledgeSearchHit> {
+  if (document.source !== 'pack') throw new Error('unsupported knowledge source identity');
+  await plainSource(document.sourcePath);
+  const rebuilt = await indexKnowledgeBytes({ sourcePath: document.sourcePath, bytes: await readFile(document.sourcePath), title: document.title,
+    ...(document.version === undefined ? {} : { version: document.version }), scope: document.scope, source: 'pack' });
+  if (rebuilt.document.id !== document.id || rebuilt.document.sha256 !== document.sha256 || rebuilt.document.bytes !== document.bytes) {
+    throw new Error('Pack knowledge source bytes do not match document identity');
+  }
+  const chunk = rebuilt.chunks.find(item => item.id === chunkId);
+  if (!chunk) throw new Error(`unknown knowledge chunk ${JSON.stringify(chunkId)} in document ${document.id}`);
+  const text = chunk.text.slice(0, KNOWLEDGE_READ_CAP);
+  return { ...chunk, text, sha256: hash(text), document: rebuilt.document, score: 0 };
 }

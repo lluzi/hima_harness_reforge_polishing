@@ -3,9 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
-import { bootInProcess } from './support/boot-inprocess.ts';
+import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
 import { clearCurrentKnowledge, importCurrentKnowledge, indexKnowledgeDocument, listCurrentKnowledge,
   packDigestOf, readCurrentKnowledge, recordDocumentKnowledgeRead, searchCurrentKnowledge } from '@hima/harness';
@@ -26,10 +26,33 @@ test('a PDF is indexed offline into bounded page-cited excerpts and search reads
     assert.ok(hits.length > 0);
     assert.equal(hits[0]?.document.id, imported.document.id);
     assert.equal(hits[0]?.page, 1);
-    assert.match(hits[0]?.text ?? '', /effective instance/);
+    assert.match(hits[0]?.snippet ?? '', /effective instance/);
     const read = await readCurrentKnowledge(root, 'workspace-a', imported.document.id, hits[0]!.id);
     assert.equal(read.sha256, hits[0]?.sha256);
     assert.deepEqual(await listCurrentKnowledge(root, 'workspace-b'), [], 'another workspace cannot see this current document');
+  } finally { await h.dispose(); }
+});
+
+test('current knowledge rejects symlink ancestors and index/source tampering before list, read or clear', async () => {
+  const h = await createHimaHome();
+  try {
+    const root = path.join(h.home, 'hima/current-knowledge');
+    const source = path.join(h.home, 'guide.txt');
+    await writeFile(source, 'clock uncertainty comes from the actual routed database');
+    const imported = await importCurrentKnowledge({ root, scope: 'isolated', file: source });
+    const sourceText = await readFile(imported.document.sourcePath, 'utf8');
+    await writeFile(imported.document.sourcePath, `${sourceText} changed after indexing`);
+    await assert.rejects(() => listCurrentKnowledge(root, 'isolated'), /source bytes do not match/);
+
+    const scopeDir = path.dirname(path.dirname(imported.document.sourcePath));
+    const outside = path.join(h.home, 'outside');
+    await mkdir(outside);
+    await rm(imported.document.sourcePath);
+    await symlink(source, imported.document.sourcePath);
+    await assert.rejects(() => readCurrentKnowledge(root, 'isolated', imported.document.id, `${imported.document.id}:0`), /symbolic link/);
+    await rm(scopeDir, { recursive: true, force: true });
+    await symlink(outside, scopeDir);
+    await assert.rejects(() => clearCurrentKnowledge(root, 'isolated', imported.document.id), /symbolic link/);
   } finally { await h.dispose(); }
 });
 
@@ -46,7 +69,7 @@ test('current knowledge survives Host restart, records the excerpt that reached 
     const [hit] = await searchCurrentKnowledge(root, 'campaign-proposal', 'clock uncertainty baseline custom-cell arm');
     assert.ok(hit);
     const record = await recordDocumentKnowledgeRead({ ledger: host.ctx.hima.ledger, packsDir: packsDirOf(h), runId: run.id,
-      nodeId: 'prepare', attempt: 1, sessionId: 'session-current-knowledge', workshop: 'analysis', hit: hit!, origin: 'current' });
+      nodeId: 'prepare', attempt: 1, sessionId: 'session-current-knowledge', workshop: 'analysis', root, hit: hit!, origin: 'current' });
     assert.equal(record.origin, 'current');
     assert.equal(record.documentId, imported.document.id);
     assert.equal(record.chunkId, hit?.id);
@@ -61,5 +84,34 @@ test('current knowledge survives Host restart, records the excerpt that reached 
     assert.deepEqual(await listCurrentKnowledge(root, 'campaign-proposal'), []);
     assert.equal(await clearCurrentKnowledge(root, 'campaign-proposal', imported.document.id), false);
     assert.equal(packDigestOf(path.join(packsDirOf(h), timingProbePackId)), before);
+  } finally { await host.dispose(); await h.dispose(); }
+});
+
+test('HimaGuide reaches current knowledge through one bounded product tool without treating search as evidence', async () => {
+  const h = await createHimaHome();
+  await installPack(h);
+  const host = await bootInProcess(h);
+  try {
+    const agent = await createRootAgent(host.ctx, h.workspace);
+    let serial = 0;
+    const call = async (args: Record<string, unknown>) => {
+      const answer = await host.ctx.tools.execute({ name: 'hima_knowledge', arguments: args, agent,
+        callId: `knowledge-${++serial}` as never, signal: AbortSignal.timeout(20_000) });
+      assert.equal(answer.isError, false, JSON.stringify(answer));
+      return JSON.parse(answer.content.filter((item) => item.type === 'text').map((item) => item.text).join('')) as Record<string, any>;
+    };
+    assert.ok(host.ctx.tools.schemas().some((schema) => schema.name === 'hima_knowledge'));
+    const imported = await call({ action: 'import', source: 'current', scope: 'guide-session', file: fixture,
+      title: 'EDA Timing Preparation Guide', version: '1' });
+    const searched = await call({ action: 'search', source: 'current', scope: 'guide-session', query: 'final routed database' });
+    assert.ok(searched.hits.length > 0);
+    assert.equal(searched.hits[0].text, undefined, 'search exposes a bounded preview, not the source excerpt');
+    assert.ok(searched.hits[0].snippet.length <= 360);
+    const read = await call({ action: 'read', source: 'current', scope: 'guide-session',
+      documentId: imported.document.id, chunkId: searched.hits[0].id });
+    assert.match(read.text, /routed database/i);
+    assert.ok(read.text.length <= 2_400);
+    assert.equal(host.ctx.hima.ledger.runs().length, 0,
+      'a read outside a Campaign remains session knowledge and does not invent a Campaign');
   } finally { await host.dispose(); await h.dispose(); }
 });

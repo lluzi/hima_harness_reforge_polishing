@@ -173,6 +173,12 @@ export interface KnowledgeView {
   readonly bytes: number;
   readonly sourceMaterialSha256?: string;
   readonly sourceMaterialBytes?: number;
+  readonly documentId?: string;
+  readonly documentVersion?: string;
+  readonly chunkId?: string;
+  readonly page?: number;
+  readonly section?: string;
+  readonly knowledgeScope?: string;
   readonly sourceRun?: string;
   readonly sourcePurpose?: KnowledgeRecord['sourcePurpose'];
   readonly sourceMethod?: KnowledgeRecord['sourceMethod'];
@@ -196,6 +202,12 @@ export function knowledgeView(record: KnowledgeRecord): KnowledgeView {
     path: record.path, sha256: record.sha256, bytes: record.bytes,
     ...(record.sourceMaterialSha256 === undefined ? {} : { sourceMaterialSha256: record.sourceMaterialSha256 }),
     ...(record.sourceMaterialBytes === undefined ? {} : { sourceMaterialBytes: record.sourceMaterialBytes }),
+    ...(record.documentId === undefined ? {} : { documentId: record.documentId }),
+    ...(record.documentVersion === undefined ? {} : { documentVersion: record.documentVersion }),
+    ...(record.chunkId === undefined ? {} : { chunkId: record.chunkId }),
+    ...(record.page === undefined ? {} : { page: record.page }),
+    ...(record.section === undefined ? {} : { section: record.section }),
+    ...(record.knowledgeScope === undefined ? {} : { knowledgeScope: record.knowledgeScope }),
     ...(record.sourceRun === undefined ? {} : { sourceRun: record.sourceRun }),
     ...(record.sourcePurpose === undefined ? {} : { sourcePurpose: record.sourcePurpose }),
     ...(record.sourceMethod === undefined ? {} : { sourceMethod: record.sourceMethod }),

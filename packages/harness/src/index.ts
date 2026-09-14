@@ -61,8 +61,8 @@ export type { Pack, PackContract, PackGraph, PackNode, PackEdge, PackTool, PackW
 // fabric runs it. On the surface because the contract suite asserts which three tools a workshop's
 // moment reaches and the live check opens one against the real model route.
 export { workshopArgv, readersDirName } from './packs.js';
-export { WORKSHOP_WRITE_TOOL, WORKSHOP_READ_TOOL, WORKSHOP_KNOWLEDGE_TOOL, WORKSHOP_READ_CAP, KNOWLEDGE_INDEX_SCHEMA, KNOWLEDGE_CHUNK_CHARS, KNOWLEDGE_SEARCH_LIMIT, indexKnowledgeDocument, importCurrentKnowledge, listCurrentKnowledge, clearCurrentKnowledge, searchKnowledgeIndexes, searchCurrentKnowledge, readCurrentKnowledge, searchPackKnowledge, recordDocumentKnowledgeRead } from './workshop.js';
-export type { KnowledgeDocumentIdentity, KnowledgeDocumentChunk, KnowledgeDocumentIndex, KnowledgeSearchHit } from './workshop.js';
+export { WORKSHOP_WRITE_TOOL, WORKSHOP_READ_TOOL, WORKSHOP_KNOWLEDGE_TOOL, WORKSHOP_READ_CAP, KNOWLEDGE_INDEX_SCHEMA, KNOWLEDGE_CHUNK_CHARS, KNOWLEDGE_SEARCH_LIMIT, KNOWLEDGE_SNIPPET_CHARS, KNOWLEDGE_READ_CAP, indexKnowledgeDocument, importCurrentKnowledge, listCurrentKnowledge, clearCurrentKnowledge, searchKnowledgeIndexes, searchCurrentKnowledge, readCurrentKnowledge, searchPackKnowledge, readPackKnowledge, recordDocumentKnowledgeRead } from './workshop.js';
+export type { KnowledgeDocumentIdentity, KnowledgeDocumentChunk, KnowledgeDocumentIndex, KnowledgeSearchHit, KnowledgeSearchCandidate } from './workshop.js';
 // How far up the pack authoring pipeline a folder has come (#63). On the surface because the pack
 // check reports it, the `/hima pack check` words print it, and the contract suite holds a folder the
 // pipeline authored against the sections the two stages are required to write.
@@ -468,7 +468,7 @@ export default class Hima extends Service {
       (pack, site) => {
         const loadedPack = loadPack(this.config.packsDir, pack);
         return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site));
-      })) this.ctx.effect(() => this.ctx.tools.register(tool));
+      }, { root: this.config.knowledgeDir })) this.ctx.effect(() => this.ctx.tools.register(tool));
     // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
     // A person invokes one by typing its name; the model never chooses one for itself, because a
     // stage is a person's decision about their own pack folder.
