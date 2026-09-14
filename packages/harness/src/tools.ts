@@ -12,6 +12,7 @@
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import path from 'node:path';
+import { realpathSync } from 'node:fs';
 import { currentRecordsIn, type NodeExecution, type VerdictRecord } from './ledger.js';
 import { legacyAutomaticAllowed } from './runs.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
@@ -41,8 +42,10 @@ function knowledgeImportRoots(agent: Agent): readonly string[] {
 function authorizedKnowledgeImport(agent: Agent, file: string): string | undefined {
   for (const root of knowledgeImportRoots(agent)) {
     const candidate = path.isAbsolute(file) ? path.resolve(file) : path.resolve(root, file);
-    const relative = path.relative(root, candidate);
-    if (relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) return candidate;
+    let actualRoot: string, actual: string;
+    try { actualRoot = realpathSync(root); actual = realpathSync(candidate); } catch { continue; }
+    const relative = path.relative(actualRoot, actual);
+    if (relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) return actual;
   }
   return undefined;
 }

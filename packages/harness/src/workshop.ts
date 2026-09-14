@@ -19,7 +19,7 @@
 // purpose the model is given is the pack author's sentence carried through verbatim.
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync } from 'node:fs';
-import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { extractText } from 'unpdf';
 import { defineTool } from '@deepseek-ai/dsh-tools';
@@ -919,10 +919,14 @@ async function plainPath(root: string, target: string, kind: 'file' | 'directory
   }
 }
 
-async function plainSource(file: string): Promise<void> {
+async function plainSource(file: string): Promise<string> {
   const resolved = path.resolve(file);
-  const parsed = path.parse(resolved);
-  await plainPath(parsed.root, resolved, 'file');
+  const leaf = await lstat(resolved);
+  if (!leaf.isFile() || leaf.isSymbolicLink()) throw new Error(`knowledge source is not a plain file: ${resolved}`);
+  const actualParent = await realpath(path.dirname(resolved));
+  const actual = path.join(actualParent, path.basename(resolved));
+  await plainPath(path.parse(actual).root, actual, 'file');
+  return actual;
 }
 
 function mediaTypeOf(file: string): KnowledgeDocumentIdentity['mediaType'] {
@@ -999,8 +1003,7 @@ export async function indexKnowledgeDocument(input: {
   readonly file: string; readonly title?: string; readonly version?: string;
   readonly scope: string; readonly source: 'pack' | 'current';
 }): Promise<KnowledgeDocumentIndex> {
-  const sourcePath = path.resolve(input.file);
-  await plainSource(sourcePath);
+  const sourcePath = await plainSource(input.file);
   return indexKnowledgeBytes({ ...input, sourcePath, bytes: await readFile(sourcePath) });
 }
 
@@ -1087,10 +1090,10 @@ async function readCurrentIndex(root: string, scope: string, id: string): Promis
 export async function importCurrentKnowledge(input: {
   readonly root: string; readonly scope: string; readonly file: string; readonly title?: string; readonly version?: string;
 }): Promise<KnowledgeDocumentIndex> {
-  await plainSource(input.file);
+  const sourceFile = await plainSource(input.file);
   await mkdir(path.resolve(input.root), { recursive: true });
   await plainPath(path.parse(path.resolve(input.root)).root, path.resolve(input.root), 'directory');
-  const parsed = await indexKnowledgeDocument({ ...input, source: 'current' });
+  const parsed = await indexKnowledgeDocument({ ...input, file: sourceFile, source: 'current' });
   const scopeDir = scopeDirectory(input.root, input.scope);
   const target = path.join(scopeDir, parsed.document.id);
   try { return await readCurrentIndex(input.root, input.scope, parsed.document.id); } catch (error) {
@@ -1101,10 +1104,10 @@ export async function importCurrentKnowledge(input: {
   const staged = `${target}.next-${process.pid}-${Date.now()}`;
   await mkdir(staged, { recursive: false });
   try {
-    const extension = path.extname(input.file).toLowerCase();
+    const extension = path.extname(sourceFile).toLowerCase();
     const stagedSourcePath = path.join(staged, `source${extension}`);
     const sourcePath = path.join(target, `source${extension}`);
-    await copyFile(path.resolve(input.file), stagedSourcePath, 0);
+    await copyFile(sourceFile, stagedSourcePath, 0);
     const copied = await readFile(stagedSourcePath);
     if (hash(copied) !== parsed.document.sha256 || copied.byteLength !== parsed.document.bytes) {
       throw new Error('knowledge source changed while it was being imported');
