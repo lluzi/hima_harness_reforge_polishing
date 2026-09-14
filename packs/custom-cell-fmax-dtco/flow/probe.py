@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """One bounded foundry-only synthesis in a fresh directory of this Campaign.
 
-Site inputs live in flow/inputs.json, never in Pack method files. The Tcl method
-derives from the read-only site-specific Site-staged flow; runtime decisions belong to
-the conversational Agent. This tool performs exactly one synthesis.
+Site inputs live in flow/inputs.json, never in Pack method files. The Tcl method uses the
+selected Site bindings; runtime decisions belong to the conversational Agent. This tool performs
+exactly one synthesis.
 """
 import argparse
 import glob

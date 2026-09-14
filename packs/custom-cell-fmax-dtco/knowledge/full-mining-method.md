@@ -66,12 +66,14 @@ master adoption are different facts: zero adopted instances does not establish i
 
 Both physical arms start from fresh syntheses using one shared template/RTL/clock/wrapper identity.
 Only the admitted generated library is added in the custom arm. The earlier probe is mining input,
-not the matched physical reference. Post-route clock/WNS must be read from both actual reports with
-the same analysis view and constraint chain; never substitute DC slack or `period - slack` as Fmax.
+not the matched physical reference. Clock/WNS must be reread after restoring each final route
+database with the same analysis view and constraint chain. Never substitute DC slack. The comparison
+may report the explicit STA-derived closed period (`requested period - setup slack`) and corresponding
+Fmax, but must label that derivation and retain the source report/database identities.
 Missing evidence or mismatched conditions is unknown, never zero failures.
 
 The final Judge requires complete matched evidence, library visibility, positive actual adoption,
-required verification gates and nonnegative generated setup WNS, plus the fixed requested period
+required verification gates, strictly higher generated-arm STA-derived Fmax, and nonnegative generated setup WNS, plus the fixed requested period
 Goal. Only its fresh PASS/PASS permits Goal met. An inner probe success cannot stand for full-flow
 success. Otherwise use an honest convergence/budget ending or stop at a blocker with its evidence.
 Complete comparative research and a measured Fmax-improvement claim require the PLS-35 held-out

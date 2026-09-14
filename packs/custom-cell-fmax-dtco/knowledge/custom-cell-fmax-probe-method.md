@@ -13,8 +13,9 @@ measurement and must be retained; it is not guaranteed to appear or to imply the
 under a new synthesis or changed timing constraints.
 
 For a trial with asked period P and negative measured slack V, P + |V| is only a candidate
-estimate for the next experiment. This method also scales IO delays and clock latency with P,
-so simple period/slack arithmetic cannot certify closure at the estimate. The next trial must
+estimate for the next experiment. The selected Site constraints determine their own IO delays,
+clock latency and clock definitions, so simple period/slack arithmetic cannot certify closure at
+the estimate. The next trial must
 actually be synthesized, read and judged. A failing first trial is possible, not guaranteed.
 Never add a guard band that systematically relaxes an already passing zero-slack trial.
 
@@ -57,8 +58,7 @@ it is a blocker for a person, not a pass and not a failure.
 
 - Setup closure: `setup_wns ≥ 0` ns, over analysis mode **setup** and path scope **all** — the worst
   constrained setup path of every path group, with input pins, nets, transition times and
-  capacitance reported, and with real and virtual clocks at the same period, 19.7% clock latency and
-  20% input/output delay.
+  capacitance reported under the selected Site's own constraints.
 - The Goal: `clock_period ≤ target_period_ns`. It decides only whether the Campaign is done. A
   generation that closes setup but misses the target is a real result: the design closes, but not yet
   where the Goal is.

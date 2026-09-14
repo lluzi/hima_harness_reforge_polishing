@@ -1,7 +1,19 @@
 id: custom-cell-fmax-dtco
 version: "1"
-entry: probe
+entry: bind-inputs
 nodes:
+  - id: bind-inputs
+    kind: act
+    parameters:
+      tool: bind-inputs
+      arguments:
+        DESIGN_ROOT: { from: input, name: designRoot }
+        RTL_GLOB: { from: input, name: rtlGlob }
+        DESIGN_TOP: { from: input, name: designTop }
+        CONSTRAINTS: { from: input, name: constraints }
+        FOUNDRY_LIBRARY: { from: input, name: foundryLibrary }
+        PHYSICAL_INPUTS: { from: input, name: physicalInputs }
+        TOOL_STACK: { from: input, name: toolStack }
   - id: probe
     kind: explore
     parameters:
@@ -191,6 +203,7 @@ nodes:
     parameters:
       rules:
         - full-evidence-valid
+        - fmax-improved
         - clock-period-at-most
       bind:
         target_period_ns:
@@ -242,6 +255,8 @@ nodes:
       rules:
         - route-selection-known
 edges:
+  - from: bind-inputs
+    to: probe
   - from: probe
     to: mine-start
     outcome: goal-met

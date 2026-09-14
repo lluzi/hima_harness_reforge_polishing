@@ -10,3 +10,7 @@ argv:
 reportKind: custom-cell-fmax-stage/1
 emits:
   - pnr_completed
+  - hold_wns
+  - hold_violating_paths
+  - route_drc_violations
+  - connectivity_violations

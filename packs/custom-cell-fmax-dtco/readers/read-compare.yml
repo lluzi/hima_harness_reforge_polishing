@@ -14,6 +14,10 @@ emits:
   - full_constraint_failures
   - foundry_setup_wns
   - setup_wns_delta
+  - foundry_fmax_mhz
+  - generated_fmax_mhz
+  - fmax_delta_mhz
+  - fmax_improved
   - matched_conditions
   - library_visible
   - adopted_instance_count

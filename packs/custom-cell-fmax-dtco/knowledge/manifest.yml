@@ -10,3 +10,8 @@ documents:
     title: Data-dependent custom Cell mining and matched implementation method
     version: "1"
     mediaType: text/markdown
+  - id: site-profile
+    file: site-profile.md
+    title: Portable custom Cell Fmax Site profile
+    version: "1"
+    mediaType: text/markdown

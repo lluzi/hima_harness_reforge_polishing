@@ -197,6 +197,18 @@ def drc_count(path, limit):
     return count
 
 
+def connectivity_count(path):
+    text = path.read_text(errors="replace")
+    counts = [int(value) for value in re.findall(
+        r"(?:Total(?: number of)? (?:connectivity )?violations|Total Violations)\s*[:=]\s*(\d+)", text, re.I)]
+    clean = bool(re.search(r"(?:no connectivity violations|0\s+connectivity violations)", text, re.I))
+    if counts and len(set(counts)) == 1:
+        return counts[0]
+    if not counts and clean:
+        return 0
+    raise ValueError("connectivity report has no unambiguous violation total")
+
+
 def report_text(path):
     try:
         raw = gzip.decompress(path.read_bytes()) if path.suffix == ".gz" else path.read_bytes()
@@ -205,7 +217,7 @@ def report_text(path):
         raise ValueError("cannot decode complete timing report %s: %s" % (path, exc)) from exc
 
 
-def timing(path, companion):
+def timing(path, companion, mode="Setup"):
     text = report_text(path)
     path_text = report_text(companion)
     summary_commands = re.findall(r"^#\s+Command:\s+(.+?)\s*$", text, re.M)
@@ -217,12 +229,12 @@ def timing(path, companion):
         if "|" not in line:
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) >= 2 and cells[0] == "Setup mode" and cells[1] == "all":
+        if len(cells) >= 2 and cells[0] == mode + " mode" and cells[1] == "all":
             header = cells[1:]
             break
     views = set(re.findall(r"^Analysis View:\s*(\S+)\s*$", path_text, re.M))
     if not header or "all" not in header or len(views) != 1:
-        raise ValueError("post-route timing lacks one setup table and companion analysis view")
+        raise ValueError("post-route timing lacks one %s table and companion analysis view" % mode.lower())
     for line in text.splitlines():
         if "|" in line and "WNS (ns)" in line:
             cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
@@ -410,11 +422,12 @@ def derived_pnr_condition(record, workspace, arm):
     excluded = referenced_paths(record.get("inputs", []), workspace,
                                 {"generated_liberty", "generated_lef"})
     init_text = scripts["init"].read_text(errors="replace")
-    utilization = re.findall(r"(?m)^\s*floorPlan\s+-site\s+core\s+-r\s+1\.0\s+([0-9.]+)\s+2\.0\s+2\.0\s+2\.0\s+2\.0\s*$", init_text)
-    if len(utilization) != 1 or not (0.2 <= float(utilization[0]) <= 0.8):
-        raise ValueError("PnR init script lacks one bounded floorplan utilization")
+    floorplan = re.findall(r"(?m)^\s*floorPlan\s+-site\s+(\S+)\s+-r\s+1\.0\s+([0-9.]+)\s+2\.0\s+2\.0\s+2\.0\s+2\.0\s*$", init_text)
+    if len(floorplan) != 1 or not (0.2 <= float(floorplan[0][1]) <= 0.8):
+        raise ValueError("PnR init script lacks one declared Site/place utilization")
+    place_site, utilization = floorplan[0]
     published = record.get("facts", {}).get("floorplan_utilization")
-    if not isinstance(published, (int, float)) or float(published) != float(utilization[0]):
+    if not isinstance(published, (int, float)) or float(published) != float(utilization):
         raise ValueError("PnR record utilization disagrees with generated init script")
     return {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "place-and-route",
@@ -427,7 +440,8 @@ def derived_pnr_condition(record, workspace, arm):
             normalized_arm_script(scripts[kind].read_text(), excluded) for kind in ("mmmc", "init", "pnr")
         ).encode()).hexdigest(),
         "tool": init_tool,
-        "floorplanUtilization": float(utilization[0]),
+        "floorplanUtilization": float(utilization),
+        "placeSite": place_site,
         "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
     }
 
@@ -522,11 +536,22 @@ def values_for(record, workspace, stage):
             raise ValueError("actual post-route clock differs from the PnR input SDC")
         view, _wns, _violating = timing(one(record, workspace, "postroute_timing_summary"),
                                         one(record, workspace, "postroute_timing_paths"))
+        _hold_view, hold_wns, hold_violating = timing(one(record, workspace, "postroute_hold_summary"),
+                                                       one(record, workspace, "postroute_hold_paths"), mode="Hold")
+        route_drc = drc_count(one(record, workspace, "route_drc_report"), 100000)
+        connectivity = connectivity_count(one(record, workspace, "connectivity_report"))
+        facts = record.get("facts", {})
+        for key, actual in (("hold_wns_ns", hold_wns), ("hold_violating_paths", hold_violating),
+                            ("route_drc_violations", route_drc), ("connectivity_violations", connectivity)):
+            if facts.get(key) != actual:
+                raise ValueError("PnR physical fact disagrees with retained report: " + key)
         if view != mmmc["view"]:
             raise ValueError("post-route timing companion names the wrong analysis view")
         if "=== CCFMAX PNR DONE %s (GDS written) ===" % arm not in log:
             raise ValueError("PnR completion marker is absent")
-        values.append(number("pnr_completed", 1))
+        values.extend([number("pnr_completed", 1), number("hold_wns", hold_wns, "ns", mode="hold", scope="all"),
+                       number("hold_violating_paths", hold_violating), number("route_drc_violations", route_drc),
+                       number("connectivity_violations", connectivity)])
     elif stage == "verify":
         count = 0
         for arm in ("foundry", "generated"):
@@ -551,15 +576,17 @@ def values_for(record, workspace, stage):
                 unknown("setup_wns", reason, "ns", mode="setup", scope="all"),
                 unknown("foundry_setup_wns", reason, "ns", mode="setup", scope="all"),
                 unknown("setup_wns_delta", reason, "ns", mode="setup", scope="all"),
+                unknown("foundry_fmax_mhz", reason, "mhz"), unknown("generated_fmax_mhz", reason, "mhz"),
+                unknown("fmax_delta_mhz", reason, "mhz"), unknown("fmax_improved", reason),
                 unknown("matched_conditions", reason), unknown("library_visible", reason),
                 unknown("adopted_instance_count", reason), unknown("verification_error_count", reason),
                 unknown("full_constraint_failures", reason),
             ]
         # Re-derive the final observations from raw references copied into the comparison record.
-        fview, fwns, _fviolating = timing(one(record, workspace, "foundry_postroute_timing", "inputs"),
-                                          one(record, workspace, "foundry_postroute_timing_paths", "inputs"))
-        gview, gwns, gviolating = timing(one(record, workspace, "generated_postroute_timing", "inputs"),
-                                         one(record, workspace, "generated_postroute_timing_paths", "inputs"))
+        fview, fwns, _fviolating = timing(one(record, workspace, "foundry_final_db_timing", "inputs"),
+                                          one(record, workspace, "foundry_final_db_timing_paths", "inputs"))
+        gview, gwns, gviolating = timing(one(record, workspace, "generated_final_db_timing", "inputs"),
+                                         one(record, workspace, "generated_final_db_timing_paths", "inputs"))
         fsdc = one(record, workspace, "foundry_pnr_sdc", "inputs")
         gsdc = one(record, workspace, "generated_pnr_sdc", "inputs")
         foundry_actual_sdc = one(record, workspace, "foundry_postroute_sdc", "inputs")
@@ -585,6 +612,7 @@ def values_for(record, workspace, stage):
             custom_synth, workspace, derived_synth_condition(custom_synth, workspace, "custom"))
         foundry_pnr = load(one(record, workspace, "source_stage_record:pnr-foundry", "inputs"))
         generated_pnr = load(one(record, workspace, "source_stage_record:pnr-generated", "inputs"))
+        physical_by_arm = {}
         for pnr_record, pnr_arm in ((foundry_pnr, "foundry"), (generated_pnr, "generated")):
             init_links = checkpoint_allowed_links(pnr_record, workspace, pnr_arm, "init")
             postroute_links = checkpoint_allowed_links(pnr_record, workspace, pnr_arm, "postroute")
@@ -592,6 +620,15 @@ def values_for(record, workspace, stage):
                                 workspace, init_links, "init")
             validate_checkpoint(one(pnr_record, workspace, "postroute_checkpoint"),
                                 workspace, postroute_links, "postroute")
+            _hold_view, hold_wns, hold_violating = timing(one(pnr_record, workspace, "postroute_hold_summary"),
+                                                          one(pnr_record, workspace, "postroute_hold_paths"), mode="Hold")
+            physical = {"hold_wns_ns": hold_wns, "hold_violating_paths": hold_violating,
+                        "route_drc_violations": drc_count(one(pnr_record, workspace, "route_drc_report"), 100000),
+                        "connectivity_violations": connectivity_count(one(pnr_record, workspace, "connectivity_report"))}
+            for key, actual in physical.items():
+                if pnr_record.get("facts", {}).get(key) != actual:
+                    raise ValueError("PnR physical fact disagrees with retained report: " + key)
+            physical_by_arm[pnr_arm] = physical
         foundry_pnr_condition = checked_condition(
             foundry_pnr, workspace, derived_pnr_condition(foundry_pnr, workspace, "foundry"))
         generated_pnr_condition = checked_condition(
@@ -603,9 +640,11 @@ def values_for(record, workspace, stage):
                      and input_sdc_matched
                      and fm["qrc"] == gm["qrc"] and fm["temperature"] == gm["temperature"])
         matched_derived = synth_match and pnr_match
-        netlist = one(record, workspace, "custom_netlist", "inputs").read_text(errors="replace")
-        liberty = one(record, workspace, "offered_library", "inputs").read_text(errors="replace")
-        adopted = project_texts(netlist, liberty)["adopted_instance_count"]
+        generated_verify_log = one(record, workspace, "generated_verify_log", "inputs").read_text(errors="replace")
+        adopted_hits = re.findall(r"=== CUSTOM_CELL_FMAX FINAL_DB_INSTANCE_COUNT (\d+) ===", generated_verify_log)
+        if len(adopted_hits) != 1:
+            raise ValueError("final route database custom Cell census is missing")
+        adopted = int(adopted_hits[0])
         errors = 0
         for arm in ("foundry", "generated"):
             script = one(record, workspace, arm + "_verify_script", "inputs").read_text(errors="replace")
@@ -619,10 +658,20 @@ def values_for(record, workspace, stage):
         pv = re.findall(r"=== CCFMAX GENERATED_LIB_CELLS_AFTER_RESTORE (\d+) ===", pnr_log)
         vv = re.findall(r"=== CUSTOM_CELL_FMAX VERIFY_LIBRARY_VISIBLE (\d+) ===", verify_log)
         visible = len(pv) == len(vv) == 1 and int(pv[0]) > 0 and int(vv[0]) > 0
+        foundry_closed = clock - fwns
+        generated_closed = clock - gwns
+        if foundry_closed <= 0 or generated_closed <= 0:
+            raise ValueError("restored-database timing implies a nonpositive closed period")
+        foundry_fmax = 1000.0 / foundry_closed
+        generated_fmax = 1000.0 / generated_closed
+        fmax_delta = generated_fmax - foundry_fmax
+        fmax_improved = fmax_delta > 0
         facts = record.get("facts", {})
         for key, actual in (("setup_wns", gwns), ("foundry_setup_wns", fwns),
                             ("setup_wns_delta", gwns - fwns),
                             ("adopted_instance_count", adopted), ("verification_error_count", errors),
+                            ("foundry_fmax_mhz", foundry_fmax), ("generated_fmax_mhz", generated_fmax),
+                            ("fmax_delta_mhz", fmax_delta), ("fmax_improved", fmax_improved),
                             ("library_visible", visible)):
             if facts.get(key) != actual:
                 raise ValueError("comparison claim %s disagrees with raw evidence" % key)
@@ -630,8 +679,16 @@ def values_for(record, workspace, stage):
         failures = facts.get("full_constraint_failures")
         if not isinstance(matched, bool) or matched != matched_derived or facts.get("clock_period") != clock:
             raise ValueError("comparison lacks derived clock/matched-condition evidence")
+        physical_failures = 0
+        for pnr_arm in ("foundry", "generated"):
+            physical = physical_by_arm[pnr_arm]
+            physical_failures += int(physical["route_drc_violations"])
+            physical_failures += int(physical["connectivity_violations"])
+            physical_failures += int(physical["hold_violating_paths"])
+            if float(physical["hold_wns_ns"]) < 0:
+                physical_failures += 1
         expected = sum((not matched, gwns < 0 or gviolating > 0,
-                        not visible, adopted <= 0, errors != 0))
+                        not visible, adopted <= 0, errors != 0, not fmax_improved)) + physical_failures
         if failures != expected:
             raise ValueError("full_constraint_failures disagrees with raw evidence")
         values.extend([
@@ -639,6 +696,9 @@ def values_for(record, workspace, stage):
             number("setup_wns", gwns, "ns", mode="setup", scope="all"),
             number("foundry_setup_wns", fwns, "ns", mode="setup", scope="all"),
             number("setup_wns_delta", gwns - fwns, "ns", mode="setup", scope="all"),
+            number("foundry_fmax_mhz", foundry_fmax, "mhz"),
+            number("generated_fmax_mhz", generated_fmax, "mhz"),
+            number("fmax_delta_mhz", fmax_delta, "mhz"), number("fmax_improved", int(fmax_improved)),
             number("matched_conditions", int(matched)), number("library_visible", int(visible)),
             number("adopted_instance_count", adopted), number("verification_error_count", errors),
             number("full_constraint_failures", failures),

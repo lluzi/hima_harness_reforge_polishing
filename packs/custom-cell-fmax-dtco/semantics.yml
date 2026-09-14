@@ -31,6 +31,20 @@ values:
     unit: count
     description: "verification error count: independently read evidence; missing
       facts stay unknown."
+  hold_wns:
+    unit: ns
+    description: Post-route hold WNS reread from the retained arm report.
+    mode: [hold]
+    scope: [all]
+  hold_violating_paths:
+    unit: count
+    description: Post-route hold violating paths reread from the retained arm report.
+  route_drc_violations:
+    unit: count
+    description: Route DRC violations reread from the uncapped retained arm report.
+  connectivity_violations:
+    unit: count
+    description: Connectivity violations reread from the retained arm report.
   full_constraint_failures:
     unit: count
     description: "full constraint failures: independently read evidence; missing
@@ -53,6 +67,18 @@ values:
       - setup
     scope:
       - all
+  foundry_fmax_mhz:
+    unit: mhz
+    description: Fmax derived from the foundry arm's restored final-database clock and setup slack.
+  generated_fmax_mhz:
+    unit: mhz
+    description: Fmax derived from the generated arm's restored final-database clock and setup slack.
+  fmax_delta_mhz:
+    unit: mhz
+    description: Generated minus foundry restored-final-database Fmax under matched conditions.
+  fmax_improved:
+    unit: count
+    description: One only when generated restored-final-database Fmax is strictly higher.
   selected_count:
     unit: count
     description: Exact source-linked buildable candidate ids selected by the

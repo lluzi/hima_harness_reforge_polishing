@@ -1,10 +1,10 @@
 # Innovus place-and-route template for one arm of the current-process generated-standard-cell flow.
 #
 # PROVENANCE. Derived from the site-bound template site_bound_process/scripts/pnr_current_process.tcl. The step
-# ordering is the reference ordering, including the three steps this technology needs and a tapless
-# library does not:
-#   addWellTap  this library is NOT tapless; taps must be placed BEFORE placement
-#   addFiller   filler/decap cells close the rows after all cell movement is done
+# ordering is the Site profile's declared ordering, including the current physical-method
+# assumptions:
+#   addWellTap  the declared tap cell and interval are valid for this library before placement
+#   addFiller   the declared filler/decap cells close rows after all cell movement is done
 #   streamOut   GDS, using the site-bound layer map
 # Every site path is a placeholder that flow/bin/build_arm_scripts.py fills from the run input
 # binding, and BOTH ARMS ARE GENERATED FROM THIS ONE TEMPLATE with only the arm name, the input
@@ -25,7 +25,7 @@ setMultiCpuUsage -localCpu @@MULTI_CPU@@
 file mkdir @@RPT_DIR@@
 setAnalysisMode -analysisType onChipVariation -cppr both
 
-# --- well taps (this library is not tapless; must precede placement) ---
+# --- profile-declared well taps, before placement ---
 addWellTap -cell @@TAP_CELL@@ -cellInterval @@TAP_INTERVAL@@ -prefix WELLTAP
 puts "=== CCFMAX well taps placed @@ARM@@ ==="
 
@@ -43,7 +43,7 @@ setOptMode -fixFanoutLoad true
 optDesign -postRoute -setup
 optDesign -postRoute -hold
 
-# --- fillers close the rows after all cell movement is done ---
+# --- profile-declared fillers close rows after cell movement ---
 addFiller -cell {@@FILLER_CELLS@@} -prefix FILLER
 puts "=== CCFMAX fillers placed @@ARM@@ ==="
 

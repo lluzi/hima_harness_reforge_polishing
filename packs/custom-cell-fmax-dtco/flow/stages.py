@@ -237,8 +237,8 @@ class Context:
         self.flow = self.workspace / "flow"
         self.record_path = self.flow / "records" / (stage + ".json")
         self.inputs_doc = read_json(self.flow / "inputs.json")
-        if not isinstance(self.inputs_doc, dict) or not isinstance(self.inputs_doc.get("legacy"), dict):
-            raise Rejected("flow/inputs.json must be an object with a legacy object")
+        if not isinstance(self.inputs_doc, dict):
+            raise Rejected("flow/inputs.json must be one object materialized from Campaign inputs")
         self.evidence_class = self.inputs_doc.get("evidenceClass")
         if self.evidence_class not in ("site-run", "synthetic-fixture"):
             raise Rejected("inputs.json evidenceClass must be site-run or synthetic-fixture")
@@ -254,11 +254,11 @@ class Context:
             "DESIGN_TOP": "designTop", "DESIGN_RTL_GLOB": "rtlGlob",
             "FOUNDRY_DB": "foundryDb", "EDA_WRAPPER": "edaWrapper",
         }
-        value = self.inputs_doc.get(aliases.get(name, ""))
+        value = self.inputs_doc.get(name)
+        if value in (None, "") and name in aliases:
+            value = self.inputs_doc.get(aliases[name])
         if value in (None, ""):
-            value = self.inputs_doc["legacy"].get(name)
-        if value in (None, ""):
-            raise Rejected("missing Site input legacy.%s" % name)
+            raise Rejected("missing validated Site binding %s" % name)
         return value
 
     def file_binding(self, name, source_type="site-input"):
@@ -526,7 +526,7 @@ def candidate_rank(request):
 def stage_merge(ctx):
     budget = ctx.binding("MAX_CELLS")
     if isinstance(budget, bool) or not isinstance(budget, int) or budget not in (1, 2):
-        raise Rejected("legacy.MAX_CELLS must be the pilot value 1 or 2")
+        raise Rejected("MAX_CELLS must be the bounded-pilot value 1 or 2")
     reports = {}
     route_provenance = {}
     missing = []
@@ -657,14 +657,14 @@ def stage_generate(ctx):
     if not jobs:
         raise Rejected("merged candidate set is empty")
     if len({job["candidate_id"] for job in jobs}) > int(ctx.binding("MAX_CELLS")):
-        raise Rejected("merged candidates exceed legacy.MAX_CELLS")
+        raise Rejected("merged candidates exceed MAX_CELLS")
     pdk = ctx.file_binding("BOOL2CMOS_PDK_PROFILE")
     command = shlex.split(str(ctx.binding("BOOL2CMOS_CMD")))
     if not command:
-        raise Rejected("legacy.BOOL2CMOS_CMD is empty")
+        raise Rejected("BOOL2CMOS_CMD is empty")
     cwd = Path(str(ctx.binding("BOOL2CMOS_CWD"))).resolve()
     if not cwd.is_dir():
-        raise Rejected("legacy.BOOL2CMOS_CWD is not a directory")
+        raise Rejected("BOOL2CMOS_CWD is not a directory")
     attempts = []
     cells = ctx.run_dir / "cells"
     cells.mkdir()
@@ -711,7 +711,7 @@ def helper_env(ctx):
     helpers = str(ctx.binding("CCFMAX_CHARMODEL_HELPER_DIR"))
     for item in helpers.split(":"):
         if not Path(item).is_dir():
-            raise Rejected("legacy.CCFMAX_CHARMODEL_HELPER_DIR contains missing directory: " + item)
+            raise Rejected("CCFMAX_CHARMODEL_HELPER_DIR contains missing directory: " + item)
     return {"CCFMAX_CHARMODEL_HELPER_DIR": helpers}
 
 
@@ -839,7 +839,7 @@ def stage_synth(ctx, custom):
     constraints = ctx.file_binding("CONSTRAINTS_FILE")
     ctx.inputs.extend([
         file_ref(DOMAIN / "shared_synth.tcl", ctx.workspace, "shared_synth_template", "pack-method"),
-        file_ref(constraints, ctx.workspace, "site_constraints", "site-input"),
+        file_ref(constraints, ctx.workspace, "shared_synth_constraints", "site-input"),
     ])
     custom_db = artifact(prior(ctx, "compile"), ctx.workspace, "generated_db") if custom else None
     if custom_db:
@@ -884,7 +884,7 @@ def stage_synth(ctx, custom):
     publish_condition_identity(ctx, {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "synthesis",
         "commonInputs": held_identities(ctx.inputs,
-            exact=("FOUNDRY_DB", "shared_synth_template", "site_constraints", "EDA_WRAPPER"),
+            exact=("FOUNDRY_DB", "shared_synth_template", "shared_synth_constraints", "EDA_WRAPPER"),
             prefixes=("rtl:",)),
         "entryContractSha256": sha_bytes(normalized_synth_entry(entry.read_text()).encode()),
         "tool": version,
@@ -1060,6 +1060,7 @@ def build_arm_files(ctx, utilization):
             "GND_NET": ctx.binding("CCFMAX_GROUND_PIN"), "PROCESS_NODE": ctx.binding("CCFMAX_PROCESS_NODE"),
             "MAX_ROUTE_LAYER": ctx.binding("CCFMAX_MAX_ROUTE_LAYER"), "INIT_DB": init_db,
             "GENERATED_LIB_CELL_PATTERN": ctx.binding("GENERATED_LIB_CELL_PATTERN"), "ARM": arm,
+            "PLACE_SITE": ctx.binding("PLACE_SITE"),
             "FLOORPLAN_UTILIZATION": utilization,
         })
         rpt = ctx.run_dir / ("rpt_" + arm)
@@ -1153,9 +1154,26 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     timing = parse_timing_summary(timing_summary, timing_paths)
     if timing["analysisView"] != "view_" + arm:
         raise Rejected("post-route timing companion names the wrong analysis view")
+    hold_summary = ctx.run_dir / ("rpt_" + arm) / "posthold" / "hold.summary.gz"
+    hold_paths = ctx.run_dir / ("rpt_" + arm) / "posthold" / "hold_all.tarpt.gz"
+    hold = parse_timing_summary(hold_summary, hold_paths, mode="Hold")
+    route_drc = ctx.run_dir / ("rpt_" + arm) / "route.drc.rpt"
+    connectivity = ctx.run_dir / ("rpt_" + arm) / "connectivity.rpt"
+    power_report = ctx.run_dir / ("rpt_" + arm) / "power.rpt"
+    gatecount_report = ctx.run_dir / ("rpt_" + arm) / "gatecount.rpt"
+    route_summary = ctx.run_dir / ("rpt_" + arm) / "summary.rpt"
+    route_drc_count = parse_drc(route_drc, 100000)
+    connectivity_count = parse_connectivity(connectivity)
     for at, role in ((chosen["gds"], "postroute_gds"),
                      (timing_summary, "postroute_timing_summary"),
                      (timing_paths, "postroute_timing_paths"),
+                     (hold_summary, "postroute_hold_summary"),
+                     (hold_paths, "postroute_hold_paths"),
+                     (route_drc, "route_drc_report"),
+                     (connectivity, "connectivity_report"),
+                     (power_report, "postroute_power_report"),
+                     (gatecount_report, "postroute_gatecount_report"),
+                     (route_summary, "postroute_summary_report"),
                      (chosen["postroute_sdc"], "postroute_sdc")):
         ctx.add_artifact(at, role, "innovus-output")
     publish_condition_identity(ctx, {
@@ -1172,9 +1190,12 @@ def stage_pnr(ctx, arm, utilization="0.60"):
         ).encode()),
         "tool": init_version,
         "floorplanUtilization": float(utilization),
+        "placeSite": str(ctx.binding("PLACE_SITE")),
         "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
     })
     ctx.facts.update({"arm": arm, "pnr_completed": 1, "library_visible": visible,
+                      "hold_wns_ns": hold["setupWnsNs"], "hold_violating_paths": hold["setupViolatingPaths"],
+                      "route_drc_violations": route_drc_count, "connectivity_violations": connectivity_count,
                       "arm_scripts_matched": True, "toolVersion": init_version,
                       "templateSha256": {name: sha_file(DOMAIN / name) for name in
                                          ("init.tcl.tmpl", "mmmc.tcl.tmpl", "pnr.tcl.tmpl")}})
@@ -1197,9 +1218,24 @@ def parse_drc(path, limit):
     return count
 
 
+def parse_connectivity(path):
+    text = Path(path).read_text(errors="replace")
+    counts = [int(value) for value in re.findall(
+        r"(?:Total(?: number of)? (?:connectivity )?violations|Total Violations)\s*[:=]\s*(\d+)", text, re.I)]
+    clean = bool(re.search(r"(?:no connectivity violations|0\s+connectivity violations)", text, re.I))
+    if counts and len(set(counts)) != 1:
+        raise Rejected("connectivity report carries conflicting violation totals")
+    if counts:
+        return counts[0]
+    if clean:
+        return 0
+    raise Rejected("connectivity report has no unambiguous violation total")
+
+
 def stage_verify(ctx):
     total = 0
     per_arm = {}
+    final_db = {}
     limit = int(ctx.binding("DRC_LIMIT"))
     wrapper = str(ctx.binding("EDA_WRAPPER"))
     for arm, stage in (("foundry", "pnr-foundry"), ("generated", "pnr-generated")):
@@ -1208,14 +1244,19 @@ def stage_verify(ctx):
         db = validate_checkpoint(artifact(pnr_record, ctx.workspace, "postroute_checkpoint"),
                                  ctx.workspace, links, "postroute")
         report = ctx.run_dir / (arm + "_verify_drc.rpt")
+        timing_dir = ctx.run_dir / (arm + "_final_db_timing")
         script = ctx.run_dir / (arm + "_verify.tcl")
         script.write_text(
-            "restoreDesign {%s} {%s}\nset_verify_drc_mode -check_only cell -limit %d\n"
+            "restoreDesign {%s} {%s}\nfile mkdir {%s}\nsetAnalysisMode -analysisType onChipVariation -cppr both\n"
+            "timeDesign -postRoute -outDir {%s} -prefix final\nset_verify_drc_mode -check_only cell -limit %d\n"
             "set _xs_libcells [get_lib_cells -quiet \"*/%s\"]\n"
             "puts \"=== CUSTOM_CELL_FMAX VERIFY_LIBRARY_VISIBLE [sizeof_collection $_xs_libcells] ===\"\n"
+            "set _xs_insts [dbGet -e top.insts.cell.name %s -p2]\n"
+            "puts \"=== CUSTOM_CELL_FMAX FINAL_DB_INSTANCE_COUNT [llength $_xs_insts] ===\"\n"
             "verify_drc -limit %d -report {%s}\n"
             "puts \"=== CUSTOM_CELL_FMAX VERIFY_COMPLETE %s ===\"\nexit\n" %
-            (db, ctx.binding("DESIGN_TOP"), limit, ctx.binding("GENERATED_LIB_CELL_PATTERN"),
+            (db, ctx.binding("DESIGN_TOP"), timing_dir, timing_dir, limit, ctx.binding("GENERATED_LIB_CELL_PATTERN"),
+             ctx.binding("GENERATED_LIB_CELL_PATTERN"),
              limit, report, arm))
         ctx.add_artifact(script, "verify_script:" + arm, "generated-tool-input")
         log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(script)], cwd=ctx.run_dir,
@@ -1229,12 +1270,23 @@ def stage_verify(ctx):
             hits = re.findall(r"=== CUSTOM_CELL_FMAX VERIFY_LIBRARY_VISIBLE (\d+) ===", log_text)
             if len(hits) != 1 or int(hits[0]) <= 0:
                 raise Rejected("generated library was not visible in verification session")
+        instance_hits = re.findall(r"=== CUSTOM_CELL_FMAX FINAL_DB_INSTANCE_COUNT (\d+) ===", log_text)
+        if len(instance_hits) != 1:
+            raise Rejected("final route database instance census is missing or ambiguous for " + arm)
+        final_instances = int(instance_hits[0])
+        final_summary = timing_dir / "final.summary.gz"
+        final_paths = timing_dir / "final_all.tarpt.gz"
+        final_timing = parse_timing_summary(final_summary, final_paths)
         count = parse_drc(report, limit)
         ctx.add_artifact(report, "verify_drc_report:" + arm, "innovus-verification-report")
+        ctx.add_artifact(final_summary, "final_db_timing_summary:" + arm, "innovus-restored-database-report")
+        ctx.add_artifact(final_paths, "final_db_timing_paths:" + arm, "innovus-restored-database-report")
         per_arm[arm] = count
+        final_db[arm] = {"customInstances": final_instances, "timing": final_timing}
         total += count
     ctx.facts.update({"verification_error_count": total, "verification_errors_by_arm": per_arm,
-                      "verification_method": "verify_drc with explicit cell-only mode and uncapped report"})
+                      "final_database": final_db,
+                      "verification_method": "restored final database timing, instance census and verify_drc with explicit cell-only mode"})
 
 
 def report_text(path):
@@ -1246,7 +1298,7 @@ def report_text(path):
         raise Rejected("cannot decode complete timing report %s: %s" % (path, exc)) from exc
 
 
-def parse_timing_summary(path, companion):
+def parse_timing_summary(path, companion, mode="Setup"):
     text = report_text(path)
     path_text = report_text(companion)
     summary_commands = re.findall(r"^#\s+Command:\s+(.+?)\s*$", text, re.M)
@@ -1258,11 +1310,11 @@ def parse_timing_summary(path, companion):
         if "|" not in line:
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) >= 2 and cells[0] == "Setup mode" and cells[1] == "all":
+        if len(cells) >= 2 and cells[0] == mode + " mode" and cells[1] == "all":
             header = cells[1:]
             break
     if header is None or "all" not in header:
-        raise Rejected("post-route timeDesign summary has no all-mode header")
+        raise Rejected("post-route timeDesign summary has no %s all-mode header" % mode.lower())
     views = set(re.findall(r"^Analysis View:\s*(\S+)\s*$", path_text, re.M))
     rows = {}
     for line in text.splitlines():
@@ -1365,11 +1417,12 @@ def derived_pnr_condition(record, workspace, arm):
         raise Rejected("Innovus init and route tool versions differ in held evidence")
     excluded = referenced_paths(record.get("inputs", []), workspace,
                                 {"generated_liberty", "generated_lef"})
-    utilization = re.findall(r"(?m)^\s*floorPlan\s+-site\s+core\s+-r\s+1\.0\s+([0-9.]+)\s+2\.0\s+2\.0\s+2\.0\s+2\.0\s*$", scripts["init"].read_text(errors="replace"))
-    if len(utilization) != 1 or not (0.2 <= float(utilization[0]) <= 0.8):
-        raise Rejected("PnR init script lacks one bounded floorplan utilization")
+    floorplan = re.findall(r"(?m)^\s*floorPlan\s+-site\s+(\S+)\s+-r\s+1\.0\s+([0-9.]+)\s+2\.0\s+2\.0\s+2\.0\s+2\.0\s*$", scripts["init"].read_text(errors="replace"))
+    if len(floorplan) != 1 or not (0.2 <= float(floorplan[0][1]) <= 0.8):
+        raise Rejected("PnR init script lacks one declared Site/place utilization")
+    place_site, utilization = floorplan[0]
     published = record.get("facts", {}).get("floorplan_utilization")
-    if not isinstance(published, (int, float)) or float(published) != float(utilization[0]):
+    if not isinstance(published, (int, float)) or float(published) != float(utilization):
         raise Rejected("PnR record utilization disagrees with generated init script")
     return {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "place-and-route",
@@ -1382,7 +1435,8 @@ def derived_pnr_condition(record, workspace, arm):
             normalized_arm_script(scripts[kind].read_text(), excluded) for kind in ("mmmc", "init", "pnr")
         ).encode()),
         "tool": init_tool,
-        "floorplanUtilization": float(utilization[0]),
+        "floorplanUtilization": float(utilization),
+        "placeSite": place_site,
         "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
     }
 
@@ -1427,8 +1481,8 @@ def stage_compare(ctx):
                                 ctx.workspace, init_links, "init")
             validate_checkpoint(artifact(record, ctx.workspace, "postroute_checkpoint"),
                                 ctx.workspace, postroute_links, "postroute")
-            summary = artifact(record, ctx.workspace, "postroute_timing_summary")
-            timing_paths = artifact(record, ctx.workspace, "postroute_timing_paths")
+            summary = artifact(verify, ctx.workspace, "final_db_timing_summary:" + arm)
+            timing_paths = artifact(verify, ctx.workspace, "final_db_timing_paths:" + arm)
             mmmc = artifact(record, ctx.workspace, "mmmc_script:" + arm)
             init = artifact(record, ctx.workspace, "init_script:" + arm)
             pnr_script = artifact(record, ctx.workspace, "pnr_script:" + arm)
@@ -1444,17 +1498,35 @@ def stage_compare(ctx):
             timing = parse_timing_summary(summary, timing_paths)
             if timing["analysisView"] != parsed_mmmc["view"] or parsed_mmmc["activeSetup"] != parsed_mmmc["view"]:
                 raise Rejected("%s post-route report analysis view differs from its MMMC view" % arm)
-            pnr_rows[arm] = {"timing": timing, "mmmc": parsed_mmmc, "clockNs": actual_clock,
+            hold = parse_timing_summary(artifact(record, ctx.workspace, "postroute_hold_summary"),
+                                        artifact(record, ctx.workspace, "postroute_hold_paths"), mode="Hold")
+            route_drc = parse_drc(artifact(record, ctx.workspace, "route_drc_report"), 100000)
+            connectivity = parse_connectivity(artifact(record, ctx.workspace, "connectivity_report"))
+            physical = {"hold_wns_ns": hold["setupWnsNs"], "hold_violating_paths": hold["setupViolatingPaths"],
+                        "route_drc_violations": route_drc, "connectivity_violations": connectivity}
+            for key, actual in physical.items():
+                if record.get("facts", {}).get(key) != actual:
+                    raise Rejected("%s PnR physical fact disagrees with retained report: %s" % (arm, key))
+            pnr_rows[arm] = {"timing": timing, "physical": physical, "mmmc": parsed_mmmc, "clockNs": actual_clock,
                              "inputSdcIdentity": pnr_input_sdc_identity(input_sdc),
                              "initText": init.read_text(errors="replace"),
                              "pnrText": pnr_script.read_text(errors="replace")}
-            ctx.inputs.extend([file_ref(summary, ctx.workspace, arm + "_postroute_timing", "innovus-output"),
-                               file_ref(timing_paths, ctx.workspace, arm + "_postroute_timing_paths", "innovus-output"),
+            ctx.inputs.extend([file_ref(summary, ctx.workspace, arm + "_final_db_timing", "innovus-restored-database-report"),
+                               file_ref(timing_paths, ctx.workspace, arm + "_final_db_timing_paths", "innovus-restored-database-report"),
                                file_ref(mmmc, ctx.workspace, arm + "_mmmc", "generated-tool-input"),
                                file_ref(input_sdc, ctx.workspace, arm + "_pnr_sdc", "design-compiler-output"),
                                file_ref(actual_sdc, ctx.workspace, arm + "_postroute_sdc", "innovus-output"),
                                file_ref(init, ctx.workspace, arm + "_pnr_init_script", "generated-tool-input"),
                                file_ref(pnr_script, ctx.workspace, arm + "_pnr_route_script", "generated-tool-input")])
+            for source_role, compare_role in (("postroute_hold_summary", arm + "_hold_summary"),
+                                               ("postroute_hold_paths", arm + "_hold_paths"),
+                                               ("route_drc_report", arm + "_route_drc"),
+                                               ("connectivity_report", arm + "_connectivity"),
+                                               ("postroute_power_report", arm + "_power"),
+                                               ("postroute_gatecount_report", arm + "_gatecount"),
+                                               ("postroute_summary_report", arm + "_route_summary")):
+                ctx.inputs.append(file_ref(artifact(record, ctx.workspace, source_role), ctx.workspace,
+                                           compare_role, "innovus-output"))
 
         left, right = pnr_rows["foundry"], pnr_rows["generated"]
         foundry_pnr_condition = validate_condition_artifact(
@@ -1478,17 +1550,19 @@ def stage_compare(ctx):
         verify_visible_hits = re.findall(r"=== CUSTOM_CELL_FMAX VERIFY_LIBRARY_VISIBLE (\d+) ===", verify_log)
         verify_visible = int(verify_visible_hits[0]) if len(verify_visible_hits) == 1 else None
 
-        custom_netlist = artifact(custom_synth, ctx.workspace, "synthesis_netlist")
         generated_lib = artifact(characterize, ctx.workspace, "generated_liberty")
         ctx.inputs.extend([
             file_ref(execution_log(generated_pnr, ctx.workspace, "init-generated_log"), ctx.workspace,
                      "generated_pnr_init_log", "tool-log"),
             file_ref(execution_log(verify, ctx.workspace, "verify-generated_log"), ctx.workspace,
                      "generated_verify_log", "tool-log"),
-            file_ref(custom_netlist, ctx.workspace, "custom_netlist", "design-compiler-output"),
             file_ref(generated_lib, ctx.workspace, "offered_library", "learned-model-prediction"),
         ])
-        adoption = project_texts(custom_netlist.read_text(errors="replace"), generated_lib.read_text(errors="replace"))
+        final_database = verify.get("facts", {}).get("final_database", {})
+        generated_final = final_database.get("generated") if isinstance(final_database, dict) else None
+        final_adopted = generated_final.get("customInstances") if isinstance(generated_final, dict) else None
+        if not isinstance(final_adopted, int) or final_adopted < 0:
+            raise Rejected("final route database has no verified custom Cell instance census")
 
         verification_errors = 0
         for arm in ("foundry", "generated"):
@@ -1510,8 +1584,24 @@ def stage_compare(ctx):
         matched = synth_method_matched and pnr_method_matched
         library_visible = pnr_visible is not None and pnr_visible > 0 and verify_visible is not None and verify_visible > 0
         setup_open = generated_wns < 0 or right["timing"]["setupViolatingPaths"] > 0
+        foundry_closed_period = requested_clock - foundry_wns
+        generated_closed_period = requested_clock - generated_wns
+        if foundry_closed_period <= 0 or generated_closed_period <= 0:
+            raise Rejected("post-route slack implies a nonpositive closed period")
+        foundry_fmax_mhz = 1000.0 / foundry_closed_period
+        generated_fmax_mhz = 1000.0 / generated_closed_period
+        fmax_delta_mhz = generated_fmax_mhz - foundry_fmax_mhz
+        fmax_improved = fmax_delta_mhz > 0
+        physical_failures = 0
+        for arm in ("foundry", "generated"):
+            physical = pnr_rows[arm]["physical"]
+            physical_failures += int(physical["route_drc_violations"])
+            physical_failures += int(physical["connectivity_violations"])
+            physical_failures += int(physical["hold_violating_paths"])
+            if float(physical["hold_wns_ns"]) < 0:
+                physical_failures += 1
         failures = sum((not matched, setup_open, not library_visible,
-                        adoption["adopted_instance_count"] <= 0, verification_errors != 0))
+                        final_adopted <= 0, verification_errors != 0, not fmax_improved)) + physical_failures
         observations.update({
             "clock_period": requested_clock,
             "setup_wns": generated_wns,
@@ -1519,18 +1609,24 @@ def stage_compare(ctx):
             "setup_wns_delta": generated_wns - foundry_wns,
             "matched_conditions": matched,
             "library_visible": library_visible,
-            "adopted_instance_count": adoption["adopted_instance_count"],
+            "adopted_instance_count": final_adopted,
             "verification_error_count": verification_errors,
+            "foundry_fmax_mhz": foundry_fmax_mhz,
+            "generated_fmax_mhz": generated_fmax_mhz,
+            "fmax_delta_mhz": fmax_delta_mhz,
+            "fmax_improved": fmax_improved,
             "full_constraint_failures": failures,
             "unknownReason": None,
             "analysisViews": {arm: pnr_rows[arm]["timing"]["analysisView"] for arm in pnr_rows},
-            "measurementScope": "same requested period, post-route Innovus setup/all; delta is an observation, not Fmax benefit",
+            "measurementScope": "same requested period; setup slack and custom-instance census are re-read after restoring each final route database",
         })
     except (Rejected, ValueError, KeyError, IndexError, TypeError) as exc:
         unknown_reasons.append(str(exc))
         observations.update({"clock_period": None, "setup_wns": None, "foundry_setup_wns": None,
                              "setup_wns_delta": None, "matched_conditions": None,
                              "library_visible": None, "adopted_instance_count": None,
+                             "foundry_fmax_mhz": None, "generated_fmax_mhz": None,
+                             "fmax_delta_mhz": None, "fmax_improved": None,
                              "verification_error_count": None, "full_constraint_failures": None,
                              "unknownReason": unknown_reasons,
                              "measurementScope": "post-route comparison unavailable; synthesis timing is not substituted"})

@@ -10,12 +10,10 @@ which performs exactly what the contract declares:
 
     /usr/bin/python3 "$WORKSPACE/flow/probe.py" --workspace "$WORKSPACE" --period "$PERIOD_NS"
 
-WORKSPACE is the Campaign workspace, whose flow/ directory is the Campaign's own copy of the Site's
-flowRoot, carrying probe.py, synth.tcl, read-probe.py and the private inputs.json. PERIOD_NS is the
+WORKSPACE is the Campaign workspace, whose flow/ directory is the Campaign's own copy of the Pack flow, carrying probe.py, synth.tcl, read-probe.py and the private inputs.json produced by bind-inputs. PERIOD_NS is the
 clock period this generation is the strategy for, in ns. The flow's own probe.py performs exactly one
 synthesis in a fresh flow/probes/trial-<uuid>/ with a 600-second deadline, and publishes
-flow/probe.json only when the run completed with every required artefact present. It never writes
-into the Site's flowRoot.
+flow/probe.json only when the run completed with every required artefact present. It never writes into the Site's design, library or physical input roots.
 """
 import os
 import subprocess

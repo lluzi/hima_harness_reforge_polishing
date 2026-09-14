@@ -2,7 +2,8 @@
 
 `target_period_ns`: number, ns, min 0.1, max 5, default 0.5. It binds clock-period-at-most.
 The fixed Goal is reached only if the full-evidence constraint also PASSes on the same generation.
-The reported period is the generated arm's actual post-route clock, not an inferred closed Fmax.
+The final comparison reports a clearly labelled STA-derived Fmax for each arm from the same
+requested clock and setup slack reread after restoring that arm's final route database.
 
 ## Constraints
 
@@ -15,13 +16,15 @@ are never used. P&R/verification options and actual input/report identities are 
 
 ## Run contract
 
-Site inputs are the contract-declared flow root, design root/RTL/top, constraints, library and
-physical inputs, workspace, and current tool stack. contract.yml is the executable list of every tool,
-output, reader, Workshop and workspace copy. Site-private flow/inputs.json supplies explicit tool,
-PDK, model and constraint bindings; missing values are refused. Tools invoke the one stages.py adapter
+Site inputs are the declared design root/RTL/top, constraints, library and physical profiles,
+workspace, and current tool stack. contract.yml is the executable list of every tool, output,
+reader, Workshop and workspace copy. The Pack-sourced `bind-inputs` node validates these Site
+bindings and writes this Campaign's private `flow/inputs.json`; missing values are refused. Tools invoke the one stages.py adapter
 with a fixed stage name, WORKSPACE and optional fixed route. Only the probe accepts PERIOD_NS. The
-matched P&R tools also bind one Strategy floorplanUtilization fraction (0.2..0.8, formal default 0.5)
-into both generated init TCL files; the standalone adapter preserves 0.60 only when a human omits it.
+matched P&R tools bind one Strategy floorplanUtilization fraction (0.2..0.8, formal default 0.5)
+and the validated physical-profile `PLACE_SITE` into both generated init TCL files. The profile
+also declares the tap/filler assumptions used by both arms; a Pack does not invent a row site or
+technology cell names. The standalone adapter preserves 0.60 only when a human omits it.
 Wrappers: /usr/bin/python3. DC, LC and Innovus tools declare one corresponding licence per Job.
 The Site cap admits one licensed Job at a time; the same owner requests all branch work.
 
@@ -35,17 +38,23 @@ predicted/synthetic/site evidence classes are carried with the results, never co
 ## Semantics
 
 The probe retains clock_period, setup_wns (setup/all) and cell_area. The final compare reader uses
-clock_period and setup_wns for actual generated post-route timing. Other typed counts in semantics.yml
+clock_period and setup_wns reread from each restored final route database. Other typed counts in semantics.yml
 record candidates, generation/layout/prediction, LC, visibility/adoption, P&R, verification and
 matched/full-constraint status. foundry_setup_wns and setup_wns_delta are ns from the matched report
-pair. The held final route database, its report hashes, library visibility, positive adoption, and
-matched conditions are the Fmax evidence chain. A null reading carries its unknownReason; no numeric
+pair. The foundry/generated `*_fmax_mhz` values are STA-derived as `1000 / (clock_period - setup_wns)`
+from that matched pair; `fmax_improved` must be true. The held final route database, its report hashes,
+library visibility, positive adoption, and matched conditions are the Fmax evidence chain. A null reading carries its unknownReason; no numeric
 default supplies a missing observation.
+
+Each arm's PnR reader exposes retained-report hold WNS, hold violating paths, route DRC and
+connectivity counts. Power, gate-count and route-summary reports are retained as raw evidence.
+Their vendor-specific values remain unclaimed until a verified reader is added; absence is never
+represented as zero. These secondary facts do not decide the Fmax goal.
 
 ## Judge rules
 
 Nested probe: setup-wns-all-nonnegative, then clock-period-at-most bound to target_period_ns.
-Outer final-judge: full-evidence-valid, then clock-period-at-most bound to the same fixed Goal.
+Outer final-judge: full-evidence-valid, fmax-improved, then clock-period-at-most bound to the same fixed Goal.
 The first rule chooses the edge; both current verdicts are needed for explicit Goal met.
 
 ## Choosers

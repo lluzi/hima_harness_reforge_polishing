@@ -6,23 +6,27 @@ Each invocation gets a fresh `flow/probes/trial-<uuid>/`; no previous trial is o
 Successful output updates `flow/probe.json`, retaining original reports, netlist, constraints,
 input hashes, command, elapsed time and the trial manifest. Tool errors publish no new result.
 
-The Site owner stages this directory and a private `inputs.json` as the Site's `flowRoot`.
-Version 3 copies those files plus `stages.py`, `read-stage.py`, `selection-template.py` and `domain/`, as declared in contract.yml.
-The probe reads these private JSON bindings: `designTop`, `rtlGlob`, `foundryDb`,
+The Harness copies this Pack-owned flow into the Campaign workspace. Its first `bind-inputs`
+node validates the selected Site bindings and creates a private `inputs.json`; no customer flow
+directory or previously prepared input object is required. The probe reads these private JSON bindings: `designTop`, `rtlGlob`, `foundryDb`,
 `constraintsTcl`, `clockName`, and `edaWrapper`. Values are Site environment paths,
 not Pack defaults.
 RTL and the foundry database are read in place and hashed, never modified. Check those paths
 and the wrapper before running. Inputs and foundry files are not redistributed with this Pack.
 
-The Tcl method follows the site-specific Site-staged flow's foundry-only library, compile_ultra,
-20% input/output delay and 19.7% clock-latency ratio, with real and virtual clocks.
+The Tcl method uses the selected Site's foundry-only library and `compile_ultra`. Its timing
+constraints are the supplied `constraints` binding, used unchanged by both arms. This Pack does
+not impose a fixed input/output-delay percentage, clock-latency ratio, clock port, or virtual
+clock; those are design and Site facts rather than portable method defaults.
 `metrics.tsv` contains the asked period, worst constrained setup slack across path groups,
 and synthesized cell area. `read-probe.py REPORT OUT` checks the manifest's measurement hash
 and emits the existing `clock_period`, `setup_wns` (setup/all), and `cell_area` semantics.
 It never emits a guessed closed period. Malformed, missing, nonfinite or changed evidence fails.
 
-Recommended initial strategy: periodNs=0.35 ns, bounds 0.1..5, precision 3. Recommended fixed
-Goal: target_period_ns=0.5 ns with the same bounds. These are trial settings, not promised results.
+The declared initial strategy and Goal are bounded trial settings, not promised results. A Site
+profile supplies the physical row `PLACE_SITE`, tap/filler cells and interval, and shared P&R
+settings. Those technology assumptions are checked before the Campaign writes `inputs.json` and
+are identical for both arms.
 After a constraint failure, asked period minus negative slack estimates a relaxed next trial;
 apply a 0.01 ns over-constraining step. After a pass that misses Goal, try 0.01 ns tighter.
 Always use the current observation and both Judge verdicts. A zero slack is a real zero;
@@ -50,11 +54,11 @@ STAGE is mine, merge, generate, layout, characterize, compile, foundry-synth, cu
 adoption, pnr-foundry, pnr-generated, verify or compare. `read-stage.py REPORT OUT STAGE` derives
 observations from the retained artifacts. Selection readers use `select-timing-criticality` etc.
 
-Private inputs additionally declare `evidenceClass: site-run` and `legacy` bindings for the
-Site's Liberty/skeleton/LEF/QRC/GDS/map, bool2cmos, layout container/technology/rules/rails,
+The physical and tool profiles additionally declare `evidenceClass: site-run` and flat bindings for the
+Site's Liberty/skeleton/LEF/QRC/GDS/map, bool2cmos, layout technology/rules/rails,
 characterization helpers and three learned models, LC/DC/Innovus wrapper and explicit limits.
 Missing inputs are rejected. `synthetic-fixture` is exclusively for labelled local tests.
-The paired physical arms use `legacy.CLOCK_NS`, explicitly shared and rechecked, while periodNs
+The paired physical arms use `CLOCK_NS`, explicitly shared and rechecked, while periodNs
 is the initial probe's exploratory strategy. `MAX_CELLS` is 1 or 2 in this bounded pilot; six routes
 share that final build allocation. All timeouts, eight-core CAD setting and Site cap remain explicit.
 
@@ -62,3 +66,8 @@ Current manifests are convenient pointers. Immutable attempt directories retain 
 input snapshots and records for audit or a failed-stage retry. The root graph's read/Judge after the
 join consolidates evidence before any outer decision. A failed or unknown requirement cannot be
 replaced with an earlier branch or inner probe success. See SPEC.md for the complete ending contract.
+
+Each PnR arm retains setup and hold timing, route DRC, connectivity, power, gate-count and route
+summary reports. The reader emits the verified hold/DRC/connectivity values. Power, gate count and
+route summary remain visible raw reports until their current vendor format passes the L4 reader
+probe; this Pack does not turn an unparsed report into a numeric PPA claim.

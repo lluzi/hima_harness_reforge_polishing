@@ -13,9 +13,6 @@ budget:
   closingReserveMs: 60000
   attemptLimit: 120
 inputs:
-  - name: flowRoot
-    description: "A Site-staged portable flow directory with its private inputs.json.
-      It is copied into the Campaign workspace and is never modified in place."
   - name: designRoot
     description: "Read-only design root containing the RTL and constraints named by
       the Site binding."
@@ -29,11 +26,12 @@ inputs:
   - name: foundryLibrary
     description: "Site-bound Liberty/DB inputs for the baseline library."
   - name: physicalInputs
-    description: "Site-bound LEF, extraction, layer-map and process inputs used identically
-      by both route arms."
+    description: "Site-bound LEF, extraction, layer-map, row-site, tap/filler and process
+      profile used identically by both route arms. Every path and scalar consumed by the
+      physical method is validated before the Campaign writes inputs.json."
   - name: toolStack
-    description: "Site-bound entry points and environment for Design Compiler, Library
-      Compiler and Innovus. Recommended versions are advisory, not exact-version locks."
+    description: "A Site-local JSON profile with the EDA wrapper and bounded tool timeouts.
+      HimaGuide can construct it from Site discovery; the user does not write Pack YAML."
   - name: workspaceRoot
     description: Where Campaign workspaces are created. The Site's Permit must allow
       writes under it; nothing the pack does writes anywhere else.
@@ -195,20 +193,52 @@ environment:
   wrappers:
     - /usr/bin/python3
   commands:
-    - dc_shell
-    - lc_shell
-    - innovus
+    - eda
 workspace:
+  source: pack
   copy:
+    - bind-inputs.py
     - probe.py
     - synth.tcl
     - read-probe.py
-    - inputs.json
     - stages.py
     - domain
     - read-stage.py
     - selection-template.py
 tools:
+  - id: bind-inputs
+    file: tools/bind-inputs.py
+    description: Materialize this Campaign's declared design, process and tool inputs into
+      its private flow/inputs.json. It consumes the selected Site bindings and never reads
+      a pre-staged customer flow or overwrites an existing input identity.
+    inputs:
+      - WORKSPACE
+      - DESIGN_ROOT
+      - RTL_GLOB
+      - DESIGN_TOP
+      - CONSTRAINTS
+      - FOUNDRY_LIBRARY
+      - PHYSICAL_INPUTS
+      - TOOL_STACK
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/bind-inputs.py
+      - --workspace
+      - ${WORKSPACE}
+      - --design-root
+      - ${DESIGN_ROOT}
+      - --rtl-glob
+      - ${RTL_GLOB}
+      - --design-top
+      - ${DESIGN_TOP}
+      - --constraints
+      - ${CONSTRAINTS}
+      - --foundry-library
+      - ${FOUNDRY_LIBRARY}
+      - --physical-inputs
+      - ${PHYSICAL_INPUTS}
+      - --tool-stack
+      - ${TOOL_STACK}
   - id: synthesize
     recommendedVersion: "Design Compiler current Site-supported release"
     file: tools/probe.py
@@ -456,6 +486,7 @@ rules:
   - setup-wns-all-nonnegative
   - clock-period-at-most
   - full-evidence-valid
+  - fmax-improved
   - route-selection-known
 knowledge:
   - file: custom-cell-fmax-probe-method.md
@@ -466,6 +497,8 @@ knowledge:
   - file: full-mining-method.md
     purpose: Six-route candidate research, exact Boolean provenance, bounded
       selection, library gates and limits of paired measurements.
+  - file: site-profile.md
+    purpose: Complete Site-local physical and tool profile fields, types, ownership, discovery sources and readiness rules used before a Campaign starts.
 goal:
   target_period_ns:
     type: number

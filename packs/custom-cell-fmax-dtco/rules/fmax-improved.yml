@@ -1,0 +1,11 @@
+id: fmax-improved
+version: "1"
+title: Restored final database Fmax is strictly improved
+requires:
+  - type: fmax_improved
+subject:
+  type: fmax_improved
+predicate:
+  op: eq
+  threshold: 1
+  unit: count
