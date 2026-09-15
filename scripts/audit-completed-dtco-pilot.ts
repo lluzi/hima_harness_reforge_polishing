@@ -33,7 +33,7 @@ const requiredReferenceNodes = [
   ...routes.flatMap((route) => [`mine-${route}`, `select-${route}`, `read-select-${route}`]),
   'merge-join', 'merge', 'read-merge', 'generate', 'read-generate', 'layout', 'read-layout',
   'characterize', 'read-characterize', 'compile', 'read-compile', 'foundry-synth',
-  'read-foundry-synth', 'custom-synth', 'read-custom-synth', 'adoption', 'read-adoption',
+  'read-foundry-synth', 'custom-synth', 'read-custom-synth', 'adoption', 'read-adoption', 'adoption-gate',
   'pnr-foundry', 'read-pnr-foundry', 'pnr-generated', 'read-pnr-generated', 'verify',
   'read-verify', 'compare', 'read-compare', 'final-judge', 'next-research',
 ] as const;
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
     pass('one DeepSeek-V4.1-Flash owner completed one held-out Campaign on the exact Pack and Site',
       run.status === 'ended-goal-met' && run.packId === PACK_ID && run.packDigest === sourceDigest
         && run.siteId === site && run.goal?.target_period_ns === 0.5
-        && run.firstStrategy?.periodNs === 0.5 && run.firstStrategy?.floorplanUtilization === 0.5
+        && run.firstStrategy?.periodNs === 0.5 && run.firstStrategy?.floorplanUtilization === 0.25
         && run.firstStrategy?.algorithmRevision === 0 && owner === source.observed?.owner
         && ownerEvidence?.options?.model === EXPECTED_MODEL,
       { runId, status: run.status, owner, model: ownerEvidence?.options?.model, site, packDigest: run.packDigest });

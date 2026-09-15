@@ -78,6 +78,7 @@ const requiredReferenceNodes = [
   'read-custom-synth',
   'adoption',
   'read-adoption',
+  'adoption-gate',
   'pnr-foundry',
   'read-pnr-foundry',
   'pnr-generated',
@@ -502,7 +503,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
       && first.goal?.target_period_ns === 0.5
       && first.firstStrategy?.periodNs === 0.5
       && first.firstStrategy?.algorithmRevision === 0
-      && first.firstStrategy?.floorplanUtilization === 0.5
+      && first.firstStrategy?.floorplanUtilization === 0.25
       && first.budget?.timeBoxMs === FIRST_TIME_BOX_MS
       && first.budget?.closingReserveMs === CLOSING_RESERVE_MS
       && first.budget?.attemptLimit === ATTEMPT_LIMIT

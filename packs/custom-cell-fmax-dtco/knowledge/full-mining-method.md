@@ -66,7 +66,10 @@ master adoption are different facts: zero adopted instances does not establish i
 
 Both physical arms start from fresh syntheses using one shared template/RTL/clock/wrapper identity
 at the Campaign's current `periodNs`; this is the same Strategy lineage the probe tightened before
-mining. Only the admitted generated library is added in the custom arm. The earlier probe is mining
+mining. Each DC arm applies the same 50% clock uncertainty so a timing-clean nominal constraint does
+not remove mapping pressure; each emitted route SDC uses the same 25% uncertainty. Logic-synthesis
+adoption is a prerequisite for P&R. The foundry arm establishes one 25% target-utilization core and
+IO-pin plan; the generated arm reuses that exact core box and pin identity. Only the admitted generated library is added in the custom arm. The earlier probe is mining
 input, not the matched physical reference. Clock/WNS must be reread after restoring each final route
 database with the same analysis view and constraint chain. Never substitute DC slack. The comparison
 may report the explicit STA-derived closed period (`requested period - setup slack`) and corresponding

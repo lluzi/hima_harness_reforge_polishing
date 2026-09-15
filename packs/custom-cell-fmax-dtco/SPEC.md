@@ -20,9 +20,11 @@ Site inputs are the declared design root/RTL/top, constraints, library and physi
 workspace, and current tool stack. contract.yml is the executable list of every tool, output,
 reader, Workshop and workspace copy. The Pack-sourced `bind-inputs` node validates these Site
 bindings and writes this Campaign's private `flow/inputs.json`; missing values are refused. Tools invoke the one stages.py adapter
-with a fixed stage name, WORKSPACE and optional fixed route. Only the probe accepts PERIOD_NS. The
-matched P&R tools bind one Strategy floorplanUtilization fraction (0.2..0.8, formal default 0.5)
-and the validated physical-profile `PLACE_SITE` into both generated init TCL files. The profile
+with a fixed stage name, WORKSPACE and optional fixed route. Probe and both matched syntheses accept
+PERIOD_NS. The matched P&R tools bind one Strategy floorplanUtilization fraction (0.2..0.8, formal
+default 0.25, twice the former core area), freeze the foundry arm's placed IO plan, and replay its
+exact pin locations and core box in the generated arm. Both DC arms apply 50% clock uncertainty;
+their emitted P&R SDCs apply 25%. The validated physical-profile `PLACE_SITE` enters both init TCL files. The profile
 also declares the tap/filler assumptions used by both arms; a Pack does not invent a row site or
 technology cell names. The standalone adapter preserves 0.60 only when a human omits it.
 Wrappers: /usr/bin/python3. DC, LC and Innovus tools declare one corresponding licence per Job.
@@ -54,6 +56,7 @@ represented as zero. These secondary facts do not decide the Fmax goal.
 ## Judge rules
 
 Nested probe: setup-wns-all-nonnegative, then clock-period-at-most bound to target_period_ns.
+Before P&R, custom-cell-adopted requires at least one generated master in the custom synthesis netlist.
 Outer final-judge: full-evidence-valid, fmax-improved, then clock-period-at-most bound to the same fixed Goal.
 The first rule chooses the edge; both current verdicts are needed for explicit Goal met.
 

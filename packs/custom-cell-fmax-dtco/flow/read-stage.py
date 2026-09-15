@@ -409,6 +409,8 @@ def normalized_synth_entry(text):
 
 def normalized_arm_script(text, excluded_paths=()):
     text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    text = "\n".join(line for line in text.splitlines()
+                     if not re.match(r"^\s*(?:floorPlan|loadIoFile|saveIoFile|setPlaceMode -place_global_place_io_pins)\b", line))
     for path in sorted(excluded_paths, key=len, reverse=True):
         text = text.replace(" " + path, "")
     text = re.sub(r"\s+/[^\s{}\]]+/generated\.(?:lib|lef)", "", text)
@@ -422,6 +424,15 @@ def normalized_arm_script(text, excluded_paths=()):
 def derived_synth_condition(record, workspace, arm):
     entry = one(record, workspace, "synthesis_entry")
     log = logs(record, workspace, arm + "-dc_log")
+    facts = record.get("facts", {})
+    clock = facts.get("clock_ns")
+    dc_uncertainty = facts.get("dc_uncertainty_ns")
+    route_uncertainty = facts.get("route_uncertainty_ns")
+    if (not all(isinstance(value, (int, float)) and math.isfinite(value)
+                for value in (clock, dc_uncertainty, route_uncertainty))
+            or not math.isclose(dc_uncertainty, clock * 0.50, abs_tol=1e-12)
+            or not math.isclose(route_uncertainty, clock * 0.25, abs_tol=1e-12)):
+        raise ValueError("synthesis record lacks the fixed 50%/25% pressure identity")
     return {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "synthesis",
         "commonInputs": held_identities(record.get("inputs", []),
@@ -429,6 +440,9 @@ def derived_synth_condition(record, workspace, arm):
             prefixes=("rtl:",)),
         "entryContractSha256": hashlib.sha256(normalized_synth_entry(entry.read_text()).encode()).hexdigest(),
         "tool": dc_version(log.read_text(errors="replace")),
+        "clockNs": clock,
+        "dcUncertaintyNs": dc_uncertainty,
+        "routeUncertaintyNs": route_uncertainty,
         "armSpecificExclusions": ["CCFMAX_ARM", "CCFMAX_CUSTOM_DB", "generated_db"],
     }
 
@@ -443,13 +457,21 @@ def derived_pnr_condition(record, workspace, arm):
     excluded = referenced_paths(record.get("inputs", []), workspace,
                                 {"generated_liberty", "generated_lef"})
     init_text = scripts["init"].read_text(errors="replace")
-    floorplan = re.findall(r"(?m)^\s*floorPlan\s+-site\s+(\S+)\s+-r\s+1\.0\s+([0-9.]+)\s+2\.0\s+2\.0\s+2\.0\s+2\.0\s*$", init_text)
-    if len(floorplan) != 1 or not (0.2 <= float(floorplan[0][1]) <= 0.8):
-        raise ValueError("PnR init script lacks one declared Site/place utilization")
-    place_site, utilization = floorplan[0]
-    published = record.get("facts", {}).get("floorplan_utilization")
-    if not isinstance(published, (int, float)) or float(published) != float(utilization):
-        raise ValueError("PnR record utilization disagrees with generated init script")
+    facts = record.get("facts", {})
+    utilization = facts.get("floorplan_utilization")
+    core_box = facts.get("floorplan_core_box")
+    pin_plan = facts.get("pin_plan_identity")
+    if (not isinstance(utilization, (int, float)) or not 0.2 <= float(utilization) <= 0.8
+            or not isinstance(core_box, list) or len(core_box) != 4
+            or not all(isinstance(value, (int, float)) and math.isfinite(value) for value in core_box)
+            or core_box[2] <= core_box[0] or core_box[3] <= core_box[1]
+            or not isinstance(pin_plan, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(pin_plan.get("sha256") or ""))
+            or not isinstance(pin_plan.get("pinCount"), int) or pin_plan["pinCount"] <= 0):
+        raise ValueError("PnR record lacks one frozen floorplan and pin-plan identity")
+    sites = re.findall(r"(?m)^\s*floorPlan\s+-site\s+(\S+)", init_text)
+    if len(sites) != 1:
+        raise ValueError("PnR init script lacks one place Site")
+    place_site = sites[0]
     return {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "place-and-route",
         "commonInputs": held_identities(record.get("inputs", []), exact=(
@@ -462,6 +484,8 @@ def derived_pnr_condition(record, workspace, arm):
         ).encode()).hexdigest(),
         "tool": init_tool,
         "floorplanUtilization": float(utilization),
+        "floorplanCoreBox": core_box,
+        "pinPlan": pin_plan,
         "placeSite": place_site,
         "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
     }

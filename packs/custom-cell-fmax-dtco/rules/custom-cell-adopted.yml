@@ -1,0 +1,11 @@
+id: custom-cell-adopted
+version: "1"
+title: Logic synthesis adopted at least one generated Cell
+requires:
+  - type: adopted_instance_count
+subject:
+  type: adopted_instance_count
+predicate:
+  op: gte
+  threshold: 1
+  unit: count

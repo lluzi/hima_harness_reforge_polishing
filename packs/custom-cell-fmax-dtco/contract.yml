@@ -492,6 +492,7 @@ rules:
   - full-evidence-valid
   - fmax-improved
   - route-selection-known
+  - custom-cell-adopted
 knowledge:
   - file: custom-cell-fmax-probe-method.md
     purpose: "How to read this pack's numbers and what they do not say: the
@@ -516,7 +517,7 @@ strategy:
     unit: fraction
     min: 0.2
     max: 0.8
-    default: 0.5
+    default: 0.25
     precision: 3
   periodNs:
     type: number

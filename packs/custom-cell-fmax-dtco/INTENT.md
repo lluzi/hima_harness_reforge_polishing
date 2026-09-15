@@ -12,9 +12,10 @@ Selection programs record the source candidate identifiers they choose. A result
 credible only after a generated library is visible, used by more than zero instances,
 and reaches a completed final route database that is the direct source of timing.
 
-The baseline and generated arms share RTL, constraints, floorplan, physical inputs,
-tool entry points, and route settings. The only permitted arm difference is generated
-Cell/library content. Area, power, congestion, and physical observations are retained
+The baseline and generated arms share RTL, constraints, a once-expanded 25% target-utilization
+floorplan, the baseline arm's frozen IO-pin plan, physical inputs, tool entry points, and route
+settings. Both syntheses use 50% clock uncertainty and both route arms use 25%. The only permitted
+arm difference is generated Cell/library content. Area, power, congestion, and physical observations are retained
 when available, and explicitly unknown when not measured; they do not decide Fmax.
 
 ## Endings

@@ -46,6 +46,7 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
   }
   const graph = parse(await readFile(path.join(packDir, 'graph.yml'), 'utf8')) as {
     nodes: Array<{ id: string; parameters?: { arguments?: Record<string, { from?: string; name?: string }> } }>;
+    edges: Array<{ from: string; to: string; outcome?: string }>;
   };
   for (const id of ['foundry-synth', 'custom-synth']) {
     const tool = contract.tools.find((item) => item.id === id);
@@ -54,6 +55,13 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
     assert.deepEqual(graph.nodes.find((node) => node.id === id)?.parameters?.arguments?.PERIOD_NS,
       { from: 'strategy', name: 'periodNs' });
   }
+  assert.ok(graph.nodes.some((node) => node.id === 'adoption-gate'));
+  assert.ok(graph.edges.some((edge) => edge.from === 'read-adoption' && edge.to === 'adoption-gate'));
+  assert.ok(graph.edges.some((edge) => edge.from === 'adoption-gate' && edge.to === 'pnr-foundry' && edge.outcome === 'PASS'));
+  assert.ok(graph.edges.some((edge) => edge.from === 'adoption-gate' && edge.to === 'blocked' && edge.outcome === 'FAIL'));
+  const adoptionRule = parse(await readFile(path.join(packDir, 'rules/custom-cell-adopted.yml'), 'utf8')) as Record<string, any>;
+  assert.equal(adoptionRule.subject.type, 'adopted_instance_count');
+  assert.deepEqual(adoptionRule.predicate, { op: 'gte', threshold: 1, unit: 'count' });
   const files = await Promise.all([
     'INTENT.md', 'SPEC.md', 'FABRIC.md', 'TEST.md', 'contract.yml', 'graph.yml', 'semantics.yml',
     'flow/probe.py', 'flow/stages.py', 'flow/read-stage.py', 'knowledge/full-mining-method.md',
@@ -256,7 +264,7 @@ async function runHeldOutPhysicalComparison(flags: readonly string[] = []) {
   await writeCustomSyntheticRecord(fixture.workspace, 'characterize', [{ role: 'generated_liberty', path: generatedLib }]);
   await writeCustomSyntheticRecord(fixture.workspace, 'layout', [{ role: 'abstract_lef:XS_FIX_ZN', path: generatedLef }]);
   for (const stage of ['compile', 'foundry-synth', 'custom-synth', 'pnr-foundry', 'pnr-generated', 'verify', 'compare']) {
-    const argument = stage.startsWith('pnr-') ? '0.5' : stage.endsWith('-synth') ? '0.34' : undefined;
+    const argument = stage.startsWith('pnr-') ? '0.25' : stage.endsWith('-synth') ? '0.34' : undefined;
     const result = fixture.run(stage, argument);
     if (result.status !== 0) {
       const record = JSON.parse(await readFile(path.join(flow, `records/${stage}.json`), 'utf8'));
@@ -276,7 +284,14 @@ test('held-out flat bindings accept only a matched final-database custom-Cell Fm
   for (const arm of ['foundry-synth', 'custom-synth']) {
     const synthesis = JSON.parse(await readFile(path.join(fixture.workspace, `flow/records/${arm}.json`), 'utf8'));
     assert.equal(synthesis.facts.clock_ns, 0.34, `${arm} must use the current Campaign period`);
+    assert.equal(synthesis.facts.dc_uncertainty_ns, 0.17, `${arm} must use 50% DC uncertainty`);
+    assert.equal(synthesis.facts.route_uncertainty_ns, 0.085, `${arm} must emit 25% route uncertainty`);
   }
+  const foundryPnr = JSON.parse(await readFile(path.join(fixture.workspace, 'flow/records/pnr-foundry.json'), 'utf8'));
+  const generatedPnr = JSON.parse(await readFile(path.join(fixture.workspace, 'flow/records/pnr-generated.json'), 'utf8'));
+  assert.equal(foundryPnr.facts.floorplan_utilization, 0.25);
+  assert.deepEqual(generatedPnr.facts.floorplan_core_box, foundryPnr.facts.floorplan_core_box);
+  assert.deepEqual(generatedPnr.facts.pin_plan_identity, foundryPnr.facts.pin_plan_identity);
   assert.equal(compare.facts.fmax_improved, true);
   assert.ok(compare.facts.generated_fmax_mhz > compare.facts.foundry_fmax_mhz);
   assert.equal(compare.facts.full_constraint_failures, 0);

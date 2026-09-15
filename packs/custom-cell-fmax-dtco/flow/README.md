@@ -58,8 +58,9 @@ The physical and tool profiles additionally declare `evidenceClass: site-run` an
 Site's Liberty/skeleton/LEF/QRC/GDS/map, bool2cmos, layout technology/rules/rails,
 characterization helpers and three learned models, LC/DC/Innovus wrapper and explicit limits.
 Missing inputs are rejected. `synthetic-fixture` is exclusively for labelled local tests.
-The paired physical arms use `CLOCK_NS`, explicitly shared and rechecked, while periodNs
-is the initial probe's exploratory strategy. `MAX_CELLS` is 1 or 2 in this bounded pilot; six routes
+The paired physical arms use the current `periodNs`, explicitly shared and rechecked. DC applies
+50% uncertainty and writes a route SDC with 25% uncertainty. The foundry arm freezes the expanded
+core box and IO-pin plan for exact reuse by the generated arm. `MAX_CELLS` is 1 or 2 in this bounded pilot; six routes
 share that final build allocation. All timeouts, eight-core CAD setting and Site cap remain explicit.
 
 Current manifests are convenient pointers. Immutable attempt directories retain logs, raw files,

@@ -166,6 +166,11 @@ nodes:
     kind: act
     parameters:
       observes: record_adoption
+  - id: adoption-gate
+    kind: judge
+    parameters:
+      rules:
+        - custom-cell-adopted
   - id: pnr-foundry
     kind: act
     parameters:
@@ -341,7 +346,13 @@ edges:
   - from: adoption
     to: read-adoption
   - from: read-adoption
+    to: adoption-gate
+  - from: adoption-gate
     to: pnr-foundry
+    outcome: PASS
+  - from: adoption-gate
+    to: blocked
+    outcome: FAIL
   - from: pnr-foundry
     to: read-pnr-foundry
   - from: read-pnr-foundry

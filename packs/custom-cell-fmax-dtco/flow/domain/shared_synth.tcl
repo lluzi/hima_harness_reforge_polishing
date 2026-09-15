@@ -80,11 +80,17 @@ source [need CCFMAX_SDC]
 redirect ${REPORT_DIR}/check_design.rpt      { check_design }
 redirect ${REPORT_DIR}/check_timing_pre.rpt  { check_timing }
 
+# Both arms see the same deliberate logic-optimization pressure. The generated
+# library remains the only arm-specific input. Route receives a separately frozen
+# 25% uncertainty through the SDC written below.
+set _dc_uncertainty [expr {$CLK_NS * 0.50}]
+set _route_uncertainty [expr {$CLK_NS * 0.25}]
+set_clock_uncertainty $_dc_uncertainty [get_clocks *]
+puts "=== CUSTOM_CELL_FMAX DC_UNCERTAINTY_NS $_dc_uncertainty ==="
 compile_ultra -no_autoungroup
 
 change_names -rules verilog -hierarchy
 write -format verilog -hierarchy -output ./results/${ARM}.dc.v
-write_sdc ./results/${ARM}.dc.sdc
 redirect ${REPORT_DIR}/timing_${ARM}.rpt { report_timing -max_paths 5 -nworst 2 }
 redirect ${REPORT_DIR}/qor_${ARM}.rpt    { report_qor }
 redirect ${REPORT_DIR}/area_${ARM}.rpt   { report_area -hierarchy }
@@ -92,6 +98,9 @@ redirect ${REPORT_DIR}/power_${ARM}.rpt  { report_power }
 # Adoption evidence. report_reference is the tool's own instance-to-master census; the adoption
 # record is built from the NETLIST relation, and this report is kept as the cross-check.
 redirect ${REPORT_DIR}/refs_${ARM}.rpt   { report_reference }
+set_clock_uncertainty $_route_uncertainty [get_clocks *]
+write_sdc ./results/${ARM}.dc.sdc
+puts "=== CUSTOM_CELL_FMAX ROUTE_UNCERTAINTY_NS $_route_uncertainty ==="
 set _xs_pattern [need CCFMAX_GENERATED_LIB_CELL_PATTERN]
 set _xs_generated [get_lib_cells -quiet */$_xs_pattern]
 puts "=== CUSTOM_CELL_FMAX LIBRARY_VISIBLE_COUNT [sizeof_collection $_xs_generated] ==="

@@ -102,19 +102,23 @@ if tool == 'lc_shell':
 elif tool == 'dc_shell':
     arm = re.search(r'set ::env\((?:XS28|CCFMAX)_ARM\) "([^"]+)"', text).group(1)
     top = re.search(r'set ::env\(DESIGN_TOP\) "([^"]+)"', text).group(1)
+    clock_ns = float(re.search(r'set ::env\(CLK_NS\) "([0-9.]+)"', text).group(1))
     run = script.parent; (run / 'results').mkdir(exist_ok=True); (run / 'reports').mkdir(exist_ok=True)
     master = 'XS_FIX_ZN' if arm == 'custom' else 'NAND2_X1'
     (run / 'results' / (arm + '.dc.v')).write_text('module %s(input clk,a,b,output z);\n%s U0 (.A(a),.B(b),.Z(z));\nendmodule\n' % (top, master))
     fixture_flow = script.parents[3]
     input_delay = '0.2' if arm == 'custom' and (fixture_flow / 'synthetic-custom-input-delay').exists() else '0.1'
-    (run / 'results' / (arm + '.dc.sdc')).write_text('### SYNTHETIC FIXTURE SDC\n# Created by write_sdc on SYNTHETIC-%s\n###\ncreate_clock -name clk -period 0.5 [get_ports clk]\nset_input_delay -clock clk %s [get_ports a]\n' % (arm, input_delay))
+    (run / 'results' / (arm + '.dc.sdc')).write_text('### SYNTHETIC FIXTURE SDC\n# Created by write_sdc on SYNTHETIC-%s\n###\ncreate_clock -name clk -period %s [get_ports clk]\nset_clock_uncertainty %s [get_clocks clk]\nset_input_delay -clock clk %s [get_ports a]\n' % (arm, clock_ns, clock_ns * 0.25, input_delay))
     (run / 'reports' / ('refs_' + arm + '.rpt')).write_text('%s 1\n' % master)
     (run / 'reports' / ('timing_' + arm + '.rpt')).write_text('slack (MET) 0.010\n')
+    (run / 'reports' / ('area_' + arm + '.rpt')).write_text('Total cell area: 100.0\n')
     dc_version = 'SYNTHETIC-DC-B' if arm == 'custom' and (fixture_flow / 'synthetic-dc-version-mismatch').exists() else 'SYNTHETIC-DC-A'
     print('   Version %s for synthetic64 - SYNTHETIC-FIXTURE' % dc_version)
     print('=== AES_DTCO LIBRARY_VISIBLE_COUNT %d ===' % (1 if arm == 'custom' else 0))
     print('=== AES_DTCO SYNTHESIS_COMPLETE %s ===' % arm)
     print('=== CUSTOM_CELL_FMAX LIBRARY_VISIBLE_COUNT %d ===' % (1 if arm == 'custom' else 0))
+    print('=== CUSTOM_CELL_FMAX DC_UNCERTAINTY_NS %s ===' % (clock_ns * 0.50))
+    print('=== CUSTOM_CELL_FMAX ROUTE_UNCERTAINTY_NS %s ===' % (clock_ns * 0.25))
     print('=== CUSTOM_CELL_FMAX SYNTHESIS_COMPLETE %s ===' % arm)
 elif tool == 'innovus':
     arm = 'generated' if 'generated' in script.name else 'foundry'
@@ -128,6 +132,7 @@ elif tool == 'innovus':
         if not (arm == 'generated' and (fixture_flow / 'synthetic-init-missing-visibility').exists()):
             print('=== XS28 GENERATED_LIB_CELLS_AFTER_RESTORE %d ===' % (1 if arm == 'generated' else 0))
             print('=== CCFMAX GENERATED_LIB_CELLS_AFTER_RESTORE %d ===' % (1 if arm == 'generated' else 0))
+        print('=== core area: {2.0 2.0 22.0 22.0} ===')
     elif script.name.startswith('pnr_'):
         target = pathlib.Path(re.search(r'saveDesign\s+([^\s]+)', text).group(1))
         restored = pathlib.Path(re.search(r'^restoreDesign\s+(\S+)', text, re.M).group(1))
@@ -139,6 +144,13 @@ elif tool == 'innovus':
         links.append(('libs/misc/rc_model.bin', rc_model))
         gds = pathlib.Path(re.search(r'^streamOut\s+([^\s]+)', text, re.M).group(1))
         report_dir, prefix = re.search(r'^timeDesign -postRoute -outDir\s+(\S+)/postopt -prefix\s+(\S+)', text, re.M).groups()
+        saved_io = pathlib.Path(re.search(r'^saveIoFile -locations \{([^}]+)\}', text, re.M).group(1))
+        loaded_io = re.search(r'^loadIoFile \{([^}]+)\}', text, re.M)
+        saved_io.parent.mkdir(parents=True, exist_ok=True)
+        if loaded_io:
+            saved_io.write_bytes(pathlib.Path(loaded_io.group(1)).read_bytes())
+        else:
+            saved_io.write_text('(iopin\n (top\n  (pin name="clk" offset=1.0000 layer=2 width=0.0500 depth=0.2800 place_status=placed )\n )\n)\n')
         summary = pathlib.Path(report_dir) / 'postopt' / (prefix + '.summary.gz')
         paths = pathlib.Path(report_dir) / 'postopt' / (prefix + '_all.tarpt.gz')
         save_checkpoint(target, arm + '-postroute', links)
@@ -176,7 +188,9 @@ elif tool == 'innovus':
         (pathlib.Path(report_dir) / 'summary.rpt').write_text('# Instances: 25\n% Pure Gate Density #6 ((fixture)): 55.5%\n')
         actual_sdc = pathlib.Path(re.search(r'^write_sdc\s+(\S+)', text, re.M).group(1))
         if not (fixture_flow / 'synthetic-missing-actual-clock').exists():
-            period = '0.4' if (fixture_flow / 'synthetic-changed-actual-clock').exists() else '0.5'
+            input_sdcs = [link for link in restored.rglob('*') if link.is_symlink() and str(link.readlink()).endswith('.dc.sdc')]
+            period = re.search(r'create_clock\b[^\n]*-period\s+([0-9.]+)', input_sdcs[0].read_text()).group(1)
+            period = '0.4' if (fixture_flow / 'synthetic-changed-actual-clock').exists() else period
             actual_sdc.parent.mkdir(parents=True, exist_ok=True)
             actual_sdc.write_text('create_clock -name clk -period %s [get_ports clk]\n' % period)
         print('=== XS28 PNR DONE %s (GDS written) ===' % arm)

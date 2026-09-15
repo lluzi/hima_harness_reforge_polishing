@@ -838,6 +838,14 @@ def synthesis_period(value):
     return parsed
 
 
+def dc_cell_area(path):
+    text = Path(path).read_text(errors="replace")
+    values = [float(value) for value in re.findall(r"^Total cell area:\s*([0-9.eE+-]+)\s*$", text, re.M)]
+    if len(values) != 1 or not math.isfinite(values[0]) or values[0] <= 0:
+        raise Rejected("Design Compiler area report has no unique positive total cell area")
+    return values[0]
+
+
 def stage_synth(ctx, custom, period=None):
     rtl_glob = str(ctx.binding("DESIGN_RTL_GLOB"))
     rtl = sorted(Path(p).resolve() for p in glob.glob(rtl_glob))
@@ -889,9 +897,19 @@ def stage_synth(ctx, custom, period=None):
     sdc = ctx.run_dir / "results" / (arm + ".dc.sdc")
     refs = ctx.run_dir / "reports" / ("refs_" + arm + ".rpt")
     timing = ctx.run_dir / "reports" / ("timing_" + arm + ".rpt")
+    area_report = ctx.run_dir / "reports" / ("area_" + arm + ".rpt")
     for at, role in ((netlist, "synthesis_netlist"), (sdc, "synthesis_sdc"),
-                     (refs, "reference_report"), (timing, "synthesis_timing_report")):
+                     (refs, "reference_report"), (timing, "synthesis_timing_report"),
+                     (area_report, "synthesis_area_report")):
         ctx.add_artifact(at, role, "design-compiler-output")
+    dc_uncertainty = re.findall(r"=== CUSTOM_CELL_FMAX DC_UNCERTAINTY_NS ([0-9.eE+-]+) ===", text)
+    route_uncertainty = re.findall(r"=== CUSTOM_CELL_FMAX ROUTE_UNCERTAINTY_NS ([0-9.eE+-]+) ===", text)
+    if len(dc_uncertainty) != 1 or len(route_uncertainty) != 1:
+        raise ToolFailure("DC log lacks the fixed optimization-pressure markers")
+    dc_uncertainty_ns, route_uncertainty_ns = float(dc_uncertainty[0]), float(route_uncertainty[0])
+    if (not math.isclose(dc_uncertainty_ns, clock_ns * 0.50, abs_tol=1e-12)
+            or not math.isclose(route_uncertainty_ns, clock_ns * 0.25, abs_tol=1e-12)):
+        raise Rejected("DC and route uncertainty do not match the fixed 50%/25% method")
     publish_condition_identity(ctx, {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "synthesis",
         "commonInputs": held_identities(ctx.inputs,
@@ -899,11 +917,17 @@ def stage_synth(ctx, custom, period=None):
             prefixes=("rtl:",)),
         "entryContractSha256": sha_bytes(normalized_synth_entry(entry.read_text()).encode()),
         "tool": version,
+        "clockNs": clock_ns,
+        "dcUncertaintyNs": dc_uncertainty_ns,
+        "routeUncertaintyNs": route_uncertainty_ns,
         "armSpecificExclusions": ["CCFMAX_ARM", "CCFMAX_CUSTOM_DB", "generated_db"],
     })
     ctx.facts.update({
         "arm": "generated" if custom else "foundry", "library_visible": visible,
         "clock_ns": clock_ns,
+        "dc_uncertainty_ns": dc_uncertainty_ns,
+        "route_uncertainty_ns": route_uncertainty_ns,
+        "synthesis_cell_area_um2": dc_cell_area(area_report),
         "templateSha256": sha_file(DOMAIN / "shared_synth.tcl"),
         "constraintsSha256": sha_file(constraints),
         "rtlSha256": [sha_file(at) for at in rtl],
@@ -1022,6 +1046,8 @@ def merged_lef(ctx, layout):
 
 def normalized_arm_script(text, excluded_paths=()):
     text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    text = "\n".join(line for line in text.splitlines()
+                     if not re.match(r"^\s*(?:floorPlan|loadIoFile|saveIoFile|setPlaceMode -place_global_place_io_pins)\b", line))
     for path in sorted(excluded_paths, key=len, reverse=True):
         text = text.replace(" " + path, "")
     text = re.sub(r"\s+/[^\s{}\]]+/generated\.(?:lib|lef)", "", text)
@@ -1042,7 +1068,40 @@ def floorplan_utilization(value):
     return "%.3f" % parsed
 
 
-def build_arm_files(ctx, utilization):
+def core_box_from_log(path):
+    text = Path(path).read_text(errors="replace")
+    rows = re.findall(r"=== core area:\s*\{\s*([0-9.eE+-]+)\s+([0-9.eE+-]+)\s+([0-9.eE+-]+)\s+([0-9.eE+-]+)\s*\}\s*===", text)
+    if len(rows) != 1:
+        raise Rejected("Innovus init log has no unique core-area marker")
+    box = [float(value) for value in rows[0]]
+    if not all(math.isfinite(value) for value in box) or box[2] <= box[0] or box[3] <= box[1]:
+        raise Rejected("Innovus init core area is invalid")
+    return box
+
+
+def pin_plan_identity(path):
+    text = Path(path).read_text(errors="replace")
+    side = None
+    pins = []
+    for line in text.splitlines():
+        section = re.match(r"\s*\((top|bottom|left|right)\s*$", line)
+        if section:
+            side = section.group(1)
+            continue
+        pin = re.match(r'\s*\(pin\s+name="([^"]+)"\s+(.*?)\)\s*$', line)
+        if pin:
+            if side is None:
+                raise Rejected("IO plan pin has no side")
+            attributes = " ".join(pin.group(2).split())
+            pins.append((pin.group(1), side, attributes))
+    if not pins or len({name for name, _side, _attrs in pins}) != len(pins):
+        raise Rejected("IO plan has no unique complete pin set")
+    canonical = "\n".join("|".join(row) for row in sorted(pins)) + "\n"
+    return {"sha256": sha_bytes(canonical.encode()), "pinCount": len(pins),
+            "canonicalization": "pin name, side and normalized saveIoFile -locations attributes"}
+
+
+def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None):
     foundry_synth, custom_synth = prior(ctx, "foundry-synth"), prior(ctx, "custom-synth")
     layout, char = prior(ctx, "layout"), prior(ctx, "characterize")
     generated_lef = merged_lef(ctx, layout)
@@ -1064,6 +1123,13 @@ def build_arm_files(ctx, utilization):
         mmmc_path.write_text(mmmc)
         init_db = ctx.run_dir / ("DBS_" + arm) / "init.enc"
         init_db.parent.mkdir()
+        place_site = str(ctx.binding("PLACE_SITE"))
+        if arm == "generated" and fixed_core_box is not None:
+            width = fixed_core_box[2] - fixed_core_box[0]
+            height = fixed_core_box[3] - fixed_core_box[1]
+            floorplan_command = "floorPlan -site %s -s %.6f %.6f 2.0 2.0 2.0 2.0" % (place_site, width, height)
+        else:
+            floorplan_command = "floorPlan -site %s -r 1.0 %s 2.0 2.0 2.0 2.0" % (place_site, utilization)
         init = fill_template(DOMAIN / "init.tcl.tmpl", {
             "LEF_LIST": " ".join(map(str, lefs)), "NETLIST": netlist,
             "DESIGN_TOP": ctx.binding("DESIGN_TOP"),
@@ -1071,13 +1137,19 @@ def build_arm_files(ctx, utilization):
             "GND_NET": ctx.binding("CCFMAX_GROUND_PIN"), "PROCESS_NODE": ctx.binding("CCFMAX_PROCESS_NODE"),
             "MAX_ROUTE_LAYER": ctx.binding("CCFMAX_MAX_ROUTE_LAYER"), "INIT_DB": init_db,
             "GENERATED_LIB_CELL_PATTERN": ctx.binding("GENERATED_LIB_CELL_PATTERN"), "ARM": arm,
-            "PLACE_SITE": ctx.binding("PLACE_SITE"),
-            "FLOORPLAN_UTILIZATION": utilization,
+            "PLACE_SITE": place_site,
+            "FLOORPLAN_COMMAND": floorplan_command,
         })
         rpt = ctx.run_dir / ("rpt_" + arm)
         final_db = ctx.run_dir / ("DBS_" + arm) / "postroute.enc"
         gds = ctx.run_dir / (arm + ".gds")
         postroute_sdc = rpt / "postroute-active.sdc"
+        pin_plan = ctx.run_dir / ("pins_" + arm + ".io")
+        if arm == "generated" and fixed_pin_plan is not None:
+            pin_setup = "loadIoFile {%s}\nsetPlaceMode -place_global_place_io_pins false" % fixed_pin_plan
+        else:
+            pin_setup = "setPlaceMode -place_global_place_io_pins true"
+        pin_capture = "saveIoFile -locations {%s}\nsetPlaceMode -place_global_place_io_pins false" % pin_plan
         pnr = fill_template(DOMAIN / "pnr.tcl.tmpl", {
             "INIT_DB": str(init_db) + ".dat", "DESIGN_TOP": ctx.binding("DESIGN_TOP"),
             "MULTI_CPU": ctx.binding("MULTI_CPU"), "TAP_CELL": ctx.binding("CCFMAX_TAP_CELL"),
@@ -1086,6 +1158,7 @@ def build_arm_files(ctx, utilization):
             "GDS_MAP": site["CCFMAX_GDS_MAP"], "MERGE_GDS": site["FOUNDRY_GDS"],
             "SWITCHING_ACTIVITY": ctx.binding("CCFMAX_SWITCHING_ACTIVITY"), "ARM": arm,
             "POSTROUTE_SDC": postroute_sdc,
+            "PIN_SETUP": pin_setup, "PIN_CAPTURE": pin_capture,
         })
         init_path, pnr_path = ctx.run_dir / ("init_" + arm + ".tcl"), ctx.run_dir / ("pnr_" + arm + ".tcl")
         init_path.write_text(init); pnr_path.write_text(pnr)
@@ -1093,6 +1166,7 @@ def build_arm_files(ctx, utilization):
         outputs[arm] = {"mmmc": mmmc_path, "init": init_path, "pnr": pnr_path,
                         "init_checkpoint_base": init_db, "final_checkpoint_base": final_db,
                         "gds": gds, "postroute_sdc": postroute_sdc,
+                        "pin_plan": pin_plan,
                         "input_sdc": sdc, "input_netlist": netlist}
     matched = all(normalized_arm_script(texts["foundry"][kind]) == normalized_arm_script(texts["generated"][kind])
                   for kind in ("init", "pnr"))
@@ -1109,7 +1183,17 @@ def build_arm_files(ctx, utilization):
 
 def stage_pnr(ctx, arm, utilization="0.60"):
     utilization = floorplan_utilization(utilization)
-    outputs, generated_lef, generated_lib = build_arm_files(ctx, utilization)
+    fixed_pin_plan = None
+    fixed_core_box = None
+    if arm == "generated":
+        foundry_record = prior(ctx, "pnr-foundry")
+        fixed_pin_plan = artifact(foundry_record, ctx.workspace, "fixed_pin_plan")
+        fixed_core_box = foundry_record.get("facts", {}).get("floorplan_core_box")
+        if (not isinstance(fixed_core_box, list) or len(fixed_core_box) != 4
+                or not all(isinstance(value, (int, float)) for value in fixed_core_box)):
+            raise Rejected("foundry arm has no reusable fixed core box")
+        ctx.inputs.append(file_ref(fixed_pin_plan, ctx.workspace, "fixed_pin_plan", "innovus-output"))
+    outputs, generated_lef, generated_lib = build_arm_files(ctx, utilization, fixed_pin_plan, fixed_core_box)
     ctx.facts["floorplan_utilization"] = float(utilization)
     chosen = outputs[arm]
     ctx.inputs.extend([
@@ -1135,6 +1219,9 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     if tool_error_lines(text):
         raise ToolFailure("Innovus init error in %s: %s" % (init_log, " | ".join(tool_error_lines(text)[:8])))
     init_version = innovus_version(text)
+    core_box = core_box_from_log(init_log)
+    if fixed_core_box is not None and core_box != [float(value) for value in fixed_core_box]:
+        raise Rejected("generated arm core box differs from the frozen foundry floorplan")
     visible_hits = re.findall(r"=== CCFMAX GENERATED_LIB_CELLS_AFTER_RESTORE (\d+) ===", text)
     visible = int(visible_hits[0]) if len(visible_hits) == 1 else None
     if arm == "generated" and (visible is None or visible <= 0):
@@ -1153,6 +1240,9 @@ def stage_pnr(ctx, arm, utilization="0.60"):
         raise Rejected("Innovus init and route tool versions differ")
     if ("=== CCFMAX PNR DONE %s (GDS written) ===" % arm) not in pnr_text:
         raise ToolFailure("Innovus P&R log lacks the completion marker for " + arm)
+    plan_identity = pin_plan_identity(chosen["pin_plan"])
+    if fixed_pin_plan is not None and plan_identity != pin_plan_identity(fixed_pin_plan):
+        raise Rejected("generated arm pin locations differ from the frozen foundry pin plan")
     rc_model = ctx.add_artifact(ctx.run_dir / "rc_model.bin", "postroute_rc_model",
                                 "innovus-output")
     postroute_links = checkpoint_allowed_links(
@@ -1178,6 +1268,7 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     connectivity_count = parse_connectivity(connectivity)
     secondary = parse_secondary_pnr(power_report, gatecount_report, route_summary)
     for at, role in ((chosen["gds"], "postroute_gds"),
+                     (chosen["pin_plan"], "fixed_pin_plan" if arm == "foundry" else "applied_pin_plan"),
                      (timing_summary, "postroute_timing_summary"),
                      (timing_paths, "postroute_timing_paths"),
                      (hold_summary, "postroute_hold_summary"),
@@ -1203,6 +1294,8 @@ def stage_pnr(ctx, arm, utilization="0.60"):
         ).encode()),
         "tool": init_version,
         "floorplanUtilization": float(utilization),
+        "floorplanCoreBox": core_box,
+        "pinPlan": plan_identity,
         "placeSite": str(ctx.binding("PLACE_SITE")),
         "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
     })
@@ -1212,6 +1305,10 @@ def stage_pnr(ctx, arm, utilization="0.60"):
                       **secondary, "congestion_overflow": None,
                       "congestion_unknown_reason": "current Innovus summary has no verified congestion-overflow metric",
                       "arm_scripts_matched": True, "toolVersion": init_version,
+                      "place_site": str(ctx.binding("PLACE_SITE")),
+                      "floorplan_core_box": core_box,
+                      "floorplan_core_area_um2": (core_box[2] - core_box[0]) * (core_box[3] - core_box[1]),
+                      "pin_plan_identity": plan_identity,
                       "templateSha256": {name: sha_file(DOMAIN / name) for name in
                                          ("init.tcl.tmpl", "mmmc.tcl.tmpl", "pnr.tcl.tmpl")}})
 
@@ -1436,6 +1533,15 @@ def role_refs(record, prefix):
 def derived_synth_condition(record, workspace, arm):
     entry = artifact(record, workspace, "synthesis_entry")
     log = execution_log(record, workspace, arm + "-dc_log")
+    facts = record.get("facts", {})
+    clock = facts.get("clock_ns")
+    dc_uncertainty = facts.get("dc_uncertainty_ns")
+    route_uncertainty = facts.get("route_uncertainty_ns")
+    if (not all(isinstance(value, (int, float)) and math.isfinite(value)
+                for value in (clock, dc_uncertainty, route_uncertainty))
+            or not math.isclose(dc_uncertainty, clock * 0.50, abs_tol=1e-12)
+            or not math.isclose(route_uncertainty, clock * 0.25, abs_tol=1e-12)):
+        raise Rejected("synthesis record lacks the fixed 50%/25% pressure identity")
     return {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "synthesis",
         "commonInputs": held_identities(record.get("inputs", []),
@@ -1443,6 +1549,9 @@ def derived_synth_condition(record, workspace, arm):
             prefixes=("rtl:",)),
         "entryContractSha256": sha_bytes(normalized_synth_entry(entry.read_text()).encode()),
         "tool": dc_version(log.read_text(errors="replace")),
+        "clockNs": clock,
+        "dcUncertaintyNs": dc_uncertainty,
+        "routeUncertaintyNs": route_uncertainty,
         "armSpecificExclusions": ["CCFMAX_ARM", "CCFMAX_CUSTOM_DB", "generated_db"],
     }
 
@@ -1456,13 +1565,21 @@ def derived_pnr_condition(record, workspace, arm):
         raise Rejected("Innovus init and route tool versions differ in held evidence")
     excluded = referenced_paths(record.get("inputs", []), workspace,
                                 {"generated_liberty", "generated_lef"})
-    floorplan = re.findall(r"(?m)^\s*floorPlan\s+-site\s+(\S+)\s+-r\s+1\.0\s+([0-9.]+)\s+2\.0\s+2\.0\s+2\.0\s+2\.0\s*$", scripts["init"].read_text(errors="replace"))
-    if len(floorplan) != 1 or not (0.2 <= float(floorplan[0][1]) <= 0.8):
-        raise Rejected("PnR init script lacks one declared Site/place utilization")
-    place_site, utilization = floorplan[0]
-    published = record.get("facts", {}).get("floorplan_utilization")
-    if not isinstance(published, (int, float)) or float(published) != float(utilization):
-        raise Rejected("PnR record utilization disagrees with generated init script")
+    facts = record.get("facts", {})
+    utilization = facts.get("floorplan_utilization")
+    core_box = facts.get("floorplan_core_box")
+    pin_plan = facts.get("pin_plan_identity")
+    if (not isinstance(utilization, (int, float)) or not 0.2 <= float(utilization) <= 0.8
+            or not isinstance(core_box, list) or len(core_box) != 4
+            or not all(isinstance(value, (int, float)) and math.isfinite(value) for value in core_box)
+            or core_box[2] <= core_box[0] or core_box[3] <= core_box[1]
+            or not isinstance(pin_plan, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(pin_plan.get("sha256") or ""))
+            or not isinstance(pin_plan.get("pinCount"), int) or pin_plan["pinCount"] <= 0):
+        raise Rejected("PnR record lacks one frozen floorplan and pin-plan identity")
+    place_sites = re.findall(r"(?m)^\s*floorPlan\s+-site\s+(\S+)", scripts["init"].read_text(errors="replace"))
+    if len(place_sites) != 1:
+        raise Rejected("PnR init script lacks one place Site")
+    place_site = place_sites[0]
     return {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "place-and-route",
         "commonInputs": held_identities(record.get("inputs", []), exact=(
@@ -1475,6 +1592,8 @@ def derived_pnr_condition(record, workspace, arm):
         ).encode()),
         "tool": init_tool,
         "floorplanUtilization": float(utilization),
+        "floorplanCoreBox": core_box,
+        "pinPlan": pin_plan,
         "placeSite": place_site,
         "armSpecificExclusions": ["generated_db", "generated_liberty", "generated_lef"],
     }
