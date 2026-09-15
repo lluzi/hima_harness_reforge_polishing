@@ -501,6 +501,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const firstPrompt = [
     `Execute only the already confirmed Campaign Run ${confirmed.runId}.`,
     'You are the only execution owner. Use only hima_context and hima_execute for business actions. Do not start another Run, edit the method, use shell, open another Agent/model, or auto-drive the graph.',
+    'At every Explore node, use the Pack recommendation and complete the recommendation exactly; do not invent a replacement numeric Strategy. In the probe loop, reg2reg pressure PASS plus clock Goal PASS means goalMet immediately, even on the first measurement. Convergence is a fallback ending, not a quota for extra samples. Never relax period above the 0.5 ns Goal merely to obtain a second observation.',
     'Complete the full reference method from actual facts: the probe loop; all six candidate-method evidence routes; the one unified AI research Workshop; merge; generation into one library; layout; predicted characterization; Library Compiler; one foundry/custom Design Compiler pair; adoption; one paired foundry/generated PNR comparison; verification; final Judge; and next-research.',
     'At research-candidates use recommend. Read every compact research_<route> projection, probe, researchTemplate and full-mining-method.md; read a full raw/source artifact when a research question needs it. Copy the exact researchTemplate and implement only research(candidates, context). Candidates are already Boolean/interface-de-duplicated and provide route, source_methods, method_rankings, evidence, interface, equivalence_digest and implementation_route aliases plus the full representative source request. Generate at least three collaborative current-data research lenses using actual reg2reg_path_hits/increment, Boolean interface/equivalence, occurrence, implementation route and prior adoption feedback. Fill min(context["max_cells"], len(candidates)) for one common pressured DC screen and order selected best-first as the Cell generation ranking. Do not rank a method as winner or create method-specific EDA arms. Candidate ids may be deterministic tie breakers but must never be embedded. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
     'Treat learned characterization as predicted, Site tool outputs as executed tool evidence, and post-route values as measured only where the readers say so. Never turn asked, derived, predicted, missing, failed, or unknown values into measurements or success.',
@@ -545,7 +546,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     firstId,
     [
       `Continue only existing Run ${firstId} from the latest public context.`,
-      'Act on ready nodes in the full reference method, await native Job notifications, preserve failures and raw facts, record source-linked analysis at next-research, and finish/archive truthfully. Do not create a Run or change the method.',
+      'Act on ready nodes in the full reference method, await native Job notifications, preserve failures and raw facts, record source-linked analysis at next-research, and finish/archive truthfully. At every Explore node use and complete the Pack recommendation exactly; a pressure PASS plus Goal PASS is goalMet and needs no convergence sample. Do not create a Run or change the method.',
     ].join('\n'),
     100,
   );
@@ -563,6 +564,21 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const unsettledExecutions = firstContext.executions.filter((execution) => execution.supersededBy === undefined
     && (execution.phase === 'begun' || execution.phase === 'working' || execution.phase === 'ready' || execution.phase === 'uncertain'));
   const launchedJobs = firstRecords.filter((record): record is JobRecord => record.type === 'job' && record.event === 'launched');
+  const probeSynthJobs = launchedJobs.filter((record) => record.nodeId === 'synthesize');
+  const pressureVerdict = firstRecords.findLast((record) => record.type === 'verdict'
+    && record.ruleId === 'reg2reg-pressure-at-least-100ps');
+  const probeGoalVerdict = firstRecords.findLast((record) => record.type === 'verdict'
+    && record.loopId !== undefined && record.ruleId === 'clock-period-at-most');
+  const pressureDecision = firstRecords.findLast((record) => record.type === 'decision'
+    && record.nodeId === 'next-period');
+  check.require('one 0.5 ns probe established at least 100 ps reg2reg pressure without a closure-seeking rerun',
+    probeSynthJobs.length === 1
+      && pressureVerdict?.type === 'verdict' && pressureVerdict.outcome === 'PASS'
+      && probeGoalVerdict?.type === 'verdict' && probeGoalVerdict.outcome === 'PASS'
+      && pressureDecision?.type === 'decision' && 'goalMet' in pressureDecision.chosen
+      && firstRun.strategy?.periodNs === 0.5,
+    { probeSynthJobs: probeSynthJobs.map((job) => job.id), pressureVerdict, probeGoalVerdict,
+      pressureDecision, finalStrategy: firstRun.strategy });
   const openJobs = launchedJobs.filter((launch) => !firstRecords.some((record) =>
     record.type === 'job'
       && record.seq > launch.seq

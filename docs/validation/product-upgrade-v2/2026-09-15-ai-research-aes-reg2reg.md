@@ -158,6 +158,13 @@ cancelled before mining, AI research, Cell generation or downstream DC/APR. The 
 violation is too light. A 0.5 ns / -0.104597 ns probe therefore ends the inner loop immediately and
 preserves 0.5 ns for both matched synthesis arms.
 
+The next clean Run on `fc1aa19` proved the new rule itself: the same 0.5 ns observation made both the
+pressure and clock Goal verdicts PASS. DeepSeek nevertheless bypassed the Pack recommendation and
+invented a 0.505 ns second probe because it treated convergence as a required sample count. The Run
+was cancelled before mining. The L5 owner instruction now requires the Pack recommendation at every
+Explore node and explicitly states that convergence is a fallback ending, not a quota. The final
+audit also requires exactly one 0.5 ns probe, both PASS verdicts and a `goalMet` next-period decision.
+
 PLS-35 remains open until a fresh clean Home uses DeepSeek-V4.1-Flash to author and execute the
 Workshop code through HimaHarness, reaches the same evidence gates, passes offline audit, is packaged,
 and completes Catsights review. No release is claimed here.
