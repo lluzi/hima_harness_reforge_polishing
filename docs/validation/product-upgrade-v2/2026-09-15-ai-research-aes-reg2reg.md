@@ -136,6 +136,13 @@ not opened the research Workshop or generated a Cell. The local Host was interru
 remained, and the retained Run was not used as evidence. The accepted next budget is 50 generated
 Cells, ordered by the AI-authored ranking, followed by one pressured DC adoption screen.
 
+The first 50-Cell preflight then exposed that confirmed product Campaigns still inherited the
+Harness 60-minute default while the L5 expected 120 minutes. The check failed before `bind-inputs`
+launched. The existing Pack budget schema now accepts an optional `timeBoxMs`; `startRun` uses that
+reviewed Pack value when the caller supplies no test-only override. This Pack declares 120 minutes,
+while every Pack that omits the field retains the 60-minute Harness default. No new budget component
+or user choice was introduced.
+
 PLS-35 remains open until a fresh clean Home uses DeepSeek-V4.1-Flash to author and execute the
 Workshop code through HimaHarness, reaches the same evidence gates, passes offline audit, is packaged,
 and completes Catsights review. No release is claimed here.

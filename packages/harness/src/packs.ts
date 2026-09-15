@@ -425,6 +425,8 @@ export const defaultPackBudget = {
   researchWrites: { writeAttempts: 256, bytes: 4 * 1024 * 1024 },
 } as const;
 export const packBudget = z.strictObject({
+  /** Optional method-owned wall box. Omitted Packs retain the Harness 60-minute default. */
+  timeBoxMs: z.number().int().positive().max(24 * 60 * 60_000).optional(),
   closingReserveMs: z.number().int().nonnegative().default(defaultPackBudget.closingReserveMs),
   attemptLimit: z.number().int().positive().max(1_000_000).default(defaultPackBudget.attemptLimit),
   researchWrites: z.strictObject({

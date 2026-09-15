@@ -364,6 +364,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     const started = await host.ctx.hima.startRun({ pack: 'custom-cell-fmax-dtco', site: 'local', goal: { target_period_ns: 1 },
       strategy: { periodNs: 1, floorplanUtilization: 0.5, algorithmRevision: 0 }, ownerSessionId: String(owner.id), generationLimit: 1 });
     assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
+    assert.equal(started.run.budget?.timeBoxMs, 7_200_000, 'the 50-Cell method owns its reviewed two-hour box');
     assert.equal(started.run.currentNode, 'bind-inputs');
     const begin = await host.ctx.hima.executionAction({ runId: started.run.id, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0,
       requestId: 'bind-begin', action: 'begin', nodeId: 'bind-inputs' });

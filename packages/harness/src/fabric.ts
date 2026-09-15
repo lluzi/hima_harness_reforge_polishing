@@ -355,7 +355,7 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
 
   const campaignId = campaignIdFor(pack, new Date());
   const budget = {
-    timeBoxMs: req.timeBoxMs ?? defaultTimeBoxMs,
+    timeBoxMs: req.timeBoxMs ?? pack.contract.budget.timeBoxMs ?? defaultTimeBoxMs,
     closingReserveMs: pack.contract.budget.closingReserveMs,
     attemptLimit: pack.contract.budget.attemptLimit,
     researchWriteAttempts: pack.contract.budget.researchWrites.writeAttempts,

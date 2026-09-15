@@ -10,6 +10,7 @@ ontology:
     matchedComparison: [A/B, apple-to-apple comparison]
 knowledgeManifest: knowledge/manifest.yml
 budget:
+  timeBoxMs: 7200000
   closingReserveMs: 60000
   attemptLimit: 120
 inputs:
