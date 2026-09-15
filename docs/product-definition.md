@@ -65,7 +65,7 @@ Golden Flow 是 Pack 作者学习、校准和测试方法的参考，不是客�
 在 DeepSeek Harness 架构上运行旧版最复杂的 DTCO 探索业务，达到并超过旧版 OpenCode 平台的研究与产品能力，包括对话、Coding、优秀 UI、Fabric 与复杂业务的 Pack 表达。
 
 Polishing 对修改后的版本独立设计并执行技术与产品测试，提供真实模型、真实 Site 下的研究、策略反馈、回溯、附加探索、恢复和资产交付证据。既有 prototype 验收只能作基线，不能代替新版本验证。用户或指定资深工程师通过实际操作与可复核技术报告判断研究价值。
-下一试用候选先由 polishing 完成干净安装、无手册引导、Site 发现、未见 design、Matched Comparison、并行 Side Talk 和控制的低层产品验收，再由用户本人最终签收高级体验与产品品味。
+下一试用候选先由 polishing 完成干净安装、无手册引导、Site 发现、`aes_cipher_top` 目标 Campaign、显式 reg2reg 优化压力、Matched Comparison、并行 Side Talk 和控制的低层产品验收，再由用户本人最终签收高级体验与产品品味。portable Pack 本身仍以 Site 输入绑定 design，不把 AES 写成方法不变量。
 产品默认不上传客户材料、对话、Campaign 数据、工具日志、报告或 debug 文件；现场证据在本地或 Site 完整保留，需要支持时由用户审阅并明确导出。
 
 Fmax 未提升不能伪装为指标成功，但有证据的负结果可构成知识成果。未给出统一提升百分比、硬交付日期或全局预算数值；预算在每次 Campaign 与 Site 条件下确定。

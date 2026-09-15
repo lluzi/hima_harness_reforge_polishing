@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -184,6 +185,28 @@ test('Innovus 23.14 Path 1 slack accepts the observed optional equals marker wit
   await check('Slack Time                   -0.004', 0);
   await check('= Slack Time                 -0.004', 0);
   await check('Slack Time                   -0.003', 1);
+});
+
+test('DC pressure evidence must be aes_cipher_top reg2reg rather than an I/O path or another top', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hima-dc-pressure-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const report = path.join(directory, 'timing.rpt');
+  const render = (top: string, group: string, slack = '-0.090') =>
+    `Report : timing\nDesign : ${top}\n  Startpoint: state_reg_0\n  Endpoint: state_reg_1\n  Path Group: ${group}\n  Path Type: max\n  slack (VIOLATED) ${slack}\n`;
+  const audit = (top: string, group: string) => {
+    writeFileSync(report, render(top, group));
+    return spawnSync('/usr/bin/python3', [path.join(repoRoot, 'scripts/audit-dc-target-pressure.py'),
+      '--report', report, '--expected-top', 'aes_cipher_top', '--maximum-slack-ns', '0'], { encoding: 'utf8' });
+  };
+  assert.equal(audit('dynamic_node_top_wrap', 'clk').status, 2);
+  assert.equal(audit('aes_cipher_top', 'clk').status, 2);
+  const accepted = audit('aes_cipher_top', 'reg2reg');
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(JSON.parse(accepted.stdout).observed.worstSlackNs, -0.09);
+  for (const module of ['flow/stages.py', 'flow/read-stage.py', 'tools/read-stage.py']) {
+    const read = spawnSync('/usr/bin/python3', ['-c', `import importlib.util,pathlib,sys;spec=importlib.util.spec_from_file_location('checked',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);print(m.dc_target_pressure(pathlib.Path(sys.argv[2]),'aes_cipher_top'))`,
+      path.join(packDir, module), report], { encoding: 'utf8' });
+    assert.equal(read.status, 0, `${module}: ${read.stderr}`);
+  }
 });
 
 test('a real Pack-sourced workspace materializes declared Site inputs without a Golden Flow or legacy object', async (t) => {

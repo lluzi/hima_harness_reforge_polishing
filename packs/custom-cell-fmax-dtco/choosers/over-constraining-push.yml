@@ -39,7 +39,7 @@ parameter:
 # had honoured the request.
 reads:
   period: { type: clock_period, unit: ns }
-  slack: { type: setup_wns, unit: ns }
+  slack: { type: reg2reg_wns, unit: ns, mode: setup, scope: reg2reg }
 
 # First matching `when` wins. `constraint` is the verdict of the judge node's first rule — the one the
 # outgoing edge was chosen by — and `goal` the verdict of its goal rule. `next` sets this pack's own

@@ -18,7 +18,8 @@ The Tcl method uses the selected Site's foundry-only library and `compile_ultra`
 constraints are the supplied `constraints` binding, used unchanged by both arms. This Pack does
 not impose a fixed input/output-delay percentage, clock-latency ratio, clock port, or virtual
 clock; those are design and Site facts rather than portable method defaults.
-`metrics.tsv` contains the asked period, worst constrained setup slack across path groups,
+`metrics.tsv` contains the asked period and worst constrained setup slack from the explicit
+high-weight `reg2reg` path group,
 and synthesized cell area. `read-probe.py REPORT OUT` checks the manifest's measurement hash
 and emits the existing `clock_period`, `setup_wns` (setup/all), and `cell_area` semantics.
 It never emits a guessed closed period. Malformed, missing, nonfinite or changed evidence fails.

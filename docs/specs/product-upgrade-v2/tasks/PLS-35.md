@@ -1,4 +1,4 @@
-# [PLS-35] 用 held-out design 完成 Matched Comparison 并发布候选
+# [PLS-35] 用 aes_cipher_top 完成目标 path Matched Comparison 并发布候选
 
 状态：ready-for-agent
 父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
@@ -8,7 +8,7 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 
 ## 用户场景
 
-团队从干净 macOS发行物开始，不读手册、不使用开发者私有 Home，安装正式 Pack，从 SSH发现第二个同等能力 Site，为 Pack制作阶段没见过的新 design完成 Preparation、Campaign、Side Talk、完整图与控制，以及定制 Cell最终route采用和更高Fmax；处理完低级问题后交给用户本人签收。
+团队从干净 macOS发行物开始，不读手册、不使用开发者私有 Home，安装正式 Pack，从 SSH发现真实 Site，为明确的 `aes_cipher_top` 完成 Preparation、Campaign、Side Talk、完整图与控制。逻辑综合和探针必须以显式 reg2reg path group 施加优化压力；定制 Cell最终route采用并获得更高Fmax后，才交给用户本人签收。
 
 ## 当前证据
 
@@ -35,7 +35,7 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 
 ## 精确执行
 
-1. 选择一个未被 `custom-cell-fmax-dtco` 方法或测试使用的 held-out design，记录来源、hash和选择依据；不得使用 AES重命名副本。
+1. 绑定 Site 上真实 `aes_cipher_top` RTL，记录完整输入身份和 hash；portable Pack 仍不得把 AES 名称写成自身方法不变量。
 2. 从全新 DSH/Hima user-data开始，安装/读取 Pack，不使用预准备私有 Home。
 3. 仅从 SSH/jump/账号和少量提示发现第二 Site；验证其与 Pack的能力等价，不复制原 Site YAML。
 4. 由 HimaGuide完成 Preparation，所有必要条件 ready后生成 proposal并一次确认创建一个 Campaign/Run。
@@ -50,7 +50,8 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 
 - 用户不看手册即可理解产品、Pack和下一行动。
 - 安装内容非空，Pack/Site/Preparation都可由产品完成。
-- held-out design不是Pack作者已编码实例。
+- 本次验收的实际 top 是 `aes_cipher_top`；任何其他 top 的结果只能算 off-target 诊断。
+- DC probe、mining 和 matched synthesis 使用显式 reg2reg path group；I/O violation 不能代表 Fmax pressure。
 - 一个Campaign只有一个Run和一个owner，Side Talk不阻塞也不夺权。
 - 完整参考图、实际状态、代码、知识、evidence和report可达。
 - 新Cell是A/B唯一变量，最终route database实际采用它，结果Fmax更高。
@@ -64,7 +65,7 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 - 受影响L0/L2按各任务文件选择；只在整合checkpoint运行一次完整 `pnpm run check:local`。
 - Catsights L3只跑：干净入口/Pack/Site/Preparation、Campaign+Side Talk、完整图/控制、报告/知识读回。录制集中一次。
 - L4模型、Site/tool各做一次最小验证；模型配置沿用DSH。
-- L5完整EDA Campaign只运行一次。若失败，先在最低可复现层修复，不重复整套直到根因解决。
+- L5完整EDA Campaign只在 AES top、目标 path-group、综合采用和固定物理条件的低层门全部通过后运行。若失败，先在最低可复现层修复，不重复整套直到根因解决。
 
 ## 回滚与交付
 

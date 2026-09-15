@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import sys
 
 
@@ -53,10 +54,30 @@ def read(report):
     asked = record['askedPeriodNs']
     if type(asked) not in (int, float) or not math.isfinite(asked) or asked != period:
         raise ValueError('measured period disagrees with requested trial')
+    timing_ref = record['evidence'].get('timing.rpt')
+    if not isinstance(timing_ref, dict):
+        raise ValueError('probe has no target timing report')
+    timing_relative = Path(timing_ref.get('path', ''))
+    timing_path = report.parent / timing_relative
+    if timing_relative.is_absolute() or '..' in timing_relative.parts or timing_path.is_symlink() or not timing_path.is_file():
+        raise ValueError('probe timing report escapes evidence directory')
+    timing_raw = timing_path.read_bytes()
+    if hashlib.sha256(timing_raw).hexdigest() != timing_ref.get('sha256'):
+        raise ValueError('probe timing report hash mismatch')
+    timing_text = timing_raw.decode(errors='replace')
+    design_top = baseline['inputs'].get('designTop')
+    designs = re.findall(r'(?m)^Design\s*:\s*(\S+)\s*$', timing_text)
+    groups = re.findall(r'(?m)^\s*Path Group:\s*(\S+)\s*$', timing_text)
+    slacks = [float(value) for value in re.findall(r'(?m)^\s*slack \([^)]*\)\s+(-?[0-9.eE+-]+)\s*$', timing_text)]
+    if designs != [design_top] or not groups or len(groups) != len(slacks) or set(groups) != {'reg2reg'}:
+        raise ValueError('probe timing report is not exclusively the declared top reg2reg group')
+    if not math.isclose(min(slacks), slack, abs_tol=1e-12):
+        raise ValueError('probe metric slack differs from the reg2reg report')
     return {'values': [
         {'type': 'clock_period', 'unit': 'ns', 'value': period},
-        {'type': 'setup_wns', 'unit': 'ns', 'mode': 'setup', 'scope': 'all', 'value': slack},
+        {'type': 'reg2reg_wns', 'unit': 'ns', 'mode': 'setup', 'scope': 'reg2reg', 'value': slack},
         {'type': 'cell_area', 'unit': 'um2', 'value': area},
+        {'type': 'reg2reg_path_count', 'unit': 'count', 'value': len(groups)},
     ]}
 
 

@@ -32,6 +32,7 @@ import { packsDirOf } from '../test/contract/support/pack.ts';
 import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-workshop.ts';
 
 const PACK_ID = 'custom-cell-fmax-dtco';
+const ACCEPTANCE_TOP = 'aes_cipher_top';
 const EXPECTED_MODEL = 'deepseek-flash';
 const FIRST_TIME_BOX_MS = 60 * 60_000;
 const HARNESS_TIME_BOX_MS = 100 * 60_000;
@@ -94,6 +95,8 @@ const requiredReferenceNodes = [
 const requiredValueTypes = [
   'clock_period',
   'setup_wns',
+  'reg2reg_wns',
+  'reg2reg_path_count',
   'cell_area',
   'candidate_count',
   'selected_count',
@@ -207,6 +210,7 @@ for (const value of [profile.site.workspaceRoot, ...profile.site.allowedReadRoot
 assert.deepEqual(Object.keys(profile.site.bindings).sort(), [
   'constraints', 'designRoot', 'designTop', 'foundryLibrary', 'physicalInputs', 'rtlGlob', 'toolStack', 'workspaceRoot',
 ].sort(), 'private Site profile must bind exactly the portable Pack inputs');
+assert.equal(profile.site.bindings.designTop, ACCEPTANCE_TOP, 'PLS-35 acceptance must run aes_cipher_top');
 assert.equal(profile.site.bindings.rtlGlob, profile.heldOut.rtlPath, 'held-out identity must name the bound RTL');
 assert.equal(profile.site.bindings.workspaceRoot, profile.site.workspaceRoot, 'Site and binding workspace roots differ');
 assert.ok(profile.site.allowedReadRoots.some((root) => profile.heldOut.rtlPath.startsWith(`${root}/`)), 'held-out RTL is outside allowed read roots');

@@ -370,6 +370,20 @@ def dc_version(text):
     return {"version": hits[0][0], "platform": hits[0][1], "build": hits[0][2]}
 
 
+def dc_target_pressure(path, expected_top):
+    text = Path(path).read_text(errors="replace")
+    designs = re.findall(r"(?m)^Design\s*:\s*(\S+)\s*$", text)
+    groups = re.findall(r"(?m)^\s*Path Group:\s*(\S+)\s*$", text)
+    starts = re.findall(r"(?m)^\s*Startpoint:\s*(.+)$", text)
+    ends = re.findall(r"(?m)^\s*Endpoint:\s*(.+)$", text)
+    slacks = [float(value) for value in re.findall(r"(?m)^\s*slack \([^)]*\)\s+(-?[0-9.eE+-]+)\s*$", text)]
+    if designs != [expected_top] or not groups or len(groups) != len(slacks) or set(groups) != {"reg2reg"}:
+        raise ValueError("DC target pressure report is not the declared top reg2reg group")
+    if len(starts) != len(groups) or len(ends) != len(groups) or not all(math.isfinite(value) for value in slacks):
+        raise ValueError("DC target pressure report has incomplete or nonfinite paths")
+    return {"pathCount": len(groups), "worstSlackNs": min(slacks)}
+
+
 def innovus_version(text):
     hits = re.findall(r"^Version:\s*(v[^,\s]+),\s+built\s+(.+?)\s*$", text, re.M)
     if len(hits) != 1:
@@ -554,6 +568,13 @@ def values_for(record, workspace, stage):
         if len(hits) != 1 or "=== CUSTOM_CELL_FMAX SYNTHESIS_COMPLETE %s ===" % arm not in log:
             raise ValueError("synthesis session evidence is incomplete")
         values.append(number("library_visible", int(hits[0])))
+        pressure = dc_target_pressure(one(record, workspace, "synthesis_reg2reg_timing_report"),
+                                      str(record.get("facts", {}).get("design_top")))
+        if (pressure["pathCount"] != record.get("facts", {}).get("reg2reg_path_count")
+                or pressure["worstSlackNs"] != record.get("facts", {}).get("reg2reg_wns_ns")):
+            raise ValueError("reg2reg pressure report differs from stage facts")
+        values.extend([number("reg2reg_wns", pressure["worstSlackNs"], "ns", mode="setup", scope="reg2reg"),
+                       number("reg2reg_path_count", pressure["pathCount"])])
     elif stage == "adoption":
         netlist = one(record, workspace, "custom_netlist", "inputs").read_text(errors="replace")
         liberty = one(record, workspace, "offered_library", "inputs").read_text(errors="replace")

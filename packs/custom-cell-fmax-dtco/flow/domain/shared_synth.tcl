@@ -79,6 +79,11 @@ link
 source [need CCFMAX_SDC]
 redirect ${REPORT_DIR}/check_design.rpt      { check_design }
 redirect ${REPORT_DIR}/check_timing_pre.rpt  { check_timing }
+set _registers [all_registers]
+if {[sizeof_collection $_registers] == 0} {error "no registers available for Fmax path grouping"}
+group_path -name reg2reg -from $_registers -to $_registers -weight 10 -critical_range 0.10
+group_path -name in2reg -from [all_inputs] -to $_registers -weight 1
+group_path -name reg2out -from $_registers -to [all_outputs] -weight 1
 
 # Both arms see the same deliberate logic-optimization pressure. The generated
 # library remains the only arm-specific input. Route receives a separately frozen
@@ -92,6 +97,7 @@ compile_ultra -no_autoungroup
 change_names -rules verilog -hierarchy
 write -format verilog -hierarchy -output ./results/${ARM}.dc.v
 redirect ${REPORT_DIR}/timing_${ARM}.rpt { report_timing -max_paths 5 -nworst 2 }
+redirect ${REPORT_DIR}/timing_reg2reg_${ARM}.rpt { report_timing -group reg2reg -max_paths 20 -nworst 3 -input_pins -nets -transition_time -capacitance }
 redirect ${REPORT_DIR}/qor_${ARM}.rpt    { report_qor }
 redirect ${REPORT_DIR}/area_${ARM}.rpt   { report_area -hierarchy }
 redirect ${REPORT_DIR}/power_${ARM}.rpt  { report_power }

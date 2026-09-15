@@ -487,7 +487,7 @@ tools:
       - compare
       - ${WORKSPACE}
 rules:
-  - setup-wns-all-nonnegative
+  - reg2reg-wns-nonnegative
   - clock-period-at-most
   - full-evidence-valid
   - fmax-improved

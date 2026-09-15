@@ -12,4 +12,4 @@ argv:
   - ${REPORT}
   - ${OUT}
 reportKind: custom-cell-fmax-probe/2
-emits: [clock_period, setup_wns, cell_area]
+emits: [clock_period, reg2reg_wns, cell_area, reg2reg_path_count]

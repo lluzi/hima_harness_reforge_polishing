@@ -51,6 +51,7 @@ def main():
     def identity():
         return {
             'inputs': {'bindingSha256': sha(flow / 'inputs.json'),
+                'designTop': inputs['designTop'],
                 'foundryDb': {'path': str(db), 'sha256': sha(db)},
                 'rtl': [{'path': str(p), 'sha256': sha(p)} for p in rtl],
                 'constraintsTcl': {'path': inputs['constraintsTcl'], 'sha256': sha(Path(inputs['constraintsTcl']).resolve())},
@@ -93,6 +94,15 @@ def main():
     conditions = re.findall(r'^Operating Conditions:.*$', (trial / 'timing.rpt').read_text(), re.M)
     if len(versions) != 1 or len(conditions) != 1:
         raise ValueError('missing or ambiguous tool/operating-condition identity')
+    timing_text = (trial / 'timing.rpt').read_text(errors='replace')
+    timing_designs = re.findall(r'(?m)^Design\s*:\s*(\S+)\s*$', timing_text)
+    timing_groups = re.findall(r'(?m)^\s*Path Group:\s*(\S+)\s*$', timing_text)
+    timing_slacks = [float(value) for value in re.findall(
+        r'(?m)^\s*slack \([^)]*\)\s+(-?[0-9.eE+-]+)\s*$', timing_text)]
+    if (timing_designs != [inputs['designTop']] or not timing_groups
+            or len(timing_groups) != len(timing_slacks) or set(timing_groups) != {'reg2reg'}
+            or not math.isclose(min(timing_slacks), float((trial / 'metrics.tsv').read_text().split('worst_slack_ns\t', 1)[1].splitlines()[0]), abs_tol=1e-12)):
+        raise ValueError('probe timing evidence is not the declared top reg2reg pressure report')
     effective = {'schema': 1, **before, 'tool': {'version': versions[0], 'conditions': conditions[0]}}
     if pinned is not None and pinned != effective:
         raise ValueError('tool or operating conditions changed since the first trial; no comparable measurement published')

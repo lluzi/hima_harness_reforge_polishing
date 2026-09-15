@@ -7,14 +7,15 @@ precomputed candidate.
 
 ## Evidence boundary
 
-Candidate routes consume the current probe netlist, timing report, and Site library.
+Candidate routes consume the current probe netlist, explicit reg2reg timing report, and Site library.
 Selection programs record the source candidate identifiers they choose. A result is
 credible only after a generated library is visible, used by more than zero instances,
 and reaches a completed final route database that is the direct source of timing.
 
 The baseline and generated arms share RTL, constraints, a once-expanded 25% target-utilization
 floorplan, the baseline arm's frozen IO-pin plan, physical inputs, tool entry points, and route
-settings. Both syntheses use 50% clock uncertainty and both route arms use 25%. The only permitted
+settings. Both syntheses use 50% clock uncertainty, an explicit high-weight reg2reg path group, and
+both route arms use 25%. I/O violations never substitute for Fmax pressure. The only permitted
 arm difference is generated Cell/library content. Area, power, congestion, and physical observations are retained
 when available, and explicitly unknown when not measured; they do not decide Fmax.
 

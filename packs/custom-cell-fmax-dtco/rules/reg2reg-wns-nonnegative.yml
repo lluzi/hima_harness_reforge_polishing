@@ -1,0 +1,15 @@
+id: reg2reg-wns-nonnegative
+version: "1"
+title: Explicit reg-to-reg setup timing meets the pressured clock
+requires:
+  - type: reg2reg_wns
+    mode: setup
+    scope: reg2reg
+subject:
+  type: reg2reg_wns
+  mode: setup
+  scope: reg2reg
+predicate:
+  op: gte
+  threshold: 0
+  unit: ns

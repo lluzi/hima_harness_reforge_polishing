@@ -1,4 +1,12 @@
 values:
+  reg2reg_wns:
+    unit: ns
+    description: Worst setup slack from an explicit reg2reg-only Design Compiler path group.
+    mode: [setup]
+    scope: [reg2reg]
+  reg2reg_path_count:
+    unit: count
+    description: Number of complete paths retained in the explicit reg2reg pressure report.
   candidate_count:
     unit: count
     description: "candidate count: independently read evidence; missing facts stay unknown."

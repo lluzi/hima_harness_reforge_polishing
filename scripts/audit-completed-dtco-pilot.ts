@@ -38,7 +38,7 @@ const requiredReferenceNodes = [
   'read-verify', 'compare', 'read-compare', 'final-judge', 'next-research',
 ] as const;
 const requiredValueTypes = [
-  'clock_period', 'setup_wns', 'cell_area', 'candidate_count', 'selected_count',
+  'clock_period', 'setup_wns', 'reg2reg_wns', 'reg2reg_path_count', 'cell_area', 'candidate_count', 'selected_count',
   'generated_cell_count', 'abstract_cell_count', 'predicted_cell_count', 'lc_accepted',
   'library_visible', 'adopted_instance_count', 'pnr_completed', 'verification_error_count',
   'full_constraint_failures', 'matched_conditions', 'foundry_setup_wns', 'setup_wns_delta',

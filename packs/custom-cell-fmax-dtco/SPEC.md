@@ -7,7 +7,7 @@ requested clock and setup slack reread after restoring that arm's final route da
 
 ## Constraints
 
-The nested probe uses setup-wns-all-nonnegative on synthesis evidence only. The final outer Judge
+The nested probe uses reg2reg-wns-nonnegative on an explicit reg2reg-only synthesis report. The final outer Judge
 uses full-evidence-valid: full_constraint_failures must be zero. Complete matched physical inputs,
 actual library visibility and positive adoption, nonnegative generated setup WNS and both declared
 verification gates are necessary. Missing facts are unknown and cannot yield a zero count.
@@ -23,7 +23,8 @@ bindings and writes this Campaign's private `flow/inputs.json`; missing values a
 with a fixed stage name, WORKSPACE and optional fixed route. Probe and both matched syntheses accept
 PERIOD_NS. The matched P&R tools bind one Strategy floorplanUtilization fraction (0.2..0.8, formal
 default 0.25, twice the former core area), freeze the foundry arm's placed IO plan, and replay its
-exact pin locations and core box in the generated arm. Both DC arms apply 50% clock uncertainty;
+exact pin locations and core box in the generated arm. Both DC arms apply 50% clock uncertainty and
+give the explicit reg2reg path group priority over I/O groups;
 their emitted P&R SDCs apply 25%. The validated physical-profile `PLACE_SITE` enters both init TCL files. The profile
 also declares the tap/filler assumptions used by both arms; a Pack does not invent a row site or
 technology cell names. The standalone adapter preserves 0.60 only when a human omits it.
@@ -55,7 +56,7 @@ represented as zero. These secondary facts do not decide the Fmax goal.
 
 ## Judge rules
 
-Nested probe: setup-wns-all-nonnegative, then clock-period-at-most bound to target_period_ns.
+Nested probe: reg2reg-wns-nonnegative, then clock-period-at-most bound to target_period_ns.
 Before P&R, custom-cell-adopted requires at least one generated master in the custom synthesis netlist.
 Outer final-judge: full-evidence-valid, fmax-improved, then clock-period-at-most bound to the same fixed Goal.
 The first rule chooses the edge; both current verdicts are needed for explicit Goal met.

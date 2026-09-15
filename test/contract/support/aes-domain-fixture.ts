@@ -111,6 +111,7 @@ elif tool == 'dc_shell':
     (run / 'results' / (arm + '.dc.sdc')).write_text('### SYNTHETIC FIXTURE SDC\n# Created by write_sdc on SYNTHETIC-%s\n###\ncreate_clock -name clk -period %s [get_ports clk]\nset_clock_uncertainty %s [get_clocks clk]\nset_input_delay -clock clk %s [get_ports a]\n' % (arm, clock_ns, clock_ns * 0.25, input_delay))
     (run / 'reports' / ('refs_' + arm + '.rpt')).write_text('%s 1\n' % master)
     (run / 'reports' / ('timing_' + arm + '.rpt')).write_text('slack (MET) 0.010\n')
+    (run / 'reports' / ('timing_reg2reg_' + arm + '.rpt')).write_text('Design : %s\n  Startpoint: source_reg\n  Endpoint: sink_reg\n  Path Group: reg2reg\n  Path Type: max\n  slack (VIOLATED) -0.100\n' % top)
     (run / 'reports' / ('area_' + arm + '.rpt')).write_text('Total cell area: 100.0\n')
     dc_version = 'SYNTHETIC-DC-B' if arm == 'custom' and (fixture_flow / 'synthetic-dc-version-mismatch').exists() else 'SYNTHETIC-DC-A'
     print('   Version %s for synthetic64 - SYNTHETIC-FIXTURE' % dc_version)

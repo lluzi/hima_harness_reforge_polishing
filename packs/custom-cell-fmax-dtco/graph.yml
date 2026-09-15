@@ -416,7 +416,7 @@ loops:
         kind: judge
         parameters:
           rules:
-            - setup-wns-all-nonnegative
+            - reg2reg-wns-nonnegative
             - clock-period-at-most
           bind:
             target_period_ns:

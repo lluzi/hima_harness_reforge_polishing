@@ -846,6 +846,26 @@ def dc_cell_area(path):
     return values[0]
 
 
+def dc_target_pressure(path, expected_top):
+    text = Path(path).read_text(errors="replace")
+    designs = re.findall(r"(?m)^Design\s*:\s*(\S+)\s*$", text)
+    groups = re.findall(r"(?m)^\s*Path Group:\s*(\S+)\s*$", text)
+    starts = re.findall(r"(?m)^\s*Startpoint:\s*(.+)$", text)
+    ends = re.findall(r"(?m)^\s*Endpoint:\s*(.+)$", text)
+    slacks = [float(value) for value in re.findall(
+        r"(?m)^\s*slack \([^)]*\)\s+(-?[0-9.eE+-]+)\s*$", text)]
+    if designs != [expected_top]:
+        raise Rejected("DC target pressure report has the wrong top")
+    if not groups or len(groups) != len(slacks) or set(groups) != {"reg2reg"}:
+        raise Rejected("DC target pressure report is not exclusively reg2reg")
+    if len(starts) != len(groups) or len(ends) != len(groups):
+        raise Rejected("DC target pressure report has incomplete path endpoints")
+    if not all(math.isfinite(value) for value in slacks):
+        raise Rejected("DC target pressure report has nonfinite slack")
+    return {"top": expected_top, "pathGroup": "reg2reg", "pathCount": len(groups),
+            "worstSlackNs": min(slacks)}
+
+
 def stage_synth(ctx, custom, period=None):
     rtl_glob = str(ctx.binding("DESIGN_RTL_GLOB"))
     rtl = sorted(Path(p).resolve() for p in glob.glob(rtl_glob))
@@ -897,9 +917,11 @@ def stage_synth(ctx, custom, period=None):
     sdc = ctx.run_dir / "results" / (arm + ".dc.sdc")
     refs = ctx.run_dir / "reports" / ("refs_" + arm + ".rpt")
     timing = ctx.run_dir / "reports" / ("timing_" + arm + ".rpt")
+    target_timing = ctx.run_dir / "reports" / ("timing_reg2reg_" + arm + ".rpt")
     area_report = ctx.run_dir / "reports" / ("area_" + arm + ".rpt")
     for at, role in ((netlist, "synthesis_netlist"), (sdc, "synthesis_sdc"),
                      (refs, "reference_report"), (timing, "synthesis_timing_report"),
+                     (target_timing, "synthesis_reg2reg_timing_report"),
                      (area_report, "synthesis_area_report")):
         ctx.add_artifact(at, role, "design-compiler-output")
     dc_uncertainty = re.findall(r"=== CUSTOM_CELL_FMAX DC_UNCERTAINTY_NS ([0-9.eE+-]+) ===", text)
@@ -910,6 +932,9 @@ def stage_synth(ctx, custom, period=None):
     if (not math.isclose(dc_uncertainty_ns, clock_ns * 0.50, abs_tol=1e-12)
             or not math.isclose(route_uncertainty_ns, clock_ns * 0.25, abs_tol=1e-12)):
         raise Rejected("DC and route uncertainty do not match the fixed 50%/25% method")
+    target_pressure = dc_target_pressure(target_timing, str(ctx.binding("DESIGN_TOP")))
+    if not custom and target_pressure["worstSlackNs"] >= 0:
+        raise Rejected("foundry synthesis has no negative reg2reg optimization pressure")
     publish_condition_identity(ctx, {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "synthesis",
         "commonInputs": held_identities(ctx.inputs,
@@ -924,10 +949,13 @@ def stage_synth(ctx, custom, period=None):
     })
     ctx.facts.update({
         "arm": "generated" if custom else "foundry", "library_visible": visible,
+        "design_top": str(ctx.binding("DESIGN_TOP")),
         "clock_ns": clock_ns,
         "dc_uncertainty_ns": dc_uncertainty_ns,
         "route_uncertainty_ns": route_uncertainty_ns,
         "synthesis_cell_area_um2": dc_cell_area(area_report),
+        "reg2reg_path_count": target_pressure["pathCount"],
+        "reg2reg_wns_ns": target_pressure["worstSlackNs"],
         "templateSha256": sha_file(DOMAIN / "shared_synth.tcl"),
         "constraintsSha256": sha_file(constraints),
         "rtlSha256": [sha_file(at) for at in rtl],

@@ -70,7 +70,8 @@ Execution failures or incomplete evidence cannot support that inference.
 
 For subsequent bounded algorithm work, two artefacts in the manifest are the ground truth:
 
-- `timing.rpt` names actual timing path points — real startpoints, endpoints and pins of this
+- `timing.rpt` is restricted to the explicit `reg2reg` path group and names actual timing path
+  points — real register startpoints, register endpoints and pins of this
   synthesis.
 - `netlist.v` names the actual instances of this synthesis.
 
