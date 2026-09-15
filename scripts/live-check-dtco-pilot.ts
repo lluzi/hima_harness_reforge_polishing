@@ -500,7 +500,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     (first.purpose ?? 'campaign') === 'campaign'
       && first.packDigest === sourceDigest
       && first.goal?.target_period_ns === 0.5
-      && first.firstStrategy?.periodNs === 0.35
+      && first.firstStrategy?.periodNs === 0.5
       && first.firstStrategy?.algorithmRevision === 0
       && first.firstStrategy?.floorplanUtilization === 0.5
       && first.budget?.timeBoxMs === FIRST_TIME_BOX_MS

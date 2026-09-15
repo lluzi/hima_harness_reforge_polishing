@@ -523,7 +523,7 @@ strategy:
     unit: ns
     min: 0.1
     max: 5
-    default: 0.35
+    default: 0.5
     precision: 3
   algorithmRevision:
     type: number
