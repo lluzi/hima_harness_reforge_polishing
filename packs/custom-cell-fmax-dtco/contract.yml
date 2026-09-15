@@ -165,30 +165,42 @@ outputs:
     path: flow/mining/timing_criticality/research.json
     description: Compact source-hashed projection of every emitted candidate; raw
       remains the executable and reader authority.
+    reader: read-research-timing-criticality
   - name: research_timing_context
     path: flow/mining/timing_context/research.json
     description: Compact source-hashed projection of every emitted candidate; raw
       remains the executable and reader authority.
+    reader: read-research-timing-context
   - name: research_structure_frequency
     path: flow/mining/structure_frequency/research.json
     description: Compact source-hashed projection of every emitted candidate; raw
       remains the executable and reader authority.
+    reader: read-research-structure-frequency
   - name: research_structure_compaction
     path: flow/mining/structure_compaction/research.json
     description: Compact source-hashed projection of every emitted candidate; raw
       remains the executable and reader authority.
+    reader: read-research-structure-compaction
   - name: research_mapper_compatibility
     path: flow/mining/mapper_compatibility/research.json
     description: Compact source-hashed projection of every emitted candidate; raw
       remains the executable and reader authority.
+    reader: read-research-mapper-compatibility
   - name: research_functional_diversity
     path: flow/mining/functional_diversity/research.json
     description: Compact source-hashed projection of every emitted candidate; raw
       remains the executable and reader authority.
-  - name: selectionTemplate
-    path: flow/selection-template.py
-    description: Fixed I/O scaffold; implement only choose() for actual research.
-      Its own validator must succeed before this program exits zero.
+    reader: read-research-functional-diversity
+  - name: aiResearchSelection
+    path: flow/research/research.json
+    reader: read-ai-research-selection
+    description: Source-hashed report from the one AI-authored cross-route discovery
+      algorithm. It records hypotheses and exact candidate identities but makes no
+      mapper-adoption or PPA claim.
+  - name: researchTemplate
+    path: flow/research-template.py
+    description: Small fixed entry scaffold. The Campaign Agent implements only
+      research(candidates, context); the Pack runner owns I/O and validation.
 environment:
   wrappers:
     - /usr/bin/python3
@@ -204,7 +216,8 @@ workspace:
     - stages.py
     - domain
     - read-stage.py
-    - selection-template.py
+    - research-template.py
+    - ai_research_runner.py
 tools:
   - id: bind-inputs
     file: tools/bind-inputs.py
@@ -489,10 +502,10 @@ tools:
 rules:
   - reg2reg-wns-nonnegative
   - clock-period-at-most
-  - full-evidence-valid
+  - comparison-evidence-valid
   - fmax-improved
-  - route-selection-known
   - custom-cell-adopted
+  - route-candidate-pool-known
 knowledge:
   - file: custom-cell-fmax-probe-method.md
     purpose: "How to read this pack's numbers and what they do not say: the
@@ -544,221 +557,55 @@ words:
     label: clock period
     unit: ns
   algorithmRevision:
-    label: selection algorithm revision
+    label: AI discovery algorithm revision
     unit: count
 workshops:
-  - id: select-timing-criticality
-    purpose: First read research_timing_criticality for all candidate identities and
-      source-held evidence. The full raw report can exceed the chat read cap;
-      use the complete file in your executable. Read raw_timing_criticality,
-      source_timing_criticality and full-mining-method.md. Write a
-      data-dependent selection algorithm over actual generation_requests, using
-      evidence for timing_criticality. Preserve exact candidate ids and Boolean
-      contracts. Write selected.json in the declared route directory with
-      sourceSha256, selected and codeSha256 (the source miner identity from the
-      source record). Do not fabricate metrics or claim PPA. At most two
-      buildable candidates per route; an empty selection is honest. Algorithm
-      revision is for adapting your code after evidence feedback; preserve
-      previous CodeRecords. Read selectionTemplate, copy it as entry.py and
-      implement choose(candidates, route). Preserve its main() input/output and
-      validation code. Do not launch diagnostic-only entries. The fixed I/O
-      scaffold is not research innovation; your data-dependent choose()
-      algorithm is.
-    directory: research/timing_criticality
+  - id: research-candidates
+    purpose: Read every research_ROUTE projection, raw_ROUTE source, mine record,
+      researchTemplate and full-mining-method.md. This is the Campaign's one
+      creative discovery node. The six Pack miners are broad evidence generators,
+      not the selection authority. Copy researchTemplate as entry.py and implement
+      only research(candidates, context). Author a cross-route, data-dependent
+      algorithm from the current design's explicit reg2reg path membership,
+      incremental delay, Boolean function, occurrence, implementation route and
+      any retained synthesis/adoption feedback. Examine at least three competing
+      hypotheses. Select a finite, diverse set within MAX_CELLS; Cell creation is
+      cheap, while the next pressured DC screen is the scarce experiment. Do not
+      embed candidate ids, reproduce a fixed ranking, claim adoption/PPA, or hide
+      a negative result. On a later algorithmRevision, change the algorithm in
+      response to recorded evidence and preserve the prior CodeRecord.
+    directory: research/ai-discovery
     entry: entry.py
     language: python
     inputs:
       - REVISION
     reads:
+      - probe
+      - timingManifest
       - raw_timing_criticality
       - source_timing_criticality
       - research_timing_criticality
-      - selectionTemplate
-    knowledge:
-      - full-mining-method.md
-    produces: selected_timing_criticality
-    argv:
-      - /usr/bin/python3
-      - ${ENTRY}
-      - ${WORKSPACE}
-      - timing_criticality
-      - ${REVISION}
-  - id: select-timing-context
-    purpose: First read research_timing_context for all candidate identities and
-      source-held evidence. The full raw report can exceed the chat read cap;
-      use the complete file in your executable. Read raw_timing_context,
-      source_timing_context and full-mining-method.md. Write a data-dependent
-      selection algorithm over actual generation_requests, using evidence for
-      timing_context. Preserve exact candidate ids and Boolean contracts. Write
-      selected.json in the declared route directory with sourceSha256, selected
-      and codeSha256 (the source miner identity from the source record). Do not
-      fabricate metrics or claim PPA. At most two buildable candidates per
-      route; an empty selection is honest. Algorithm revision is for adapting
-      your code after evidence feedback; preserve previous CodeRecords. Read
-      selectionTemplate, copy it as entry.py and implement choose(candidates,
-      route). Preserve its main() input/output and validation code. Do not
-      launch diagnostic-only entries. The fixed I/O scaffold is not research
-      innovation; your data-dependent choose() algorithm is.
-    directory: research/timing_context
-    entry: entry.py
-    language: python
-    inputs:
-      - REVISION
-    reads:
       - raw_timing_context
       - source_timing_context
       - research_timing_context
-      - selectionTemplate
-    knowledge:
-      - full-mining-method.md
-    produces: selected_timing_context
-    argv:
-      - /usr/bin/python3
-      - ${ENTRY}
-      - ${WORKSPACE}
-      - timing_context
-      - ${REVISION}
-  - id: select-structure-frequency
-    purpose: First read research_structure_frequency for all candidate identities
-      and source-held evidence. The full raw report can exceed the chat read
-      cap; use the complete file in your executable. Read
-      raw_structure_frequency, source_structure_frequency and
-      full-mining-method.md. Write a data-dependent selection algorithm over
-      actual generation_requests, using evidence for structure_frequency.
-      Preserve exact candidate ids and Boolean contracts. Write selected.json in
-      the declared route directory with sourceSha256, selected and codeSha256
-      (the source miner identity from the source record). Do not fabricate
-      metrics or claim PPA. At most two buildable candidates per route; an empty
-      selection is honest. Algorithm revision is for adapting your code after
-      evidence feedback; preserve previous CodeRecords. Read selectionTemplate,
-      copy it as entry.py and implement choose(candidates, route). Preserve its
-      main() input/output and validation code. Do not launch diagnostic-only
-      entries. The fixed I/O scaffold is not research innovation; your
-      data-dependent choose() algorithm is.
-    directory: research/structure_frequency
-    entry: entry.py
-    language: python
-    inputs:
-      - REVISION
-    reads:
       - raw_structure_frequency
       - source_structure_frequency
       - research_structure_frequency
-      - selectionTemplate
-    knowledge:
-      - full-mining-method.md
-    produces: selected_structure_frequency
-    argv:
-      - /usr/bin/python3
-      - ${ENTRY}
-      - ${WORKSPACE}
-      - structure_frequency
-      - ${REVISION}
-  - id: select-structure-compaction
-    purpose: First read research_structure_compaction for all candidate identities
-      and source-held evidence. The full raw report can exceed the chat read
-      cap; use the complete file in your executable. Read
-      raw_structure_compaction, source_structure_compaction and
-      full-mining-method.md. Write a data-dependent selection algorithm over
-      actual generation_requests, using evidence for structure_compaction.
-      Preserve exact candidate ids and Boolean contracts. Write selected.json in
-      the declared route directory with sourceSha256, selected and codeSha256
-      (the source miner identity from the source record). Do not fabricate
-      metrics or claim PPA. At most two buildable candidates per route; an empty
-      selection is honest. Algorithm revision is for adapting your code after
-      evidence feedback; preserve previous CodeRecords. Read selectionTemplate,
-      copy it as entry.py and implement choose(candidates, route). Preserve its
-      main() input/output and validation code. Do not launch diagnostic-only
-      entries. The fixed I/O scaffold is not research innovation; your
-      data-dependent choose() algorithm is.
-    directory: research/structure_compaction
-    entry: entry.py
-    language: python
-    inputs:
-      - REVISION
-    reads:
       - raw_structure_compaction
       - source_structure_compaction
       - research_structure_compaction
-      - selectionTemplate
-    knowledge:
-      - full-mining-method.md
-    produces: selected_structure_compaction
-    argv:
-      - /usr/bin/python3
-      - ${ENTRY}
-      - ${WORKSPACE}
-      - structure_compaction
-      - ${REVISION}
-  - id: select-mapper-compatibility
-    purpose: First read research_mapper_compatibility for all candidate identities
-      and source-held evidence. The full raw report can exceed the chat read
-      cap; use the complete file in your executable. Read
-      raw_mapper_compatibility, source_mapper_compatibility and
-      full-mining-method.md. Write a data-dependent selection algorithm over
-      actual generation_requests, using evidence for mapper_compatibility.
-      Preserve exact candidate ids and Boolean contracts. Write selected.json in
-      the declared route directory with sourceSha256, selected and codeSha256
-      (the source miner identity from the source record). Do not fabricate
-      metrics or claim PPA. At most two buildable candidates per route; an empty
-      selection is honest. Algorithm revision is for adapting your code after
-      evidence feedback; preserve previous CodeRecords. Read selectionTemplate,
-      copy it as entry.py and implement choose(candidates, route). Preserve its
-      main() input/output and validation code. Do not launch diagnostic-only
-      entries. The fixed I/O scaffold is not research innovation; your
-      data-dependent choose() algorithm is.
-    directory: research/mapper_compatibility
-    entry: entry.py
-    language: python
-    inputs:
-      - REVISION
-    reads:
       - raw_mapper_compatibility
       - source_mapper_compatibility
       - research_mapper_compatibility
-      - selectionTemplate
-    knowledge:
-      - full-mining-method.md
-    produces: selected_mapper_compatibility
-    argv:
-      - /usr/bin/python3
-      - ${ENTRY}
-      - ${WORKSPACE}
-      - mapper_compatibility
-      - ${REVISION}
-  - id: select-functional-diversity
-    purpose: First read research_functional_diversity for all candidate identities
-      and source-held evidence. The full raw report can exceed the chat read
-      cap; use the complete file in your executable. Read
-      raw_functional_diversity, source_functional_diversity and
-      full-mining-method.md. Write a data-dependent selection algorithm over
-      actual generation_requests, using evidence for functional_diversity.
-      Preserve exact candidate ids and Boolean contracts. Write selected.json in
-      the declared route directory with sourceSha256, selected and codeSha256
-      (the source miner identity from the source record). Do not fabricate
-      metrics or claim PPA. At most two buildable candidates per route; an empty
-      selection is honest. Algorithm revision is for adapting your code after
-      evidence feedback; preserve previous CodeRecords. Read selectionTemplate,
-      copy it as entry.py and implement choose(candidates, route). Preserve its
-      main() input/output and validation code. Do not launch diagnostic-only
-      entries. The fixed I/O scaffold is not research innovation; your
-      data-dependent choose() algorithm is.
-    directory: research/functional_diversity
-    entry: entry.py
-    language: python
-    inputs:
-      - REVISION
-    reads:
       - raw_functional_diversity
       - source_functional_diversity
       - research_functional_diversity
-      - selectionTemplate
+      - researchTemplate
     knowledge:
       - full-mining-method.md
-    produces: selected_functional_diversity
+    produces: aiResearchSelection
     argv:
       - /usr/bin/python3
       - ${ENTRY}
       - ${WORKSPACE}
-      - functional_diversity
       - ${REVISION}

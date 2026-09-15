@@ -19,7 +19,7 @@
 # Placeholders: @@ARM@@ @@INIT_DB@@ @@DESIGN_TOP@@ @@MULTI_CPU@@ @@TAP_CELL@@ @@TAP_INTERVAL@@
 #   @@FILLER_CELLS@@ @@RPT_DIR@@ @@FINAL_DB@@ @@GDS_OUT@@ @@GDS_MAP@@ @@MERGE_GDS@@
 #   @@SWITCHING_ACTIVITY@@
-#   @@PIN_SETUP@@ / @@PIN_CAPTURE@@ baseline placement or generated-arm replay
+#   dedicated pin-setup and pin-capture lines implement baseline placement or generated-arm replay
 
 restoreDesign @@INIT_DB@@ @@DESIGN_TOP@@
 setMultiCpuUsage -localCpu @@MULTI_CPU@@

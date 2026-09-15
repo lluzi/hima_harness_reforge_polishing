@@ -7,10 +7,12 @@ requested clock and setup slack reread after restoring that arm's final route da
 
 ## Constraints
 
-The nested probe uses reg2reg-wns-nonnegative on an explicit reg2reg-only synthesis report. The final outer Judge
-uses full-evidence-valid: full_constraint_failures must be zero. Complete matched physical inputs,
-actual library visibility and positive adoption, nonnegative generated setup WNS and both declared
-verification gates are necessary. Missing facts are unknown and cannot yield a zero count.
+The nested probe uses reg2reg-wns-nonnegative on an explicit reg2reg-only synthesis report. The final
+outer Judge uses comparison-evidence-valid: both restored final databases must be identity-matched,
+the generated library live, a generated master physically present, and timing/census verification
+complete. `fmax-improved` is a separate gate. Setup, hold, route-DRC, connectivity and Innovus
+cell-checker diagnostics remain explicit findings; they limit physical-signoff scope but do not erase
+an apple-to-apple Fmax comparison. Missing facts are unknown and cannot yield a valid comparison.
 Tool errors or absent mandatory prerequisites stop downstream execution; rejected generated DBs
 are never used. P&R/verification options and actual input/report identities are held in stage records.
 
@@ -32,17 +34,18 @@ Wrappers: /usr/bin/python3. DC, LC and Innovus tools declare one corresponding l
 The Site cap admits one licensed Job at a time; the same owner requests all branch work.
 
 Probe outputs: flow/probe.json plus hashed trial artifacts. Route outputs: flow/mining/ROUTE/raw.json,
-selected.json and flow/records/mine-ROUTE.json. Other records: flow/records/STAGE.json; merged requests
+research.json, selected.json and flow/records/mine-ROUTE.json. The single AI research output is
+flow/research/research.json. Other records: flow/records/STAGE.json; merged requests
 at flow/mining/merged.json. Immutable stage attempts and their artifacts are kept under
 flow/artifacts/STAGE/run-UUID. Readers verify retained references before deriving observations.
-Strategy algorithmRevision tracks selection revisions. Required tool/dependency identities and
+Strategy algorithmRevision tracks discovery-algorithm revisions. Required tool/dependency identities and
 predicted/synthetic/site evidence classes are carried with the results, never collapsed into PPA.
 
 ## Semantics
 
 The probe retains clock_period, setup_wns (setup/all) and cell_area. The final compare reader uses
 clock_period and setup_wns reread from each restored final route database. Other typed counts in semantics.yml
-record candidates, generation/layout/prediction, LC, visibility/adoption, P&R, verification and
+record candidates, research hypotheses, generation/layout/prediction, LC, visibility/adoption, P&R, verification and
 matched/full-constraint status. foundry_setup_wns and setup_wns_delta are ns from the matched report
 pair. The foundry/generated `*_fmax_mhz` values are STA-derived as `1000 / (clock_period - setup_wns)`
 from that matched pair; `fmax_improved` must be true. The held final route database, its report hashes,
@@ -58,7 +61,7 @@ represented as zero. These secondary facts do not decide the Fmax goal.
 
 Nested probe: reg2reg-wns-nonnegative, then clock-period-at-most bound to target_period_ns.
 Before P&R, custom-cell-adopted requires at least one generated master in the custom synthesis netlist.
-Outer final-judge: full-evidence-valid, fmax-improved, then clock-period-at-most bound to the same fixed Goal.
+Outer final-judge: comparison-evidence-valid, fmax-improved, then clock-period-at-most bound to the same fixed Goal.
 The first rule chooses the edge; both current verdicts are needed for explicit Goal met.
 
 ## Choosers
@@ -70,7 +73,7 @@ It cannot alter the Goal, remove a gate or treat an incomplete previous attempt 
 
 ## Endings
 
-Goal met: only next-research, with current outer full-evidence-valid and clock-period-at-most PASS.
+Goal met: only next-research, with current outer comparison-evidence-valid, fmax-improved and clock-period-at-most PASS.
 Converged: explicit current evidence supports no further useful change within the declared converge
 rule; it is not a physical-success claim. Budget exhausted: graph/Run generation or time limits;
 retain partial work and explain what was not established. Hard blocker: failed mandatory tool/reader,
@@ -80,12 +83,14 @@ full-flow success. There is no successful terminal leaf after an earlier inner d
 
 ## Workshops
 
-Six select-ROUTE Workshops use the existing owned Coding interface. Each declares only its route raw
-report and miner record as reads, full-mining-method.md as knowledge, and selected.json as output.
-argv: /usr/bin/python3 ENTRY WORKSPACE ROUTE REVISION. selectionTemplate supplies fixed I/O and
-pre-exit reader validation; the owner implements choose() using actual candidate evidence. Actual
-launch hashes and CodeRecords prove what executed. Readers and merge validate its result independently.
-No helper invokes a model. Mechanical generation/synthesis/physical stages stay ordinary tool Jobs.
+One `research-candidates` Workshop uses the existing owned Coding interface after all six mechanical
+evidence routes converge. It reads their compact views and complete hash-bound sources, the current
+probe and method knowledge. `researchTemplate` keeps the model-authored file small enough for the
+configured model: the owner implements `research(candidates, context)`, while
+`ai_research_runner.py` owns I/O, provenance, budgets and reader validation. The function must form
+at least three evidence-linked hypotheses and choose a cross-route finite screen without embedded
+candidate ids. Actual launch hashes and CodeRecords prove what executed. No helper invokes a model;
+generation, synthesis and physical stages remain ordinary tool Jobs.
 
 ## Knowledge
 

@@ -32,8 +32,8 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `CCFMAX_SWITCHING_ACTIVITY` | number in `[0,1]` | Common activity used for the retained power report. |
 | `CCFMAX_POWER_TEMPLATE_BASE_CELL` | one-line text | Baseline cell used by the prediction adapter. |
 | `GENERATED_LIBRARY_NAME`, `GENERATED_LIB_CELL_PATTERN` | one-line text | Generated library identity and exact master pattern used for visibility/adoption checks. |
-| `MAX_CELLS` | integer `1` or `2` | Bounded build allocation for this pilot method. |
-| `MAX_ROUTE_CANDIDATES` | positive integer | Per-route mining output bound. |
+| `MAX_CELLS` | integer `1..32` | Cheap generation breadth before one pressured DC adoption screen. |
+| `MAX_ROUTE_CANDIDATES` | integer `1..40` | Per-route evidence-pool bound before AI cross-route research. |
 
 ## Tool and adapter inputs
 

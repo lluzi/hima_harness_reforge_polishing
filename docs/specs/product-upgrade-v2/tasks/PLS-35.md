@@ -55,7 +55,7 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 - 一个Campaign只有一个Run和一个owner，Side Talk不阻塞也不夺权。
 - 完整参考图、实际状态、代码、知识、evidence和report可达。
 - 新Cell是A/B唯一变量，最终route database实际采用它，结果Fmax更高。
-- route/constraint/database/report身份没有已知无效条件。
+- route/constraint/database/report身份通过 `comparison_valid`；setup、hold、route DRC、connectivity和cell-only checker结果单独披露，不把对foundry臂同样出现的诊断误报成生成Cell失效，也不宣称physical signoff clean。
 - 团队在交付前修复所有主路径/低级问题；只允许定义内的少量trial缺陷。
 
 任一门失败时不发布trial；保留失败证据并回流所属任务。负结果可以成为知识，但不能满足本任务正向产品价值门。

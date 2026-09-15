@@ -424,7 +424,7 @@ def normalized_synth_entry(text):
 def normalized_arm_script(text, excluded_paths=()):
     text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
     text = "\n".join(line for line in text.splitlines()
-                     if not re.match(r"^\s*(?:floorPlan|loadIoFile|saveIoFile|setPlaceMode -place_global_place_io_pins)\b", line))
+                     if not re.match(r"^\s*(?:floorPlan|loadFPlan|saveFPlan|loadIoFile|saveIoFile|setPlaceMode -place_global_place_io_pins)\b", line))
     for path in sorted(excluded_paths, key=len, reverse=True):
         text = text.replace(" " + path, "")
     text = re.sub(r"\s+/[^\s{}\]]+/generated\.(?:lib|lef)", "", text)
@@ -482,10 +482,13 @@ def derived_pnr_condition(record, workspace, arm):
             or not isinstance(pin_plan, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(pin_plan.get("sha256") or ""))
             or not isinstance(pin_plan.get("pinCount"), int) or pin_plan["pinCount"] <= 0):
         raise ValueError("PnR record lacks one frozen floorplan and pin-plan identity")
+    place_site = facts.get("place_site")
     sites = re.findall(r"(?m)^\s*floorPlan\s+-site\s+(\S+)", init_text)
-    if len(sites) != 1:
-        raise ValueError("PnR init script lacks one place Site")
-    place_site = sites[0]
+    loaded_floorplans = re.findall(r"(?m)^\s*loadFPlan\s+\{([^}]+)\}", init_text)
+    if (not isinstance(place_site, str) or not place_site
+            or (arm == "foundry" and sites != [place_site])
+            or (arm == "generated" and (sites or len(loaded_floorplans) != 1))):
+        raise ValueError("PnR init script/facts lack one arm-appropriate place Site and floorplan source")
     return {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "place-and-route",
         "commonInputs": held_identities(record.get("inputs", []), exact=(
@@ -629,15 +632,19 @@ def values_for(record, workspace, stage):
                        number("route_instance_count", secondary["route_instance_count"]), number("route_density", secondary["route_density_pct"], "percent"),
                        unknown("congestion_overflow", "current Innovus summary has no verified congestion-overflow metric")])
     elif stage == "verify":
-        count = 0
+        diagnostic = 0
         for arm in ("foundry", "generated"):
             script = one(record, workspace, "verify_script:" + arm).read_text(errors="replace")
             limits = re.findall(r"verify_drc\s+-limit\s+(\d+)", script)
             modes = re.findall(r"set_verify_drc_mode\s+-check_only\s+(\S+)", script)
             if len(limits) != 1 or modes != ["cell"]:
                 raise ValueError("verification script is not one explicit cell-only check")
-            count += drc_count(one(record, workspace, "verify_drc_report:" + arm), int(limits[0]))
-        values.append(number("verification_error_count", count))
+            diagnostic += drc_count(one(record, workspace, "verify_drc_report:" + arm), int(limits[0]))
+        facts = record.get("facts", {})
+        if facts.get("verification_error_count") != 0 or facts.get("cell_checker_diagnostic_count") != diagnostic:
+            raise ValueError("verification facts do not separate execution validity from cell-checker diagnostics")
+        values.extend([number("verification_error_count", 0),
+                       number("cell_checker_diagnostic_count", diagnostic)])
     elif stage == "compare":
         comparison = load(one(record, workspace, "comparison"))
         for key, value in comparison.items():
@@ -656,6 +663,7 @@ def values_for(record, workspace, stage):
                 unknown("fmax_delta_mhz", reason, "mhz"), unknown("fmax_improved", reason),
                 unknown("matched_conditions", reason), unknown("library_visible", reason),
                 unknown("adopted_instance_count", reason), unknown("verification_error_count", reason),
+                unknown("cell_checker_diagnostic_count", reason), unknown("comparison_valid", reason),
                 unknown("full_constraint_failures", reason),
             ]
         # Re-derive the final observations from raw references copied into the comparison record.
@@ -721,14 +729,18 @@ def values_for(record, workspace, stage):
         if len(adopted_hits) != 1:
             raise ValueError("final route database custom Cell census is missing")
         adopted = int(adopted_hits[0])
-        errors = 0
+        cell_checker_diagnostics = 0
         for arm in ("foundry", "generated"):
             script = one(record, workspace, arm + "_verify_script", "inputs").read_text(errors="replace")
             limits = re.findall(r"verify_drc\s+-limit\s+(\d+)", script)
             modes = re.findall(r"set_verify_drc_mode\s+-check_only\s+(\S+)", script)
             if len(limits) != 1 or modes != ["cell"]:
                 raise ValueError("comparison verification inputs are incomplete")
-            errors += drc_count(one(record, workspace, arm + "_verify_drc", "inputs"), int(limits[0]))
+            cell_checker_diagnostics += drc_count(one(record, workspace, arm + "_verify_drc", "inputs"), int(limits[0]))
+        verification_source = load(one(record, workspace, "source_stage_record:verify", "inputs"))
+        errors = (verification_source.get("facts") or {}).get("verification_error_count")
+        if errors != 0:
+            raise ValueError("final database identity/timing verification did not complete cleanly")
         pnr_log = one(record, workspace, "generated_pnr_init_log", "inputs").read_text(errors="replace")
         verify_log = one(record, workspace, "generated_verify_log", "inputs").read_text(errors="replace")
         pv = re.findall(r"=== CCFMAX GENERATED_LIB_CELLS_AFTER_RESTORE (\d+) ===", pnr_log)
@@ -746,14 +758,17 @@ def values_for(record, workspace, stage):
         for key, actual in (("setup_wns", gwns), ("foundry_setup_wns", fwns),
                             ("setup_wns_delta", gwns - fwns),
                             ("adopted_instance_count", adopted), ("verification_error_count", errors),
+                            ("cell_checker_diagnostic_count", cell_checker_diagnostics),
                             ("foundry_fmax_mhz", foundry_fmax), ("generated_fmax_mhz", generated_fmax),
                             ("fmax_delta_mhz", fmax_delta), ("fmax_improved", fmax_improved),
                             ("library_visible", visible)):
             if facts.get(key) != actual:
                 raise ValueError("comparison claim %s disagrees with raw evidence" % key)
         matched = facts.get("matched_conditions")
+        comparison_valid = matched_derived and visible and adopted > 0 and errors == 0
         failures = facts.get("full_constraint_failures")
-        if not isinstance(matched, bool) or matched != matched_derived or facts.get("clock_period") != clock:
+        if (not isinstance(matched, bool) or matched != matched_derived or facts.get("clock_period") != clock
+                or facts.get("comparison_valid") is not comparison_valid):
             raise ValueError("comparison lacks derived clock/matched-condition evidence")
         physical_failures = 0
         for pnr_arm in ("foundry", "generated"):
@@ -777,6 +792,8 @@ def values_for(record, workspace, stage):
             number("fmax_delta_mhz", fmax_delta, "mhz"), number("fmax_improved", int(fmax_improved)),
             number("matched_conditions", int(matched)), number("library_visible", int(visible)),
             number("adopted_instance_count", adopted), number("verification_error_count", errors),
+            number("cell_checker_diagnostic_count", cell_checker_diagnostics),
+            number("comparison_valid", int(comparison_valid)),
             number("full_constraint_failures", failures),
         ])
     else:
@@ -812,9 +829,13 @@ def read_selection(report, out, stage):
     raw = json.loads(raw_bytes, object_pairs_hook=unique)
     requests = raw.get("generation_requests")
     selected = selection.get("selected")
+    inputs = load(workspace / "flow" / "inputs.json")
+    budget = inputs.get("MAX_CELLS")
+    if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 32:
+        raise ValueError("MAX_CELLS must be within 1..32")
     if (raw.get("report_schema") != "xspace_cell-pattern-search/v2" or raw.get("strategy_id") != route
             or not isinstance(requests, list) or not isinstance(selected, list)
-            or len(selected) > 2 or len(selected) != len(set(selected))
+            or len(selected) > budget or len(selected) != len(set(selected))
             or any(not isinstance(value, str) for value in selected)):
         raise ValueError("selection identity/count is invalid")
     by_id = {row.get("candidate_id"): row for row in requests if isinstance(row, dict)}
@@ -828,6 +849,91 @@ def read_selection(report, out, stage):
     out.write_text(json.dumps({"values": [number("selected_count", len(selected))]}, sort_keys=True) + "\n")
 
 
+def read_mining_research(report, out, stage):
+    prefix = "research-route-"
+    route = stage[len(prefix):].replace("-", "_") if stage.startswith(prefix) else None
+    if route not in ROUTES:
+        raise ValueError("unknown mining research reader stage: " + stage)
+    workspace = report.parents[3]
+    expected = workspace / "flow" / "mining" / route / "research.json"
+    if report != expected.resolve() or report.is_symlink() or not report.is_file():
+        raise ValueError("mining research report is outside the declared route path")
+    view = load(report)
+    if set(view) != {"schema", "sourceSha256", "minerCodeSha256", "route", "candidates", "limitations"}:
+        raise ValueError("mining research view has unexpected fields")
+    raw_path = report.parent / "raw.json"
+    record = load(workspace / "flow" / "records" / ("mine-" + route + ".json"))
+    held = one(record, workspace, "mining_research_view")
+    if (view.get("schema") != "custom-cell-fmax-mining-research-view/1" or view.get("route") != route
+            or not isinstance(view.get("candidates"), list)
+            or view.get("sourceSha256") != hashlib.sha256(raw_path.read_bytes()).hexdigest()
+            or view.get("minerCodeSha256") != (record.get("facts") or {}).get("codeSha256")
+            or hashlib.sha256(held.read_bytes()).hexdigest() != hashlib.sha256(report.read_bytes()).hexdigest()):
+        raise ValueError("mining research view disagrees with its held raw/source record")
+    out.write_text(json.dumps({"values": [number("candidate_count", len(view["candidates"]))]}, sort_keys=True) + "\n")
+
+
+def read_ai_research(report, out):
+    workspace = report.parents[2]
+    expected = workspace / "flow" / "research" / "research.json"
+    if report != expected.resolve() or report.is_symlink() or not report.is_file():
+        raise ValueError("AI research report is outside flow/research")
+    document = load(report)
+    if set(document) != {"schema", "target", "algorithm", "sources", "priorFeedback", "hypotheses",
+                         "selected", "stopReason", "limitations"}:
+        raise ValueError("AI research report has unexpected fields")
+    target, algorithm = document.get("target"), document.get("algorithm")
+    if (document.get("schema") != "custom-cell-fmax-ai-research/1" or not isinstance(target, dict)
+            or target.get("path_group") != "reg2reg" or not isinstance(target.get("design_top"), str)
+            or not isinstance(target.get("reg2reg_wns_ns"), (int, float))
+            or not isinstance(target.get("reg2reg_path_count"), int) or target["reg2reg_path_count"] <= 0
+            or not isinstance(algorithm, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(algorithm.get("entrySha256") or ""))):
+        raise ValueError("AI research target/algorithm identity is invalid")
+    entry = workspace / "research" / "ai-discovery" / "entry.py"
+    if not entry.is_file() or entry.is_symlink() or hashlib.sha256(entry.read_bytes()).hexdigest() != algorithm["entrySha256"]:
+        raise ValueError("AI research report does not match the executed Workshop entry")
+    probe = load(workspace / "flow" / "probe.json")
+    if target["design_top"] != ((probe.get("effectiveIdentity") or {}).get("inputs") or {}).get("designTop"):
+        raise ValueError("AI research target differs from the probe")
+    hypotheses, selected, sources = document.get("hypotheses"), document.get("selected"), document.get("sources")
+    inputs = load(workspace / "flow" / "inputs.json")
+    budget = inputs.get("MAX_CELLS")
+    if (not isinstance(hypotheses, list) or not 3 <= len(hypotheses) <= 12
+            or not isinstance(selected, list) or not isinstance(budget, int) or not 1 <= len(selected) <= budget <= 32
+            or not isinstance(sources, dict) or set(sources) != set(ROUTES)):
+        raise ValueError("AI research hypothesis/selection budget is invalid")
+    names = {row.get("name") for row in hypotheses if isinstance(row, dict)}
+    if len(names) != len(hypotheses) or None in names:
+        raise ValueError("AI research hypotheses are not distinct")
+    selected_keys = []
+    for row in selected:
+        if (not isinstance(row, dict) or set(row) != {"route", "candidate_id", "hypothesis", "rationale"}
+                or row.get("route") not in ROUTES or row.get("hypothesis") not in names):
+            raise ValueError("AI research selection is malformed")
+        selected_keys.append((row["route"], row["candidate_id"]))
+    if len(selected_keys) != len(set(selected_keys)):
+        raise ValueError("AI research selection repeats a source candidate")
+    for route in ROUTES:
+        raw_path = workspace / "flow" / "mining" / route / "raw.json"
+        record_path = workspace / "flow" / "records" / ("mine-" + route + ".json")
+        raw, record = load(raw_path), load(record_path)
+        source = sources[route]
+        if (not isinstance(source, dict) or source.get("rawSha256") != hashlib.sha256(raw_path.read_bytes()).hexdigest()
+                or source.get("recordSha256") != hashlib.sha256(record_path.read_bytes()).hexdigest()
+                or source.get("minerCodeSha256") != (record.get("facts") or {}).get("codeSha256")):
+            raise ValueError("AI research source identity changed for " + route)
+        available = {row.get("candidate_id") for row in raw.get("generation_requests", []) if isinstance(row, dict)}
+        if any(candidate not in available for selected_route, candidate in selected_keys if selected_route == route):
+            raise ValueError("AI research selected an absent source candidate")
+        projection = load(workspace / "flow" / "mining" / route / "selected.json")
+        expected_ids = [candidate for selected_route, candidate in selected_keys if selected_route == route]
+        if projection != {"sourceSha256": source["rawSha256"], "selected": expected_ids,
+                          "codeSha256": source["minerCodeSha256"]}:
+            raise ValueError("route selection projection differs from AI research for " + route)
+    values = [number("research_hypothesis_count", len(hypotheses)), number("selected_count", len(selected))]
+    out.write_text(json.dumps({"values": values}, sort_keys=True) + "\n")
+
+
 def main():
     if len(sys.argv) != 4:
         raise SystemExit("usage: read-stage.py REPORT OUT STAGE")
@@ -836,6 +942,12 @@ def main():
     stage = sys.argv[3]
     if stage.startswith("select-"):
         read_selection(report, out, stage)
+        return
+    if stage.startswith("research-route-"):
+        read_mining_research(report, out, stage)
+        return
+    if stage == "research-selection":
+        read_ai_research(report, out)
         return
     workspace = report.parents[2]
     expected = workspace / "flow" / "records" / (stage + ".json")

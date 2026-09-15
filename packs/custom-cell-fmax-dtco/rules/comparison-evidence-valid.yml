@@ -1,0 +1,11 @@
+id: comparison-evidence-valid
+version: "1"
+title: Final database comparison has matched identity, live library and routed adoption
+requires:
+  - type: comparison_valid
+subject:
+  type: comparison_valid
+predicate:
+  op: eq
+  threshold: 1
+  unit: count

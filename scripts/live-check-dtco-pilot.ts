@@ -63,6 +63,8 @@ const requiredReferenceNodes = [
   'mine-start',
   ...routes.flatMap((route) => [`mine-${route}`, `select-${route}`, `read-select-${route}`]),
   'merge-join',
+  'research-candidates',
+  'read-research-selection',
   'merge',
   'read-merge',
   'generate',
@@ -99,6 +101,7 @@ const requiredValueTypes = [
   'reg2reg_path_count',
   'cell_area',
   'candidate_count',
+  'research_hypothesis_count',
   'selected_count',
   'generated_cell_count',
   'abstract_cell_count',
@@ -108,6 +111,8 @@ const requiredValueTypes = [
   'adopted_instance_count',
   'pnr_completed',
   'verification_error_count',
+  'cell_checker_diagnostic_count',
+  'comparison_valid',
   'full_constraint_failures',
   'matched_conditions',
   'foundry_setup_wns',
@@ -495,9 +500,10 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const firstPrompt = [
     `Execute only the already confirmed Campaign Run ${confirmed.runId}.`,
     'You are the only execution owner. Use only hima_context and hima_execute for business actions. Do not start another Run, edit the method, use shell, open another Agent/model, or auto-drive the graph.',
-    'Complete the full reference method from actual facts: the probe loop; all six mining branches and all six selection Workshops; merge; generate; layout; predicted characterization; Library Compiler; foundry and custom Design Compiler; adoption; paired foundry/generated PNR; verification; comparison; final Judge; and next-research.',
-    'For each selection Workshop use recommend; read research_<route>, raw_<route>, source_<route>, selectionTemplate and the declared Pack knowledge before writing. The raw read may be bounded in chat; the executed program receives the complete file. Copy the exact template and implement only a deterministic, data-dependent choose(candidates, route) over the actual generation_requests. The declared candidate schema puts route facts under candidate["discovery_evidence"] and the interface under candidate["generator_contract"]["interface"]; do not invent shorter aliases. For this bounded L5 return at most one strongest buildable candidate per route: rank route-specific evidence first, then prefer fewer inputs, then use candidate_id only as a deterministic tie break. Never embed candidate ids and never add a weaker candidate just to fill the Pack maximum. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
+    'Complete the full reference method from actual facts: the probe loop; all six parallel candidate-evidence routes; the one cross-route AI research Workshop; merge; generate; layout; predicted characterization; Library Compiler; foundry and custom Design Compiler; adoption; paired foundry/generated PNR; verification; comparison; final Judge; and next-research.',
+    'At research-candidates use recommend. Read every compact research_<route> projection, probe, researchTemplate and full-mining-method.md; read a full raw/source artifact when a hypothesis needs it. Copy the exact researchTemplate and implement only research(candidates, context). Generate at least three competing, current-data hypotheses using actual reg2reg_path_hits/increment, Boolean interface/equivalence, occurrence, implementation route and prior adoption feedback. Select a diverse finite set within context["max_cells"] for one pressured DC screen. Candidate ids may be deterministic tie breakers but must never be embedded. The six miners are evidence generators, not the research algorithm. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
     'Treat learned characterization as predicted, Site tool outputs as executed tool evidence, and post-route values as measured only where the readers say so. Never turn asked, derived, predicted, missing, failed, or unknown values into measurements or success.',
+    'Keep setup, hold, route-DRC, connectivity and cell-checker diagnostic findings in the final analysis. comparison_valid proves matched final-database evidence, not physical signoff cleanliness; do not hide or rename disclosed physical findings.',
     'At next-research, record source-linked analysis with current record citations, limitations, and discriminating next experiments, then complete truthfully. Goal-met requires every final rule to PASS, including an actual routed custom Cell instance and strictly higher Fmax in the generated arm. Never convert a negative result into success.',
     'A node in retrying state has only recorded a failed attempt; Fabric does not launch a hidden automatic retry. Read the failed Job log once, diagnose it, and either begin one fresh admitted attempt or stop truthfully. Never poll the same completed failure while waiting for a nonexistent retry.',
     'The Pack reserves 60 seconds for closing, permits at most 120 attempts, and has a 60-minute Campaign limit. The enclosing live harness has 100 minutes, 600 product request steps and 120 user turns. These are upper limits, not a promise that the model or tools will finish.',
@@ -603,30 +609,27 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   check.require('the final matched comparison proves routed adoption and strictly higher custom-arm Fmax',
     comparison?.type === 'observation'
       && comparisonValues.get('adopted_instance_count')! > 0
-      && comparisonValues.get('full_constraint_failures') === 0
+      && comparisonValues.get('comparison_valid') === 1
       && comparisonValues.get('matched_conditions') === 1
       && comparisonValues.get('fmax_improved') === 1
       && typeof foundryFmax === 'number' && typeof generatedFmax === 'number'
       && generatedFmax > foundryFmax,
     { comparisonRecord: comparison?.id, adoptedInstances: comparisonValues.get('adopted_instance_count'),
-      matchedConditions: comparisonValues.get('matched_conditions'), foundryFmax, generatedFmax,
+      matchedConditions: comparisonValues.get('matched_conditions'), comparisonValid: comparisonValues.get('comparison_valid'),
+      disclosedPhysicalFindings: comparisonValues.get('full_constraint_failures'), foundryFmax, generatedFmax,
       delta: comparisonValues.get('fmax_delta_mhz') });
 
-  const selectorNodes = routes.map((route) => `select-${route}`);
   const codeRecords = firstRecords.filter((record): record is CodeRecord => record.type === 'code');
-  const templateSha256 = sha256(readFileSync(path.join(packSource, 'flow/selection-template.py')));
-  const selectorCode = selectorNodes.map((nodeId) => ({
-    nodeId,
-    records: codeRecords.filter((record) => record.nodeId === nodeId),
-  }));
-  check.require('the same model owner supplied executed non-template code for all six selectors',
-    selectorCode.every(({ nodeId, records }) => records.some((code) =>
-      code.sessionId === ownerId
-        && code.sha256 !== templateSha256
-        && launchedJobs.some((job) => job.nodeId === nodeId
-          && job.workshop?.entry.path === code.path
-          && job.workshop.entry.sha256 === code.sha256))),
-    selectorCode);
+  const templateSha256 = sha256(readFileSync(path.join(packSource, 'flow/research-template.py')));
+  const researchLaunch = launchedJobs.findLast((job) => job.nodeId === 'research-candidates' && job.workshop
+    && firstRecords.some((record) => record.type === 'job' && record.event === 'finished' && record.exitCode === 0
+      && record.job.session === job.job.session));
+  const researchCode = codeRecords.findLast((code) => code.nodeId === 'research-candidates'
+    && code.sessionId === ownerId && code.path === researchLaunch?.workshop?.entry.path
+    && code.sha256 === researchLaunch?.workshop?.entry.sha256);
+  check.require('the same model owner supplied one executed non-template cross-route research algorithm',
+    researchLaunch?.workshop !== undefined && researchCode !== undefined && researchCode.sha256 !== templateSha256,
+    { researchLaunch, researchCode, templateSha256 });
   check.require('no separate research model session was opened inside the Campaign',
     firstRecords.every((record) => record.type !== 'session') && check.requestSessions.size === 1,
     { sessionRecords: firstRecords.filter((record) => record.type === 'session'), requestSessions: [...check.requestSessions] });
@@ -662,7 +665,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     packDigestOf(packSource) === sourceDigest && packDigestOf(installedPack) === sourceDigest,
     { source: packDigestOf(packSource), installed: packDigestOf(installedPack), expected: sourceDigest });
 
-  const selectorInputs = path.join(check.out, 'selector-inputs');
+  const selectorInputs = path.join(check.out, 'research-inputs');
   mkdirSync(selectorInputs, { recursive: false, mode: 0o700 });
   const copyHeldMaterial = async (record: LedgerRecord, name: string): Promise<string> => {
     const material = materialByRecord.get(record.id);
@@ -674,61 +677,45 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     writeFileSync(target, held.text, { mode: 0o600 });
     return target;
   };
-  const auditSelectors = [];
+  if (!researchCode || !researchLaunch?.workshop) throw new Error('AI research provenance is incomplete');
+  const researchObservation = firstRecords.findLast(record => record.type === 'observation'
+    && record.reader.id === 'read-ai-research-selection' && record.seq > researchLaunch.seq);
+  const compactReads = routes.map((route) => firstRecords.findLast(record => record.type === 'knowledge'
+    && record.origin === 'input' && record.file === `research_${route.replaceAll('-', '_')}`
+    && record.nodeId === 'research-candidates' && record.sessionId === ownerId
+    && (record.exposedBytes ?? 0) > 0 && record.seq < researchLaunch.seq));
+  check.require('the research model read every compact route view before its recorded execution',
+    researchObservation?.type === 'observation' && compactReads.every(record => record?.type === 'knowledge'),
+    { researchObservation, compactReads });
+  if (researchObservation?.type !== 'observation') throw new Error('AI research observation is incomplete');
+  const codeFile = await copyHeldMaterial(researchCode, 'entry.py');
+  const researchFile = await copyHeldMaterial(researchObservation, 'research.json');
+  const auditSources: Record<string, { raw: string; rawSha256: string }> = {};
   for (const route of routes) {
-    const nodeId = `select-${route}`;
     const suffix = route.replaceAll('-', '_');
-    const launch = launchedJobs.findLast(job => job.nodeId === nodeId && firstRecords.some(record =>
-      record.type === 'job' && record.event === 'finished' && record.exitCode === 0
-        && record.job.session === job.job.session));
-    assert.ok(launch?.workshop, `no successful actual selector launch for ${route}`);
-    const code = codeRecords.findLast(record => record.path === launch.workshop!.entry.path
-      && record.sha256 === launch.workshop!.entry.sha256 && record.sessionId === ownerId);
-    const rawRead = firstRecords.findLast(record => record.type === 'knowledge' && record.origin === 'input'
-      && record.file === `raw_${suffix}` && record.nodeId === nodeId && record.sessionId === ownerId
-      && (record.exposedBytes ?? 0) > 0 && record.seq < launch.seq);
-    const sourceRead = firstRecords.findLast(record => record.type === 'knowledge' && record.origin === 'input'
-      && record.file === `source_${suffix}` && record.nodeId === nodeId && record.sessionId === ownerId
-      && (record.exposedBytes ?? 0) > 0 && record.seq < launch.seq);
-    const selection = firstRecords.findLast(record => record.type === 'observation'
-      && record.reader.id === `read-select-${route}` && record.seq > launch.seq);
-    check.require(`the ${route} selector has actual source reads before its recorded execution`,
-      !!code && rawRead?.type === 'knowledge' && sourceRead?.type === 'knowledge'
-        && selection?.type === 'observation', { code, rawRead, sourceRead, selection, launch });
-    if (!code || rawRead?.type !== 'knowledge' || sourceRead?.type !== 'knowledge'
-      || selection?.type !== 'observation') throw new Error('selector provenance is incomplete');
-    // A chat read may expose a prefix. The actual program consumes the complete input;
-    // select its separately held full capture while retaining the model-read provenance above.
-    const fullRaw = firstRecords.findLast(record => record.type === 'knowledge' && record.origin === 'input'
-      && record.file === `raw_${suffix}` && record.nodeId === nodeId && record.seq < launch.seq
-      && record.sha256 === (rawRead.sourceMaterialSha256 ?? rawRead.sha256)
-      && record.bytes === (rawRead.sourceMaterialBytes ?? rawRead.bytes));
-    assert.ok(fullRaw?.type === 'knowledge', `complete raw input not retained for ${route}`);
-    const codeFile = await copyHeldMaterial(code, `${suffix}.py`);
-    const rawFile = await copyHeldMaterial(fullRaw, `${suffix}-raw.json`);
-    const selectionFile = await copyHeldMaterial(selection, `${suffix}-selected.json`);
-    auditSelectors.push({ route: suffix, code: codeFile, codeSha256: code.sha256,
-      raw: rawFile, rawSha256: sha256(readFileSync(rawFile)), selection: selectionFile,
-      selectionSha256: selection.contentSha256, codeRecord: code.id,
-      rawReadRecord: rawRead.id, sourceReadRecord: sourceRead.id, selectionRecord: selection.id,
-      jobSession: launch.job.session });
+    const raw = firstRecords.findLast(record => record.type === 'knowledge' && record.origin === 'input'
+      && record.file === `raw_${suffix}` && record.nodeId === 'research-candidates' && record.seq < researchLaunch.seq);
+    assert.ok(raw?.type === 'knowledge', `complete research raw input not retained for ${route}`);
+    const rawFile = await copyHeldMaterial(raw, `${suffix}-raw.json`);
+    auditSources[suffix] = { raw: rawFile, rawSha256: sha256(readFileSync(rawFile)) };
   }
   const selectorManifest = path.join(selectorInputs, 'manifest.json');
-  const subsetEvidence = path.join(check.out, 'selector-subsets.json');
-  writeFileSync(selectorManifest, JSON.stringify({ template: path.join(packSource, 'flow/selection-template.py'),
-    templateSha256, selectors: auditSelectors }, null, 2) + '\n', { mode: 0o600 });
-  const auditorFile = path.join(repoRoot, 'scripts/audit-dtco-pilot-selectors.py');
+  const subsetEvidence = path.join(check.out, 'ai-research-audit.json');
+  writeFileSync(selectorManifest, JSON.stringify({ code: codeFile, codeSha256: researchCode.sha256,
+    research: researchFile, researchSha256: researchObservation.contentSha256,
+    maxCells: 32, sources: auditSources }, null, 2) + '\n', { mode: 0o600 });
+  const auditorFile = path.join(repoRoot, 'scripts/audit-dtco-ai-research.py');
   const auditorSha256 = sha256(readFileSync(auditorFile));
   execFileSync('/usr/bin/python3', [auditorFile,
     selectorManifest, subsetEvidence], { timeout: 30_000, maxBuffer: 1024 * 1024 });
   const subsetAudit = JSON.parse(readFileSync(subsetEvidence, 'utf8')) as { status?: string; auditorSha256?: string };
-  check.require('the selector audit identifies the exact launched auditor bytes',
+  check.require('the AI research audit identifies the exact launched auditor bytes',
     subsetAudit.auditorSha256 === auditorSha256 && sha256(readFileSync(auditorFile)) === auditorSha256,
     { expected: auditorSha256, reported: subsetAudit.auditorSha256 });
-  check.require('unchanged executed selectors reproduce results and respond to withheld candidates',
+  check.require('the retained AI algorithm, hypotheses and selections are source-hash bound',
     subsetAudit.status === 'passed', subsetAudit);
-  check.observed.selectorAudit = { path: subsetEvidence, sha256: sha256(readFileSync(subsetEvidence)), auditorSha256,
-    scope: 'finite input-dependence check; no new model, EDA, optimality or PPA claim' };
+  check.observed.researchAudit = { path: subsetEvidence, sha256: sha256(readFileSync(subsetEvidence)), auditorSha256,
+    scope: 'retained code/source/selection check; no new model, EDA, optimality or PPA claim' };
 
   const firstManifestPath = firstArchive.manifestPath;
   const firstExperiencePath = path.join(firstArchive.directory, 'experience.md');

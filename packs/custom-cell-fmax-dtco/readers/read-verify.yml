@@ -10,3 +10,4 @@ argv:
 reportKind: custom-cell-fmax-stage/1
 emits:
   - verification_error_count
+  - cell_checker_diagnostic_count

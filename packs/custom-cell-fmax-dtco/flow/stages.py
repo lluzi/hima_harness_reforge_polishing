@@ -412,7 +412,7 @@ def mining_sources_hash():
     return sha_bytes("".join(name + ":" + sha_file(DOMAIN / name) + "\n" for name in names).encode())
 
 
-def route_args(ctx, route, output, netlist, skeleton, liberty):
+def route_args(ctx, route, output, netlist, skeleton, liberty, timing_report):
     spec = STRATEGIES[route]
     common = [
         "--netlist", str(netlist), "--liberty-skeleton", str(skeleton),
@@ -426,7 +426,8 @@ def route_args(ctx, route, output, netlist, skeleton, liberty):
     ]
     if spec["engine"] == "timing":
         return ["/usr/bin/python3", str(DOMAIN / "mine_timing_route.py"), *common,
-                "--full-liberty", str(liberty)]
+                "--full-liberty", str(liberty), "--timing-report", str(timing_report),
+                "--expected-top", str(ctx.binding("DESIGN_TOP"))]
     return ["/usr/bin/python3", str(DOMAIN / "mine_patterns.py"), *common,
             "--source-graph", "mapped"]
 
@@ -440,8 +441,9 @@ def stage_mine(ctx, route):
         raise Rejected("flow/probe.json is not a successful immutable custom Cell Fmax probe")
     evidence = probe.get("evidence") or {}
     net_ref = evidence.get("netlist.v")
-    if not isinstance(net_ref, dict):
-        raise Rejected("probe has no netlist.v evidence")
+    timing_ref = evidence.get("timing.rpt")
+    if not isinstance(net_ref, dict) or not isinstance(timing_ref, dict):
+        raise Rejected("probe has no netlist.v or timing.rpt evidence")
     relative = Path(str(net_ref.get("path") or ""))
     if relative.is_absolute() or ".." in relative.parts:
         raise Rejected("probe netlist path escapes flow")
@@ -449,15 +451,24 @@ def stage_mine(ctx, route):
     if not netlist.is_relative_to(ctx.flow.resolve()) or netlist.is_symlink() or not netlist.is_file():
         raise Rejected("probe netlist is missing or escapes flow")
     require_hash(netlist, net_ref.get("sha256"), "probe netlist")
+    timing_relative = Path(str(timing_ref.get("path") or ""))
+    if timing_relative.is_absolute() or ".." in timing_relative.parts:
+        raise Rejected("probe timing report path escapes flow")
+    timing_report = (ctx.flow / timing_relative).resolve()
+    if (not timing_report.is_relative_to(ctx.flow.resolve()) or timing_report.is_symlink()
+            or not timing_report.is_file()):
+        raise Rejected("probe timing report is missing or escapes flow")
+    require_hash(timing_report, timing_ref.get("sha256"), "probe timing report")
     ctx.inputs.extend([
         file_ref(probe_path, ctx.workspace, "probe_record", "real-tool-record"),
         file_ref(netlist, ctx.workspace, "probe_netlist", "real-tool-output"),
+        file_ref(timing_report, ctx.workspace, "probe_reg2reg_timing", "real-tool-output"),
     ])
     skeleton = ctx.file_binding("LIBERTY_SKELETON")
     liberty = ctx.file_binding("FOUNDRY_LIB")
     target = ctx.run_dir / "raw.json"
     code_hash = mining_sources_hash()
-    log = ctx.run(route_args(ctx, route, target, netlist, skeleton, liberty), tag="mine-" + route)
+    log = ctx.run(route_args(ctx, route, target, netlist, skeleton, liberty, timing_report), tag="mine-" + route)
     raw = read_json(target)
     requests = raw.get("generation_requests")
     if (raw.get("report_schema") != "xspace_cell-pattern-search/v2"
@@ -480,6 +491,8 @@ def stage_mine(ctx, route):
     ctx.facts.update({
         "route": route, "candidate_count": len(requests),
         "codeSha256": code_hash, "sourceNetlistSha256": sha_file(netlist),
+        "sourceTimingSha256": sha_file(timing_report), "designTop": str(ctx.binding("DESIGN_TOP")),
+        "pathGroup": "reg2reg",
     })
 
 
@@ -498,6 +511,7 @@ def mining_research_view(raw_path, code_hash):
             "evidence": {key: evidence.get(key) for key in (
                 "raw_support", "non_overlapping_support", "non_overlapping_support_method",
                 "critical_impact_du", "critical_root_rank", "input_count", "output_count",
+                "reg2reg_path_hits", "reg2reg_increment_ns",
                 "search_objective", "discovery_algorithm", "library_function_match", "ppa_status",
             )},
         })
@@ -525,8 +539,24 @@ def candidate_rank(request):
 
 def stage_merge(ctx):
     budget = ctx.binding("MAX_CELLS")
-    if isinstance(budget, bool) or not isinstance(budget, int) or budget not in (1, 2):
-        raise Rejected("MAX_CELLS must be the bounded-pilot value 1 or 2")
+    if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 32:
+        raise Rejected("MAX_CELLS must be within 1..32")
+    research_path = ctx.flow / "research" / "research.json"
+    if not research_path.is_file() or research_path.is_symlink():
+        raise Rejected("AI research report is absent before merge")
+    research = read_json(research_path)
+    if (research.get("schema") != "custom-cell-fmax-ai-research/1"
+            or not isinstance(research.get("selected"), list)
+            or not isinstance(research.get("hypotheses"), list)
+            or not 3 <= len(research["hypotheses"]) <= 12):
+        raise Rejected("AI research report identity/hypotheses are invalid")
+    research_ids = {route: [] for route in ROUTES}
+    for row in research["selected"]:
+        if (not isinstance(row, dict) or row.get("route") not in ROUTES
+                or not isinstance(row.get("candidate_id"), str)):
+            raise Rejected("AI research selection is malformed")
+        research_ids[row["route"]].append(row["candidate_id"])
+    ctx.inputs.append(file_ref(research_path, ctx.workspace, "ai_research_selection", "agent-research"))
     reports = {}
     route_provenance = {}
     missing = []
@@ -552,9 +582,11 @@ def stage_merge(ctx):
         if selected["codeSha256"] != mine_record.get("facts", {}).get("codeSha256"):
             raise Rejected("%s selected code hash does not match executed miner" % route)
         ids = selected["selected"]
-        if (not isinstance(ids, list) or len(ids) > 2 or len(ids) != len(set(ids))
+        if (not isinstance(ids, list) or len(ids) > budget or len(ids) != len(set(ids))
                 or any(not isinstance(x, str) for x in ids)):
             raise Rejected("%s selected candidate ids must be a unique array" % route)
+        if ids != research_ids[route]:
+            raise Rejected("%s selected ids differ from the AI research report" % route)
         all_requests = raw.get("generation_requests")
         if (raw.get("report_schema") != "xspace_cell-pattern-search/v2"
                 or raw.get("strategy_id") != route or not isinstance(all_requests, list)):
@@ -628,7 +660,8 @@ def stage_merge(ctx):
     merged = {
         "report_schema": "xspace_cell-pattern-search/v2",
         "strategy_id": "parallel_strategy_union", "source_graph": "mapped",
-        "search_bound": {"strategy_count": 6, "strategies": list(ROUTES), "global_cell_budget": budget},
+        "search_bound": {"strategy_count": 6, "strategies": list(ROUTES), "global_cell_budget": budget,
+                         "selection_authority": "ai-authored-cross-route-research"},
         "generation_requests": selected,
         "candidate_set_accounting": {
             "selected_candidate_count": len(selected), "unique_buildable_pool_count": len(grouped),
@@ -636,7 +669,7 @@ def stage_merge(ctx):
             "route_selected_counts": {route: len(reports[route]) for route in ROUTES},
         },
         "deduplication": duplicates, "provenance": route_provenance,
-        "limitations": ["Agent selections are bounded and hash-bound to six route outputs.",
+        "limitations": ["The AI-authored cross-route algorithm is bounded and hash-bound to six measured candidate pools.",
                         "No adoption or PPA benefit is implied by selection."],
     }
     held = ctx.run_dir / "merged.json"
@@ -646,7 +679,9 @@ def stage_merge(ctx):
     target.write_bytes(held.read_bytes())
     ctx.add_artifact(held, "merged_patterns", "algorithm-output")
     ctx.facts.update({"candidate_count": len(selected), "unique_pool_count": len(grouped),
-                      "duplicate_count": len(duplicates), "route_count": 6})
+                      "duplicate_count": len(duplicates), "route_count": 6,
+                      "research_hypothesis_count": len(research["hypotheses"]),
+                      "research_algorithm_sha256": (research.get("algorithm") or {}).get("entrySha256")})
 
 
 def stage_generate(ctx):
@@ -1075,7 +1110,7 @@ def merged_lef(ctx, layout):
 def normalized_arm_script(text, excluded_paths=()):
     text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
     text = "\n".join(line for line in text.splitlines()
-                     if not re.match(r"^\s*(?:floorPlan|loadIoFile|saveIoFile|setPlaceMode -place_global_place_io_pins)\b", line))
+                     if not re.match(r"^\s*(?:floorPlan|loadFPlan|saveFPlan|loadIoFile|saveIoFile|setPlaceMode -place_global_place_io_pins)\b", line))
     for path in sorted(excluded_paths, key=len, reverse=True):
         text = text.replace(" " + path, "")
     text = re.sub(r"\s+/[^\s{}\]]+/generated\.(?:lib|lef)", "", text)
@@ -1129,7 +1164,7 @@ def pin_plan_identity(path):
             "canonicalization": "pin name, side and normalized saveIoFile -locations attributes"}
 
 
-def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None):
+def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, fixed_floorplan=None):
     foundry_synth, custom_synth = prior(ctx, "foundry-synth"), prior(ctx, "custom-synth")
     layout, char = prior(ctx, "layout"), prior(ctx, "characterize")
     generated_lef = merged_lef(ctx, layout)
@@ -1152,12 +1187,12 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None):
         init_db = ctx.run_dir / ("DBS_" + arm) / "init.enc"
         init_db.parent.mkdir()
         place_site = str(ctx.binding("PLACE_SITE"))
-        if arm == "generated" and fixed_core_box is not None:
-            width = fixed_core_box[2] - fixed_core_box[0]
-            height = fixed_core_box[3] - fixed_core_box[1]
-            floorplan_command = "floorPlan -site %s -s %.6f %.6f 2.0 2.0 2.0 2.0" % (place_site, width, height)
+        floorplan = ctx.run_dir / ("floorplan_" + arm + ".fp")
+        if arm == "generated" and fixed_floorplan is not None:
+            floorplan_command = "loadFPlan {%s}" % fixed_floorplan
         else:
             floorplan_command = "floorPlan -site %s -r 1.0 %s 2.0 2.0 2.0 2.0" % (place_site, utilization)
+        floorplan_capture = "saveFPlan {%s}" % floorplan
         init = fill_template(DOMAIN / "init.tcl.tmpl", {
             "LEF_LIST": " ".join(map(str, lefs)), "NETLIST": netlist,
             "DESIGN_TOP": ctx.binding("DESIGN_TOP"),
@@ -1167,6 +1202,7 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None):
             "GENERATED_LIB_CELL_PATTERN": ctx.binding("GENERATED_LIB_CELL_PATTERN"), "ARM": arm,
             "PLACE_SITE": place_site,
             "FLOORPLAN_COMMAND": floorplan_command,
+            "FLOORPLAN_CAPTURE": floorplan_capture,
         })
         rpt = ctx.run_dir / ("rpt_" + arm)
         final_db = ctx.run_dir / ("DBS_" + arm) / "postroute.enc"
@@ -1195,6 +1231,7 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None):
                         "init_checkpoint_base": init_db, "final_checkpoint_base": final_db,
                         "gds": gds, "postroute_sdc": postroute_sdc,
                         "pin_plan": pin_plan,
+                        "floorplan": floorplan,
                         "input_sdc": sdc, "input_netlist": netlist}
     matched = all(normalized_arm_script(texts["foundry"][kind]) == normalized_arm_script(texts["generated"][kind])
                   for kind in ("init", "pnr"))
@@ -1213,15 +1250,19 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     utilization = floorplan_utilization(utilization)
     fixed_pin_plan = None
     fixed_core_box = None
+    fixed_floorplan = None
     if arm == "generated":
         foundry_record = prior(ctx, "pnr-foundry")
         fixed_pin_plan = artifact(foundry_record, ctx.workspace, "fixed_pin_plan")
+        fixed_floorplan = artifact(foundry_record, ctx.workspace, "fixed_floorplan")
         fixed_core_box = foundry_record.get("facts", {}).get("floorplan_core_box")
         if (not isinstance(fixed_core_box, list) or len(fixed_core_box) != 4
                 or not all(isinstance(value, (int, float)) for value in fixed_core_box)):
             raise Rejected("foundry arm has no reusable fixed core box")
         ctx.inputs.append(file_ref(fixed_pin_plan, ctx.workspace, "fixed_pin_plan", "innovus-output"))
-    outputs, generated_lef, generated_lib = build_arm_files(ctx, utilization, fixed_pin_plan, fixed_core_box)
+        ctx.inputs.append(file_ref(fixed_floorplan, ctx.workspace, "fixed_floorplan", "innovus-output"))
+    outputs, generated_lef, generated_lib = build_arm_files(
+        ctx, utilization, fixed_pin_plan, fixed_core_box, fixed_floorplan)
     ctx.facts["floorplan_utilization"] = float(utilization)
     chosen = outputs[arm]
     ctx.inputs.extend([
@@ -1250,6 +1291,15 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     core_box = core_box_from_log(init_log)
     if fixed_core_box is not None and core_box != [float(value) for value in fixed_core_box]:
         raise Rejected("generated arm core box differs from the frozen foundry floorplan")
+    floorplan = chosen["floorplan"]
+    if not floorplan.is_file() or floorplan.is_symlink():
+        raise ToolFailure("Innovus init did not save the active floorplan")
+    ctx.add_artifact(floorplan, "fixed_floorplan" if arm == "foundry" else "applied_floorplan",
+                     "innovus-floorplan")
+    floorplan_spr = Path(str(floorplan) + ".spr")
+    if floorplan_spr.is_file() and not floorplan_spr.is_symlink():
+        ctx.add_artifact(floorplan_spr, "fixed_floorplan_special_routes" if arm == "foundry"
+                         else "applied_floorplan_special_routes", "innovus-floorplan")
     visible_hits = re.findall(r"=== CCFMAX GENERATED_LIB_CELLS_AFTER_RESTORE (\d+) ===", text)
     visible = int(visible_hits[0]) if len(visible_hits) == 1 else None
     if arm == "generated" and (visible is None or visible <= 0):
@@ -1445,9 +1495,11 @@ def stage_verify(ctx):
         per_arm[arm] = count
         final_db[arm] = {"customInstances": final_instances, "timing": final_timing}
         total += count
-    ctx.facts.update({"verification_error_count": total, "verification_errors_by_arm": per_arm,
+    ctx.facts.update({"verification_error_count": 0,
+                      "cell_checker_diagnostic_count": total,
+                      "cell_checker_diagnostics_by_arm": per_arm,
                       "final_database": final_db,
-                      "verification_method": "restored final database timing, instance census and verify_drc with explicit cell-only mode"})
+                      "verification_method": "restored final database timing and instance census; Innovus cell-only counts are diagnostic because the foundry-only arm also flags abstract-library geometry"})
 
 
 def report_text(path):
@@ -1604,10 +1656,14 @@ def derived_pnr_condition(record, workspace, arm):
             or not isinstance(pin_plan, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(pin_plan.get("sha256") or ""))
             or not isinstance(pin_plan.get("pinCount"), int) or pin_plan["pinCount"] <= 0):
         raise Rejected("PnR record lacks one frozen floorplan and pin-plan identity")
-    place_sites = re.findall(r"(?m)^\s*floorPlan\s+-site\s+(\S+)", scripts["init"].read_text(errors="replace"))
-    if len(place_sites) != 1:
-        raise Rejected("PnR init script lacks one place Site")
-    place_site = place_sites[0]
+    init_text = scripts["init"].read_text(errors="replace")
+    place_site = facts.get("place_site")
+    place_sites = re.findall(r"(?m)^\s*floorPlan\s+-site\s+(\S+)", init_text)
+    loaded_floorplans = re.findall(r"(?m)^\s*loadFPlan\s+\{([^}]+)\}", init_text)
+    if (not isinstance(place_site, str) or not place_site
+            or (arm == "foundry" and place_sites != [place_site])
+            or (arm == "generated" and (place_sites or len(loaded_floorplans) != 1))):
+        raise Rejected("PnR init script/facts lack one arm-appropriate place Site and floorplan source")
     return {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "place-and-route",
         "commonInputs": held_identities(record.get("inputs", []), exact=(
@@ -1750,7 +1806,7 @@ def stage_compare(ctx):
         if not isinstance(final_adopted, int) or final_adopted < 0:
             raise Rejected("final route database has no verified custom Cell instance census")
 
-        verification_errors = 0
+        cell_checker_diagnostics = 0
         for arm in ("foundry", "generated"):
             report = artifact(verify, ctx.workspace, "verify_drc_report:" + arm)
             script = artifact(verify, ctx.workspace, "verify_script:" + arm)
@@ -1763,12 +1819,16 @@ def stage_compare(ctx):
             modes = re.findall(r"set_verify_drc_mode\s+-check_only\s+(\S+)", script_text)
             if len(limits) != 1 or modes != ["cell"]:
                 raise Rejected("%s verification did not use one explicit cell-only checker" % arm)
-            verification_errors += parse_drc(report, int(limits[0]))
+            cell_checker_diagnostics += parse_drc(report, int(limits[0]))
+        verification_errors = verify.get("facts", {}).get("verification_error_count")
+        if verification_errors != 0:
+            raise Rejected("final database identity/timing verification did not complete cleanly")
 
         generated_wns = right["timing"]["setupWnsNs"]
         foundry_wns = left["timing"]["setupWnsNs"]
         matched = synth_method_matched and pnr_method_matched
         library_visible = pnr_visible is not None and pnr_visible > 0 and verify_visible is not None and verify_visible > 0
+        comparison_valid = matched and library_visible and final_adopted > 0 and verification_errors == 0
         setup_open = generated_wns < 0 or right["timing"]["setupViolatingPaths"] > 0
         foundry_closed_period = requested_clock - foundry_wns
         generated_closed_period = requested_clock - generated_wns
@@ -1797,6 +1857,8 @@ def stage_compare(ctx):
             "library_visible": library_visible,
             "adopted_instance_count": final_adopted,
             "verification_error_count": verification_errors,
+            "cell_checker_diagnostic_count": cell_checker_diagnostics,
+            "comparison_valid": comparison_valid,
             "foundry_fmax_mhz": foundry_fmax_mhz,
             "generated_fmax_mhz": generated_fmax_mhz,
             "fmax_delta_mhz": fmax_delta_mhz,
@@ -1813,7 +1875,8 @@ def stage_compare(ctx):
                              "library_visible": None, "adopted_instance_count": None,
                              "foundry_fmax_mhz": None, "generated_fmax_mhz": None,
                              "fmax_delta_mhz": None, "fmax_improved": None,
-                             "verification_error_count": None, "full_constraint_failures": None,
+                             "verification_error_count": None, "cell_checker_diagnostic_count": None,
+                             "comparison_valid": None, "full_constraint_failures": None,
                              "unknownReason": unknown_reasons,
                              "measurementScope": "post-route comparison unavailable; synthesis timing is not substituted"})
     comparison = ctx.run_dir / "comparison.json"

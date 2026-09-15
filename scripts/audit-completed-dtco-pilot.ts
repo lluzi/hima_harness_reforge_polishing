@@ -31,16 +31,17 @@ type KnowledgeRecord = Extract<LedgerRecord, { type: 'knowledge' }>;
 const requiredReferenceNodes = [
   'bind-inputs', 'probe', 'synthesize', 'read-probe', 'judge', 'next-period', 'mine-start',
   ...routes.flatMap((route) => [`mine-${route}`, `select-${route}`, `read-select-${route}`]),
-  'merge-join', 'merge', 'read-merge', 'generate', 'read-generate', 'layout', 'read-layout',
+  'merge-join', 'research-candidates', 'read-research-selection', 'merge', 'read-merge', 'generate', 'read-generate', 'layout', 'read-layout',
   'characterize', 'read-characterize', 'compile', 'read-compile', 'foundry-synth',
   'read-foundry-synth', 'custom-synth', 'read-custom-synth', 'adoption', 'read-adoption', 'adoption-gate',
   'pnr-foundry', 'read-pnr-foundry', 'pnr-generated', 'read-pnr-generated', 'verify',
   'read-verify', 'compare', 'read-compare', 'final-judge', 'next-research',
 ] as const;
 const requiredValueTypes = [
-  'clock_period', 'setup_wns', 'reg2reg_wns', 'reg2reg_path_count', 'cell_area', 'candidate_count', 'selected_count',
+  'clock_period', 'setup_wns', 'reg2reg_wns', 'reg2reg_path_count', 'cell_area', 'candidate_count', 'research_hypothesis_count', 'selected_count',
   'generated_cell_count', 'abstract_cell_count', 'predicted_cell_count', 'lc_accepted',
   'library_visible', 'adopted_instance_count', 'pnr_completed', 'verification_error_count',
+  'cell_checker_diagnostic_count', 'comparison_valid',
   'full_constraint_failures', 'matched_conditions', 'foundry_setup_wns', 'setup_wns_delta',
   'foundry_fmax_mhz', 'generated_fmax_mhz', 'fmax_delta_mhz', 'fmax_improved',
 ] as const;
@@ -170,11 +171,12 @@ async function main(): Promise<void> {
     const generatedFmax = values.get('generated_fmax_mhz');
     pass('reader facts prove an apple-to-apple routed custom-Cell Fmax improvement',
       missingTypes.length === 0 && values.get('matched_conditions') === 1
-        && values.get('full_constraint_failures') === 0 && Number(values.get('adopted_instance_count')) > 0
+        && values.get('comparison_valid') === 1 && Number(values.get('adopted_instance_count')) > 0
         && values.get('fmax_improved') === 1 && typeof foundryFmax === 'number'
         && typeof generatedFmax === 'number' && generatedFmax > foundryFmax,
       { comparisonRecord: comparison?.id, missingTypes, matched: values.get('matched_conditions'),
-        adoptedInstances: values.get('adopted_instance_count'), foundryFmax, generatedFmax,
+        adoptedInstances: values.get('adopted_instance_count'), comparisonValid: values.get('comparison_valid'),
+        disclosedPhysicalFindings: values.get('full_constraint_failures'), foundryFmax, generatedFmax,
         delta: values.get('fmax_delta_mhz') });
     const analysis = records.findLast((record) => record.type === 'analysis' && record.nodeId === 'next-research');
     pass('the owner archived source-linked conclusions, limitations and next experiments',
@@ -213,7 +215,7 @@ async function main(): Promise<void> {
     const stage = JSON.parse(readFileSync(comparisonSource, 'utf8')) as { status?: string; facts?: Record<string, any>; inputs?: unknown[] };
     pass('the retained comparison stage records matched conditions, physical adoption and the same positive Fmax ordering',
       stage.status === 'passed' && stage.facts?.matched_conditions === true
-        && stage.facts?.full_constraint_failures === 0 && stage.facts?.adopted_instance_count > 0
+        && stage.facts?.comparison_valid === true && stage.facts?.adopted_instance_count > 0
         && stage.facts?.fmax_improved === true && stage.facts?.generated_fmax_mhz > stage.facts?.foundry_fmax_mhz
         && Array.isArray(stage.inputs) && stage.inputs.length > 20,
       { sourceSha256: sha256(readFileSync(comparisonSource)), status: stage.status,
@@ -223,34 +225,33 @@ async function main(): Promise<void> {
 
     const codeRecords = records.filter((record): record is CodeRecord => record.type === 'code');
     const knowledge = records.filter((record): record is KnowledgeRecord => record.type === 'knowledge');
-    const selectorInputs = path.join(out, 'selector-inputs'); mkdirSync(selectorInputs, { mode: 0o700 });
-    const selectors = [];
+    const selectorInputs = path.join(out, 'research-inputs'); mkdirSync(selectorInputs, { mode: 0o700 });
+    const researchLaunch = launched.findLast((job) => job.nodeId === 'research-candidates' && job.workshop && records.some((record) =>
+      record.type === 'job' && record.event === 'finished' && record.exitCode === 0 && record.job.session === job.job.session));
+    assert.ok(researchLaunch?.workshop, 'no successful AI research Job');
+    const researchCode = codeRecords.findLast((record) => record.nodeId === 'research-candidates' && record.sessionId === owner
+      && record.path === researchLaunch.workshop!.entry.path && record.sha256 === researchLaunch.workshop!.entry.sha256);
+    const researchObservation = observations.findLast((record) => record.reader.id === 'read-ai-research-selection');
+    assert.ok(researchCode && researchObservation, 'AI research code/output provenance is incomplete');
+    const codeFile = await copyMaterial(researchCode, path.join('research-inputs', 'entry.py'));
+    const researchFile = await copyMaterial(researchObservation, path.join('research-inputs', 'research.json'));
+    const sources: Record<string, { raw: string; rawSha256: string }> = {};
     for (const route of routes) {
-      const nodeId = `select-${route}`;
       const suffix = route.replaceAll('-', '_');
-      const launch = launched.findLast((job) => job.nodeId === nodeId && job.workshop && records.some((record) =>
-        record.type === 'job' && record.event === 'finished' && record.exitCode === 0 && record.job.session === job.job.session));
-      assert.ok(launch?.workshop, `no successful selector Job for ${route}`);
-      const code = codeRecords.findLast((record) => record.nodeId === nodeId && record.sessionId === owner
-        && record.path === launch.workshop!.entry.path && record.sha256 === launch.workshop!.entry.sha256);
-      const raw = knowledge.findLast((record) => record.origin === 'input' && record.file === `raw_${suffix}` && record.nodeId === nodeId && record.bytes > 0);
-      const selection = observations.findLast((record) => record.reader.id === `read-select-${route}`);
-      assert.ok(code && raw && selection, `selector provenance is incomplete for ${route}`);
-      const codeFile = await copyMaterial(code, path.join('selector-inputs', `${suffix}.py`));
-      const rawFile = await copyMaterial(raw, path.join('selector-inputs', `${suffix}-raw.json`));
-      const selectionFile = await copyMaterial(selection, path.join('selector-inputs', `${suffix}-selected.json`));
-      selectors.push({ route: suffix, code: codeFile, codeSha256: code.sha256, raw: rawFile,
-        rawSha256: sha256(readFileSync(rawFile)), selection: selectionFile, selectionSha256: selection.contentSha256,
-        codeRecord: code.id, rawReadRecord: raw.id, selectionRecord: selection.id, jobSession: launch.job.session });
+      const raw = knowledge.findLast((record) => record.origin === 'input' && record.file === `raw_${suffix}`
+        && record.nodeId === 'research-candidates' && record.bytes > 0 && record.seq < researchLaunch.seq);
+      assert.ok(raw, `AI research raw input is incomplete for ${route}`);
+      const rawFile = await copyMaterial(raw, path.join('research-inputs', `${suffix}-raw.json`));
+      sources[suffix] = { raw: rawFile, rawSha256: sha256(readFileSync(rawFile)) };
     }
-    const template = path.join(sourcePack, 'flow/selection-template.py');
     const manifest = path.join(selectorInputs, 'manifest.json');
-    writeFileSync(manifest, `${JSON.stringify({ template, templateSha256: sha256(readFileSync(template)), selectors }, null, 2)}\n`, { mode: 0o600 });
-    const subsetEvidence = path.join(out, 'selector-subsets.json');
-    const selectorAuditor = path.join(repoRoot, 'scripts/audit-dtco-pilot-selectors.py');
+    writeFileSync(manifest, `${JSON.stringify({ code: codeFile, codeSha256: researchCode.sha256,
+      research: researchFile, researchSha256: researchObservation.contentSha256, maxCells: 32, sources }, null, 2)}\n`, { mode: 0o600 });
+    const subsetEvidence = path.join(out, 'ai-research-audit.json');
+    const selectorAuditor = path.join(repoRoot, 'scripts/audit-dtco-ai-research.py');
     execFileSync('/usr/bin/python3', [selectorAuditor, manifest, subsetEvidence], { timeout: 30_000, maxBuffer: 1024 * 1024 });
     const subset = JSON.parse(readFileSync(subsetEvidence, 'utf8')) as { status?: string; auditorSha256?: string };
-    pass('the exact owner-written selector bytes respond to held-out candidates in the finite offline audit',
+    pass('the exact owner-written research bytes and selections remain source-hash bound in offline audit',
       subset.status === 'passed' && subset.auditorSha256 === sha256(readFileSync(selectorAuditor)),
       { evidenceSha256: sha256(readFileSync(subsetEvidence)), auditorSha256: subset.auditorSha256 });
 

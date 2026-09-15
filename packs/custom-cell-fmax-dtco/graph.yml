@@ -29,11 +29,7 @@ nodes:
   - id: select-timing-criticality
     kind: act
     parameters:
-      workshop: select-timing-criticality
-      arguments:
-        REVISION:
-          from: strategy
-          name: algorithmRevision
+      observes: research_timing_criticality
   - id: mine-timing-context
     kind: act
     parameters:
@@ -41,11 +37,7 @@ nodes:
   - id: select-timing-context
     kind: act
     parameters:
-      workshop: select-timing-context
-      arguments:
-        REVISION:
-          from: strategy
-          name: algorithmRevision
+      observes: research_timing_context
   - id: mine-structure-frequency
     kind: act
     parameters:
@@ -53,11 +45,7 @@ nodes:
   - id: select-structure-frequency
     kind: act
     parameters:
-      workshop: select-structure-frequency
-      arguments:
-        REVISION:
-          from: strategy
-          name: algorithmRevision
+      observes: research_structure_frequency
   - id: mine-structure-compaction
     kind: act
     parameters:
@@ -65,11 +53,7 @@ nodes:
   - id: select-structure-compaction
     kind: act
     parameters:
-      workshop: select-structure-compaction
-      arguments:
-        REVISION:
-          from: strategy
-          name: algorithmRevision
+      observes: research_structure_compaction
   - id: mine-mapper-compatibility
     kind: act
     parameters:
@@ -77,11 +61,7 @@ nodes:
   - id: select-mapper-compatibility
     kind: act
     parameters:
-      workshop: select-mapper-compatibility
-      arguments:
-        REVISION:
-          from: strategy
-          name: algorithmRevision
+      observes: research_mapper_compatibility
   - id: mine-functional-diversity
     kind: act
     parameters:
@@ -89,11 +69,19 @@ nodes:
   - id: select-functional-diversity
     kind: act
     parameters:
-      workshop: select-functional-diversity
+      observes: research_functional_diversity
+  - id: research-candidates
+    kind: act
+    parameters:
+      workshop: research-candidates
       arguments:
         REVISION:
           from: strategy
           name: algorithmRevision
+  - id: read-research-selection
+    kind: act
+    parameters:
+      observes: aiResearchSelection
   - id: merge
     kind: act
     parameters:
@@ -215,7 +203,7 @@ nodes:
     kind: judge
     parameters:
       rules:
-        - full-evidence-valid
+        - comparison-evidence-valid
         - fmax-improved
         - clock-period-at-most
       bind:
@@ -241,32 +229,32 @@ nodes:
   - id: read-select-timing-criticality
     kind: act
     parameters:
-      observes: selected_timing_criticality
+      observes: research_timing_criticality
   - id: read-select-timing-context
     kind: act
     parameters:
-      observes: selected_timing_context
+      observes: research_timing_context
   - id: read-select-structure-frequency
     kind: act
     parameters:
-      observes: selected_structure_frequency
+      observes: research_structure_frequency
   - id: read-select-structure-compaction
     kind: act
     parameters:
-      observes: selected_structure_compaction
+      observes: research_structure_compaction
   - id: read-select-mapper-compatibility
     kind: act
     parameters:
-      observes: selected_mapper_compatibility
+      observes: research_mapper_compatibility
   - id: read-select-functional-diversity
     kind: act
     parameters:
-      observes: selected_functional_diversity
+      observes: research_functional_diversity
   - id: merge-join
     kind: judge
     parameters:
       rules:
-        - route-selection-known
+        - route-candidate-pool-known
 edges:
   - from: bind-inputs
     to: probe
@@ -391,11 +379,15 @@ edges:
   - from: read-select-functional-diversity
     to: merge-join
   - from: merge-join
-    to: merge
+    to: research-candidates
     outcome: PASS
   - from: merge-join
     to: blocked
     outcome: FAIL
+  - from: research-candidates
+    to: read-research-selection
+  - from: read-research-selection
+    to: merge
 loops:
   probe-loop:
     entry: synthesize

@@ -44,7 +44,8 @@ The preserved inner probe has synthesize → read-probe → judge → next-perio
 plus the hard-blocker wait. The Judge applies setup-wns-all-nonnegative then
 clock-period-at-most; PASS and FAIL both reach next-period. The existing
 over-constraining-push chooser is a recommendation; the same conversational Agent explicitly
-executes nodes and selects decisions. Version 3 adds six selection Workshops and the physical stages after this inner probe.
+executes nodes and selects decisions. The current method converges six evidence routes into one
+cross-route AI research Workshop before the physical stages after this inner probe.
 
 
 ## Full-method entrypoints
@@ -61,8 +62,10 @@ characterization helpers and three learned models, LC/DC/Innovus wrapper and exp
 Missing inputs are rejected. `synthetic-fixture` is exclusively for labelled local tests.
 The paired physical arms use the current `periodNs`, explicitly shared and rechecked. DC applies
 50% uncertainty and writes a route SDC with 25% uncertainty. The foundry arm freezes the expanded
-core box and IO-pin plan for exact reuse by the generated arm. `MAX_CELLS` is 1 or 2 in this bounded pilot; six routes
-share that final build allocation. All timeouts, eight-core CAD setting and Site cap remain explicit.
+core box and IO-pin plan for exact reuse by the generated arm. `MAX_CELLS` is a Site-declared 1..32
+generation budget and `MAX_ROUTE_CANDIDATES` is at most 40. Six mechanical routes build the evidence
+pool; one AI-authored cross-route algorithm spends the final build allocation. All timeouts,
+eight-core CAD setting and Site cap remain explicit.
 
 Current manifests are convenient pointers. Immutable attempt directories retain logs, raw files,
 input snapshots and records for audit or a failed-stage retry. The root graph's read/Judge after the

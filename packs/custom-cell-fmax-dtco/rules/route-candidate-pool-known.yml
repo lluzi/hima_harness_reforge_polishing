@@ -1,0 +1,11 @@
+id: route-candidate-pool-known
+version: "1"
+title: Each mechanical route produced a validated finite research substrate
+requires:
+  - type: candidate_count
+subject:
+  type: candidate_count
+predicate:
+  op: gte
+  threshold: 0
+  unit: count

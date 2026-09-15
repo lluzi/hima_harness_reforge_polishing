@@ -1,0 +1,13 @@
+id: read-ai-research-selection
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - research-selection
+reportKind: custom-cell-fmax-ai-research/1
+emits:
+  - research_hypothesis_count
+  - selected_count

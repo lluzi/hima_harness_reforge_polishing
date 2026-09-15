@@ -166,7 +166,8 @@ def _dominators(order, predecessors):
     return dominators
 
 
-def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, top_seeds=24):
+def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, top_seeds=24,
+                           observed_reg2reg=None):
     (eligible, _drivers, _loads, predecessors, successors,
      order, edge_nets) = _mapped_graph(instances, cells)
     if not eligible:
@@ -252,7 +253,22 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
             "path_participation": round(participation, 6),
             "dominator_endpoint_coverage": round(domination / total_endpoint_weight, 6),
         })
+    if observed_reg2reg is not None:
+        aligned = []
+        for row in ranking:
+            seen = observed_reg2reg.get(row["mapped_instance"])
+            if seen is None:
+                continue
+            row.update({
+                "reg2reg_path_hits": seen["path_hits"],
+                "reg2reg_increment_ns": seen["max_increment_ns"],
+                "reg2reg_path_ranks": seen["path_ranks"],
+            })
+            aligned.append(row)
+        ranking = aligned
     ranking.sort(key=lambda row: (
+        -row.get("reg2reg_path_hits", 0),
+        -row.get("reg2reg_increment_ns", 0.0),
         -row["impact_du"],
         -row["sensitivity"],
         row["node_slack_du"],
@@ -263,13 +279,16 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
     ))
     for index, row in enumerate(ranking, 1):
         row["rank"] = index
+    if not ranking:
+        return None
     startpoints = sorted({path["instances"][0] for path in paths})
     return {
         "algorithm": "CRITICAL_SUBGRAPH",
         "critical_subgraph_id": "CSG_%s" % re.sub(r"[^A-Za-z0-9]+", "_", module).upper(),
         "module": module,
         "source_graph": "mapped",
-        "timing_mode": "relative_internal_sta_from_full_liberty",
+        "timing_mode": ("explicit_dc_reg2reg_path_membership_plus_relative_internal_sta"
+                        if observed_reg2reg is not None else "relative_internal_sta_from_full_liberty"),
         "baseline_delay_du": round(baseline, 6),
         "slack_window_du": round(slack_window, 6),
         "subgraph_boundary": {
@@ -284,11 +303,77 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
         "representative_paths": paths,
         "critical_elements": ranking[:top_seeds],
         "limitations": [
-            "Relative NLDM delay proxies rank search locations; they are not signoff STA.",
+            "DC reg2reg path membership and incremental delay are measured; relative NLDM delay remains a search proxy.",
             "The current Package has no lossless mapped-to-unmapped origin map across hierarchy; "
             "Algorithm 2 therefore rebuilds a local function-preserving AIG per mapped module.",
         ],
     }
+
+
+def parse_reg2reg_path_membership(report, expected_top, modules):
+    """Map the actual DC reg2reg path points back to local mapped instances.
+
+    Hierarchical occurrences such as ``us31/U157/A1`` are associated with the
+    module definition containing the same leaf instance and Cell type.  A path
+    contributes at most one hit per local instance even when both input and
+    output pins appear in the full-path report.
+    """
+    text = report.read_text(encoding="utf-8", errors="replace")
+    designs = re.findall(r"(?m)^Design\s*:\s*(\S+)\s*$", text)
+    groups = re.findall(r"(?m)^\s*Path Group:\s*(\S+)\s*$", text)
+    if designs != [expected_top] or not groups or set(groups) != {"reg2reg"}:
+        raise ValueError("timing report must identify one expected design and only reg2reg paths")
+    instances_by_module = {
+        module: {instance.name: instance for instance in instances}
+        for module, instances in modules.items()
+    }
+    observed = defaultdict(lambda: defaultdict(lambda: {"path_ranks": set(), "max_increment_ns": 0.0}))
+    path_rank = 0
+    path_seen = defaultdict(dict)
+    point = re.compile(r"^\s+(\S+)/\S+\s+\(([^)]+)\)(.*)$")
+    for line in text.splitlines():
+        if line.lstrip().startswith("Startpoint:"):
+            path_rank += 1
+            continue
+        match = point.match(line)
+        if match is None or path_rank == 0:
+            continue
+        instance_path, cell_type, columns = match.groups()
+        parts = instance_path.split("/")
+        module = expected_top
+        for hierarchy_instance in parts[:-1]:
+            parent = instances_by_module.get(module, {}).get(hierarchy_instance)
+            if parent is None or parent.base_type not in modules:
+                module = None
+                break
+            module = parent.base_type
+        if module is None:
+            continue
+        leaf = parts[-1]
+        local = instances_by_module.get(module, {}).get(leaf)
+        if local is None or local.base_type != cell_type:
+            continue
+        values = [float(value) for value in re.findall(r"-?[0-9]+(?:\.[0-9]+)?", columns)]
+        increment = max(0.0, values[-2] if len(values) >= 2 else 0.0)
+        current = path_seen[path_rank].get((module, leaf), 0.0)
+        path_seen[path_rank][(module, leaf)] = max(current, increment)
+    for rank, instances in path_seen.items():
+        for (module, leaf), increment in instances.items():
+            item = observed[module][leaf]
+            item["path_ranks"].add(rank)
+            item["max_increment_ns"] = max(item["max_increment_ns"], increment)
+    result = {}
+    for module, instances in observed.items():
+        result[module] = {}
+        for name, item in instances.items():
+            result[module][name] = {
+                "path_hits": len(item["path_ranks"]),
+                "path_ranks": sorted(item["path_ranks"]),
+                "max_increment_ns": round(item["max_increment_ns"], 6),
+            }
+    if not result:
+        raise ValueError("timing report has no combinational instance that maps to the netlist")
+    return result
 
 
 def _build_aig(module, instances, cells):
@@ -464,6 +549,9 @@ def _route_requests(modules, cells, critical_records, library, args):
                         "root_pin": output_pin,
                         "critical_rank": seed["rank"],
                         "critical_impact_du": seed["impact_du"],
+                        "reg2reg_path_hits": seed.get("reg2reg_path_hits"),
+                        "reg2reg_increment_ns": seed.get("reg2reg_increment_ns"),
+                        "reg2reg_path_ranks": seed.get("reg2reg_path_ranks"),
                         "cut_leaf_nodes": list(ordered_leaves),
                         "mapped_origins": sorted({
                             origin for node in _ancestor_nodes(aig, root_literal, leaves)
@@ -540,6 +628,8 @@ def _route_requests(modules, cells, critical_records, library, args):
             "output_count": 1,
             "critical_root_rank": min(row["critical_rank"] for row in occurrences),
             "critical_impact_du": max(row["critical_impact_du"] for row in occurrences),
+            "reg2reg_path_hits": max(row.get("reg2reg_path_hits") or 0 for row in occurrences),
+            "reg2reg_increment_ns": max(row.get("reg2reg_increment_ns") or 0.0 for row in occurrences),
             "occurrences": occurrences,
             "search_bound": {
                 "max_inputs": args.max_inputs,
@@ -599,6 +689,8 @@ def arguments(argv=None):
     parser.add_argument("--netlist", type=Path, required=True)
     parser.add_argument("--liberty-skeleton", type=Path, required=True)
     parser.add_argument("--full-liberty", type=Path, required=True)
+    parser.add_argument("--timing-report", type=Path, required=True)
+    parser.add_argument("--expected-top", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--strategy-id", default="timing_criticality")
     parser.add_argument(
@@ -633,11 +725,13 @@ def run(args):
         if instance.base_type in cells and not cells[instance.base_type].is_seq
     }
     delay_model = parse_relative_delay_model(args.full_liberty, required_cells)
+    observed_reg2reg = parse_reg2reg_path_membership(args.timing_report, args.expected_top, modules)
     critical_records = []
     for module, instances in modules.items():
         record = rank_critical_subgraph(
             module, instances, cells, delay_model["delay_units"],
             top_paths=16, top_seeds=args.max_critical_roots,
+            observed_reg2reg=observed_reg2reg.get(module, {}),
         )
         if record:
             critical_records.append(record)
@@ -657,6 +751,8 @@ def run(args):
             "netlist_sha256": _sha256(args.netlist),
             "liberty_function_skeleton": os.path.abspath(str(args.liberty_skeleton)),
             "full_liberty_sha256": delay_model["liberty_sha256"],
+            "timing_report": os.path.abspath(str(args.timing_report)),
+            "timing_report_sha256": _sha256(args.timing_report),
         },
         "search_definition": {
             "route": args.strategy_id,
@@ -668,6 +764,7 @@ def run(args):
             "custom_cell_budget": args.top,
             "preselected_cell_families": [],
             "preselected_instances": [],
+            "path_group": "reg2reg",
         },
         "algorithm_records": {
             "critical_subgraph": critical_records,

@@ -37,8 +37,13 @@ values:
     description: "pnr completed: independently read evidence; missing facts stay unknown."
   verification_error_count:
     unit: count
-    description: "verification error count: independently read evidence; missing
-      facts stay unknown."
+    description: Errors in final-database restore, timing, library visibility or instance-census verification; successful verified execution is zero.
+  cell_checker_diagnostic_count:
+    unit: count
+    description: Innovus cell-only checker findings retained as diagnostics; the foundry-only arm also flags abstract-library geometry, so this is not a generated-Cell validity claim.
+  comparison_valid:
+    unit: count
+    description: One when the two final databases are matched, the generated library is live, a generated Cell is adopted, and identity/timing verification completed.
   hold_wns:
     unit: ns
     description: Post-route hold WNS reread from the retained arm report.
@@ -76,8 +81,7 @@ values:
     description: Congestion overflow when a verified report format is available; otherwise explicitly unknown.
   full_constraint_failures:
     unit: count
-    description: "full constraint failures: independently read evidence; missing
-      facts stay unknown."
+    description: Disclosed setup, hold, route-DRC and connectivity findings across both arms. They bound physical-signoff scope but do not erase a matched final-database Fmax comparison.
   matched_conditions:
     unit: count
     description: "matched conditions: independently read evidence; missing facts
@@ -112,3 +116,6 @@ values:
     unit: count
     description: Exact source-linked buildable candidate ids selected by the
       executed Workshop program.
+  research_hypothesis_count:
+    unit: count
+    description: Distinct evidence-linked hypotheses evaluated by the AI-authored discovery algorithm.

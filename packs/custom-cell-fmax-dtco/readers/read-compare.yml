@@ -22,3 +22,5 @@ emits:
   - library_visible
   - adopted_instance_count
   - verification_error_count
+  - cell_checker_diagnostic_count
+  - comparison_valid

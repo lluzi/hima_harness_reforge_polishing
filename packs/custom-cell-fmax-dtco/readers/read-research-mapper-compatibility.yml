@@ -1,0 +1,12 @@
+id: read-research-mapper-compatibility
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - research-route-mapper-compatibility
+reportKind: custom-cell-fmax-mining-research-view/1
+emits:
+  - candidate_count

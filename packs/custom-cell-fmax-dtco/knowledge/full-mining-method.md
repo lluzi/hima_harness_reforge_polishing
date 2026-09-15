@@ -4,24 +4,24 @@ This method extends the released v2 foundry probe. The same conversation owner r
 node. Fabric records state, enforces dependencies and budgets, runs Jobs and admits observations.
 The six fork branches share the Site cap; no branch has a hidden Agent or separate model budget.
 
-Each mechanical miner enumerates source-linked `generation_requests` from a hashed probe netlist
-and Site-held Liberty. Routes are timing_criticality, timing_context, structure_frequency,
-structure_compaction, mapper_compatibility and functional_diversity. These domain algorithms were
-ported from the old standalone flow; they are scaffolding, not newly invented AI research.
-Timing-route delay units are NLDM proxies, not signoff timing. Support and exact Boolean equivalence
-do not establish area, speed or buildability.
+Each mechanical miner enumerates source-linked `generation_requests` from a hashed probe netlist,
+the exact DC reg2reg report and Site-held Liberty. Routes are timing_criticality, timing_context,
+structure_frequency, structure_compaction, mapper_compatibility and functional_diversity. These
+domain routines are broad measurement scaffolds, not the Campaign's discovery algorithm. Timing
+routes admit only roots that occur on the retained explicit reg2reg paths; their report-path hit
+count and incremental delay are measured, while the internal NLDM impact remains a search proxy.
+Support and exact Boolean equivalence do not establish area, speed, adoption or PPA.
 
 ## Your research work
 
-At each `select-ROUTE` Workshop, read the declared raw candidate file and source record, then write
-and execute a Python entry. argv is `ENTRY WORKSPACE ROUTE REVISION`. Input is
-`WORKSPACE/flow/mining/ROUTE/raw.json`; the record is `WORKSPACE/flow/records/mine-ROUTE.json`.
-Read `selectionTemplate`, copy it as entry.py, and implement only `choose(candidates, route)`.
-Retain its main() and I/O code: it preserves previous outputs, writes exactly the three contract
-keys, and calls the existing selection reader before exiting successfully. The copied scaffolding
-is not research innovation; the data-dependent choose() function is. Do not use a node execution
-merely to print diagnostics. A Python failure may be corrected in a fresh admitted attempt while
-its retry budget remains; a completed producer is not an editable execution.
+There is one `research-candidates` Workshop after all six parallel evidence routes. Read each compact
+`research_ROUTE` view, the probe, `researchTemplate`, and this method. Read a full raw/source file
+when a hypothesis needs its detailed occurrence or Boolean proof. Copy `researchTemplate` as
+`entry.py` and implement only `research(candidates, context)`. The fixed
+`ai_research_runner.py` reads every complete raw file, supplies the current design/top, explicit
+reg2reg pressure, build budget and retained synthesis/adoption feedback, validates the returned
+hypotheses and exact source identities, writes all six route projections, and calls the independent
+reader. The runner is I/O scaffolding; the authored `research()` function is the research asset.
 
 Start with the declared `research_ROUTE` output: `flow/mining/ROUTE/research.json` lists every emitted
 candidate with its raw-source hash, interface and compact ranking evidence. Detailed algorithm records
@@ -30,26 +30,32 @@ you inspected every occurrence. Your executable must read the complete raw file,
 reader always checks that full file. Missing fields in the compact view are null, never inferred zero.
 Inspect `generation_requests`, the route objective and `discovery_evidence`: support, representative
 occurrence, occurrence alignments, Boolean contract, implementation route and limitations.
-Select at most two buildable requests (`fusion`, `cluster_compose`, `boolean_synthesis`). Derive a
-ranking from the evidence and explain the tradeoff; do not hardcode candidate ids or a success score.
+Examine at least three competing hypotheses and select 1..`MAX_CELLS` buildable requests (`fusion`,
+`cluster_compose`, `boolean_synthesis`) across the complete pool. `MAX_CELLS` may be 1..32 and each
+route may expose at most 40 candidates. Derive an algorithm from the actual evidence and explain each
+tradeoff; do not hardcode candidate ids or a success score. Candidate generation is the cheap broad
+stage. One matched, pressured DC pair is the scarce screen; P&R remains behind positive adoption.
 Account for overlapping occurrences where the source describes them. A lower bound on non-overlap
 is not an exact maximum, and a common Boolean digest does not make two physical occurrences disjoint.
 An empty route is a useful negative result; never manufacture a candidate to fill a quota.
 
-Write only `flow/mining/ROUTE/selected.json` as:
+The fixed runner writes `flow/research/research.json` with target identity, algorithm hash, source
+hashes, hypotheses, selections, prior feedback, stop reason and limitations. It also projects each
+route to `flow/mining/ROUTE/selected.json` as:
 
 ```
 {"sourceSha256":"SHA256 of raw file bytes","selected":["actual candidate id"],
  "codeSha256":"facts.codeSha256 from the mine source record"}
 ```
 
-Here `codeSha256` is the enumerating miner identity, not a self-assertion about your new program.
-Your actual selection code identity comes from the Workshop launch intent and its CodeRecord.
+Here `codeSha256` is the enumerating miner identity, not a self-assertion about the research program.
+The actual algorithm identity comes from the Workshop launch intent, CodeRecord and the independently
+checked `algorithm.entrySha256` in the global report.
 Keep both identities distinct in the report. The reader/merge independently checks source bytes,
-candidate membership and exact generator contracts. The fixed round-robin merge deduplicates by
-Boolean function/interface/profile and keeps at most two cells across all routes. It records why
-some selected candidates were not generated; the merge is a finite pilot allocation, not a claim
-that its global ranking is optimal.
+candidate membership, global selection consistency and exact generator contracts. Merge deduplicates
+by Boolean function/interface/profile and keeps the authored finite selection within the declared
+budget. It records why some candidates were not generated; the selection is a hypothesis set, not a
+claim that its ranking is optimal.
 
 After failure or disappointing adoption, inspect actual feedback before changing your program.
 Advance algorithmRevision only with an explicit same-owner Explore decision and current citations.
@@ -76,9 +82,11 @@ may report the explicit STA-derived closed period (`requested period - setup sla
 Fmax, but must label that derivation and retain the source report/database identities.
 Missing evidence or mismatched conditions is unknown, never zero failures.
 
-The final Judge requires complete matched evidence, library visibility, positive actual adoption,
-required verification gates, strictly higher generated-arm STA-derived Fmax, and nonnegative generated setup WNS, plus the fixed requested period
-Goal. Only its fresh PASS/PASS permits Goal met. An inner probe success cannot stand for full-flow
+The final Judge requires complete matched final-database evidence, library visibility, positive actual
+adoption, successful timing/census verification, strictly higher generated-arm STA-derived Fmax, and
+the fixed requested-period Goal. Setup/hold/route/connectivity findings and the cell-only checker
+diagnostic remain in the report and bound signoff scope; they are not silently relabelled as generated
+Cell failures. Only the fresh three-rule PASS permits Goal met. An inner probe success cannot stand for full-flow
 success. Otherwise use an honest convergence/budget ending or stop at a blocker with its evidence.
 Complete comparative research and a measured Fmax-improvement claim require the PLS-35 held-out
 design pilot. The Pack preserves the final-route evidence that pilot evaluates; it does not turn a
@@ -90,4 +98,4 @@ report/export and Pack experience archive preserve the resulting research asset.
 
 ## Additional evidence review and delivery
 
-Before completing next-research, consider whether the comparison needs an additional independent read/Judge. The Pack declares growth only there. State impact (normally next-research), exact current inputs and why the check is useful. Use record_compare and the existing full-evidence-valid/clock-period-at-most rules, return to next-research, and report the difference between a consistency re-read and a fresh experiment. Never delete reference nodes, promise a positive result, or repeat expensive P&R only to demonstrate growth. Submit source-linked analysis, limitations and next experiments before completing the Campaign; retain negative/unknown findings. The next bounded study can explicitly read the prior completed Pack archive as background, with source identity and applicability, without claiming its measurements are new.
+Before completing next-research, consider whether the comparison needs an additional independent read/Judge. The Pack declares growth only there. State impact (normally next-research), exact current inputs and why the check is useful. Use record_compare and the existing comparison-evidence-valid/clock-period-at-most rules, return to next-research, and report the difference between a consistency re-read and a fresh experiment. Never delete reference nodes, promise a positive result, or repeat expensive P&R only to demonstrate growth. Submit source-linked analysis, limitations and next experiments before completing the Campaign; retain negative/unknown findings. The next bounded study can explicitly read the prior completed Pack archive as background, with source identity and applicability, without claiming its measurements are new.

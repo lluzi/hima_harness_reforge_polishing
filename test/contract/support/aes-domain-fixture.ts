@@ -130,6 +130,16 @@ elif tool == 'innovus':
     if script.name.startswith('init_'):
         target = pathlib.Path(re.search(r'saveDesign\s+([^\s]+)', text).group(1))
         save_checkpoint(target, arm + '-init', init_checkpoint_links(text, arm))
+        saved_floorplan = re.search(r'^saveFPlan \{([^}]+)\}', text, re.M)
+        if saved_floorplan:
+            floorplan = pathlib.Path(saved_floorplan.group(1))
+            loaded_floorplan = re.search(r'^loadFPlan \{([^}]+)\}', text, re.M)
+            floorplan.parent.mkdir(parents=True, exist_ok=True)
+            if loaded_floorplan:
+                floorplan.write_bytes(pathlib.Path(loaded_floorplan.group(1)).read_bytes())
+            else:
+                floorplan.write_text('SYNTHETIC FROZEN FLOORPLAN\n')
+            pathlib.Path(str(floorplan) + '.spr').write_text('SYNTHETIC SPECIAL ROUTES\n')
         if not (arm == 'generated' and (fixture_flow / 'synthetic-init-missing-visibility').exists()):
             print('=== XS28 GENERATED_LIB_CELLS_AFTER_RESTORE %d ===' % (1 if arm == 'generated' else 0))
             print('=== CCFMAX GENERATED_LIB_CELLS_AFTER_RESTORE %d ===' % (1 if arm == 'generated' else 0))
@@ -145,13 +155,15 @@ elif tool == 'innovus':
         links.append(('libs/misc/rc_model.bin', rc_model))
         gds = pathlib.Path(re.search(r'^streamOut\s+([^\s]+)', text, re.M).group(1))
         report_dir, prefix = re.search(r'^timeDesign -postRoute -outDir\s+(\S+)/postopt -prefix\s+(\S+)', text, re.M).groups()
-        saved_io = pathlib.Path(re.search(r'^saveIoFile -locations \{([^}]+)\}', text, re.M).group(1))
+        saved_io_match = re.search(r'^saveIoFile -locations \{([^}]+)\}', text, re.M)
+        saved_io = pathlib.Path(saved_io_match.group(1)) if saved_io_match else None
         loaded_io = re.search(r'^loadIoFile \{([^}]+)\}', text, re.M)
-        saved_io.parent.mkdir(parents=True, exist_ok=True)
-        if loaded_io:
-            saved_io.write_bytes(pathlib.Path(loaded_io.group(1)).read_bytes())
-        else:
-            saved_io.write_text('(iopin\n (top\n  (pin name="clk" offset=1.0000 layer=2 width=0.0500 depth=0.2800 place_status=placed )\n )\n)\n')
+        if saved_io is not None:
+            saved_io.parent.mkdir(parents=True, exist_ok=True)
+            if loaded_io:
+                saved_io.write_bytes(pathlib.Path(loaded_io.group(1)).read_bytes())
+            else:
+                saved_io.write_text('(iopin\n (top\n  (pin name="clk" offset=1.0000 layer=2 width=0.0500 depth=0.2800 place_status=placed )\n )\n)\n')
         summary = pathlib.Path(report_dir) / 'postopt' / (prefix + '.summary.gz')
         paths = pathlib.Path(report_dir) / 'postopt' / (prefix + '_all.tarpt.gz')
         save_checkpoint(target, arm + '-postroute', links)

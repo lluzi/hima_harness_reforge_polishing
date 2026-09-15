@@ -103,9 +103,11 @@ def materialize_profile(document):
         raise ValueError("BOOL2CMOS_CMD must be one parseable command") from exc
     for name in positive_integer_fields:
         document[name] = positive_integer(document.get(name), name)
+    if document["MAX_ROUTE_CANDIDATES"] > 40:
+        raise ValueError("MAX_ROUTE_CANDIDATES must be within 1..40")
     document["MAX_CELLS"] = positive_integer(document.get("MAX_CELLS"), "MAX_CELLS")
-    if document["MAX_CELLS"] not in (1, 2):
-        raise ValueError("MAX_CELLS must be the bounded-pilot value 1 or 2")
+    if document["MAX_CELLS"] > 32:
+        raise ValueError("MAX_CELLS must be within 1..32")
     document["CLOCK_NS"] = positive_number(document.get("CLOCK_NS"), "CLOCK_NS")
     document["CCFMAX_RC_TEMPERATURE"] = positive_number(document.get("CCFMAX_RC_TEMPERATURE"), "CCFMAX_RC_TEMPERATURE", -273.15)
     document["CCFMAX_PROCESS_NODE"] = positive_number(document.get("CCFMAX_PROCESS_NODE"), "CCFMAX_PROCESS_NODE")

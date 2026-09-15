@@ -1,13 +1,14 @@
 # Validation status
 
 Local contract tests validate the Pack shape, complete flat Site-profile materialization,
-late required-binding refusal before `inputs.json`, data-dependent candidate handoff,
+late required-binding refusal before `inputs.json`, actual reg2reg path membership,
+one cross-route AI-authored algorithm with source-hash-bound hypotheses and candidate handoff,
 matched-condition rejection, and the final adoption/Fmax evidence contract. Their fixtures are
 synthetic: they do not establish a vendor-tool invocation, report-format compatibility, Fmax,
 PPA, or silicon results.
 
 The required L4 checks remain separate: one read-only/current-tool report-format probe
-for the target Site and one bounded model task that writes a different selection program
+for the target Site and one bounded model task that writes a discovery program
 from fresh design evidence. L5 held-out-design acceptance belongs to PLS-35.
 
 The Pack remains in declared `development` status, so it deliberately has no `VERSION.yml`

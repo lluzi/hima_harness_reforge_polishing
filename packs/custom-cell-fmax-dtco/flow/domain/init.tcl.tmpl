@@ -19,7 +19,7 @@
 #   @@PLACE_SITE@@      Site row type from the physical profile
 #   @@INIT_DB@@         this arm's own init checkpoint
 #   @@ARM@@             foundry | generated
-#   @@FLOORPLAN_COMMAND@@ one frozen relative or exact-size floorplan command
+#   one dedicated floorplan command and one floorplan capture command
 
 set init_lef_file [list @@LEF_LIST@@]
 set init_verilog   [list @@NETLIST@@]
@@ -32,6 +32,7 @@ setDesignMode -process @@PROCESS_NODE@@
 globalNetConnect @@PWR_NET@@ -type pgpin -pin @@PWR_NET@@ -inst * -verbose
 globalNetConnect @@GND_NET@@ -type pgpin -pin @@GND_NET@@ -inst * -verbose
 @@FLOORPLAN_COMMAND@@
+@@FLOORPLAN_CAPTURE@@
 setNanoRouteMode -routeTopRoutingLayer @@MAX_ROUTE_LAYER@@
 
 # ANALYSIS-VIEW LIVENESS, AFTER RESTORE, BEFORE ANY OPTIMISATION.
