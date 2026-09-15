@@ -3,6 +3,7 @@
 状态：in-progress; first clean L5 reached only +0.193%, so the release gate is reopened for the bounded post-route feedback Campaign and 5% target
 父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
 Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/issues/39)
+方法论设计：[Library Function Richness Optimization Framework](../library-function-richness-optimization-framework.md)
 模型：主集成 `gpt-5.6-terra` / medium；最终证据审查 `gpt-5.6-sol` / high
 最低测试：受影响 L0–L3 + 有界 L4 + 单次 L5 + 用户最终签收
 

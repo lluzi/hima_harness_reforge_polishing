@@ -28,3 +28,8 @@
 共享接线文件 `packages/harness/src/index.ts`、`remote.ts`、`paths.ts`、`tools.ts` 和 `client/api.ts` 由主集成者单独拥有。并行 worker 不直接合并这些文件。
 
 完整规格见 [spec.md](spec.md)，机器可读依赖见 [dependencies.json](dependencies.json)。
+
+PLS-35 在真实负结果后进入方法论升级。新的正向设计见
+[Library Function Richness Optimization Framework](library-function-richness-optimization-framework.md)：
+定制 Library 单调增长，Yosys/ABC 承担无许可证内层优化，商业 LC/DC/APR 仅作为代理收敛后
+的最终验证。
