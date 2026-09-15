@@ -1,6 +1,6 @@
 # AES reg2reg AI research method and gated physical pilot
 
-Date: 2026-09-15. Status: Pack method implemented; direct Site pilot positive; clean HimaHarness L5 not yet run.
+Date: 2026-09-15. Status: Pack method implemented; clean HimaHarness L5 Campaign positive and independently audited; packaging/Catsights/user signoff remain.
 
 ## Scope and authority
 
@@ -175,6 +175,45 @@ attempt, excludes failed candidates from the characterized common library, and c
 successful subset; only zero admitted Cells blocks the Campaign. Readers re-derive the admitted set,
 and adoption attribution uses that characterized subset rather than claiming a failed Cell was offered.
 
-PLS-35 remains open until a fresh clean Home uses DeepSeek-V4.1-Flash to author and execute the
-Workshop code through HimaHarness, reaches the same evidence gates, passes offline audit, is packaged,
-and completes Catsights review. No release is claimed here.
+## Clean unified-pool L5 result
+
+Commit `115d33c` started a fresh Hima Home, installed the exact Pack, discovered the real Site and
+created one Campaign/Run owned by DeepSeek-V4.1-Flash. One 0.5 ns probe measured 32 explicit reg2reg
+paths and WNS `-0.104597 ns`; both the pressure and clock Goal rules passed, and the Pack recommendation
+ended the inner loop without a closure-seeking second probe.
+
+Six method views emitted 170 raw source-linked proposals. The fixed runner folded them into 47 unique
+Boolean/interface candidates before the model saw them. DeepSeek authored one 12,980-byte Workshop
+program with six research lenses and ranked all 47 into one generated library. Bool-to-CMOS, abstract
+layout, predicted characterization and Library Compiler admitted all 47; `layout_refused_count=0`.
+One foundry/custom DC pair then produced 21 adopted candidate Cells and 307 instances. The non-additive
+source-method attribution was:
+
+| Method | Offered candidates | Adopted candidates | Adopted instances |
+| --- | ---: | ---: | ---: |
+| structure_compaction | 40 | 21 | 307 |
+| structure_frequency | 40 | 21 | 307 |
+| functional_diversity | 40 | 20 | 306 |
+| mapper_compatibility | 40 | 20 | 304 |
+| timing_context | 5 | 0 | 0 |
+| timing_criticality | 5 | 0 | 0 |
+
+The methods share candidates, so rows cannot be summed. One foundry/generated APR pair preserved 250
+custom Cell instances in the generated final database. The independent final comparison reported
+foundry Fmax `1923.076923 MHz`, generated Fmax `1926.782274 MHz`, and delta `+3.705351 MHz`
+(approximately `+0.193%`). `matched_conditions=1`, `comparison_valid=1`,
+`verification_error_count=0`, and all final Judge rules passed. The Campaign ended `ended-goal-met`
+and archived 304 records plus the model-authored code and source material.
+
+This result remains a limited trial result, not physical signoff. It retains 45 full-constraint
+findings and 197,149 cell-checker diagnostics. The first live wrapper marked its restart check failed
+because it hashed ordinary `JSON.stringify` output: the 304 record objects were deeply equal but their
+object-key order changed after persistence. Canonical record SHA on both sides is
+`a9285be1cb27db6ae07d2c2a5a137f7de3ee3a70ca8358792e2a08fa3d429a85`. The corrected offline audit
+accepted only this one precisely identified false negative and passed with zero model requests and
+zero new Site Jobs. Evidence remains local under
+`.hima-tmp/product-upgrade-v2-l5/unified-50cell-l5-115d33c/` and
+`.hima-tmp/product-upgrade-v2-l5/offline-audit-115d33c/`; Site artifacts remain on Site.
+
+PLS-35 remains open for trial packaging, Catsights desktop review and the product owner's final
+signoff. No release is claimed here.

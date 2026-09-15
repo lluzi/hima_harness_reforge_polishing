@@ -44,6 +44,10 @@ const MAX_PRODUCT_REQUEST_STEPS = 600;
 const MAX_USER_TURNS = 120;
 const SITE_NAME = /^[A-Za-z][A-Za-z0-9_.-]*$/;
 const SAFE_REMOTE_PATH = /^\/[A-Za-z0-9._/+*-]+$/;
+const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) =>
+  item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)))
+    : item);
 
 const routes = [
   'timing-criticality',
@@ -739,7 +743,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const firstExperiencePath = path.join(firstArchive.directory, 'experience.md');
   const firstManifestSha256 = firstArchiveRecord?.type === 'archive' ? firstArchiveRecord.manifestSha256 : undefined;
   assert.ok(firstManifestSha256);
-  const beforeRestart = sha256(Buffer.from(JSON.stringify(firstRecords)));
+  const beforeRestart = sha256(Buffer.from(canonical(firstRecords)));
   await host.dispose();
   host = await bootInProcess(home);
   check.attach(host);
@@ -749,7 +753,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const restartedFirstArchive = await readRunAssets(experienceDeps(host, home), firstId);
   check.require('restart re-read preserves the first terminal Run, records, and archive identity',
     restartedFirst?.status === firstRun.status
-      && sha256(Buffer.from(JSON.stringify(restartedFirstRecords))) === beforeRestart
+      && sha256(Buffer.from(canonical(restartedFirstRecords))) === beforeRestart
       && restartedFirstArchive.kind === 'read'
       && completeArchiveRecord(restartedFirstRecords)?.manifestSha256 === firstManifestSha256,
     {
