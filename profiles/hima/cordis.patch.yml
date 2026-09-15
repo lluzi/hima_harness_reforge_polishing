@@ -7,6 +7,7 @@
 - id: session-telemetry-otel
   disabled: true
 
+# HimaHarness managed model catalog: begin
 # DeepSeek's current product name is DeepSeek-V4.1-Flash; its official API advertises and accepts
 # `deepseek-flash` as the wire id. dsh-base 0.1.5 still defaults to the retired
 # `deepseek-v4-flash`, so the Hima profile corrects the deployment choice without changing dsh.
@@ -21,6 +22,7 @@
         name: DeepSeek-V4.1-Flash
       - id: deepseek-v4-pro
         name: DeepSeek-V4-Pro
+# HimaHarness managed model catalog: end
 
 # The web-app auto chooser selects the renderless native backend for every
 # loopback macOS Host. HimaHarness is already a native window around that Host,

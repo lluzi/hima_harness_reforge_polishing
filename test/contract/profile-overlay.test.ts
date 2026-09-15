@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHimaHome, profileTemplateDir, repoRoot, runDsh } from './support/dsh-home.ts';
-import { clearReplayOverlay, homePatchFile, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
+import { clearReplayOverlay, homePatchFile, prepareHimaHome, writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import { writeMomentFixture } from './support/moments.ts';
 
 /** The row ids the stand-in is made of: dsh's DeepSeek adapter, and its keyless replay one. */
@@ -125,6 +125,27 @@ test('the stand-in overlay changes nothing the product ships: the seeded profile
     }
     const bundlePatch = await readFile(path.join(repoRoot, 'packages/harness/cordis.patch.yml'), 'utf8');
     assert.ok(!bundlePatch.includes('llm-replay'), 'and neither does the bundle patch');
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('an existing legacy profile keeps its own rows and receives the current managed DeepSeek catalog', async () => {
+  const h = await createHimaHome();
+  try {
+    const legacy = '# site-owned row stays\n- id: session-title-llm\n  disabled: true\n';
+    const patch = path.join(h.profileDir, 'cordis.patch.yml');
+    await writeFile(patch, legacy);
+    const prepared = await prepareHimaHome({ home: h.home, root: repoRoot });
+    const migrated = await readFile(patch, 'utf8');
+    assert.match(migrated, /^# site-owned row stays/m);
+    assert.match(migrated, /# HimaHarness managed model catalog: begin/);
+    assert.match(migrated, /model: deepseek-flash/);
+    assert.match(migrated, /name: DeepSeek-V4\.1-Flash/);
+    assert.ok(prepared.did.some((line) => /refreshed the Hima-managed DeepSeek model catalog/.test(line)));
+    const again = migrated;
+    await prepareHimaHome({ home: h.home, root: repoRoot });
+    assert.equal(await readFile(patch, 'utf8'), again, 'the managed migration is idempotent');
   } finally {
     await h.dispose();
   }

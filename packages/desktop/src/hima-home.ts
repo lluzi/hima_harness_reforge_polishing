@@ -37,6 +37,8 @@ const PROFILE_PATCH_FILE = 'cordis.patch.yml';
 
 /** The profile manifest dsh reads its bundle list out of. */
 const PROFILE_MANIFEST = 'package.json';
+const MANAGED_MODEL_BEGIN = '# HimaHarness managed model catalog: begin';
+const MANAGED_MODEL_END = '# HimaHarness managed model catalog: end';
 
 /** The bundle the profile links in, by the name its `dependencies` gives it. */
 const HARNESS_PACKAGE = '@hima/harness';
@@ -199,6 +201,34 @@ export interface PrepareHimaHomeRequest {
   readonly bundleMode?: 'linked' | 'installed';
 }
 
+function managedModelBlock(text: string): string {
+  const begin = text.indexOf(MANAGED_MODEL_BEGIN);
+  const end = text.indexOf(MANAGED_MODEL_END);
+  if (begin < 0 || end < begin) throw new Error('profile template has no complete managed model catalog');
+  return text.slice(begin, end + MANAGED_MODEL_END.length);
+}
+
+async function refreshManagedModelBlock(profileDir: string, templateDir: string): Promise<boolean> {
+  const target = path.join(profileDir, PROFILE_PATCH_FILE);
+  if (!existsSync(target)) return false;
+  const source = await readFile(path.join(templateDir, PROFILE_PATCH_FILE), 'utf8');
+  const managed = managedModelBlock(source);
+  const current = await readFile(target, 'utf8');
+  const begin = current.indexOf(MANAGED_MODEL_BEGIN);
+  const end = current.indexOf(MANAGED_MODEL_END);
+  let next: string;
+  if (begin >= 0 && end >= begin) {
+    next = current.slice(0, begin) + managed + current.slice(end + MANAGED_MODEL_END.length);
+  } else if (current.includes('model: deepseek-flash') && current.includes('name: DeepSeek-V4.1-Flash')) {
+    return false;
+  } else {
+    next = current.replace(/\s*$/, '\n\n') + managed + '\n';
+  }
+  if (next === current) return false;
+  await writeFile(target, next);
+  return true;
+}
+
 /**
  * Put the hima profile in a home, or bring the one that is there up to this checkout.
  *
@@ -214,11 +244,11 @@ export interface PrepareHimaHomeRequest {
  *    roster finds them: `hima-moment`, the composition a Model moment's session is made of (#59).
  *
  * Idempotent, and deliberately asymmetric about what it will overwrite: a profile directory that is
- * already there is left alone, because a person may have edited its patch layer, but the link and
- * the presets are always refreshed, because a link to a checkout that has moved is the failure this
- * exists to prevent, and a preset is this bundle's own code rather than anyone's configuration — a
- * moment composed from last week's copy of it would be a moment nothing in this checkout describes.
- * A profile whose overlay has gone missing is reported, not rewritten.
+ * already there keeps the person's text, while the explicitly marked Hima-managed model catalog,
+ * bundle link and presets are refreshed. A legacy profile without the marker receives that managed
+ * block only when it does not already name the current wire id and product label. Machine overrides
+ * still belong in the later `$DSH_HOME/cordis.patch.yml` layer. A profile whose overlay has gone
+ * missing is reported, not rewritten.
  *
  * @param req - the home to prepare and the checkout to prepare it from.
  * @returns the home, the profile directory, and what was done.
@@ -262,6 +292,8 @@ export async function prepareHimaHome(req: PrepareHimaHomeRequest): Promise<Prep
   }
   if (!existsSync(path.join(profileDir, PROFILE_PATCH_FILE))) {
     did.push(`note: ${path.join(profileDir, PROFILE_PATCH_FILE)} is missing — this profile is running without the privacy overlay`);
+  } else if (await refreshManagedModelBlock(profileDir, sources.profileTemplate)) {
+    did.push(`refreshed the Hima-managed DeepSeek model catalog in ${path.join(profileDir, PROFILE_PATCH_FILE)}`);
   }
 
   // Out-of-tree bundles live in the profile's node_modules; a symlink is what pnpm would create for a
