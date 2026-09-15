@@ -302,6 +302,50 @@ test('one synthesis adoption result attributes used Cells to every contributing 
   assert.match(result.attribution_policy, /non-additive/);
 });
 
+test('one failed abstract Cell is retained as a refusal while successful Cells remain admitted', async (t) => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'hima-layout-admission-'));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const flow = path.join(workspace, 'flow');
+  await mkdir(path.join(flow, 'records'), { recursive: true });
+  await cp(path.join(packDir, 'flow/domain'), path.join(flow, 'domain'), { recursive: true });
+  const candidate = (id: string) => ({ candidate_id: id,
+    generator_contract: { interface: { inputs: [], outputs: [{ name: 'Z', liberty_function: '1' }] } } });
+  const filtered = spawnSync('/usr/bin/python3', ['-c',
+    'import json,sys;sys.path.insert(0,sys.argv[1]);from stages import admitted_patterns;d=json.load(sys.stdin);print(json.dumps(admitted_patterns(d,{"XS_A_Z"}),sort_keys=True))',
+    path.join(packDir, 'flow')], { input: JSON.stringify({ generation_requests: [candidate('CAND_A'), candidate('CAND_B')] }), encoding: 'utf8' });
+  assert.equal(filtered.status, 0, filtered.stderr);
+  const admitted = JSON.parse(filtered.stdout);
+  assert.deepEqual(admitted.generation_requests.map((row: any) => row.candidate_id), ['CAND_A']);
+  assert.deepEqual(admitted.candidate_set_accounting,
+    { layout_admitted_candidate_count: 1, layout_refused_candidate_count: 1 });
+  const attempts = [
+    { cell_name: 'XS_A_Z', exit_code: 0, admitted: true, diagnostic: null },
+    { cell_name: 'XS_B_Z', exit_code: 124, admitted: false, diagnostic: 'tool exited 124' },
+  ];
+  const attemptsPath = path.join(flow, 'layout-attempts.json');
+  const lef = path.join(flow, 'XS_A_Z.lef'); const meta = path.join(flow, 'XS_A_Z.abstract.json');
+  await Promise.all([writeFile(attemptsPath, JSON.stringify(attempts)),
+    writeFile(lef, 'VERSION 5.7 ;\nMACRO XS_A_Z\nEND XS_A_Z\nEND LIBRARY\n'),
+    writeFile(meta, '{"cell":"XS_A_Z"}\n')]);
+  await writeCustomSyntheticRecord(workspace, 'layout', [
+    { role: 'layout_attempts', path: attemptsPath },
+    { role: 'abstract_lef:XS_A_Z', path: lef },
+    { role: 'abstract_metadata:XS_A_Z', path: meta },
+  ], { layout_attempt_count: 2, abstract_cell_count: 1, layout_refused_count: 1,
+    layout_refusals: [attempts[1]] });
+  const report = path.join(flow, 'records/layout.json');
+  const layoutRecord = JSON.parse(await readFile(report, 'utf8'));
+  layoutRecord.executions = [{ exitCode: 0 }, { exitCode: 124 }];
+  await writeFile(report, JSON.stringify(layoutRecord, null, 2) + '\n');
+  const out = path.join(workspace, 'layout-reading.json');
+  const read = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/read-stage.py'), report, out, 'layout'], { encoding: 'utf8' });
+  assert.equal(read.status, 0, read.stderr);
+  assert.deepEqual(JSON.parse(await readFile(out, 'utf8')).values, [
+    { type: 'abstract_cell_count', unit: 'count', value: 1 },
+    { type: 'layout_refused_count', unit: 'count', value: 1 },
+  ]);
+});
+
 test('Innovus 23.14 connectivity summary grammar is read as a physical violation count', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hima-connectivity-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const report = path.join(directory, 'connectivity.rpt');
@@ -451,9 +495,18 @@ async function runHeldOutPhysicalComparison(flags: readonly string[] = []) {
   for (const flag of flags) await writeFile(path.join(flow, flag), 'fixture control\n');
   const generatedLib = path.join(flow, 'fixture-generated.lib');
   const generatedLef = path.join(flow, 'fixture-generated.lef');
+  const characterizedPatterns = path.join(flow, 'fixture-characterized-patterns.json');
   await writeFile(generatedLib, 'library (synthetic_generated) { cell (XS_FIX_ZN) { pin(A) { direction : input; } pin(Z) { direction : output; function : "A"; } } }\n');
   await writeFile(generatedLef, 'VERSION 5.7 ;\nMACRO XS_FIX_ZN\n  CLASS CORE ;\nEND XS_FIX_ZN\nEND LIBRARY\n');
-  await writeCustomSyntheticRecord(fixture.workspace, 'characterize', [{ role: 'generated_liberty', path: generatedLib }]);
+  await writeFile(characterizedPatterns, JSON.stringify({ generation_requests: [{ candidate_id: 'CAND_FIX',
+    generator_contract: { interface: { inputs: [{ name: 'A' }], outputs: [{ name: 'ZN', liberty_function: 'A' }] } },
+    discovery_evidence: { strategy_ids: ['structure_frequency'], strategy_rankings: { structure_frequency:
+      { candidate_id: 'CAND_FIX', local_rank: 1, search_objective: 'fixture' } } },
+  }] }, null, 2) + '\n');
+  await writeCustomSyntheticRecord(fixture.workspace, 'characterize', [
+    { role: 'generated_liberty', path: generatedLib },
+    { role: 'characterized_patterns', path: characterizedPatterns },
+  ], { predicted_cell_count: 1 });
   await writeCustomSyntheticRecord(fixture.workspace, 'layout', [{ role: 'abstract_lef:XS_FIX_ZN', path: generatedLef }]);
   for (const stage of ['compile', 'foundry-synth', 'custom-synth', 'pnr-foundry', 'pnr-generated', 'verify', 'compare']) {
     const argument = stage.startsWith('pnr-') ? '0.25' : stage.endsWith('-synth') ? '0.34' : undefined;

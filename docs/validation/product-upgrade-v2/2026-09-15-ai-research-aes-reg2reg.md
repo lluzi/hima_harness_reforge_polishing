@@ -165,6 +165,16 @@ was cancelled before mining. The L5 owner instruction now requires the Pack reco
 Explore node and explicitly states that convergence is a fallback ending, not a quota. The final
 audit also requires exactly one 0.5 ns probe, both PASS verdicts and a `goalMet` next-period decision.
 
+The following clean Run on `04a13f0` passed that audit condition and reached the new unified research
+path. DeepSeek wrote one 15,230-byte Workshop program; 170 raw method proposals folded into 47 unique
+candidates, and all 47 entered one generation set. Bool-to-CMOS generation completed for all 47. The
+21st abstract-layout attempt then exceeded its 180-second per-Cell limit. The old layout stage turned
+that one candidate refusal into a whole-stage failure and began redoing the first 20 successful Cells.
+The Run was cancelled before characterization or any matched DC/APR. Layout now records every Cell
+attempt, excludes failed candidates from the characterized common library, and continues with the
+successful subset; only zero admitted Cells blocks the Campaign. Readers re-derive the admitted set,
+and adoption attribution uses that characterized subset rather than claiming a failed Cell was offered.
+
 PLS-35 remains open until a fresh clean Home uses DeepSeek-V4.1-Flash to author and execute the
 Workshop code through HimaHarness, reaches the same evidence gates, passes offline audit, is packaged,
 and completes Catsights review. No release is claimed here.

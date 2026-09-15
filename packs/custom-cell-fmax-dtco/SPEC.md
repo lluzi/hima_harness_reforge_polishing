@@ -47,7 +47,7 @@ predicted/synthetic/site evidence classes are carried with the results, never co
 
 The probe retains clock_period, setup_wns (setup/all) and cell_area. The final compare reader uses
 clock_period and setup_wns reread from each restored final route database. Other typed counts in semantics.yml
-record candidates, research hypotheses, generation/layout/prediction, LC, visibility/adoption, P&R, verification and
+record candidates, research hypotheses, generation, layout admission/refusal, prediction, LC, visibility/adoption, P&R, verification and
 matched/full-constraint status. foundry_setup_wns and setup_wns_delta are ns from the matched report
 pair. The foundry/generated `*_fmax_mhz` values are STA-derived as `1000 / (clock_period - setup_wns)`
 from that matched pair; `fmax_improved` must be true. The held final route database, its report hashes,

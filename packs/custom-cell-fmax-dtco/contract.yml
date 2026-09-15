@@ -125,11 +125,11 @@ outputs:
   - name: record_layout
     path: flow/records/layout.json
     reader: read-layout
-    description: Fresh layout stage evidence; reader verifies held raw artifacts.
+    description: Per-Cell abstract-layout attempts; successful Cells continue into the one common library, while failures remain explicit refusals. The reader verifies held raw artifacts.
   - name: record_characterize
     path: flow/records/characterize.json
     reader: read-characterize
-    description: Fresh characterize stage evidence; reader verifies held raw artifacts.
+    description: Predicted characterization of exactly the layout-admitted Cell subset, plus its source-attributed candidate manifest; reader verifies held raw artifacts.
   - name: record_compile
     path: flow/records/compile.json
     reader: read-compile

@@ -72,8 +72,11 @@ The reference graph stays fixed; old code, selection records, failed Jobs and ra
 
 ## Physical evidence and endings
 
-Generation must yield structural transistor netlists. Abstract layout must yield usable geometry;
-it is not tapeout qualification. Characterization is a **learned-model prediction**, with timing,
+Generation must yield structural transistor netlists. Each candidate's abstract layout attempt is
+retained. A failed or timed-out candidate is excluded from the one common library while the other
+candidates continue; only zero successful candidates blocks the Campaign. Abstract layout must yield
+usable geometry; it is not tapeout qualification. Characterization covers exactly that admitted
+subset and is a **learned-model prediction**, with timing,
 power and area model hashes; it is not transistor-level characterization or foundry signoff.
 Library Compiler must accept the emitted Liberty and write a nonempty DB without tool errors.
 Rejected libraries cannot enter custom synthesis. Visibility in the DC session and exact generated

@@ -105,6 +105,7 @@ const requiredValueTypes = [
   'selected_count',
   'generated_cell_count',
   'abstract_cell_count',
+  'layout_refused_count',
   'predicted_cell_count',
   'lc_accepted',
   'library_visible',

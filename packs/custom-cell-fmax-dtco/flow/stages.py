@@ -789,30 +789,83 @@ def stage_layout(ctx):
                  "CCFMAX_CONTAINER_MOUNT_POINT", "CCFMAX_LCLAYOUT_ACTIVATE"):
         env[name] = str(ctx.binding(name))
     power, ground = str(ctx.binding("CCFMAX_POWER_PIN")), str(ctx.binding("CCFMAX_GROUND_PIN"))
+    abstract_timeout = int(ctx.binding("ABSTRACT_TIMEOUT_SEC"))
+    placement_timeout = max(1, min(120, abstract_timeout - 10))
     built = []
+    attempts = []
     for index, cell in enumerate(cells):
         out = ctx.run_dir / cell.stem
         argv = ["/usr/bin/python3", str(DOMAIN / "abstract_cell.py"), "--netlist", str(cell),
                 "--tech", str(tech), "--rule-deck", str(rules), "--power-pin", power,
-                "--ground-pin", ground, "-o", str(out)]
-        ctx.run(argv, env=env, timeout=int(ctx.binding("ABSTRACT_TIMEOUT_SEC")), tag="layout-%02d" % index)
+                "--ground-pin", ground, "--placement-timeout", str(placement_timeout), "-o", str(out)]
+        diagnostic = None
+        try:
+            ctx.run(argv, env=env, timeout=abstract_timeout, tag="layout-%02d" % index)
+            code = 0
+        except ToolFailure as exc:
+            code = int(ctx.executions[-1]["exitCode"])
+            diagnostic = str(exc)
         lef, meta = out / (cell.stem + ".lef"), out / (cell.stem + ".abstract.json")
-        if not lef.is_file() or not meta.is_file():
-            raise ToolFailure("abstract generator returned success without LEF and metadata")
-        built.append((lef, meta))
+        complete = code == 0 and lef.is_file() and meta.is_file()
+        if code == 0 and not complete:
+            diagnostic = "abstract generator returned success without LEF and metadata"
+        attempts.append({"cell_name": cell.stem, "exit_code": code, "admitted": complete,
+                         "diagnostic": diagnostic})
+        if complete:
+            built.append((lef, meta))
+    attempt_path = ctx.run_dir / "layout-attempts.json"
+    atomic_json(attempt_path, attempts)
+    ctx.add_artifact(attempt_path, "layout_attempts", "tool-evidence")
     for lef, meta in built:
         ctx.add_artifact(lef, "abstract_lef:" + lef.stem, "generated-abstract")
         ctx.add_artifact(meta, "abstract_metadata:" + lef.stem, "generated-abstract-metadata")
-    ctx.facts["abstract_cell_count"] = len(built)
+    refused = [row for row in attempts if not row["admitted"]]
+    ctx.facts.update({"layout_attempt_count": len(attempts), "abstract_cell_count": len(built),
+                      "layout_refused_count": len(refused), "layout_refusals": refused})
+    if not built:
+        raise ToolFailure("no candidate produced a complete abstract LEF/metadata pair")
+
+
+def admitted_patterns(patterns, cell_names):
+    jobs = expected_generation_jobs(patterns)
+    names_by_candidate = {}
+    for job in jobs:
+        names_by_candidate.setdefault(job["candidate_id"], set()).add(job["cell_name"])
+    admitted = {candidate for candidate, names in names_by_candidate.items() if names <= set(cell_names)}
+    document = json.loads(json.dumps(patterns))
+    document["generation_requests"] = [request for request in patterns["generation_requests"]
+                                       if request.get("candidate_id") in admitted]
+    accounting = document.setdefault("candidate_set_accounting", {})
+    accounting["layout_admitted_candidate_count"] = len(document["generation_requests"])
+    accounting["layout_refused_candidate_count"] = len(patterns["generation_requests"]) - len(document["generation_requests"])
+    return document
 
 
 def stage_characterize(ctx):
-    _record, cells = generated_spice(ctx)
+    _record, generated_cells = generated_spice(ctx)
     layout = prior(ctx, "layout")
-    abstract_dirs = {checked_ref(ref, ctx.workspace).parent for ref in layout.get("artifacts", [])
-                     if str(ref.get("role", "")).startswith("abstract_lef:")}
-    if len(abstract_dirs) != len(cells):
-        raise Rejected("layout evidence does not exactly cover generated cells")
+    layout_cells = {str(ref.get("role")).split(":", 1)[1]: checked_ref(ref, ctx.workspace)
+                    for ref in layout.get("artifacts", [])
+                    if str(ref.get("role", "")).startswith("abstract_lef:")}
+    generated_by_name = {cell.stem: cell for cell in generated_cells}
+    if not layout_cells or not set(layout_cells) <= set(generated_by_name):
+        raise Rejected("layout evidence names no valid generated Cell subset")
+    merged = artifact(prior(ctx, "merge"), ctx.workspace, "merged_patterns")
+    patterns = admitted_patterns(read_json(merged), set(layout_cells))
+    cells = [generated_by_name[job["cell_name"]] for job in expected_generation_jobs(patterns)]
+    if not cells:
+        raise Rejected("no complete candidate remains after abstract-layout admission")
+    admitted_dir = ctx.run_dir / "admitted-cells"
+    admitted_dir.mkdir()
+    admitted_cells = []
+    for cell in cells:
+        target = admitted_dir / cell.name
+        target.write_bytes(cell.read_bytes())
+        admitted_cells.append(target)
+    admitted_path = ctx.run_dir / "characterized-patterns.json"
+    atomic_json(admitted_path, patterns)
+    ctx.inputs.append(file_ref(merged, ctx.workspace, "merged_patterns", "algorithm-output"))
+    ctx.add_artifact(admitted_path, "characterized_patterns", "layout-admitted-algorithm-output")
     base = ctx.file_binding("FOUNDRY_LIB")
     timing = ctx.file_binding("CHARMODEL_TIMING_MODEL", "learned-model")
     power = ctx.file_binding("CHARMODEL_POWER_MODEL", "learned-model")
@@ -830,7 +883,7 @@ def stage_characterize(ctx):
                 "CCFMAX_GROUND_PIN": str(ctx.binding("CCFMAX_GROUND_PIN"))})
     prediction_dir = ctx.run_dir / "predictions"
     prediction_manifest = ctx.run_dir / "prediction-executions.json"
-    argv = ["/usr/bin/python3", str(DOMAIN / "charlib_emit.py"), "--netlist-dir", str(cells[0].parent),
+    argv = ["/usr/bin/python3", str(DOMAIN / "charlib_emit.py"), "--netlist-dir", str(admitted_dir),
             "--base", str(base), "--timing-model", str(timing), "--power-model", str(power),
             "--area-model", str(area), "--power-pin", env["CCFMAX_POWER_PIN"],
             "--ground-pin", env["CCFMAX_GROUND_PIN"], "--library-name", str(ctx.binding("GENERATED_LIBRARY_NAME")),
@@ -840,12 +893,12 @@ def stage_characterize(ctx):
     if not out.is_file() or not out.read_text(errors="replace").lstrip().startswith("/*"):
         raise ToolFailure("learned-model characterization emitted no Liberty")
     predicted_names = set(re.findall(r"(?m)^\s*cell\s*\(\s*\"?([A-Za-z_][A-Za-z0-9_$]*)", out.read_text(errors="replace")))
-    if predicted_names != {cell.stem for cell in cells}:
+    if predicted_names != {cell.stem for cell in admitted_cells}:
         raise ToolFailure("learned-model Liberty does not exactly cover the generated Cell set")
     ctx.add_artifact(out, "generated_liberty", "learned-model-prediction")
     ctx.add_artifact(prediction_manifest, "prediction_executions", "nested-tool-evidence")
     nested = read_json(prediction_manifest)
-    if not isinstance(nested, list) or len(nested) != len(cells):
+    if not isinstance(nested, list) or len(nested) != len(admitted_cells):
         raise ToolFailure("predictor execution manifest does not cover every generated cell")
     for index, row in enumerate(nested):
         log = Path(str(row.get("log") or ""))
@@ -1035,8 +1088,9 @@ def stage_adoption(ctx):
     if not isinstance(visible, int) or visible <= 0:
         raise Rejected("custom synthesis did not prove the generated library visible")
     netlist = artifact(synth, ctx.workspace, "synthesis_netlist")
-    liberty = artifact(prior(ctx, "characterize"), ctx.workspace, "generated_liberty")
-    patterns = artifact(prior(ctx, "merge"), ctx.workspace, "merged_patterns")
+    characterize = prior(ctx, "characterize")
+    liberty = artifact(characterize, ctx.workspace, "generated_liberty")
+    patterns = artifact(characterize, ctx.workspace, "characterized_patterns")
     synth_log = execution_log(synth, ctx.workspace, "custom-dc_log")
     projection = project_attributed_texts(netlist.read_text(errors="replace"), liberty.read_text(errors="replace"),
                                           read_json(patterns))
@@ -1045,7 +1099,7 @@ def stage_adoption(ctx):
     ctx.add_artifact(evidence, "adoption_projection", "derived-from-netlist-master-relation")
     ctx.inputs.extend([file_ref(netlist, ctx.workspace, "custom_netlist", "design-compiler-output"),
                        file_ref(liberty, ctx.workspace, "offered_library", "learned-model-prediction"),
-                       file_ref(patterns, ctx.workspace, "merged_patterns", "algorithm-output"),
+                       file_ref(patterns, ctx.workspace, "characterized_patterns", "layout-admitted-algorithm-output"),
                        file_ref(synth_log, ctx.workspace, "custom_synth_log", "tool-log")])
     ctx.facts.update({"library_visible": visible, **projection})
 
@@ -1118,14 +1172,15 @@ def pnr_record_allowed_links(record, workspace, arm, phase):
         artifact(record, workspace, "mmmc_script:" + arm), arm, phase)
 
 
-def merged_lef(ctx, layout):
-    lefs = [checked_ref(ref, ctx.workspace) for ref in layout.get("artifacts", [])
-            if str(ref.get("role", "")).startswith("abstract_lef:")]
-    if not lefs:
-        raise Rejected("layout stage has no abstract LEFs")
+def merged_lef(ctx, layout, allowed_cells):
+    lefs = {str(ref.get("role")).split(":", 1)[1]: checked_ref(ref, ctx.workspace)
+            for ref in layout.get("artifacts", []) if str(ref.get("role", "")).startswith("abstract_lef:")}
+    if not allowed_cells or not set(allowed_cells) <= set(lefs):
+        raise Rejected("layout stage lacks a characterized Cell LEF")
     out = ctx.run_dir / "generated.lef"
     bodies = []
-    for lef in sorted(lefs):
+    for name in sorted(allowed_cells):
+        lef = lefs[name]
         body, keep = [], False
         for line in lef.read_text(errors="replace").splitlines():
             if line.startswith("MACRO"):
@@ -1200,8 +1255,12 @@ def pin_plan_identity(path):
 def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, fixed_floorplan=None):
     foundry_synth, custom_synth = prior(ctx, "foundry-synth"), prior(ctx, "custom-synth")
     layout, char = prior(ctx, "layout"), prior(ctx, "characterize")
-    generated_lef = merged_lef(ctx, layout)
     generated_lib = artifact(char, ctx.workspace, "generated_liberty")
+    characterized_patterns = artifact(char, ctx.workspace, "characterized_patterns")
+    characterized_cells = {job["cell_name"] for job in expected_generation_jobs(read_json(characterized_patterns))}
+    generated_lef = merged_lef(ctx, layout, characterized_cells)
+    ctx.inputs.append(file_ref(characterized_patterns, ctx.workspace, "characterized_patterns",
+                               "layout-admitted-algorithm-output"))
     site = {name: ctx.file_binding(name) for name in
             ("TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH", "FOUNDRY_GDS", "CCFMAX_GDS_MAP")}
     texts = {}

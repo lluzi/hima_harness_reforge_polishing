@@ -18,6 +18,9 @@ values:
     unit: count
     description: "abstract cell count: independently read evidence; missing facts
       stay unknown."
+  layout_refused_count:
+    unit: count
+    description: Candidate Cells excluded from the common library after a recorded abstract-layout failure or timeout.
   predicted_cell_count:
     unit: count
     description: "predicted cell count: independently read evidence; missing facts

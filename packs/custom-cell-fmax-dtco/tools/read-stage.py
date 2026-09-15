@@ -19,10 +19,11 @@ BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis"}
 validate_generation_request = None
 project_texts = None
 project_attributed_texts = None
+expected_generation_jobs = None
 
 
 def load_domain(workspace):
-    global validate_generation_request, project_texts, project_attributed_texts
+    global validate_generation_request, project_texts, project_attributed_texts, expected_generation_jobs
     domain = (workspace / "flow" / "domain").resolve()
     if not domain.is_dir() or not domain.is_relative_to(workspace.resolve()):
         raise ValueError("staged domain parser directory is absent or escapes workspace")
@@ -34,9 +35,11 @@ def load_domain(workspace):
     from cell_need_miner.generator_contract import validate_generation_request as validator
     from _cell_adoption_projection import project_texts as projector
     from _cell_adoption_projection import project_attributed_texts as attributed_projector
+    from _generation_projection import expected_generation_jobs as generation_projector
     validate_generation_request = validator
     project_texts = projector
     project_attributed_texts = attributed_projector
+    expected_generation_jobs = generation_projector
 
 
 def unique(pairs):
@@ -546,18 +549,44 @@ def values_for(record, workspace, stage):
                 count += 1
         values.append(number("generated_cell_count", count))
     elif stage == "layout":
-        lefs = [checked(ref, workspace) for ref in record.get("artifacts", [])
-                if str(ref.get("role", "")).startswith("abstract_lef:")]
-        metas = [checked(ref, workspace) for ref in record.get("artifacts", [])
-                 if str(ref.get("role", "")).startswith("abstract_metadata:")]
-        if not lefs or len(lefs) != len(metas):
-            raise ValueError("abstract LEF/metadata coverage is incomplete")
+        attempts = load(one(record, workspace, "layout_attempts"))
+        if (not isinstance(attempts, list) or not attempts
+                or any(not isinstance(row, dict)
+                       or set(row) != {"cell_name", "exit_code", "admitted", "diagnostic"}
+                       for row in attempts)):
+            raise ValueError("layout attempts are absent or malformed")
+        names = [row["cell_name"] for row in attempts]
+        if len(names) != len(set(names)) or any(not isinstance(name, str) or not name for name in names):
+            raise ValueError("layout attempts repeat or omit a Cell identity")
+        executions = record.get("executions")
+        if (not isinstance(executions, list) or len(executions) != len(attempts)
+                or any(execution.get("exitCode") != attempt["exit_code"]
+                       for execution, attempt in zip(executions, attempts))):
+            raise ValueError("layout attempt outcomes differ from executed tools")
+        lefs = {str(ref.get("role")).split(":", 1)[1]: checked(ref, workspace)
+                for ref in record.get("artifacts", []) if str(ref.get("role", "")).startswith("abstract_lef:")}
+        metas = {str(ref.get("role")).split(":", 1)[1]: checked(ref, workspace)
+                 for ref in record.get("artifacts", []) if str(ref.get("role", "")).startswith("abstract_metadata:")}
+        admitted = {row["cell_name"] for row in attempts if row["admitted"] is True}
+        refused = [row for row in attempts if row["admitted"] is not True]
+        if (not admitted or set(lefs) != admitted or set(metas) != admitted
+                or record.get("facts", {}).get("layout_attempt_count") != len(attempts)
+                or record.get("facts", {}).get("abstract_cell_count") != len(admitted)
+                or record.get("facts", {}).get("layout_refused_count") != len(refused)
+                or record.get("facts", {}).get("layout_refusals") != refused):
+            raise ValueError("abstract layout admission differs from attempts or held LEF/metadata")
         values.append(number("abstract_cell_count", len(lefs)))
+        values.append(number("layout_refused_count", len(refused)))
     elif stage == "characterize":
         liberty = one(record, workspace, "generated_liberty").read_text(errors="replace")
         if "MODELLED, NOT MEASURED" not in liberty:
             raise ValueError("generated Liberty lacks predicted-not-measured provenance")
-        values.append(number("predicted_cell_count", len(liberty_cells(liberty))))
+        actual = liberty_cells(liberty)
+        patterns = load(one(record, workspace, "characterized_patterns"))
+        expected = {job["cell_name"] for job in expected_generation_jobs(patterns)}
+        if actual != expected or record.get("facts", {}).get("predicted_cell_count") != len(actual):
+            raise ValueError("predicted Liberty differs from the layout-admitted candidate set")
+        values.append(number("predicted_cell_count", len(actual)))
     elif stage == "compile":
         log = logs(record, workspace, "lc_log").read_text(errors="replace")
         db = one(record, workspace, "generated_db")
@@ -584,7 +613,7 @@ def values_for(record, workspace, stage):
     elif stage == "adoption":
         netlist = one(record, workspace, "custom_netlist", "inputs").read_text(errors="replace")
         liberty = one(record, workspace, "offered_library", "inputs").read_text(errors="replace")
-        patterns = load(one(record, workspace, "merged_patterns", "inputs"))
+        patterns = load(one(record, workspace, "characterized_patterns", "inputs"))
         log = one(record, workspace, "custom_synth_log", "inputs").read_text(errors="replace")
         visible = re.findall(r"=== CUSTOM_CELL_FMAX LIBRARY_VISIBLE_COUNT (\d+) ===", log)
         if len(visible) != 1 or int(visible[0]) <= 0:

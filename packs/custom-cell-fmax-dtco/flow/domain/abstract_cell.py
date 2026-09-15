@@ -43,9 +43,11 @@ import argparse
 import json
 import os
 import re
+import selectors
 import subprocess
 import sys
 import time
+import uuid
 
 import sys
 # Site-bound helper modules (estimate_lib / mock_char / charmodel). The authoritative copy
@@ -134,7 +136,7 @@ def _face(o, a0, a1, c, sign, rb, within):
     return (rb[0] - c) if sign > 0 else (c - rb[2])
 
 
-def placement_columns(netlist, tech, cell, timeout=900):
+def placement_columns(netlist, tech, cell, timeout=120):
     """Column count from lclayout's placement -- and STOP THERE.
 
     Placement settles in seconds. Routing then burns up to 1000 negotiation iterations and fails on
@@ -148,15 +150,29 @@ def placement_columns(netlist, tech, cell, timeout=900):
     cmd = ("source %s && " % os.environ["CCFMAX_LCLAYOUT_ACTIVATE"] +
            "exec lclayout --cell %s --netlist %s --tech %s --output-dir /tmp/_pl_%s "
            "--placer meta --place-max-candidates 1" % (cell, cnet, ctech, cell))
-    proc = subprocess.Popen([os.environ["CCFMAX_CONTAINER_RUNTIME"], "run", "--rm",
+    runtime = os.environ["CCFMAX_CONTAINER_RUNTIME"]
+    container = "hima-layout-%s-%s" % (os.getpid(), uuid.uuid4().hex[:12])
+    proc = subprocess.Popen([runtime, "run", "--rm", "--name", container,
                              "--userns=keep-id",
                              "-v", "%s:%s:rw" % (_host, _mnt),
                              os.environ["CCFMAX_CONTAINER_IMAGE"], "--skip",
                              "bash", "-lc", cmd],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-    rows, grab, deadline = [], False, time.time() + timeout
+    rows, grab, deadline = [], False, time.monotonic() + timeout
+    selector = selectors.DefaultSelector()
+    selector.register(proc.stdout, selectors.EVENT_READ)
     try:
-        for line in proc.stdout:
+        while time.monotonic() < deadline:
+            ready = selector.select(timeout=min(0.5, max(0.0, deadline - time.monotonic())))
+            if not ready:
+                if proc.poll() is not None:
+                    break
+                continue
+            line = proc.stdout.readline()
+            if not line:
+                if proc.poll() is not None:
+                    break
+                continue
             if "Cell placement:" in line:
                 grab = True
                 continue
@@ -165,14 +181,17 @@ def placement_columns(netlist, tech, cell, timeout=900):
                     rows.append(line.count("|") + 1)
                 elif rows:
                     break                      # placement grid complete -- that is all we need
-            if time.time() > deadline:
-                break
     finally:
-        proc.kill()                            # do NOT wait for the routing attempt to fail
+        selector.close()
+        subprocess.run([runtime, "rm", "-f", container], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=15, check=False)
+        if proc.poll() is None:
+            proc.terminate()
         try:
             proc.wait(timeout=10)
-        except Exception:                      # noqa: BLE001
-            pass
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
     return max(rows) if rows else None
 
 
@@ -188,6 +207,7 @@ def main():
     # supply pins do not match the rows it is placed into.
     ap.add_argument("--power-pin", required=True, help="power rail name; a site input")
     ap.add_argument("--ground-pin", required=True, help="ground rail name; a site input")
+    ap.add_argument("--placement-timeout", type=int, default=120)
     ap.add_argument("-o", "--outdir", required=True)
     a = ap.parse_args()
     deck = load_rule_deck(a.rule_deck)
@@ -203,7 +223,9 @@ def main():
     ins = [p for p in ports if p not in rails and p not in outs]
     signals = ins + outs
 
-    cols = placement_columns(a.netlist, a.tech, cell)
+    if not 1 <= a.placement_timeout <= 900:
+        ap.error("placement timeout must be within 1..900 seconds")
+    cols = placement_columns(a.netlist, a.tech, cell, a.placement_timeout)
     if cols is None:                       # placement itself failed: fall back to the device bound
         cols = max(sum(1 for d in devs if d.kind == "n"), sum(1 for d in devs if d.kind == "p"))
         src = "device-count bound (placement unavailable)"
