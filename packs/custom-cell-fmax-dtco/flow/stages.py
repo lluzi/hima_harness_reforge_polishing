@@ -828,7 +828,17 @@ def tcl_string(value):
     return '"' + re.sub(r'([\\"$\[\]])', r'\\\1', value) + '"'
 
 
-def stage_synth(ctx, custom):
+def synthesis_period(value):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise Rejected("synthesis period must be a finite number")
+    if not math.isfinite(parsed) or parsed < 0.1 or parsed > 5:
+        raise Rejected("synthesis period must be within [0.1, 5] ns")
+    return parsed
+
+
+def stage_synth(ctx, custom, period=None):
     rtl_glob = str(ctx.binding("DESIGN_RTL_GLOB"))
     rtl = sorted(Path(p).resolve() for p in glob.glob(rtl_glob))
     if not rtl or any(not p.is_file() for p in rtl):
@@ -847,9 +857,10 @@ def stage_synth(ctx, custom):
     arm = "custom" if custom else "base"
     for folder in (ctx.run_dir / "results", ctx.run_dir / "reports", ctx.run_dir / "work"):
         folder.mkdir()
+    clock_ns = synthesis_period(ctx.binding("CLOCK_NS") if period is None else period)
     values = {
         "DESIGN_TOP": ctx.binding("DESIGN_TOP"), "DESIGN_RTL_GLOB": rtl_glob,
-        "FOUNDRY_DB": foundry, "CLK_NS": ctx.binding("CLOCK_NS"), "CCFMAX_ARM": arm,
+        "FOUNDRY_DB": foundry, "CLK_NS": clock_ns, "CCFMAX_ARM": arm,
         "CCFMAX_SDC": constraints,
         "CCFMAX_GENERATED_LIB_CELL_PATTERN": ctx.binding("GENERATED_LIB_CELL_PATTERN"),
         "CCFMAX_WORK_DIR": ctx.run_dir / "work", "CCFMAX_REPORT_DIR": ctx.run_dir / "reports",
@@ -892,7 +903,7 @@ def stage_synth(ctx, custom):
     })
     ctx.facts.update({
         "arm": "generated" if custom else "foundry", "library_visible": visible,
-        "clock_ns": float(ctx.binding("CLOCK_NS")),
+        "clock_ns": clock_ns,
         "templateSha256": sha_file(DOMAIN / "shared_synth.tcl"),
         "constraintsSha256": sha_file(constraints),
         "rtlSha256": [sha_file(at) for at in rtl],
@@ -1675,9 +1686,9 @@ def dispatch(ctx, stage, route):
     elif stage == "compile":
         stage_compile(ctx)
     elif stage == "foundry-synth":
-        stage_synth(ctx, False)
+        stage_synth(ctx, False, route)
     elif stage == "custom-synth":
-        stage_synth(ctx, True)
+        stage_synth(ctx, True, route)
     elif stage == "adoption":
         stage_adoption(ctx)
     elif stage == "pnr-foundry":
@@ -1704,8 +1715,8 @@ def main(argv=None):
     record_stage = "mine-" + route if stage == "mine" and route else stage
     ctx = None
     try:
-        if stage not in ("mine", "pnr-foundry", "pnr-generated") and route is not None:
-            raise Rejected("third argument is accepted only for mine or P&R utilization")
+        if stage not in ("mine", "foundry-synth", "custom-synth", "pnr-foundry", "pnr-generated") and route is not None:
+            raise Rejected("third argument is accepted only for mine, synthesis period or P&R utilization")
         if stage == "mine" and route is None:
             raise Rejected("mine requires ROUTE")
         ctx = Context(record_stage, workspace)

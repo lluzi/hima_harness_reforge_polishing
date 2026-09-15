@@ -394,11 +394,13 @@ tools:
       artifact identities. Missing evidence cannot pass.
     inputs:
       - WORKSPACE
+      - PERIOD_NS
     argv:
       - /usr/bin/python3
       - ${WORKSPACE}/flow/stages.py
       - foundry-synth
       - ${WORKSPACE}
+      - ${PERIOD_NS}
     licences:
       Design-Compiler: 1
   - id: custom-synth
@@ -407,11 +409,13 @@ tools:
       artifact identities. Missing evidence cannot pass.
     inputs:
       - WORKSPACE
+      - PERIOD_NS
     argv:
       - /usr/bin/python3
       - ${WORKSPACE}/flow/stages.py
       - custom-synth
       - ${WORKSPACE}
+      - ${PERIOD_NS}
     licences:
       Design-Compiler: 1
   - id: adoption

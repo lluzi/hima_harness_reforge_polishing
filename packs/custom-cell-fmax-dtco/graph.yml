@@ -138,6 +138,10 @@ nodes:
     kind: act
     parameters:
       tool: foundry-synth
+      arguments:
+        PERIOD_NS:
+          from: strategy
+          name: periodNs
   - id: read-foundry-synth
     kind: act
     parameters:
@@ -146,6 +150,10 @@ nodes:
     kind: act
     parameters:
       tool: custom-synth
+      arguments:
+        PERIOD_NS:
+          from: strategy
+          name: periodNs
   - id: read-custom-synth
     kind: act
     parameters:

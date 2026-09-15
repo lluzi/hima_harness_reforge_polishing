@@ -64,9 +64,10 @@ Library Compiler must accept the emitted Liberty and write a nonempty DB without
 Rejected libraries cannot enter custom synthesis. Visibility in the DC session and exact generated
 master adoption are different facts: zero adopted instances does not establish invisibility.
 
-Both physical arms start from fresh syntheses using one shared template/RTL/clock/wrapper identity.
-Only the admitted generated library is added in the custom arm. The earlier probe is mining input,
-not the matched physical reference. Clock/WNS must be reread after restoring each final route
+Both physical arms start from fresh syntheses using one shared template/RTL/clock/wrapper identity
+at the Campaign's current `periodNs`; this is the same Strategy lineage the probe tightened before
+mining. Only the admitted generated library is added in the custom arm. The earlier probe is mining
+input, not the matched physical reference. Clock/WNS must be reread after restoring each final route
 database with the same analysis view and constraint chain. Never substitute DC slack. The comparison
 may report the explicit STA-derived closed period (`requested period - setup slack`) and corresponding
 Fmax, but must label that derivation and retain the source report/database identities.

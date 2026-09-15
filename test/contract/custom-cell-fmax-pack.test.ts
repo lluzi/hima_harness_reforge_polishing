@@ -36,12 +36,23 @@ async function writeCustomSyntheticRecord(workspace: string, stage: string,
 
 test('the portable Pack has no AES, process-node, or customer-flow binding and declares Site-owned production inputs', async () => {
   const contract = parse(await readFile(path.join(packDir, 'contract.yml'), 'utf8')) as {
-    id: string; inputs: { name: string }[]; tools: { id: string; recommendedVersion?: string }[];
+    id: string; inputs: { name: string }[];
+    tools: { id: string; recommendedVersion?: string; inputs?: string[]; argv?: string[] }[];
   };
   assert.equal(contract.id, 'custom-cell-fmax-dtco');
   assert.deepEqual(contract.inputs.map((item) => item.name), contractInputs);
   for (const id of ['synthesize', 'compile', 'pnr-foundry', 'pnr-generated', 'verify']) {
     assert.match(contract.tools.find((tool) => tool.id === id)?.recommendedVersion ?? '', /current Site-supported release/);
+  }
+  const graph = parse(await readFile(path.join(packDir, 'graph.yml'), 'utf8')) as {
+    nodes: Array<{ id: string; parameters?: { arguments?: Record<string, { from?: string; name?: string }> } }>;
+  };
+  for (const id of ['foundry-synth', 'custom-synth']) {
+    const tool = contract.tools.find((item) => item.id === id);
+    assert.ok(tool?.inputs?.includes('PERIOD_NS'));
+    assert.equal(tool?.argv?.at(-1), '${PERIOD_NS}');
+    assert.deepEqual(graph.nodes.find((node) => node.id === id)?.parameters?.arguments?.PERIOD_NS,
+      { from: 'strategy', name: 'periodNs' });
   }
   const files = await Promise.all([
     'INTENT.md', 'SPEC.md', 'FABRIC.md', 'TEST.md', 'contract.yml', 'graph.yml', 'semantics.yml',
@@ -226,7 +237,8 @@ async function runHeldOutPhysicalComparison(flags: readonly string[] = []) {
   await writeCustomSyntheticRecord(fixture.workspace, 'characterize', [{ role: 'generated_liberty', path: generatedLib }]);
   await writeCustomSyntheticRecord(fixture.workspace, 'layout', [{ role: 'abstract_lef:XS_FIX_ZN', path: generatedLef }]);
   for (const stage of ['compile', 'foundry-synth', 'custom-synth', 'pnr-foundry', 'pnr-generated', 'verify', 'compare']) {
-    const result = fixture.run(stage, stage.startsWith('pnr-') ? '0.5' : undefined);
+    const argument = stage.startsWith('pnr-') ? '0.5' : stage.endsWith('-synth') ? '0.34' : undefined;
+    const result = fixture.run(stage, argument);
     if (result.status !== 0) {
       const record = JSON.parse(await readFile(path.join(flow, `records/${stage}.json`), 'utf8'));
       const log = record.executions?.[0]?.log?.path;
@@ -242,6 +254,10 @@ test('held-out flat bindings accept only a matched final-database custom-Cell Fm
   assert.equal(fixture.inputs.designTop, 'held_out_datapath');
   assert.equal(fixture.inputs.legacy, undefined);
   assert.equal(compare.facts.adopted_instance_count, 1, 'the restored generated final database has a custom Cell instance');
+  for (const arm of ['foundry-synth', 'custom-synth']) {
+    const synthesis = JSON.parse(await readFile(path.join(fixture.workspace, `flow/records/${arm}.json`), 'utf8'));
+    assert.equal(synthesis.facts.clock_ns, 0.34, `${arm} must use the current Campaign period`);
+  }
   assert.equal(compare.facts.fmax_improved, true);
   assert.ok(compare.facts.generated_fmax_mhz > compare.facts.foundry_fmax_mhz);
   assert.equal(compare.facts.full_constraint_failures, 0);
