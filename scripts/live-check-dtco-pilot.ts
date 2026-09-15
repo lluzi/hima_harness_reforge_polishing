@@ -1,15 +1,17 @@
 // @hima-seam agent wrapped
 // @hima-seam tools direct
-// PLS-18: one native conversational owner performs the business work; this file audits facts.
+// PLS-35: one native conversational owner performs the held-out L5 Campaign; this file audits facts.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import {
   loadPack,
+  discoverSshSite,
+  installPackMethod,
   packDigestOf,
-  packStage,
+  saveDiscoveredSite,
   readArchivedMaterial,
   readRunAssets,
   currentRecordsIn,
@@ -19,36 +21,28 @@ import {
   type NodeRecord,
   type RunRecord,
 } from '@hima/harness';
-import YAML from 'yaml';
 import { himaProfileDir, prepareHimaHome, homePatchFile } from '../packages/desktop/src/hima-home.ts';
 import {
   bootInProcess,
   createRootAgent,
-  readPersistedSession,
-  toolCalls,
-  toolResults,
   type InProcessHost,
 } from '../test/contract/support/boot-inprocess.ts';
 import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { packsDirOf } from '../test/contract/support/pack.ts';
 import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-workshop.ts';
 
-const PACK_ID = 'aes-tsmc28-dtco';
-const SITE_ID = 'linglong-aes';
+const PACK_ID = 'custom-cell-fmax-dtco';
 const EXPECTED_MODEL = 'deepseek-flash';
-const REMOTE_HOST = 'luzi@192.168.50.41';
-const REMOTE_ROOT = '/data/eda/project/hima_harness/polishing-inputs';
-const SSH_OPTIONS = ['BatchMode=yes', 'ConnectTimeout=8', 'ControlPath=none'] as const;
-const FIRST_TIME_BOX_MS = 90 * 60_000;
-const SECOND_TIME_BOX_MS = 5 * 60_000;
+const FIRST_TIME_BOX_MS = 60 * 60_000;
 const HARNESS_TIME_BOX_MS = 100 * 60_000;
-const FIRST_RETRY_ALLOWANCE = 2;
-const GENERATION_LIMIT = 1;
+const FIRST_RETRY_ALLOWANCE = 3;
+const GENERATION_LIMIT = 2;
 const ATTEMPT_LIMIT = 120;
 const CLOSING_RESERVE_MS = 60_000;
 const MAX_PRODUCT_REQUEST_STEPS = 600;
 const MAX_USER_TURNS = 120;
-const DESTINATION_NAME = /^[a-z0-9][a-z0-9._-]{0,79}$/;
+const SITE_NAME = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+const SAFE_REMOTE_PATH = /^\/[A-Za-z0-9._/+*-]+$/;
 
 const routes = [
   'timing-criticality',
@@ -114,24 +108,33 @@ const requiredValueTypes = [
   'matched_conditions',
   'foundry_setup_wns',
   'setup_wns_delta',
+  'foundry_fmax_mhz',
+  'generated_fmax_mhz',
+  'fmax_delta_mhz',
+  'fmax_improved',
 ] as const;
 
-interface StagingManifest {
-  schema: number;
-  status: string;
-  host: string;
-  sshOptions: string[];
-  sourceFlow: string;
-  sourceInputs: string;
-  destinationName: string;
-  destination: string;
-  files: Record<string, string>;
-  inventorySha256: string;
+interface L5SiteProfile {
+  schema: 1;
+  site: {
+    name: string;
+    ssh: { destination: string; jumps: string[]; controlPersistSeconds: number };
+    workspaceRoot: string;
+    allowedReadRoots: string[];
+    allowedWriteRoots: string[];
+    allowedWrappers: string[];
+    toolCommands: string[];
+    bindings: Record<string, string>;
+    capacity: { cores: number; memoryGiB: number; parallelJobs: number; licences: Record<string, number> };
+  };
+  heldOut: { rtlPath: string; sha256: string; source: string; selectedBeforePackTests: boolean };
 }
 
 type ArchiveRecord = Extract<LedgerRecord, { type: 'archive' }>;
 
-interface PilotCheckpointCommon {
+interface PilotCheckpoint {
+  schema: 3;
+  status: 'positive-held-out-l5-passed-ready-for-release-review';
   home: string;
   firstRun: string;
   firstOwner: string;
@@ -147,68 +150,21 @@ interface PilotCheckpointCommon {
   recordsSha256: string;
 }
 
-interface PilotCheckpointV1 extends PilotCheckpointCommon {
-  schema: 1;
-  status: 'first-campaign-passed-ready-for-ui';
-}
-
-interface PilotCheckpointV2 extends PilotCheckpointCommon {
-  schema: 2;
-  status: 'first-campaign-audited-ready-for-ui';
-  sourceEvidence: { path: string; sha256: string };
-  audit: { evidence: string; sha256: string };
-  growthValidation: {
-    scope: 'separate-L4';
-    path: string;
-    sha256: string;
-    originalRunGrowth: 'rejected';
-  };
-}
-
-type PilotCheckpoint = PilotCheckpointV1 | PilotCheckpointV2;
-
 const isTerminal = (status: string | undefined): boolean =>
   status?.startsWith('ended-') === true || status === 'cancelled';
 
 const isActive = (status: string | undefined): boolean =>
   status === 'running' || status === 'waiting';
 
-const sameKeys = (left: Record<string, unknown> | undefined, right: Record<string, unknown> | undefined): boolean =>
-  JSON.stringify(Object.keys(left ?? {}).sort()) === JSON.stringify(Object.keys(right ?? {}).sort());
-
-interface PersistedToolResult {
-  failed: boolean;
-  text: string;
-}
-
-function himaResult(result: PersistedToolResult | undefined): {
-  kind?: string;
-  receipt?: { action?: string };
-  existing?: { receipt?: { action?: string } };
-} | undefined {
-  if (!result || result.failed) return undefined;
-  try {
-    return JSON.parse(result.text) as {
-      kind?: string;
-      receipt?: { action?: string };
-      existing?: { receipt?: { action?: string } };
-    };
-  } catch { return undefined; }
-}
-
-function acceptedHimaAction(result: PersistedToolResult | undefined, action: string): boolean {
-  const parsed = himaResult(result);
-  const receipt = parsed?.receipt ?? parsed?.existing?.receipt;
-  return (parsed?.kind === 'accepted' || parsed?.kind === 'duplicate') && receipt?.action === action;
-}
+const jsonOf = (result: { content?: readonly { type: string; text?: string }[] }): Record<string, any> =>
+  JSON.parse(result.content?.find((item) => item.type === 'text')?.text ?? '{}') as Record<string, any>;
 
 const rawArgs = process.argv.slice(2);
 const usage = [
   'usage:',
-  '  node scripts/live-check-dtco-pilot.ts --preflight-only --staging <staging.json>',
-  '  node scripts/live-check-dtco-pilot.ts --out <fresh-directory> --staging <staging.json>',
+  '  node scripts/live-check-dtco-pilot.ts --preflight-only --site-profile <private-site.json>',
+  '  node scripts/live-check-dtco-pilot.ts --out <fresh-directory> --site-profile <private-site.json>',
   `    [--timeout-ms ${HARNESS_TIME_BOX_MS} --max-turns ${MAX_USER_TURNS} --max-steps ${MAX_PRODUCT_REQUEST_STEPS}]`,
-  '  node scripts/live-check-dtco-pilot.ts --audit-followup <pilot-checkpoint.json> --out <fresh-directory>',
   '',
   'The live form requires DEEPSEEK_API_KEY in the inherited environment.',
 ].join('\n');
@@ -218,305 +174,13 @@ if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
   process.exit(0);
 }
 
-async function auditUiFollowup(checkpointPath: string, outArgument: string): Promise<void> {
-  const out = path.resolve(outArgument);
-  if (existsSync(out)) throw new Error('the audit evidence directory already exists');
-  mkdirSync(out, { recursive: true });
-  const savedSilent = process.env.HIMA_TEST_SILENT_AGENT;
-  const savedLegacy = process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
-  process.env.HIMA_TEST_SILENT_AGENT = '1';
-  process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
-  let host: InProcessHost | undefined;
-  let modelRequests = 0;
-  const guardModelRequests = (activeHost: InProcessHost): void => {
-    activeHost.ctx.on('agent/request', () => {
-      modelRequests += 1;
-      throw new Error('UI follow-up audit forbids every model request');
-    });
-  };
-  try {
-    const checkpointFile = realpathSync(path.resolve(checkpointPath));
-    const checkpoint = JSON.parse(readFileSync(checkpointFile, 'utf8')) as PilotCheckpoint;
-    assert.ok(checkpoint.schema === 1 || checkpoint.schema === 2, 'unsupported pilot checkpoint schema');
-    assert.equal(checkpoint.status, checkpoint.schema === 1
-      ? 'first-campaign-passed-ready-for-ui'
-      : 'first-campaign-audited-ready-for-ui');
-    if (checkpoint.schema === 2) {
-      const sourceEvidence = realpathSync(checkpoint.sourceEvidence.path);
-      const auditEvidence = realpathSync(checkpoint.audit.evidence);
-      const growthEvidence = realpathSync(checkpoint.growthValidation.path);
-      assert.equal(checkpoint.growthValidation.scope, 'separate-L4');
-      assert.equal(checkpoint.growthValidation.originalRunGrowth, 'rejected');
-      assert.equal(sha256(readFileSync(sourceEvidence)), checkpoint.sourceEvidence.sha256,
-        'schema-2 source evidence identity changed');
-      assert.equal(sha256(readFileSync(auditEvidence)), checkpoint.audit.sha256,
-        'schema-2 completed Campaign audit identity changed');
-      assert.equal(sha256(readFileSync(growthEvidence)), checkpoint.growthValidation.sha256,
-        'schema-2 separate L4 growth evidence identity changed');
-      const audit = JSON.parse(readFileSync(auditEvidence, 'utf8')) as {
-        check?: string;
-        status?: string;
-        passed?: boolean;
-        run?: { id?: string };
-        originalRunGrowth?: string;
-        originalEvidence?: { sha256?: string };
-        growthEvidence?: { sha256?: string };
-        archive?: { manifestSha256?: string };
-        method?: { digest?: string };
-      };
-      const growth = JSON.parse(readFileSync(growthEvidence, 'utf8')) as {
-        check?: string;
-        status?: string;
-        passed?: boolean;
-        checks?: Array<{ passed?: boolean }>;
-        observed?: { readyParentCheck?: boolean; realEdaRequested?: boolean; runId?: string };
-        costs?: { modelRequestSteps?: number };
-        runs?: Array<{
-          run?: RunRecord;
-          records?: LedgerRecord[];
-        }>;
-        toolSequence?: Array<{
-          name?: string;
-          args?: { run?: string; action?: string };
-          result?: { content?: Array<{ type?: string; text?: string }> };
-        }>;
-      };
-      assert.ok(audit.check === 'audit-completed-dtco-pilot' && audit.status === 'passed'
-        && audit.passed === true && audit.run?.id === checkpoint.firstRun
-        && audit.originalRunGrowth === 'rejected'
-        && audit.originalEvidence?.sha256 === checkpoint.sourceEvidence.sha256
-        && audit.growthEvidence?.sha256 === checkpoint.growthValidation.sha256
-        && audit.archive?.manifestSha256 === checkpoint.archive.manifestSha256
-        && audit.method?.digest === checkpoint.pack.digest,
-      'schema-2 completed Campaign audit is invalid');
-      const growthRun = growth.runs?.find((entry) => entry.run?.id === growth.observed?.runId);
-      assert.ok(growth.check === 'live-check-growth-assets' && growth.status === 'passed'
-        && growth.passed === true && growth.observed?.readyParentCheck === true
-        && growth.observed.realEdaRequested === false && (growth.costs?.modelRequestSteps ?? 0) > 0,
-      'schema-2 separate L4 growth evidence is invalid');
-      assert.ok((growth.checks?.length ?? 0) > 1 && growth.checks?.every((check) => check.passed === true)
-        && growthRun?.run?.status === 'ended-goal-met' && growthRun.run.siteId === 'local'
-        && growthRun.records?.some((record) => record.type === 'growth' && record.event === 'returned'
-          && (record.evidence?.length ?? 0) >= 3)
-        && growth.toolSequence?.some((entry) => entry.name === 'hima_execute'
-          && entry.args?.run === growth.observed?.runId && entry.args?.action === 'complete'
-          && entry.result?.content?.some((item) => item.type === 'text' && item.text
-            && /active growth branch must return/.test(item.text))),
-      'schema-2 separate L4 lacks the returned branch or actual parent-fence refusal');
-    }
-    assert.equal(checkpoint.pack.id, PACK_ID);
-    assert.equal(checkpoint.pack.version, '5');
-    assert.equal(checkpoint.site, SITE_ID);
-    assert.equal(packDigestOf(path.join(repoRoot, 'packs', PACK_ID)), checkpoint.pack.digest);
-    const retainedRoot = realpathSync(path.join(repoRoot, '.hima-tmp/pilot-release/homes'));
-    const retainedHome = realpathSync(checkpoint.home);
-    assert.ok(retainedHome.startsWith(`${retainedRoot}${path.sep}`), 'checkpoint Home is outside the retained pilot root');
-    const home: HimaHome = {
-      home: retainedHome,
-      profileDir: himaProfileDir(retainedHome),
-      workspace: path.join(retainedHome, 'workspace'),
-      env: {
-        ...process.env,
-        DSH_HOME: retainedHome,
-        DSH_AGENTS_HOME: path.join(retainedHome, 'agents'),
-        DSH_TELEMETRY_DISABLED: '1',
-      },
-      dispose: async () => undefined,
-    };
-    host = await bootInProcess(home);
-    guardModelRequests(host);
-    const first = host.ctx.hima.ledger.run(checkpoint.firstRun);
-    assert.ok(first && isTerminal(first.status), 'first Campaign is absent or no longer terminal');
-    assert.equal(first.packDigest, checkpoint.pack.digest);
-    const firstRecords = host.ctx.hima.ledger.records({ runId: checkpoint.firstRun });
-    assert.equal(sha256(Buffer.from(JSON.stringify(firstRecords))), checkpoint.recordsSha256);
-    const firstArchive = await readRunAssets(experienceDeps(host, home), checkpoint.firstRun);
-    assert.equal(firstArchive.kind, 'read', 'first archive is unreadable');
-    if (firstArchive.kind !== 'read') throw new Error('first archive is unreadable');
-    assert.equal(firstArchive.manifestPath, checkpoint.archive.manifest);
-    assert.equal(sha256(readFileSync(firstArchive.manifestPath)), checkpoint.archive.manifestSha256);
-
-    const matching = host.ctx.hima.ledger.runs().filter((run) =>
-      run.id !== checkpoint.firstRun
-        && run.packId === PACK_ID
-        && run.siteId === SITE_ID
-        && run.packDigest === checkpoint.pack.digest
-        && Date.parse(run.createdAt) >= Date.parse(first.createdAt));
-    assert.equal(matching.length, 1, 'expected exactly one UI-created history follow-up');
-    const second = matching[0]!;
-    assert.equal(second.status, 'cancelled');
-    assert.ok(second.control?.owner, 'UI follow-up has no conversational owner');
-    assert.ok(sameKeys(second.goal, first.goal));
-    assert.deepEqual(second.goal, checkpoint.goal);
-    assert.equal(second.budget?.timeBoxMs, SECOND_TIME_BOX_MS);
-    assert.equal(second.budget?.generationLimit, GENERATION_LIMIT);
-    assert.equal(second.budget?.closingReserveMs, CLOSING_RESERVE_MS);
-    assert.equal(second.budget?.attemptLimit, ATTEMPT_LIMIT);
-    const secondRecords = host.ctx.hima.ledger.records({ runId: second.id });
-    assert.ok(!secondRecords.some((record) => ['job', 'observation', 'verdict', 'code', 'growth',
-      'revision', 'research-write', 'knowledge', 'decision', 'session'].includes(record.type)),
-    'history follow-up contains experiment work');
-    assert.equal(Object.keys(second.control.executions).length, 0,
-      'history follow-up admitted an execution before cancellation');
-    const cancelRecord = secondRecords.findLast((record) => record.type === 'cancel');
-    assert.ok(cancelRecord?.type === 'cancel', 'history follow-up has no actual cancel record');
-    if (cancelRecord?.type !== 'cancel') throw new Error('history follow-up has no actual cancel record');
-    const cancellationNodes = secondRecords.filter((record): record is NodeRecord => record.type === 'node');
-    assert.ok(cancellationNodes.length <= 1
-      && cancellationNodes.every((record) => record.state === 'cancelled'
-        && record.nodeId === 'probe'
-        && record.generation === 1
-        && record.attempt === 1
-        && record.seq > cancelRecord.seq),
-    'history follow-up has execution work or unexpected cancellation bookkeeping');
-    assert.ok(Object.values(second.control.requests).every((request) => request.actor === second.control?.owner),
-      'a second owner wrote a follow-up Run action');
-    const analysis = secondRecords.findLast((record) => record.type === 'analysis');
-    assert.ok(analysis?.type === 'analysis', 'history follow-up has no analysis');
-    if (analysis?.type !== 'analysis') throw new Error('history follow-up has no analysis');
-    const analysisText = JSON.stringify(analysis.analysis);
-    assert.equal(analysis.sessionId, second.control.owner);
-    assert.equal(analysis.analysis.claims.length, 0);
-    assert.ok(analysis.analysis.limitations.length > 0 && analysis.analysis.nextExperiments.length > 0);
-    assert.ok(analysisText.includes(checkpoint.firstRun));
-    assert.ok(analysisText.includes(checkpoint.archive.manifestSha256));
-
-    const persisted = await readPersistedSession(host.ctx, second.control.owner, (agent) => ({
-      calls: toolCalls(agent),
-      results: toolResults(agent),
-    }));
-    const calls = persisted.calls as Array<{ name?: string; args?: Record<string, unknown> }>;
-    const manifestRead = calls.findIndex((call) => call.name === 'read'
-      && (call.args?.file_path === checkpoint.archive.manifest || call.args?.path === checkpoint.archive.manifest));
-    const experienceRead = calls.findIndex((call) => call.name === 'read'
-      && (call.args?.file_path === checkpoint.archive.experience || call.args?.path === checkpoint.archive.experience));
-    const pause = calls.findIndex((call, index) => call.name === 'hima_execute'
-      && call.args?.run === second.id && call.args?.action === 'pause'
-      && acceptedHimaAction(persisted.results[index], 'pause'));
-    const analyzed = calls.findIndex((call, index) => call.name === 'hima_execute'
-      && call.args?.run === second.id && call.args?.action === 'analyze'
-      && acceptedHimaAction(persisted.results[index], 'analyze'));
-    const cancelled = calls.findIndex((call, index) => call.name === 'hima_execute'
-      && call.args?.run === second.id && call.args?.action === 'cancel'
-      && acceptedHimaAction(persisted.results[index], 'cancel'));
-    const priorAttempts = (action: string, acceptedIndex: number) => calls.flatMap((call, index) =>
-      index < acceptedIndex && call.name === 'hima_execute' && call.args?.run === second.id
-        && call.args?.action === action
-        ? [{ index, failed: persisted.results[index]?.failed === true,
-          kind: himaResult(persisted.results[index])?.kind ?? 'tool-error' }]
-        : []);
-    const priorAnalysisAttempts = priorAttempts('analyze', analyzed);
-    const priorCancelAttempts = priorAttempts('cancel', cancelled);
-    assert.ok(manifestRead >= 0 && experienceRead >= 0, 'UI Agent did not read both source archive files');
-    assert.equal(persisted.calls.length, persisted.results.length, 'persisted tool calls/results are not one-to-one');
-    assert.ok(persisted.results[manifestRead]?.failed === false
-      && persisted.results[manifestRead]?.text.includes(checkpoint.firstRun),
-    'source manifest read did not return successful source bytes');
-    assert.ok(persisted.results[experienceRead]?.failed === false
-      && persisted.results[experienceRead]?.text.includes(checkpoint.firstRun),
-    'source experience read did not return successful source bytes');
-    assert.ok(pause >= 0
-      && manifestRead > pause
-      && experienceRead > pause
-      && analyzed > manifestRead
-      && analyzed > experienceRead
-      && cancelled > analyzed,
-      'UI Agent call order did not establish pause/read/analyze/cancel');
-    const secondArchive = await readRunAssets(experienceDeps(host, home), second.id);
-    assert.equal(secondArchive.kind, 'read', 'history follow-up archive is unreadable');
-    if (secondArchive.kind !== 'read') throw new Error('history follow-up archive is unreadable');
-    const secondArchiveRecord = completeArchiveRecord(secondRecords);
-    assert.equal(secondArchiveRecord?.manifestSha256, sha256(readFileSync(secondArchive.manifestPath)));
-
-    const beforeRestart = {
-      first: sha256(Buffer.from(JSON.stringify(firstRecords))),
-      second: sha256(Buffer.from(JSON.stringify(secondRecords))),
-      firstManifest: completeArchiveRecord(firstRecords)?.manifestSha256,
-      secondManifest: secondArchiveRecord?.manifestSha256,
-    };
-    await host.dispose();
-    host = await bootInProcess(home);
-    guardModelRequests(host);
-    const restartedFirstRecords = host.ctx.hima.ledger.records({ runId: checkpoint.firstRun });
-    const restartedSecondRecords = host.ctx.hima.ledger.records({ runId: second.id });
-    assert.equal(sha256(Buffer.from(JSON.stringify(restartedFirstRecords))), beforeRestart.first);
-    assert.equal(sha256(Buffer.from(JSON.stringify(restartedSecondRecords))), beforeRestart.second);
-    assert.equal(completeArchiveRecord(restartedFirstRecords)?.manifestSha256, beforeRestart.firstManifest);
-    assert.equal(completeArchiveRecord(restartedSecondRecords)?.manifestSha256, beforeRestart.secondManifest);
-    const afterFirstArchive = await readRunAssets(experienceDeps(host, home), checkpoint.firstRun);
-    assert.equal(afterFirstArchive.kind, 'read');
-    assert.equal((await readRunAssets(experienceDeps(host, home), second.id)).kind, 'read');
-    if (afterFirstArchive.kind !== 'read') throw new Error('first archive is unreadable after restart');
-    assert.equal(sha256(readFileSync(afterFirstArchive.manifestPath)), checkpoint.archive.manifestSha256);
-    assert.equal(packDigestOf(path.join(repoRoot, 'packs', PACK_ID)), checkpoint.pack.digest);
-    assert.equal(packDigestOf(path.join(home.home, 'hima/packs', PACK_ID)), checkpoint.pack.digest);
-    assert.equal(modelRequests, 0, 'offline UI follow-up audit made a model request');
-
-    await host.dispose();
-    host = undefined;
-
-    const evidence = {
-      status: 'passed',
-      scope: 'offline audit of the separate UI-created follow-up; zero model requests and zero EDA jobs',
-      checkpoint: checkpointFile,
-      home: retainedHome,
-      firstRun: checkpoint.firstRun,
-      secondRun: second.id,
-      secondOwner: second.control.owner,
-      historyReads: { manifest: checkpoint.archive.manifest, experience: checkpoint.archive.experience },
-      actionOrder: { pause, manifestRead, experienceRead, priorAnalysisAttempts, analyzed,
-        priorCancelAttempts, cancelled },
-      successfulHistoryReadResults: {
-        manifest: persisted.results[manifestRead]?.failed === false,
-        experience: persisted.results[experienceRead]?.failed === false,
-      },
-      records: beforeRestart,
-      cancellationBookkeeping: cancellationNodes.map((record) => ({
-        id: record.id, seq: record.seq, nodeId: record.nodeId, state: record.state,
-        generation: record.generation, attempt: record.attempt,
-      })),
-      sourceIdentityBeforeAfter: {
-        methodDigest: checkpoint.pack.digest,
-        firstManifestSha256: checkpoint.archive.manifestSha256,
-      },
-      restart: 'equal bytes and readable archives',
-      offline: { hostBoots: 2, modelRequests, newEdaJobs: 0 },
-    };
-    writeFileSync(path.join(out, 'evidence.json'), `${JSON.stringify(evidence, null, 2)}\n`);
-    writeFileSync(path.join(out, 'README.md'), '# PLS-18 UI follow-up audit\n\nPASS — the separate UI-owned history study read the first archive, recorded bounded no-claims analysis, launched zero Jobs, cancelled, archived, and survived restart with equal records.\n');
-    process.stdout.write(`live-check-dtco-pilot audit: PASS; evidence ${out}\n`);
-  } catch (error) {
-    const message = error instanceof Error ? error.stack ?? error.message : String(error);
-    writeFileSync(path.join(out, 'evidence.json'), `${JSON.stringify({ status: 'failed', failure: message }, null, 2)}\n`);
-    writeFileSync(path.join(out, 'README.md'), `# PLS-18 UI follow-up audit\n\nFAIL — ${message}\n`);
-    throw error;
-  } finally {
-    await host?.dispose();
-    if (savedSilent === undefined) delete process.env.HIMA_TEST_SILENT_AGENT;
-    else process.env.HIMA_TEST_SILENT_AGENT = savedSilent;
-    if (savedLegacy === undefined) delete process.env.HIMA_TEST_LEGACY_AUTO_DRIVE;
-    else process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = savedLegacy;
-  }
-}
-
-const auditIndex = rawArgs.indexOf('--audit-followup');
-if (auditIndex >= 0) {
-  const checkpoint = rawArgs[auditIndex + 1];
-  const outIndex = rawArgs.indexOf('--out');
-  const out = outIndex < 0 ? undefined : rawArgs[outIndex + 1];
-  if (!checkpoint || checkpoint.startsWith('--') || !out || out.startsWith('--')
-      || rawArgs.length !== 4 || outIndex < 0) throw new Error(usage);
-  await auditUiFollowup(checkpoint, out);
-  process.exit(0);
-}
-
-const stagingFlags = rawArgs.flatMap((arg, index) => arg === '--staging' ? [index] : []);
-if (stagingFlags.length !== 1) throw new Error(usage);
-const stagingIndex = stagingFlags[0]!;
-const stagingArgument = rawArgs[stagingIndex + 1];
-if (!stagingArgument || stagingArgument.startsWith('--')) throw new Error(usage);
+const profileFlags = rawArgs.flatMap((arg, index) => arg === '--site-profile' ? [index] : []);
+if (profileFlags.length !== 1) throw new Error(usage);
+const profileIndex = profileFlags[0]!;
+const profileArgument = rawArgs[profileIndex + 1];
+if (!profileArgument || profileArgument.startsWith('--')) throw new Error(usage);
 const preflightOnly = rawArgs.includes('--preflight-only');
-const forwardedArgs = rawArgs.filter((_arg, index) => index !== stagingIndex && index !== stagingIndex + 1);
+const forwardedArgs = rawArgs.filter((_arg, index) => index !== profileIndex && index !== profileIndex + 1);
 if (preflightOnly) {
   if (forwardedArgs.length !== 1 || forwardedArgs[0] !== '--preflight-only') throw new Error(usage);
 } else if (forwardedArgs.includes('--preflight-only')) {
@@ -526,49 +190,52 @@ if (preflightOnly) {
   if (outIndex < 0 || !forwardedArgs[outIndex + 1] || forwardedArgs[outIndex + 1]!.startsWith('--')) throw new Error(usage);
 }
 
-const stagingPath = realpathSync(path.resolve(stagingArgument));
-assert.ok(lstatSync(stagingPath).isFile() && !lstatSync(stagingPath).isSymbolicLink(), 'staging manifest must be a plain file');
-const staging = JSON.parse(readFileSync(stagingPath, 'utf8')) as StagingManifest;
-assert.ok(DESTINATION_NAME.test(staging.destinationName), 'staging destination name is invalid');
-
-const preparationScript = path.join(repoRoot, 'scripts/prepare-dtco-pilot.py');
-const localPreflight = JSON.parse(execFileSync('/usr/bin/python3', [
-  preparationScript,
-  '--preflight-only',
-  '--destination',
-  staging.destinationName,
-], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 180_000 })) as { manifest: StagingManifest };
-assert.deepEqual(staging, localPreflight.manifest, 'staging manifest does not match the current fixed local inputs');
+const profilePath = realpathSync(path.resolve(profileArgument));
+assert.ok(lstatSync(profilePath).isFile() && !lstatSync(profilePath).isSymbolicLink(), 'Site profile must be a plain file');
+const profile = JSON.parse(readFileSync(profilePath, 'utf8')) as L5SiteProfile;
+assert.equal(profile.schema, 1, 'unsupported private Site profile');
+assert.match(profile.site.name, SITE_NAME, 'invalid Site name');
+assert.match(profile.site.ssh.destination, /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+(?::[0-9]{1,5})?$/, 'invalid SSH destination');
+assert.ok(profile.heldOut.selectedBeforePackTests, 'held-out design must have been selected before Pack tests');
+assert.match(profile.heldOut.sha256, /^[0-9a-f]{64}$/, 'held-out RTL identity must be SHA-256');
+assert.match(profile.heldOut.rtlPath, SAFE_REMOTE_PATH, 'held-out RTL path is not a safe absolute path');
+for (const value of [profile.site.workspaceRoot, ...profile.site.allowedReadRoots, ...profile.site.allowedWriteRoots,
+  ...Object.values(profile.site.bindings).filter((value) => value.startsWith('/'))]) {
+  assert.match(value, SAFE_REMOTE_PATH, `unsafe Site path: ${value}`);
+}
+assert.deepEqual(Object.keys(profile.site.bindings).sort(), [
+  'constraints', 'designRoot', 'designTop', 'foundryLibrary', 'physicalInputs', 'rtlGlob', 'toolStack', 'workspaceRoot',
+].sort(), 'private Site profile must bind exactly the portable Pack inputs');
+assert.equal(profile.site.bindings.rtlGlob, profile.heldOut.rtlPath, 'held-out identity must name the bound RTL');
+assert.equal(profile.site.bindings.workspaceRoot, profile.site.workspaceRoot, 'Site and binding workspace roots differ');
+assert.ok(profile.site.allowedReadRoots.some((root) => profile.heldOut.rtlPath.startsWith(`${root}/`)), 'held-out RTL is outside allowed read roots');
+assert.ok(profile.site.allowedWriteRoots.includes(profile.site.workspaceRoot), 'Campaign workspace root is not writable');
+assert.ok(profile.site.toolCommands.includes('eda'), 'Site discovery must probe the Pack-required eda command');
+assert.ok(profile.site.allowedWrappers.includes('/usr/bin/python3') && profile.site.allowedWrappers.includes('/usr/local/bin/eda'),
+  'portable Pack requires the exact Python and EDA wrappers');
+assert.equal(profile.site.capacity.parallelJobs, 1, 'the single L5 Campaign must reserve one Site job at a time');
+for (const licence of ['Design-Compiler', 'Library-Compiler', 'Innovus']) {
+  assert.equal(profile.site.capacity.licences[licence], 1, `the L5 Site must reserve one ${licence} seat`);
+}
 
 const packSource = path.join(repoRoot, 'packs', PACK_ID);
-const siteSource = path.join(repoRoot, `sites/${SITE_ID}/site.yml`);
 const sourcePack = loadPack(path.join(repoRoot, 'packs'), PACK_ID);
-const sourceStage = packStage(packSource);
 const sourceDigest = packDigestOf(packSource);
-const sourceSite = YAML.parse(readFileSync(siteSource, 'utf8')) as Record<string, unknown>;
-assert.equal(sourcePack.contract.version, '5', 'PLS-18 requires the reviewed v5 Pack');
-assert.equal(sourceStage.stage, 'released', 'PLS-18 requires the sealed v5 release');
-assert.equal(staging.host, REMOTE_HOST);
-assert.deepEqual(staging.sshOptions, [...SSH_OPTIONS]);
-assert.equal(staging.destination, `${REMOTE_ROOT}/${staging.destinationName}`);
-assert.ok(Object.keys(staging.files).length > 1, 'staging inventory is empty');
-assert.match(staging.inventorySha256, /^[0-9a-f]{64}$/);
-assert.equal(sourceSite.kind, 'ssh');
-assert.equal((sourceSite.ssh as { destination?: string } | undefined)?.destination, REMOTE_HOST);
+assert.equal(sourcePack.contract.version, '1', 'PLS-35 requires the portable v1 Pack');
+assert.equal(sourcePack.contract.status, 'development', 'PLS-35 must preserve the Pack author-declared status');
 
 const declared = {
   pack: {
     id: PACK_ID,
     version: sourcePack.contract.version,
     digest: sourceDigest,
-    stage: sourceStage.stage,
+    stage: sourcePack.contract.status,
   },
-  staging: {
-    path: stagingPath,
-    sha256: sha256(readFileSync(stagingPath)),
-    destination: staging.destination,
-    fileCount: Object.keys(staging.files).length,
-    inventorySha256: staging.inventorySha256,
+  siteProfile: {
+    sha256: sha256(readFileSync(profilePath)),
+    site: profile.site.name,
+    heldOutSource: profile.heldOut.source,
+    heldOutRtlSha256: profile.heldOut.sha256,
   },
   approvedLimits: {
     firstCampaignMs: FIRST_TIME_BOX_MS,
@@ -576,7 +243,6 @@ const declared = {
     generationLimit: GENERATION_LIMIT,
     retryAllowance: FIRST_RETRY_ALLOWANCE,
     attemptLimit: ATTEMPT_LIMIT,
-    secondCampaignMaxMs: SECOND_TIME_BOX_MS,
     harnessWallMs: HARNESS_TIME_BOX_MS,
     maxProductRequestSteps: MAX_PRODUCT_REQUEST_STEPS,
     maxUserTurns: MAX_USER_TURNS,
@@ -586,7 +252,7 @@ const declared = {
 if (preflightOnly) {
   process.stdout.write(`${JSON.stringify({
     status: 'preflight-passed',
-    scope: 'static local inspection only; no SSH, Host, model, EDA, or desktop',
+    scope: 'static private-profile and Pack inspection only; no SSH, Host, model, EDA, or desktop',
     ...declared,
   }, null, 2)}\n`);
   process.exit(0);
@@ -659,17 +325,17 @@ function completeArchiveRecord(records: LedgerRecord[]): ArchiveRecord | undefin
 }
 
 await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) => {
-  const remoteVerification = JSON.parse(execFileSync('/usr/bin/python3', [
-    preparationScript,
-    '--verify-only',
-    '--manifest',
-    stagingPath,
-  ], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 180_000 })) as Record<string, unknown>;
-  check.require('staged source was re-inventoried locally and remotely before live work',
-    remoteVerification.status === 'verified'
-      && remoteVerification.destination === staging.destination
-      && remoteVerification.inventorySha256 === staging.inventorySha256,
-    remoteVerification);
+  const sshArguments = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'ControlPath=none'];
+  if (profile.site.ssh.jumps.length > 0) sshArguments.push('-J', profile.site.ssh.jumps.join(','));
+  const remoteIdentity = execFileSync('ssh', [
+    ...sshArguments,
+    profile.site.ssh.destination,
+    `sha256sum -- ${profile.heldOut.rtlPath}`,
+  ], { encoding: 'utf8', timeout: 30_000 }).trim().split(/\s+/)[0];
+  check.require('held-out RTL identity was re-read from the Site before the only L5 Campaign',
+    remoteIdentity === profile.heldOut.sha256,
+    { source: profile.heldOut.source, selectedBeforePackTests: profile.heldOut.selectedBeforePackTests,
+      rtlSha256: remoteIdentity });
 
   const persistentHomes = path.join(repoRoot, '.hima-tmp/pilot-release/homes');
   mkdirSync(persistentHomes, { recursive: true, mode: 0o700 });
@@ -687,28 +353,42 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   check.home = home;
   await prepareHimaHome({ home: home.home, bundleMode: 'installed' });
   const installedPack = path.join(packsDirOf(home), PACK_ID);
-  cpSync(packSource, installedPack, { recursive: true });
+  const installation = installPackMethod({ from: packSource, to: installedPack });
+  check.require('the clean Home explicitly installed the exact portable Pack',
+    installation.changed && installation.digest === sourceDigest,
+    { changed: installation.changed, digest: installation.digest });
   const sites = path.join(home.home, 'hima/sites');
-  mkdirSync(sites, { recursive: true });
-  const liveSite = {
-    ...sourceSite,
-    bindings: {
-      ...(sourceSite.bindings as Record<string, unknown>),
-      flowRoot: staging.destination,
+  const discovery = await discoverSshSite({
+    name: profile.site.name,
+    ssh: profile.site.ssh,
+    hints: {
+      workspaceRoot: profile.site.workspaceRoot,
+      allowedReadRoots: profile.site.allowedReadRoots,
+      allowedWriteRoots: profile.site.allowedWriteRoots,
+      allowedWrappers: profile.site.allowedWrappers,
+      toolCommands: profile.site.toolCommands,
     },
-    capacity: {
-      cores: 8,
-      memoryGiB: 16,
-      parallelJobs: 1,
-      licences: {
-        'Design-Compiler': 1,
-        'Library-Compiler': 1,
-        Innovus: 1,
-      },
+  });
+  check.require('bounded SSH discovery found the Site and every Pack-required command',
+    discovery.unknowns.length === 0 && discovery.conflicts.length === 0
+      && discovery.site.discovery.facts.some((fact) => fact.probe[0] === 'which' && fact.probe[1] === 'eda' && fact.code === 0),
+    { unknowns: discovery.unknowns, conflicts: discovery.conflicts,
+      probes: discovery.site.discovery.facts.map((fact) => ({ probe: fact.probe, code: fact.code })) });
+  const savedSite = saveDiscoveredSite(sites, {
+    ...discovery,
+    site: {
+      ...discovery.site,
+      bindings: profile.site.bindings,
+      capacity: profile.site.capacity,
     },
-  };
-  writeFileSync(path.join(sites, `${SITE_ID}.yml`), YAML.stringify(liveSite));
-  cpSync(path.join(repoRoot, `sites/${SITE_ID}/permit.yml`), path.join(sites, 'permit.yml'));
+  });
+  check.require('the discovered Site was saved with the portable Pack bindings and deletion redline',
+    savedSite.name === profile.site.name
+      && savedSite.discovery?.stale === false
+      && savedSite.permitRules.forbidden.includes('deletions')
+      && Object.keys(savedSite.bindings).length === 8,
+    { name: savedSite.name, discovery: savedSite.discovery?.observedAt,
+      bindings: Object.keys(savedSite.bindings).sort(), forbidden: savedSite.permitRules.forbidden });
   writeFileSync(homePatchFile(home.home), '- id: session-title-llm\n  disabled: true\n');
 
   process.chdir(home.workspace);
@@ -718,10 +398,10 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   guardInstalled(check, host, [bundle, packsDirOf(home), home.workspace], installedPack, check.temporary);
   host.ctx.tools.guard((execution) => {
     if (execution.name === 'write' || execution.name === 'edit') {
-      return 'PLS-18 writes generated research code only through controlled hima_execute write';
+      return 'PLS-35 writes generated research code only through controlled hima_execute write';
     }
     if (['hima_author', 'hima_pack_release'].includes(execution.name)) {
-      return 'PLS-18 uses the fixed installed release and does not author or publish a method';
+      return 'PLS-35 uses the fixed installed method and does not author or publish it';
     }
     return undefined;
   });
@@ -742,7 +422,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const ownedRuns = () => host.ctx.hima.ledger.runs().filter((run) =>
     !initialRunIds.has(run.id)
       && run.packId === PACK_ID
-      && run.siteId === SITE_ID
+      && run.siteId === profile.site.name
       && run.control?.owner === ownerId);
 
   check.beforeDispose(async () => {
@@ -771,15 +451,43 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     if (unsettled.length > 0) throw new Error('owned Runs did not settle before Host disposal');
   });
 
+  const preparedResult = await host.ctx.tools.execute({
+    callId: 'pls35-prepare' as never,
+    name: 'hima_prepare',
+    arguments: { pack: PACK_ID, site: profile.site.name },
+    agent: owner,
+    signal: AbortSignal.timeout(30_000),
+  });
+  const prepared = jsonOf(preparedResult);
+  check.require('HimaGuide prepared a complete proposal without creating a Run',
+    preparedResult.isError !== true && prepared.ready === true && prepared.pack?.id === PACK_ID
+      && prepared.site?.name === profile.site.name && prepared.unknowns?.length === 0
+      && ownedRuns().length === 0,
+    { ready: prepared.ready, pack: prepared.pack?.id, site: prepared.site?.name,
+      inputs: prepared.inputs, unknowns: prepared.unknowns, runs: ownedRuns().length });
+  const confirmedResult = await host.ctx.tools.execute({
+    callId: 'pls35-confirm' as never,
+    name: 'hima_run',
+    arguments: { proposalId: prepared.id, pack: PACK_ID, site: profile.site.name,
+      goal: prepared.goal, strategy: prepared.strategy },
+    agent: owner,
+    signal: AbortSignal.timeout(30_000),
+  });
+  const confirmed = jsonOf(confirmedResult);
+  check.require('one confirmation created one Campaign and one persistent Run',
+    confirmedResult.isError !== true && confirmed.kind === 'ran' && typeof confirmed.runId === 'string'
+      && ownedRuns().length === 1,
+    { kind: confirmed.kind, runId: confirmed.runId, campaignId: confirmed.campaignId,
+      createdRuns: ownedRuns().map((run) => run.id) });
+
   const firstPrompt = [
-    `/hima-run ${PACK_ID} on ${SITE_ID} with Goal target_period_ns=0.5, strategy periodNs=0.5 algorithmRevision=0 floorplanUtilization=0.5, generations=1, retries=2, timeBox=90.`,
+    `Execute only the already confirmed Campaign Run ${confirmed.runId}.`,
     'You are the only execution owner. Use only hima_context and hima_execute for business actions. Do not start another Run, edit the method, use shell, open another Agent/model, or auto-drive the graph.',
     'Complete the full reference method from actual facts: the probe loop; all six mining branches and all six selection Workshops; merge; generate; layout; predicted characterization; Library Compiler; foundry and custom Design Compiler; adoption; paired foundry/generated PNR; verification; comparison; final Judge; and next-research.',
-    'For each selection Workshop use recommend, read every declared route/raw/source input and current Pack knowledge, then copy the exact selectionTemplate and implement only a deterministic, data-dependent choose() using Python standard-library facilities; write that self-contained entry.py through hima_execute. Run those exact recorded bytes and preserve all failures and retries.',
+    'For each selection Workshop use recommend; read research_<route>, raw_<route>, source_<route>, selectionTemplate and the declared Pack knowledge before writing. The raw read may be bounded in chat; the executed program receives the complete file. Copy the exact template and implement only a deterministic, data-dependent choose(candidates, route) over the actual generation_requests. Prefer candidates with complete generator_contract interfaces and stronger route-specific numeric evidence; never embed candidate ids. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
     'Treat learned characterization as predicted, Site tool outputs as executed tool evidence, and post-route values as measured only where the readers say so. Never turn asked, derived, predicted, missing, failed, or unknown values into measurements or success.',
-    'At next-research add exactly one optional growth proposal named independent-comparison-review. Use review-comparison (act observes record_compare) then review-verdict (judge rules full-evidence-valid and clock-period-at-most with target_period_ns bound from Goal); route every PASS/FAIL/UNDETERMINED result back to next-research. Set requiredOutputs=[record_compare], returnNode=next-research, impactNodes=[next-research], and explain that the expected change is an independent consistency re-read. Omit method, parent, inputThroughSeq and explicit input hashes so Harness binds current identities. Execute both nodes and record returned growth evidence. This is not a new PNR experiment.',
-    'After the branch returns, call hima_execute analyze on next-research with current-record citations, limitations, and discriminating next experiments. Then complete next-research truthfully. Goal-met requires both final rules to PASS. If physical constraints fail, submit the declared next strategy and let the one-generation bound produce an evidence-backed negative/budget ending. Do not cancel a complete negative merely to rename it.',
-    'The Pack reserves 60 seconds for closing and permits at most 120 attempts. The first Campaign has a 90-minute total limit; the enclosing live harness has 100 minutes, 600 product request steps and 120 user turns. These are upper limits, not a promise that the model or tools will finish.',
+    'At next-research, record source-linked analysis with current record citations, limitations, and discriminating next experiments, then complete truthfully. Goal-met requires every final rule to PASS, including an actual routed custom Cell instance and strictly higher Fmax in the generated arm. Never convert a negative result into success.',
+    'The Pack reserves 60 seconds for closing, permits at most 120 attempts, and has a 60-minute Campaign limit. The enclosing live harness has 100 minutes, 600 product request steps and 120 user turns. These are upper limits, not a promise that the model or tools will finish.',
     'When a Job is asynchronous, yield and let its native tool notification report settlement. Continue from the current context only; never repeat a launch with a new request identity.',
   ].join('\n');
   await check.say(owner, firstPrompt);
@@ -787,12 +495,13 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   let created = ownedRuns();
   check.require('the owner opened exactly one first Campaign', created.length === 1, created);
   const firstId = created[0]!.id;
+  check.require('the confirmed Run identity is the only owner Run', firstId === confirmed.runId, { firstId, confirmed: confirmed.runId });
   const first = host.ctx.hima.ledger.run(firstId)!;
   check.require('the first Campaign admitted the exact Pack, Site, Goal, strategy, and approved budget',
     (first.purpose ?? 'campaign') === 'campaign'
       && first.packDigest === sourceDigest
       && first.goal?.target_period_ns === 0.5
-      && first.firstStrategy?.periodNs === 0.5
+      && first.firstStrategy?.periodNs === 0.35
       && first.firstStrategy?.algorithmRevision === 0
       && first.firstStrategy?.floorplanUtilization === 0.5
       && first.budget?.timeBoxMs === FIRST_TIME_BOX_MS
@@ -813,7 +522,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     firstId,
     [
       `Continue only existing Run ${firstId} from the latest public context.`,
-      'Act on ready nodes in the full reference method, await native Job notifications, preserve failures and raw facts, complete the independent comparison growth branch, record source-linked analysis, and finish/archive truthfully. Do not create a Run or change the method.',
+      'Act on ready nodes in the full reference method, await native Job notifications, preserve failures and raw facts, record source-linked analysis at next-research, and finish/archive truthfully. Do not create a Run or change the method.',
     ].join('\n'),
     100,
   );
@@ -846,45 +555,20 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     && finalJudge?.result?.outcome === 'PASS'
     && finalDecision?.type === 'decision'
     && 'goalMet' in finalDecision.chosen;
-  const boundedNegativeEnding = firstRun.status === 'ended-budget-exhausted'
-    && finalJudge?.result?.outcome === 'FAIL'
-    && finalDecision?.type === 'decision'
-    && 'strategy' in finalDecision.chosen;
-  check.require('the first ending is a complete supported result rather than an arbitrary terminal status',
-    positiveEnding || boundedNegativeEnding,
+  check.require('the held-out Campaign ended goal-met through the complete final Judge',
+    positiveEnding,
     { status: firstRun.status, finalJudge, finalDecision });
 
-  const growth = firstRecords.filter((record) => record.type === 'growth');
-  const proposedGrowth = growth.find((record) => record.event === 'proposed' && record.proposalId === 'independent-comparison-review');
-  const returnedGrowth = growth.findLast((record) => record.event === 'returned' && record.proposalId === 'independent-comparison-review');
-  const proposal = proposedGrowth?.type === 'growth' ? proposedGrowth.proposal as {
-    nodes?: Array<{ id?: string }>;
-    returnNode?: string;
-    requiredOutputs?: string[];
-    optional?: boolean;
-  } | undefined : undefined;
-  const proposalNodes = new Set(proposal?.nodes?.map((node) => node.id));
-  check.require('one optional comparison/Judge growth branch returned to next-research with evidence',
-    proposal?.returnNode === 'next-research'
-      && proposal?.optional === true
-      && proposal?.requiredOutputs?.includes('record_compare') === true
-      && proposalNodes.has('review-comparison')
-      && proposalNodes.has('review-verdict')
-      && doneNodes.has('review-comparison')
-      && doneNodes.has('review-verdict')
-      && (returnedGrowth?.evidence?.length ?? 0) >= 3,
-    growth);
-
-  const returnedSeq = returnedGrowth?.seq ?? Number.MAX_SAFE_INTEGER;
   const firstAnalysis = firstRecords.findLast((record) => record.type === 'analysis'
     && record.nodeId === 'next-research'
-    && record.sessionId === ownerId
-    && record.seq > returnedSeq);
-  check.require('the owner recorded bounded source-linked analysis after the growth return',
+    && record.sessionId === ownerId);
+  check.require('the owner recorded bounded source-linked analysis of the held-out result',
     firstAnalysis?.type === 'analysis'
       && firstAnalysis.analysis.claims.length > 0
       && firstAnalysis.analysis.limitations.length > 0
-      && firstAnalysis.analysis.nextExperiments.length > 0,
+      && firstAnalysis.analysis.nextExperiments.length > 0
+      && firstAnalysis.analysis.claims.every((claim) => claim.cites.length > 0
+        && claim.cites.every((cite) => firstRecords.some((record) => record.id === cite))),
     firstRecords.filter((record) => record.type === 'analysis'));
 
   const valueTypes = new Set(currentRecordsIn(firstRecords).flatMap((record) => record.type === 'observation'
@@ -894,6 +578,23 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   check.require('the archived result keeps distinct probe, predicted, adoption, verification, and matched physical facts',
     missingValueTypes.length === 0,
     { missingValueTypes, valueTypes: [...valueTypes] });
+  const comparison = currentRecordsIn(firstRecords).findLast((record) =>
+    record.type === 'observation' && record.reader.id === 'read-compare');
+  const comparisonValues = new Map(comparison?.type === 'observation'
+    ? comparison.values.map((value) => [value.type, value.value]) : []);
+  const foundryFmax = comparisonValues.get('foundry_fmax_mhz');
+  const generatedFmax = comparisonValues.get('generated_fmax_mhz');
+  check.require('the final matched comparison proves routed adoption and strictly higher custom-arm Fmax',
+    comparison?.type === 'observation'
+      && comparisonValues.get('adopted_instance_count')! > 0
+      && comparisonValues.get('full_constraint_failures') === 0
+      && comparisonValues.get('matched_conditions') === 1
+      && comparisonValues.get('fmax_improved') === 1
+      && typeof foundryFmax === 'number' && typeof generatedFmax === 'number'
+      && generatedFmax > foundryFmax,
+    { comparisonRecord: comparison?.id, adoptedInstances: comparisonValues.get('adopted_instance_count'),
+      matchedConditions: comparisonValues.get('matched_conditions'), foundryFmax, generatedFmax,
+      delta: comparisonValues.get('fmax_delta_mhz') });
 
   const selectorNodes = routes.map((route) => `select-${route}`);
   const codeRecords = firstRecords.filter((record): record is CodeRecord => record.type === 'code');
@@ -1041,13 +742,13 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     { runs: ownedRuns(), sourceDigest: packDigestOf(packSource), installedDigest: packDigestOf(installedPack) });
 
   const checkpoint: PilotCheckpoint = {
-    schema: 1,
-    status: 'first-campaign-passed-ready-for-ui',
+    schema: 3,
+    status: 'positive-held-out-l5-passed-ready-for-release-review',
     home: home.home,
     firstRun: firstId,
     firstOwner: ownerId,
     pack: { id: PACK_ID, version: sourcePack.contract.version, digest: sourceDigest },
-    site: SITE_ID,
+    site: profile.site.name,
     goal: { target_period_ns: 0.5 },
     archive: {
       directory: firstArchive.directory,
@@ -1069,6 +770,6 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     },
     restartRecordsSha256: beforeRestart,
     checkpoint: checkpointPath,
-    outcome: 'first-campaign-passed-ready-for-ui; PLS-18/PLS-26 final acceptance remains pending',
+    outcome: 'positive-held-out-l5-passed-ready-for-release-review',
   };
 });
