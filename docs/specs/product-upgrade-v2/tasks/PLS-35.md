@@ -41,6 +41,7 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 4. 由 HimaGuide完成 Preparation，所有必要条件 ready后生成 proposal并一次确认创建一个 Campaign/Run。
 5. Campaign Agent执行；另建 Side Talk完成普通Coding/对话并返回owner；验证pause/cancel/handoff和关闭pane不改变事实。
 6. 运行完整定制 Cell方法。Matched A/B除新Cell/library content外，RTL、约束、工具、核数、流程和设置一致。
+   本次研究按 AI 的 best-first 排名生成 50 个不同布尔类，随后只用一对 50% uncertainty DC筛选采用；采用为零时停止，采用为正才进入PNR。
 7. 验证route成功、最终database含新Cell有效实例、timing读取同一database、自定义臂Fmax更高；其他PPA如实报告。
 8. 归档算法、代码、输入身份、图、Jobs、知识引用、database/report身份、结果和debug现场；默认不上传客户内容。
 9. 完成受影响L0–L3、知识/模型与Site L4、单次L5；通过/失败/未跑分开。

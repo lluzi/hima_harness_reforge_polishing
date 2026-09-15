@@ -34,8 +34,8 @@ import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-wo
 const PACK_ID = 'custom-cell-fmax-dtco';
 const ACCEPTANCE_TOP = 'aes_cipher_top';
 const EXPECTED_MODEL = 'deepseek-flash';
-const FIRST_TIME_BOX_MS = 60 * 60_000;
-const HARNESS_TIME_BOX_MS = 100 * 60_000;
+const FIRST_TIME_BOX_MS = 120 * 60_000;
+const HARNESS_TIME_BOX_MS = 180 * 60_000;
 const FIRST_RETRY_ALLOWANCE = 3;
 const GENERATION_LIMIT = 1;
 const ATTEMPT_LIMIT = 120;
@@ -501,12 +501,12 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     `Execute only the already confirmed Campaign Run ${confirmed.runId}.`,
     'You are the only execution owner. Use only hima_context and hima_execute for business actions. Do not start another Run, edit the method, use shell, open another Agent/model, or auto-drive the graph.',
     'Complete the full reference method from actual facts: the probe loop; all six parallel candidate-evidence routes; the one cross-route AI research Workshop; merge; generate; layout; predicted characterization; Library Compiler; foundry and custom Design Compiler; adoption; paired foundry/generated PNR; verification; comparison; final Judge; and next-research.',
-    'At research-candidates use recommend. Read every compact research_<route> projection, probe, researchTemplate and full-mining-method.md; read a full raw/source artifact when a hypothesis needs it. Copy the exact researchTemplate and implement only research(candidates, context). Candidates provide route, evidence, interface, equivalence_digest and implementation_route aliases plus the full source request. Generate at least three competing, current-data hypotheses using actual reg2reg_path_hits/increment, Boolean interface/equivalence, occurrence, implementation route and prior adoption feedback. Fill min(context["max_cells"], distinct Boolean functions) for one pressured DC screen and use at least two hypotheses when selecting more than one Cell. Candidate ids may be deterministic tie breakers but must never be embedded. The six miners are evidence generators, not the research algorithm. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
+    'At research-candidates use recommend. Read every compact research_<route> projection, probe, researchTemplate and full-mining-method.md; read a full raw/source artifact when a hypothesis needs it. Copy the exact researchTemplate and implement only research(candidates, context). Candidates provide route, evidence, interface, equivalence_digest and implementation_route aliases plus the full source request. Generate at least three competing, current-data hypotheses using actual reg2reg_path_hits/increment, Boolean interface/equivalence, occurrence, implementation route and prior adoption feedback. Fill min(context["max_cells"], distinct Boolean functions) for one pressured DC screen, order selected best-first as the generation ranking, and use at least two hypotheses when selecting more than one Cell. Candidate ids may be deterministic tie breakers but must never be embedded. The six miners are evidence generators, not the research algorithm. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
     'Treat learned characterization as predicted, Site tool outputs as executed tool evidence, and post-route values as measured only where the readers say so. Never turn asked, derived, predicted, missing, failed, or unknown values into measurements or success.',
     'Keep setup, hold, route-DRC, connectivity and cell-checker diagnostic findings in the final analysis. comparison_valid proves matched final-database evidence, not physical signoff cleanliness; do not hide or rename disclosed physical findings.',
     'At next-research, record source-linked analysis with current record citations, limitations, and discriminating next experiments, then complete truthfully. Goal-met requires every final rule to PASS, including an actual routed custom Cell instance and strictly higher Fmax in the generated arm. Never convert a negative result into success.',
     'A node in retrying state has only recorded a failed attempt; Fabric does not launch a hidden automatic retry. Read the failed Job log once, diagnose it, and either begin one fresh admitted attempt or stop truthfully. Never poll the same completed failure while waiting for a nonexistent retry.',
-    'The Pack reserves 60 seconds for closing, permits at most 120 attempts, and has a 60-minute Campaign limit. The enclosing live harness has 100 minutes, 600 product request steps and 120 user turns. These are upper limits, not a promise that the model or tools will finish.',
+    'The Pack reserves 60 seconds for closing, permits at most 120 attempts, and has a 120-minute Campaign limit for the 50-Cell screen. The enclosing live harness has 180 minutes, 600 product request steps and 120 user turns. These are upper limits, not a promise that the model or tools will finish.',
     'When a Job is asynchronous, yield and let its native tool notification report settlement. Continue from the current context only; never repeat a launch with a new request identity.',
   ].join('\n');
   let created = ownedRuns();
@@ -703,7 +703,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const subsetEvidence = path.join(check.out, 'ai-research-audit.json');
   writeFileSync(selectorManifest, JSON.stringify({ code: codeFile, codeSha256: researchCode.sha256,
     research: researchFile, researchSha256: researchObservation.contentSha256,
-    maxCells: 32, sources: auditSources }, null, 2) + '\n', { mode: 0o600 });
+    maxCells: 50, sources: auditSources }, null, 2) + '\n', { mode: 0o600 });
   const auditorFile = path.join(repoRoot, 'scripts/audit-dtco-ai-research.py');
   const auditorSha256 = sha256(readFileSync(auditorFile));
   execFileSync('/usr/bin/python3', [auditorFile,

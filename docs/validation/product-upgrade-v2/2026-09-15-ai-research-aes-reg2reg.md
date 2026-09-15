@@ -25,7 +25,7 @@ artifacts remain on the Site and are not committed.
 - `research-template.py` is 1,047 bytes. Fixed I/O, provenance, bounded hypotheses and exact route
   projections live in `ai_research_runner.py`, so a second-tier model only writes the research
   function. One Campaign generation therefore spends one model moment for discovery.
-- `MAX_ROUTE_CANDIDATES` is bounded to `1..40`; `MAX_CELLS` is bounded to `1..32`. Candidate and Cell
+- `MAX_ROUTE_CANDIDATES` is bounded to `1..40`; `MAX_CELLS` is bounded to `1..50`. Candidate and Cell
   production can be broad, while one pressured DC pair is the scarce adoption screen. PNR remains
   behind the existing adoption Judge.
 - The foundry arm now saves Innovus's native floorplan. The generated arm loads that file and the
@@ -129,6 +129,12 @@ multi-Cell screen, to use at least two competing hypotheses. The independent rea
 conditions from all six raw pools. This converts an internal-schema memory burden into Pack
 scaffolding and prevents a confident one-candidate report from passing when the declared cheap build
 budget is two.
+
+A third clean run on `3563e74` was stopped after the product owner rejected the two-Cell budget as a
+remaining silver-bullet assumption. It had completed the bounded probes and entered mining, but had
+not opened the research Workshop or generated a Cell. The local Host was interrupted, no Site Job
+remained, and the retained Run was not used as evidence. The accepted next budget is 50 generated
+Cells, ordered by the AI-authored ranking, followed by one pressured DC adoption screen.
 
 PLS-35 remains open until a fresh clean Home uses DeepSeek-V4.1-Flash to author and execute the
 Workshop code through HimaHarness, reaches the same evidence gates, passes offline audit, is packaged,

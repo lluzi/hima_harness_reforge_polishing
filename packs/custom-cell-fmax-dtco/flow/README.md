@@ -62,7 +62,7 @@ characterization helpers and three learned models, LC/DC/Innovus wrapper and exp
 Missing inputs are rejected. `synthetic-fixture` is exclusively for labelled local tests.
 The paired physical arms use the current `periodNs`, explicitly shared and rechecked. DC applies
 50% uncertainty and writes a route SDC with 25% uncertainty. The foundry arm freezes the expanded
-core box and IO-pin plan for exact reuse by the generated arm. `MAX_CELLS` is a Site-declared 1..32
+core box and IO-pin plan for exact reuse by the generated arm. `MAX_CELLS` is a Site-declared 1..50
 generation budget and `MAX_ROUTE_CANDIDATES` is at most 40. Six mechanical routes build the evidence
 pool; one AI-authored cross-route algorithm spends the final build allocation. All timeouts,
 eight-core CAD setting and Site cap remain explicit.

@@ -35,9 +35,10 @@ Inspect `generation_requests`, the route objective and `discovery_evidence`: sup
 occurrence, occurrence alignments, Boolean contract, implementation route and limitations.
 Examine at least three competing hypotheses and fill `min(MAX_CELLS, distinct Boolean functions)`
 with buildable requests (`fusion`,
-`cluster_compose`, `boolean_synthesis`) across the complete pool. `MAX_CELLS` may be 1..32 and each
+`cluster_compose`, `boolean_synthesis`) across the complete pool. `MAX_CELLS` may be 1..50 and each
 route may expose at most 40 candidates. Derive an algorithm from the actual evidence and explain each
-tradeoff; use at least two hypotheses when more than one Cell is selected. Do not hardcode candidate
+tradeoff; order the selected list best-first because its order is the generation ranking, and use at
+least two hypotheses when more than one Cell is selected. Do not hardcode candidate
 ids or a success score. Candidate generation is the cheap broad
 stage. One matched, pressured DC pair is the scarce screen; P&R remains behind positive adoption.
 Account for overlapping occurrences where the source describes them. A lower bound on non-overlap

@@ -831,8 +831,8 @@ def read_selection(report, out, stage):
     selected = selection.get("selected")
     inputs = load(workspace / "flow" / "inputs.json")
     budget = inputs.get("MAX_CELLS")
-    if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 32:
-        raise ValueError("MAX_CELLS must be within 1..32")
+    if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 50:
+        raise ValueError("MAX_CELLS must be within 1..50")
     if (raw.get("report_schema") != "xspace_cell-pattern-search/v2" or raw.get("strategy_id") != route
             or not isinstance(requests, list) or not isinstance(selected, list)
             or len(selected) > budget or len(selected) != len(set(selected))
@@ -904,7 +904,7 @@ def read_ai_research(report, out):
     inputs = load(workspace / "flow" / "inputs.json")
     budget = inputs.get("MAX_CELLS")
     if (not isinstance(hypotheses, list) or not 3 <= len(hypotheses) <= 12
-            or not isinstance(selected, list) or not isinstance(budget, int) or not 1 <= len(selected) <= budget <= 32
+            or not isinstance(selected, list) or not isinstance(budget, int) or not 1 <= len(selected) <= budget <= 50
             or not isinstance(sources, dict) or set(sources) != set(ROUTES)):
         raise ValueError("AI research hypothesis/selection budget is invalid")
     names = {row.get("name") for row in hypotheses if isinstance(row, dict)}

@@ -55,7 +55,7 @@ def check(manifest_path, output):
         raws[route] = len(ids)
     selected = [(row["route"], row["candidate_id"]) for row in report["selected"]]
     assert len(selected) == len(set(selected)) and set(selected) <= available
-    assert 1 <= len(selected) <= manifest["maxCells"] <= 32
+    assert 1 <= len(selected) <= manifest["maxCells"] <= 50
     assert manifest_path.read_bytes() == original
     evidence = {
         "status": "passed",

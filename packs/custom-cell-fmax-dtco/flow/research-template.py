@@ -23,8 +23,9 @@ def research(candidates, context):
        "selected": [{"route": str, "candidate_id": str,
                      "hypothesis": str, "rationale": str}, ...],
        "stop_reason": str}
-    Fill min(context["max_cells"], distinct Boolean functions). If more than one
-    Cell is selected, use at least two of the competing hypotheses.
+    Fill min(context["max_cells"], distinct Boolean functions). ``selected`` is
+    ordered best-first and is the generation priority. If more than one Cell is
+    selected, use at least two of the competing hypotheses.
     """
     raise NotImplementedError("Author a data-dependent discovery algorithm here")
 

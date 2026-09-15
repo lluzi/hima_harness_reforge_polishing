@@ -246,7 +246,7 @@ async function main(): Promise<void> {
     }
     const manifest = path.join(selectorInputs, 'manifest.json');
     writeFileSync(manifest, `${JSON.stringify({ code: codeFile, codeSha256: researchCode.sha256,
-      research: researchFile, researchSha256: researchObservation.contentSha256, maxCells: 32, sources }, null, 2)}\n`, { mode: 0o600 });
+      research: researchFile, researchSha256: researchObservation.contentSha256, maxCells: 50, sources }, null, 2)}\n`, { mode: 0o600 });
     const subsetEvidence = path.join(out, 'ai-research-audit.json');
     const selectorAuditor = path.join(repoRoot, 'scripts/audit-dtco-ai-research.py');
     execFileSync('/usr/bin/python3', [selectorAuditor, manifest, subsetEvidence], { timeout: 30_000, maxBuffer: 1024 * 1024 });

@@ -172,8 +172,8 @@ def run(research, argv):
     revision = argv[2]
     inputs = _json(workspace / "flow" / "inputs.json")
     budget = inputs.get("MAX_CELLS")
-    if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 32:
-        raise ValueError("MAX_CELLS must be within 1..32")
+    if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 50:
+        raise ValueError("MAX_CELLS must be within 1..50")
     context = _probe_context(workspace, revision)
     context["max_cells"] = budget
     context["prior_feedback"] = _prior_feedback(workspace)

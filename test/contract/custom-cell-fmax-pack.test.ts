@@ -340,7 +340,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     CCFMAX_POWER_PIN: 'vdd', CCFMAX_GROUND_PIN: 'gnd', CCFMAX_POWER_TEMPLATE_BASE_CELL: 'FIXTURE_CELL',
     GENERATED_LIBRARY_NAME: 'fixture_generated', GENERATED_LIB_CELL_PATTERN: 'XS_*', CLOCK_NS: 1, CCFMAX_RC_TEMPERATURE: 25,
     CCFMAX_PROCESS_NODE: 12, CCFMAX_MAX_ROUTE_LAYER: 'M8', CCFMAX_TAP_CELL: 'TAP', CCFMAX_TAP_INTERVAL: 10,
-    CCFMAX_FILLER_CELLS: 'FILL', CCFMAX_SWITCHING_ACTIVITY: 0.2, PLACE_SITE: 'core', MAX_CELLS: 1, MAX_ROUTE_CANDIDATES: 2,
+    CCFMAX_FILLER_CELLS: 'FILL', CCFMAX_SWITCHING_ACTIVITY: 0.2, PLACE_SITE: 'core', MAX_CELLS: 50, MAX_ROUTE_CANDIDATES: 40,
     GENERATION_TIMEOUT_SEC: 30, ABSTRACT_TIMEOUT_SEC: 30, CHARACTERIZE_TIMEOUT_SEC: 30, LC_TIMEOUT_SEC: 30, MULTI_CPU: 1,
     PNR_TIMEOUT_SEC: 30, DRC_LIMIT: 1000, VERIFY_TIMEOUT_SEC: 30,
   };
@@ -375,6 +375,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     const materialized = JSON.parse(await readFile(path.join(started.workspace, 'flow/inputs.json'), 'utf8')) as Record<string, unknown>;
     assert.equal(materialized.designTop, 'held_out'); assert.equal(materialized.DESIGN_TOP, 'held_out');
     assert.equal(materialized.edaWrapper, '/usr/bin/true');
+    assert.equal(materialized.MAX_CELLS, 50); assert.equal(materialized.MAX_ROUTE_CANDIDATES, 40);
     assert.equal(materialized.rtlGlob, rtl); assert.equal(materialized.legacy, undefined);
     assert.equal(await readFile(path.join(started.workspace, 'flow/stages.py'), 'utf8'), await readFile(path.join(packDir, 'flow/stages.py'), 'utf8'));
     await host.ctx.hima.cancelRun(started.run.id);

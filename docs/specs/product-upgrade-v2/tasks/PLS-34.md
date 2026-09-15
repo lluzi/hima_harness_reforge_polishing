@@ -30,6 +30,7 @@ Issue：[PLS-34 / #38](https://github.com/lluzi/hima_harness_reforge_polishing/i
 3. 工具小版本差异先由 Campaign私有 adapter/`revise` 查 Pack知识、手册、安装目录和man适配；成功形成 Pack Owner候选，失败给人完整报告。
 4. 挖掘算法必须读取当前 design/netlist/timing/library真实数据，产生多个数据依赖候选；不允许固定 AES结构或预制答案。
 5. Agent根据证据编写/修订选择算法并可使用现有 grow/revise；参考图保持，新增研究有影响范围、结束和返回。
+   当前 AES 出口由六路最多 40 个候选组成证据池，AI 按现场证据将不同布尔类排序并选满 50 个生成 Cell；只运行一对受压 DC 做采用筛选，不把预算缩成少数“银色子弹”。
 6. A/B流程、设置、工具和输入完全一致，唯一变量是新 Cell/library content；公共 floorplan、constraint和PnR设置不得为一臂改变。
 7. 成功要求 route完成、最终 database/report身份一致、新 Cell有效实例大于零，最终 timing从该 database得到更高 Fmax且没有使结论无效的已知故障。
 8. 面积、功耗、拥塞和物理事实如实报告但不作为Fmax门；未测量明确标记。

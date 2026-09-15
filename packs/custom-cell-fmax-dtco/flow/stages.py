@@ -539,8 +539,8 @@ def candidate_rank(request):
 
 def stage_merge(ctx):
     budget = ctx.binding("MAX_CELLS")
-    if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 32:
-        raise Rejected("MAX_CELLS must be within 1..32")
+    if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 50:
+        raise Rejected("MAX_CELLS must be within 1..50")
     research_path = ctx.flow / "research" / "research.json"
     if not research_path.is_file() or research_path.is_symlink():
         raise Rejected("AI research report is absent before merge")
