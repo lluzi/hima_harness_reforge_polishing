@@ -16,7 +16,7 @@
 | [PLS-32 / #36](https://github.com/lluzi/hima_harness_reforge_polishing/issues/36) | 复用 DSH 多会话完成 Campaign Agent、Side Talk 和可靠控制通知 | PLS-27、31；可提前做无共享文件测试 | Execution/control |
 | [PLS-33 / #37](https://github.com/lluzi/hima_harness_reforge_polishing/issues/37) | 在现有 Workbench 投影完整运行图和业务信息层级 | PLS-31、32 | Client UI |
 | [PLS-34 / #38](https://github.com/lluzi/hima_harness_reforge_polishing/issues/38) | 用现有 Pack 格式交付可迁移的定制 Cell Fmax-DTCO 方法 | PLS-28 格式封板；内容可提前并行 | Pack method |
-| [PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/issues/39) | 用 held-out design 完成 Matched Comparison 并发布候选 | PLS-27～34 | Pilot/release |
+| [PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/issues/39) | 用 aes_cipher_top 目标 reg2reg path 完成 Matched Comparison 并发布候选 | PLS-27～34 | Pilot/release |
 
 ## 并行波次
 

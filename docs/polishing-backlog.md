@@ -1,6 +1,6 @@
 # Polishing 工作单与 Step 4 接续
 
-当前顺序（2026-09-14）：用户真人试用否定 `v0.2.0-trial.1` 的产品准入，并确认[产品升级设计树](product-upgrade-interview.md)。后续唯一现行计划是 [Product Upgrade v2](specs/product-upgrade-v2/README.md)：PLS-27～35 在现有模块上完成产品上下文、Pack、Site、离线知识、Campaign Preparation、Campaign Agent/Side Talk、完整图、可迁移 Fmax-DTCO Pack 和 held-out design 候选验收。此前 26/26 表示历史工程任务完成，不代表当前产品升级已经开始或通过。
+当前顺序（2026-09-14）：用户真人试用否定 `v0.2.0-trial.1` 的产品准入，并确认[产品升级设计树](product-upgrade-interview.md)。后续唯一现行计划是 [Product Upgrade v2](specs/product-upgrade-v2/README.md)：PLS-27～35 在现有模块上完成产品上下文、Pack、Site、离线知识、Campaign Preparation、Campaign Agent/Side Talk、完整图、可迁移 Fmax-DTCO Pack 和 `aes_cipher_top` 目标 reg2reg 候选验收。此前 26/26 表示历史工程任务完成，不代表当前产品升级已经开始或通过。
 
 本轮规格优先于下文 2026-09-11～13 的旧前沿和“同一个对话窗口”描述；既有实现、测试和证据继续复用。一个可见 Campaign Agent 保持唯一 Run owner，用户可在同一 DSH App 中新开独立 Side Talk，见 [ADR-0008](adr/0008-visible-campaign-agent-and-side-talk.md)。
 

@@ -39,7 +39,7 @@ Issue：[PLS-34 / #38](https://github.com/lluzi/hima_harness_reforge_polishing/i
 
 - 不改变 HimaFabric、Ledger、Judge、Run/Job或 reference graph语义。
 - 不扩展到 Genus、Linux Desktop、通用 DTCO或自研 EDA工具。
-- 不把原 AES成功/失败或 stand-in指标当 held-out结果。
+- 不把原 AES成功/失败或 stand-in指标当新的目标 reg2reg Campaign结果。
 
 ## 验收标准
 

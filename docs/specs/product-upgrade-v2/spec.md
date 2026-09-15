@@ -4,13 +4,13 @@
 
 ## Problem Statement
 
-真人试用表明，当前版本虽然具备 Pack、Site、Fabric、Ledger、Agent execution、知识归档和 Desktop 工作台等工程基础，却没有把这些能力组合成客户可以自然使用和信任的业务产品。干净启动后没有可用 Pack/Site；HimaGuide 回答产品问题时扫描代码；Pack 绑定 AES/TSMC28 和既有 Golden Flow；Campaign 前置准备被暴露为表单；运行图只显示已发生的线性状态；控制通知依赖浏览器发送；知识只是整份 Markdown；完整 DTCO 没有在 held-out design 上通过定制 Cell 最终 route 采用取得更高 Fmax。
+真人试用表明，当前版本虽然具备 Pack、Site、Fabric、Ledger、Agent execution、知识归档和 Desktop 工作台等工程基础，却没有把这些能力组合成客户可以自然使用和信任的业务产品。干净启动后没有可用 Pack/Site；HimaGuide 回答产品问题时扫描代码；Pack 绑定 AES/TSMC28 和既有 Golden Flow；Campaign 前置准备被暴露为表单；运行图只显示已发生的线性状态；控制通知依赖浏览器发送；知识只是整份 Markdown；完整 DTCO 没有在 `aes_cipher_top` 的目标 reg2reg path 上通过定制 Cell 最终 route 采用取得更高 Fmax。
 
 用户需要的是一项业务能力：在现有 HimaHarness 架构、当前工具栈和开源模型上，安装透明 HimaPack，给出自己的 design 和 SSH Site，由 HimaGuide 完成 Campaign Preparation，再由可见 Campaign Agent 执行一个持久 Run；用户可另开 Side Talk，观察完整业务运行图，介入控制，并得到唯一变量为新增 Cell 的 Matched Comparison Fmax 结果。普通用户不维护 YAML、知识服务、内部参数或 Golden Flow。
 
 ## Solution
 
-加深现有模块，不重构架构：通过 DSH `systemPrompt` seam 给 HimaGuide 稳定产品上下文；在现有 Pack contract/release 读取上增加作者状态、ontology、知识 manifest 和最低 Harness 版本；通过现有 `SshChannel`、Site schema 和 Permit 自动发现 safe Site；把 `startPreparation`、`startChoices` 和 `checkPack` 组合为不创建 Campaign 的 Preparation；复用 DSH 多 live Session 实现 Campaign Agent 与 Side Talk；使用已有 `executionContext.method.reference` 投影完整图；在 `KnowledgeRecord`、workspace、run-assets 和 Pack `knowledge/` 上加入离线文档知识；用同一 Pack 格式交付不绑定 AES design 的定制 Cell Fmax-DTCO Pack；最后集中执行一次 held-out design 的真实 Matched Comparison 和候选发布。
+加深现有模块，不重构架构：通过 DSH `systemPrompt` seam 给 HimaGuide 稳定产品上下文；在现有 Pack contract/release 读取上增加作者状态、ontology、知识 manifest 和最低 Harness 版本；通过现有 `SshChannel`、Site schema 和 Permit 自动发现 safe Site；把 `startPreparation`、`startChoices` 和 `checkPack` 组合为不创建 Campaign 的 Preparation；复用 DSH 多 live Session 实现 Campaign Agent 与 Side Talk；使用已有 `executionContext.method.reference` 投影完整图；在 `KnowledgeRecord`、workspace、run-assets 和 Pack `knowledge/` 上加入离线文档知识；用同一 Pack 格式交付不绑定 AES design 的定制 Cell Fmax-DTCO Pack；最后集中执行一次 Site 绑定 `aes_cipher_top`、显式 reg2reg pressure 的真实 Matched Comparison 和候选发布。
 
 唯一新增的产品级能力是 HimaHarness 自带的离线文档到知识实现。它必须先通过隔离 POC 证明能在 macOS 发行环境中处理代表性 EDA PDF，并继续通过现有 Pack knowledge、Ledger 和 archive seam 提供内容；不得另建用户运维的知识产品。
 
@@ -68,7 +68,7 @@
 50. As a reviewer, I want other available PPA and physical facts reported without making them hidden success gates, so that the Fmax result has context.
 51. As a reviewer, I want invalid constraints, failed route or mismatched database/report identity to block success, so that a faster number cannot conceal invalid work.
 52. As a customer, I want a negative Campaign to leave useful knowledge but not certify product value, so that failure remains honest.
-53. As a product owner, I want a positive held-out design result before the next trial, so that expert business-capability claims rest on actual capability.
+53. As a product owner, I want a positive `aes_cipher_top` reg2reg result before the next trial, so that expert business-capability claims rest on the intended target rather than an I/O or off-target design path.
 54. As a maintainer, I want most regression coverage at L1/L2, so that development does not repeatedly launch Desktop, models or EDA.
 55. As a user, I want Desktop validation performed on Catsights, so that testing does not interrupt normal work.
 56. As a product owner, I want the team to remove low-level defects before my review, so that final sign-off can focus on judgment and product quality.
@@ -105,7 +105,7 @@ The `to-spec` template normally avoids paths; the user explicitly requires stabl
 | Campaign Agent/Side Talk | `fabric.ts:executionContext/executionAction`; `tools.ts:hima_context/hima_execute`; `index.ts` `agent.followup`; `remote.ts:controlOperation`; `client/index.ts` sessions seam; `client/api.ts:controlRun` | Preserve single owner and explicit handoff; deliver control notifications from Host after durable state; reuse native New Session | PLS-32 |
 | Complete graph UI | `client/HimaWorkbench.tsx:ExecutionTrace/RunSummary`; `client/HimaRunCard.tsx`; `client/workbench-style.ts`; existing `fetchExecutionContext` | Render `method.reference` plus growth/revision and actual status in the current pane; reorganize existing sections around current business decision | PLS-33 |
 | Portable Fmax Pack | Existing `packs/aes-tsmc28-dtco/**` as source reference; planned `packs/custom-cell-fmax-dtco/**` in the same format | Extract design/process/Site bindings, retain current DC/LC/Innovus stack, include method/knowledge/tools and matched A/B route adoption without requiring Golden Flow | PLS-34 |
-| Pilot/release | `scripts/live-check-dtco-pilot.ts`, `scripts/audit-completed-dtco-pilot.ts`, `scripts/package-trial.mjs`, `test/contract/trial-package.test.ts`, `docs/validation/pilot-release/**` | Use held-out design and rediscovered Site, run one L5 Campaign, preserve evidence locally, package and publish only after all gates pass | PLS-35 |
+| Pilot/release | `scripts/live-check-dtco-pilot.ts`, `scripts/audit-completed-dtco-pilot.ts`, `scripts/package-trial.mjs`, `test/contract/trial-package.test.ts`, `docs/validation/pilot-release/**` | Use confirmed `aes_cipher_top` and explicit reg2reg pressure on a rediscovered Site, run one L5 Campaign, preserve evidence locally, package and publish only after all gates pass | PLS-35 |
 
 ### Shared-file ownership
 
@@ -126,7 +126,7 @@ Pack knowledge contains transparent source files, manifest and optional derived 
 1. **Primary product seam — L2 real Host.** Reuse `test/contract/support/boot-inprocess.ts` and `boot-host.ts`, the real `/hima/api` namespace and real `hima_*` tool definitions. This is the highest existing seam that exercises composition, storage, Agent identity and files without a window.
 2. **Desktop seam — one necessary L3 path.** Reuse `test/contract/support/driver.ts`. Run only interaction behavior that cannot be proved through Host data: Pack/Site/Preparation entry, complete graph rendering, two live Sessions, owner navigation and control feedback. Every Desktop run and recording occurs on Catsights.
 3. **Real-dependency seams — bounded L4.** Run a small DeepSeek call only after product context/knowledge tool schemas change; run one SSH discovery/minimum EDA probe only after Site/Pack adapters stabilize.
-4. **Value seam — one L5 candidate.** The held-out design Matched Comparison is the only full DTCO/EDA Campaign in this spec. It cannot be replaced by replay, stand-in, AES history or Agent review.
+4. **Value seam — one L5 candidate.** The `aes_cipher_top` target-reg2reg Matched Comparison is the only full DTCO/EDA Campaign in this spec. It cannot be replaced by replay, stand-in, off-target design results, historical AES runs or Agent review.
 
 ### Minimal tests by module
 
@@ -151,7 +151,7 @@ All tests assert observable behavior through module interfaces. No test copies F
 - Linux Desktop, Windows, macOS Intel, multi-user collaboration, organization/RBAC UI, multiple tool stacks, SaaS knowledge, automatic Pack updates or new proprietary EDA products.
 - Requiring customers to provide a Golden Flow, a pre-run result, a knowledge service, internal YAML or complete manual configuration.
 - Treating area, power or other PPA as success gates for the current Fmax Campaign; available values are still reported.
-- Claiming a positive result from a synthesis-only metric, an invalid constraint, a failed route, a final database without the new Cell, a mismatched report/database or a non-held-out AES replay.
+- Claiming a positive result from an I/O-path violation, synthesis-only metric, invalid constraint, failed route, final database without the new Cell, mismatched report/database, off-target design or historical AES replay.
 - Automatic upload of customer materials, telemetry, logs, reports or debug files.
 - Repeating full Desktop, model or EDA validation for changes whose behavior is already falsifiable at L1/L2.
 

@@ -1,6 +1,6 @@
 # HimaHarness Polishing
 
-已发布的 [**0.2.0-trial.1（macOS Apple Silicon）**](https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.2.0-trial.1) 保留为历史工程预览。真人试用已否定其产品准入；它不代表当前可推荐的试用版、Fmax 提升或真人认可。当前前沿是[Product Upgrade v2](docs/specs/product-upgrade-v2/README.md)：在现有架构内修复产品入口、Pack/Site/知识/运行图，并用 held-out design 的 Matched Comparison 重新验收业务能力。
+已发布的 [**0.2.0-trial.1（macOS Apple Silicon）**](https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.2.0-trial.1) 保留为历史工程预览。真人试用已否定其产品准入；它不代表当前可推荐的试用版、Fmax 提升或真人认可。当前前沿是[Product Upgrade v2](docs/specs/product-upgrade-v2/README.md)：在现有架构内修复产品入口、Pack/Site/知识/运行图，并用 `aes_cipher_top` 目标 reg2reg path 的 Matched Comparison 重新验收业务能力。
 
 原[使用评估手册与配套记录表](docs/user-guide/README.md)作为失败试用的历史材料保留，不作为下一候选的正常用户路径。
 
