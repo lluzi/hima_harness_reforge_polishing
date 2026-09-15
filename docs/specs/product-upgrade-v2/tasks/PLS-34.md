@@ -30,7 +30,7 @@ Issue：[PLS-34 / #38](https://github.com/lluzi/hima_harness_reforge_polishing/i
 3. 工具小版本差异先由 Campaign私有 adapter/`revise` 查 Pack知识、手册、安装目录和man适配；成功形成 Pack Owner候选，失败给人完整报告。
 4. 挖掘算法必须读取当前 design/netlist/timing/library真实数据，产生多个数据依赖候选；不允许固定 AES结构或预制答案。
 5. Agent根据证据编写/修订选择算法并可使用现有 grow/revise；参考图保持，新增研究有影响范围、结束和返回。
-   当前 AES 出口由六路最多 40 个候选组成证据池，AI 按现场证据将不同布尔类排序并选满 50 个生成 Cell；只运行一对受压 DC 做采用筛选，不把预算缩成少数“银色子弹”。
+   当前 AES 出口由六种挖掘方法共同贡献证据；等价候选先合并为一个池，AI 按现场证据将最多 50 个不同布尔/接口类统一排序并全部放入同一生成库。只运行一对受压 DC 和一对 APR，不做方法间的并行 EDA 比赛；采用结果须回标每个 Cell 及其所有来源方法。
 6. A/B流程、设置、工具和输入完全一致，唯一变量是新 Cell/library content；公共 floorplan、constraint和PnR设置不得为一臂改变。
 7. 成功要求 route完成、最终 database/report身份一致、新 Cell有效实例大于零，最终 timing从该 database得到更高 Fmax且没有使结论无效的已知故障。
 8. 面积、功耗、拥塞和物理事实如实报告但不作为Fmax门；未测量明确标记。
@@ -47,7 +47,7 @@ Issue：[PLS-34 / #38](https://github.com/lluzi/hima_harness_reforge_polishing/i
 - `checkPack` 在两个不同 design绑定上通过，不含 `aes_cipher_top`、固定 TSMC28路径或 Golden Flow前提。
 - 本地 fixture证明候选依赖输入、A/B唯一变量、adoption读取和无效比较拒绝；不声称Fmax。
 - 一次 L4真实工具最小 probe证明当前 Site输入和报告格式；一次 L4模型任务证明Agent能根据新数据写不同算法。
-- Pack报告能追到算法、Cell、最终 database、timing和其他PPA事实。
+- Pack报告能追到研究代码、候选 Cell、来源方法、综合采用数、最终 database、timing和其他PPA事实；共享候选的方法归因明确为不可相加。
 - 未出现现有 Pack无法表达的通用行为时，Harness源码零业务专用修改。
 
 ## 测试

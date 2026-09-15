@@ -14,11 +14,13 @@ Support and exact Boolean equivalence do not establish area, speed, adoption or 
 
 ## Your research work
 
-There is one `research-candidates` Workshop after all six parallel evidence routes. Read each compact
+There is one `research-candidates` Workshop after all six method-evidence routes. These routes are
+different ways to propose or rank Cells, not separate algorithms that receive their own EDA trials. Read each compact
 `research_ROUTE` view, the probe, `researchTemplate`, and this method. Read a full raw/source file
 when a hypothesis needs its detailed occurrence or Boolean proof. Copy `researchTemplate` as
 `entry.py` and implement only `research(candidates, context)`. The fixed
-`ai_research_runner.py` reads every complete raw file, supplies the current design/top, explicit
+`ai_research_runner.py` reads every complete raw file, folds Boolean/interface-equivalent requests into
+one candidate with `source_methods` and `method_rankings`, supplies the current design/top, explicit
 reg2reg pressure, build budget and retained synthesis/adoption feedback, validates the returned
 hypotheses and exact source identities, writes all six route projections, and calls the independent
 reader. The runner is I/O scaffolding; the authored `research()` function is the research asset.
@@ -33,14 +35,15 @@ you inspected every occurrence. Your executable must read the complete raw file,
 reader always checks that full file. Missing fields in the compact view are null, never inferred zero.
 Inspect `generation_requests`, the route objective and `discovery_evidence`: support, representative
 occurrence, occurrence alignments, Boolean contract, implementation route and limitations.
-Examine at least three competing hypotheses and fill `min(MAX_CELLS, distinct Boolean functions)`
+Examine at least three collaborative research lenses and fill `min(MAX_CELLS, unique candidates)`
 with buildable requests (`fusion`,
 `cluster_compose`, `boolean_synthesis`) across the complete pool. `MAX_CELLS` may be 1..50 and each
 route may expose at most 40 candidates. Derive an algorithm from the actual evidence and explain each
-tradeoff; order the selected list best-first because its order is the generation ranking, and use at
-least two hypotheses when more than one Cell is selected. Do not hardcode candidate
+tradeoff; order the selected list best-first because its order is the generation ranking. Do not rank
+the methods as winners or create separate validation arms for them. Do not hardcode candidate
 ids or a success score. Candidate generation is the cheap broad
-stage. One matched, pressured DC pair is the scarce screen; P&R remains behind positive adoption.
+stage. All selected Cells enter the same generated library. One matched, pressured DC pair is the
+scarce screen; P&R remains behind positive adoption.
 Account for overlapping occurrences where the source describes them. A lower bound on non-overlap
 is not an exact maximum, and a common Boolean digest does not make two physical occurrences disjoint.
 An empty route is a useful negative result; never manufacture a candidate to fill a quota.
@@ -58,10 +61,10 @@ Here `codeSha256` is the enumerating miner identity, not a self-assertion about 
 The actual algorithm identity comes from the Workshop launch intent, CodeRecord and the independently
 checked `algorithm.entrySha256` in the global report.
 Keep both identities distinct in the report. The reader/merge independently checks source bytes,
-candidate membership, global selection consistency and exact generator contracts. Merge deduplicates
-by Boolean function/interface/profile and keeps the authored finite selection within the declared
-budget. It records why some candidates were not generated; the selection is a hypothesis set, not a
-claim that its ranking is optimal.
+candidate membership, global selection consistency and exact generator contracts. Merge retains every
+method that contributed an equivalent Cell and keeps the authored finite ordering within the declared
+budget. It records why some candidates were not generated; the ordering is a hypothesis, not a claim
+that one method or ranking is optimal.
 
 After failure or disappointing adoption, inspect actual feedback before changing your program.
 Advance algorithmRevision only with an explicit same-owner Explore decision and current citations.
@@ -74,7 +77,10 @@ it is not tapeout qualification. Characterization is a **learned-model predictio
 power and area model hashes; it is not transistor-level characterization or foundry signoff.
 Library Compiler must accept the emitted Liberty and write a nonempty DB without tool errors.
 Rejected libraries cannot enter custom synthesis. Visibility in the DC session and exact generated
-master adoption are different facts: zero adopted instances does not establish invisibility.
+master adoption are different facts: zero adopted instances does not establish invisibility. The
+adoption record maps each offered candidate and generated master to actual instance counts, then reports
+per-method contributed, adopted and shared counts. Shared candidates credit every contributing method,
+so method totals are explicitly non-additive and serve as feedback for the next research revision.
 
 Both physical arms start from fresh syntheses using one shared template/RTL/clock/wrapper identity
 at the Campaign's current `periodNs`; this is the same Strategy lineage the probe tightened before

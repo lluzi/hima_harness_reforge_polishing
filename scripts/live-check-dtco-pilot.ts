@@ -109,6 +109,7 @@ const requiredValueTypes = [
   'lc_accepted',
   'library_visible',
   'adopted_instance_count',
+  'adopted_candidate_count',
   'pnr_completed',
   'verification_error_count',
   'cell_checker_diagnostic_count',
@@ -230,7 +231,7 @@ assert.ok(profile.site.allowedWriteRoots.includes(profile.site.workspaceRoot), '
 assert.ok(profile.site.toolCommands.includes('eda'), 'Site discovery must probe the Pack-required eda command');
 assert.ok(profile.site.allowedWrappers.includes('/usr/bin/python3') && profile.site.allowedWrappers.includes('/usr/local/bin/eda'),
   'portable Pack requires the exact Python and EDA wrappers');
-assert.equal(profile.site.capacity.parallelJobs, 1, 'the single L5 Campaign must reserve one Site job at a time');
+assert.equal(profile.site.capacity.parallelJobs, 5, 'the L5 Site must expose the reviewed five-job cap');
 for (const licence of ['Design-Compiler', 'Library-Compiler', 'Innovus']) {
   assert.equal(profile.site.capacity.licences[licence], 1, `the L5 Site must reserve one ${licence} seat`);
 }
@@ -500,8 +501,8 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const firstPrompt = [
     `Execute only the already confirmed Campaign Run ${confirmed.runId}.`,
     'You are the only execution owner. Use only hima_context and hima_execute for business actions. Do not start another Run, edit the method, use shell, open another Agent/model, or auto-drive the graph.',
-    'Complete the full reference method from actual facts: the probe loop; all six parallel candidate-evidence routes; the one cross-route AI research Workshop; merge; generate; layout; predicted characterization; Library Compiler; foundry and custom Design Compiler; adoption; paired foundry/generated PNR; verification; comparison; final Judge; and next-research.',
-    'At research-candidates use recommend. Read every compact research_<route> projection, probe, researchTemplate and full-mining-method.md; read a full raw/source artifact when a hypothesis needs it. Copy the exact researchTemplate and implement only research(candidates, context). Candidates provide route, evidence, interface, equivalence_digest and implementation_route aliases plus the full source request. Generate at least three competing, current-data hypotheses using actual reg2reg_path_hits/increment, Boolean interface/equivalence, occurrence, implementation route and prior adoption feedback. Fill min(context["max_cells"], distinct Boolean functions) for one pressured DC screen, order selected best-first as the generation ranking, and use at least two hypotheses when selecting more than one Cell. Candidate ids may be deterministic tie breakers but must never be embedded. The six miners are evidence generators, not the research algorithm. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
+    'Complete the full reference method from actual facts: the probe loop; all six candidate-method evidence routes; the one unified AI research Workshop; merge; generation into one library; layout; predicted characterization; Library Compiler; one foundry/custom Design Compiler pair; adoption; one paired foundry/generated PNR comparison; verification; final Judge; and next-research.',
+    'At research-candidates use recommend. Read every compact research_<route> projection, probe, researchTemplate and full-mining-method.md; read a full raw/source artifact when a research question needs it. Copy the exact researchTemplate and implement only research(candidates, context). Candidates are already Boolean/interface-de-duplicated and provide route, source_methods, method_rankings, evidence, interface, equivalence_digest and implementation_route aliases plus the full representative source request. Generate at least three collaborative current-data research lenses using actual reg2reg_path_hits/increment, Boolean interface/equivalence, occurrence, implementation route and prior adoption feedback. Fill min(context["max_cells"], len(candidates)) for one common pressured DC screen and order selected best-first as the Cell generation ranking. Do not rank a method as winner or create method-specific EDA arms. Candidate ids may be deterministic tie breakers but must never be embedded. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
     'Treat learned characterization as predicted, Site tool outputs as executed tool evidence, and post-route values as measured only where the readers say so. Never turn asked, derived, predicted, missing, failed, or unknown values into measurements or success.',
     'Keep setup, hold, route-DRC, connectivity and cell-checker diagnostic findings in the final analysis. comparison_valid proves matched final-database evidence, not physical signoff cleanliness; do not hide or rename disclosed physical findings.',
     'At next-research, record source-linked analysis with current record citations, limitations, and discriminating next experiments, then complete truthfully. Goal-met requires every final rule to PASS, including an actual routed custom Cell instance and strictly higher Fmax in the generated arm. Never convert a negative result into success.',
@@ -526,7 +527,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
       && first.budget?.attemptLimit === ATTEMPT_LIMIT
       && first.budget?.generationLimit === GENERATION_LIMIT
       && first.budget?.retryAllowance === FIRST_RETRY_ALLOWANCE
-      && first.budget?.jobCap === 1
+      && first.budget?.jobCap === 5
       && first.budget?.licences?.['Design-Compiler'] === 1
       && first.budget?.licences?.['Library-Compiler'] === 1
       && first.budget?.licences?.Innovus === 1,

@@ -18,10 +18,11 @@ ROUTES = (
 BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis"}
 validate_generation_request = None
 project_texts = None
+project_attributed_texts = None
 
 
 def load_domain(workspace):
-    global validate_generation_request, project_texts
+    global validate_generation_request, project_texts, project_attributed_texts
     domain = (workspace / "flow" / "domain").resolve()
     if not domain.is_dir() or not domain.is_relative_to(workspace.resolve()):
         raise ValueError("staged domain parser directory is absent or escapes workspace")
@@ -32,8 +33,10 @@ def load_domain(workspace):
         sys.path.insert(0, str(domain))
     from cell_need_miner.generator_contract import validate_generation_request as validator
     from _cell_adoption_projection import project_texts as projector
+    from _cell_adoption_projection import project_attributed_texts as attributed_projector
     validate_generation_request = validator
     project_texts = projector
+    project_attributed_texts = attributed_projector
 
 
 def unique(pairs):
@@ -581,13 +584,18 @@ def values_for(record, workspace, stage):
     elif stage == "adoption":
         netlist = one(record, workspace, "custom_netlist", "inputs").read_text(errors="replace")
         liberty = one(record, workspace, "offered_library", "inputs").read_text(errors="replace")
+        patterns = load(one(record, workspace, "merged_patterns", "inputs"))
         log = one(record, workspace, "custom_synth_log", "inputs").read_text(errors="replace")
         visible = re.findall(r"=== CUSTOM_CELL_FMAX LIBRARY_VISIBLE_COUNT (\d+) ===", log)
         if len(visible) != 1 or int(visible[0]) <= 0:
             raise ValueError("adoption has no generated-library visibility proof")
         values.append(number("library_visible", int(visible[0])))
-        adoption = project_texts(netlist, liberty)
+        adoption = project_attributed_texts(netlist, liberty, patterns)
+        for key, value in adoption.items():
+            if record.get("facts", {}).get(key) != value:
+                raise ValueError("adoption attribution differs from held netlist/library/method evidence: " + key)
         values.append(number("adopted_instance_count", adoption["adopted_instance_count"]))
+        values.append(number("adopted_candidate_count", adoption["adopted_candidate_count"]))
     elif stage in ("pnr-foundry", "pnr-generated"):
         arm = stage.split("-", 1)[1]
         log = logs(record, workspace, "pnr-" + arm + "_log").read_text(errors="replace")
@@ -919,7 +927,8 @@ def read_ai_research(report, out):
     if len(selected_keys) != len(set(selected_keys)):
         raise ValueError("AI research selection repeats a source candidate")
     distinct_pool = set()
-    selected_hypotheses = {row["hypothesis"] for row in selected}
+    identities = {}
+    raw_candidate_count = 0
     for route in ROUTES:
         raw_path = workspace / "flow" / "mining" / route / "raw.json"
         record_path = workspace / "flow" / "records" / ("mine-" + route + ".json")
@@ -932,7 +941,14 @@ def read_ai_research(report, out):
         available = {row.get("candidate_id") for row in raw.get("generation_requests", []) if isinstance(row, dict)}
         for row in raw.get("generation_requests", []):
             if isinstance(row, dict) and (row.get("implementation_plan") or {}).get("route") in BUILDABLE_ROUTES:
-                distinct_pool.add(((row.get("generator_contract") or {}).get("equivalence_reference") or {}).get("digest"))
+                contract = row.get("generator_contract") or {}
+                reference = contract.get("equivalence_reference") or {}
+                key = (reference.get("digest"), tuple(reference.get("output_order") or ()),
+                       json.dumps(contract.get("target_library_profile") or {}, sort_keys=True, separators=(",", ":")))
+                if key[0]:
+                    distinct_pool.add(key)
+                    identities[(route, row.get("candidate_id"))] = key
+                    raw_candidate_count += 1
         if any(candidate not in available for selected_route, candidate in selected_keys if selected_route == route):
             raise ValueError("AI research selected an absent source candidate")
         projection = load(workspace / "flow" / "mining" / route / "selected.json")
@@ -940,9 +956,12 @@ def read_ai_research(report, out):
         if projection != {"sourceSha256": source["rawSha256"], "selected": expected_ids,
                           "codeSha256": source["minerCodeSha256"]}:
             raise ValueError("route selection projection differs from AI research for " + route)
-    distinct_pool.discard(None)
-    if len(selected) != min(budget, len(distinct_pool)) or (len(selected) > 1 and len(selected_hypotheses) < 2):
-        raise ValueError("AI research did not fill the finite screen across competing hypotheses")
+    selected_distinct = [identities.get(key) for key in selected_keys]
+    if (None in selected_distinct or len(selected_distinct) != len(set(selected_distinct))
+            or len(selected) != min(budget, len(distinct_pool))
+            or algorithm.get("candidatePoolCount") != len(distinct_pool)
+            or algorithm.get("rawCandidateCount") != raw_candidate_count):
+        raise ValueError("AI research did not fill the one de-duplicated Cell screen")
     values = [number("research_hypothesis_count", len(hypotheses)), number("selected_count", len(selected))]
     out.write_text(json.dumps({"values": values}, sort_keys=True) + "\n")
 

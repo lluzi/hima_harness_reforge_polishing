@@ -145,7 +145,7 @@ outputs:
   - name: record_adoption
     path: flow/records/adoption.json
     reader: read-adoption
-    description: Fresh adoption stage evidence; reader verifies held raw artifacts.
+    description: Fresh evidence from the one shared synthesis screen, including per-Cell adoption and non-additive attribution to every contributing method; reader verifies held raw artifacts.
   - name: record_pnr_foundry
     path: flow/records/pnr-foundry.json
     reader: read-pnr-foundry
@@ -569,15 +569,18 @@ workshops:
       only research(candidates, context). Author a cross-route, data-dependent
       algorithm from the current design's explicit reg2reg path membership,
       incremental delay, Boolean function, occurrence, implementation route and
-      any retained synthesis/adoption feedback. Examine at least three competing
-      hypotheses. Each candidate supplies stable route, evidence, interface,
-      equivalence_digest and implementation_route aliases alongside the complete
-      source request. Fill min(MAX_CELLS, distinct Boolean functions), using at least
-      two hypotheses when selecting more than one Cell. Order selected best-first;
-      this is the generation ranking. Cell creation is
+      any retained synthesis/adoption feedback. Examine at least three collaborative
+      research lenses. Before the Workshop, equivalent proposals from the six methods
+      are folded into one candidate. Each candidate supplies stable route,
+      source_methods, method_rankings, evidence, interface, equivalence_digest and
+      implementation_route aliases alongside the complete source request. Fill
+      min(MAX_CELLS, unique candidates) and order them best-first; this is the one
+      common generation ranking. Cell creation is
       cheap, while the next pressured DC screen is the scarce experiment. Do not
-      embed candidate ids, reproduce a fixed ranking, claim adoption/PPA, or hide
-      a negative result. On a later algorithmRevision, change the algorithm in
+      rank methods as winners, create method-specific DC/APR arms, embed candidate
+      ids, reproduce a fixed ranking, claim adoption/PPA, or hide a negative result.
+      The adoption record attributes used Cells and instances back to every method
+      that contributed them. On a later algorithmRevision, change the algorithm in
       response to recorded evidence and preserve the prior CodeRecord.
     directory: research/ai-discovery
     entry: entry.py

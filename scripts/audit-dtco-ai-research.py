@@ -42,7 +42,8 @@ def check(manifest_path, output):
     assert 3 <= len(report["hypotheses"]) <= 12
     tree, _research = scaffold(code)
     literals = {node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)}
-    raws, available = {}, set()
+    raws, available, identities, unique = {}, set(), {}, set()
+    raw_count = 0
     for route, row in manifest["sources"].items():
         assert route in ROUTES
         raw = Path(row["raw"]).read_bytes()
@@ -52,10 +53,26 @@ def check(manifest_path, output):
         ids = {candidate["candidate_id"] for candidate in document["generation_requests"]}
         assert not ids.intersection(literals), "research code embeds current candidate identity"
         available.update((route, candidate) for candidate in ids)
+        for candidate in document["generation_requests"]:
+            if (candidate.get("implementation_plan") or {}).get("route") not in {
+                    "fusion", "cluster_compose", "boolean_synthesis"}:
+                continue
+            contract = candidate.get("generator_contract") or {}
+            reference = contract.get("equivalence_reference") or {}
+            key = (reference.get("digest"), tuple(reference.get("output_order") or ()),
+                   json.dumps(contract.get("target_library_profile") or {}, sort_keys=True, separators=(",", ":")))
+            if key[0]:
+                identities[(route, candidate["candidate_id"])] = key
+                unique.add(key)
+                raw_count += 1
         raws[route] = len(ids)
     selected = [(row["route"], row["candidate_id"]) for row in report["selected"]]
     assert len(selected) == len(set(selected)) and set(selected) <= available
-    assert 1 <= len(selected) <= manifest["maxCells"] <= 50
+    selected_keys = [identities[key] for key in selected]
+    assert len(selected_keys) == len(set(selected_keys)), "research selected an equivalent Cell twice"
+    assert len(selected) == min(manifest["maxCells"], len(unique)) <= 50
+    assert report["algorithm"]["candidatePoolCount"] == len(unique)
+    assert report["algorithm"]["rawCandidateCount"] == raw_count
     assert manifest_path.read_bytes() == original
     evidence = {
         "status": "passed",
@@ -66,6 +83,8 @@ def check(manifest_path, output):
         "algorithmSha256": sha(code),
         "researchSha256": sha(report_raw),
         "candidatePools": raws,
+        "rawCandidateCount": raw_count,
+        "uniqueCandidateCount": len(unique),
         "hypothesisCount": len(report["hypotheses"]),
         "selectedCount": len(selected),
     }

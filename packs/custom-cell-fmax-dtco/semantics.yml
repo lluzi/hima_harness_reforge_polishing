@@ -32,6 +32,9 @@ values:
     unit: count
     description: "adopted instance count: independently read evidence; missing facts
       stay unknown."
+  adopted_candidate_count:
+    unit: count
+    description: Number of distinct generated candidate Cells instantiated by the one pressured custom synthesis screen.
   pnr_completed:
     unit: count
     description: "pnr completed: independently read evidence; missing facts stay unknown."
@@ -118,4 +121,4 @@ values:
       executed Workshop program.
   research_hypothesis_count:
     unit: count
-    description: Distinct evidence-linked hypotheses evaluated by the AI-authored discovery algorithm.
+    description: Distinct evidence-linked research lenses used to rank the one collaborative candidate set.

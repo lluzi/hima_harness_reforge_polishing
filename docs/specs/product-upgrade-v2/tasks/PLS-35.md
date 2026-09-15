@@ -41,7 +41,7 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 4. 由 HimaGuide完成 Preparation，所有必要条件 ready后生成 proposal并一次确认创建一个 Campaign/Run。
 5. Campaign Agent执行；另建 Side Talk完成普通Coding/对话并返回owner；验证pause/cancel/handoff和关闭pane不改变事实。
 6. 运行完整定制 Cell方法。Matched A/B除新Cell/library content外，RTL、约束、工具、核数、流程和设置一致。
-   本次研究按 AI 的 best-first 排名生成 50 个不同布尔类，随后只用一对 50% uncertainty DC筛选采用；采用为零时停止，采用为正才进入PNR。
+   本次研究把多种方法给出的等价候选合并，按 AI 的统一 best-first 排名生成最多 50 个不同布尔/接口类并装入一个库，随后只用一对 50% uncertainty DC筛选采用；报告实际采用的 Cell、实例数及其来源方法。采用为零时停止，采用为正才进入一对PNR。
 7. 验证route成功、最终database含新Cell有效实例、timing读取同一database、自定义臂Fmax更高；其他PPA如实报告。
 8. 归档算法、代码、输入身份、图、Jobs、知识引用、database/report身份、结果和debug现场；默认不上传客户内容。
 9. 完成受影响L0–L3、知识/模型与Site L4、单次L5；通过/失败/未跑分开。
@@ -55,7 +55,7 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 - DC probe、mining 和 matched synthesis 使用显式 reg2reg path group；I/O violation 不能代表 Fmax pressure。
 - 一个Campaign只有一个Run和一个owner，Side Talk不阻塞也不夺权。
 - 完整参考图、实际状态、代码、知识、evidence和report可达。
-- 新Cell是A/B唯一变量，最终route database实际采用它，结果Fmax更高。
+- 新Cell是A/B唯一变量；一次公共 DC→APR 验证中的最终route database实际采用它，结果Fmax更高。不得为每种挖掘方法复制验证链。
 - route/constraint/database/report身份通过 `comparison_valid`；setup、hold、route DRC、connectivity和cell-only checker结果单独披露，不把对foundry臂同样出现的诊断误报成生成Cell失效，也不宣称physical signoff clean。
 - 团队在交付前修复所有主路径/低级问题；只允许定义内的少量trial缺陷。
 

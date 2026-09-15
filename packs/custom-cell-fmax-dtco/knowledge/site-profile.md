@@ -33,7 +33,7 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `CCFMAX_POWER_TEMPLATE_BASE_CELL` | one-line text | Baseline cell used by the prediction adapter. |
 | `GENERATED_LIBRARY_NAME`, `GENERATED_LIB_CELL_PATTERN` | one-line text | Generated library identity and exact master pattern used for visibility/adoption checks. |
 | `MAX_CELLS` | integer `1..50` | Cheap generation breadth before one pressured DC adoption screen. |
-| `MAX_ROUTE_CANDIDATES` | integer `1..40` | Per-route evidence-pool bound before AI cross-route research. |
+| `MAX_ROUTE_CANDIDATES` | integer `1..40` | Per-method raw evidence bound; equivalent proposals are folded before AI research and never create separate DC/APR arms. |
 
 ## Tool and adapter inputs
 

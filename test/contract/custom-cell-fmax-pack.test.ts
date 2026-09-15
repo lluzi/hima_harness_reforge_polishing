@@ -224,7 +224,7 @@ mods=m.parse_modules(pathlib.Path(sys.argv[2]).read_text());print(json.dumps(m.p
   }
   const directory = path.join(fixture.workspace, 'research/ai-discovery/.executions/execution-test');
   await mkdir(directory, { recursive: true });
-  const entry = `from pathlib import Path\nimport sys\nFLOW=Path(sys.argv[1]).resolve()/"flow"\nsys.path.insert(0,str(FLOW))\nfrom ai_research_runner import run\ndef research(candidates,context):\n e=lambda r:r.get("evidence") or {}\n ranked=sorted(candidates,key=lambda r:(-(e(r).get("reg2reg_path_hits") or 0),-(e(r).get("non_overlapping_support") or 0),r["candidate_id"]))\n hs=[{"name":"path","question":"actual reg2reg coverage?","signals":["reg2reg_path_hits"]},{"name":"reuse","question":"mapped reuse?","signals":["non_overlapping_support"]},{"name":"fit","question":"mapper fit?","signals":["implementation_route"]}]\n seen=set(); selected=[]\n for row in ranked:\n  d=row.get("equivalence_digest")\n  if d in seen: continue\n  seen.add(d); selected.append({"route":row["route"],"candidate_id":row["candidate_id"],"hypothesis":"path" if e(row).get("reg2reg_path_hits") else "reuse","rationale":"current evidence rank"})\n  if len(selected)>=context["max_cells"]: break\n return {"hypotheses":hs,"selected":selected,"stop_reason":"finite budget filled for one DC screen"}\nif __name__=="__main__": run(research,sys.argv)\n`;
+  const entry = `from pathlib import Path\nimport sys\nFLOW=Path(sys.argv[1]).resolve()/"flow"\nsys.path.insert(0,str(FLOW))\nfrom ai_research_runner import run\ndef research(candidates,context):\n assert len(candidates)==1 and len(candidates[0]["source_methods"])==6\n assert context["raw_candidate_count"]==6 and context["candidate_pool_count"]==1\n e=lambda r:r.get("evidence") or {}\n ranked=sorted(candidates,key=lambda r:(-(e(r).get("reg2reg_path_hits") or 0),-(e(r).get("non_overlapping_support") or 0),r["candidate_id"]))\n hs=[{"name":"path","question":"actual reg2reg coverage?","signals":["reg2reg_path_hits"]},{"name":"reuse","question":"mapped reuse?","signals":["non_overlapping_support"]},{"name":"fit","question":"mapper fit?","signals":["implementation_route"]}]\n selected=[]\n for row in ranked:\n  selected.append({"route":row["route"],"candidate_id":row["candidate_id"],"hypothesis":"path" if e(row).get("reg2reg_path_hits") else "reuse","rationale":"current evidence rank"})\n return {"hypotheses":hs,"selected":selected,"stop_reason":"one unified Cell screen is filled"}\nif __name__=="__main__": run(research,sys.argv)\n`;
   const entryPath = path.join(directory, 'entry.py'); await writeFile(entryPath, entry);
   const executed = spawnSync('/usr/bin/python3', [entryPath, fixture.workspace, '0'], { encoding: 'utf8' });
   assert.equal(executed.status, 0, executed.stderr);
@@ -233,11 +233,45 @@ mods=m.parse_modules(pathlib.Path(sys.argv[2]).read_text());print(json.dumps(m.p
   assert.deepEqual(report.target, { design_top: 'held_out_datapath', path_group: 'reg2reg',
     reg2reg_wns_ns: -0.1, reg2reg_path_count: 1, timing_report_sha256: sha256(timing) });
   assert.equal(report.hypotheses.length, 3); assert.equal(report.selected.length, 1);
+  assert.equal(report.algorithm.rawCandidateCount, 6); assert.equal(report.algorithm.candidatePoolCount, 1);
   assert.equal(report.algorithm.entrySha256, sha256(entry));
   const read = fixture.read(reportPath, 'research-selection');
   assert.equal(read.run.status, 0, read.run.stderr);
   assert.deepEqual(JSON.parse(await readFile(read.out, 'utf8')).values.map((value: any) => value.type),
     ['research_hypothesis_count', 'selected_count']);
+  const merged = fixture.run('merge'); assert.equal(merged.status, 0, merged.stderr);
+  const mergedReport = JSON.parse(await readFile(path.join(flow, 'mining/merged.json'), 'utf8'));
+  assert.equal(mergedReport.search_bound.validation_flow_count, 1);
+  assert.equal(mergedReport.candidate_set_accounting.source_candidate_count, 6);
+  assert.equal(mergedReport.candidate_set_accounting.unique_buildable_pool_count, 1);
+  assert.equal(mergedReport.generation_requests.length, 1);
+  assert.equal(mergedReport.generation_requests[0].discovery_evidence.strategy_ids.length, 6,
+    'all methods keep credit on the one Cell sent to the common validation flow');
+});
+
+test('one synthesis adoption result attributes used Cells to every contributing mining method', async () => {
+  const moduleDir = path.join(packDir, 'flow/domain');
+  const code = `import json,sys\nsys.path.insert(0,sys.argv[1])\nfrom _cell_adoption_projection import project_attributed_texts\nd=json.load(sys.stdin)\nprint(json.dumps(project_attributed_texts(d["netlist"],d["liberty"],d["patterns"]),sort_keys=True))`;
+  const netlist = 'module top;\n  XS_A_Z U0();\n  XS_A_Z U1();\n  FOUNDRY_X U2();\nendmodule\n';
+  const liberty = 'library (generated) { cell (XS_A_Z) { } cell (XS_B_Z) { } }\n';
+  const request = (id: string, methods: string[]) => ({ candidate_id: id,
+    generator_contract: { interface: { inputs: [], outputs: [{ name: 'Z', liberty_function: '1' }] } },
+    discovery_evidence: { strategy_ids: methods,
+      strategy_rankings: Object.fromEntries(methods.map((method, index) => [method,
+        { candidate_id: `${id}_${method}`, local_rank: index + 1, search_objective: method }])) } });
+  const patterns = { generation_requests: [request('CAND_A', ['timing_criticality', 'structure_frequency']),
+    request('CAND_B', ['functional_diversity'])] };
+  const ran = spawnSync('/usr/bin/python3', ['-c', code, moduleDir],
+    { input: JSON.stringify({ netlist, liberty, patterns }), encoding: 'utf8' });
+  assert.equal(ran.status, 0, ran.stderr);
+  const result = JSON.parse(ran.stdout);
+  assert.equal(result.adopted_candidate_count, 1);
+  assert.equal(result.adopted_instance_count, 2);
+  assert.equal(result.candidate_rows[0].adopted_instance_count, 2);
+  assert.deepEqual(result.method_rows.map((row: any) => [row.method, row.adopted_candidate_count, row.adopted_instance_count]), [
+    ['structure_frequency', 1, 2], ['timing_criticality', 1, 2], ['functional_diversity', 0, 0],
+  ]);
+  assert.match(result.attribution_policy, /non-additive/);
 });
 
 test('Innovus 23.14 connectivity summary grammar is read as a physical violation count', async (t) => {

@@ -68,20 +68,45 @@ def _prior_feedback(workspace):
         if record.get("schema") != "custom-cell-fmax-stage/1" or record.get("stage") != stage:
             continue
         facts = record.get("facts") or {}
+        compact = {key: facts.get(key) for key in (
+            "adopted_instance_count", "adopted_candidate_count",
+            "generated_fmax_mhz", "foundry_fmax_mhz",
+            "fmax_delta_mhz", "fmax_improved", "full_constraint_failures",
+            "reg2reg_wns_ns", "rejected_reason", "tool_failure_reason",
+        ) if key in facts}
+        if stage == "adoption":
+            compact["method_rows"] = facts.get("method_rows") or []
+            compact["adopted_candidates"] = [
+                row for row in (facts.get("candidate_rows") or [])
+                if isinstance(row, dict) and int(row.get("adopted_instance_count") or 0) > 0
+            ]
         rows.append({
             "stage": stage, "sha256": _sha(raw),
-            "facts": {key: facts.get(key) for key in (
-                "adopted_instance_count", "generated_fmax_mhz", "foundry_fmax_mhz",
-                "fmax_delta_mhz", "fmax_improved", "full_constraint_failures",
-                "reg2reg_wns_ns", "rejected_reason", "tool_failure_reason",
-            ) if key in facts},
+            "facts": compact,
         })
     return rows
 
 
+def _candidate_key(request):
+    contract = request.get("generator_contract") or {}
+    reference = contract.get("equivalence_reference") or {}
+    profile = contract.get("target_library_profile") or {}
+    return (reference.get("digest"), tuple(reference.get("output_order") or ()),
+            json.dumps(profile, sort_keys=True, separators=(",", ":")))
+
+
+def _representative_rank(item):
+    evidence = item.get("discovery_evidence") or {}
+    return (-int(evidence.get("reg2reg_path_hits") or 0),
+            -float(evidence.get("reg2reg_increment_ns") or 0.0),
+            -int(evidence.get("non_overlapping_support") or 0),
+            ROUTES.index(item["route"]), item["candidate_id"])
+
+
 def _sources(workspace):
     flow = workspace / "flow"
-    candidates, sources, by_identity = [], {}, {}
+    sources, grouped = {}, {}
+    raw_count = 0
     for route in ROUTES:
         raw_path = flow / "mining" / route / "raw.json"
         record_path = flow / "records" / ("mine-" + route + ".json")
@@ -99,7 +124,7 @@ def _sources(workspace):
         requests = raw.get("generation_requests")
         if not isinstance(requests, list):
             raise ValueError("%s generation_requests is not an array" % route)
-        for request in requests:
+        for local_rank, request in enumerate(requests, 1):
             candidate_id = request.get("candidate_id") if isinstance(request, dict) else None
             plan = (request.get("implementation_plan") or {}) if isinstance(request, dict) else {}
             digest = (((request.get("generator_contract") or {}).get("equivalence_reference") or {}).get("digest")
@@ -114,9 +139,30 @@ def _sources(workspace):
             item["interface"] = json.loads(json.dumps(contract.get("interface") or {}))
             item["equivalence_digest"] = digest
             item["implementation_route"] = plan.get("route")
-            candidates.append(item)
-            by_identity[(route, candidate_id)] = item
-    return candidates, sources, by_identity
+            key = _candidate_key(item)
+            if not key[0]:
+                continue
+            raw_count += 1
+            group = grouped.setdefault(key, {"representatives": [], "members": []})
+            group["representatives"].append(item)
+            group["members"].append({"method": route, "candidate_id": candidate_id,
+                                     "local_rank": local_rank})
+    candidates, by_identity = [], {}
+    for group in grouped.values():
+        representative = min(group["representatives"], key=_representative_rank)
+        methods = sorted({row["method"] for row in group["members"]}, key=ROUTES.index)
+        rankings = {}
+        for row in group["members"]:
+            current = rankings.get(row["method"])
+            if current is None or row["local_rank"] < current["local_rank"]:
+                rankings[row["method"]] = {"candidate_id": row["candidate_id"],
+                                            "local_rank": row["local_rank"]}
+        representative["source_methods"] = methods
+        representative["method_rankings"] = rankings
+        candidates.append(representative)
+        by_identity[(representative["route"], representative["candidate_id"])] = representative
+    candidates.sort(key=_representative_rank)
+    return candidates, sources, by_identity, raw_count
 
 
 def _validate(proposal, candidates, by_identity, budget):
@@ -137,13 +183,10 @@ def _validate(proposal, candidates, by_identity, budget):
         names.add(item["name"])
         if not isinstance(item["signals"], list) or not item["signals"] or any(not isinstance(value, str) or not value.strip() for value in item["signals"]):
             raise ValueError("each hypothesis must name at least one evidence signal")
-    distinct_pool = {((row.get("generator_contract") or {}).get("equivalence_reference") or {}).get("digest")
-                     for row in candidates}
-    distinct_pool.discard(None)
-    expected_count = min(budget, len(distinct_pool))
+    expected_count = min(budget, len(candidates))
     if not isinstance(selected, list) or len(selected) != expected_count or expected_count < 1:
-        raise ValueError("research selection must fill min(MAX_CELLS, distinct Boolean pool)")
-    seen, digests = set(), set()
+        raise ValueError("research selection must fill min(MAX_CELLS, unified unique candidate pool)")
+    seen = set()
     for item in selected:
         if not isinstance(item, dict) or set(item) != {"route", "candidate_id", "hypothesis", "rationale"}:
             raise ValueError("each selection must contain route, candidate_id, hypothesis and rationale")
@@ -152,14 +195,7 @@ def _validate(proposal, candidates, by_identity, budget):
             raise ValueError("selection is not a unique source candidate tied to a stated hypothesis")
         if not isinstance(item["rationale"], str) or not item["rationale"].strip():
             raise ValueError("each selection needs a rationale")
-        digest = ((by_identity[key]["generator_contract"].get("equivalence_reference") or {}).get("digest"))
-        if digest in digests:
-            raise ValueError("AI research selected duplicate Boolean equivalence classes")
         seen.add(key)
-        digests.add(digest)
-    used_hypotheses = {item["hypothesis"] for item in selected}
-    if len(selected) > 1 and len(used_hypotheses) < 2:
-        raise ValueError("a multi-Cell screen must represent at least two competing hypotheses")
     if not isinstance(proposal["stop_reason"], str) or not proposal["stop_reason"].strip():
         raise ValueError("research() must state why this finite selection is enough for the next screen")
     return hypotheses, selected
@@ -177,8 +213,9 @@ def run(research, argv):
     context = _probe_context(workspace, revision)
     context["max_cells"] = budget
     context["prior_feedback"] = _prior_feedback(workspace)
-    candidates, sources, by_identity = _sources(workspace)
+    candidates, sources, by_identity, raw_count = _sources(workspace)
     context["candidate_pool_count"] = len(candidates)
+    context["raw_candidate_count"] = raw_count
     proposal = research(candidates, context)
     hypotheses, selected = _validate(proposal, candidates, by_identity, budget)
     entry = Path(argv[0]).resolve()
@@ -195,13 +232,15 @@ def run(research, argv):
         "schema": SCHEMA,
         "target": {key: context[key] for key in ("design_top", "path_group", "reg2reg_wns_ns", "reg2reg_path_count", "timing_report_sha256")},
         "algorithm": {"revision": str(revision), "entryPath": str(entry.relative_to(workspace)),
-                      "entrySha256": entry_sha, "candidatePoolCount": len(candidates)},
+                      "entrySha256": entry_sha, "candidatePoolCount": len(candidates),
+                      "rawCandidateCount": raw_count},
         "sources": sources,
         "priorFeedback": context["prior_feedback"],
         "hypotheses": hypotheses,
         "selected": selected,
         "stopReason": proposal["stop_reason"],
-        "limitations": ["Selection is a research hypothesis, not mapper adoption or PPA evidence.",
+        "limitations": ["The ordered Cell set combines all method evidence; it is not a method competition.",
+                        "Candidate ranking is a research hypothesis, not mapper adoption or PPA evidence.",
                         "Only the downstream pressured synthesis and matched physical comparison can establish value."],
     }
     output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")

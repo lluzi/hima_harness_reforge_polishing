@@ -5,9 +5,13 @@ single declared AI research Workshop and grow/revise surfaces for evidence-drive
 records each added investigation's affected nodes, end condition, and return point.
 Fabric retains dependency, Permit, job, evidence, and Judge enforcement.
 
-The six parallel mining branches measure a broad, source-linked candidate substrate and converge
-before `research-candidates`. The one model-authored program sees all routes and prior feedback.
-Its output is read and hash-checked before merge. The adoption Judge stops the Campaign before P&R
+The six mining branches are cheap source-linked method views, not six evaluation flows. They converge
+before `research-candidates`, where Boolean/interface-equivalent proposals are already represented once
+with all source methods and rankings attached. The one model-authored program sees that unified pool and
+prior feedback, then orders at most 50 Cells for one generated library, one pressured DC pair and one P&R
+pair. Its output is read and hash-checked before merge. Adoption is attributed back to source methods;
+those non-additive method totals guide later research rather than declare an algorithm winner. The
+adoption Judge stops the Campaign before P&R
 when the pressured custom synthesis does not instantiate a generated Cell.
 
 Site bindings own paths, environments, capacity, and tool wrappers. This Pack recommends

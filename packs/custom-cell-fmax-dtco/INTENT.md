@@ -7,8 +7,10 @@ precomputed candidate.
 
 ## Evidence boundary
 
-Candidate routes consume the current probe netlist, explicit reg2reg timing report, and Site library.
-Selection programs record the source candidate identifiers they choose. A result is
+Candidate methods consume the current probe netlist, explicit reg2reg timing report, and Site library.
+Equivalent proposals are folded into one source-attributed pool. The AI orders up to 50 unique Cells;
+all are built into one library and pass through one common DC-to-APR validation flow. Adoption records
+show which Cells were used and credit every contributing method without treating methods as competitors. A result is
 credible only after a generated library is visible, used by more than zero instances,
 and reaches a completed final route database that is the direct source of timing.
 

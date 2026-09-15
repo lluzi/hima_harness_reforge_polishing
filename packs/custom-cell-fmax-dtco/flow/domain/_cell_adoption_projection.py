@@ -11,6 +11,8 @@ from __future__ import annotations
 import hashlib
 import re
 
+from _generation_projection import expected_generation_jobs
+
 
 class AdoptionProjectionError(ValueError):
     """The captured netlist or Liberty cannot support an adoption projection."""
@@ -170,3 +172,69 @@ def project_texts(netlist_text, liberty_text):
         ],
         "generated_masters_not_instantiated": sorted(generated - set(references)),
     }
+
+
+def project_attributed_texts(netlist_text, liberty_text, patterns):
+    """Attribute one shared synthesis screen back to every contributing method.
+
+    Shared candidates credit each method that proposed the same Boolean/interface
+    Cell. Method totals are therefore explanatory and intentionally non-additive.
+    """
+    projection = project_texts(netlist_text, liberty_text)
+    master_hits = {row["master"]: row["instance_count"] for row in projection["master_rows"]}
+    requests = patterns.get("generation_requests") if isinstance(patterns, dict) else None
+    if not isinstance(requests, list):
+        raise AdoptionProjectionError("merged patterns have no generation_requests array")
+    jobs = expected_generation_jobs(patterns)
+    masters_by_candidate = {}
+    for job in jobs:
+        masters_by_candidate.setdefault(job["candidate_id"], []).append(job["cell_name"])
+    candidate_rows = []
+    method_totals = {}
+    for order, request in enumerate(requests, 1):
+        candidate_id = request.get("candidate_id") if isinstance(request, dict) else None
+        if candidate_id not in masters_by_candidate:
+            raise AdoptionProjectionError("merged candidate is absent from generation jobs")
+        evidence = request.get("discovery_evidence") or {}
+        methods = evidence.get("strategy_ids")
+        rankings = evidence.get("strategy_rankings")
+        if (not isinstance(methods, list) or not methods
+                or len(methods) != len(set(methods))
+                or any(not isinstance(method, str) or not method for method in methods)
+                or not isinstance(rankings, dict) or set(rankings) != set(methods)):
+            raise AdoptionProjectionError("candidate has no exact contributing-method provenance")
+        offered = sorted(masters_by_candidate[candidate_id])
+        adopted = [{"master": master, "instance_count": master_hits[master]}
+                   for master in offered if master in master_hits]
+        instances = sum(row["instance_count"] for row in adopted)
+        row = {
+            "generation_rank": order,
+            "candidate_id": candidate_id,
+            "source_methods": methods,
+            "method_rankings": rankings,
+            "offered_masters": offered,
+            "adopted_masters": adopted,
+            "adopted_instance_count": instances,
+        }
+        candidate_rows.append(row)
+        for method in methods:
+            total = method_totals.setdefault(method, {
+                "method": method, "offered_candidate_count": 0,
+                "adopted_candidate_count": 0, "adopted_master_count": 0,
+                "adopted_instance_count": 0, "exclusive_adopted_candidate_count": 0,
+                "shared_adopted_candidate_count": 0,
+            })
+            total["offered_candidate_count"] += 1
+            if adopted:
+                total["adopted_candidate_count"] += 1
+                total["adopted_master_count"] += len(adopted)
+                total["adopted_instance_count"] += instances
+                key = "exclusive_adopted_candidate_count" if len(methods) == 1 else "shared_adopted_candidate_count"
+                total[key] += 1
+    projection.update({
+        "adopted_candidate_count": sum(1 for row in candidate_rows if row["adopted_instance_count"] > 0),
+        "candidate_rows": candidate_rows,
+        "method_rows": sorted(method_totals.values(), key=lambda row: (-row["adopted_instance_count"], row["method"])),
+        "attribution_policy": "shared candidates credit every source method; method rows are non-additive",
+    })
+    return projection

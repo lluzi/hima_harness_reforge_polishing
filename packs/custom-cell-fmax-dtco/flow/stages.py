@@ -27,7 +27,7 @@ DOMAIN = HERE / "domain"
 sys.path.insert(0, str(DOMAIN))
 
 from cell_need_miner.generator_contract import validate_generation_request  # noqa: E402
-from _cell_adoption_projection import project_texts  # noqa: E402
+from _cell_adoption_projection import project_attributed_texts  # noqa: E402
 from _generation_projection import (  # noqa: E402
     expected_generation_jobs,
     spice_netlist_is_structural,
@@ -537,6 +537,18 @@ def candidate_rank(request):
             request.get("candidate_id") or "")
 
 
+def method_rankings(rows):
+    result = {}
+    for row in rows:
+        current = result.get(row["route"])
+        if current is None or row["rank"] < current["local_rank"]:
+            result[row["route"]] = {
+                "candidate_id": row["candidateId"], "local_rank": row["rank"],
+                "search_objective": STRATEGIES[row["route"]]["objective"],
+            }
+    return result
+
+
 def stage_merge(ctx):
     budget = ctx.binding("MAX_CELLS")
     if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 50:
@@ -558,6 +570,7 @@ def stage_merge(ctx):
         research_ids[row["route"]].append(row["candidate_id"])
     ctx.inputs.append(file_ref(research_path, ctx.workspace, "ai_research_selection", "agent-research"))
     reports = {}
+    all_reports = {}
     route_provenance = {}
     missing = []
     for route in ROUTES:
@@ -602,6 +615,7 @@ def stage_merge(ctx):
             if (request.get("implementation_plan") or {}).get("route") not in BUILDABLE_ROUTES:
                 raise Rejected("%s selected an unbuildable candidate" % route)
         reports[route] = chosen
+        all_reports[route] = all_requests
         route_provenance[route] = {
             "rawSha256": sha_file(raw_path), "selectionSha256": sha_file(selected_path),
             "codeSha256": selected["codeSha256"], "selectedCandidateIds": ids,
@@ -620,7 +634,9 @@ def stage_merge(ctx):
     grouped = {}
     members = {}
     for route in ROUTES:
-        for rank, request in enumerate(reports[route], 1):
+        for rank, request in enumerate(all_reports[route], 1):
+            if (request.get("implementation_plan") or {}).get("route") not in BUILDABLE_ROUTES:
+                continue
             key = candidate_key(request)
             if not key[0]:
                 raise Rejected("candidate has no equivalence digest")
@@ -630,25 +646,33 @@ def stage_merge(ctx):
                 grouped[key] = json.loads(json.dumps(request))
     for key, winner in grouped.items():
         evidence = winner.setdefault("discovery_evidence", {})
-        evidence["strategy_ids"] = sorted({row["route"] for row in members[key]})
-        evidence["strategy_rankings"] = {
-            row["route"]: {"candidate_id": row["candidateId"], "local_rank": row["rank"],
-                           "search_objective": STRATEGIES[row["route"]]["objective"]}
-            for row in members[key]
-        }
-    queues = {route: sorted((row for key, row in grouped.items()
-                             if route in {m["route"] for m in members[key]}), key=candidate_rank)
-              for route in ROUTES}
+        evidence["strategy_ids"] = sorted({row["route"] for row in members[key]}, key=ROUTES.index)
+        evidence["strategy_rankings"] = method_rankings(members[key])
+    identities = {
+        (route, request.get("candidate_id")): request
+        for route in ROUTES for request in all_reports[route]
+        if isinstance(request, dict)
+    }
     selected = []
     seen = set()
-    while len(selected) < budget and any(queues.values()):
-        for route in ROUTES:
-            while queues[route] and candidate_key(queues[route][0]) in seen:
-                queues[route].pop(0)
-            if queues[route] and len(selected) < budget:
-                row = queues[route].pop(0)
-                selected.append(row)
-                seen.add(candidate_key(row))
+    for choice in research["selected"]:
+        identity = (choice["route"], choice["candidate_id"])
+        request = identities.get(identity)
+        if request is None:
+            raise Rejected("AI research selected a candidate outside the measured method pools")
+        key = candidate_key(request)
+        if key in seen:
+            raise Rejected("AI research selected the same Boolean/interface candidate twice")
+        seen.add(key)
+        row = json.loads(json.dumps(request))
+        evidence = row.setdefault("discovery_evidence", {})
+        evidence["strategy_ids"] = sorted({member["route"] for member in members[key]}, key=ROUTES.index)
+        evidence["strategy_rankings"] = method_rankings(members[key])
+        evidence["research_hypothesis"] = choice["hypothesis"]
+        evidence["research_rationale"] = choice["rationale"]
+        selected.append(row)
+    if len(selected) != min(budget, len(grouped)):
+        raise Rejected("AI research did not fill the one unified Cell screen")
     selected_ids = [row.get("candidate_id") for row in selected]
     if len(selected_ids) != len(set(selected_ids)):
         raise Rejected("distinct Boolean equivalence classes collide on candidate_id")
@@ -659,18 +683,24 @@ def stage_merge(ctx):
                            "equivalence_digest": key[0]} for row in rows if row["candidateId"] != winner)
     merged = {
         "report_schema": "xspace_cell-pattern-search/v2",
-        "strategy_id": "parallel_strategy_union", "source_graph": "mapped",
+        "strategy_id": "collaborative_method_union", "source_graph": "mapped",
         "search_bound": {"strategy_count": 6, "strategies": list(ROUTES), "global_cell_budget": budget,
-                         "selection_authority": "ai-authored-cross-route-research"},
+                         "selection_authority": "ai-authored-unified-cell-ranking",
+                         "validation_flow_count": 1},
         "generation_requests": selected,
         "candidate_set_accounting": {
             "selected_candidate_count": len(selected), "unique_buildable_pool_count": len(grouped),
+            "source_candidate_count": sum(len(rows) for rows in all_reports.values()),
             "equivalent_duplicate_count": len(duplicates),
             "route_selected_counts": {route: len(reports[route]) for route in ROUTES},
+            "method_contribution_counts": {
+                route: sum(1 for key in seen if route in {row["route"] for row in members[key]})
+                for route in ROUTES
+            },
         },
         "deduplication": duplicates, "provenance": route_provenance,
-        "limitations": ["The AI-authored cross-route algorithm is bounded and hash-bound to six measured candidate pools.",
-                        "No adoption or PPA benefit is implied by selection."],
+        "limitations": ["All methods contribute evidence to one de-duplicated Cell set; method rows are not separate EDA trials.",
+                        "No adoption or PPA benefit is implied by the AI-authored generation order."],
     }
     held = ctx.run_dir / "merged.json"
     atomic_json(held, merged)
@@ -1006,13 +1036,16 @@ def stage_adoption(ctx):
         raise Rejected("custom synthesis did not prove the generated library visible")
     netlist = artifact(synth, ctx.workspace, "synthesis_netlist")
     liberty = artifact(prior(ctx, "characterize"), ctx.workspace, "generated_liberty")
+    patterns = artifact(prior(ctx, "merge"), ctx.workspace, "merged_patterns")
     synth_log = execution_log(synth, ctx.workspace, "custom-dc_log")
-    projection = project_texts(netlist.read_text(errors="replace"), liberty.read_text(errors="replace"))
+    projection = project_attributed_texts(netlist.read_text(errors="replace"), liberty.read_text(errors="replace"),
+                                          read_json(patterns))
     evidence = ctx.run_dir / "adoption.json"
     atomic_json(evidence, projection)
     ctx.add_artifact(evidence, "adoption_projection", "derived-from-netlist-master-relation")
     ctx.inputs.extend([file_ref(netlist, ctx.workspace, "custom_netlist", "design-compiler-output"),
                        file_ref(liberty, ctx.workspace, "offered_library", "learned-model-prediction"),
+                       file_ref(patterns, ctx.workspace, "merged_patterns", "algorithm-output"),
                        file_ref(synth_log, ctx.workspace, "custom_synth_log", "tool-log")])
     ctx.facts.update({"library_visible": visible, **projection})
 

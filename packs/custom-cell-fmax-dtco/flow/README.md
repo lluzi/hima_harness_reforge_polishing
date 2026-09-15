@@ -63,9 +63,11 @@ Missing inputs are rejected. `synthetic-fixture` is exclusively for labelled loc
 The paired physical arms use the current `periodNs`, explicitly shared and rechecked. DC applies
 50% uncertainty and writes a route SDC with 25% uncertainty. The foundry arm freezes the expanded
 core box and IO-pin plan for exact reuse by the generated arm. `MAX_CELLS` is a Site-declared 1..50
-generation budget and `MAX_ROUTE_CANDIDATES` is at most 40. Six mechanical routes build the evidence
-pool; one AI-authored cross-route algorithm spends the final build allocation. All timeouts,
-eight-core CAD setting and Site cap remain explicit.
+generation budget and `MAX_ROUTE_CANDIDATES` is at most 40 per method. Six mechanical methods build
+source evidence that is folded into one Boolean/interface-unique pool before the AI sees it. One
+AI-authored ranking fills the common build allocation; all selected Cells share one generated library,
+one DC pair and one APR pair. Adoption is mapped back to every source method. All timeouts, eight-core
+CAD setting and the Site's five-job cap remain explicit.
 
 Current manifests are convenient pointers. Immutable attempt directories retain logs, raw files,
 input snapshots and records for audit or a failed-stage retry. The root graph's read/Judge after the

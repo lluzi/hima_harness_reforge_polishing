@@ -11,9 +11,10 @@ from ai_research_runner import run  # noqa: E402
 def research(candidates, context):
     """Return hypotheses and source-linked selections derived from this Campaign.
 
-    candidates is a list of complete, buildable source requests plus stable research
-    aliases: ``route``, ``evidence``, ``interface``, ``equivalence_digest`` and
-    ``implementation_route``. The original ``discovery_evidence`` and
+    candidates is the Boolean/interface-de-duplicated pool of complete, buildable
+    source requests. Each candidate carries stable ``route``, ``source_methods``,
+    ``method_rankings``, ``evidence``, ``interface``, ``equivalence_digest`` and
+    ``implementation_route`` aliases. The original ``discovery_evidence`` and
     ``generator_contract`` remain available for deeper inspection. context contains
     the AES-independent design identity, explicit
     reg2reg pressure, the build budget and any retained synthesis/adoption feedback.
@@ -23,9 +24,10 @@ def research(candidates, context):
        "selected": [{"route": str, "candidate_id": str,
                      "hypothesis": str, "rationale": str}, ...],
        "stop_reason": str}
-    Fill min(context["max_cells"], distinct Boolean functions). ``selected`` is
-    ordered best-first and is the generation priority. If more than one Cell is
-    selected, use at least two of the competing hypotheses.
+    Fill min(context["max_cells"], len(candidates)). ``selected`` is ordered
+    best-first and is the generation priority for one common library and one
+    DC-to-APR validation flow. Hypotheses are collaborative research lenses; do
+    not eliminate a method or create a separate validation arm for one.
     """
     raise NotImplementedError("Author a data-dependent discovery algorithm here")
 

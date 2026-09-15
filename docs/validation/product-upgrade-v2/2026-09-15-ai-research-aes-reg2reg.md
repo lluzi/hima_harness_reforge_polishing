@@ -16,18 +16,21 @@ artifacts remain on the Site and are not committed.
 
 ## Method upgrade
 
-- Six existing miners remain parallel mechanical evidence generators. Timing routes now accept only
+- Six existing miners remain mechanical evidence methods. Timing routes now accept only
   instances mapped through the retained DC `reg2reg` full-path report; hierarchical instance paths
   are resolved through the synthesized module hierarchy rather than guessed from repeated leaf names.
-- One existing Workshop component, `research-candidates`, replaces six narrow model selectors. The
-  Campaign Agent authors one cross-route `research(candidates, context)` algorithm after reading the
+- One existing Workshop component, `research-candidates`, replaces six narrow model selectors. Equivalent
+  Boolean/interface candidates are represented once with every source method and local ranking attached.
+  The Campaign Agent authors one unified `research(candidates, context)` ranking after reading the
   current probe, compact route views, exact source identities, Pack knowledge and prior feedback.
 - `research-template.py` is 1,047 bytes. Fixed I/O, provenance, bounded hypotheses and exact route
   projections live in `ai_research_runner.py`, so a second-tier model only writes the research
   function. One Campaign generation therefore spends one model moment for discovery.
-- `MAX_ROUTE_CANDIDATES` is bounded to `1..40`; `MAX_CELLS` is bounded to `1..50`. Candidate and Cell
-  production can be broad, while one pressured DC pair is the scarce adoption screen. PNR remains
-  behind the existing adoption Judge.
+- `MAX_ROUTE_CANDIDATES` is bounded to `1..40` per method; `MAX_CELLS` is bounded to `1..50`. The measured
+  six-method raw pool had 186 rows but only 53 unique Boolean candidates. The revised Workshop sees the
+  53 unique candidates, orders up to 50 into one generated library, and uses one pressured DC pair as the
+  scarce adoption screen. PNR remains one pair behind the existing adoption Judge. The Site job cap for
+  this L5 profile is five; it does not multiply the business validation flow.
 - The foundry arm now saves Innovus's native floorplan. The generated arm loads that file and the
   same IO plan. This avoids recomputing a core box that Innovus can snap to a different origin.
 
@@ -124,17 +127,20 @@ adoption Judge stopped the Run before PNR; the live check then preserved and can
 Run. This is a valid negative result and does not supersede the direct positive pilot.
 
 The next runner revision supplies those stable compact aliases alongside the complete source request.
-It also requires the program to fill `min(MAX_CELLS, distinct Boolean functions)` and, for a
-multi-Cell screen, to use at least two competing hypotheses. The independent reader re-derives both
-conditions from all six raw pools. This converts an internal-schema memory burden into Pack
-scaffolding and prevents a confident one-candidate report from passing when the declared cheap build
-budget is two.
+It folds equivalent proposals before the model sees them, retains `source_methods` and
+`method_rankings`, and requires the program to fill `min(MAX_CELLS, unique candidates)`. The independent
+reader re-derives the pool and bound from all six raw sources. This converts an internal-schema memory
+burden into Pack scaffolding and prevents both duplicate generation and a confident one-candidate
+report from passing when cheap generation capacity remains.
 
 A third clean run on `3563e74` was stopped after the product owner rejected the two-Cell budget as a
 remaining silver-bullet assumption. It had completed the bounded probes and entered mining, but had
 not opened the research Workshop or generated a Cell. The local Host was interrupted, no Site Job
-remained, and the retained Run was not used as evidence. The accepted next budget is 50 generated
-Cells, ordered by the AI-authored ranking, followed by one pressured DC adoption screen.
+remained, and the retained Run was not used as evidence. The accepted next budget is up to 50 generated
+Cells, ordered by one AI-authored ranking, combined in one library and followed by one pressured DC
+adoption screen. Source methods collaborate; they do not receive separate DC/APR evaluation chains.
+Adoption evidence maps each used candidate back to all of its source methods, with shared credits
+explicitly non-additive.
 
 The first 50-Cell preflight then exposed that confirmed product Campaigns still inherited the
 Harness 60-minute default while the L5 expected 120 minutes. The check failed before `bind-inputs`
