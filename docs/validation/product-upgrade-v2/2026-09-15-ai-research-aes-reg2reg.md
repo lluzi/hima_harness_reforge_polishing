@@ -215,5 +215,26 @@ zero new Site Jobs. Evidence remains local under
 `.hima-tmp/product-upgrade-v2-l5/unified-50cell-l5-115d33c/` and
 `.hima-tmp/product-upgrade-v2-l5/offline-audit-115d33c/`; Site artifacts remain on Site.
 
-PLS-35 remains open for trial packaging, Catsights desktop review and the product owner's final
-signoff. No release is claimed here.
+## Trial candidate and Catsights review
+
+Commit `8521037` produced a local unsigned arm64 candidate at
+`.hima-tmp/product-upgrade-v2-l5/trial-8521037/HimaHarness.app`. The packager verified the complete
+file manifest, signature, bundled Node 24, native runtime selection, bundled portable Pack and its
+knowledge assets. A relocated clean-Home Host smoke opened the Hima API and reported the bundled Pack
+ready for preparation while correctly refusing Campaign readiness without a Site. The local
+`trial-manifest.json` SHA-256 is
+`069acb31fd555e995f84e946b762f6b08241248da2275b5d64aff20d0a70ab5e`.
+
+The candidate was then launched and moved to the Catsights display
+(`1920x1200`, display 3) before visual inspection. The conversation and Campaign entry were visible
+in one window; Campaign opened beside the conversation; Pack & assets exposed the folder-install
+boundary; and the model selector showed `DeepSeek-V4.1-Flash`. This last check exposed and fixed a
+legacy-home migration defect: packaged startup previously preserved an old profile wholesale and
+therefore displayed `DeepSeek-V4-Flash` despite the new template. Startup now refreshes only the
+explicitly marked Hima-managed model catalog, retains all other profile text, and leaves machine
+overrides in the later home patch. The four focused profile tests passed. The Catsights screenshot is
+local at `.hima-tmp/product-upgrade-v2-l5/catsights-trial-8521037.png`, SHA-256
+`ce6acda4a953aee95aad18406abc71e5adf8c5e23a252cbd71f342b29dce5397`.
+
+PLS-35 now awaits the product owner's final signoff and an explicit later release decision. No
+GitHub Release is claimed here.

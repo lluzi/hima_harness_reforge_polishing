@@ -1,6 +1,6 @@
 # [PLS-35] 用 aes_cipher_top 完成目标 path Matched Comparison 并发布候选
 
-状态：in-progress; clean L5 Campaign and offline audit passed, packaging/Catsights/user signoff remain
+状态：in-progress; clean L5, offline audit, local trial package and Catsights low-level review passed; user signoff/release remain
 父规格：[Product Upgrade v2 / #30](https://github.com/lluzi/hima_harness_reforge_polishing/issues/30)
 Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/issues/39)
 模型：主集成 `gpt-5.6-terra` / medium；最终证据审查 `gpt-5.6-sol` / high
