@@ -1,6 +1,6 @@
 id: custom-cell-fmax-dtco
 version: "1"
-title: Portable custom Cell Fmax research and matched physical implementation
+title: Portable custom Cell Fmax Campaign with matched physical implementation
 status: development
 minimumHarnessVersion: 0.1.0
 ontology:
@@ -10,9 +10,9 @@ ontology:
     matchedComparison: [A/B, apple-to-apple comparison]
 knowledgeManifest: knowledge/manifest.yml
 budget:
-  timeBoxMs: 7200000
-  closingReserveMs: 60000
-  attemptLimit: 120
+  timeBoxMs: 21600000
+  closingReserveMs: 300000
+  attemptLimit: 240
 inputs:
   - name: designRoot
     description: "Read-only design root containing the RTL and constraints named by
@@ -27,7 +27,7 @@ inputs:
   - name: foundryLibrary
     description: "Site-bound Liberty/DB inputs for the baseline library."
   - name: physicalInputs
-    description: "Site-bound LEF, extraction, layer-map, row-site, tap/filler and process
+    description: "Site-bound LEF, extraction, layer-map, row-site, tap/filler, DCCK clock-tree Cells and process
       profile used identically by both route arms. Every path and scalar consumed by the
       physical method is validated before the Campaign writes inputs.json."
   - name: toolStack
@@ -505,6 +505,7 @@ rules:
   - clock-period-at-most
   - comparison-evidence-valid
   - fmax-improved
+  - fmax-improvement-at-least-target
   - custom-cell-adopted
   - route-candidate-pool-known
 knowledge:
@@ -525,6 +526,12 @@ goal:
     min: 0.1
     max: 5
     default: 0.5
+  target_fmax_improvement_pct:
+    type: number
+    unit: percent
+    min: 0.1
+    max: 25
+    default: 5
 strategy:
   floorplanUtilization:
     type: number
@@ -554,6 +561,9 @@ words:
   target_period_ns:
     label: clock period at most
     unit: ns
+  target_fmax_improvement_pct:
+    label: matched post-route Fmax improvement at least
+    unit: percent
   periodNs:
     label: clock period
     unit: ns
@@ -568,13 +578,17 @@ workshops:
       not the selection authority. Copy researchTemplate as entry.py and implement
       only research(candidates, context). Author a cross-route, data-dependent
       algorithm from the current design's explicit reg2reg path membership,
-      incremental delay, Boolean function, occurrence, implementation route and
-      any retained synthesis/adoption feedback. Examine at least three collaborative
-      research lenses. Before the Workshop, equivalent proposals from the six methods
+      incremental delay, timing-family coverage, worst slack, theoretical benefit,
+      Boolean function, occurrence, implementation route and any retained
+      synthesis/adoption feedback. Generation one reads DC; later generations read
+      the prior generated routed netlist and expanded post-route reg2reg paths.
+      Examine at least three collaborative research lenses. Before the Workshop, equivalent proposals from the six methods
       are folded into one candidate. Each candidate supplies stable route,
       source_methods, method_rankings, evidence, interface, equivalence_digest and
-      implementation_route aliases alongside the complete source request. Fill
-      min(MAX_CELLS, unique candidates) and order them best-first; this is the one
+      implementation_route aliases alongside the complete source request. Retain
+      the strongest actually adopted candidates in at most half the active library,
+      fill min(remaining slots, unique new candidates), and order new candidates
+      best-first; this is the one
       common generation ranking. Cell creation is
       cheap, while the next pressured DC screen is the scarce experiment. Do not
       rank methods as winners, create method-specific DC/APR arms, embed candidate
@@ -587,6 +601,7 @@ workshops:
     language: python
     inputs:
       - REVISION
+      - TARGET_GAIN_PCT
     reads:
       - probe
       - timingManifest
@@ -617,3 +632,4 @@ workshops:
       - ${ENTRY}
       - ${WORKSPACE}
       - ${REVISION}
+      - ${TARGET_GAIN_PCT}

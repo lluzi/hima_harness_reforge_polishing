@@ -89,6 +89,31 @@ def expected_generation_jobs(patterns):
     return jobs
 
 
+def retained_candidate_ids(candidate_rows, budget):
+    """Keep the strongest actually adopted half-library for the next generation."""
+    if isinstance(budget, bool) or not isinstance(budget, int) or budget < 1:
+        raise ValueError("retention budget must be a positive integer")
+    if not isinstance(candidate_rows, list):
+        raise ValueError("adoption candidate_rows must be an array")
+    eligible = []
+    seen = set()
+    for row in candidate_rows:
+        if not isinstance(row, dict):
+            raise ValueError("adoption candidate row must be an object")
+        candidate = row.get("candidate_id")
+        instances = row.get("adopted_instance_count")
+        rank = row.get("generation_rank")
+        if (not isinstance(candidate, str) or not IDENTIFIER.fullmatch(candidate) or candidate in seen
+                or isinstance(instances, bool) or not isinstance(instances, int) or instances < 0
+                or isinstance(rank, bool) or not isinstance(rank, int) or rank < 1):
+            raise ValueError("adoption candidate row has invalid identity, rank or instance count")
+        seen.add(candidate)
+        if instances > 0:
+            eligible.append((candidate, instances, rank))
+    eligible.sort(key=lambda row: (-row[1], row[2], row[0]))
+    return [row[0] for row in eligible[:budget // 2]]
+
+
 def validate_attempt_coverage(patterns, attempts):
     """Validate and return attempts in canonical generation-job order."""
     jobs = expected_generation_jobs(patterns)

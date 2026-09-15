@@ -8,6 +8,7 @@ import argparse
 import glob
 import json
 import math
+import re
 import shlex
 from pathlib import Path
 
@@ -58,6 +59,15 @@ def positive_integer(value, label, minimum=0):
     return value
 
 
+def clock_cell_list(value, label):
+    """Return one normalized, explicitly clock-qualified CTS Cell list."""
+    cells = text(value, label).split()
+    if (not cells or len(cells) != len(set(cells))
+            or any(not re.fullmatch(r"DCCK[A-Za-z0-9_$]*", cell) for cell in cells)):
+        raise ValueError(f"{label} must contain distinct DCCK-prefixed library Cell names")
+    return " ".join(cells)
+
+
 def materialize_profile(document):
     """Validate every flat binding consumed by stages.py before writing inputs.json."""
     file_fields = (
@@ -86,6 +96,10 @@ def materialize_profile(document):
         document[name] = plain_dir(document.get(name), name)
     for name in line_fields:
         document[name] = text(document.get(name), name)
+    document["CCFMAX_CLOCK_BUFFER_CELLS"] = clock_cell_list(
+        document.get("CCFMAX_CLOCK_BUFFER_CELLS"), "CCFMAX_CLOCK_BUFFER_CELLS")
+    document["CCFMAX_CLOCK_INVERTER_CELLS"] = clock_cell_list(
+        document.get("CCFMAX_CLOCK_INVERTER_CELLS"), "CCFMAX_CLOCK_INVERTER_CELLS")
     helpers = text(document.get("CCFMAX_CHARMODEL_HELPER_DIR"), "CCFMAX_CHARMODEL_HELPER_DIR")
     helper_dirs = helpers.split(":")
     if any(not item for item in helper_dirs):

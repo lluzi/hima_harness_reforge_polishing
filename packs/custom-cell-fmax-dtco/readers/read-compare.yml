@@ -17,6 +17,7 @@ emits:
   - foundry_fmax_mhz
   - generated_fmax_mhz
   - fmax_delta_mhz
+  - fmax_improvement_pct
   - fmax_improved
   - matched_conditions
   - library_visible

@@ -61,13 +61,26 @@ Site's Liberty/skeleton/LEF/QRC/GDS/map, bool2cmos, layout technology/rules/rail
 characterization helpers and three learned models, LC/DC/Innovus wrapper and explicit limits.
 Missing inputs are rejected. `synthetic-fixture` is exclusively for labelled local tests.
 The paired physical arms use the current `periodNs`, explicitly shared and rechecked. DC applies
-50% uncertainty and writes a route SDC with 25% uncertainty. The foundry arm freezes the expanded
+50% uncertainty and writes a route SDC with 25% uncertainty plus a fixed 50 ps. The foundry arm freezes the expanded
 core box and IO-pin plan for exact reuse by the generated arm. `MAX_CELLS` is a Site-declared 1..50
 generation budget and `MAX_ROUTE_CANDIDATES` is at most 40 per method. Six mechanical methods build
 source evidence that is folded into one Boolean/interface-unique pool before the AI sees it. One
 AI-authored ranking fills the common build allocation; all selected Cells share one generated library,
 one DC pair and one APR pair. Adoption is mapped back to every source method. All timeouts, eight-core
 CAD setting and the Site's five-job cap remain explicit.
+
+Each P&R arm configures CCOpt from the required Site bindings
+`CCFMAX_CLOCK_BUFFER_CELLS` and `CCFMAX_CLOCK_INVERTER_CELLS`. The binding adapter accepts only
+distinct DCCK-prefixed names. `saveNetlist` preserves the routed logical graph, and the stage plus
+reader reject a final netlist whose `CTS_` instances use any other master. The post-route timing
+report expands reg2reg and retains up to 100 paths for the next research generation.
+
+Generation one mines the DC probe. When the matched gain is below the bound
+`target_fmax_improvement_pct` (default 5%), the fixed graph can revisit mining up to four total
+generations. Later mining reads the previous generated routed netlist and post-route paths, groups
+indexed beginpoint/endpoint pairs into timing families, retains up to 25 strongest actually adopted
+candidate Cells and gives the other active-library slots to new candidates. This is still one common
+library and one A/B validation chain per generation.
 
 Current manifests are convenient pointers. Immutable attempt directories retain logs, raw files,
 input snapshots and records for audit or a failed-stage retry. The root graph's read/Judge after the

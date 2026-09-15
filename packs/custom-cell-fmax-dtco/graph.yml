@@ -78,6 +78,9 @@ nodes:
         REVISION:
           from: strategy
           name: algorithmRevision
+        TARGET_GAIN_PCT:
+          from: goal
+          name: target_fmax_improvement_pct
   - id: read-research-selection
     kind: act
     parameters:
@@ -204,9 +207,13 @@ nodes:
     parameters:
       rules:
         - comparison-evidence-valid
+        - fmax-improvement-at-least-target
         - fmax-improved
         - clock-period-at-most
       bind:
+        target_fmax_improvement_pct:
+          from: goal
+          name: target_fmax_improvement_pct
         target_period_ns:
           from: goal
           name: target_period_ns
@@ -218,10 +225,10 @@ nodes:
       bind:
         revisionStep: 1
       converge:
-        read: revision
-        band: 0
+        read: gain
+        band: 0.01
         generations: 1
-        generationLimit: 1
+        generationLimit: 4
   - id: blocked
     kind: wait
     parameters:

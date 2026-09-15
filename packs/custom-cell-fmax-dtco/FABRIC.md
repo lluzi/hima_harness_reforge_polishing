@@ -9,7 +9,10 @@ The six mining branches are cheap source-linked method views, not six evaluation
 before `research-candidates`, where Boolean/interface-equivalent proposals are already represented once
 with all source methods and rankings attached. The one model-authored program sees that unified pool and
 prior feedback, then orders at most 50 Cells for one generated library, one pressured DC pair and one P&R
-pair. Its output is read and hash-checked before merge. Adoption is attributed back to source methods;
+pair. If matched gain is below the Goal, the fixed revisit edge returns to the same miners. They read the
+preceding generated routed netlist and expanded reg2reg timing graph; up to half the library slots preserve
+the strongest actually adopted Cells and the remaining slots admit new research candidates. Its output is
+read and hash-checked before merge. Adoption is attributed back to source methods;
 those non-additive method totals guide later research rather than declare an algorithm winner. The
 adoption Judge stops the Campaign before P&R
 when the pressured custom synthesis does not instantiate a generated Cell.

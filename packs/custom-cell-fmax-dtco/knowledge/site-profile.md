@@ -25,6 +25,7 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `PLACE_SITE` | one-line text | Innovus row/site name from the technology LEF. It is never assumed to be `core`. |
 | `CCFMAX_POWER_PIN`, `CCFMAX_GROUND_PIN` | one-line text | Power and ground rail names from the library/technology profile. |
 | `CCFMAX_TAP_CELL`, `CCFMAX_FILLER_CELLS` | one-line text | Site-valid tap and filler/decap masters shared by both arms. |
+| `CCFMAX_CLOCK_BUFFER_CELLS`, `CCFMAX_CLOCK_INVERTER_CELLS` | whitespace-separated DCCK Cell names | Site-valid balanced clock buffer and inverter masters shared by both CCOpt runs. Every name must start with `DCCK`; the routed netlist independently proves actual `CTS_` use. |
 | `CCFMAX_TAP_INTERVAL` | positive integer | Site method's tap interval. |
 | `CCFMAX_PROCESS_NODE` | positive number | Innovus process setting used by both arms. |
 | `CCFMAX_MAX_ROUTE_LAYER` | one-line text | Common maximum routing layer. |

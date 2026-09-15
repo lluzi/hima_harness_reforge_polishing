@@ -5,6 +5,7 @@ import { writeFileSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { parse } from 'yaml';
 import { checkPack, choose, installPackMethod, loadPack, loadSite, packKnowledgeManifestOf, packOverview, resolveChooser, searchPackKnowledge } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
@@ -80,6 +81,16 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
     'one cross-route AI research moment replaces six narrow selector moments');
   assert.ok(graph.nodes.some((node) => node.id === 'research-candidates'));
   assert.ok(graph.nodes.some((node) => node.id === 'read-research-selection'));
+  assert.deepEqual((graph.nodes.find((node) => node.id === 'final-judge')?.parameters as any)?.rules,
+    ['comparison-evidence-valid', 'fmax-improvement-at-least-target', 'fmax-improved', 'clock-period-at-most']);
+  const pnrTemplate = await readFile(path.join(packDir, 'flow/domain/pnr.tcl.tmpl'), 'utf8');
+  assert.match(pnrTemplate, /^saveNetlist @@POSTROUTE_NETLIST@@$/m);
+  assert.match(pnrTemplate, /^set_ccopt_property buffer_cells \$_ccfmax_clock_buffers$/m);
+  assert.match(pnrTemplate, /^set_ccopt_property inverter_cells \$_ccfmax_clock_inverters$/m);
+  assert.match(pnrTemplate, /^set_ccopt_property use_inverters true$/m);
+  assert.match(pnrTemplate, /-numPaths 100 -expandReg2Reg -pathreports/);
+  assert.match(await readFile(path.join(packDir, 'flow/domain/shared_synth.tcl'), 'utf8'),
+    /set _route_uncertainty \[expr \{\$CLK_NS \* 0\.25 \+ 0\.050\}\]/);
   const probeLoop = (graph as any).loops['probe-loop'];
   const probeJudge = probeLoop.nodes.find((node: any) => node.id === 'judge');
   const nextPeriod = probeLoop.nodes.find((node: any) => node.id === 'next-period');
@@ -252,21 +263,29 @@ mods=m.parse_modules(pathlib.Path(sys.argv[2]).read_text());print(json.dumps(m.p
   }
   const directory = path.join(fixture.workspace, 'research/ai-discovery/.executions/execution-test');
   await mkdir(directory, { recursive: true });
-  const entry = `from pathlib import Path\nimport sys\nFLOW=Path(sys.argv[1]).resolve()/"flow"\nsys.path.insert(0,str(FLOW))\nfrom ai_research_runner import run\ndef research(candidates,context):\n assert len(candidates)==1 and len(candidates[0]["source_methods"])==6\n assert context["raw_candidate_count"]==6 and context["candidate_pool_count"]==1\n e=lambda r:r.get("evidence") or {}\n ranked=sorted(candidates,key=lambda r:(-(e(r).get("reg2reg_path_hits") or 0),-(e(r).get("non_overlapping_support") or 0),r["candidate_id"]))\n hs=[{"name":"path","question":"actual reg2reg coverage?","signals":["reg2reg_path_hits"]},{"name":"reuse","question":"mapped reuse?","signals":["non_overlapping_support"]},{"name":"fit","question":"mapper fit?","signals":["implementation_route"]}]\n selected=[]\n for row in ranked:\n  selected.append({"route":row["route"],"candidate_id":row["candidate_id"],"hypothesis":"path" if e(row).get("reg2reg_path_hits") else "reuse","rationale":"current evidence rank"})\n return {"hypotheses":hs,"selected":selected,"stop_reason":"one unified Cell screen is filled"}\nif __name__=="__main__": run(research,sys.argv)\n`;
+  const entry = `from pathlib import Path\nimport sys\nFLOW=Path(sys.argv[1]).resolve()/"flow"\nsys.path.insert(0,str(FLOW))\nfrom ai_research_runner import run\ndef research(candidates,context):\n assert context["raw_candidate_count"]==6\n if context["retained_candidate_count"]:\n  assert len(candidates)==0 and context["candidate_pool_count"]==0\n else:\n  assert len(candidates)==1 and len(candidates[0]["source_methods"])==6 and context["candidate_pool_count"]==1\n  assert context["target_gain_pct"]==5 and candidates[0]["theoretical_gain"]["target_gain_pct"]==5\n e=lambda r:r.get("evidence") or {}\n ranked=sorted(candidates,key=lambda r:(-(e(r).get("reg2reg_path_hits") or 0),-(e(r).get("non_overlapping_support") or 0),r["candidate_id"]))\n hs=[{"name":"path","question":"actual reg2reg coverage?","signals":["reg2reg_path_hits"]},{"name":"reuse","question":"mapped reuse?","signals":["non_overlapping_support"]},{"name":"fit","question":"mapper fit?","signals":["implementation_route"]}]\n selected=[]\n for row in ranked:\n  selected.append({"route":row["route"],"candidate_id":row["candidate_id"],"hypothesis":"path" if e(row).get("reg2reg_path_hits") else "reuse","rationale":"current evidence rank"})\n return {"hypotheses":hs,"selected":selected,"stop_reason":"one unified Cell screen is filled"}\nif __name__=="__main__": run(research,sys.argv)\n`;
   const entryPath = path.join(directory, 'entry.py'); await writeFile(entryPath, entry);
-  const executed = spawnSync('/usr/bin/python3', [entryPath, fixture.workspace, '0'], { encoding: 'utf8' });
+  const executed = spawnSync('/usr/bin/python3', [entryPath, fixture.workspace, '0', '5'], { encoding: 'utf8' });
   assert.equal(executed.status, 0, executed.stderr);
   const reportPath = path.join(flow, 'research/research.json');
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
-  assert.deepEqual(report.target, { design_top: 'held_out_datapath', path_group: 'reg2reg',
-    reg2reg_wns_ns: -0.1, reg2reg_path_count: 1, timing_report_sha256: sha256(timing) });
+  assert.deepEqual({ design_top: report.target.design_top, path_group: report.target.path_group,
+    reg2reg_wns_ns: report.target.reg2reg_wns_ns, reg2reg_path_count: report.target.reg2reg_path_count,
+    timing_report_sha256: report.target.timing_report_sha256, source_phase: report.target.source_phase,
+    target_gain_pct: report.target.target_gain_pct },
+  { design_top: 'held_out_datapath', path_group: 'reg2reg', reg2reg_wns_ns: -0.1,
+    reg2reg_path_count: 1, timing_report_sha256: sha256(timing), source_phase: 'dc-probe', target_gain_pct: 5 });
   assert.equal(report.hypotheses.length, 3); assert.equal(report.selected.length, 1);
+  assert.equal(report.theoreticalEstimates.length, 1);
+  assert.ok(Math.abs(report.target.required_incremental_fmax_gain_pct - 5) < 1e-12);
+  assert.ok(Math.abs(report.target.required_closed_period_reduction_ns - 0.02857142857142858) < 1e-12);
+  assert.equal(report.theoreticalEstimates[0].meets_remaining_target_upper_bound, true);
   assert.equal(report.algorithm.rawCandidateCount, 6); assert.equal(report.algorithm.candidatePoolCount, 1);
   assert.equal(report.algorithm.entrySha256, sha256(entry));
   const read = fixture.read(reportPath, 'research-selection');
   assert.equal(read.run.status, 0, read.run.stderr);
   assert.deepEqual(JSON.parse(await readFile(read.out, 'utf8')).values.map((value: any) => value.type),
-    ['research_hypothesis_count', 'selected_count']);
+    ['research_hypothesis_count', 'selected_count', 'retained_candidate_count', 'theoretical_gain_upper_pct']);
   const merged = fixture.run('merge'); assert.equal(merged.status, 0, merged.stderr);
   const mergedReport = JSON.parse(await readFile(path.join(flow, 'mining/merged.json'), 'utf8'));
   assert.equal(mergedReport.search_bound.validation_flow_count, 1);
@@ -275,6 +294,121 @@ mods=m.parse_modules(pathlib.Path(sys.argv[2]).read_text());print(json.dumps(m.p
   assert.equal(mergedReport.generation_requests.length, 1);
   assert.equal(mergedReport.generation_requests[0].discovery_evidence.strategy_ids.length, 6,
     'all methods keep credit on the one Cell sent to the common validation flow');
+  const priorPatterns = path.join(flow, 'prior-characterized-patterns.json');
+  await writeFile(priorPatterns, JSON.stringify(mergedReport, null, 2) + '\n');
+  await writeCustomSyntheticRecord(fixture.workspace, 'characterize', [
+    { role: 'characterized_patterns', path: priorPatterns },
+  ]);
+  await writeCustomSyntheticRecord(fixture.workspace, 'adoption', [], { candidate_rows: [{
+    candidate_id: mergedReport.generation_requests[0].candidate_id, generation_rank: 1,
+    adopted_instance_count: 7, source_methods: mergedReport.generation_requests[0].discovery_evidence.strategy_ids,
+  }] });
+  const revised = spawnSync('/usr/bin/python3', [entryPath, fixture.workspace, '1', '5'], { encoding: 'utf8' });
+  assert.equal(revised.status, 0, revised.stderr);
+  const revisedReport = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.equal(revisedReport.retainedCandidates.length, 1);
+  assert.equal(revisedReport.selected.length, 0, 'an adopted equivalent is retained, not rediscovered as new work');
+  const revisedRead = fixture.read(reportPath, 'research-selection');
+  assert.equal(revisedRead.run.status, 0, revisedRead.run.stderr);
+  const revisedMerge = fixture.run('merge'); assert.equal(revisedMerge.status, 0, revisedMerge.stderr);
+  const cumulative = JSON.parse(await readFile(path.join(flow, 'mining/merged.json'), 'utf8'));
+  assert.equal(cumulative.candidate_set_accounting.retained_candidate_count, 1);
+  assert.equal(cumulative.candidate_set_accounting.new_candidate_count, 0);
+  assert.deepEqual(cumulative.generation_requests.map((row: any) => row.candidate_id),
+    [mergedReport.generation_requests[0].candidate_id]);
+});
+
+test('a later mining generation reads the generated routed netlist and post-route reg2reg timing', async (t) => {
+  const fixture = await createCustomCellFmaxFixture(); t.after(() => fixture.dispose());
+  const flow = path.join(fixture.workspace, 'flow');
+  const netlist = path.join(flow, 'routed.v');
+  const timing = path.join(flow, 'routed.tarpt.gz');
+  const generatedLiberty = path.join(flow, 'prior-generated.lib');
+  await writeFile(netlist, 'module held_out_datapath(input a,b,c,d,output z1,z2);\nNAND2_X1 U0(.A(a),.B(b),.ZN(n0));\nXS_PRIOR X0(.I(n0),.Y(nx));\nINV_X1 U1(.A(nx),.ZN(z1));\nNAND2_X1 U2(.A(c),.B(d),.ZN(n2));\nINV_X1 U3(.A(n2),.ZN(z2));\nendmodule\n');
+  await writeFile(generatedLiberty, 'library (prior_generated) {\n  cell (\"XS_PRIOR\") {\n    area : 1;\n    pin (\"I\") {\n      direction : input;\n    }\n    pin (\"Y\") {\n      direction : output;\n      function : \"I\";\n    }\n  }\n}\n');
+  await writeFile(timing, gzipSync(`#  Design:            held_out_datapath\nPath 1: VIOLATED Setup Check\nEndpoint: U1/ZN\nBeginpoint: U0/A\nPath Groups: {reg2reg}\nAnalysis View: view_generated\n= Slack Time                   -0.020\n     Timing Path:\n     | U0/A  | ^ | a  | NAND2_X1 | 0.002 | 0.002 | 0.000 |\n     | U0/ZN | v | n0 | NAND2_X1 | 0.020 | 0.022 | 0.000 |\n     | X0/I  | v | n0 | XS_PRIOR | 0.001 | 0.023 | 0.000 |\n     | X0/Y  | v | nx | XS_PRIOR | 0.012 | 0.035 | 0.000 |\n     | U1/A  | v | nx | INV_X1   | 0.001 | 0.036 | 0.000 |\n     | U1/ZN | ^ | z1 | INV_X1   | 0.010 | 0.033 | 0.000 |\n     Other End Path:\n`));
+  await writeCustomSyntheticRecord(fixture.workspace, 'pnr-generated', [
+    { role: 'postroute_netlist', path: netlist }, { role: 'postroute_timing_paths', path: timing },
+    { role: 'generated_liberty', path: generatedLiberty },
+  ]);
+  await writeCustomSyntheticRecord(fixture.workspace, 'compare', [], { comparison_valid: true });
+  const ran = fixture.run('mine', 'timing_criticality'); assert.equal(ran.status, 0, ran.stderr);
+  const record = JSON.parse(await readFile(path.join(flow, 'records/mine-timing_criticality.json'), 'utf8'));
+  const raw = JSON.parse(await readFile(path.join(flow, 'mining/timing_criticality/raw.json'), 'utf8'));
+  assert.equal(record.facts.sourcePhase, 'generated-postroute');
+  assert.equal(record.facts.sourceNetlistSha256, sha256(await readFile(netlist)));
+  assert.ok(record.inputs.some((row: any) => row.role === 'postroute_generated_liberty'));
+  assert.equal(raw.search_definition.source_phase, 'generated-postroute');
+  const parsedLibrary = spawnSync('/usr/bin/python3', ['-c',
+    `import json,sys\nsys.path.insert(0,sys.argv[1])\nfrom cell_need_miner.liberty import parse_skeleton\nprint(json.dumps(sorted(parse_skeleton(sys.argv[2:]))))`,
+    path.join(packDir, 'flow/domain'), String(fixture.inputs.LIBERTY_SKELETON), generatedLiberty], { encoding: 'utf8' });
+  assert.equal(parsedLibrary.status, 0, parsedLibrary.stderr);
+  assert.ok(JSON.parse(parsedLibrary.stdout).includes('XS_PRIOR'),
+    'the prior generated Cell remains parseable instead of becoming an unknown post-route boundary');
+  assert.match(JSON.stringify(raw.algorithm_records.critical_subgraph), /XS_PRIOR/,
+    'later timing mining reserves graph anchors around an adopted generated Cell on a sampled critical path');
+});
+
+test('Innovus post-route data-path tables map physical delay back to routed instances', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'hima-postroute-parser-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const netlist = path.join(root, 'routed.v'); const timing = path.join(root, 'timing.rpt');
+  await writeFile(netlist, 'module held_out_datapath(input a,b,c,d,output z,z2);\nNAND2_X1 U0(.A(a),.B(b),.ZN(n));\nINV_X1 U1(.A(n),.ZN(z));\nNAND2_X1 U2(.A(c),.B(d),.ZN(n2));\nINV_X1 U3(.A(n2),.ZN(z2));\nendmodule\n');
+  await writeFile(timing, `#  Design:            held_out_datapath
+Path 1: VIOLATED Setup Check
+Endpoint: U1/ZN
+Beginpoint: U0/A
+Path Groups: {reg2reg}
+Analysis View: view_generated
+= Slack Time                   -0.019
+     Timing Path:
+     | CTS_ccl_a_buf_00001/Z | ^ | clk | BUFFD8BWP40P140 | 0.100 | 0.100 | 0.000 |
+     | U0/A  | ^ | a | NAND2_X1 | 0.002 | 0.002 | 0.000 |
+     | U0/ZN | v | n | NAND2_X1 | 0.020 | 0.022 | 0.000 |
+     | U1/A  | v | n | INV_X1   | 0.001 | 0.023 | 0.000 |
+     | U1/ZN | ^ | z | INV_X1   | 0.010 | 0.033 | 0.000 |
+     Other End Path:
+     | CTS/I | ^ | clk | BUFFD8BWP40P140 | 0.100 | 0.100 | 0.000 |
+Path 2: VIOLATED Setup Check
+Endpoint: U3/ZN
+Beginpoint: U2/A
+Path Groups: {reg2reg}
+Analysis View: view_generated
+= Slack Time                   -0.017
+     Timing Path:
+     | U2/A  | ^ | c  | NAND2_X1 | 0.002 | 0.002 | 0.000 |
+     | U2/ZN | v | n2 | NAND2_X1 | 0.018 | 0.020 | 0.000 |
+     | U3/A  | v | n2 | INV_X1   | 0.001 | 0.021 | 0.000 |
+     | U3/ZN | ^ | z2 | INV_X1   | 0.009 | 0.030 | 0.000 |
+     Other End Path:
+`);
+  const parsed = spawnSync('/usr/bin/python3', ['-c', `import importlib.util,json,pathlib,sys
+spec=importlib.util.spec_from_file_location('m',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+mods=m.parse_modules(pathlib.Path(sys.argv[2]).read_text());print(json.dumps(m.parse_reg2reg_timing_graph(pathlib.Path(sys.argv[3]),sys.argv[4],mods),sort_keys=True))`,
+  path.join(packDir, 'flow/domain/mine_timing_route.py'), netlist, timing, 'held_out_datapath'], { encoding: 'utf8' });
+  assert.equal(parsed.status, 0, parsed.stderr);
+  const graph = JSON.parse(parsed.stdout);
+  const mapped = graph.instances.held_out_datapath;
+  assert.equal(mapped.U0.path_hits, 1); assert.equal(mapped.U0.max_increment_ns, 0.02);
+  assert.equal(mapped.U0.path_family_count, 1); assert.equal(mapped.U0.path_family_ids[0], 'U#->U#');
+  assert.equal(mapped.U0.path_family_support, 2, 'one timing family covers both sampled graph paths');
+  assert.equal(mapped.U0.worst_path_slack_ns, -0.019);
+  assert.equal(graph.graph.path_count, 2); assert.equal(graph.graph.path_family_count, 1);
+  assert.equal(graph.graph.path_families[0].path_count, 2);
+  assert.equal(mapped.CTS, undefined, 'capture-clock table is not admitted as data-path opportunity evidence');
+});
+
+test('the routed-netlist audit admits only Site-declared DCCK clock-tree masters', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'hima-clock-tree-audit-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const good = path.join(root, 'good.v'); const bad = path.join(root, 'bad.v');
+  await writeFile(good, 'module top(input clk,output z);\nDCCKBD4 CTS_ccl_a_buf_00001(.I(clk),.Z(z));\nendmodule\n');
+  await writeFile(bad, 'module top(input clk,output z);\nBUFFD8 CTS_ccl_a_buf_00001(.I(clk),.Z(z));\nendmodule\n');
+  const code = `import importlib.util,json,sys\nspec=importlib.util.spec_from_file_location('s',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)\nprint(json.dumps(m.clock_tree_identity(sys.argv[2],'DCCKBD4 DCCKBD8','DCCKND4 DCCKND8'),sort_keys=True))`;
+  const admitted = spawnSync('/usr/bin/python3', ['-c', code, path.join(packDir, 'flow/stages.py'), good], { encoding: 'utf8' });
+  assert.equal(admitted.status, 0, admitted.stderr);
+  assert.deepEqual(JSON.parse(admitted.stdout).clock_tree_used_cells, ['DCCKBD4']);
+  const rejected = spawnSync('/usr/bin/python3', ['-c', code, path.join(packDir, 'flow/stages.py'), bad], { encoding: 'utf8' });
+  assert.notEqual(rejected.status, 0); assert.match(rejected.stderr, /non-declared or non-DCCK Cells: BUFFD8/);
 });
 
 test('one synthesis adoption result attributes used Cells to every contributing mining method', async () => {
@@ -300,6 +434,17 @@ test('one synthesis adoption result attributes used Cells to every contributing 
     ['structure_frequency', 1, 2], ['timing_criticality', 1, 2], ['functional_diversity', 0, 0],
   ]);
   assert.match(result.attribution_policy, /non-additive/);
+  const retained = spawnSync('/usr/bin/python3', ['-c',
+    'import json,sys;sys.path.insert(0,sys.argv[1]);from _generation_projection import retained_candidate_ids;print(json.dumps(retained_candidate_ids(json.load(sys.stdin),6)))',
+    moduleDir], { input: JSON.stringify([
+      { candidate_id: 'CAND_A', generation_rank: 1, adopted_instance_count: 2 },
+      { candidate_id: 'CAND_B', generation_rank: 2, adopted_instance_count: 9 },
+      { candidate_id: 'CAND_C', generation_rank: 3, adopted_instance_count: 4 },
+      { candidate_id: 'CAND_D', generation_rank: 4, adopted_instance_count: 1 },
+    ]), encoding: 'utf8' });
+  assert.equal(retained.status, 0, retained.stderr);
+  assert.deepEqual(JSON.parse(retained.stdout), ['CAND_B', 'CAND_C', 'CAND_A'],
+    'the next generation keeps at most half of the active library by actual adoption, leaving discovery slots');
 });
 
 test('one failed abstract Cell is retained as a refusal while successful Cells remain admitted', async (t) => {
@@ -446,6 +591,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     CCFMAX_POWER_PIN: 'vdd', CCFMAX_GROUND_PIN: 'gnd', CCFMAX_POWER_TEMPLATE_BASE_CELL: 'FIXTURE_CELL',
     GENERATED_LIBRARY_NAME: 'fixture_generated', GENERATED_LIB_CELL_PATTERN: 'XS_*', CLOCK_NS: 1, CCFMAX_RC_TEMPERATURE: 25,
     CCFMAX_PROCESS_NODE: 12, CCFMAX_MAX_ROUTE_LAYER: 'M8', CCFMAX_TAP_CELL: 'TAP', CCFMAX_TAP_INTERVAL: 10,
+    CCFMAX_CLOCK_BUFFER_CELLS: 'DCCKBD4FIXTURE', CCFMAX_CLOCK_INVERTER_CELLS: 'DCCKND4FIXTURE',
     CCFMAX_FILLER_CELLS: 'FILL', CCFMAX_SWITCHING_ACTIVITY: 0.2, PLACE_SITE: 'core', MAX_CELLS: 50, MAX_ROUTE_CANDIDATES: 40,
     GENERATION_TIMEOUT_SEC: 30, ABSTRACT_TIMEOUT_SEC: 30, CHARACTERIZE_TIMEOUT_SEC: 30, LC_TIMEOUT_SEC: 30, MULTI_CPU: 1,
     PNR_TIMEOUT_SEC: 30, DRC_LIMIT: 1000, VERIFY_TIMEOUT_SEC: 30,
@@ -458,6 +604,12 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
     '--foundry-library', foundry, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
   assert.notEqual(rejected.status, 0); assert.match(rejected.stderr, /CCFMAX_TAP_INTERVAL/);
+  const ordinaryClockProfile = { ...physicalProfile, CCFMAX_CLOCK_BUFFER_CELLS: 'BUFFD8FIXTURE' };
+  await writeFile(physical, JSON.stringify(ordinaryClockProfile));
+  const rejectedClock = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
+    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
+    '--foundry-library', foundry, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+  assert.notEqual(rejectedClock.status, 0); assert.match(rejectedClock.stderr, /CCFMAX_CLOCK_BUFFER_CELLS.*DCCK-prefixed/);
   await writeFile(physical, JSON.stringify(physicalProfile));
   const destination = path.join(h.home, 'hima/packs/custom-cell-fmax-dtco');
   installPackMethod({ from: packDir, to: destination });
@@ -467,10 +619,12 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
   const host = await bootInProcess(h);
   try {
     const owner = await createRootAgent(host.ctx, h.workspace);
-    const started = await host.ctx.hima.startRun({ pack: 'custom-cell-fmax-dtco', site: 'local', goal: { target_period_ns: 1 },
+    const started = await host.ctx.hima.startRun({ pack: 'custom-cell-fmax-dtco', site: 'local',
+      goal: { target_period_ns: 1, target_fmax_improvement_pct: 5 },
       strategy: { periodNs: 1, floorplanUtilization: 0.5, algorithmRevision: 0 }, ownerSessionId: String(owner.id), generationLimit: 1 });
     assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
-    assert.equal(started.run.budget?.timeBoxMs, 7_200_000, 'the 50-Cell method owns its reviewed two-hour box');
+    assert.equal(started.run.budget?.timeBoxMs, 21_600_000,
+      'the bounded four-generation method owns its reviewed six-hour box');
     assert.equal(started.run.currentNode, 'bind-inputs');
     const begin = await host.ctx.hima.executionAction({ runId: started.run.id, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0,
       requestId: 'bind-begin', action: 'begin', nodeId: 'bind-inputs' });
@@ -530,7 +684,8 @@ test('held-out flat bindings accept only a matched final-database custom-Cell Fm
     const synthesis = JSON.parse(await readFile(path.join(fixture.workspace, `flow/records/${arm}.json`), 'utf8'));
     assert.equal(synthesis.facts.clock_ns, 0.34, `${arm} must use the current Campaign period`);
     assert.equal(synthesis.facts.dc_uncertainty_ns, 0.17, `${arm} must use 50% DC uncertainty`);
-    assert.equal(synthesis.facts.route_uncertainty_ns, 0.085, `${arm} must emit 25% route uncertainty`);
+    assert.equal(synthesis.facts.route_uncertainty_ns, 0.135,
+      `${arm} must emit 25% route uncertainty plus the fixed 50 ps APR pressure`);
   }
   const foundryPnr = JSON.parse(await readFile(path.join(fixture.workspace, 'flow/records/pnr-foundry.json'), 'utf8'));
   const generatedPnr = JSON.parse(await readFile(path.join(fixture.workspace, 'flow/records/pnr-generated.json'), 'utf8'));
@@ -544,11 +699,13 @@ test('held-out flat bindings accept only a matched final-database custom-Cell Fm
   assert.deepEqual(generatedPnr.facts.floorplan_core_box, foundryPnr.facts.floorplan_core_box);
   assert.deepEqual(generatedPnr.facts.pin_plan_identity, foundryPnr.facts.pin_plan_identity);
   assert.equal(compare.facts.fmax_improved, true);
+  assert.ok(compare.facts.fmax_improvement_pct > 0);
   assert.equal(compare.facts.comparison_valid, true);
   assert.ok(compare.facts.generated_fmax_mhz > compare.facts.foundry_fmax_mhz);
   assert.equal(compare.facts.full_constraint_failures, 0);
   const read = fixture.read(path.join(fixture.workspace, 'flow/records/compare.json'), 'compare');
   assert.equal(read.run.status, 0, read.run.stderr);
+  assert.ok(JSON.parse(await readFile(read.out, 'utf8')).values.some((value: any) => value.type === 'fmax_improvement_pct' && value.value > 0));
   const pnrRead = fixture.read(path.join(fixture.workspace, 'flow/records/pnr-generated.json'), 'pnr-generated');
   assert.equal(pnrRead.run.status, 0, pnrRead.run.stderr);
   const physicalTypes = new Set((JSON.parse(await readFile(pnrRead.out, 'utf8')).values as { type: string }[]).map((value) => value.type));

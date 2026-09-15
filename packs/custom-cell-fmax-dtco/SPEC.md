@@ -1,7 +1,9 @@
 ## Goal template
 
 `target_period_ns`: number, ns, min 0.1, max 5, default 0.5. It binds clock-period-at-most.
-The fixed Goal is reached only if the full-evidence constraint also PASSes on the same generation.
+`target_fmax_improvement_pct`: number, percent, min 0.1, max 25, default 5. The fixed Goal is
+reached only when comparison identity, this gain target, positive gain and the period rule all PASS
+on the same generation.
 The final comparison reports a clearly labelled STA-derived Fmax for each arm from the same
 requested clock and setup slack reread after restoring that arm's final route database.
 
@@ -28,7 +30,10 @@ PERIOD_NS. The matched P&R tools bind one Strategy floorplanUtilization fraction
 default 0.25, twice the former core area), freeze the foundry arm's placed IO plan, and replay its
 exact pin locations and core box in the generated arm. Both DC arms apply 50% clock uncertainty and
 give the explicit reg2reg path group priority over I/O groups;
-their emitted P&R SDCs apply 25%. The validated physical-profile `PLACE_SITE` enters both init TCL files. The profile
+their emitted P&R SDCs apply 25% plus 50 ps. The validated physical profile supplies
+`CCFMAX_CLOCK_BUFFER_CELLS` and `CCFMAX_CLOCK_INVERTER_CELLS`; every name must start with DCCK.
+Both arms set the same CCOpt buffer/inverter lists and enable inverter balancing. Their saved routed
+netlists must contain CTS instances exclusively from those lists. The validated physical-profile `PLACE_SITE` enters both init TCL files. The profile
 also declares the tap/filler assumptions used by both arms; a Pack does not invent a row site or
 technology cell names. The standalone adapter preserves 0.60 only when a human omits it.
 Wrappers: /usr/bin/python3. DC, LC and Innovus tools declare one corresponding licence per Job.
@@ -47,7 +52,8 @@ predicted/synthetic/site evidence classes are carried with the results, never co
 
 The probe retains clock_period, setup_wns (setup/all) and cell_area. The final compare reader uses
 clock_period and setup_wns reread from each restored final route database. Other typed counts in semantics.yml
-record candidates, research hypotheses, generation, layout admission/refusal, prediction, LC, visibility/adoption, P&R, verification and
+record candidates, research hypotheses, retained adopted candidates, theoretical timing upper bounds,
+generation, layout admission/refusal, prediction, LC, visibility/adoption, DCCK clock-tree use, P&R, verification and
 matched/full-constraint status. foundry_setup_wns and setup_wns_delta are ns from the matched report
 pair. The foundry/generated `*_fmax_mhz` values are STA-derived as `1000 / (clock_period - setup_wns)`
 from that matched pair; `fmax_improved` must be true. The held final route database, its report hashes,
@@ -63,8 +69,9 @@ represented as zero. These secondary facts do not decide the Fmax goal.
 
 Nested probe: reg2reg-pressure-at-least-100ps, then clock-period-at-most bound to target_period_ns.
 Before P&R, custom-cell-adopted requires at least one generated master in the custom synthesis netlist.
-Outer final-judge: comparison-evidence-valid, fmax-improved, then clock-period-at-most bound to the same fixed Goal.
-The first rule chooses the edge; both current verdicts are needed for explicit Goal met.
+Outer final-judge: comparison-evidence-valid, fmax-improvement-at-least-target, fmax-improved, then
+clock-period-at-most. The first two rules are the Explore constraint/Goal pair; every rule must PASS
+for explicit Goal met.
 
 ## Choosers
 
@@ -76,7 +83,7 @@ It cannot alter the Goal, remove a gate or treat an incomplete previous attempt 
 
 ## Endings
 
-Goal met: only next-research, with current outer comparison-evidence-valid, fmax-improved and clock-period-at-most PASS.
+Goal met: only next-research, with all four current outer rules PASS, including the bound Fmax gain target.
 Converged: explicit current evidence supports no further useful change within the declared converge
 rule; it is not a physical-success claim. Budget exhausted: graph/Run generation or time limits;
 retain partial work and explain what was not established. Hard blocker: failed mandatory tool/reader,
@@ -106,7 +113,7 @@ points; failed hypotheses and algorithms are assets with their conditions, not n
 
 At next-research, the owner may declare an additional evidence review before concluding: record its input identities, affected decisions, required outputs, ending and return node. Preserve reference nodes and prior results; read the existing comparison and independently Judge it without repeating P&R merely to exercise the feature. Such a re-read is a consistency check, not a new physical experiment. Other growth locations remain undeclared.
 
-The shared Campaign pool allows at most 120 act attempts, declares a two-hour wall box for the
-50-Cell method, and reserves the final 60 seconds inside that box for analysis and deterministic
+The shared Campaign pool allows at most 240 act attempts, declares a six-hour wall box and four
+research generations for the 50-Cell method, and reserves the final five minutes for analysis and deterministic
 closing. Packs that do not declare `timeBoxMs` retain the Harness 60-minute default. Budget expiry
 stops Campaign work and new analysis writes while conversation can continue.

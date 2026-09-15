@@ -19,9 +19,9 @@ import re
 
 # ---- skeleton parser -----------------------------------------------------
 
-_CELL_RE = re.compile(r"^cell \((?P<name>[^)]+)\)")
+_CELL_RE = re.compile(r'^\s*cell\s*\(\s*"?(?P<name>[^)"]+)"?\s*\)')
 _AREA_RE = re.compile(r"^\s*area :\s*([0-9.]+)")
-_PIN_RE = re.compile(r"^\s*pin\((?P<pin>[^)]+)\)")
+_PIN_RE = re.compile(r'^\s*pin\s*\(\s*"?(?P<pin>[^)"]+)"?\s*\)')
 _DIR_RE = re.compile(r'^\s*direction :\s*"?(?P<dir>\w+)"?')
 _FUNC_RE = re.compile(r'^\s*function :\s*"(?P<f>.*)"')
 
@@ -38,6 +38,11 @@ class LibCell:
 
 
 def parse_skeleton(path):
+    if isinstance(path, (list, tuple)):
+        cells = {}
+        for item in path:
+            cells.update(parse_skeleton(item))
+        return cells
     cells = {}
     cur = None
     cur_pin = None
@@ -52,7 +57,7 @@ def parse_skeleton(path):
                 continue
             if cur is None:
                 continue
-            if line.startswith("  ff ") or line.startswith("  latch "):
+            if re.match(r"^\s*(?:ff|latch)\s*\(", line):
                 cur.is_seq = True
                 continue
             m = _AREA_RE.match(line)

@@ -13,14 +13,14 @@
       "path": "mine_patterns.py",
       "source": "flow/bin/mine_patterns.py",
       "sourceSha256": "891759fe896d23c6a37f0e5809ad1532122a7baa2bf065aeab125fba0f0add64",
-      "packSha256": "dd7d0254ffd425883d8a52f72feac5c35403c4ac4d39987b849a77cd25af574d",
+      "packSha256": "368142d2059f719129820d03ee2a47aee8b2cc261312423da18d9131e6cf38a7",
       "adapted": true
     },
     {
       "path": "mine_timing_route.py",
       "source": "flow/bin/mine_timing_route.py",
       "sourceSha256": "e30d67e5401affb30cde63f4ee0d08225b139365ed5b5861d9f0b2a298124dea",
-      "packSha256": "ee23c1430d158cf8f8608430e3c651dea8660e014cba95ae9fa8bfa4f18737ce",
+      "packSha256": "e176833c6b780939b6e6beede9275212d614107c74000423d20470df6067352b",
       "adapted": true
     },
     {
@@ -41,8 +41,8 @@
       "path": "_generation_projection.py",
       "source": "flow/bin/_generation_projection.py",
       "sourceSha256": "f34a734194b529c528856658a0eae95d60d3c71262f15c0b5108d28f359449c0",
-      "packSha256": "f34a734194b529c528856658a0eae95d60d3c71262f15c0b5108d28f359449c0",
-      "adapted": false
+      "packSha256": "2c4b972021389c3955300a584c43fa4be8f28d149fad9ce567ee0ebe318b716c",
+      "adapted": true
     },
     {
       "path": "_cell_adoption_projection.py",
@@ -118,8 +118,8 @@
       "path": "cell_need_miner/liberty.py",
       "source": "flow/bin/cell_need_miner/liberty.py",
       "sourceSha256": "2a43d6a3df45dde2a0d653466ed240ca945aef7ac0441029d76d7f015ebdcf60",
-      "packSha256": "2a43d6a3df45dde2a0d653466ed240ca945aef7ac0441029d76d7f015ebdcf60",
-      "adapted": false
+      "packSha256": "0ca606bc90b77ce47a8623c1783d2b253d3c6b07d439977ee02929f0a0c9ddc6",
+      "adapted": true
     },
     {
       "path": "cell_need_miner/liberty_timing.py",

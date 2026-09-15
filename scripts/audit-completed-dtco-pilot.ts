@@ -44,10 +44,11 @@ const requiredReferenceNodes = [
 const requiredValueTypes = [
   'clock_period', 'setup_wns', 'reg2reg_wns', 'reg2reg_path_count', 'cell_area', 'candidate_count', 'research_hypothesis_count', 'selected_count',
   'generated_cell_count', 'abstract_cell_count', 'layout_refused_count', 'predicted_cell_count', 'lc_accepted',
-  'library_visible', 'adopted_instance_count', 'adopted_candidate_count', 'pnr_completed', 'verification_error_count',
+  'library_visible', 'adopted_instance_count', 'adopted_candidate_count', 'pnr_completed', 'clock_tree_cell_count', 'verification_error_count',
   'cell_checker_diagnostic_count', 'comparison_valid',
   'full_constraint_failures', 'matched_conditions', 'foundry_setup_wns', 'setup_wns_delta',
-  'foundry_fmax_mhz', 'generated_fmax_mhz', 'fmax_delta_mhz', 'fmax_improved',
+  'foundry_fmax_mhz', 'generated_fmax_mhz', 'fmax_delta_mhz', 'fmax_improvement_pct', 'fmax_improved',
+  'retained_candidate_count', 'theoretical_gain_upper_pct',
 ] as const;
 
 interface LiveEvidence {
@@ -149,6 +150,7 @@ async function main(): Promise<void> {
     pass('one DeepSeek-V4.1-Flash owner completed one held-out Campaign on the exact Pack and Site',
       run.status === 'ended-goal-met' && run.packId === PACK_ID && run.packDigest === sourceDigest
         && run.siteId === site && run.goal?.target_period_ns === 0.5
+        && run.goal?.target_fmax_improvement_pct === 5
         && run.firstStrategy?.periodNs === 0.5 && run.firstStrategy?.floorplanUtilization === 0.25
         && run.firstStrategy?.algorithmRevision === 0 && owner === source.observed?.owner
         && ownerEvidence?.options?.model === EXPECTED_MODEL,
@@ -177,15 +179,16 @@ async function main(): Promise<void> {
     const values = new Map(comparison?.values.map((value) => [value.type, value.value]));
     const foundryFmax = values.get('foundry_fmax_mhz');
     const generatedFmax = values.get('generated_fmax_mhz');
-    pass('reader facts prove an apple-to-apple routed custom-Cell Fmax improvement',
+    pass('reader facts prove an apple-to-apple routed custom-Cell Fmax improvement of at least 5%',
       missingTypes.length === 0 && values.get('matched_conditions') === 1
         && values.get('comparison_valid') === 1 && Number(values.get('adopted_instance_count')) > 0
         && values.get('fmax_improved') === 1 && typeof foundryFmax === 'number'
-        && typeof generatedFmax === 'number' && generatedFmax > foundryFmax,
+        && typeof generatedFmax === 'number' && generatedFmax > foundryFmax
+        && Number(values.get('fmax_improvement_pct')) >= 5,
       { comparisonRecord: comparison?.id, missingTypes, matched: values.get('matched_conditions'),
         adoptedInstances: values.get('adopted_instance_count'), comparisonValid: values.get('comparison_valid'),
         disclosedPhysicalFindings: values.get('full_constraint_failures'), foundryFmax, generatedFmax,
-        delta: values.get('fmax_delta_mhz') });
+        delta: values.get('fmax_delta_mhz'), gainPct: values.get('fmax_improvement_pct') });
     const analysis = records.findLast((record) => record.type === 'analysis' && record.nodeId === 'next-research');
     pass('the owner archived source-linked conclusions, limitations and next experiments',
       analysis?.type === 'analysis' && analysis.sessionId === owner && analysis.analysis.claims.length > 0
@@ -225,6 +228,7 @@ async function main(): Promise<void> {
       stage.status === 'passed' && stage.facts?.matched_conditions === true
         && stage.facts?.comparison_valid === true && stage.facts?.adopted_instance_count > 0
         && stage.facts?.fmax_improved === true && stage.facts?.generated_fmax_mhz > stage.facts?.foundry_fmax_mhz
+        && stage.facts?.fmax_improvement_pct >= 5
         && Array.isArray(stage.inputs) && stage.inputs.length > 20,
       { sourceSha256: sha256(readFileSync(comparisonSource)), status: stage.status,
         matched: stage.facts?.matched_conditions, adoptedInstances: stage.facts?.adopted_instance_count,
@@ -292,7 +296,7 @@ async function main(): Promise<void> {
         manifestSha256: archiveRecord?.manifestSha256, materials: archive.manifest.materials.length },
       positiveResult: { adoptedInstances: stage.facts?.adopted_instance_count,
         foundryFmaxMhz: stage.facts?.foundry_fmax_mhz, generatedFmaxMhz: stage.facts?.generated_fmax_mhz,
-        deltaMhz: stage.facts?.fmax_delta_mhz },
+        deltaMhz: stage.facts?.fmax_delta_mhz, gainPct: stage.facts?.fmax_improvement_pct },
       offline: { modelRequests, newSiteJobs: 0 }, checks,
     };
     const evidencePath = path.join(out, 'evidence.json');

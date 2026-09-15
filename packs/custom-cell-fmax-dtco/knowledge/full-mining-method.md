@@ -12,6 +12,14 @@ routes admit only roots that occur on the retained explicit reg2reg paths; their
 count and incremental delay are measured, while the internal NLDM impact remains a search proxy.
 Support and exact Boolean equivalence do not establish area, speed, adoption or PPA.
 
+Generation one reads the pressured DC netlist/report. After a complete matched physical comparison,
+a sub-target generation revisits these same miners using the generated arm's saved routed netlist
+and expanded post-route reg2reg report. The report is not treated as unrelated path strings. The
+Pack normalizes indexed beginpoint/endpoint names into structural families, records each family's
+path count and worst slack, and projects per-instance coverage across path ranks and families. Launch
+and capture clock-tree tables are excluded from data-path mining. The resulting family coverage is a
+sampled timing-graph view, not a claim that 100 reported paths exhaust the timing graph.
+
 ## Your research work
 
 There is one `research-candidates` Workshop after all six method-evidence routes. These routes are
@@ -21,7 +29,8 @@ when a hypothesis needs its detailed occurrence or Boolean proof. Copy `research
 `entry.py` and implement only `research(candidates, context)`. The fixed
 `ai_research_runner.py` reads every complete raw file, folds Boolean/interface-equivalent requests into
 one candidate with `source_methods` and `method_rankings`, supplies the current design/top, explicit
-reg2reg pressure, build budget and retained synthesis/adoption feedback, validates the returned
+reg2reg pressure, source phase, current/remaining gain, build budget, timing-family evidence,
+mechanically derived theoretical upper bounds and retained synthesis/adoption feedback, validates the returned
 hypotheses and exact source identities, writes all six route projections, and calls the independent
 reader. The runner is I/O scaffolding; the authored `research()` function is the research asset.
 For model compatibility, every candidate also carries stable `route`, `evidence`, `interface`,
@@ -35,7 +44,11 @@ you inspected every occurrence. Your executable must read the complete raw file,
 reader always checks that full file. Missing fields in the compact view are null, never inferred zero.
 Inspect `generation_requests`, the route objective and `discovery_evidence`: support, representative
 occurrence, occurrence alignments, Boolean contract, implementation route and limitations.
-Examine at least three collaborative research lenses and fill `min(MAX_CELLS, unique candidates)`
+Examine at least three collaborative research lenses. Include at least one timing-graph lens that
+distinguishes a single critical path from a repeated beginpoint/endpoint family, and one theoretical
+benefit lens that compares full observed cone-delay removal with the remaining Campaign gain. The
+theoretical value is an upper bound: it does not predict remapping, parasitic RC, path migration or
+overlap. Fill the new-Cell slots after retained candidates, up to the 50-Cell active library,
 with buildable requests (`fusion`,
 `cluster_compose`, `boolean_synthesis`) across the complete pool. `MAX_CELLS` may be 1..50 and each
 route may expose at most 40 candidates. Derive an algorithm from the actual evidence and explain each
@@ -67,6 +80,8 @@ budget. It records why some candidates were not generated; the ordering is a hyp
 that one method or ranking is optimal.
 
 After failure or disappointing adoption, inspect actual feedback before changing your program.
+On later generations, the strongest actually adopted candidates fill at most half the active library;
+this preserves proven mapper access while leaving at least half the slots for new graph-informed ideas.
 Advance algorithmRevision only with an explicit same-owner Explore decision and current citations.
 The reference graph stays fixed; old code, selection records, failed Jobs and raw artifacts remain.
 
@@ -88,7 +103,10 @@ so method totals are explicitly non-additive and serve as feedback for the next 
 Both physical arms start from fresh syntheses using one shared template/RTL/clock/wrapper identity
 at the Campaign's current `periodNs`; this is the same Strategy lineage the probe tightened before
 mining. Each DC arm applies the same 50% clock uncertainty so a timing-clean nominal constraint does
-not remove mapping pressure; each emitted route SDC uses the same 25% uncertainty. Logic-synthesis
+not remove mapping pressure; each emitted route SDC uses the same 25% uncertainty plus 50 ps. Both
+P&R arms restrict CCOpt to the same Site-declared DCCK buffer and inverter lists and enable inverter
+use for rise/fall balancing. The saved routed netlist must prove that every `CTS_` instance uses one
+of those declared DCCK masters. Logic-synthesis
 adoption is a prerequisite for P&R. The foundry arm establishes one 25% target-utilization core and
 IO-pin plan; the generated arm reuses that exact core box and pin identity. Only the admitted generated library is added in the custom arm. The earlier probe is mining
 input, not the matched physical reference. Clock/WNS must be reread after restoring each final route
@@ -98,7 +116,8 @@ Fmax, but must label that derivation and retain the source report/database ident
 Missing evidence or mismatched conditions is unknown, never zero failures.
 
 The final Judge requires complete matched final-database evidence, library visibility, positive actual
-adoption, successful timing/census verification, strictly higher generated-arm STA-derived Fmax, and
+adoption, successful timing/census verification, at least the bound Fmax gain target (default 5%),
+strictly higher generated-arm STA-derived Fmax, and
 the fixed requested-period Goal. Setup/hold/route/connectivity findings and the cell-only checker
 diagnostic remain in the report and bound signoff scope; they are not silently relabelled as generated
 Cell failures. Only the fresh three-rule PASS permits Goal met. An inner probe success cannot stand for full-flow

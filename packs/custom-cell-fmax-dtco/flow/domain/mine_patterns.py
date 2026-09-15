@@ -1035,7 +1035,7 @@ def run(args):
         "algorithms": ["repeated_cluster", "multi_output_shared_logic"],
         "inputs": {
             "netlist": os.path.abspath(str(args.netlist)),
-            "liberty_function_skeleton": os.path.abspath(str(args.liberty_skeleton)),
+            "liberty_function_skeleton": [os.path.abspath(str(path)) for path in args.liberty_skeleton],
         },
         "search_definition": {
             "route": args.strategy_id,
@@ -1099,7 +1099,7 @@ def run(args):
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--netlist", type=Path, required=True)
-    parser.add_argument("--liberty-skeleton", type=Path, required=True)
+    parser.add_argument("--liberty-skeleton", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-graph", choices=("mapped", "unmapped"), required=True)
     parser.add_argument("--strategy-id", default="structure_frequency",

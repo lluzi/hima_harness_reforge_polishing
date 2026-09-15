@@ -5,9 +5,9 @@ parameter:
   name: revisionStep
   unit: count
 reads:
-  revision:
-    type: full_constraint_failures
-    unit: count
+  gain:
+    type: fmax_improvement_pct
+    unit: percent
 decide:
   - when:
       constraint: PASS

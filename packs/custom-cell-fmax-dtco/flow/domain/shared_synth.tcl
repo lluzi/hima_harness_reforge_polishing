@@ -87,9 +87,10 @@ group_path -name reg2out -from $_registers -to [all_outputs] -weight 1
 
 # Both arms see the same deliberate logic-optimization pressure. The generated
 # library remains the only arm-specific input. Route receives a separately frozen
-# 25% uncertainty through the SDC written below.
+# 25% plus a fixed 50 ps uncertainty through the SDC written below. The fixed
+# addition keeps useful post-route pressure when the nominal period is 0.5 ns.
 set _dc_uncertainty [expr {$CLK_NS * 0.50}]
-set _route_uncertainty [expr {$CLK_NS * 0.25}]
+set _route_uncertainty [expr {$CLK_NS * 0.25 + 0.050}]
 set_clock_uncertainty $_dc_uncertainty [get_clocks *]
 puts "=== CUSTOM_CELL_FMAX DC_UNCERTAINTY_NS $_dc_uncertainty ==="
 compile_ultra -no_autoungroup

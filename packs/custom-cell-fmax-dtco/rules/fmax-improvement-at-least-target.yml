@@ -1,0 +1,15 @@
+id: fmax-improvement-at-least-target
+version: "1"
+title: Matched final-database Fmax improvement reaches the Campaign target
+parameter:
+  name: target_fmax_improvement_pct
+  unit: percent
+requires:
+  - type: fmax_improvement_pct
+subject:
+  type: fmax_improvement_pct
+predicate:
+  op: gte
+  threshold:
+    parameter: target_fmax_improvement_pct
+  unit: percent

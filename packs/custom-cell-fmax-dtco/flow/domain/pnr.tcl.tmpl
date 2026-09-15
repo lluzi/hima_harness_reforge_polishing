@@ -18,13 +18,26 @@
 #
 # Placeholders: @@ARM@@ @@INIT_DB@@ @@DESIGN_TOP@@ @@MULTI_CPU@@ @@TAP_CELL@@ @@TAP_INTERVAL@@
 #   @@FILLER_CELLS@@ @@RPT_DIR@@ @@FINAL_DB@@ @@GDS_OUT@@ @@GDS_MAP@@ @@MERGE_GDS@@
-#   @@SWITCHING_ACTIVITY@@
+#   @@SWITCHING_ACTIVITY@@ @@CLOCK_BUFFER_CELLS@@ @@CLOCK_INVERTER_CELLS@@
+#   @@POSTROUTE_NETLIST@@ is the routed logical graph used by the next research generation
 #   dedicated pin-setup and pin-capture lines implement baseline placement or generated-arm replay
 
 restoreDesign @@INIT_DB@@ @@DESIGN_TOP@@
 setMultiCpuUsage -localCpu @@MULTI_CPU@@
 file mkdir @@RPT_DIR@@
 setAnalysisMode -analysisType onChipVariation -cppr both
+
+# Keep the clock tree on the Site-declared balanced clock Cells. These are
+# common A/B inputs; the generated data-path library remains the sole arm
+# difference. use_inverters lets CCOpt balance rise/fall with the matching
+# DCCK inverter family instead of silently selecting ordinary data buffers.
+set _ccfmax_clock_buffers [list @@CLOCK_BUFFER_CELLS@@]
+set _ccfmax_clock_inverters [list @@CLOCK_INVERTER_CELLS@@]
+set_ccopt_property buffer_cells $_ccfmax_clock_buffers
+set_ccopt_property inverter_cells $_ccfmax_clock_inverters
+set_ccopt_property use_inverters true
+puts "=== CCFMAX CTS BUFFER CELLS $_ccfmax_clock_buffers ==="
+puts "=== CCFMAX CTS INVERTER CELLS $_ccfmax_clock_inverters ==="
 
 # --- profile-declared well taps, before placement ---
 addWellTap -cell @@TAP_CELL@@ -cellInterval @@TAP_INTERVAL@@ -prefix WELLTAP
@@ -51,7 +64,7 @@ puts "=== CCFMAX fillers placed @@ARM@@ ==="
 
 extractRC
 puts "=== CCFMAX POST-OPT SETUP @@ARM@@ ==="
-timeDesign -postRoute -outDir @@RPT_DIR@@/postopt -prefix post
+timeDesign -postRoute -outDir @@RPT_DIR@@/postopt -prefix post -numPaths 100 -expandReg2Reg -pathreports
 puts "=== CCFMAX POST-OPT HOLD @@ARM@@ ==="
 timeDesign -postRoute -hold -outDir @@RPT_DIR@@/posthold -prefix hold
 # Export the active post-route constraints from this Innovus session. This command
@@ -65,6 +78,7 @@ summaryReport -noHtml -outfile @@RPT_DIR@@/summary.rpt
 verify_drc -limit 100000 -report @@RPT_DIR@@/route.drc.rpt
 verifyConnectivity -type all -report @@RPT_DIR@@/connectivity.rpt
 
+saveNetlist @@POSTROUTE_NETLIST@@
 saveDesign @@FINAL_DB@@
 streamOut @@GDS_OUT@@ \
   -mapFile @@GDS_MAP@@ \

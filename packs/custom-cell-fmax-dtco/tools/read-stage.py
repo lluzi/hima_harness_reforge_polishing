@@ -20,10 +20,11 @@ validate_generation_request = None
 project_texts = None
 project_attributed_texts = None
 expected_generation_jobs = None
+retained_candidate_ids = None
 
 
 def load_domain(workspace):
-    global validate_generation_request, project_texts, project_attributed_texts, expected_generation_jobs
+    global validate_generation_request, project_texts, project_attributed_texts, expected_generation_jobs, retained_candidate_ids
     domain = (workspace / "flow" / "domain").resolve()
     if not domain.is_dir() or not domain.is_relative_to(workspace.resolve()):
         raise ValueError("staged domain parser directory is absent or escapes workspace")
@@ -36,10 +37,12 @@ def load_domain(workspace):
     from _cell_adoption_projection import project_texts as projector
     from _cell_adoption_projection import project_attributed_texts as attributed_projector
     from _generation_projection import expected_generation_jobs as generation_projector
+    from _generation_projection import retained_candidate_ids as retention_projector
     validate_generation_request = validator
     project_texts = projector
     project_attributed_texts = attributed_projector
     expected_generation_jobs = generation_projector
+    retained_candidate_ids = retention_projector
 
 
 def unique(pairs):
@@ -451,8 +454,8 @@ def derived_synth_condition(record, workspace, arm):
     if (not all(isinstance(value, (int, float)) and math.isfinite(value)
                 for value in (clock, dc_uncertainty, route_uncertainty))
             or not math.isclose(dc_uncertainty, clock * 0.50, abs_tol=1e-12)
-            or not math.isclose(route_uncertainty, clock * 0.25, abs_tol=1e-12)):
-        raise ValueError("synthesis record lacks the fixed 50%/25% pressure identity")
+            or not math.isclose(route_uncertainty, clock * 0.25 + 0.050, abs_tol=1e-12)):
+        raise ValueError("synthesis record lacks the fixed 50% DC / 25%+50ps APR pressure identity")
     return {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "synthesis",
         "commonInputs": held_identities(record.get("inputs", []),
@@ -635,6 +638,19 @@ def values_for(record, workspace, stage):
         validate_checkpoint(one(record, workspace, "postroute_checkpoint"),
                             workspace, postroute_links, "postroute")
         one(record, workspace, "postroute_gds")
+        routed_netlist = one(record, workspace, "postroute_netlist").read_text(errors="replace")
+        if not re.search(r"(?m)^\s*module\s+%s\b" % re.escape(str(record.get("facts", {}).get("design_top"))), routed_netlist):
+            raise ValueError("post-route netlist has the wrong or missing design top")
+        clock_rows = re.findall(
+            r"(?m)^\s*([A-Za-z_][A-Za-z0-9_$]*)\s+(CTS_[A-Za-z0-9_$]+)\s*\(", routed_netlist)
+        facts = record.get("facts", {})
+        allowed_clock_cells = set((facts.get("clock_tree_buffer_cells") or [])
+                                  + (facts.get("clock_tree_inverter_cells") or []))
+        if (not clock_rows or facts.get("clock_tree_cell_count") != len(clock_rows)
+                or facts.get("clock_tree_used_cells") != sorted({master for master, _ in clock_rows})
+                or any(not str(cell).startswith("DCCK") for cell in allowed_clock_cells)
+                or any(master not in allowed_clock_cells for master, _ in clock_rows)):
+            raise ValueError("saved routed netlist does not prove an exclusively DCCK clock tree")
         actual_clock = sdc_period(one(record, workspace, "postroute_sdc"))
         mmmc = mmmc_identity(one(record, workspace, "mmmc_script:" + arm))
         input_sdc = Path(mmmc["sdc"]).resolve()
@@ -649,7 +665,6 @@ def values_for(record, workspace, stage):
         secondary = secondary_pnr(one(record, workspace, "postroute_power_report"),
                                   one(record, workspace, "postroute_gatecount_report"),
                                   one(record, workspace, "postroute_summary_report"))
-        facts = record.get("facts", {})
         for key, actual in (("hold_wns_ns", hold_wns), ("hold_violating_paths", hold_violating),
                             ("route_drc_violations", route_drc), ("connectivity_violations", connectivity)):
             if facts.get(key) != actual:
@@ -661,7 +676,8 @@ def values_for(record, workspace, stage):
             raise ValueError("post-route timing companion names the wrong analysis view")
         if "=== CCFMAX PNR DONE %s (GDS written) ===" % arm not in log:
             raise ValueError("PnR completion marker is absent")
-        values.extend([number("pnr_completed", 1), number("hold_wns", hold_wns, "ns", mode="hold", scope="all"),
+        values.extend([number("pnr_completed", 1), number("clock_tree_cell_count", len(clock_rows)),
+                       number("hold_wns", hold_wns, "ns", mode="hold", scope="all"),
                        number("hold_violating_paths", hold_violating), number("route_drc_violations", route_drc),
                        number("connectivity_violations", connectivity), number("postroute_power", secondary["postroute_power_mw"], "mw"),
                        number("gate_count", secondary["gate_count"]), number("cell_count", secondary["cell_count"]),
@@ -790,6 +806,7 @@ def values_for(record, workspace, stage):
         foundry_fmax = 1000.0 / foundry_closed
         generated_fmax = 1000.0 / generated_closed
         fmax_delta = generated_fmax - foundry_fmax
+        fmax_improvement_pct = fmax_delta / foundry_fmax * 100.0
         fmax_improved = fmax_delta > 0
         facts = record.get("facts", {})
         for key, actual in (("setup_wns", gwns), ("foundry_setup_wns", fwns),
@@ -798,6 +815,7 @@ def values_for(record, workspace, stage):
                             ("cell_checker_diagnostic_count", cell_checker_diagnostics),
                             ("foundry_fmax_mhz", foundry_fmax), ("generated_fmax_mhz", generated_fmax),
                             ("fmax_delta_mhz", fmax_delta), ("fmax_improved", fmax_improved),
+                            ("fmax_improvement_pct", fmax_improvement_pct),
                             ("library_visible", visible)):
             if facts.get(key) != actual:
                 raise ValueError("comparison claim %s disagrees with raw evidence" % key)
@@ -827,6 +845,7 @@ def values_for(record, workspace, stage):
             number("foundry_fmax_mhz", foundry_fmax, "mhz"),
             number("generated_fmax_mhz", generated_fmax, "mhz"),
             number("fmax_delta_mhz", fmax_delta, "mhz"), number("fmax_improved", int(fmax_improved)),
+            number("fmax_improvement_pct", fmax_improvement_pct, "percent"),
             number("matched_conditions", int(matched)), number("library_visible", int(visible)),
             number("adopted_instance_count", adopted), number("verification_error_count", errors),
             number("cell_checker_diagnostic_count", cell_checker_diagnostics),
@@ -896,12 +915,13 @@ def read_mining_research(report, out, stage):
     if report != expected.resolve() or report.is_symlink() or not report.is_file():
         raise ValueError("mining research report is outside the declared route path")
     view = load(report)
-    if set(view) != {"schema", "sourceSha256", "minerCodeSha256", "route", "candidates", "limitations"}:
+    if set(view) != {"schema", "sourceSha256", "minerCodeSha256", "route", "candidates", "sourcePhase", "limitations"}:
         raise ValueError("mining research view has unexpected fields")
     raw_path = report.parent / "raw.json"
     record = load(workspace / "flow" / "records" / ("mine-" + route + ".json"))
     held = one(record, workspace, "mining_research_view")
     if (view.get("schema") != "custom-cell-fmax-mining-research-view/1" or view.get("route") != route
+            or view.get("sourcePhase") not in ("dc-probe", "generated-postroute")
             or not isinstance(view.get("candidates"), list)
             or view.get("sourceSha256") != hashlib.sha256(raw_path.read_bytes()).hexdigest()
             or view.get("minerCodeSha256") != (record.get("facts") or {}).get("codeSha256")
@@ -915,15 +935,25 @@ def read_ai_research(report, out):
     expected = workspace / "flow" / "research" / "research.json"
     if report != expected.resolve() or report.is_symlink() or not report.is_file():
         raise ValueError("AI research report is outside flow/research")
+    load_domain(workspace)
     document = load(report)
-    if set(document) != {"schema", "target", "algorithm", "sources", "priorFeedback", "hypotheses",
-                         "selected", "stopReason", "limitations"}:
+    if set(document) != {"schema", "target", "algorithm", "sources", "priorCandidateSource",
+                         "retainedCandidates", "priorFeedback", "hypotheses", "selected",
+                         "theoreticalEstimates", "stopReason", "limitations"}:
         raise ValueError("AI research report has unexpected fields")
     target, algorithm = document.get("target"), document.get("algorithm")
     if (document.get("schema") != "custom-cell-fmax-ai-research/1" or not isinstance(target, dict)
             or target.get("path_group") != "reg2reg" or not isinstance(target.get("design_top"), str)
+            or target.get("source_phase") not in ("dc-probe", "generated-postroute")
             or not isinstance(target.get("reg2reg_wns_ns"), (int, float))
             or not isinstance(target.get("reg2reg_path_count"), int) or target["reg2reg_path_count"] <= 0
+            or not isinstance(target.get("current_fmax_mhz"), (int, float)) or target["current_fmax_mhz"] <= 0
+            or not isinstance(target.get("current_gain_pct"), (int, float))
+            or not isinstance(target.get("target_gain_pct"), (int, float)) or not 0.1 <= target["target_gain_pct"] <= 25
+            or not isinstance(target.get("baseline_fmax_mhz"), (int, float)) or target["baseline_fmax_mhz"] <= 0
+            or not isinstance(target.get("target_fmax_mhz"), (int, float)) or target["target_fmax_mhz"] <= 0
+            or not isinstance(target.get("required_incremental_fmax_gain_pct"), (int, float))
+            or not isinstance(target.get("required_closed_period_reduction_ns"), (int, float))
             or not isinstance(algorithm, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(algorithm.get("entrySha256") or ""))):
         raise ValueError("AI research target/algorithm identity is invalid")
     relative_entry = Path(str(algorithm.get("entryPath") or ""))
@@ -937,11 +967,71 @@ def read_ai_research(report, out):
     probe = load(workspace / "flow" / "probe.json")
     if target["design_top"] != ((probe.get("effectiveIdentity") or {}).get("inputs") or {}).get("designTop"):
         raise ValueError("AI research target differs from the probe")
+    if target["source_phase"] == "generated-postroute":
+        pnr = load(workspace / "flow" / "records" / "pnr-generated.json")
+        compare = load(workspace / "flow" / "records" / "compare.json")
+        with gzip.open(one(pnr, workspace, "postroute_timing_paths"), "rb") as source:
+            timing_bytes = source.read()
+        facts = compare.get("facts") or {}
+        if (hashlib.sha256(timing_bytes).hexdigest() != target["timing_report_sha256"]
+                or facts.get("comparison_valid") is not True
+                or facts.get("generated_fmax_mhz") != target["current_fmax_mhz"]
+                or facts.get("fmax_improvement_pct") != target["current_gain_pct"]):
+            raise ValueError("AI research target differs from prior generated post-route evidence")
+    else:
+        current_fmax = 1000.0 / (float(probe["askedPeriodNs"]) - float(target["reg2reg_wns_ns"]))
+        if target["current_gain_pct"] != 0.0 or not math.isclose(target["current_fmax_mhz"], current_fmax, rel_tol=0, abs_tol=1e-12):
+            raise ValueError("initial AI research target differs from the DC probe")
+    baseline_fmax = target["current_fmax_mhz"] / (1.0 + target["current_gain_pct"] / 100.0)
+    target_fmax = baseline_fmax * (1.0 + target["target_gain_pct"] / 100.0)
+    required_incremental = max(0.0, (target_fmax / target["current_fmax_mhz"] - 1.0) * 100.0)
+    required_reduction = max(0.0, 1000.0 / target["current_fmax_mhz"] - 1000.0 / target_fmax)
+    if (not math.isclose(target["baseline_fmax_mhz"], baseline_fmax, rel_tol=0, abs_tol=1e-12)
+            or not math.isclose(target["target_fmax_mhz"], target_fmax, rel_tol=0, abs_tol=1e-12)
+            or not math.isclose(target["required_incremental_fmax_gain_pct"], required_incremental, rel_tol=0, abs_tol=1e-12)
+            or not math.isclose(target["required_closed_period_reduction_ns"], required_reduction, rel_tol=0, abs_tol=1e-12)):
+        raise ValueError("AI research theoretical target arithmetic is not reproducible")
     hypotheses, selected, sources = document.get("hypotheses"), document.get("selected"), document.get("sources")
     inputs = load(workspace / "flow" / "inputs.json")
     budget = inputs.get("MAX_CELLS")
+    if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 50:
+        raise ValueError("MAX_CELLS must be within 1..50")
+    retained_ids = []
+    retained_keys = set()
+    expected_retained = []
+    expected_prior_source = None
+    adoption_path = workspace / "flow" / "records" / "adoption.json"
+    characterize_path = workspace / "flow" / "records" / "characterize.json"
+    if adoption_path.is_file() and characterize_path.is_file():
+        adoption, characterize = load(adoption_path), load(characterize_path)
+        if adoption.get("status") == "passed" and characterize.get("status") == "passed":
+            patterns_path = one(characterize, workspace, "characterized_patterns")
+            patterns = load(patterns_path)
+            rows = (adoption.get("facts") or {}).get("candidate_rows")
+            retained_ids = retained_candidate_ids(rows, budget)
+            by_id = {row.get("candidate_id"): row for row in patterns.get("generation_requests", []) if isinstance(row, dict)}
+            adopted = {row.get("candidate_id"): row for row in rows if isinstance(row, dict)}
+            for candidate in retained_ids:
+                request = by_id.get(candidate)
+                if request is None:
+                    raise ValueError("prior retained candidate is absent from characterized patterns")
+                contract = request.get("generator_contract") or {}
+                reference = contract.get("equivalence_reference") or {}
+                retained_keys.add((reference.get("digest"), tuple(reference.get("output_order") or ()),
+                                   json.dumps(contract.get("target_library_profile") or {}, sort_keys=True, separators=(",", ":"))))
+                expected_retained.append({"generation_rank": adopted[candidate]["generation_rank"],
+                                          "adopted_instance_count": adopted[candidate]["adopted_instance_count"],
+                                          "source_methods": adopted[candidate]["source_methods"],
+                                          "candidate_id": candidate})
+            expected_prior_source = {
+                "patternsSha256": hashlib.sha256(patterns_path.read_bytes()).hexdigest(),
+                "adoptionRecordSha256": hashlib.sha256(adoption_path.read_bytes()).hexdigest(),
+                "retainedCandidateIds": retained_ids,
+            }
+    if document.get("retainedCandidates") != expected_retained or document.get("priorCandidateSource") != expected_prior_source:
+        raise ValueError("AI research retained-candidate evidence differs from prior adoption")
     if (not isinstance(hypotheses, list) or not 3 <= len(hypotheses) <= 12
-            or not isinstance(selected, list) or not isinstance(budget, int) or not 1 <= len(selected) <= budget <= 50
+            or not isinstance(selected, list) or not 0 <= len(selected) <= budget - len(retained_ids) <= 50
             or not isinstance(sources, dict) or set(sources) != set(ROUTES)):
         raise ValueError("AI research hypothesis/selection budget is invalid")
     names = {row.get("name") for row in hypotheses if isinstance(row, dict)}
@@ -957,6 +1047,7 @@ def read_ai_research(report, out):
         raise ValueError("AI research selection repeats a source candidate")
     distinct_pool = set()
     identities = {}
+    source_requests = {}
     raw_candidate_count = 0
     for route in ROUTES:
         raw_path = workspace / "flow" / "mining" / route / "raw.json"
@@ -977,6 +1068,7 @@ def read_ai_research(report, out):
                 if key[0]:
                     distinct_pool.add(key)
                     identities[(route, row.get("candidate_id"))] = key
+                    source_requests[(route, row.get("candidate_id"))] = row
                     raw_candidate_count += 1
         if any(candidate not in available for selected_route, candidate in selected_keys if selected_route == route):
             raise ValueError("AI research selected an absent source candidate")
@@ -985,13 +1077,65 @@ def read_ai_research(report, out):
         if projection != {"sourceSha256": source["rawSha256"], "selected": expected_ids,
                           "codeSha256": source["minerCodeSha256"]}:
             raise ValueError("route selection projection differs from AI research for " + route)
+    distinct_pool -= retained_keys
     selected_distinct = [identities.get(key) for key in selected_keys]
     if (None in selected_distinct or len(selected_distinct) != len(set(selected_distinct))
-            or len(selected) != min(budget, len(distinct_pool))
+            or len(selected) != min(budget - len(retained_ids), len(distinct_pool))
             or algorithm.get("candidatePoolCount") != len(distinct_pool)
             or algorithm.get("rawCandidateCount") != raw_candidate_count):
         raise ValueError("AI research did not fill the one de-duplicated Cell screen")
-    values = [number("research_hypothesis_count", len(hypotheses)), number("selected_count", len(selected))]
+    estimates = document.get("theoreticalEstimates")
+    if not isinstance(estimates, list) or len(estimates) != len(selected):
+        raise ValueError("AI research theoretical estimates do not cover the selected Cell set")
+    for selected_row, estimate in zip(selected, estimates):
+        request = source_requests[(selected_row["route"], selected_row["candidate_id"])]
+        evidence = request.get("discovery_evidence") or {}
+        occurrences = evidence.get("occurrences") or []
+        increments = [float(row.get("reg2reg_increment_ns") or 0.0)
+                      for row in occurrences if isinstance(row, dict)]
+        root_saving = max(increments + [float(evidence.get("reg2reg_increment_ns") or 0.0)])
+        cone_saving = float(evidence.get("reg2reg_cone_delay_upper_ns") or 0.0)
+        saving = max(root_saving, cone_saving)
+        path_ranks = sorted({int(rank) for row in occurrences if isinstance(row, dict)
+                             for rank in (row.get("reg2reg_path_ranks") or [])
+                             if isinstance(rank, int) and rank > 0})
+        path_families = sorted({str(family) for row in occurrences if isinstance(row, dict)
+                                for family in (row.get("reg2reg_path_family_ids") or [])
+                                if isinstance(family, str) and family})
+        if not path_families:
+            path_families = sorted(str(value) for value in (evidence.get("reg2reg_path_family_ids") or [])
+                                   if isinstance(value, str) and value)
+        current_fmax = float(target["current_fmax_mhz"])
+        closed = 1000.0 / current_fmax
+        upper = None if saving <= 0 or saving >= closed else (1000.0 / (closed - saving) / current_fmax - 1.0) * 100.0
+        expected_estimate = {
+            "route": selected_row["route"], "candidate_id": selected_row["candidate_id"],
+            "evidence_status": "path-delay upper bound" if upper is not None else "no explicit path-delay bound",
+            "path_delay_basis": ("observed candidate-cone delay" if cone_saving > 0
+                                 else "observed root Cell delay" if root_saving > 0 else None),
+            "path_delay_removal_upper_ns": round(saving, 6) if saving > 0 else None,
+            "incremental_fmax_gain_upper_pct": round(upper, 6) if upper is not None and math.isfinite(upper) else None,
+            "covered_reg2reg_path_count": len(path_ranks), "covered_reg2reg_path_ranks": path_ranks,
+            "covered_reg2reg_path_family_count": len(path_families),
+            "covered_reg2reg_path_families": path_families,
+            "covered_reg2reg_family_path_support": int(evidence.get("reg2reg_path_family_support") or 0),
+            "worst_covered_path_slack_ns": evidence.get("reg2reg_worst_path_slack_ns"),
+            "current_fmax_mhz": round(current_fmax, 6),
+            "current_gain_pct": round(float(target["current_gain_pct"]), 6),
+            "target_gain_pct": round(float(target["target_gain_pct"]), 6),
+            "remaining_gain_pct": round(max(0.0, float(target["target_gain_pct"]) - float(target["current_gain_pct"])), 6),
+            "required_incremental_fmax_gain_pct": round(required_incremental, 6),
+            "meets_remaining_target_upper_bound": upper is not None and upper >= required_incremental,
+            "limitations": "upper bound removes the full observed Cell-cone increment and does not model remapping, RC, path migration or overlap",
+        }
+        if estimate != expected_estimate:
+            raise ValueError("AI research theoretical estimate differs from source timing evidence")
+    upper_values = [row.get("incremental_fmax_gain_upper_pct") for row in estimates
+                    if isinstance(row, dict) and isinstance(row.get("incremental_fmax_gain_upper_pct"), (int, float))]
+    values = [number("research_hypothesis_count", len(hypotheses)), number("selected_count", len(selected)),
+              number("retained_candidate_count", len(retained_ids))]
+    values.append(number("theoretical_gain_upper_pct", max(upper_values), "percent") if upper_values
+                  else unknown("theoretical_gain_upper_pct", "no selected candidate has explicit reg2reg path-delay evidence", "percent"))
     out.write_text(json.dumps({"values": values}, sort_keys=True) + "\n")
 
 

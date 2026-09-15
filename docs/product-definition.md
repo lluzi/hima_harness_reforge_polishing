@@ -68,7 +68,10 @@ Polishing 对修改后的版本独立设计并执行技术与产品测试，提�
 下一试用候选先由 polishing 完成干净安装、无手册引导、Site 发现、`aes_cipher_top` 目标 Campaign、显式 reg2reg 优化压力、Matched Comparison、并行 Side Talk 和控制的低层产品验收，再由用户本人最终签收高级体验与产品品味。portable Pack 本身仍以 Site 输入绑定 design，不把 AES 写成方法不变量。
 产品默认不上传客户材料、对话、Campaign 数据、工具日志、报告或 debug 文件；现场证据在本地或 Site 完整保留，需要支持时由用户审阅并明确导出。
 
-Fmax 未提升不能伪装为指标成功，但有证据的负结果可构成知识成果。未给出统一提升百分比、硬交付日期或全局预算数值；预算在每次 Campaign 与 Site 条件下确定。
+Fmax 未提升不能伪装为指标成功，但有证据的负结果可构成知识成果。当前
+`aes_cipher_top` 定制 Cell Campaign 的目标是 matched post-route Fmax 提升至少 5%；这是本次
+Campaign 的研究目标和停止条件，不是跨设计、跨 Site 的统一产品承诺。预算在每次 Campaign
+与 Site 条件下确定。
 
 下表把已确认要求转成验收观察点。具体用例、故障场景与执行预算由 polishing 设计，不要求一次真实研究同时制造所有异常。
 

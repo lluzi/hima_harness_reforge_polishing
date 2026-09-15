@@ -236,5 +236,43 @@ overrides in the later home patch. The four focused profile tests passed. The Ca
 local at `.hima-tmp/product-upgrade-v2-l5/catsights-trial-8521037.png`, SHA-256
 `ce6acda4a953aee95aad18406abc71e5adf8c5e23a252cbd71f342b29dce5397`.
 
-PLS-35 now awaits the product owner's final signoff and an explicit later release decision. No
-GitHub Release is claimed here.
+The product owner subsequently rejected this result as a release exit because `+0.193%` is far below
+the current 5% Campaign target. The same evidence exposed two method defects: the generated post-route
+WNS was only `-0.019 ns`, and the saved routed netlist showed CCOpt mixing ordinary BUFF/CKB masters
+with DCCK masters. PLS-35 is therefore reopened. The next method revision adds 50 ps to the common APR
+uncertainty, restricts CTS to Site-declared DCCK buffer/inverter sets, saves and audits the routed
+netlist, expands post-route reg2reg reporting, groups indexed beginpoint/endpoint paths as timing-graph
+families, estimates evidence-bounded theoretical benefit, and revisits the same graph for up to four
+generations. No GitHub Release is claimed here.
+
+## Post-route graph and CTS L4 probes
+
+No new DC/APR Campaign was launched while implementing the method change. Read-only inspection of the
+retained generated timing report found 50 reg2reg paths. Endpoint-family normalization grouped 48 as
+`sa#_reg_#_->sa#_reg_#_` with worst slack `-0.019 ns`, and two as
+`u#/w_reg_#__#_->u#/w_reg_#__#_` with worst slack `-0.008 ns`. The actual report contains 42 generated
+Cell occurrences on those sampled paths; the strongest observed generated-Cell increment is `0.058 ns`.
+
+The revised miner was staged only in
+`/data/eda/project/hima_harness/polishing-runs/dev-postroute-graph-mining-20260915-v4` and run against
+the retained 62,218-line routed netlist, the 50-path Innovus report, foundry Liberty and the prior
+generated Liberty. It parsed 1,047 library Cells including 47 generated Cells, retained six generated
+Cell vertices as explicit critical graph anchors with 12 total sampled-path hits, and emitted three
+new timing-route candidates. All three carry the 48-path family support. Their observed root delays are
+14-21 ps, while the full candidate-cone removal upper bounds are 25, 68 and 81 ps. Those larger values
+are search bounds rather than predicted realization. This validates the real report,
+hierarchical netlist and generated-Liberty parser seam; it does not establish adoption or Fmax gain.
+
+The Site's Innovus 23.14 help confirms `set_ccopt_property` supports `buffer_cells`, `inverter_cells`
+and `use_inverters`, and `timeDesign` supports `-numPaths`, `-expandReg2Reg` and `-pathreports`. The
+TSMC28 Liberty and LEF both contain DCCKBD4/8/12/16/20 buffers and DCCKND4/8/12/16/20 inverters.
+The next full physical generation must prove through its saved routed netlist that every `CTS_`
+instance uses only that declared set.
+
+A new Site input snapshot was created beside the prior immutable input at
+`/data/eda/project/hima_harness/polishing-inputs/aes-ai-research-50-20260915-v4`; it adds only those
+two DCCK lists. The current `bind-inputs.py` validated that snapshot in the sibling development
+workspace `/data/eda/project/hima_harness/polishing-runs/dev-bind-v4-20260915`, resolving
+`aes_cipher_top` and seven RTL files. The live-check static preflight also accepted the four-generation,
+six-hour, 240-attempt and five-minute closing limits. These are readiness checks only: no DC, LC,
+Innovus implementation Job or model request was launched by them.

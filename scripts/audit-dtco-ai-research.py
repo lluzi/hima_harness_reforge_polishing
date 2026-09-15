@@ -39,6 +39,8 @@ def check(manifest_path, output):
     assert report["algorithm"]["entrySha256"] == sha(code)
     assert report["target"]["path_group"] == "reg2reg"
     assert report["target"]["reg2reg_path_count"] > 0
+    assert report["target"]["source_phase"] in {"dc-probe", "generated-postroute"}
+    assert report["target"]["target_gain_pct"] == 5
     assert 3 <= len(report["hypotheses"]) <= 12
     tree, _research = scaffold(code)
     literals = {node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)}
@@ -70,9 +72,16 @@ def check(manifest_path, output):
     assert len(selected) == len(set(selected)) and set(selected) <= available
     selected_keys = [identities[key] for key in selected]
     assert len(selected_keys) == len(set(selected_keys)), "research selected an equivalent Cell twice"
-    assert len(selected) == min(manifest["maxCells"], len(unique)) <= 50
-    assert report["algorithm"]["candidatePoolCount"] == len(unique)
+    retained = report.get("retainedCandidates")
+    assert isinstance(retained, list) and len(retained) <= manifest["maxCells"] // 2
+    retained_ids = [row.get("candidate_id") for row in retained if isinstance(row, dict)]
+    assert len(retained_ids) == len(retained) == len(set(retained_ids))
+    assert len(selected) == min(manifest["maxCells"] - len(retained), report["algorithm"]["candidatePoolCount"]) <= 50
+    assert len(selected) <= report["algorithm"]["candidatePoolCount"] <= len(unique)
     assert report["algorithm"]["rawCandidateCount"] == raw_count
+    estimates = report.get("theoreticalEstimates")
+    assert isinstance(estimates, list) and len(estimates) == len(selected)
+    assert [(row.get("route"), row.get("candidate_id")) for row in estimates] == selected
     assert manifest_path.read_bytes() == original
     evidence = {
         "status": "passed",
@@ -87,6 +96,9 @@ def check(manifest_path, output):
         "uniqueCandidateCount": len(unique),
         "hypothesisCount": len(report["hypotheses"]),
         "selectedCount": len(selected),
+        "retainedCandidateCount": len(retained),
+        "sourcePhase": report["target"]["source_phase"],
+        "targetGainPct": report["target"]["target_gain_pct"],
     }
     output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
     print("retained AI research audit PASS; zero model/EDA requests")

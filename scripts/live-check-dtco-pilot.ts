@@ -34,14 +34,14 @@ import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-wo
 const PACK_ID = 'custom-cell-fmax-dtco';
 const ACCEPTANCE_TOP = 'aes_cipher_top';
 const EXPECTED_MODEL = 'deepseek-flash';
-const FIRST_TIME_BOX_MS = 120 * 60_000;
-const HARNESS_TIME_BOX_MS = 180 * 60_000;
+const FIRST_TIME_BOX_MS = 360 * 60_000;
+const HARNESS_TIME_BOX_MS = 420 * 60_000;
 const FIRST_RETRY_ALLOWANCE = 3;
-const GENERATION_LIMIT = 1;
-const ATTEMPT_LIMIT = 120;
-const CLOSING_RESERVE_MS = 60_000;
-const MAX_PRODUCT_REQUEST_STEPS = 600;
-const MAX_USER_TURNS = 120;
+const GENERATION_LIMIT = 4;
+const ATTEMPT_LIMIT = 240;
+const CLOSING_RESERVE_MS = 300_000;
+const MAX_PRODUCT_REQUEST_STEPS = 1800;
+const MAX_USER_TURNS = 240;
 const SITE_NAME = /^[A-Za-z][A-Za-z0-9_.-]*$/;
 const SAFE_REMOTE_PATH = /^\/[A-Za-z0-9._/+*-]+$/;
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) =>
@@ -116,6 +116,7 @@ const requiredValueTypes = [
   'adopted_instance_count',
   'adopted_candidate_count',
   'pnr_completed',
+  'clock_tree_cell_count',
   'verification_error_count',
   'cell_checker_diagnostic_count',
   'comparison_valid',
@@ -126,7 +127,10 @@ const requiredValueTypes = [
   'foundry_fmax_mhz',
   'generated_fmax_mhz',
   'fmax_delta_mhz',
+  'fmax_improvement_pct',
   'fmax_improved',
+  'retained_candidate_count',
+  'theoretical_gain_upper_pct',
 ] as const;
 
 interface L5SiteProfile {
@@ -507,13 +511,13 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     `Execute only the already confirmed Campaign Run ${confirmed.runId}.`,
     'You are the only execution owner. Use only hima_context and hima_execute for business actions. Do not start another Run, edit the method, use shell, open another Agent/model, or auto-drive the graph.',
     'At every Explore node, use the Pack recommendation and complete the recommendation exactly; do not invent a replacement numeric Strategy. In the probe loop, reg2reg pressure PASS plus clock Goal PASS means goalMet immediately, even on the first measurement. Convergence is a fallback ending, not a quota for extra samples. Never relax period above the 0.5 ns Goal merely to obtain a second observation.',
-    'Complete the full reference method from actual facts: the probe loop; all six candidate-method evidence routes; the one unified AI research Workshop; merge; generation into one library; layout; predicted characterization; Library Compiler; one foundry/custom Design Compiler pair; adoption; one paired foundry/generated PNR comparison; verification; final Judge; and next-research.',
-    'At research-candidates use recommend. Read every compact research_<route> projection, probe, researchTemplate and full-mining-method.md; read a full raw/source artifact when a research question needs it. Copy the exact researchTemplate and implement only research(candidates, context). Candidates are already Boolean/interface-de-duplicated and provide route, source_methods, method_rankings, evidence, interface, equivalence_digest and implementation_route aliases plus the full representative source request. Generate at least three collaborative current-data research lenses using actual reg2reg_path_hits/increment, Boolean interface/equivalence, occurrence, implementation route and prior adoption feedback. Fill min(context["max_cells"], len(candidates)) for one common pressured DC screen and order selected best-first as the Cell generation ranking. Do not rank a method as winner or create method-specific EDA arms. Candidate ids may be deterministic tie breakers but must never be embedded. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
+    'Complete the full reference method from actual facts. Generation one mines the pressured DC graph. If the matched routed gain is below 5%, next-research revisits the same mining nodes; later generations mine the prior generated final routed netlist and its expanded reg2reg timing-path report, preserve the strongest actually adopted candidates, introduce new candidates into the remaining common-library slots, and repeat one DC/APR pair. Stop only at the 5% Goal, honest convergence, generation limit, budget, or a real blocker.',
+    'At research-candidates use recommend. Read every compact research_<route> projection, probe, researchTemplate and full-mining-method.md; read a full raw/source artifact when a research question needs it. Copy the exact researchTemplate and implement only research(candidates, context). Candidates expose source_phase, current/remaining gain, per-path delay, timing-family coverage, endpoint families, Boolean interface/equivalence, occurrence, implementation route and prior adoption feedback. Use at least three collaborative lenses, including timing-graph family coverage and theoretical gain upper bounds. Fill min(context["max_new_cells"], len(candidates)); retained adopted Cells already occupy the other active-library slots. Order new selections best-first. Do not rank a method as winner or create method-specific EDA arms. Candidate ids may be deterministic tie breakers but must never be embedded. Write entry.py through hima_execute, run those exact recorded bytes, and preserve every failure and retry.',
     'Treat learned characterization as predicted, Site tool outputs as executed tool evidence, and post-route values as measured only where the readers say so. Never turn asked, derived, predicted, missing, failed, or unknown values into measurements or success.',
     'Keep setup, hold, route-DRC, connectivity and cell-checker diagnostic findings in the final analysis. comparison_valid proves matched final-database evidence, not physical signoff cleanliness; do not hide or rename disclosed physical findings.',
-    'At next-research, record source-linked analysis with current record citations, limitations, and discriminating next experiments, then complete truthfully. Goal-met requires every final rule to PASS, including an actual routed custom Cell instance and strictly higher Fmax in the generated arm. Never convert a negative result into success.',
+    'At next-research, record source-linked analysis with current record citations, limitations, and discriminating next experiments. Goal-met requires every final rule to PASS, including an actual routed custom Cell instance and at least 5% matched Fmax improvement. A smaller positive gain must revise the algorithm and continue while budget and convergence permit; never convert it into success.',
     'A node in retrying state has only recorded a failed attempt; Fabric does not launch a hidden automatic retry. Read the failed Job log once, diagnose it, and either begin one fresh admitted attempt or stop truthfully. Never poll the same completed failure while waiting for a nonexistent retry.',
-    'The Pack reserves 60 seconds for closing, permits at most 120 attempts, and has a 120-minute Campaign limit for the 50-Cell screen. The enclosing live harness has 180 minutes, 600 product request steps and 120 user turns. These are upper limits, not a promise that the model or tools will finish.',
+    'The Pack reserves 5 minutes for closing, permits at most 240 attempts, four generations, and has a 6-hour Campaign limit. The enclosing live harness has 7 hours, 1800 product request steps and 240 user turns. These are upper limits, not a promise that the model or tools will finish.',
     'When a Job is asynchronous, yield and let its native tool notification report settlement. Continue from the current context only; never repeat a launch with a new request identity.',
   ].join('\n');
   let created = ownedRuns();
@@ -525,6 +529,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     (first.purpose ?? 'campaign') === 'campaign'
       && first.packDigest === sourceDigest
       && first.goal?.target_period_ns === 0.5
+      && first.goal?.target_fmax_improvement_pct === 5
       && first.firstStrategy?.periodNs === 0.5
       && first.firstStrategy?.algorithmRevision === 0
       && first.firstStrategy?.floorplanUtilization === 0.25
@@ -628,12 +633,13 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     ? comparison.values.map((value) => [value.type, value.value]) : []);
   const foundryFmax = comparisonValues.get('foundry_fmax_mhz');
   const generatedFmax = comparisonValues.get('generated_fmax_mhz');
-  check.require('the final matched comparison proves routed adoption and strictly higher custom-arm Fmax',
+  check.require('the final matched comparison proves routed adoption and at least 5% custom-arm Fmax improvement',
     comparison?.type === 'observation'
       && comparisonValues.get('adopted_instance_count')! > 0
       && comparisonValues.get('comparison_valid') === 1
       && comparisonValues.get('matched_conditions') === 1
       && comparisonValues.get('fmax_improved') === 1
+      && Number(comparisonValues.get('fmax_improvement_pct')) >= 5
       && typeof foundryFmax === 'number' && typeof generatedFmax === 'number'
       && generatedFmax > foundryFmax,
     { comparisonRecord: comparison?.id, adoptedInstances: comparisonValues.get('adopted_instance_count'),
@@ -774,7 +780,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     firstOwner: ownerId,
     pack: { id: PACK_ID, version: sourcePack.contract.version, digest: sourceDigest },
     site: profile.site.name,
-    goal: { target_period_ns: 0.5 },
+    goal: { target_period_ns: 0.5, target_fmax_improvement_pct: 5 },
     archive: {
       directory: firstArchive.directory,
       manifest: firstManifestPath,

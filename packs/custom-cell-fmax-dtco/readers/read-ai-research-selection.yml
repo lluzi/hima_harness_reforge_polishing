@@ -11,3 +11,5 @@ reportKind: custom-cell-fmax-ai-research/1
 emits:
   - research_hypothesis_count
   - selected_count
+  - retained_candidate_count
+  - theoretical_gain_upper_pct

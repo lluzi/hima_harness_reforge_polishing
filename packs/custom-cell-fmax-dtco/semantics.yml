@@ -41,6 +41,9 @@ values:
   pnr_completed:
     unit: count
     description: "pnr completed: independently read evidence; missing facts stay unknown."
+  clock_tree_cell_count:
+    unit: count
+    description: CCOpt-inserted CTS_ instances in the routed netlist, all independently checked against the Site-declared DCCK buffer and inverter sets.
   verification_error_count:
     unit: count
     description: Errors in final-database restore, timing, library visibility or instance-census verification; successful verified execution is zero.
@@ -115,6 +118,9 @@ values:
   fmax_delta_mhz:
     unit: mhz
     description: Generated minus foundry restored-final-database Fmax under matched conditions.
+  fmax_improvement_pct:
+    unit: percent
+    description: Generated minus foundry Fmax, divided by foundry Fmax, from the matched restored final databases.
   fmax_improved:
     unit: count
     description: One only when generated restored-final-database Fmax is strictly higher.
@@ -122,6 +128,12 @@ values:
     unit: count
     description: Exact source-linked buildable candidate ids selected by the
       executed Workshop program.
+  retained_candidate_count:
+    unit: count
+    description: Strongest previously adopted candidate Cells carried into the next common library before new discovery slots are filled.
+  theoretical_gain_upper_pct:
+    unit: percent
+    description: Largest selected candidate upper-bound incremental Fmax gain derived from its observed reg2reg path-delay contribution; not a predicted realized gain.
   research_hypothesis_count:
     unit: count
     description: Distinct evidence-linked research lenses used to rank the one collaborative candidate set.

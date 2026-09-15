@@ -17,14 +17,19 @@ def research(candidates, context):
     ``implementation_route`` aliases. The original ``discovery_evidence`` and
     ``generator_contract`` remain available for deeper inspection. context contains
     the AES-independent design identity, explicit
-    reg2reg pressure, the build budget and any retained synthesis/adoption feedback.
+    reg2reg pressure, source phase, current and target gain, the new-Cell slot budget,
+    retained adopted Cells and prior synthesis/adoption feedback. Timing-driven evidence
+    includes sampled path ranks, actual delay, normalized beginpoint/endpoint families,
+    timing-family support, worst covered slack and a mechanically derived theoretical
+    Fmax upper bound.
 
     Return exactly:
       {"hypotheses": [{"name": str, "question": str, "signals": [str, ...]}, ...],
        "selected": [{"route": str, "candidate_id": str,
                      "hypothesis": str, "rationale": str}, ...],
        "stop_reason": str}
-    Fill min(context["max_cells"], len(candidates)). ``selected`` is ordered
+    Fill min(context["max_new_cells"], len(candidates)). Retained candidates already
+    occupy the other active-library slots. ``selected`` is ordered
     best-first and is the generation priority for one common library and one
     DC-to-APR validation flow. Hypotheses are collaborative research lenses; do
     not eliminate a method or create a separate validation arm for one.

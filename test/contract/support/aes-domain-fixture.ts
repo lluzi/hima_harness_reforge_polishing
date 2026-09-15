@@ -108,7 +108,7 @@ elif tool == 'dc_shell':
     (run / 'results' / (arm + '.dc.v')).write_text('module %s(input clk,a,b,output z);\n%s U0 (.A(a),.B(b),.Z(z));\nendmodule\n' % (top, master))
     fixture_flow = script.parents[3]
     input_delay = '0.2' if arm == 'custom' and (fixture_flow / 'synthetic-custom-input-delay').exists() else '0.1'
-    (run / 'results' / (arm + '.dc.sdc')).write_text('### SYNTHETIC FIXTURE SDC\n# Created by write_sdc on SYNTHETIC-%s\n###\ncreate_clock -name clk -period %s [get_ports clk]\nset_clock_uncertainty %s [get_clocks clk]\nset_input_delay -clock clk %s [get_ports a]\n' % (arm, clock_ns, clock_ns * 0.25, input_delay))
+    (run / 'results' / (arm + '.dc.sdc')).write_text('### SYNTHETIC FIXTURE SDC\n# Created by write_sdc on SYNTHETIC-%s\n###\ncreate_clock -name clk -period %s [get_ports clk]\nset_clock_uncertainty %s [get_clocks clk]\nset_input_delay -clock clk %s [get_ports a]\n' % (arm, clock_ns, clock_ns * 0.25 + 0.050, input_delay))
     (run / 'reports' / ('refs_' + arm + '.rpt')).write_text('%s 1\n' % master)
     (run / 'reports' / ('timing_' + arm + '.rpt')).write_text('slack (MET) 0.010\n')
     (run / 'reports' / ('timing_reg2reg_' + arm + '.rpt')).write_text('Design : %s\n  Startpoint: source_reg\n  Endpoint: sink_reg\n  Path Group: reg2reg\n  Path Type: max\n  slack (VIOLATED) -0.100\n' % top)
@@ -119,7 +119,7 @@ elif tool == 'dc_shell':
     print('=== AES_DTCO SYNTHESIS_COMPLETE %s ===' % arm)
     print('=== CUSTOM_CELL_FMAX LIBRARY_VISIBLE_COUNT %d ===' % (1 if arm == 'custom' else 0))
     print('=== CUSTOM_CELL_FMAX DC_UNCERTAINTY_NS %s ===' % (clock_ns * 0.50))
-    print('=== CUSTOM_CELL_FMAX ROUTE_UNCERTAINTY_NS %s ===' % (clock_ns * 0.25))
+    print('=== CUSTOM_CELL_FMAX ROUTE_UNCERTAINTY_NS %s ===' % (clock_ns * 0.25 + 0.050))
     print('=== CUSTOM_CELL_FMAX SYNTHESIS_COMPLETE %s ===' % arm)
 elif tool == 'innovus':
     arm = 'generated' if 'generated' in script.name else 'foundry'
@@ -199,6 +199,12 @@ elif tool == 'innovus':
         (pathlib.Path(report_dir) / 'power.rpt').write_text('Power Units = 1mW\nTotal Power: 1.25\n')
         (pathlib.Path(report_dir) / 'gatecount.rpt').write_text('[0] held_out_datapath Gates=42 Cells=21 Area=12.5 um^2\n')
         (pathlib.Path(report_dir) / 'summary.rpt').write_text('# Instances: 25\n% Pure Gate Density #6 ((fixture)): 55.5%\n')
+        save_netlist = re.search(r'^saveNetlist\s+(\S+)', text, re.M)
+        if save_netlist:
+            routed_netlist = pathlib.Path(save_netlist.group(1))
+            routed_master = 'XS_FIX_ZN' if arm == 'generated' else 'NAND2_X1'
+            routed_top = re.search(r'^restoreDesign\s+\S+\s+(\S+)', text, re.M).group(1)
+            routed_netlist.write_text('module %s(input clk,a,b,output z);\nwire cts_clk;\nDCCKBD4_FIXTURE CTS_ccl_a_buf_00001 (.I(clk),.Z(cts_clk));\n%s U0 (.A(a),.B(b),.Z(z));\nendmodule\n' % (routed_top, routed_master))
         actual_sdc = pathlib.Path(re.search(r'^write_sdc\s+(\S+)', text, re.M).group(1))
         if not (fixture_flow / 'synthetic-missing-actual-clock').exists():
             input_sdcs = [link for link in restored.rglob('*') if link.is_symlink() and str(link.readlink()).endswith('.dc.sdc')]
@@ -305,6 +311,8 @@ def parse_netlist(path):
     FOUNDRY_QRC_TECH: path.join(site, 'qrc'), FOUNDRY_GDS: path.join(site, 'foundry.gds'), XS28_GDS_MAP: path.join(site, 'map'),
     XS28_RC_TEMPERATURE: 25, XS28_PROCESS_NODE: 28, XS28_MAX_ROUTE_LAYER: 'M8', MULTI_CPU: 1,
     XS28_TAP_CELL: 'FIXTURE_TAP', XS28_TAP_INTERVAL: 10, XS28_FILLER_CELLS: 'FIXTURE_FILL',
+    CCFMAX_CLOCK_BUFFER_CELLS: 'DCCKBD4_FIXTURE DCCKBD8_FIXTURE',
+    CCFMAX_CLOCK_INVERTER_CELLS: 'DCCKND4_FIXTURE DCCKND8_FIXTURE',
     XS28_SWITCHING_ACTIVITY: 0.2, PNR_TIMEOUT_SEC: 30, DRC_LIMIT: 1000000, VERIFY_TIMEOUT_SEC: 30,
   };
   const inputs = options.customBindings ? {

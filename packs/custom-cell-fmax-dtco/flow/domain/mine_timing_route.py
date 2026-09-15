@@ -18,6 +18,7 @@ single-output transistor generator does not claim to build them as one Cell.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import math
@@ -167,7 +168,7 @@ def _dominators(order, predecessors):
 
 
 def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, top_seeds=24,
-                           observed_reg2reg=None):
+                           observed_reg2reg=None, generated_cell_pattern=None):
     (eligible, _drivers, _loads, predecessors, successors,
      order, edge_nets) = _mapped_graph(instances, cells)
     if not eligible:
@@ -263,6 +264,12 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
                 "reg2reg_path_hits": seen["path_hits"],
                 "reg2reg_increment_ns": seen["max_increment_ns"],
                 "reg2reg_path_ranks": seen["path_ranks"],
+                "reg2reg_path_family_count": seen["path_family_count"],
+                "reg2reg_path_family_ids": seen["path_family_ids"],
+                "reg2reg_path_family_support": seen["path_family_support"],
+                "reg2reg_beginpoint_families": seen["beginpoint_families"],
+                "reg2reg_endpoint_families": seen["endpoint_families"],
+                "reg2reg_worst_path_slack_ns": seen["worst_path_slack_ns"],
             })
             aligned.append(row)
         ranking = aligned
@@ -282,6 +289,14 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
     if not ranking:
         return None
     startpoints = sorted({path["instances"][0] for path in paths})
+    selected = []
+    if generated_cell_pattern:
+        selected.extend(row for row in ranking
+                        if fnmatch.fnmatchcase(row["cell_type"], generated_cell_pattern))
+        selected = selected[:max(1, top_seeds // 2)]
+    selected_names = {row["mapped_instance"] for row in selected}
+    selected.extend(row for row in ranking if row["mapped_instance"] not in selected_names)
+    selected = selected[:top_seeds]
     return {
         "algorithm": "CRITICAL_SUBGRAPH",
         "critical_subgraph_id": "CSG_%s" % re.sub(r"[^A-Za-z0-9]+", "_", module).upper(),
@@ -301,7 +316,7 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
             ),
         },
         "representative_paths": paths,
-        "critical_elements": ranking[:top_seeds],
+        "critical_elements": selected,
         "limitations": [
             "DC reg2reg path membership and incremental delay are measured; relative NLDM delay remains a search proxy.",
             "The current Package has no lossless mapped-to-unmapped origin map across hierarchy; "
@@ -310,35 +325,97 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
     }
 
 
-def parse_reg2reg_path_membership(report, expected_top, modules):
-    """Map the actual DC reg2reg path points back to local mapped instances.
+def _endpoint_family(point):
+    """Normalize indexed register endpoints into one structural timing family."""
+    value = str(point or "unknown").strip()
+    value = re.sub(r"/[A-Za-z0-9_$]+$", "", value)
+    return re.sub(r"[0-9]+", "#", value)
 
-    Hierarchical occurrences such as ``us31/U157/A1`` are associated with the
-    module definition containing the same leaf instance and Cell type.  A path
-    contributes at most one hit per local instance even when both input and
-    output pins appear in the full-path report.
+
+def parse_reg2reg_timing_graph(report, expected_top, modules):
+    """Map full reg2reg paths onto routed instances and endpoint families.
+
+    A path report is a sample from a timing graph, not an independent object.
+    The returned graph therefore retains shared beginpoint/endpoint families,
+    per-family path support and per-instance coverage across those families.
+    Innovus launch/capture clock-tree rows are excluded: mining begins only
+    after the reported data beginpoint and stops before ``Other End Path``.
     """
     text = report.read_text(encoding="utf-8", errors="replace")
-    designs = re.findall(r"(?m)^Design\s*:\s*(\S+)\s*$", text)
+    designs = re.findall(r"(?m)^\s*#?\s*Design\s*:\s*(\S+)\s*$", text)
     groups = re.findall(r"(?m)^\s*Path Group:\s*(\S+)\s*$", text)
-    if designs != [expected_top] or not groups or set(groups) != {"reg2reg"}:
+    groups.extend(re.findall(r"(?m)^Path Groups:\s*\{([^}]+)\}\s*$", text))
+    if set(designs) != {expected_top} or not groups or set(groups) != {"reg2reg"}:
         raise ValueError("timing report must identify one expected design and only reg2reg paths")
     instances_by_module = {
         module: {instance.name: instance for instance in instances}
         for module, instances in modules.items()
     }
-    observed = defaultdict(lambda: defaultdict(lambda: {"path_ranks": set(), "max_increment_ns": 0.0}))
+    observed = defaultdict(lambda: defaultdict(lambda: {
+        "path_ranks": set(), "max_increment_ns": 0.0,
+        "path_increments_ns": {},
+        "path_family_ids": set(), "beginpoint_families": set(),
+        "endpoint_families": set(), "worst_path_slack_ns": None,
+    }))
     path_rank = 0
     path_seen = defaultdict(dict)
-    point = re.compile(r"^\s+(\S+)/\S+\s+\(([^)]+)\)(.*)$")
+    path_meta = defaultdict(dict)
+    dc_point = re.compile(r"^\s+(\S+)/\S+\s+\(([^)]+)\)(.*)$")
+    innovus_point = re.compile(
+        r"^\s*\|\s*([^|\s]+/[^|\s]+)\s*\|[^|]*\|[^|]*\|\s*([^|\s]+)\s*\|\s*(-?[0-9.eE+-]+)\s*\|"
+    )
+    innovus_data_path = False
+    innovus_beginpoint_seen = False
     for line in text.splitlines():
         if line.lstrip().startswith("Startpoint:"):
             path_rank += 1
+            path_meta[path_rank]["beginpoint"] = line.split(":", 1)[1].strip().split()[0]
+            innovus_data_path = False
             continue
-        match = point.match(line)
-        if match is None or path_rank == 0:
+        if re.match(r"^Path\s+\d+:\s*", line):
+            path_rank += 1
+            innovus_data_path = False
+            innovus_beginpoint_seen = False
             continue
-        instance_path, cell_type, columns = match.groups()
+        beginpoint = re.match(r"^Beginpoint:\s*(\S+)", line)
+        if beginpoint and path_rank:
+            path_meta[path_rank]["beginpoint"] = beginpoint.group(1)
+            continue
+        endpoint = re.match(r"^\s*Endpoint:\s*(\S+)", line)
+        if endpoint and path_rank:
+            path_meta[path_rank]["endpoint"] = endpoint.group(1)
+            continue
+        slack = re.match(r"^\s*(?:=\s*Slack Time|slack\s+\([^)]*\))\s+(-?[0-9.eE+-]+)\s*$", line)
+        if slack and path_rank:
+            path_meta[path_rank]["slack_ns"] = float(slack.group(1))
+            continue
+        if line.strip() == "Timing Path:":
+            innovus_data_path = True
+            innovus_beginpoint_seen = False
+            continue
+        if line.strip() == "Other End Path:":
+            innovus_data_path = False
+            continue
+        match = dc_point.match(line)
+        if match is not None:
+            instance_path, cell_type, columns = match.groups()
+            values = [float(value) for value in re.findall(r"-?[0-9]+(?:\.[0-9]+)?", columns)]
+            increment = max(0.0, values[-2] if len(values) >= 2 else 0.0)
+        else:
+            physical = innovus_point.match(line) if innovus_data_path else None
+            if physical is None:
+                continue
+            point_path, cell_type, delay = physical.groups()
+            beginpoint_pin = path_meta[path_rank].get("beginpoint")
+            if not innovus_beginpoint_seen:
+                if point_path != beginpoint_pin:
+                    continue
+                innovus_beginpoint_seen = True
+                continue
+            instance_path = point_path.rsplit("/", 1)[0]
+            increment = max(0.0, float(delay))
+        if path_rank == 0:
+            continue
         parts = instance_path.split("/")
         module = expected_top
         for hierarchy_instance in parts[:-1]:
@@ -353,27 +430,85 @@ def parse_reg2reg_path_membership(report, expected_top, modules):
         local = instances_by_module.get(module, {}).get(leaf)
         if local is None or local.base_type != cell_type:
             continue
-        values = [float(value) for value in re.findall(r"-?[0-9]+(?:\.[0-9]+)?", columns)]
-        increment = max(0.0, values[-2] if len(values) >= 2 else 0.0)
         current = path_seen[path_rank].get((module, leaf), 0.0)
         path_seen[path_rank][(module, leaf)] = max(current, increment)
-    for rank, instances in path_seen.items():
-        for (module, leaf), increment in instances.items():
+    families = defaultdict(lambda: {"path_ranks": [], "slacks": []})
+    for rank in sorted(path_seen):
+        meta = path_meta[rank]
+        begin_family = _endpoint_family(meta.get("beginpoint"))
+        end_family = _endpoint_family(meta.get("endpoint"))
+        family_id = begin_family + "->" + end_family
+        family = families[family_id]
+        family["beginpoint_family"] = begin_family
+        family["endpoint_family"] = end_family
+        family["path_ranks"].append(rank)
+        if isinstance(meta.get("slack_ns"), float):
+            family["slacks"].append(meta["slack_ns"])
+        for (module, leaf), increment in path_seen[rank].items():
             item = observed[module][leaf]
             item["path_ranks"].add(rank)
             item["max_increment_ns"] = max(item["max_increment_ns"], increment)
+            item["path_increments_ns"][rank] = increment
+            item["path_family_ids"].add(family_id)
+            item["beginpoint_families"].add(begin_family)
+            item["endpoint_families"].add(end_family)
+            if isinstance(meta.get("slack_ns"), float):
+                current = item["worst_path_slack_ns"]
+                item["worst_path_slack_ns"] = (meta["slack_ns"] if current is None
+                                                else min(current, meta["slack_ns"]))
+    family_rows = []
+    family_support = {}
+    for family_id, item in families.items():
+        family_support[family_id] = len(item["path_ranks"])
+        family_rows.append({
+            "family_id": family_id,
+            "beginpoint_family": item["beginpoint_family"],
+            "endpoint_family": item["endpoint_family"],
+            "path_count": len(item["path_ranks"]),
+            "path_ranks": item["path_ranks"],
+            "worst_slack_ns": min(item["slacks"]) if item["slacks"] else None,
+        })
+    family_rows.sort(key=lambda row: (
+        row["worst_slack_ns"] is None,
+        row["worst_slack_ns"] if row["worst_slack_ns"] is not None else 0.0,
+        -row["path_count"], row["family_id"],
+    ))
     result = {}
     for module, instances in observed.items():
         result[module] = {}
         for name, item in instances.items():
+            family_ids = sorted(item["path_family_ids"])
             result[module][name] = {
                 "path_hits": len(item["path_ranks"]),
                 "path_ranks": sorted(item["path_ranks"]),
                 "max_increment_ns": round(item["max_increment_ns"], 6),
+                "path_increments_ns": {rank: round(value, 6)
+                                       for rank, value in sorted(item["path_increments_ns"].items())},
+                "path_family_count": len(family_ids),
+                "path_family_ids": family_ids,
+                "path_family_support": sum(family_support[value] for value in family_ids),
+                "beginpoint_families": sorted(item["beginpoint_families"]),
+                "endpoint_families": sorted(item["endpoint_families"]),
+                "worst_path_slack_ns": (round(item["worst_path_slack_ns"], 6)
+                                        if item["worst_path_slack_ns"] is not None else None),
             }
     if not result:
         raise ValueError("timing report has no combinational instance that maps to the netlist")
-    return result
+    return {
+        "instances": result,
+        "graph": {
+            "path_group": "reg2reg",
+            "path_count": len(path_seen),
+            "path_family_count": len(family_rows),
+            "path_families": family_rows,
+            "endpoint_family_method": "remove terminal pin and replace every decimal run with #",
+        },
+    }
+
+
+def parse_reg2reg_path_membership(report, expected_top, modules):
+    """Backward-compatible per-instance view of ``parse_reg2reg_timing_graph``."""
+    return parse_reg2reg_timing_graph(report, expected_top, modules)["instances"]
 
 
 def _build_aig(module, instances, cells):
@@ -514,7 +649,7 @@ def _request(candidate_id, algorithm, tables_tuple, evidence, args, buildable):
     return request
 
 
-def _route_requests(modules, cells, critical_records, library, args):
+def _route_requests(modules, cells, critical_records, observed_reg2reg, library, args):
     single_groups = defaultdict(list)
     multi_groups = defaultdict(list)
     statistics = Counter()
@@ -543,6 +678,18 @@ def _route_requests(modules, cells, critical_records, library, args):
                         statistics["library_covered"] += 1
                         continue
                     replacement, _input_perm, _output_perm = mapped_core.replacement_canonical((table,), count)
+                    mapped_origins = sorted({
+                        origin for node in _ancestor_nodes(aig, root_literal, leaves)
+                        for origin in node_origins.get(node, ())
+                    })
+                    cone_delay_by_path = {
+                        rank: round(sum(
+                            (observed_reg2reg.get(module, {}).get(origin, {})
+                             .get("path_increments_ns", {}).get(rank, 0.0))
+                            for origin in mapped_origins
+                        ), 6)
+                        for rank in (seed.get("reg2reg_path_ranks") or [])
+                    }
                     occurrence = {
                         "module": module,
                         "root_instance": seed["mapped_instance"],
@@ -552,11 +699,16 @@ def _route_requests(modules, cells, critical_records, library, args):
                         "reg2reg_path_hits": seed.get("reg2reg_path_hits"),
                         "reg2reg_increment_ns": seed.get("reg2reg_increment_ns"),
                         "reg2reg_path_ranks": seed.get("reg2reg_path_ranks"),
+                        "reg2reg_path_family_count": seed.get("reg2reg_path_family_count"),
+                        "reg2reg_path_family_ids": seed.get("reg2reg_path_family_ids"),
+                        "reg2reg_path_family_support": seed.get("reg2reg_path_family_support"),
+                        "reg2reg_beginpoint_families": seed.get("reg2reg_beginpoint_families"),
+                        "reg2reg_endpoint_families": seed.get("reg2reg_endpoint_families"),
+                        "reg2reg_worst_path_slack_ns": seed.get("reg2reg_worst_path_slack_ns"),
                         "cut_leaf_nodes": list(ordered_leaves),
-                        "mapped_origins": sorted({
-                            origin for node in _ancestor_nodes(aig, root_literal, leaves)
-                            for origin in node_origins.get(node, ())
-                        }),
+                        "mapped_origins": mapped_origins,
+                        "observed_cone_delay_by_path_ns": cone_delay_by_path,
+                        "observed_cone_delay_upper_ns": max(cone_delay_by_path.values(), default=0.0),
                     }
                     single_groups[(replacement, table, count)].append(occurrence)
                     leafset_roots[ordered_leaves].append((root_literal, table, occurrence))
@@ -630,6 +782,21 @@ def _route_requests(modules, cells, critical_records, library, args):
             "critical_impact_du": max(row["critical_impact_du"] for row in occurrences),
             "reg2reg_path_hits": max(row.get("reg2reg_path_hits") or 0 for row in occurrences),
             "reg2reg_increment_ns": max(row.get("reg2reg_increment_ns") or 0.0 for row in occurrences),
+            "reg2reg_cone_delay_upper_ns": max(
+                (row.get("observed_cone_delay_upper_ns") or 0.0 for row in occurrences), default=0.0),
+            "reg2reg_path_family_ids": sorted({
+                family for row in occurrences
+                for family in (row.get("reg2reg_path_family_ids") or [])
+            }),
+            "reg2reg_path_family_count": len({
+                family for row in occurrences
+                for family in (row.get("reg2reg_path_family_ids") or [])
+            }),
+            "reg2reg_path_family_support": max(
+                (row.get("reg2reg_path_family_support") or 0 for row in occurrences), default=0),
+            "reg2reg_worst_path_slack_ns": min(
+                (row["reg2reg_worst_path_slack_ns"] for row in occurrences
+                 if row.get("reg2reg_worst_path_slack_ns") is not None), default=None),
             "occurrences": occurrences,
             "search_bound": {
                 "max_inputs": args.max_inputs,
@@ -687,10 +854,11 @@ def _route_requests(modules, cells, critical_records, library, args):
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--netlist", type=Path, required=True)
-    parser.add_argument("--liberty-skeleton", type=Path, required=True)
+    parser.add_argument("--liberty-skeleton", type=Path, action="append", required=True)
     parser.add_argument("--full-liberty", type=Path, required=True)
     parser.add_argument("--timing-report", type=Path, required=True)
     parser.add_argument("--expected-top", required=True)
+    parser.add_argument("--generated-cell-pattern", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--strategy-id", default="timing_criticality")
     parser.add_argument(
@@ -725,13 +893,15 @@ def run(args):
         if instance.base_type in cells and not cells[instance.base_type].is_seq
     }
     delay_model = parse_relative_delay_model(args.full_liberty, required_cells)
-    observed_reg2reg = parse_reg2reg_path_membership(args.timing_report, args.expected_top, modules)
+    timing_graph = parse_reg2reg_timing_graph(args.timing_report, args.expected_top, modules)
+    observed_reg2reg = timing_graph["instances"]
     critical_records = []
     for module, instances in modules.items():
         record = rank_critical_subgraph(
             module, instances, cells, delay_model["delay_units"],
             top_paths=16, top_seeds=args.max_critical_roots,
             observed_reg2reg=observed_reg2reg.get(module, {}),
+            generated_cell_pattern=args.generated_cell_pattern,
         )
         if record:
             critical_records.append(record)
@@ -739,7 +909,7 @@ def run(args):
         raise ValueError("Algorithm 1 found no combinational critical subgraph")
     library = mapped_core.library_indexes(cells, args.max_inputs, args.max_outputs)
     requests, statistics = _route_requests(
-        modules, cells, critical_records, library, args
+        modules, cells, critical_records, observed_reg2reg, library, args
     )
     report = {
         "report_schema": REPORT_SCHEMA,
@@ -749,7 +919,7 @@ def run(args):
         "inputs": {
             "netlist": os.path.abspath(str(args.netlist)),
             "netlist_sha256": _sha256(args.netlist),
-            "liberty_function_skeleton": os.path.abspath(str(args.liberty_skeleton)),
+            "liberty_function_skeleton": [os.path.abspath(str(path)) for path in args.liberty_skeleton],
             "full_liberty_sha256": delay_model["liberty_sha256"],
             "timing_report": os.path.abspath(str(args.timing_report)),
             "timing_report_sha256": _sha256(args.timing_report),
@@ -767,6 +937,7 @@ def run(args):
             "path_group": "reg2reg",
         },
         "algorithm_records": {
+            "observed_timing_graph": timing_graph["graph"],
             "critical_subgraph": critical_records,
             "critical_k_input_cone": {
                 "candidate_count": sum(
@@ -786,6 +957,7 @@ def run(args):
         "statistics": dict(sorted(statistics.items())),
         "generation_requests": requests,
         "limitations": [
+            "Timing paths are sampled members of a shared reg2reg timing graph; endpoint-family coverage is evidence, not exhaustive graph enumeration.",
             "Algorithm 1 produces relative criticality in DU, not signoff timing.",
             "Algorithm 4 discoveries are not buildable until a shared multi-output transistor generator is loaded.",
             "G0-G4 evidence is not G6 mapper selection or G7 PPA verification.",
