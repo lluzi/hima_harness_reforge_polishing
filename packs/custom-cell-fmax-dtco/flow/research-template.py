@@ -3,7 +3,7 @@
 from pathlib import Path
 import sys
 
-FLOW = Path(__file__).resolve().parents[2] / "flow"
+FLOW = Path(sys.argv[1]).resolve() / "flow"
 sys.path.insert(0, str(FLOW))
 from ai_research_runner import run  # noqa: E402
 

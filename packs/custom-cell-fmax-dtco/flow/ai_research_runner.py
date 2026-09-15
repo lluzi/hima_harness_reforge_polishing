@@ -169,6 +169,8 @@ def run(research, argv):
     proposal = research(candidates, context)
     hypotheses, selected = _validate(proposal, candidates, by_identity, budget)
     entry = Path(argv[0]).resolve()
+    if not entry.is_relative_to(workspace / "research" / "ai-discovery" / ".executions"):
+        raise ValueError("Workshop entry is outside its isolated execution directory")
     entry_sha = _sha(entry.read_bytes())
     output = workspace / "flow" / "research" / "research.json"
     attempt = workspace / "flow" / "research-attempts" / uuid.uuid4().hex
@@ -179,7 +181,8 @@ def run(research, argv):
     document = {
         "schema": SCHEMA,
         "target": {key: context[key] for key in ("design_top", "path_group", "reg2reg_wns_ns", "reg2reg_path_count", "timing_report_sha256")},
-        "algorithm": {"revision": str(revision), "entrySha256": entry_sha, "candidatePoolCount": len(candidates)},
+        "algorithm": {"revision": str(revision), "entryPath": str(entry.relative_to(workspace)),
+                      "entrySha256": entry_sha, "candidatePoolCount": len(candidates)},
         "sources": sources,
         "priorFeedback": context["prior_feedback"],
         "hypotheses": hypotheses,

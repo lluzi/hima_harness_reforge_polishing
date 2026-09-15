@@ -96,6 +96,24 @@ physical signoff is clean. `fmax_improved` remains a separate rule.
   Fmax values above. The new acceptance profile expands each route pool to 40 while keeping the
   initial generated Cell budget at two for one controlled L5 screen.
 
+## First clean-Harness attempt
+
+Commit `927ec6b` started a fresh Home and one Campaign Run
+`run-6b7ee3b8-ad60-4a94-8bd8-604e9d924f48`. DeepSeek-V4.1-Flash completed both bounded probes and
+all six 40-candidate evidence branches, read the declared Workshop inputs and authored three
+research program revisions. The Run did not reach merge. The first program resolved `flow/` from
+the isolated `.executions/<execution>/entry.py` location rather than from the supplied workspace;
+the next two programs wrote a valid research report, but the Pack reader looked for a stable
+`research/ai-discovery/entry.py` that the Workshop intentionally does not create. A final attempt to
+write outside the execution directory was refused by the Workshop boundary. The live check cancelled
+the blocked Run during cleanup and retained 242 records. No generation, DC adoption screen or PNR
+was launched in that attempt.
+
+The fix makes the template use the `WORKSPACE` argument and records the exact execution-relative
+entry path in the research report. The reader now checks that path is inside
+`research/ai-discovery/.executions`, is a plain `entry.py`, and has the reported SHA-256. A focused
+isolated-execution regression passes. The failed Run remains negative integration evidence.
+
 PLS-35 remains open until a fresh clean Home uses DeepSeek-V4.1-Flash to author and execute the
 Workshop code through HimaHarness, reaches the same evidence gates, passes offline audit, is packaged,
 and completes Catsights review. No release is claimed here.

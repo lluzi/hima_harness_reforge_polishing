@@ -889,8 +889,13 @@ def read_ai_research(report, out):
             or not isinstance(target.get("reg2reg_path_count"), int) or target["reg2reg_path_count"] <= 0
             or not isinstance(algorithm, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(algorithm.get("entrySha256") or ""))):
         raise ValueError("AI research target/algorithm identity is invalid")
-    entry = workspace / "research" / "ai-discovery" / "entry.py"
-    if not entry.is_file() or entry.is_symlink() or hashlib.sha256(entry.read_bytes()).hexdigest() != algorithm["entrySha256"]:
+    relative_entry = Path(str(algorithm.get("entryPath") or ""))
+    entry = (workspace / relative_entry).resolve()
+    execution_root = (workspace / "research" / "ai-discovery" / ".executions").resolve()
+    if (relative_entry.is_absolute() or ".." in relative_entry.parts
+            or not entry.is_relative_to(execution_root) or entry.name != "entry.py"
+            or not entry.is_file() or entry.is_symlink()
+            or hashlib.sha256(entry.read_bytes()).hexdigest() != algorithm["entrySha256"]):
         raise ValueError("AI research report does not match the executed Workshop entry")
     probe = load(workspace / "flow" / "probe.json")
     if target["design_top"] != ((probe.get("effectiveIdentity") or {}).get("inputs") or {}).get("designTop"):
