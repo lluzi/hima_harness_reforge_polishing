@@ -211,11 +211,13 @@ assert.deepEqual(Object.keys(profile.site.bindings).sort(), [
   'constraints', 'designRoot', 'designTop', 'foundryLibrary', 'physicalInputs', 'rtlGlob', 'toolStack', 'workspaceRoot',
 ].sort(), 'private Site profile must bind exactly the portable Pack inputs');
 assert.equal(profile.site.bindings.designTop, ACCEPTANCE_TOP, 'PLS-35 acceptance must run aes_cipher_top');
-assert.ok(profile.heldOut.rtlPath.startsWith(`${profile.site.bindings.designRoot}/`),
+const boundDesignRoot = profile.site.bindings.designRoot!;
+const boundRtlGlob = profile.site.bindings.rtlGlob!;
+assert.ok(profile.heldOut.rtlPath.startsWith(`${boundDesignRoot}/`),
   'top RTL identity must be inside the bound designRoot');
-assert.ok(profile.site.bindings.rtlGlob === profile.heldOut.rtlPath
-    || (profile.site.bindings.rtlGlob.includes('*')
-      && path.posix.dirname(profile.heldOut.rtlPath) === path.posix.dirname(profile.site.bindings.rtlGlob)),
+assert.ok(boundRtlGlob === profile.heldOut.rtlPath
+    || (boundRtlGlob.includes('*')
+      && path.posix.dirname(profile.heldOut.rtlPath) === path.posix.dirname(boundRtlGlob)),
   'top RTL identity must belong to the bound RTL set');
 assert.equal(profile.site.bindings.workspaceRoot, profile.site.workspaceRoot, 'Site and binding workspace roots differ');
 assert.ok(profile.site.allowedReadRoots.some((root) => profile.heldOut.rtlPath.startsWith(`${root}/`)), 'held-out RTL is outside allowed read roots');

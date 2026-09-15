@@ -68,10 +68,13 @@ def read(report):
     design_top = baseline['inputs'].get('designTop')
     designs = re.findall(r'(?m)^Design\s*:\s*(\S+)\s*$', timing_text)
     groups = re.findall(r'(?m)^\s*Path Group:\s*(\S+)\s*$', timing_text)
-    slacks = [float(value) for value in re.findall(r'(?m)^\s*slack \([^)]*\)\s+(-?[0-9.eE+-]+)\s*$', timing_text)]
+    slack_tokens = re.findall(r'(?m)^\s*slack \([^)]*\)\s+(-?[0-9.eE+-]+)\s*$', timing_text)
+    slacks = [float(value) for value in slack_tokens]
     if designs != [design_top] or not groups or len(groups) != len(slacks) or set(groups) != {'reg2reg'}:
         raise ValueError('probe timing report is not exclusively the declared top reg2reg group')
-    if not math.isclose(min(slacks), slack, abs_tol=1e-12):
+    worst_token = slack_tokens[slacks.index(min(slacks))]
+    decimals = len(worst_token.split('.', 1)[1]) if '.' in worst_token and 'e' not in worst_token.lower() else 12
+    if not math.isclose(min(slacks), slack, abs_tol=0.5 * (10 ** -decimals) + 1e-12):
         raise ValueError('probe metric slack differs from the reg2reg report')
     return {'values': [
         {'type': 'clock_period', 'unit': 'ns', 'value': period},

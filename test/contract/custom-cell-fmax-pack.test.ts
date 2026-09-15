@@ -209,6 +209,28 @@ test('DC pressure evidence must be aes_cipher_top reg2reg rather than an I/O pat
   }
 });
 
+test('probe reader preserves precise reg2reg WNS while accepting only the timing report print resolution', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hima-probe-resolution-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const metrics = 'asked_period_ns\t0.500000\nworst_slack_ns\t-0.104597\ncell_area_um2\t8597.862007\n';
+  const timing = (slack: string) => `Design : aes_cipher_top\n  Startpoint: state_reg_0\n  Endpoint: state_reg_1\n  Path Group: reg2reg\n  Path Type: max\n  slack (VIOLATED) ${slack}\n`;
+  const identity = { schema: 1, inputs: { designTop: 'aes_cipher_top' }, method: {}, tool: {} };
+  const pinned = JSON.stringify(identity);
+  await writeFile(path.join(directory, 'probe-inputs.json'), pinned);
+  await writeFile(path.join(directory, 'metrics.tsv'), metrics);
+  const report = path.join(directory, 'probe.json');
+  const run = async (printedSlack: string) => {
+    const timingText = timing(printedSlack); await writeFile(path.join(directory, 'timing.rpt'), timingText);
+    await writeFile(report, JSON.stringify({ format: 'custom-cell-fmax-probe/2', toolExit: 0, askedPeriodNs: 0.5,
+      effectiveIdentity: identity, identity: { path: 'probe-inputs.json', sha256: sha256(pinned) },
+      evidence: { metrics: { path: 'metrics.tsv', sha256: sha256(metrics) },
+        'timing.rpt': { path: 'timing.rpt', sha256: sha256(timingText) } } }));
+    return ['flow/read-probe.py', 'tools/read-probe.py'].map((reader) => spawnSync('/usr/bin/python3',
+      [path.join(packDir, reader), report, path.join(directory, `${reader.replaceAll('/', '-')}.json`)], { encoding: 'utf8' }));
+  };
+  for (const result of await run('-0.10')) assert.equal(result.status, 0, result.stderr);
+  for (const result of await run('-0.09')) assert.notEqual(result.status, 0);
+});
+
 test('a real Pack-sourced workspace materializes declared Site inputs without a Golden Flow or legacy object', async (t) => {
   const h = await createHimaHome(); t.after(() => h.dispose());
   const designRoot = path.join(h.home, 'held-out-design'); await mkdir(designRoot);

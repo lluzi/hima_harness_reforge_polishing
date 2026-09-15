@@ -97,11 +97,15 @@ def main():
     timing_text = (trial / 'timing.rpt').read_text(errors='replace')
     timing_designs = re.findall(r'(?m)^Design\s*:\s*(\S+)\s*$', timing_text)
     timing_groups = re.findall(r'(?m)^\s*Path Group:\s*(\S+)\s*$', timing_text)
-    timing_slacks = [float(value) for value in re.findall(
-        r'(?m)^\s*slack \([^)]*\)\s+(-?[0-9.eE+-]+)\s*$', timing_text)]
+    timing_slack_tokens = re.findall(r'(?m)^\s*slack \([^)]*\)\s+(-?[0-9.eE+-]+)\s*$', timing_text)
+    timing_slacks = [float(value) for value in timing_slack_tokens]
+    metric_slack = float((trial / 'metrics.tsv').read_text().split('worst_slack_ns\t', 1)[1].splitlines()[0])
+    worst_token = timing_slack_tokens[timing_slacks.index(min(timing_slacks))] if timing_slacks else ''
+    decimals = len(worst_token.split('.', 1)[1]) if '.' in worst_token and 'e' not in worst_token.lower() else 12
+    report_tolerance = 0.5 * (10 ** -decimals) + 1e-12
     if (timing_designs != [inputs['designTop']] or not timing_groups
             or len(timing_groups) != len(timing_slacks) or set(timing_groups) != {'reg2reg'}
-            or not math.isclose(min(timing_slacks), float((trial / 'metrics.tsv').read_text().split('worst_slack_ns\t', 1)[1].splitlines()[0]), abs_tol=1e-12)):
+            or not math.isclose(min(timing_slacks), metric_slack, abs_tol=report_tolerance)):
         raise ValueError('probe timing evidence is not the declared top reg2reg pressure report')
     effective = {'schema': 1, **before, 'tool': {'version': versions[0], 'conditions': conditions[0]}}
     if pinned is not None and pinned != effective:
