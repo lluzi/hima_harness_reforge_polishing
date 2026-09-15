@@ -447,6 +447,14 @@ test('one synthesis adoption result attributes used Cells to every contributing 
     'the next generation keeps at most half of the active library by actual adoption, leaving discovery slots');
 });
 
+test('cross-generation candidate-id collisions use an identifier-safe digest suffix', () => {
+  const code = `import importlib.util,sys\nspec=importlib.util.spec_from_file_location('s',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)\nprint(m.collision_safe_candidate_id('CAND_ROUTE_0001','sha256:ce8b-123',{'CAND_ROUTE_0001'}))`;
+  const ran = spawnSync('/usr/bin/python3', ['-c', code, path.join(packDir, 'flow/stages.py')], { encoding: 'utf8' });
+  assert.equal(ran.status, 0, ran.stderr);
+  assert.equal(ran.stdout.trim(), 'CAND_ROUTE_0001_SHA256_CE8B_');
+  assert.match(ran.stdout.trim(), /^[A-Za-z_][A-Za-z0-9_$]*$/);
+});
+
 test('one failed abstract Cell is retained as a refusal while successful Cells remain admitted', async (t) => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'hima-layout-admission-'));
   t.after(() => rm(workspace, { recursive: true, force: true }));

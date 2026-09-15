@@ -584,6 +584,16 @@ def candidate_rank(request):
             request.get("candidate_id") or "")
 
 
+def collision_safe_candidate_id(candidate_id, equivalence_digest, used):
+    """Disambiguate route-local ids without introducing illegal punctuation."""
+    if candidate_id not in used:
+        return candidate_id
+    suffix = re.sub(r"[^A-Za-z0-9_$]", "_", str(equivalence_digest)).upper()[:12]
+    if not suffix:
+        raise Rejected("candidate id collision has no usable equivalence digest")
+    return "%s_%s" % (candidate_id, suffix)
+
+
 def method_rankings(rows):
     result = {}
     for row in rows:
@@ -747,9 +757,8 @@ def stage_merge(ctx):
             raise Rejected("AI research selected the same Boolean/interface candidate twice")
         seen.add(key)
         row = json.loads(json.dumps(request))
-        if row.get("candidate_id") in used_candidate_ids:
-            digest = str(key[0])[:10].upper()
-            row["candidate_id"] = "%s_%s" % (row["candidate_id"], digest)
+        row["candidate_id"] = collision_safe_candidate_id(
+            row.get("candidate_id"), key[0], used_candidate_ids)
         used_candidate_ids.add(row["candidate_id"])
         evidence = row.setdefault("discovery_evidence", {})
         evidence["strategy_ids"] = sorted({member["route"] for member in members[key]}, key=ROUTES.index)

@@ -22,6 +22,9 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 - 第一轮 iterative L5 已证明 DCCK-only CTS 与第二代 graph revisit，但第一代 Fmax 为
   `-0.179211%`，第二代因 Innovus `flop2flop` 标签适配和旧 100 分钟测试外层硬截止而被安全
   取消。两项均已在最低层重现并修正；取消的 Run 保留为负面集成证据，不计作目标结束。
+- 第二轮 iterative L5 的六条 post-route 分支全部通过，形成21个保留候选加7个新候选；随后
+  generation发现碰撞后缀把`sha256:`冒号带入candidate ID。三个bounded attempts均在layout/DC前
+  被拒绝并安全取消。后缀已改为identifier-safe并有直接反例测试；该Run同样不计作目标结束。
 
 ## 固定代码范围
 

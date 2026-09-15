@@ -304,3 +304,23 @@ paths formed one normalized family, five timing candidates were emitted, and the
 candidate-cone bound was 49 ps. The live-check utility now resolves the DTCO default to 25,200,000 ms,
 240 turns and 1,800 steps, with a maximum of 28,800,000 ms; a constructor-level probe reproduced
 those values. These fixes require a new Campaign because a cancelled Run is immutable.
+
+## Second iterative L5 attempt and candidate-id collision
+
+Commit `32f82b8` started fresh Run `run-061aea54-362b-444a-b8ed-a15ec90767d8`. Generation one
+reproduced the same valid negative physical result and DCCK-only clock trees. Generation two then
+completed all six post-route branches without parser retry: timing-criticality and timing-context each
+emitted five proposals; the four structural routes each emitted four. The AI retained all 21 actually
+adopted generation-one candidates and selected all seven new Boolean/interface classes. Three of the
+new candidates had individual theoretical upper bounds above the remaining 27.52 ps target reduction;
+the largest bound was 9.63% incremental Fmax. The first Workshop program used a hypothesis name not
+present in its own hypothesis list and was rejected; the same owner corrected it on the next attempt.
+
+Generation then correctly rejected request 25 because its candidate id contained a colon. The root
+cause was merge collision handling: two new equivalence classes reused route-local ids already held by
+retained candidates, and the disambiguator prepended the literal `sha256:` digest scheme to the suffix.
+All three bounded generate attempts failed before layout, DC or APR. The live-check detected three
+continuations without execution progress, cancelled the Run at generation two `generate`, and left no
+Site process. `collision_safe_candidate_id` now strips non-identifier characters from the digest
+suffix; the direct regression converts `sha256:ce8b-123` to `SHA256_CE8B_` and rechecks the complete
+identifier grammar. This fix also requires a new immutable Campaign.
