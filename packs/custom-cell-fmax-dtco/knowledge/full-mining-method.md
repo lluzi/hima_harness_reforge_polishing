@@ -22,6 +22,9 @@ when a hypothesis needs its detailed occurrence or Boolean proof. Copy `research
 reg2reg pressure, build budget and retained synthesis/adoption feedback, validates the returned
 hypotheses and exact source identities, writes all six route projections, and calls the independent
 reader. The runner is I/O scaffolding; the authored `research()` function is the research asset.
+For model compatibility, every candidate also carries stable `route`, `evidence`, `interface`,
+`equivalence_digest` and `implementation_route` aliases. The full `discovery_evidence` and
+`generator_contract` remain beside them; do not reconstruct or guess aliases from raw nesting.
 
 Start with the declared `research_ROUTE` output: `flow/mining/ROUTE/research.json` lists every emitted
 candidate with its raw-source hash, interface and compact ranking evidence. Detailed algorithm records
@@ -30,10 +33,12 @@ you inspected every occurrence. Your executable must read the complete raw file,
 reader always checks that full file. Missing fields in the compact view are null, never inferred zero.
 Inspect `generation_requests`, the route objective and `discovery_evidence`: support, representative
 occurrence, occurrence alignments, Boolean contract, implementation route and limitations.
-Examine at least three competing hypotheses and select 1..`MAX_CELLS` buildable requests (`fusion`,
+Examine at least three competing hypotheses and fill `min(MAX_CELLS, distinct Boolean functions)`
+with buildable requests (`fusion`,
 `cluster_compose`, `boolean_synthesis`) across the complete pool. `MAX_CELLS` may be 1..32 and each
 route may expose at most 40 candidates. Derive an algorithm from the actual evidence and explain each
-tradeoff; do not hardcode candidate ids or a success score. Candidate generation is the cheap broad
+tradeoff; use at least two hypotheses when more than one Cell is selected. Do not hardcode candidate
+ids or a success score. Candidate generation is the cheap broad
 stage. One matched, pressured DC pair is the scarce screen; P&R remains behind positive adoption.
 Account for overlapping occurrences where the source describes them. A lower bound on non-overlap
 is not an exact maximum, and a common Boolean digest does not make two physical occurrences disjoint.

@@ -918,6 +918,8 @@ def read_ai_research(report, out):
         selected_keys.append((row["route"], row["candidate_id"]))
     if len(selected_keys) != len(set(selected_keys)):
         raise ValueError("AI research selection repeats a source candidate")
+    distinct_pool = set()
+    selected_hypotheses = {row["hypothesis"] for row in selected}
     for route in ROUTES:
         raw_path = workspace / "flow" / "mining" / route / "raw.json"
         record_path = workspace / "flow" / "records" / ("mine-" + route + ".json")
@@ -928,6 +930,9 @@ def read_ai_research(report, out):
                 or source.get("minerCodeSha256") != (record.get("facts") or {}).get("codeSha256")):
             raise ValueError("AI research source identity changed for " + route)
         available = {row.get("candidate_id") for row in raw.get("generation_requests", []) if isinstance(row, dict)}
+        for row in raw.get("generation_requests", []):
+            if isinstance(row, dict) and (row.get("implementation_plan") or {}).get("route") in BUILDABLE_ROUTES:
+                distinct_pool.add(((row.get("generator_contract") or {}).get("equivalence_reference") or {}).get("digest"))
         if any(candidate not in available for selected_route, candidate in selected_keys if selected_route == route):
             raise ValueError("AI research selected an absent source candidate")
         projection = load(workspace / "flow" / "mining" / route / "selected.json")
@@ -935,6 +940,9 @@ def read_ai_research(report, out):
         if projection != {"sourceSha256": source["rawSha256"], "selected": expected_ids,
                           "codeSha256": source["minerCodeSha256"]}:
             raise ValueError("route selection projection differs from AI research for " + route)
+    distinct_pool.discard(None)
+    if len(selected) != min(budget, len(distinct_pool)) or (len(selected) > 1 and len(selected_hypotheses) < 2):
+        raise ValueError("AI research did not fill the finite screen across competing hypotheses")
     values = [number("research_hypothesis_count", len(hypotheses)), number("selected_count", len(selected))]
     out.write_text(json.dumps({"values": values}, sort_keys=True) + "\n")
 

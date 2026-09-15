@@ -114,6 +114,22 @@ entry path in the research report. The reader now checks that path is inside
 `research/ai-discovery/.executions`, is a plain `entry.py`, and has the reported SHA-256. A focused
 isolated-execution regression passes. The failed Run remains negative integration evidence.
 
+Commit `c9de4a3` then ran a second clean Home. The isolated entry/read contract passed, all six
+40-candidate pools completed, and DeepSeek authored a four-hypothesis program over 186 candidates.
+However, the fixed runner handed `research()` the complete raw request shape while the model wrote
+against the compact `evidence`, `interface`, `equivalence_digest` and `implementation_route` shape it
+had just read. Its ranking fields became unknown, it selected only
+`CAND_FUNCTIONAL_DIVERSITY_MAPPED_SINGLE_0001`, and pressured DC adopted zero instances. The existing
+adoption Judge stopped the Run before PNR; the live check then preserved and cancelled the blocked
+Run. This is a valid negative result and does not supersede the direct positive pilot.
+
+The next runner revision supplies those stable compact aliases alongside the complete source request.
+It also requires the program to fill `min(MAX_CELLS, distinct Boolean functions)` and, for a
+multi-Cell screen, to use at least two competing hypotheses. The independent reader re-derives both
+conditions from all six raw pools. This converts an internal-schema memory burden into Pack
+scaffolding and prevents a confident one-candidate report from passing when the declared cheap build
+budget is two.
+
 PLS-35 remains open until a fresh clean Home uses DeepSeek-V4.1-Flash to author and execute the
 Workshop code through HimaHarness, reaches the same evidence gates, passes offline audit, is packaged,
 and completes Catsights review. No release is claimed here.

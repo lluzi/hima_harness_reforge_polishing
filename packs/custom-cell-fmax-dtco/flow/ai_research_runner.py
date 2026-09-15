@@ -108,6 +108,12 @@ def _sources(workspace):
                 continue
             item = json.loads(json.dumps(request))
             item["route"] = route
+            evidence = item.get("discovery_evidence") or {}
+            contract = item.get("generator_contract") or {}
+            item["evidence"] = json.loads(json.dumps(evidence))
+            item["interface"] = json.loads(json.dumps(contract.get("interface") or {}))
+            item["equivalence_digest"] = digest
+            item["implementation_route"] = plan.get("route")
             candidates.append(item)
             by_identity[(route, candidate_id)] = item
     return candidates, sources, by_identity
@@ -131,8 +137,12 @@ def _validate(proposal, candidates, by_identity, budget):
         names.add(item["name"])
         if not isinstance(item["signals"], list) or not item["signals"] or any(not isinstance(value, str) or not value.strip() for value in item["signals"]):
             raise ValueError("each hypothesis must name at least one evidence signal")
-    if not isinstance(selected, list) or not 1 <= len(selected) <= budget:
-        raise ValueError("research selection must contain 1..MAX_CELLS candidates")
+    distinct_pool = {((row.get("generator_contract") or {}).get("equivalence_reference") or {}).get("digest")
+                     for row in candidates}
+    distinct_pool.discard(None)
+    expected_count = min(budget, len(distinct_pool))
+    if not isinstance(selected, list) or len(selected) != expected_count or expected_count < 1:
+        raise ValueError("research selection must fill min(MAX_CELLS, distinct Boolean pool)")
     seen, digests = set(), set()
     for item in selected:
         if not isinstance(item, dict) or set(item) != {"route", "candidate_id", "hypothesis", "rationale"}:
@@ -147,6 +157,9 @@ def _validate(proposal, candidates, by_identity, budget):
             raise ValueError("AI research selected duplicate Boolean equivalence classes")
         seen.add(key)
         digests.add(digest)
+    used_hypotheses = {item["hypothesis"] for item in selected}
+    if len(selected) > 1 and len(used_hypotheses) < 2:
+        raise ValueError("a multi-Cell screen must represent at least two competing hypotheses")
     if not isinstance(proposal["stop_reason"], str) or not proposal["stop_reason"].strip():
         raise ValueError("research() must state why this finite selection is enough for the next screen")
     return hypotheses, selected

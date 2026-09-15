@@ -569,7 +569,10 @@ workshops:
       algorithm from the current design's explicit reg2reg path membership,
       incremental delay, Boolean function, occurrence, implementation route and
       any retained synthesis/adoption feedback. Examine at least three competing
-      hypotheses. Select a finite, diverse set within MAX_CELLS; Cell creation is
+      hypotheses. Each candidate supplies stable route, evidence, interface,
+      equivalence_digest and implementation_route aliases alongside the complete
+      source request. Fill min(MAX_CELLS, distinct Boolean functions), using at least
+      two hypotheses when selecting more than one Cell. Cell creation is
       cheap, while the next pressured DC screen is the scarce experiment. Do not
       embed candidate ids, reproduce a fixed ranking, claim adoption/PPA, or hide
       a negative result. On a later algorithmRevision, change the algorithm in
