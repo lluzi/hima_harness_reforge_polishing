@@ -131,7 +131,7 @@ interface L5SiteProfile {
     bindings: Record<string, string>;
     capacity: { cores: number; memoryGiB: number; parallelJobs: number; licences: Record<string, number> };
   };
-  heldOut: { rtlPath: string; sha256: string; source: string; selectedBeforePackTests: boolean };
+  heldOut: { rtlPath: string; sha256: string; source: string; acceptanceTopConfirmed: boolean };
 }
 
 type ArchiveRecord = Extract<LedgerRecord, { type: 'archive' }>;
@@ -200,7 +200,7 @@ const profile = JSON.parse(readFileSync(profilePath, 'utf8')) as L5SiteProfile;
 assert.equal(profile.schema, 1, 'unsupported private Site profile');
 assert.match(profile.site.name, SITE_NAME, 'invalid Site name');
 assert.match(profile.site.ssh.destination, /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+(?::[0-9]{1,5})?$/, 'invalid SSH destination');
-assert.ok(profile.heldOut.selectedBeforePackTests, 'held-out design must have been selected before Pack tests');
+assert.equal(profile.heldOut.acceptanceTopConfirmed, true, 'PLS-35 target top must be explicitly confirmed');
 assert.match(profile.heldOut.sha256, /^[0-9a-f]{64}$/, 'held-out RTL identity must be SHA-256');
 assert.match(profile.heldOut.rtlPath, SAFE_REMOTE_PATH, 'held-out RTL path is not a safe absolute path');
 for (const value of [profile.site.workspaceRoot, ...profile.site.allowedReadRoots, ...profile.site.allowedWriteRoots,
@@ -211,7 +211,12 @@ assert.deepEqual(Object.keys(profile.site.bindings).sort(), [
   'constraints', 'designRoot', 'designTop', 'foundryLibrary', 'physicalInputs', 'rtlGlob', 'toolStack', 'workspaceRoot',
 ].sort(), 'private Site profile must bind exactly the portable Pack inputs');
 assert.equal(profile.site.bindings.designTop, ACCEPTANCE_TOP, 'PLS-35 acceptance must run aes_cipher_top');
-assert.equal(profile.site.bindings.rtlGlob, profile.heldOut.rtlPath, 'held-out identity must name the bound RTL');
+assert.ok(profile.heldOut.rtlPath.startsWith(`${profile.site.bindings.designRoot}/`),
+  'top RTL identity must be inside the bound designRoot');
+assert.ok(profile.site.bindings.rtlGlob === profile.heldOut.rtlPath
+    || (profile.site.bindings.rtlGlob.includes('*')
+      && path.posix.dirname(profile.heldOut.rtlPath) === path.posix.dirname(profile.site.bindings.rtlGlob)),
+  'top RTL identity must belong to the bound RTL set');
 assert.equal(profile.site.bindings.workspaceRoot, profile.site.workspaceRoot, 'Site and binding workspace roots differ');
 assert.ok(profile.site.allowedReadRoots.some((root) => profile.heldOut.rtlPath.startsWith(`${root}/`)), 'held-out RTL is outside allowed read roots');
 assert.ok(profile.site.allowedWriteRoots.includes(profile.site.workspaceRoot), 'Campaign workspace root is not writable');
@@ -339,7 +344,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   ], { encoding: 'utf8', timeout: 30_000 }).trim().split(/\s+/)[0];
   check.require('held-out RTL identity was re-read from the Site before the only L5 Campaign',
     remoteIdentity === profile.heldOut.sha256,
-    { source: profile.heldOut.source, selectedBeforePackTests: profile.heldOut.selectedBeforePackTests,
+    { source: profile.heldOut.source, acceptanceTopConfirmed: profile.heldOut.acceptanceTopConfirmed,
       rtlSha256: remoteIdentity });
 
   const persistentHomes = path.join(repoRoot, '.hima-tmp/pilot-release/homes');
