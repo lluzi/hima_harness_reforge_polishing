@@ -54,7 +54,7 @@ await runLive('live-check-aes-probe', 12, async (check) => {
   check.observed.packFolder = folder;
   check.observed.staging = staging;
   check.observed.owner = String(author.id);
-  check.observed.resources = { maxSynthesisJobs: 2, parallelJobs: 1, coresPerJob: 8, toolDeadlineSeconds: 600, model: 'deepseek-v4-flash' };
+  check.observed.resources = { maxSynthesisJobs: 2, parallelJobs: 1, coresPerJob: 8, toolDeadlineSeconds: 600, model: 'deepseek-flash' };
 
   if (phase === 'author') {
     const facts = `Author a foundry-only AES Fmax probe, Pack ${id} version 1. The approved Golden Flow is ${golden}; read README.md, probe.py, synth.tcl and read-probe.py there. Keep these reference files and the existing flow/ copy unchanged. They are method source already supplied by the author, not files you generated.

@@ -25,7 +25,7 @@ function fixture() {
       approvedBusiness: { facts: 'Synthetic admission evidence, no model proof.', sha256: sha256('Synthetic admission evidence, no model proof.'), goal: { minimum: 1 }, initialStrategy: { limit: 1 }, generationLimit: 1, timeBoxMs: 480_000 },
       allowedReadRoots: [bundle, folder], allowedWriteRoot: folder, deniedTools: [],
     },
-    agents: [{ id: 'session-fixture', session: 'session-fixture', cwd: folder, options: { provider: 'deepseek-official', model: 'deepseek-v4-flash' }, skills: ['hima-grill', 'hima-spec', 'hima-fabric'], toolCalls: [{ name: 'read', args: { file_path: 'INTENT.md' } }] }],
+    agents: [{ id: 'session-fixture', session: 'session-fixture', cwd: folder, options: { provider: 'deepseek-official', model: 'deepseek-flash' }, skills: ['hima-grill', 'hima-spec', 'hima-fabric'], toolCalls: [{ name: 'read', args: { file_path: 'INTENT.md' } }] }],
     runs: [] as unknown[],
     checks: [
       'grill waited for author answers before recording intent', 'spec added only SPEC.md', 'Pack stage reached compiled',

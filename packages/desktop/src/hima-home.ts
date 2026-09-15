@@ -69,7 +69,7 @@ const STANDIN_MARKER = '# HimaHarness model stand-in (driver mode only)';
 
 /** The route and the model the stand-in's catalog must name: the ones the profile's default selects. */
 const REPLAY_PROVIDER = 'deepseek-official';
-const REPLAY_MODEL = 'deepseek-v4-flash';
+const REPLAY_MODEL = 'deepseek-flash';
 
 /** Both halves of that bundle, which must be built before a home is worth booting. */
 const HARNESS_BUNDLES = ['lib/index.js', 'lib/client.js'];

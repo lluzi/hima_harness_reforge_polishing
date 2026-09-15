@@ -14,7 +14,7 @@ AI 承担数据分析、假设与策略生成、试验组织、算法和脚本�
 
 用户最新明确：一个可见的 Campaign Agent 是该 Campaign 持久 Run 的唯一业务执行主体。它读取 Pack 的参考路线与实际状态，执行节点内的研究、Coding 和工具工作，并根据结果及人类指令决定后续动作；用户可以在同一产品内新开独立 Side Talk 继续普通对话和 Coding，切换会话不改变 Run owner。Fabric 提供执行上下文、合法动作、资源/依赖约束、验收与事实记录；主产品路径不再由 Fabric 自主连续推进整张图。机械的 Job 执行、状态采集和硬约束继续由基础设施代码承担。见 [并行会话与执行主导权决定](adr/0008-visible-campaign-agent-and-side-talk.md)。
 
-模型基线为用户提供的 DeepSeek V4 Flash。预期整体工作流可靠，模型能力差异主要体现在特定研究环节的创造力和思考深度；不能依赖只有最强闭源模型才能完成的隐性前提，也不要求最弱模型具备同等研究能力。
+模型基线为用户提供的 DeepSeek-V4.1-Flash（官方 API wire id `deepseek-flash`）。预期整体工作流可靠，模型能力差异主要体现在特定研究环节的创造力和思考深度；不能依赖只有最强闭源模型才能完成的隐性前提，也不要求最弱模型具备同等研究能力。
 
 工程师设定方向和关键业务约束，AI 在授权与预算内自主推进。工程师可随时查看、追问、纠偏或停止；真正缺少业务判断、无法继续或需要超出权限的动作时返回人，并附原因、已尝试内容和下一步。
 本机 Agent 权限复用 DeepSeek Harness 的 permission preset；最高权限仍受 Hima Site Permit、Pack wrapper、Channel 约束和删除红线限制，见 [权限分层决定](adr/0009-dsh-permission-does-not-bypass-site-permit.md)。

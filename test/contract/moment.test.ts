@@ -47,7 +47,7 @@ import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { HIMA_MOMENT_PRESET, SHELL_TOOL, openMoment as openMomentDirectly, type HimaErrorBody, type MomentAnswer, type RecordsView, type RunView, type SessionRecord } from '@hima/harness';
 
 /** The model the profile selects, which the stand-in's catalog answers for (D9). */
-const MODEL = 'deepseek-v4-flash';
+const MODEL = 'deepseek-flash';
 
 /** What the committed one-turn transcript makes the model say. */
 const ANSWER = 'READY';

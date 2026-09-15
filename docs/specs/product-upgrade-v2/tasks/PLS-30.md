@@ -58,7 +58,7 @@ Issue：[PLS-30 / #34](https://github.com/lluzi/hima_harness_reforge_polishing/i
 
 - POC：只在隔离临时目录运行，不修改用户 Home，不调用 EDA；保存候选版本、许可证、输入 hash、资源和 gold 结果。
 - L0/L1/L2：`pnpm run test:local --files test/contract/knowledge-documents.test.ts test/contract/knowledge-reuse.host.test.ts test/contract/experience-files.test.ts test/contract/pack.test.ts`。
-- L4：接口稳定后一次 DeepSeek V4 Flash 文档问答，记录检索调用、实际片段和回答；不跑完整 Campaign。
+- L4：接口稳定后一次 DeepSeek-V4.1-Flash（wire id `deepseek-flash`）文档问答，记录检索调用、实际片段和回答；不跑完整 Campaign。
 
 ## 并行与回滚
 

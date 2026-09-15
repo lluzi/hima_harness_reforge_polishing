@@ -23,7 +23,7 @@ import { HIMA_MOMENT_PRESET, SHELL_TOOL, openMoment as openMomentDirectly, type 
 
 
 /** The model the profile selects, which the stand-in's catalog answers for (D9). */
-const MODEL = 'deepseek-v4-flash';
+const MODEL = 'deepseek-flash';
 
 
 /** What the committed one-turn transcript makes the model say. */

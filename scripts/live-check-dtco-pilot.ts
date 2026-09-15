@@ -35,7 +35,7 @@ import { guardInstalled, runLive, sha256, type LiveCheck } from './live-check-wo
 
 const PACK_ID = 'aes-tsmc28-dtco';
 const SITE_ID = 'linglong-aes';
-const EXPECTED_MODEL = 'deepseek-v4-flash';
+const EXPECTED_MODEL = 'deepseek-flash';
 const REMOTE_HOST = 'luzi@192.168.50.41';
 const REMOTE_ROOT = '/data/eda/project/hima_harness/polishing-inputs';
 const SSH_OPTIONS = ['BatchMode=yes', 'ConnectTimeout=8', 'ControlPath=none'] as const;
@@ -729,7 +729,7 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
   const initialRunIds = new Set(host.ctx.hima.ledger.runs().map((run) => run.id));
   const owner = check.track(await createRootAgent(host.ctx, home.workspace));
   const ownerId = String(owner.id);
-  check.require('the native owner uses the configured DeepSeek V4 Flash model',
+  check.require('the native owner uses the configured DeepSeek-V4.1-Flash model',
     owner.options.model === EXPECTED_MODEL,
     owner.options);
   check.observed.pilot = declared;

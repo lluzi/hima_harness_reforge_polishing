@@ -61,6 +61,11 @@ test('dsh --dump-config on a seeded home: the DeepSeek adapter is composed and t
     const plain = rowsOf(before.stdout);
     assert.ok(plain.has(DEEPSEEK_ROW), `the product profile composes dsh's DeepSeek adapter: ${[...plain.keys()].join(', ')}`);
     assert.ok(!plain.get(DEEPSEEK_ROW)!.includes('disabled: true'), `and composes it enabled: ${plain.get(DEEPSEEK_ROW)!}`);
+    assert.ok(plain.get(DEEPSEEK_ROW)!.includes('id: deepseek-flash'), `and advertises the official current Flash wire id: ${plain.get(DEEPSEEK_ROW)!}`);
+    assert.ok(plain.get(DEEPSEEK_ROW)!.includes('name: DeepSeek-V4.1-Flash'), `with its current product name: ${plain.get(DEEPSEEK_ROW)!}`);
+    const defaultModel = plain.get('agent-default-model');
+    assert.ok(defaultModel?.includes('provider: deepseek-official'), `the Agent default stays on the native DeepSeek route: ${defaultModel}`);
+    assert.ok(defaultModel?.includes('model: deepseek-flash'), `and replaces dsh-base's retired model id: ${defaultModel}`);
     assert.ok(!plain.has(REPLAY_ROW), 'and composes no replay adapter at all');
     const picker = plain.get('directory-picker');
     assert.ok(picker?.includes('disabled: true'), `the profile disables the auto native picker: ${picker}`);
@@ -85,7 +90,7 @@ test('dsh --dump-config on a seeded home: the DeepSeek adapter is composed and t
     assert.ok(replay.includes('dsh-llm-replay'), `the row names dsh's keyless replay adapter: ${replay}`);
     assert.ok(replay.includes(fixture.file), `pointed at the scenario's own fixture: ${replay}`);
     assert.ok(replay.includes(fixture.override), `and at its override sidecar: ${replay}`);
-    assert.ok(replay.includes('deepseek-v4-flash'), `answering for the model the profile's default names: ${replay}`);
+    assert.ok(replay.includes('deepseek-flash'), `answering for the model the profile's default names: ${replay}`);
     assert.ok(after.stdout.includes(homePatchFile(h.home)), 'and dsh names the layer that changed it: the home\'s own patch file');
 
     // And it is an overlay: taken away, the composition is the product's own again.

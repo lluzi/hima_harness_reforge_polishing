@@ -51,7 +51,7 @@ Issue：[PLS-27 / #31](https://github.com/lluzi/hima_harness_reforge_polishing/i
 
 - L0：`pnpm run check:seams`、`pnpm run build`、`pnpm run typecheck`。
 - L2：`pnpm run test:local --files test/contract/product-context.host.test.ts test/contract/moment.host.test.ts test/contract/command.test.ts`。
-- L4：机制稳定后用 DeepSeek V4 Flash 只问一次产品身份/Pack 问题，记录输入 token、工具调用和回答；不启动 Campaign、Desktop 或 EDA。
+- L4：机制稳定后用 DeepSeek-V4.1-Flash（wire id `deepseek-flash`）只问一次产品身份/Pack 问题，记录输入 token、工具调用和回答；不启动 Campaign、Desktop 或 EDA。
 
 ## 并行与回滚
 

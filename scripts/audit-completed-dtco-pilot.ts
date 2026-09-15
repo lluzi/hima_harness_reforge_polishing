@@ -32,7 +32,7 @@ import { sha256 } from './live-check-workshop.ts';
 const PACK_ID = 'aes-tsmc28-dtco';
 const PACK_VERSION = '5';
 const SITE_ID = 'linglong-aes';
-const EXPECTED_MODEL = 'deepseek-v4-flash';
+const EXPECTED_MODEL = 'deepseek-flash';
 const RUN_ID = 'run-6077b417-daf5-4db3-a1f4-72420fc5d15d';
 const FIRST_TIME_BOX_MS = 90 * 60_000;
 const CLOSING_RESERVE_MS = 60_000;

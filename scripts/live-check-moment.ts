@@ -38,7 +38,7 @@ import { HIMA_MOMENT_PRESET, type MomentAnswer, type RecordsView, type RunView, 
 const KEY_VARIABLE = 'DEEPSEEK_API_KEY';
 
 /** The model the profile's default selects (D9), which this run holds the answer against. */
-const EXPECTED_MODEL = 'deepseek-v4-flash';
+const EXPECTED_MODEL = 'deepseek-flash';
 
 /** What the moment is told, chosen so that the answer is checkable without judging a model's prose. */
 const INSTRUCTIONS = 'Answer with exactly the word READY. Say nothing else.';

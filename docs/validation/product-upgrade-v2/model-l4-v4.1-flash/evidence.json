@@ -1,0 +1,53 @@
+{
+  "format": "hima-product-model-l4-v1",
+  "model": {
+    "provider": "deepseek-official",
+    "model": "deepseek-flash"
+  },
+  "calls": [
+    {
+      "name": "hima_knowledge",
+      "action": "search"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "hima_knowledge",
+      "action": "read"
+    },
+    {
+      "name": "write"
+    },
+    {
+      "name": "bash"
+    },
+    {
+      "name": "bash"
+    }
+  ],
+  "knowledgeRecord": {
+    "id": "run-219ebfd3-d0b4-4384-af89-464f6df3fa52#000002",
+    "documentId": "a8725e4c5685b4a4a63869bcc59a6eb433fe1f0f996a75d2cb5aaac047be7381",
+    "chunkId": "a8725e4c5685b4a4a63869bcc59a6eb433fe1f0f996a75d2cb5aaac047be7381:0",
+    "page": 1,
+    "nodeId": "synthesize",
+    "attempt": 1,
+    "generation": 1
+  },
+  "selector": {
+    "sha256": "6b65898ecb1a7763e77044a44cbd53f03cf1300b6b914e4a89b6ce708ed09ced",
+    "bytes": 5047
+  },
+  "assertions": {
+    "firstSelected": [
+      "candidate_beta"
+    ],
+    "secondSelected": [
+      "new_high"
+    ],
+    "hardcodedCandidateIds": false,
+    "noSourceDiscovery": true
+  },
+  "answer": "I'll start with the product-identity answer (from supplied context, no source inspection), then run the required knowledge read.\nNow the required read with the returned document/chunk identity.\nEvidence read confirmed. Now writing the selector and running it.\nVerifying generality with a different input (no hardcoding):\nAll three parts are done.\n\n## 1. What HimaHarness and a HimaPack are\n\n**HimaHarness** is the Campaign product I run inside. A **Campaign** is the business task you want completed; one persistent **Run** records its execution, and the visible Campaign Agent (me, in this conversation) owns the execution decisions. **HimaFabric** constrains the allowed graph, budget, dependencies, jobs, evidence and recovery — it does not act as a hidden automatic executor in place of the Agent. A **Site** describes a reachable execution environment and its permit; HimaGuide helps inspect a Pack, discover a Site, and prepare inputs before you confirm one concrete Campaign.\n\n**HimaPack** is a transparent, installable *method capability* — not a fixed design replay. It declares its purpose, required inputs and outputs, tools, knowledge, reference graph, limits, and evidence rules. I check it against a named Site, then an owner confirms the Campaign; the Run's Goal and total budget stay fixed.\n\nCurrent inventory: HimaHarness 0.1.0 on DeepSeek Harness 0.1.5-alpha.1; installed HimaPack `opene902-timing-probe`; saved Site `local`; active Campaign `opene902-timing-probe` on `local`, running at `synthesize`.\n\n## 2. Evidence the current PDF requires before claiming a custom Cell was adopted\n\nFrom the current knowledge document **\"EDA timing preparation guide\"** (documentId `a8725e4c5685b4a4a63869bcc59a6eb433fe1f0f996a75d2cb5aaac047be7381`, chunk `…:0`, page 1, sha256 `f4f41f…5987`; read appended as record `run-219ebfd3-d0b4-4384-af89-464f6df3fa52#000002`):\n\n> \"A custom cell counts as adopted only when the final routed database contains at least one effective instance.\"\n\nThe same guide adds two supporting requirements:\n- **Clock uncertainty is applied identically** to the baseline arm and the custom-cell arm.\n- **The final timing report must identify the routed database it was generated from.**\n\nSo the claim \"custom Cell adopted\" requires evidence of ≥1 *effective instance* in the *final routed database* — and the report backing it must name that routed database, with uncertainty applied identically to both arms.\n\n## 3. Selector\n\nI read only `held-out-candidates.json`, wrote `selector.py`, and ran it.\n\n- `selector.py` — general: `python3 selector.py INPUT_JSON OUTPUT_JSON`, reads `generation_requests`, computes a score from numeric `discovery_evidence` (75% weight on higher `non_overlapping_support`, 25% on smaller `critical_impact_du`, min-max normalized across the input set), and writes `{\"selected\":[best_id],\"reason\":...}`. No candidate ids are hardcoded; non-buildable requests (no usable plan or no numeric evidence) are excluded.\n- `selection.json`:\n```json\n{\n  \"selected\": [\"candidate_beta\"],\n  \"reason\": \"Ranked 2 buildable candidate(s) by numeric discovery_evidence (weight 0.75 on non_overlapping_support, 0.25 on smaller critical_impact_du, min-max normalized across the candidate set). Best: candidate_id=candidate_beta with non_overlapping_support=5.0, critical_impact_du=0.2, score=1.0000.\"\n}\n```\n\nI sanity-checked generality with a separate probe input containing different ids and two malformed entries: it excluded the malformed ones and selected the candidate with the strongest evidence, confirming the choice comes from the numbers rather than from ids.\n\nOne caveat worth stating plainly: the input file supplies only `non_overlapping_support` and `critical_impact_du` per candidate, so \"buildable\" here is a structural test (usable plan + numeric evidence) plus that numeric ranking — it is not a timing-signoff or adoption judgment. The adoption standard in §2 is a separate, stronger bar that this ranking does not itself satisfy."
+}
