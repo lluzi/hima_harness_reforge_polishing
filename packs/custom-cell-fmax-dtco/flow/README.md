@@ -28,10 +28,10 @@ The declared initial strategy and Goal are bounded trial settings, not promised 
 profile supplies the physical row `PLACE_SITE`, tap/filler cells and interval, and shared P&R
 settings. Those technology assumptions are checked before the Campaign writes `inputs.json` and
 are identical for both arms.
-After a constraint failure, asked period minus negative slack estimates a relaxed next trial;
-apply a 0.01 ns over-constraining step. After a pass that misses Goal, try 0.01 ns tighter.
-Always use the current observation and both Judge verdicts. A zero slack is a real zero;
-never add a guard that systematically relaxes an already passing trial. Retest under matching
+The probe constraint is research pressure, not closure: explicit reg2reg WNS must be `-0.1 ns` or
+worse. If pressure is lighter, `maintain-reg2reg-pressure` subtracts the measured shortfall from the
+next requested period. A trial already at or below the Campaign target with sufficient pressure
+ends the probe immediately. Always use the current observation and both Judge verdicts. Retest under matching
 conditions to assess stability. A two-generation test may honestly exhaust its budget.
 No synthesized measurement is a post-route or silicon Fmax claim.
 
@@ -41,9 +41,9 @@ samples with line/object provenance; verify generated candidates against these o
 an independent enumeration. No fabricated candidate counts or copied parameter profiles.
 
 The preserved inner probe has synthesize → read-probe → judge → next-period → synthesize (revisit),
-plus the hard-blocker wait. The Judge applies setup-wns-all-nonnegative then
-clock-period-at-most; PASS and FAIL both reach next-period. The existing
-over-constraining-push chooser is a recommendation; the same conversational Agent explicitly
+plus the hard-blocker wait. The Judge applies reg2reg-pressure-at-least-100ps then
+clock-period-at-most; PASS and FAIL both reach next-period. The
+maintain-reg2reg-pressure chooser is a recommendation; the same conversational Agent explicitly
 executes nodes and selects decisions. The current method converges six evidence routes into one
 cross-route AI research Workshop before the physical stages after this inner probe.
 

@@ -501,7 +501,7 @@ tools:
       - compare
       - ${WORKSPACE}
 rules:
-  - reg2reg-wns-nonnegative
+  - reg2reg-pressure-at-least-100ps
   - clock-period-at-most
   - comparison-evidence-valid
   - fmax-improved
@@ -510,9 +510,9 @@ rules:
 knowledge:
   - file: custom-cell-fmax-probe-method.md
     purpose: "How to read this pack's numbers and what they do not say: the
-      zero-slack and violation reading, the measured period versus an estimated
-      one, matching conditions and the manifest's hashes, the two constraints,
-      and the finite hashed timing and netlist samples for later analysis."
+      explicit -0.1 ns reg2reg pressure target, the measured period versus a
+      next-trial hypothesis, matching conditions and the manifest's hashes, the
+      two constraints, and the finite hashed timing and netlist samples for later analysis."
   - file: full-mining-method.md
     purpose: Six-route candidate research, exact Boolean provenance, bounded
       selection, library gates and limits of paired measurements.

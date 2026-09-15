@@ -6,7 +6,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { checkPack, installPackMethod, loadPack, loadSite, packKnowledgeManifestOf, packOverview, searchPackKnowledge } from '@hima/harness';
+import { checkPack, choose, installPackMethod, loadPack, loadSite, packKnowledgeManifestOf, packOverview, resolveChooser, searchPackKnowledge } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
 import { writeLocalSite } from './support/site.ts';
 import { createHimaHome } from './support/dsh-home.ts';
@@ -61,10 +61,38 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
   assert.ok(graph.edges.some((edge) => edge.from === 'adoption-gate' && edge.to === 'pnr-foundry' && edge.outcome === 'PASS'));
   assert.ok(graph.edges.some((edge) => edge.from === 'adoption-gate' && edge.to === 'blocked' && edge.outcome === 'FAIL'));
   const loaded = loadPack(path.join(repoRoot, 'packs'), 'custom-cell-fmax-dtco');
+  const pressure = resolveChooser(loaded, 'maintain-reg2reg-pressure', 'the reading').chooser;
+  const observation = (slack: number) => ({ id: 'pressure-observation', values: [
+    { type: 'clock_period', unit: 'ns', value: 0.5 },
+    { type: 'reg2reg_wns', unit: 'ns', mode: 'setup', scope: 'reg2reg', value: slack },
+  ] }) as any;
+  const verdict = (outcome: 'PASS' | 'FAIL', ruleId: string) => ({ outcome, ruleId }) as any;
+  const chooserInput = { bound: { pressureMagnitudeNs: 0.1 }, knobs: loaded.contract.strategy,
+    strategy: { periodNs: 0.5, floorplanUtilization: 0.25, algorithmRevision: 0 },
+    goal: verdict('PASS', 'clock-period-at-most') };
+  assert.deepEqual(choose(pressure, { ...chooserInput, observation: observation(-0.104597),
+    constraint: verdict('PASS', 'reg2reg-pressure-at-least-100ps') }), {
+    ok: true, chosen: { goalMet: true }, rationale: { period: 0.5, slack: -0.104597, pressureMagnitudeNs: 0.1 },
+  });
+  assert.deepEqual((choose(pressure, { ...chooserInput, observation: observation(-0.05),
+    constraint: verdict('FAIL', 'reg2reg-pressure-at-least-100ps') }) as any).chosen.strategy.periodNs, 0.45);
   assert.deepEqual(loaded.contract.workshops.map((workshop) => workshop.id), ['research-candidates'],
     'one cross-route AI research moment replaces six narrow selector moments');
   assert.ok(graph.nodes.some((node) => node.id === 'research-candidates'));
   assert.ok(graph.nodes.some((node) => node.id === 'read-research-selection'));
+  const probeLoop = (graph as any).loops['probe-loop'];
+  const probeJudge = probeLoop.nodes.find((node: any) => node.id === 'judge');
+  const nextPeriod = probeLoop.nodes.find((node: any) => node.id === 'next-period');
+  assert.deepEqual(probeJudge.parameters.rules, ['reg2reg-pressure-at-least-100ps', 'clock-period-at-most']);
+  assert.equal(nextPeriod.parameters.chooser, 'maintain-reg2reg-pressure');
+  assert.deepEqual(nextPeriod.parameters.bind, { pressureMagnitudeNs: 0.1 });
+  const pressureRule = parse(await readFile(path.join(packDir, 'rules/reg2reg-pressure-at-least-100ps.yml'), 'utf8')) as any;
+  assert.deepEqual(pressureRule.predicate, { op: 'lte', threshold: -0.1, unit: 'ns' });
+  const pressureChooser = parse(await readFile(path.join(packDir, 'choosers/maintain-reg2reg-pressure.yml'), 'utf8')) as any;
+  assert.deepEqual(pressureChooser.parameter, { name: 'pressureMagnitudeNs', unit: 'ns' });
+  assert.deepEqual(pressureChooser.decide[2].next.periodNs,
+    { sum: ['period', { neg: 'pressureMagnitudeNs' }, { neg: 'slack' }] },
+    'insufficient pressure tightens the period instead of relaxing toward timing closure');
   for (const route of ['timing-criticality', 'timing-context', 'structure-frequency', 'structure-compaction',
     'mapper-compatibility', 'functional-diversity']) {
     assert.deepEqual(graph.nodes.find((node) => node.id === `select-${route}`)?.parameters,

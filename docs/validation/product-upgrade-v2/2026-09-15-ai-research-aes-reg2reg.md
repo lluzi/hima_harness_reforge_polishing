@@ -149,6 +149,15 @@ reviewed Pack value when the caller supplies no test-only override. This Pack de
 while every Pack that omits the field retains the 60-minute Harness default. No new budget component
 or user choice was introduced.
 
+The first unified-pool L5 on commit `f6a744a` exposed one older probe-control error before mining.
+At 0.5 ns the real `aes_cipher_top` probe measured 32 reg2reg paths and WNS `-0.104597 ns`, which is
+the intended optimization pressure. The old `reg2reg-wns-nonnegative` rule marked that evidence FAIL,
+and `over-constraining-push` relaxed the next period to 0.595 ns in pursuit of closure. The Run was
+cancelled before mining, AI research, Cell generation or downstream DC/APR. The Pack now judges
+`reg2reg_wns <= -0.1 ns` and uses a pressure-maintaining chooser that tightens only when the measured
+violation is too light. A 0.5 ns / -0.104597 ns probe therefore ends the inner loop immediately and
+preserves 0.5 ns for both matched synthesis arms.
+
 PLS-35 remains open until a fresh clean Home uses DeepSeek-V4.1-Flash to author and execute the
 Workshop code through HimaHarness, reaches the same evidence gates, passes offline audit, is packaged,
 and completes Catsights review. No release is claimed here.

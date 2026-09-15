@@ -52,7 +52,7 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 - 用户不看手册即可理解产品、Pack和下一行动。
 - 安装内容非空，Pack/Site/Preparation都可由产品完成。
 - 本次验收的实际 top 是 `aes_cipher_top`；任何其他 top 的结果只能算 off-target 诊断。
-- DC probe、mining 和 matched synthesis 使用显式 reg2reg path group；I/O violation 不能代表 Fmax pressure。
+- DC probe、mining 和 matched synthesis 使用显式 reg2reg path group；probe 在目标 period 保留 `-0.1 ns` 或更差 WNS，不能向零 violation 放宽，I/O violation 不能代表 Fmax pressure。
 - 一个Campaign只有一个Run和一个owner，Side Talk不阻塞也不夺权。
 - 完整参考图、实际状态、代码、知识、evidence和report可达。
 - 新Cell是A/B唯一变量；一次公共 DC→APR 验证中的最终route database实际采用它，结果Fmax更高。不得为每种挖掘方法复制验证链。

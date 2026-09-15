@@ -28,7 +28,7 @@ Issue：[PLS-34 / #38](https://github.com/lluzi/hima_harness_reforge_polishing/i
 1. Pack 输入只要求真实生产资料：design root/RTL/top/clock/constraints、foundry/physical/library inputs、workspace和当前工具栈；Golden Flow不是必需输入。
 2. Site binding承担路径、环境和工具入口；Pack声明 Design Compiler、Library Compiler、Innovus及推荐版本，不锁精确版本。
 3. 工具小版本差异先由 Campaign私有 adapter/`revise` 查 Pack知识、手册、安装目录和man适配；成功形成 Pack Owner候选，失败给人完整报告。
-4. 挖掘算法必须读取当前 design/netlist/timing/library真实数据，产生多个数据依赖候选；不允许固定 AES结构或预制答案。
+4. 挖掘算法必须读取当前 design/netlist/timing/library真实数据，产生多个数据依赖候选；不允许固定 AES结构或预制答案。进入挖掘的 probe 必须在显式 reg2reg path group 上保留至少 `-0.1 ns` 的负 slack 压力，不得为了 timing closure 放宽 period。
 5. Agent根据证据编写/修订选择算法并可使用现有 grow/revise；参考图保持，新增研究有影响范围、结束和返回。
    当前 AES 出口由六种挖掘方法共同贡献证据；等价候选先合并为一个池，AI 按现场证据将最多 50 个不同布尔/接口类统一排序并全部放入同一生成库。只运行一对受压 DC 和一对 APR，不做方法间的并行 EDA 比赛；采用结果须回标每个 Cell 及其所有来源方法。
 6. A/B流程、设置、工具和输入完全一致，唯一变量是新 Cell/library content；公共 floorplan、constraint和PnR设置不得为一臂改变。

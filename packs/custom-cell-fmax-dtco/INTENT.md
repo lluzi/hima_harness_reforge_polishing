@@ -16,8 +16,9 @@ and reaches a completed final route database that is the direct source of timing
 
 The baseline and generated arms share RTL, constraints, a once-expanded 25% target-utilization
 floorplan, the baseline arm's frozen IO-pin plan, physical inputs, tool entry points, and route
-settings. Both syntheses use 50% clock uncertainty, an explicit high-weight reg2reg path group, and
-both route arms use 25%. I/O violations never substitute for Fmax pressure. The only permitted
+settings. The probe and both syntheses use 50% clock uncertainty and an explicit high-weight reg2reg
+path group. The probe must retain at least `-0.1 ns` reg2reg WNS rather than relax toward closure, and
+both route arms use 25% clock uncertainty. I/O violations never substitute for Fmax pressure. The only permitted
 arm difference is generated Cell/library content. Area, power, congestion, and physical observations are retained
 when available, and explicitly unknown when not measured; they do not decide Fmax.
 

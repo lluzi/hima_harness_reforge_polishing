@@ -1,6 +1,6 @@
-id: reg2reg-wns-nonnegative
+id: reg2reg-pressure-at-least-100ps
 version: "1"
-title: Explicit reg-to-reg setup timing meets the pressured clock
+title: Explicit reg-to-reg setup timing carries at least 100 ps optimization pressure
 requires:
   - type: reg2reg_wns
     mode: setup
@@ -10,6 +10,6 @@ subject:
   mode: setup
   scope: reg2reg
 predicate:
-  op: gte
-  threshold: 0
+  op: lte
+  threshold: -0.1
   unit: ns

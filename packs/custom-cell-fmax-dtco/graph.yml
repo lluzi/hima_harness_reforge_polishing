@@ -408,7 +408,7 @@ loops:
         kind: judge
         parameters:
           rules:
-            - reg2reg-wns-nonnegative
+            - reg2reg-pressure-at-least-100ps
             - clock-period-at-most
           bind:
             target_period_ns:
@@ -417,9 +417,9 @@ loops:
       - id: next-period
         kind: explore
         parameters:
-          chooser: over-constraining-push
+          chooser: maintain-reg2reg-pressure
           bind:
-            stepNs: 0.01
+            pressureMagnitudeNs: 0.1
           converge:
             read: period
             band: 0.005

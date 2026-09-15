@@ -7,7 +7,8 @@ requested clock and setup slack reread after restoring that arm's final route da
 
 ## Constraints
 
-The nested probe uses reg2reg-wns-nonnegative on an explicit reg2reg-only synthesis report. The final
+The nested probe uses `reg2reg-pressure-at-least-100ps` on an explicit reg2reg-only synthesis report.
+It passes only when WNS is `-0.1 ns` or worse, so the probe cannot relax toward timing closure. The final
 outer Judge uses comparison-evidence-valid: both restored final databases must be identity-matched,
 the generated library live, a generated master physically present, and timing/census verification
 complete. `fmax-improved` is a separate gate. Setup, hold, route-DRC, connectivity and Innovus
@@ -31,7 +32,8 @@ their emitted P&R SDCs apply 25%. The validated physical-profile `PLACE_SITE` en
 also declares the tap/filler assumptions used by both arms; a Pack does not invent a row site or
 technology cell names. The standalone adapter preserves 0.60 only when a human omits it.
 Wrappers: /usr/bin/python3. DC, LC and Innovus tools declare one corresponding licence per Job.
-The Site cap admits one licensed Job at a time; the same owner requests all branch work.
+The Site declares a bounded Job cap; each EDA tool still uses one licensed Job at a time. The same
+owner requests all branch work.
 
 Probe outputs: flow/probe.json plus hashed trial artifacts. Route outputs: flow/mining/ROUTE/raw.json,
 research.json, selected.json and flow/records/mine-ROUTE.json. The single AI research output is
@@ -59,15 +61,16 @@ represented as zero. These secondary facts do not decide the Fmax goal.
 
 ## Judge rules
 
-Nested probe: reg2reg-wns-nonnegative, then clock-period-at-most bound to target_period_ns.
+Nested probe: reg2reg-pressure-at-least-100ps, then clock-period-at-most bound to target_period_ns.
 Before P&R, custom-cell-adopted requires at least one generated master in the custom synthesis netlist.
 Outer final-judge: comparison-evidence-valid, fmax-improved, then clock-period-at-most bound to the same fixed Goal.
 The first rule chooses the edge; both current verdicts are needed for explicit Goal met.
 
 ## Choosers
 
-The nested probe retains over-constraining-push with 0.01 ns step and bounded convergence; its
-arithmetic is a next-trial hypothesis. Outer research-next suggests a selection revision after a
+The nested probe uses `maintain-reg2reg-pressure`, bound to `pressureMagnitudeNs=0.1`. If pressure is too
+light, it tightens the next requested period by the measured pressure shortfall; it never relaxes a
+violating 0.5 ns trial toward closure. Its arithmetic is a next-trial hypothesis. Outer research-next suggests a selection revision after a
 known constraint or Goal failure. The owner must cite actual current observations/verdicts.
 It cannot alter the Goal, remove a gate or treat an incomplete previous attempt as usable evidence.
 

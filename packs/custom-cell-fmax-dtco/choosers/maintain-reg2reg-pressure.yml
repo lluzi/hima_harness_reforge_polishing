@@ -1,0 +1,23 @@
+# Keep the DC probe at a real reg-to-reg violation instead of relaxing toward timing closure.
+# The pressure magnitude is bound by the Pack graph as 0.1 ns. If the measured WNS is less
+# negative than -0.1 ns, period - pressureMagnitudeNs - slack asks the next generation for the
+# missing pressure. A pressure-qualified period at or below the Campaign target ends the
+# probe immediately and becomes the one period used by both matched synthesis arms.
+id: maintain-reg2reg-pressure
+version: '1'
+title: Maintain at least the declared reg-to-reg optimization pressure
+parameter:
+  name: pressureMagnitudeNs
+  unit: ns
+reads:
+  period: { type: clock_period, unit: ns }
+  slack: { type: reg2reg_wns, unit: ns, mode: setup, scope: reg2reg }
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: PASS }
+    next:
+      periodNs: { sum: [period, slack] }
+  - when: { constraint: FAIL }
+    next:
+      periodNs: { sum: [period, { neg: pressureMagnitudeNs }, { neg: slack }] }
