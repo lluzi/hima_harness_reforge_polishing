@@ -36,7 +36,7 @@ const EXPECTED_MODEL = 'deepseek-flash';
 const FIRST_TIME_BOX_MS = 60 * 60_000;
 const HARNESS_TIME_BOX_MS = 100 * 60_000;
 const FIRST_RETRY_ALLOWANCE = 3;
-const GENERATION_LIMIT = 2;
+const GENERATION_LIMIT = 1;
 const ATTEMPT_LIMIT = 120;
 const CLOSING_RESERVE_MS = 60_000;
 const MAX_PRODUCT_REQUEST_STEPS = 600;
@@ -490,8 +490,6 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
     'The Pack reserves 60 seconds for closing, permits at most 120 attempts, and has a 60-minute Campaign limit. The enclosing live harness has 100 minutes, 600 product request steps and 120 user turns. These are upper limits, not a promise that the model or tools will finish.',
     'When a Job is asynchronous, yield and let its native tool notification report settlement. Continue from the current context only; never repeat a launch with a new request identity.',
   ].join('\n');
-  await check.say(owner, firstPrompt);
-
   let created = ownedRuns();
   check.require('the owner opened exactly one first Campaign', created.length === 1, created);
   const firstId = created[0]!.id;
@@ -514,6 +512,11 @@ await runLive('live-check-dtco-pilot', MAX_USER_TURNS, async (check: LiveCheck) 
       && first.budget?.licences?.['Library-Compiler'] === 1
       && first.budget?.licences?.Innovus === 1,
     first);
+
+  // Validate every non-executing admission fact before the owner can launch the first Site Job.
+  // The prior L5 attempt exposed why this ordering matters: a harness-side expectation mismatch
+  // must fail before any expensive work begins, not while a valid Job is already running.
+  await check.say(owner, firstPrompt);
 
   const endedFirst = await continueUntilTerminal(
     check,
