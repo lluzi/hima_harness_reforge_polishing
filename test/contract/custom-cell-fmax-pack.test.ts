@@ -159,6 +159,25 @@ test('Innovus 23.14 connectivity summary grammar is read as a physical violation
   }
 });
 
+test('Innovus 23.14 Path 1 slack accepts the observed optional equals marker without weakening WNS equality', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hima-timing-path-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const summary = path.join(directory, 'post.summary');
+  const paths = path.join(directory, 'post.paths');
+  const command = 'timeDesign -postRoute -outDir /tmp/report -prefix post';
+  await writeFile(summary, `# Command: ${command}\n| Setup mode | all |\n| WNS (ns): | -0.004 |\n| TNS (ns): | -0.004 |\n| Violating Paths: | 1 |\n| All Paths: | 5 |\n`);
+  const check = async (slackLine: string, expectedStatus: number) => {
+    await writeFile(paths, `# Command: ${command}\nPath 1: VIOLATED Setup Check\nAnalysis View: view_foundry\n${slackLine}\n`);
+    for (const [module, functionName] of [['flow/stages.py', 'parse_timing_summary'], ['flow/read-stage.py', 'timing'], ['tools/read-stage.py', 'timing']] as const) {
+      const read = spawnSync('/usr/bin/python3', ['-c', `import importlib.util,pathlib,sys;spec=importlib.util.spec_from_file_location('checked',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);print(getattr(m,sys.argv[2])(pathlib.Path(sys.argv[3]),pathlib.Path(sys.argv[4])))`,
+        path.join(packDir, module), functionName, summary, paths], { encoding: 'utf8' });
+      assert.equal(read.status, expectedStatus, `${module}: ${read.stderr}`);
+    }
+  };
+  await check('Slack Time                   -0.004', 0);
+  await check('= Slack Time                 -0.004', 0);
+  await check('Slack Time                   -0.003', 1);
+});
+
 test('a real Pack-sourced workspace materializes declared Site inputs without a Golden Flow or legacy object', async (t) => {
   const h = await createHimaHome(); t.after(() => h.dispose());
   const designRoot = path.join(h.home, 'held-out-design'); await mkdir(designRoot);

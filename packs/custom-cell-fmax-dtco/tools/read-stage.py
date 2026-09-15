@@ -269,7 +269,7 @@ def timing(path, companion, mode="Setup"):
                 if (len(violating_rows) != 1 or not math.isfinite(violating_rows[0])
                         or violating_rows[0] < 0 or not violating_rows[0].is_integer()):
                     raise ValueError("post-route timing has no finite nonnegative integer setup/all violating-path count")
-                path_one = re.search(r"^Path 1:.*?^= Slack Time\s+([0-9.eE+-]+)\s*$",
+                path_one = re.search(r"^Path 1:.*?^=?\s*Slack Time\s+([0-9.eE+-]+)\s*$",
                                      path_text, re.M | re.S)
                 if path_one is None or float(path_one.group(1)) != value:
                     raise ValueError("post-route summary WNS differs from Path 1 slack")

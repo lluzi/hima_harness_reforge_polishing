@@ -1373,7 +1373,10 @@ def parse_timing_summary(path, companion, mode="Setup"):
         raise Rejected("post-route timeDesign summary has no finite nonnegative integer setup/all violating-path count")
     if len(views) != 1:
         raise Rejected("post-route path report has no unambiguous setup analysis view")
-    path_one = re.search(r"^Path 1:.*?^= Slack Time\s+([0-9.eE+-]+)\s*$", path_text, re.M | re.S)
+    # Innovus 23.14 emits both `= Slack Time` and `Slack Time` across designs while
+    # preserving the same Path 1/report contract. Accept that optional marker only;
+    # the summary WNS equality below remains the independent numeric gate.
+    path_one = re.search(r"^Path 1:.*?^=?\s*Slack Time\s+([0-9.eE+-]+)\s*$", path_text, re.M | re.S)
     if path_one is None or not math.isfinite(float(path_one.group(1))):
         raise Rejected("post-route path report has no finite Path 1 setup slack")
     wns = rows["WNS (ns)"]["all"]
