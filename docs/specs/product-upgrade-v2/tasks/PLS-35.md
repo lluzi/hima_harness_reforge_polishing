@@ -19,6 +19,9 @@ Issue：[PLS-35 / #39](https://github.com/lluzi/hima_harness_reforge_polishing/i
 - 2026-09-15 首轮统一 47-Cell L5 最终route保留250个定制Cell实例，但 matched Fmax仅从
   1923.076923 MHz提升至1926.782274 MHz（约+0.193%），远低于5%目标。其post-route
   reg2reg WNS为-19 ps，CTS仍混用普通BUFF。该结果是下一代研究输入，不是发布通过。
+- 第一轮 iterative L5 已证明 DCCK-only CTS 与第二代 graph revisit，但第一代 Fmax 为
+  `-0.179211%`，第二代因 Innovus `flop2flop` 标签适配和旧 100 分钟测试外层硬截止而被安全
+  取消。两项均已在最低层重现并修正；取消的 Run 保留为负面集成证据，不计作目标结束。
 
 ## 固定代码范围
 

@@ -76,13 +76,12 @@ export class LiveCheck {
       if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`${name} must be an integer from 1 to ${max}`);
       return value;
     };
-    // A full authoring run includes five stages; the first installed-model check spent 528s
-    // reaching test alone. The two-generation Workshop check reached its second Job after 507s,
-    // then exhausted its 9m Run while that Job was active. Keep the default at 10m; permit explicit
-    // estimated budgets of 20m for the pipeline or 15m for Workshop, including result collection.
+    // Small Workshop and pipeline checks keep minute-scale bounds. The DTCO pilot is a separate
+    // four-generation real-EDA check: its caller declares a seven-hour harness envelope around a
+    // six-hour Pack budget, so this utility must not silently replace that with the old 100-minute cap.
     const pilot = name === 'live-check-dtco-pilot';
-    const maximumMs = pilot ? 6_000_000 : finalization ? 300_000 : continuation ? 720_000 : name === 'live-check-pipeline' ? 1_200_000 : 900_000;
-    this.limits = { timeoutMs: bounded('--timeout-ms', pilot ? 6_000_000 : defaultMs, maximumMs), maxTurns: bounded('--max-turns', pilot ? 120 : defaultTurns, pilot ? 120 : finalization ? 4 : continuation ? 12 : 32), maxSteps: bounded('--max-steps', pilot ? 600 : defaultSteps, pilot ? 600 : finalization ? 30 : continuation ? 100 : 200) };
+    const maximumMs = pilot ? 28_800_000 : finalization ? 300_000 : continuation ? 720_000 : name === 'live-check-pipeline' ? 1_200_000 : 900_000;
+    this.limits = { timeoutMs: bounded('--timeout-ms', pilot ? 25_200_000 : defaultMs, maximumMs), maxTurns: bounded('--max-turns', defaultTurns, pilot ? 300 : finalization ? 4 : continuation ? 12 : 32), maxSteps: bounded('--max-steps', pilot ? 1800 : defaultSteps, pilot ? 2400 : finalization ? 30 : continuation ? 100 : 200) };
     this.out = path.resolve(options.get('--out') ?? path.join(repoRoot, 'docs/assessment/2026-09-12/pls-19/live-harness', `${name}-${Date.now()}`));
     if (existsSync(this.out)) throw new Error('the evidence directory already exists; use a fresh --out directory');
     mkdirSync(this.out, { recursive: true });

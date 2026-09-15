@@ -345,7 +345,9 @@ def parse_reg2reg_timing_graph(report, expected_top, modules):
     designs = re.findall(r"(?m)^\s*#?\s*Design\s*:\s*(\S+)\s*$", text)
     groups = re.findall(r"(?m)^\s*Path Group:\s*(\S+)\s*$", text)
     groups.extend(re.findall(r"(?m)^Path Groups:\s*\{([^}]+)\}\s*$", text))
-    if set(designs) != {expected_top} or not groups or set(groups) != {"reg2reg"}:
+    normalized_groups = {"reg2reg" if group in {"reg2reg", "flop2flop"} else group
+                         for group in groups}
+    if set(designs) != {expected_top} or not groups or normalized_groups != {"reg2reg"}:
         raise ValueError("timing report must identify one expected design and only reg2reg paths")
     instances_by_module = {
         module: {instance.name: instance for instance in instances}

@@ -276,3 +276,31 @@ workspace `/data/eda/project/hima_harness/polishing-runs/dev-bind-v4-20260915`, 
 `aes_cipher_top` and seven RTL files. The live-check static preflight also accepted the four-generation,
 six-hour, 240-attempt and five-minute closing limits. These are readiness checks only: no DC, LC,
 Innovus implementation Job or model request was launched by them.
+
+## First iterative L5 attempt and two exposed harness defects
+
+Commit `81ab5af` started fresh Run `run-3f9375c6-72d3-4322-b411-e2c37033e6b9` on the v4 Site
+snapshot. Generation one completed 47/47 layout admissions, Library Compiler, one DC pair, one APR
+pair, final-database verification and comparison. Both routed netlists passed the new clock-tree
+audit: the foundry arm used 10 DCCKND instances and the generated arm used 14; neither `CTS_` set
+contained an ordinary BUFF or CKB master. The extra route pressure moved final setup WNS to
+`-0.057 ns` foundry and `-0.058 ns` generated. The generated database retained 222 custom Cell
+instances, but Fmax changed from `1795.332136 MHz` to `1792.114695 MHz`, or `-0.179211%`.
+`comparison_valid=true` and `matched_conditions=true`; this is a valid negative generation.
+
+The fixed revisit then entered generation two without changing period or floorplan. Four structural
+method branches completed from post-route input. The two timing routes failed because Innovus
+`timeDesign -expandReg2Reg` names the expanded path group `flop2flop`, while the new parser accepted
+only the pre-expansion label `reg2reg`. The agent retained the failures and attempted bounded retries.
+Before those branches could be corrected, the outer live-check reached an older independent
+6,000,000 ms hard cap. It safely cancelled the Run at generation two `merge-join` after
+5,994,737 ms, 67 attempts and 67 Jobs; no Site process remained. This was not the Pack's six-hour
+budget or a 5% convergence ending.
+
+The parser now treats Innovus `flop2flop` as an explicit reg2reg expansion while still rejecting
+unrelated groups. A read-only replay of the exact failed 853,194-byte report and routed netlist passed
+at `/data/eda/project/hima_harness/polishing-runs/dev-postroute-flop2flop-replay-20260915-v1`: 100
+paths formed one normalized family, five timing candidates were emitted, and the largest observed
+candidate-cone bound was 49 ps. The live-check utility now resolves the DTCO default to 25,200,000 ms,
+240 turns and 1,800 steps, with a maximum of 28,800,000 ms; a constructor-level probe reproduced
+those values. These fixes require a new Campaign because a cancelled Run is immutable.

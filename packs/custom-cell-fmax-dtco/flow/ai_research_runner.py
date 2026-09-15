@@ -93,7 +93,9 @@ def _probe_context(workspace, revision):
                 routed_timing = source.read()
             groups = re.findall(rb"(?m)^Path Groups:\s*\{([^}]+)\}\s*$", routed_timing)
             slacks = [float(value) for value in re.findall(rb"(?m)^= Slack Time\s+(-?[0-9.eE+-]+)\s*$", routed_timing)]
-            if not groups or set(groups) != {b"reg2reg"} or not slacks:
+            normalized_groups = {b"reg2reg" if group in {b"reg2reg", b"flop2flop"} else group
+                                 for group in groups}
+            if not groups or normalized_groups != {b"reg2reg"} or not slacks:
                 raise ValueError("prior generated post-route timing is not explicit reg2reg evidence")
             context.update({
                 "source_phase": "generated-postroute",
