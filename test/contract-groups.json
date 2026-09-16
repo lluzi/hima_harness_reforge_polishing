@@ -3,6 +3,8 @@
     "test/contract/product-context.host.test.ts",
     "test/contract/site-discovery.test.ts",
     "test/contract/custom-cell-fmax-pack.test.ts",
+    "test/contract/lfr-cumulative-library.test.ts",
+    "test/contract/lfr-proxy-mapping.test.ts",
     "test/contract/knowledge-documents.test.ts",
     "test/contract/side-talk.host.test.ts",
     "test/contract/preparation.host.test.ts",

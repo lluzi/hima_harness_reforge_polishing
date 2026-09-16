@@ -1,0 +1,73 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+const repoRoot = path.resolve(import.meta.dirname, '../..');
+const domain = path.join(repoRoot, 'packs/custom-cell-fmax-dtco/flow/domain');
+
+function runPython(code: string, input: unknown, args: string[] = []) {
+  return spawnSync('/usr/bin/python3', ['-c', code, domain, ...args], {
+    input: JSON.stringify(input), encoding: 'utf8',
+  });
+}
+
+function request(candidateId: string, equivalenceDigest: string, drive = 'D1') {
+  return {
+    candidate_id: candidateId,
+    generator_contract: {
+      target_library_profile: {
+        process_family: 'SYNTHETIC', cell_architecture_ref: 'fixture://architecture',
+      },
+      interface: {
+        inputs: [{ name: 'I0', direction: 'input' }, { name: 'I1', direction: 'input' }],
+        outputs: [{ name: 'Y', direction: 'output', liberty_function: 'I0 & I1' }],
+      },
+      equivalence_reference: {
+        digest: equivalenceDigest, input_order: ['I0', 'I1'], output_order: ['Y'],
+      },
+      implementation_request: {
+        mode: 'synthesize_transistor_topology', drive_strengths: [drive], vt_classes: ['SVT'],
+      },
+    },
+  };
+}
+
+test('LFR cumulative Library appends immutable shards and projects only new functions', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lfr-library-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const first = request('CAND_FIRST', 'sha256:function-a');
+  const firstAlias = request('CAND_ALIAS', 'sha256:function-a');
+  const second = request('CAND_SECOND', 'sha256:function-b');
+  const code = `import hashlib,json,sys\nfrom pathlib import Path\nsys.path.insert(0,sys.argv[1])\nfrom _generation_projection import empty_cumulative_manifest,append_cumulative_shard,delta_generation_requests,validate_cumulative_manifest\nd=json.load(sys.stdin); root=Path(sys.argv[2])\nmanifest=empty_cumulative_manifest({'source':'fixture://foundry.lib','bytes':17,'sha256':'a'*64})\nmanifest=append_cumulative_shard(root,manifest,'0001',[d['first']])\nold=(root/'shards'/'0001'/'manifest.json').read_bytes(); old_sha=hashlib.sha256(old).hexdigest()\ndelta=delta_generation_requests({'generation_requests':[d['firstAlias'],d['second']]},manifest)\nmanifest=append_cumulative_shard(root,manifest,'0002',delta)\nvalidate_cumulative_manifest(manifest)\nprint(json.dumps({'manifest':manifest,'delta':[r['candidate_id'] for r in delta],'oldSha':old_sha,'oldShaAfter':hashlib.sha256((root/'shards'/'0001'/'manifest.json').read_bytes()).hexdigest()},sort_keys=True))`;
+  const ran = runPython(code, { first, firstAlias, second }, [root]);
+  assert.equal(ran.status, 0, ran.stderr);
+  const result = JSON.parse(ran.stdout);
+  assert.deepEqual(result.delta, ['CAND_SECOND']);
+  assert.equal(result.oldShaAfter, result.oldSha, 'adding round 2 must not rewrite shard 0001');
+  assert.deepEqual(result.manifest.shards.map((row: { id: string }) => row.id), ['0001', '0002']);
+  assert.equal(result.manifest.functions.length, 2);
+  assert.equal(result.manifest.functions[0].state, 'discovered');
+  assert.match(result.manifest.functions[0].functionKey, /^sha256:[0-9a-f]{64}$/);
+  const shard = JSON.parse(await readFile(path.join(root, 'shards/0002/manifest.json'), 'utf8'));
+  assert.equal(shard.schema, 'custom-cell-library-shard/1');
+  assert.equal(shard.functionKeys.length, 1);
+});
+
+test('LFR function identity keeps physical drive variants distinct and rejects duplicates in one delta', () => {
+  const first = request('CAND_FIRST', 'sha256:function-a', 'D1');
+  const stronger = request('CAND_STRONGER', 'sha256:function-a', 'D2');
+  const duplicate = request('CAND_DUPLICATE', 'sha256:function-a', 'D1');
+  const identityCode = `import json,sys\nsys.path.insert(0,sys.argv[1])\nfrom _generation_projection import function_identity\nd=json.load(sys.stdin); print(json.dumps([function_identity(x)['key'] for x in d]))`;
+  const identities = runPython(identityCode, [first, stronger]);
+  assert.equal(identities.status, 0, identities.stderr);
+  const keys = JSON.parse(identities.stdout);
+  assert.notEqual(keys[0], keys[1], 'drive is a variant of one function class but a distinct materialized asset');
+
+  const duplicateCode = `import json,sys\nsys.path.insert(0,sys.argv[1])\nfrom _generation_projection import empty_cumulative_manifest,delta_generation_requests\nd=json.load(sys.stdin); m=empty_cumulative_manifest({'source':'fixture://f','bytes':1,'sha256':'b'*64}); delta_generation_requests({'generation_requests':d},m)`;
+  const rejected = runPython(duplicateCode, [first, duplicate]);
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /repeat a function identity/);
+});

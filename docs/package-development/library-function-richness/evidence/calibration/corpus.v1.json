@@ -1,0 +1,360 @@
+{
+  "schema": "hima.library-richness.calibration-corpus/1",
+  "corpusId": "aes-tsmc28-47cell-commercial-v1",
+  "corpusIdentitySha256": "a5e0c2df3e725b25fb24fbc4f4d4812bad3cdfa3563ba8f4a18d1c8e6cd74ca2",
+  "frozenAt": "2026-09-15",
+  "purpose": "Identity-only corpus for calibrating the license-free mapping proxy and the separate physical correction. It is not a portable design input and does not assert a 5% result.",
+  "handling": {
+    "rawPayloadsCommitted": false,
+    "siteDeletionAllowed": false,
+    "repositoryContains": "locators, SHA-256 identities, byte counts, compact measured facts and explicit gaps only",
+    "rawMaterialRule": "RTL, Liberty, netlists, reports, databases, logs and customer-like Site artifacts remain on the Site or in ignored local evidence storage."
+  },
+  "design": {
+    "top": "aes_cipher_top",
+    "rtlSetHashMethod": "sha256(canonical-json([{path,sha256},...]) with sorted keys and compact separators)",
+    "rtl": [
+      {
+        "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_cipher_top.v",
+        "sha256": "ab39a4a094dc8cfde90fcaa4c1aaf7dc9bf75b57ed762e11a985b88f6b23996c",
+        "storage": "site-only",
+        "committed": false
+      },
+      {
+        "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_inv_cipher_top.v",
+        "sha256": "2f629dab66518aac9e76cb7dbbcf9365785e02531aadcca0cff8f4eb62c963a6",
+        "storage": "site-only",
+        "committed": false
+      },
+      {
+        "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_inv_sbox.v",
+        "sha256": "ce684a8941f3bd0a1b1345bcb4eb1cff01399a28935f89ce5b8e0be31652bbb2",
+        "storage": "site-only",
+        "committed": false
+      },
+      {
+        "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_key_expand_128.v",
+        "sha256": "bf06921c6fe80a69674f8b38160e8d677e1c4cc1a96befee2ac136bed3fe48c6",
+        "storage": "site-only",
+        "committed": false
+      },
+      {
+        "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_rcon.v",
+        "sha256": "1e8a0d1f8c3da8d382adb94e98bacfab455683ca3bca282b982179c0f7607e8e",
+        "storage": "site-only",
+        "committed": false
+      },
+      {
+        "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/aes_sbox.v",
+        "sha256": "7f4fe4173d58017eb2520fb130b3b779d63a373463cb0198bd66c4371184d7fb",
+        "storage": "site-only",
+        "committed": false
+      },
+      {
+        "path": "/data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/timescale.v",
+        "sha256": "0833b736793bc11f640ed66357614c0f5cf30a548a7e515333b1e46438b2cb6b",
+        "storage": "site-only",
+        "committed": false
+      }
+    ]
+  },
+  "constraints": {
+    "source": {
+      "path": "/data/eda/project/hima_harness/polishing-inputs/aes-ai-research-50-20260915-v3/constraints.tcl",
+      "sha256": "37f2557fbbfcade20f8d2fda3d738dc0a216cb79f7f89922227196eb8798cac5",
+      "storage": "site-only",
+      "committed": false
+    },
+    "equivalentSource": {
+      "path": "/data/eda/project/hima_harness/polishing-inputs/aes-ai-research-50-20260915-v4/constraints.tcl",
+      "sha256": "37f2557fbbfcade20f8d2fda3d738dc0a216cb79f7f89922227196eb8798cac5",
+      "storage": "site-only",
+      "committed": false
+    },
+    "summary": {
+      "clockName": "clk",
+      "clockPeriodNs": 0.5,
+      "clockLatencyRatio": 0.197,
+      "ioDelayRatio": 0.2,
+      "dcUncertaintyNs": 0.25,
+      "pathGroups": {
+        "reg2reg": {
+          "weight": 10,
+          "criticalRangeNs": 0.1
+        },
+        "in2reg": {
+          "weight": 1
+        },
+        "reg2out": {
+          "weight": 1
+        }
+      },
+      "scope": "DC applies 50% uncertainty and reports an explicit reg2reg group. Trial-specific APR uncertainty is recorded under each trial because it changed between the two runs."
+    }
+  },
+  "libraries": {
+    "foundryLiberty": {
+      "path": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.lib",
+      "sha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5",
+      "bytes": 87283165,
+      "storage": "site-only",
+      "committed": false
+    },
+    "foundryDb": {
+      "path": "/data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.db",
+      "sha256": "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0",
+      "storage": "site-only",
+      "committed": false
+    },
+    "predicted47CellLiberty": {
+      "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-120239-4beb/flow/artifacts/characterize/run-e6b15e22a7d34315a9bdbae7930c2f94/generated.lib",
+      "sha256": "3315a92fff8f26e792a57ec2371ef0a194d2e7d4b1f52c0c90fb96e7f01ad550",
+      "bytes": 1352562,
+      "storage": "site-only",
+      "committed": false,
+      "cellCount": 47,
+      "characterization": "learned-model-prediction"
+    }
+  },
+  "sharedIdentity": {
+    "designTop": "aes_cipher_top",
+    "rtlSetSha256": "ad9ecc0d026dd25530f5195df884acea5a8c8d0f68d62555d86803fd6a8a3729",
+    "constraintsSha256": "37f2557fbbfcade20f8d2fda3d738dc0a216cb79f7f89922227196eb8798cac5",
+    "foundryLibertySha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5",
+    "foundryDbSha256": "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0",
+    "predicted47CellLibertySha256": "3315a92fff8f26e792a57ec2371ef0a194d2e7d4b1f52c0c90fb96e7f01ad550",
+    "clockPeriodNs": 0.5,
+    "dcUncertaintyNs": 0.25
+  },
+  "trials": [
+    {
+      "id": "first-clean-low-gain",
+      "methodCommit": "115d33c",
+      "packDigest": "47cf9de49d44a0afc01db8c697fa10163cc47802bfe4a25926106a8e406de7fd",
+      "runId": "run-f3c3e84a-b610-445b-abff-3cbbb2e29774",
+      "campaignId": "custom-cell-fmax-dtco-20260915-120239-4beb",
+      "workspace": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-120239-4beb",
+      "sharedIdentity": {
+        "designTop": "aes_cipher_top",
+        "rtlSetSha256": "ad9ecc0d026dd25530f5195df884acea5a8c8d0f68d62555d86803fd6a8a3729",
+        "constraintsSha256": "37f2557fbbfcade20f8d2fda3d738dc0a216cb79f7f89922227196eb8798cac5",
+        "foundryLibertySha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5",
+        "foundryDbSha256": "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0",
+        "predicted47CellLibertySha256": "3315a92fff8f26e792a57ec2371ef0a194d2e7d4b1f52c0c90fb96e7f01ad550",
+        "clockPeriodNs": 0.5,
+        "dcUncertaintyNs": 0.25
+      },
+      "conditions": {
+        "inputBindingSha256": "6653eae635c0b8892d3cd19f67112bd9d524b604cb95254cb6d4b6ae470f3d47",
+        "commonArmConditionSha256": "b177098b587f1c18bc9598e449f19535afbf6e1ff7a027191f41183092a4daec",
+        "routeUncertaintyNs": 0.125,
+        "ctsPolicy": "legacy-unrestricted",
+        "routeTimingExpansion": "default final-database timing report",
+        "floorplanCoreBox": [
+          2.1,
+          2.0,
+          187.6,
+          187.4
+        ],
+        "pinPlanSha256": "623568f73f59ec0e7984e13645b7b3ce77ededf5c1a5dd66de708cde7df511c9",
+        "dcVersion": "X-2025.06-SP3",
+        "innovusVersion": "v23.14-s088_1"
+      },
+      "facts": {
+        "predictedCellCount": 47,
+        "dcAdoptedCandidateCount": 21,
+        "dcAdoptedInstanceCount": 307,
+        "routeCustomInstanceCount": 250,
+        "foundrySetupWnsNs": -0.02,
+        "generatedSetupWnsNs": -0.019,
+        "foundryFmaxMhz": 1923.076923076923,
+        "generatedFmaxMhz": 1926.7822736030828,
+        "fmaxDeltaMhz": 3.705350526159691,
+        "fmaxImprovementPct": 0.19267822736030393,
+        "matchedConditions": true,
+        "comparisonValid": true
+      },
+      "evidence": [
+        {
+          "kind": "predicted-liberty",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-120239-4beb/flow/artifacts/characterize/run-e6b15e22a7d34315a9bdbae7930c2f94/generated.lib",
+          "sha256": "3315a92fff8f26e792a57ec2371ef0a194d2e7d4b1f52c0c90fb96e7f01ad550",
+          "bytes": 1352562,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "dc-adoption",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-120239-4beb/flow/records/adoption.json",
+          "sha256": "01666f68897ee00feae7b3e2d7191749281bb824dea172d9aafc0714bae87034",
+          "bytes": 73929,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "generated-route-record",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-120239-4beb/flow/records/pnr-generated.json",
+          "sha256": "3bb185c767e3026193280bca31ab21621f30d052f050c3e0562505f366235665",
+          "bytes": 20962,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "final-route-timing",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-120239-4beb/flow/artifacts/verify/run-5566d5e1eaad4b07b8bf79d206ef56c4/generated_final_db_timing/final_all.tarpt.gz",
+          "sha256": "9511b08ee01c97efad607c9c25d7332543c9bd5a3445c3abbd0fea8dcf4431dd",
+          "bytes": 59906,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "final-route-census",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-120239-4beb/flow/records/verify.json",
+          "sha256": "c1f297d1c1dbf5fba2bd2699f0e78ab5c9dabbba0b6d909315c0c59d23c01b42",
+          "bytes": 11779,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "matched-comparison",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-120239-4beb/flow/records/compare.json",
+          "sha256": "fac9ba2cc84e7f99c79abac4b3f0e477c629fb92def856fbad79e88636cf2570",
+          "bytes": 18793,
+          "storage": "site-only",
+          "committed": false
+        }
+      ],
+      "retainedIndex": {
+        "path": ".hima-tmp/product-upgrade-v2-l5/unified-50cell-l5-115d33c/evidence.json",
+        "sha256": "9d1861ab47c69631ab3c30d8cd88c413c2e2b814679f9d0f6a55e9a3ddb07397",
+        "bytes": 69543892,
+        "storage": "local-private-retained",
+        "committed": false
+      }
+    },
+    {
+      "id": "corrected-pressure-negative",
+      "methodCommit": "81ab5af",
+      "packDigest": "4743ad7714d8cd66e50ba07bc1a9d1df8511f4f3f519e5e67006567de6e359a4",
+      "runId": "run-3f9375c6-72d3-4322-b411-e2c37033e6b9",
+      "campaignId": "custom-cell-fmax-dtco-20260915-154617-87bb",
+      "workspace": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-154617-87bb",
+      "sharedIdentity": {
+        "designTop": "aes_cipher_top",
+        "rtlSetSha256": "ad9ecc0d026dd25530f5195df884acea5a8c8d0f68d62555d86803fd6a8a3729",
+        "constraintsSha256": "37f2557fbbfcade20f8d2fda3d738dc0a216cb79f7f89922227196eb8798cac5",
+        "foundryLibertySha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5",
+        "foundryDbSha256": "41234631c2dbf80bf60926259c396e23196b153ff2cbc1df29c006b6007cf7d0",
+        "predicted47CellLibertySha256": "3315a92fff8f26e792a57ec2371ef0a194d2e7d4b1f52c0c90fb96e7f01ad550",
+        "clockPeriodNs": 0.5,
+        "dcUncertaintyNs": 0.25
+      },
+      "conditions": {
+        "inputBindingSha256": "47d7b5ebf18b046e37676f64ce7a23a6b922ccadc7062d85dc89a50bec3ab679",
+        "commonArmConditionSha256": "3fb0046b3943eaa8db976af1b63960f403b34fa968796629bbb9673db9cea13e",
+        "routeUncertaintyNs": 0.175,
+        "ctsPolicy": "site-declared-dcck-only",
+        "routeTimingExpansion": "100 paths with expandReg2Reg and pathreports",
+        "floorplanCoreBox": [
+          2.1,
+          2.0,
+          187.6,
+          187.4
+        ],
+        "pinPlanSha256": "0c8708439d6fd15a0dd60edb4c34ff409d6cd79975a06d4240104d525be893ac",
+        "dcVersion": "X-2025.06-SP3",
+        "innovusVersion": "v23.14-s088_1"
+      },
+      "facts": {
+        "predictedCellCount": 47,
+        "dcAdoptedCandidateCount": 21,
+        "dcAdoptedInstanceCount": 307,
+        "routeCustomInstanceCount": 222,
+        "foundrySetupWnsNs": -0.057,
+        "generatedSetupWnsNs": -0.058,
+        "foundryFmaxMhz": 1795.3321364452422,
+        "generatedFmaxMhz": 1792.1146953405016,
+        "fmaxDeltaMhz": -3.217441104740601,
+        "fmaxImprovementPct": -0.1792114695340515,
+        "matchedConditions": true,
+        "comparisonValid": true,
+        "foundryClockTreeCellCount": 10,
+        "generatedClockTreeCellCount": 14
+      },
+      "evidence": [
+        {
+          "kind": "predicted-liberty",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-154617-87bb/flow/artifacts/characterize/run-026e8358afbe449a9584f10fe0327129/generated.lib",
+          "sha256": "3315a92fff8f26e792a57ec2371ef0a194d2e7d4b1f52c0c90fb96e7f01ad550",
+          "bytes": 1352562,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "dc-adoption",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-154617-87bb/flow/records/adoption.json",
+          "sha256": "7ce38ebef488e533f4cd95a729638328edcffd904d2b8d3ba43167967a447caf",
+          "bytes": 73929,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "generated-route-record",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-154617-87bb/flow/records/pnr-generated.json",
+          "sha256": "84f0b62b74b91ac50ad53535cbf8d9e1d7054737dbb824cc353f4686fe011c1c",
+          "bytes": 21861,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "final-route-timing",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-154617-87bb/flow/artifacts/verify/run-c3794db5370b46ba80ec67997ceee8c5/generated_final_db_timing/final_all.tarpt.gz",
+          "sha256": "0609bb0e3aa8df73a30051db2920046623b9f6ea8c8b220335fa539aa0bfabad",
+          "bytes": 132568,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "final-route-census",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-154617-87bb/flow/records/verify.json",
+          "sha256": "c96c33273ba1168b995cbce28a573f742889362baa64a05e21c2cf835fcd822d",
+          "bytes": 11896,
+          "storage": "site-only",
+          "committed": false
+        },
+        {
+          "kind": "matched-comparison",
+          "path": "/data/eda/project/hima_harness/polishing-runs/custom-cell-fmax-dtco-20260915-154617-87bb/flow/records/compare.json",
+          "sha256": "a7c47378174ef073c5149c2eba0ffd12d06e262fab00e3aa8e0ee1a0259e61ae",
+          "bytes": 18849,
+          "storage": "site-only",
+          "committed": false
+        }
+      ],
+      "retainedIndex": {
+        "path": ".hima-tmp/product-upgrade-v2-l5/iterative-5pct-l5-81ab5af/evidence.json",
+        "sha256": "0bd048fccc127d863fb05963803717ebd33956a02051321a276ae7815ca86888",
+        "bytes": 123109584,
+        "storage": "local-private-retained",
+        "committed": false
+      }
+    }
+  ],
+  "knownGaps": [
+    {
+      "id": "first-trial-cts-census-not-frozen",
+      "missing": "The first trial's retained PNR record predates the routed-netlist CTS master audit and carries no hashed post-route netlist.",
+      "impact": "It can calibrate Library adoption and physical outcome, but it cannot independently calibrate DCCK-only CTS behavior."
+    },
+    {
+      "id": "proxy-results-not-yet-created",
+      "missing": "No pinned Yosys/ABC mapping, proxy mapped netlist, proxy adoption or proxy timing result exists in FW-01.",
+      "impact": "Mapping precision/recall, frontier correlation and physical error bands remain unknown until LFR-FW-02 through LFR-FW-04."
+    },
+    {
+      "id": "raw-commercial-material-site-only",
+      "missing": "Raw RTL, foundry Library, predicted Liberty, commercial netlists, reports and databases are intentionally absent from Git.",
+      "impact": "Replays that need bytes must run where these hash-matched Site or ignored local materials are available; repository-only tests validate identity and corpus structure only."
+    }
+  ]
+}
