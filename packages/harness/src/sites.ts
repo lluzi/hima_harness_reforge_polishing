@@ -4,7 +4,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
 import { z } from 'zod';
-import { SshChannel, discoverSiteFacts, type SiteDiscoveryFact } from './channel.js';
+import { SshChannel, discoverSiteFacts, type Channel, type SiteDiscoveryFact } from './channel.js';
 import { SiteNotFoundError } from './errors.js';
 
 export const permitSchema = z.object({
@@ -161,10 +161,17 @@ function unknownsFrom(facts: readonly SiteDiscoveryFact[]): string[] {
 /**
  * Learn a draft Site profile through SshChannel's closed probe vocabulary. This is deliberately not
  * a Campaign action: it creates no Run, workspace, Job, or Ledger record.
+ *
+ * `channelFor` is how the Host swaps in a test-only stand-in Channel (#41 task 4) that answers from
+ * a fixed table instead of spawning `ssh`; every caller outside a test leaves it at its default,
+ * which is the ordinary `SshChannel` this function has always used.
  */
-export async function discoverSshSite(input: SiteDiscoveryRequest): Promise<SiteDiscoveryResult> {
+export async function discoverSshSite(
+  input: SiteDiscoveryRequest,
+  channelFor: (name: string, ssh: SshTarget) => Channel = (name, ssh) => new SshChannel(name, ssh),
+): Promise<SiteDiscoveryResult> {
   const request = siteDiscoveryRequestSchema.parse(input);
-  const facts = await discoverSiteFacts(new SshChannel(request.name, request.ssh), request.hints.toolCommands);
+  const facts = await discoverSiteFacts(channelFor(request.name, request.ssh), request.hints.toolCommands);
   const unknowns = unknownsFrom(facts);
   const workspaceRoot = request.hints.workspaceRoot ?? '/';
   const conflicts = request.hints.workspaceRoot === undefined

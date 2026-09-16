@@ -12,7 +12,7 @@ import { channelFor, mustRun, quote, type Channel } from './channel.js';
 import { loadSite } from './sites.js';
 import { decideLaunch } from './shell.js';
 import { existingRun, runFor } from './runs.js';
-import type { JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, RefusalRecord, RunRecord } from './ledger.js';
+import type { JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
 
 /** What a Job's name defaults to when the caller does not give one. */
@@ -550,6 +550,35 @@ export async function jobTail(deps: JobDeps, req: { readonly run: string; readon
   const job = mustBeLaunched(deps, run, req.session);
   const site = loadSite(deps.sitesDir, run.siteId);
   return { run, job, text: await tailLog(channelFor(site), job, req.lines ?? defaultTailLines) };
+}
+
+export interface NodeLogTailResult {
+  readonly run: RunRecord;
+  readonly nodeId: string;
+  /** The session and text are both absent, together, exactly when this node has no Job open right
+   *  now: no node record at all, or its latest is not `running`, or `running` with no `jobSession`
+   *  (a node kind that never launches one, e.g. a judge or a read). */
+  readonly session?: string;
+  readonly text?: string;
+}
+
+/**
+ * The tail of the Job the named node currently has open on this Run, read straight off the ledger's
+ * own node records rather than off an owned execution (#41 task 4). This is deliberately not
+ * `jobTail`: the canvas asks about a *node*, for any viewer, whether or not they hold the execution
+ * that node belongs to, so this looks at the node's own latest record instead of requiring one.
+ *
+ * A node's latest record is what decides this, not any earlier one it may have gone through: a node
+ * that ran and finished stopped having an open Job the moment its record stopped saying `running`,
+ * whatever an older record of the same node still says.
+ */
+export async function nodeLogTail(deps: JobDeps, req: { readonly run: string; readonly nodeId: string; readonly lines?: number }): Promise<NodeLogTailResult> {
+  const run = existingRun(deps.ledger, req.run);
+  const nodeRecords = deps.ledger.records({ runId: req.run, type: 'node' }).filter((record): record is NodeRecord => record.type === 'node' && record.nodeId === req.nodeId);
+  const latest = nodeRecords.at(-1);
+  if (latest === undefined || latest.state !== 'running' || latest.jobSession === undefined) return { run, nodeId: req.nodeId };
+  const tail = await jobTail(deps, { run: req.run, session: latest.jobSession, lines: req.lines });
+  return { run, nodeId: req.nodeId, session: latest.jobSession, text: tail.text };
 }
 
 export interface JobKillResult {

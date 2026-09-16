@@ -90,6 +90,11 @@ import { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
 // `writeCampaignFile` below) and is bundled into the browser half through `client/api.ts`, where a
 // runtime import of `campaign-file.ts` would ship `node:fs` to every browser.
 import type { CampaignFile, CampaignFileReadResult, CampaignFileWriteResult, PreparationOverrides } from './campaign-file.js';
+// Type-only, like `campaign-file.js` above: `sites.js` reaches the filesystem and ssh, and this
+// module is bundled into the browser half, where a runtime import of it would ship both to every
+// browser. What Site discovery actually does is `RemoteOperations.discoverSite`/`sites`, implemented
+// in `index.ts` (#41 task 4).
+import type { SiteDiscoveryRequest, SiteDiscoveryResult } from './sites.js';
 
 // The one namespace and the one document, both from the leaf every face reads them from
 // (`paths.ts`): every Hima operation lives under `HIMA_API_PREFIX`, and the one thing Hima serves
@@ -553,6 +558,54 @@ export interface CampaignFileView {
   readonly preparation?: Pick<StartChoices, 'goal' | 'strategy' | 'words' | 'check' | 'preparation' | 'proposal'>;
 }
 
+/**
+ * One saved Site as `GET /hima/api/sites` lists it (#41 task 4): what a Campaign file's Site picker
+ * and the Configuration page's readiness roundel both need, and nothing a Permit governs. `readiness`
+ * follows the same rule `Hima.preparation` already computes for a selected Site (`index.ts`):
+ * `local` is always `ready`; an `ssh` Site with no saved discovery is `needs-discovery`; one whose
+ * saved discovery no longer matches its own connection input is `stale`; otherwise `ready`.
+ */
+export interface SiteHeadView {
+  readonly name: string;
+  readonly kind: 'local' | 'ssh';
+  readonly readiness: 'ready' | 'needs-discovery' | 'stale';
+  readonly capacity: { readonly cores: number; readonly memoryGiB: number; readonly parallelJobs: number; readonly licences: Readonly<Record<string, number>> };
+  /** When this Site's discovery was last observed. Absent for `local`, which is never discovered. */
+  readonly observedAt?: string;
+}
+
+/**
+ * What `POST /hima/api/sites/discover` accepts. `sessionId` names a live conversation on this Host,
+ * checked the same way every other session-bearing route checks one, before anything is asked of a
+ * Site — discovery is bounded and read-only, but it is still an action a person authorizes, and not
+ * one an unauthenticated request may trigger merely by naming a destination.
+ */
+export interface SiteDiscoverBody {
+  readonly sessionId: string;
+  readonly name: string;
+  readonly ssh: { readonly destination: string; readonly jumps?: readonly string[] };
+  readonly hints?: SiteDiscoveryRequest['hints'];
+  /** Persist the discovered profile as the ordinary Site and Permit files `loadSite` reads. Left
+   *  false (or absent), this is a preview: the caller reviews `result` and discovers again to save. */
+  readonly save?: boolean;
+}
+
+/**
+ * The bounded tail of the Job a node currently has open on a Run (#41 task 4): what
+ * `GET /hima/api/runs/<id>/log-tail` answers. Unlike `hima_execute read @job-log`, which is bound to
+ * an execution its owner holds, this is a read any viewer of the canvas may make of the *node* —
+ * `lines` empty and `session` absent, together, exactly when that node has no Job open right now.
+ */
+export interface LogTailView {
+  readonly nodeId: string;
+  readonly session?: string;
+  readonly lines: readonly string[];
+  readonly at: string;
+  /** True when `lines` is exactly as long as the caller asked for: the Site's log may hold more than
+   *  this bounded read returned. False whenever the log itself held fewer lines than that. */
+  readonly truncated: boolean;
+}
+
 /** What this namespace needs from the Hima service. Nothing here reaches for the plugin itself. */
 export interface PackTransferBody {
   readonly pack: string;
@@ -584,6 +637,22 @@ export interface RemoteOperations {
    *  request body field — the schema check happens inside the implementation, once, the same way a
    *  hand-edited file on disk is checked. */
   writeCampaignFile?(sessionId: string, file: unknown): CampaignFileWriteResult;
+  /** Every saved Site, in the order `installedSites` lists them (#41 task 4). No Site is contacted
+   *  to answer this: each one's own saved file already says what this reads. */
+  sites?(): readonly SiteHeadView[];
+  /**
+   * Learn a Site through the caller's own SSH identity, keys and agent — no credential is read or
+   * stored — and, when `save` is true, persist it as the ordinary Site and Permit files `loadSite`
+   * reads (#41 task 4). Deliberately not a Campaign action: it creates no Run, workspace, Job or
+   * Ledger row.
+   */
+  discoverSite?(request: Omit<SiteDiscoverBody, 'sessionId'>): Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView }>;
+  /**
+   * The tail of the Job the named node currently has open on this Run, for any viewer (#41 task 4):
+   * unlike `hima_execute read @job-log`, this needs no owned execution. `lines` is empty and
+   * `session` absent when that node has no Job open right now.
+   */
+  jobLogTail?(runId: string, nodeId: string, lines: number): Promise<LogTailView>;
   executionContext?(runId: string): ExecutionContext;
   executionAction?(request: ExecutionActionRequest): Promise<ExecutionActionResult>;
   observe(request: ObserveRequest): Promise<ObserveResult>;
@@ -1492,6 +1561,16 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or PUT`);
   }
 
+  if (rest === '/sites') {
+    if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
+    return sitesListOperation(ops);
+  }
+
+  if (rest === '/sites/discover') {
+    if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
+    return sitesDiscoverOperation(ops, req);
+  }
+
   if (rest === '/packs/transfer') {
     if (method !== 'POST' || !ops.packTransfer) return failure(405, 'hima/bad-request', 'Pack transfer requires POST on a supporting Host');
     const body = await readJsonBody(req);
@@ -1548,6 +1627,14 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   if (moment) {
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
     return momentOperation(ops, decoded(moment[1]!, 'run id'), req);
+  }
+
+  // Before the run read below, for the same reason `moment` above is: `/runs/<id>/log-tail` would
+  // otherwise be claimed by nothing and answered as a route that does not exist.
+  const logTail = /^\/runs\/([^/]+)\/log-tail$/.exec(rest);
+  if (logTail) {
+    if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
+    return jobLogTailOperation(ops, decoded(logTail[1]!, 'run id'), url);
   }
 
   // Before the run read below, which claims `/runs/<id>` and `/runs/<id>/records` alone: this pair is
@@ -1695,6 +1782,54 @@ async function campaignFileWriteOperation(ops: RemoteOperations, req: IncomingMe
   if (written === undefined) return failure(500, 'hima/internal', 'Campaign file writes are unavailable on this Host');
   if (written.kind === 'invalid') throw new BadRequest(written.message);
   return ok(campaignFileViewFrom(ops, { exists: true, file: written.file, text: written.text, mtimeMs: written.mtimeMs, overrides: written.overrides }));
+}
+
+/** `GET /hima/api/sites` (#41 task 4): every saved Site, whether or not this Host supports it. */
+function sitesListOperation(ops: RemoteOperations): Answer {
+  return ok({ sites: ops.sites?.() ?? [] });
+}
+
+/**
+ * `POST /hima/api/sites/discover` (#41 task 4): a live conversation authorizes the discovery, the
+ * same way every other session-bearing route requires one, and the Site's own `discoverSshSite`
+ * schema (`sites.ts`) is what actually holds `name`/`ssh`/`hints` to their declared shapes — so this
+ * validates only the session and reports any other fault as the caller's own, rather than repeating
+ * that schema's checks here. A Site that could not be asked at all (`SiteUnreadableError`) is left to
+ * propagate: the dispatcher below answers every such fault the same way, `hima/site-unreadable`.
+ */
+async function sitesDiscoverOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
+  const body = await readJsonBody(req);
+  const sessionId = requiredString(body, 'sessionId');
+  if (!ops.validateSession?.(sessionId)) throw new BadRequest('select a live conversation on this Host before discovering a Site');
+  if (ops.discoverSite === undefined) return failure(500, 'hima/internal', 'Site discovery is unavailable on this Host');
+  const allowed = ['sessionId', 'name', 'ssh', 'hints', 'save'];
+  if (Object.keys(body).some((key) => !allowed.includes(key))) throw new BadRequest(`unknown Site discovery field; expected one of ${allowed.join(', ')}`);
+  try {
+    return ok(await ops.discoverSite(body as unknown as Omit<SiteDiscoverBody, 'sessionId'>));
+  } catch (err) {
+    if (err instanceof SiteUnreadableError) throw err;
+    throw new BadRequest(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * `GET /hima/api/runs/<id>/log-tail` (#41 task 4): the tail of the Job the named node currently has
+ * open, for any viewer of this Run — a Side Talk participant reads the canvas's running node the
+ * same way its owner does, with no owned execution of their own.
+ */
+async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: URL): Promise<Answer> {
+  if (!ops.ledger.run(runId)) return failure(404, 'hima/run-not-found', `no run ${runId} in the HimaLedger`);
+  if (ops.jobLogTail === undefined) return failure(500, 'hima/internal', 'the Job log tail is unavailable on this Host');
+  const nodeId = url.searchParams.get('node');
+  if (!nodeId) throw new BadRequest('"node" is required as a query parameter');
+  const rawLines = url.searchParams.get('lines');
+  let lines = 1;
+  if (rawLines !== null) {
+    const parsed = Number(rawLines);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) throw new BadRequest('"lines" must be an integer from 1 through 100');
+    lines = parsed;
+  }
+  return ok(await ops.jobLogTail(runId, nodeId, lines));
 }
 
 /**

@@ -18,6 +18,7 @@
 // `@hima/harness` is exported or re-exported here, whichever module it now lives in.
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { Service, type Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 // Type-only: these take the `ctx.commands` and `ctx.tools` declaration merges the registrations below
@@ -34,12 +35,14 @@ import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, type
 import { handleHimaCommand, himaCommandDescription, versionLine } from './commands.js';
 import { agentWorkspaceOf, himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
-import { registerHimaRoutes } from './remote.js';
+import { registerHimaRoutes, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import { previewPackTransfer, applyPackTransfer } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
 import { strategyValue } from './run-arguments.js';
-import { installedSites, loadSite } from './sites.js';
+import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, type Site, type SiteDiscoveryResult, type SshTarget } from './sites.js';
+import { SshChannel, type Channel } from './channel.js';
+import { nodeLogTail } from './jobs.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
 import { registerHimaSkills } from './skills.js';
@@ -150,7 +153,7 @@ export type { Chooser, ChooserClause, ChooserExpression, ChooserInput, ChooserRe
 // `remote.ts` states these shapes once, the browser module imports them from there, and every other
 // caller — the contract tests, the acceptance script — takes them from here rather than retyping
 // them by hand, where a drift in the host's answer would go unnoticed until a person read the JSON.
-export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH, HIMA_CAMPAIGN_FILE_PATH } from './paths.js';
+export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH, HIMA_CAMPAIGN_FILE_PATH, HIMA_SITES_PATH } from './paths.js';
 export type {
   HimaErrorCode,
   HimaErrorBody,
@@ -177,6 +180,9 @@ export type {
   ExperienceAnswer,
   MomentAnswer,
   CampaignFileView,
+  SiteHeadView,
+  SiteDiscoverBody,
+  LogTailView,
 } from './remote.js';
 
 // The Campaign's technical report (#30): what it says, and how a face reads one back. On the surface
@@ -342,6 +348,49 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
   return [`HimaHarness: ${versionLine()}.`, packLine, siteLine, campaignLine].join('\n');
 }
 
+/** `SiteHeadView.readiness`, computed the one way `Hima.preparation`'s own `siteReadiness` already
+ *  is: `local` is always ready; an `ssh` Site with no saved discovery needs one; one whose saved
+ *  discovery no longer matches its own connection input is stale; otherwise ready. */
+function siteHeadReadiness(site: Site): SiteHeadView['readiness'] {
+  if (site.kind === 'local') return 'ready';
+  if (site.discovery === undefined) return 'needs-discovery';
+  return site.discovery.stale ? 'stale' : 'ready';
+}
+
+/** A loaded Site as `GET /hima/api/sites` and `hima_site` answer it (#41 task 4). */
+function siteHeadViewOf(site: Site): SiteHeadView {
+  return {
+    name: site.name, kind: site.kind, readiness: siteHeadReadiness(site), capacity: site.capacity,
+    ...(site.discovery === undefined ? {} : { observedAt: site.discovery.observedAt }),
+  };
+}
+
+/**
+ * The stand-in Channel Site discovery uses when `HIMA_TEST_DISCOVERY_STANDIN` names a JSON table of
+ * `{ "<the exact argv, space-joined>": { "code": 0, "stdout": "…", "stderr": "…" } }` (#41 task 4).
+ * Test-only, exactly like `HIMA_TEST_SILENT_AGENT`: gated on `NODE_TEST_CONTEXT` so a production Host
+ * never reads it, and it never spawns anything — every probe not named in the table answers as a
+ * command that ran and found nothing (`code: 1`, empty output), the same shape a missing tool or an
+ * absent file already answers with, so an incomplete table still produces an ordinary discovery
+ * rather than a thrown fault.
+ *
+ * @returns a `channelFor` for `discoverSshSite`, or undefined to keep its own `SshChannel` default.
+ */
+function testDiscoveryChannelFor(): ((name: string, ssh: SshTarget) => Channel) | undefined {
+  if (process.env.NODE_TEST_CONTEXT === undefined || !process.env.HIMA_TEST_DISCOVERY_STANDIN) return undefined;
+  const table = JSON.parse(readFileSync(process.env.HIMA_TEST_DISCOVERY_STANDIN, 'utf8')) as Readonly<Record<string, { readonly code: number; readonly stdout: string; readonly stderr?: string }>>;
+  return (name) => ({
+    siteName: name,
+    readFile: () => { throw new Error('the Site discovery stand-in answers exec only; it reads no file'); },
+    realpath: (p: string) => Promise.resolve(p),
+    absent: () => Promise.resolve(true),
+    exec: (argv: readonly string[]) => {
+      const answer = table[argv.join(' ')] ?? { code: 1, stdout: '' };
+      return Promise.resolve({ code: answer.code, stdout: Buffer.from(answer.stdout), stderr: answer.stderr ?? '' });
+    },
+  });
+}
+
 export default class Hima extends Service {
   static inject = ['storageDomain', 'commands', 'tools', 'skills', 'systemPrompt'];
   static Config = z.object({ sitesDir: z.string().required(), packsDir: z.string().required(), knowledgeDir: z.string().required() });
@@ -399,6 +448,9 @@ export default class Hima extends Service {
           sessionWorkspace: (id) => this.sessionWorkspace(id),
           readCampaignFile: (id) => this.readCampaignFileOf(id),
           writeCampaignFile: (id, file) => this.writeCampaignFileOf(id, file),
+          sites: () => this.sites(),
+          discoverSite: (request) => this.discoverSite(request),
+          jobLogTail: (runId, nodeId, lines) => this.jobLogTail(runId, nodeId, lines),
           packTransfer: (request) => {
             const installed = path.resolve(this.config.packsDir, validPackId.parse(request.pack));
             if ((request.mode === 'install' || request.mode === 'upgrade') && !request.source) throw new Error(`choose a Pack source for ${request.mode}`);
@@ -479,7 +531,9 @@ export default class Hima extends Service {
       (pack, site, overrides) => {
         const loadedPack = loadPack(this.config.packsDir, pack);
         return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site), overrides);
-      }, { root: this.config.knowledgeDir })) this.ctx.effect(() => this.ctx.tools.register(tool));
+      }, { root: this.config.knowledgeDir },
+      { list: () => this.sites(), discover: (request) => this.discoverSite(request) },
+    )) this.ctx.effect(() => this.ctx.tools.register(tool));
     // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
     // A person invokes one by typing its name; the model never chooses one for itself, because a
     // stage is a person's decision about their own pack folder.
@@ -600,6 +654,44 @@ export default class Hima extends Service {
     }
     const file = parseCampaignFile(written.text);
     return { kind: 'written', file, text: written.text, mtimeMs: written.mtimeMs, overrides: overridesOf(file) };
+  }
+
+  /** `RemoteOperations.sites` (#41 task 4): every Site this Host has installed, read fresh each
+   *  time, for the reason `installed` above is — a Site discovered or edited while a page is open is
+   *  one the next look offers. A Site file this Host cannot read or parse is passed over rather than
+   *  raising, exactly as `installedSites` itself already is for a form that offers a name to choose. */
+  private sites(): readonly SiteHeadView[] {
+    return installedSites(this.config.sitesDir).flatMap((name) => {
+      try { return [siteHeadViewOf(loadSite(this.config.sitesDir, name))]; }
+      catch { return []; }
+    });
+  }
+
+  /**
+   * `RemoteOperations.discoverSite` (#41 task 4): learn a Site through the caller's own SSH
+   * identity, keys and agent, and — when asked — persist it as the ordinary Site and Permit files
+   * `loadSite` reads. `testDiscoveryChannelFor` swaps in a stand-in Channel under
+   * `HIMA_TEST_DISCOVERY_STANDIN`; every other Host reaches the real Site over `SshChannel`, exactly
+   * as `discoverSshSite`'s own default already does.
+   */
+  private async discoverSite(request: Omit<SiteDiscoverBody, 'sessionId'>): Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView }> {
+    const channelFor = testDiscoveryChannelFor() ?? ((name: string, ssh: SshTarget) => new SshChannel(name, ssh));
+    const ssh = { destination: request.ssh.destination, ...(request.ssh.jumps === undefined ? {} : { jumps: [...request.ssh.jumps] }) };
+    const result = await discoverSshSite({ name: request.name, ssh, hints: request.hints }, channelFor);
+    if (request.save !== true) return { result };
+    return { result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, result)) };
+  }
+
+  /** `RemoteOperations.jobLogTail` (#41 task 4): the tail of the Job the named node currently has
+   *  open on this Run, for any viewer — `nodeLogTail` (`jobs.ts`) is what actually reads the
+   *  ledger's own node records; this shapes that domain fact into the wire view. */
+  private async jobLogTail(runId: string, nodeId: string, lines: number): Promise<LogTailView> {
+    const found = await nodeLogTail(this.deps(), { run: runId, nodeId, lines });
+    const at = new Date().toISOString();
+    if (found.session === undefined || found.text === undefined) return { nodeId, lines: [], at, truncated: false };
+    const rows = found.text.split('\n');
+    if (rows.length > 0 && rows.at(-1) === '') rows.pop();
+    return { nodeId, session: found.session, lines: rows, at, truncated: rows.length === lines };
   }
 
   /** What every Hima operation is given: this host's ledger and judge, where its Sites and packs

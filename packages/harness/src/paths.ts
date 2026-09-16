@@ -33,6 +33,13 @@ export const HIMA_START_OPTIONS_PATH = `${HIMA_API_PREFIX}/start-options`;
 /** The Campaign file route: read and write `hima/campaign.yml` in a session's own workspace. */
 export const HIMA_CAMPAIGN_FILE_PATH = `${HIMA_API_PREFIX}/campaign`;
 
+/** Where every saved Site is listed (#41 task 4). */
+export const HIMA_SITES_PATH = `${HIMA_API_PREFIX}/sites`;
+
+/** Where the Site discovery form posts: a bounded, read-only observation through the caller's own
+ *  SSH identity (#41 task 4). */
+export const siteDiscoverPath = (): string => `${HIMA_SITES_PATH}/discover`;
+
 /** One Run's own route, which is what the card reads itself from. */
 export const runPath = (runId: string): string => `${HIMA_RUNS_PATH}/${encodeURIComponent(runId)}`;
 
@@ -42,6 +49,11 @@ export const runActionPath = (runId: string, action: 'cancel' | 'resume'): strin
 /** Where a Model moment is opened on a Run (#59): the mechanism's one route, on the Run it belongs
  *  to, because a moment happens at a node of a Run and nowhere else. */
 export const runMomentPath = (runId: string): string => `${runPath(runId)}/moment`;
+
+/** The bounded tail of the Job the named node currently has open on this Run (#41 task 4): a read
+ *  any viewer may make, whether or not they own the execution — the canvas's running node, not
+ *  `hima_execute read @job-log`, which stays bound to the owner's own admitted execution. */
+export const runLogTailPath = (runId: string): string => `${runPath(runId)}/log-tail`;
 
 /** The Markdown of a Run's technical report, as the Site has it: the `.md` route, read back and held
  *  against its recorded hash on the way through (#30). */
