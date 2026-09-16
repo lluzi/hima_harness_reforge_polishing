@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+DOMAIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PYTHONPATH="$DOMAIN_DIR${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m multi_output_resynth "$@"

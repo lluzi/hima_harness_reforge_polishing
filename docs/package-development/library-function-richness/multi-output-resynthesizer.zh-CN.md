@@ -1,6 +1,6 @@
 # Multi-output Netlist Resynthesizer 规格
 
-状态：设计冻结，先做隔离 POC。  
+状态：设计冻结；logical in-place ECO 隔离 POC 已实现并通过 L0/真实 Yosys 证明，物理模式与 Pack 接线未实现。
 归属：`custom-cell-fmax-dtco` Pack 的 domain tool；不是 Hima Runtime 组件，也不是通用 RTL synthesis 产品。
 
 ## 1. 决定

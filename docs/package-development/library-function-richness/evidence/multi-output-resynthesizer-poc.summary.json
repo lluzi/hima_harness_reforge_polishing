@@ -1,0 +1,71 @@
+{
+  "claimLimits": {
+    "commercialTiming": false,
+    "fmaxImprovement": false,
+    "physicalBenefit": false
+  },
+  "commercialJobs": {
+    "DesignCompiler": 0,
+    "Innovus": 0,
+    "LibraryCompiler": 0
+  },
+  "inputNetlistSha256": "ce96e500b83de88c2676acfca4a1a5941b05e177ebb739204afe3de3e5781eda",
+  "mockturtleCommit": "0886ebfdd101ce1110daf3d60b96d72edd3143ea",
+  "mockturtleDiagnostic": {
+    "binarySha256": "7f5533a78d0fde892592dee526a8020c287feb3da92116fa698670ded0c21aba",
+    "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "sourceSha256": "c3d40a9f88216ad581c1125471ab2ec450fceed0ef8efa79a5b60b62f9d42c25"
+  },
+  "mockturtleFixtures": [
+    {
+      "area": 47,
+      "delay": 17.3,
+      "fixture": "ripple8",
+      "gates": 8,
+      "multioutputGates": 8,
+      "pis": 16,
+      "pos": 9,
+      "schema": "hima.mockturtle-multi-output-poc/1"
+    },
+    {
+      "area": 6,
+      "delay": 1.7,
+      "fixture": "nonfa",
+      "gates": 2,
+      "multioutputGates": 0,
+      "pis": 2,
+      "pos": 2,
+      "schema": "hima.mockturtle-multi-output-poc/1"
+    }
+  ],
+  "rewrittenNetlistSha256": "d6631a2c8529d75cb7bd6d95f6af636adb69b51a7ac7f0bfa4762a7003a351ca",
+  "rollbackManifestSha256": "c5816a482f2df4e08969e5390cdd68c9429c5a696690e33bf244470e7910e3a2",
+  "schema": "hima.multi-output-resynthesizer-poc-evidence/1",
+  "selectedMasters": [
+    "MO_HA"
+  ],
+  "sequentialBoundaryProof": {
+    "backend": "yosys-equiv",
+    "proofStatus": "proved",
+    "scriptSha256": "427f3c3b686b5ea39fba28c406f5b5ae6f6829632aeb12cf835653791cc3a0dc",
+    "selectedReplacements": 1,
+    "status": "succeeded"
+  },
+  "status": "succeeded",
+  "tests": {
+    "domainFailed": 0,
+    "domainPassed": 75,
+    "focusedFailed": 0,
+    "focusedPassed": 11
+  },
+  "topProof": {
+    "backend": "yosys-equiv",
+    "returnCode": 0,
+    "scriptSha256": "ea7c6c5a47b0b2e51ce1ff39e7c0e055138885d39ad034bdfa0cc7715e02f581",
+    "status": "proved",
+    "tool": "Yosys 0.69 (git sha1 9f75ca1f9, Release, Clang /workspace/YoWASP/yosys/wasi-sdk-33.0-x86_64-linux/share/cmake/../..//bin/clang++ 22.1.0)"
+  },
+  "windowProofStatuses": [
+    "proved"
+  ]
+}

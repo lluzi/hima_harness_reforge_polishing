@@ -16,6 +16,7 @@ GitHub tracker: [#40 — Build and integrate the Library Function Richness Frame
 - [Methodology design](../../specs/product-upgrade-v2/library-function-richness-optimization-framework.md)
 - [Methodology v2 implementation specification](methodology-v2.zh-CN.md)
 - [Multi-output netlist resynthesizer specification](multi-output-resynthesizer.zh-CN.md)
+- [Multi-output resynthesizer isolated POC evidence](evidence/2026-09-16-multi-output-resynthesizer-poc.md)
 - [Third-party theory review](evidence/2026-09-16-third-party-theory-review.md)
 - [Current HimaPack](../../../packs/custom-cell-fmax-dtco/)
 

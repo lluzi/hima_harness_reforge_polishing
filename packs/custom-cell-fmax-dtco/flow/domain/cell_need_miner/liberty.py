@@ -27,12 +27,13 @@ _FUNC_RE = re.compile(r'^\s*function :\s*"(?P<f>.*)"')
 
 
 class LibCell:
-    __slots__ = ("name", "area", "inputs", "outputs", "is_seq")
+    __slots__ = ("name", "area", "inputs", "output_pins", "outputs", "is_seq")
 
     def __init__(self, name):
         self.name = name
         self.area = 0.0
         self.inputs = []            # ordered input pin names
+        self.output_pins = []       # includes sequential outputs without function
         self.outputs = {}           # out pin -> AST
         self.is_seq = False
 
@@ -74,6 +75,8 @@ def parse_skeleton(path):
                 cur_dir = m.group("dir")
                 if cur_dir == "input":
                     cur.inputs.append(cur_pin)
+                elif cur_dir == "output":
+                    cur.output_pins.append(cur_pin)
                 continue
             m = _FUNC_RE.match(line)
             if m and cur_pin is not None and cur_dir == "output":
