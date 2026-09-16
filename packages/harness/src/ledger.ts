@@ -1804,7 +1804,22 @@ export const ledgerSpec = defineDomain({
   // 24: accepted per-Run growth preserves the actual graph and its lifecycle.
   // 25: retain observed and written byte versions before later attempts overwrite source paths.
   // 26: freeze Campaign closing/attempt/write limits and retain pre-effect write admissions.
-  version: 26,
+  // 27: the workspace record carries `bindings` (#41 task 6 review, the node card's own Facts tab):
+  // the Site's own resolved value for each of the pack's declared inputs, at the moment this
+  // workspace was prepared — the only honest source of what a Campaign actually ran against once
+  // Task 3's own Campaign-file input overrides can move a binding away from the Site's own file. It
+  // is optional, on a plain object, and the same silent-loss direction `group` was under 7 and every
+  // even-numbered optional field since: a version-26 spec reading this ledger would hand back a
+  // workspace that no longer said what it was bound to, which for a Run whose overrides moved even
+  // one input is a workspace nothing can hold the Facts tab's own words against. `workspace.json` —
+  // the Site's own file, outside this domain's version gate entirely — grows the same field, and
+  // `workspaceFile` there is a `z.strictObject`: a host downgraded to before this ticket, reading a
+  // `workspace.json` a build after this ticket already wrote, fails to parse it at all rather than
+  // silently dropping the key, since a strict schema refuses a key it does not declare. That is a
+  // forward incompatibility this version bump does not and cannot fix — `workspace.json` lives on the
+  // Site, not in the ledger this version number gates — and is recorded here because it is the same
+  // shape growing for the same reason, not a separate fact to look up twice.
+  version: 27,
   tables: {
     runs: domainTable<string, RunRecord>(runRecord),
     records: domainTable<string, LedgerRecord>(ledgerRecord),
@@ -2394,7 +2409,10 @@ export interface LegacyLedgerImportReceipt {
  * home is written. The destination parent must already exist; no ancestor is created or repaired.
  */
 export async function importLegacyLedger(request: { readonly sourceFile: string; readonly home: string }): Promise<LegacyLedgerImportReceipt> {
-  if (ledgerSpec.version !== 26) throw new Error('legacy import supports only the reviewed v19-v25-to-v26 transition');
+  // The reviewed transition is v19-v25 sources into whatever the current domain version is; 27 adds
+  // only an optional field no v19-v25 source ever wrote (#41 task 6 review, `workspaceRecord.bindings`),
+  // so the mapping below is unchanged and the target check tracks the bump rather than freezing at 26.
+  if (ledgerSpec.version !== 27) throw new Error('legacy import supports only the reviewed v19-v25-to-v27 transition');
   const source = path.resolve(request.sourceFile);
   const home = path.resolve(request.home);
   const parent = path.dirname(home);

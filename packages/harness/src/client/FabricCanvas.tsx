@@ -2,7 +2,7 @@
 // scene `layoutCanvas` positioned drawn verbatim (every edge's `path` string, every frame's box,
 // every node at its own `x`/`y`), the Goal roundel, and the attention strip above it all. Nothing
 // here computes a coordinate; `canvas-layout.ts` already has.
-import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
 import { fitToWidth, labelsVisibleAt } from '../canvas-layout.js';
 import type { CanvasScene, Frame, PlacedEdge } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
@@ -15,7 +15,6 @@ import type { Acting } from './HimaRunCard.js';
 
 export interface FabricCanvasProps {
   readonly runId: string;
-  readonly sessionId: string;
   readonly scene: CanvasScene;
   /** The reference graph's own entry node — where the camera centres if the initial fit-to-width
    *  would otherwise clamp past readable (rule 1 below) and there is no running node yet to centre on
@@ -97,7 +96,7 @@ const edgeKey = (edge: PlacedEdge): string => `${edge.from}->${edge.to}:${edge.k
 const insideCard = (target: EventTarget | null): boolean => target instanceof Element && target.closest('.hima-node-card') !== null;
 
 export function FabricCanvas({
-  runId, sessionId, scene, entryNodeId, view, context, stale, reducedMotion, isOwner, selectedNodeId, onSelectNode, openOwner, openFiles, acting,
+  runId, scene, entryNodeId, view, context, stale, reducedMotion, isOwner, selectedNodeId, onSelectNode, openOwner, openFiles, acting,
 }: FabricCanvasProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -238,8 +237,15 @@ export function FabricCanvas({
   // (down, no move, up) on the canvas's own background closes an open card; a drag that panned the
   // canvas must never also close it.
   const moved = useRef(false);
+  // Where the press itself landed — recorded before `setPointerCapture` below, because capture
+  // retargets every later event for this pointer (move, up, and a leave) to the capturing element
+  // (the `<svg>`) regardless of what is actually under the cursor: `event.target` on `onPointerUp`
+  // reads as the svg even for a press-and-release on a node's own hit rect. The click-off decision
+  // reads where the pointer went *down*, which capture never rewrites.
+  const pressTarget = useRef<EventTarget | null>(null);
   const onPointerDown = (event: PointerEvent<SVGSVGElement>): void => {
     if (insideCard(event.target)) return;
+    pressTarget.current = event.target;
     event.currentTarget.setPointerCapture(event.pointerId);
     moved.current = false;
     dragging.current = { x: event.clientX, y: event.clientY, tx: transform.tx, ty: transform.ty };
@@ -249,10 +255,12 @@ export function FabricCanvas({
     if (Math.abs(event.clientX - drag.x) > 3 || Math.abs(event.clientY - drag.y) > 3) moved.current = true;
     setTransform((previous) => ({ ...previous, tx: drag.tx + (event.clientX - drag.x), ty: drag.ty + (event.clientY - drag.y) }));
   };
-  const onPointerUp = (event: PointerEvent<SVGSVGElement>): void => {
-    // A plain click straight on the `<svg>` itself — never a node, never the card, and never the end
-    // of a drag that panned the canvas — closes the open card, exactly as `node-card-close` does.
-    if (dragging.current !== undefined && !moved.current && selectedNodeId !== undefined && event.target === svgRef.current) onSelectNode(undefined);
+  const onPointerUp = (): void => {
+    // A plain click that began straight on the `<svg>` itself — never a node, never the card, and
+    // never the end of a drag that panned the canvas — closes the open card, exactly as
+    // `node-card-close` does. A press that began on a node never closes it, whatever `pointerup`'s
+    // own (capture-retargeted) target claims.
+    if (dragging.current !== undefined && !moved.current && selectedNodeId !== undefined && pressTarget.current === svgRef.current) onSelectNode(undefined);
     dragging.current = undefined;
   };
 
@@ -270,6 +278,32 @@ export function FabricCanvas({
   useEffect(() => {
     if (selectedNodeId !== undefined && selectedPlaced === undefined) onSelectNode(undefined);
   }, [selectedNodeId, selectedPlaced, onSelectNode]);
+
+  // The selected node's own screen position, mapped through the svg's real geometry rather than
+  // approximated from `transform` and the viewBox's own numbers — the viewBox carries an 8-unit pad
+  // (`-4 -4 ${width+8} ${height+8}`) that a `translate/scale` arithmetic guess ignores, so it is
+  // always a few pixels off, worse at some zoom levels than others. `getScreenCTM` is the browser's
+  // own answer to "where does this user-space point actually land on screen", already correct for
+  // the viewBox, the `width="100%"` stretch and the pan/zoom transform together; subtracting the
+  // canvas container's own `getBoundingClientRect` turns that into the container-relative point the
+  // overlay card is positioned from. A `useLayoutEffect`, not read during render: the transform's own
+  // `translate(...)scale(...)` is written to the DOM by this same render, so a read during the render
+  // function itself would see last render's geometry, not this one's — a `useLayoutEffect` runs after
+  // the DOM update and before the browser paints, so the corrected position never flashes.
+  const [anchorScreen, setAnchorScreen] = useState<{ x: number; y: number }>();
+  useLayoutEffect(() => {
+    const svg = svgRef.current, container = containerRef.current;
+    if (selectedPlaced === undefined || svg === null || container === null) { setAnchorScreen(undefined); return; }
+    const ctm = svg.getScreenCTM();
+    if (ctm === null) return;
+    const point = svg.createSVGPoint();
+    point.x = selectedPlaced.x; point.y = selectedPlaced.y;
+    const screen = point.matrixTransform(ctm);
+    const rect = container.getBoundingClientRect();
+    const next = { x: screen.x - rect.left, y: screen.y - rect.top };
+    setAnchorScreen((previous) => (previous !== undefined && previous.x === next.x && previous.y === next.y) ? previous : next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlaced?.id, selectedPlaced?.x, selectedPlaced?.y, transform.scale, transform.tx, transform.ty, viewport.width, viewport.height]);
 
   const blocker = run?.status === 'waiting' ? view?.blockers.at(-1) : undefined;
   const fenceReason = context !== undefined && (context.budget.phase !== 'active' || context.reason !== undefined)
@@ -347,12 +381,12 @@ export function FabricCanvas({
         {/* The node card: one at a time, a plain HTML overlay sibling of the `<svg>` — never a
             `<foreignObject>` inside it — so the card's own wheel scroll and pointer events are the
             card's own DOM events, never the canvas's (see the file header and `insideCard` above),
-            and its own type stays a fixed size at any zoom. Its screen position is computed here,
-            once, from the node's placed coordinates and the canvas's own pan/zoom transform. */}
-        {selectedPlaced === undefined || view === undefined ? null : (
+            and its own type stays a fixed size at any zoom. Its screen position (`anchorScreen`) is
+            the svg's own `getScreenCTM` mapping of the node's placed point, computed above. */}
+        {selectedPlaced === undefined || view === undefined || anchorScreen === undefined ? null : (
           <NodeCard
-            node={selectedPlaced} view={view} context={context} runId={runId} sessionId={sessionId} owner={isOwner}
-            anchor={{ x: transform.tx + selectedPlaced.x * transform.scale, y: transform.ty + selectedPlaced.y * transform.scale }}
+            node={selectedPlaced} view={view} context={context} runId={runId} owner={isOwner}
+            anchor={anchorScreen}
             canvas={viewport}
             onClose={() => onSelectNode(undefined)} openFiles={openFiles} acting={acting}
           />
@@ -369,11 +403,12 @@ export function FabricCanvas({
           <button type="button" className="hima-icon-button" data-hima-control="canvas-zoom-out" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.2)}><Glyph name="zoom-out" /></button>
         </div>
       </div>
-      {/* The node card's own Job tab is where a person reads an execution's own row (#41 task 6); while
-          no card is actually rendered — nothing selected, or a selection the scene no longer carries
-          (cleared above) — this visually-hidden list keeps the same `node-execution` marker reachable
-          under `.hima-studio`, since a driver polls it without opening a node. */}
-      {selectedPlaced !== undefined || view === undefined ? null : (
+      {/* Always rendered, regardless of which card — if any — is open: the node card's own Job tab is
+          where a person *reads* an execution's own row (#41 task 6 review), but a driver polls the
+          `node-execution` marker under `.hima-studio` without opening any node, so this visually-
+          hidden list is the one place that marker is always reachable. The Job tab's own copy is
+          additional, for the node the card happens to have open, not a replacement for this. */}
+      {view === undefined ? null : (
         <div className="hima-visually-hidden" aria-hidden="true">
           {Object.values(view.run.control?.executions ?? {}).map((execution) => (
             <div key={execution.id} data-hima-region="node-execution" data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>

@@ -189,7 +189,7 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
         {section === 'live' ? (
           scene === undefined
             ? <div className="hima-empty"><p>{context?.reason ?? 'Reading the reference graph…'}</p></div>
-            : <FabricCanvas runId={runId} sessionId={sessionId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
+            : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
                 stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
                 openOwner={openOwner} openFiles={openFiles} acting={acting} />
         ) : view === undefined

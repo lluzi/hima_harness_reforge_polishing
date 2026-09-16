@@ -122,7 +122,7 @@ export const HIMA_STYLE = `
 .hima-canvas-legend{position:absolute;left:var(--hima-sp-4);top:var(--hima-sp-3);display:flex;gap:var(--hima-sp-4);font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-3);pointer-events:none}
 .hima-canvas-legend span{display:inline-flex;align-items:center;gap:var(--hima-sp-1)}
 .hima-legend-shape{fill:none;stroke:var(--hima-ink-3);stroke-width:1.3}
-.hima-canvas-tools{position:absolute;right:var(--hima-sp-3);bottom:var(--hima-sp-3);display:flex;gap:var(--hima-sp-1)}
+.hima-canvas-tools{position:absolute;right:var(--hima-sp-3);bottom:var(--hima-sp-3);z-index:6;display:flex;gap:var(--hima-sp-1)}
 
 /* The zoom/pan transform: eased on a follow, instant while reduced motion or a stale snapshot ask
    for none — .hima-canvas-transform-still is set by the same motionOff flag that also gates the

@@ -29,7 +29,6 @@ export interface NodeCardProps {
   readonly view: RunView;
   readonly context?: ExecutionContext;
   readonly runId: string;
-  readonly sessionId: string;
   /** Whether this session owns the Run's business controls (ADR-0008: one visible Campaign Agent
    *  owns the Run at a time). A Side Talk sees who does and only an emergency Pause/Stop. */
   readonly owner: boolean;
