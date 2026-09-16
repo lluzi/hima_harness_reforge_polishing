@@ -12,6 +12,7 @@ import { channelFor, mustRun, quote, type Channel } from './channel.js';
 import { loadSite } from './sites.js';
 import { decideLaunch } from './shell.js';
 import { existingRun, runFor } from './runs.js';
+import { currentRecordsIn, nodeRecordsIn } from './ledger.js';
 import type { JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
 
@@ -552,33 +553,62 @@ export async function jobTail(deps: JobDeps, req: { readonly run: string; readon
   return { run, job, text: await tailLog(channelFor(site), job, req.lines ?? defaultTailLines) };
 }
 
+/** The most a caller of `nodeLogTail` may ask for in one read, enforced here and not only by the
+ *  route: a caller that reaches this function some other way must find the same bound. */
+export const nodeLogTailMaxLines = 100;
+
 export interface NodeLogTailResult {
   readonly run: RunRecord;
   readonly nodeId: string;
-  /** The session and text are both absent, together, exactly when this node has no Job open right
-   *  now: no node record at all, or its latest is not `running`, or `running` with no `jobSession`
-   *  (a node kind that never launches one, e.g. a judge or a read). */
+  /** Absent exactly when this node has no Job open right now: no current node record at all, or its
+   *  latest is not `running`, or `running` with no `jobSession` (a node kind that never launches
+   *  one, e.g. a judge or a read). Present with `lines` still empty is the ordinary state of a Job
+   *  that is open and has simply written nothing yet — not a fault, and not "no Job". */
   readonly session?: string;
-  readonly text?: string;
+  readonly lines: readonly string[];
+  /** True when the Site's log holds more lines than this bounded read returned. */
+  readonly truncated: boolean;
 }
 
 /**
  * The tail of the Job the named node currently has open on this Run, read straight off the ledger's
- * own node records rather than off an owned execution (#41 task 4). This is deliberately not
+ * own current node records rather than off an owned execution (#41 task 4). This is deliberately not
  * `jobTail`: the canvas asks about a *node*, for any viewer, whether or not they hold the execution
  * that node belongs to, so this looks at the node's own latest record instead of requiring one.
  *
- * A node's latest record is what decides this, not any earlier one it may have gone through: a node
- * that ran and finished stopped having an open Job the moment its record stopped saying `running`,
- * whatever an older record of the same node still says.
+ * A node's latest current record is what decides this, not any earlier one it may have gone through:
+ * a node that ran and finished stopped having an open Job the moment its record stopped saying
+ * `running`, whatever an older record of the same node still says, and a record a revision has
+ * invalidated (`currentRecordsIn`) is not this node's latest fact either.
+ *
+ * A `running` node whose log the Site cannot yet produce — the window between the ledger's `running`
+ * append and the launched wrapper's first redirect, or a workspace a caller removed from under it —
+ * is answered as a Job that is open and has said nothing, not as a fault: this is the one read the
+ * canvas polls every second, and a plain read failure here must never become a 500. A Site that
+ * cannot be asked at all (`SiteUnreadableError`) still propagates — that is a fact about the Site
+ * every other Job operation reports the same way (#18), not a silent empty answer.
  */
 export async function nodeLogTail(deps: JobDeps, req: { readonly run: string; readonly nodeId: string; readonly lines?: number }): Promise<NodeLogTailResult> {
   const run = existingRun(deps.ledger, req.run);
-  const nodeRecords = deps.ledger.records({ runId: req.run, type: 'node' }).filter((record): record is NodeRecord => record.type === 'node' && record.nodeId === req.nodeId);
-  const latest = nodeRecords.at(-1);
-  if (latest === undefined || latest.state !== 'running' || latest.jobSession === undefined) return { run, nodeId: req.nodeId };
-  const tail = await jobTail(deps, { run: req.run, session: latest.jobSession, lines: req.lines });
-  return { run, nodeId: req.nodeId, session: latest.jobSession, text: tail.text };
+  const bound = Math.min(Math.max(Math.trunc(req.lines ?? defaultTailLines), 1), nodeLogTailMaxLines);
+  const latest = currentRecordsIn(nodeRecordsIn(deps.ledger, req.run))
+    .filter((record): record is NodeRecord => record.type === 'node' && record.nodeId === req.nodeId)
+    .at(-1);
+  if (latest === undefined || latest.state !== 'running' || latest.jobSession === undefined) {
+    return { run, nodeId: req.nodeId, lines: [], truncated: false };
+  }
+  let text: string;
+  try {
+    // One more than asked for, so a full page of exactly `bound` lines can be told apart from a log
+    // that holds no more than that (#41 task 4, minor 8).
+    text = (await jobTail(deps, { run: req.run, session: latest.jobSession, lines: bound + 1 })).text;
+  } catch (err) {
+    if (err instanceof SiteUnreadableError) throw err;
+    return { run, nodeId: req.nodeId, session: latest.jobSession, lines: [], truncated: false };
+  }
+  const rows = text.split('\n');
+  if (rows.length > 0 && rows.at(-1) === '') rows.pop();
+  return { run, nodeId: req.nodeId, session: latest.jobSession, lines: rows.slice(-bound), truncated: rows.length > bound };
 }
 
 export interface JobKillResult {

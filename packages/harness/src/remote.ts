@@ -95,6 +95,12 @@ import type { CampaignFile, CampaignFileReadResult, CampaignFileWriteResult, Pre
 // browser. What Site discovery actually does is `RemoteOperations.discoverSite`/`sites`, implemented
 // in `index.ts` (#41 task 4).
 import type { SiteDiscoveryRequest, SiteDiscoveryResult } from './sites.js';
+// Runtime, unlike the type-only imports above: this route is the one place in the namespace that
+// must tell a caller's malformed Site discovery request (a `ZodError` from `discoverSshSite`'s own
+// schema) apart from every other fault. Safe beside the browser bundle for the same reason
+// `campaign-file.ts` already imports it there: `client/api.ts` takes only types from this module, so
+// esbuild never follows this import into the client (#41 task 4 review).
+import { ZodError } from 'zod';
 
 // The one namespace and the one document, both from the leaf every face reads them from
 // (`paths.ts`): every Hima operation lives under `HIMA_API_PREFIX`, and the one thing Hima serves
@@ -561,9 +567,12 @@ export interface CampaignFileView {
 /**
  * One saved Site as `GET /hima/api/sites` lists it (#41 task 4): what a Campaign file's Site picker
  * and the Configuration page's readiness roundel both need, and nothing a Permit governs. `readiness`
- * follows the same rule `Hima.preparation` already computes for a selected Site (`index.ts`):
- * `local` is always `ready`; an `ssh` Site with no saved discovery is `needs-discovery`; one whose
- * saved discovery no longer matches its own connection input is `stale`; otherwise `ready`.
+ * is `siteHeadReadiness` (`index.ts`), the one rule `Hima.preparation`'s own site readiness also
+ * calls: `local` is always `ready`; an `ssh` Site with no saved discovery is `needs-discovery`;
+ * otherwise `stale` when the saved discovery is itself marked stale, else `ready`. `stale` here is
+ * only ever that stored flag — a changed connection input a caller has not re-discovered against is
+ * not detected here; only a fresh `discoverSshSite` call, which has the current input to compare
+ * against, can see that.
  */
 export interface SiteHeadView {
   readonly name: string;
@@ -595,14 +604,15 @@ export interface SiteDiscoverBody {
  * `GET /hima/api/runs/<id>/log-tail` answers. Unlike `hima_execute read @job-log`, which is bound to
  * an execution its owner holds, this is a read any viewer of the canvas may make of the *node* —
  * `lines` empty and `session` absent, together, exactly when that node has no Job open right now.
+ * `session` present with `lines` still empty is a different, ordinary fact: the Job is open and has
+ * simply written nothing yet (or its log is not there for this Host to read yet) — never a fault.
  */
 export interface LogTailView {
   readonly nodeId: string;
   readonly session?: string;
   readonly lines: readonly string[];
   readonly at: string;
-  /** True when `lines` is exactly as long as the caller asked for: the Site's log may hold more than
-   *  this bounded read returned. False whenever the log itself held fewer lines than that. */
+  /** True when the Site's log holds more lines than this bounded read returned. */
   readonly truncated: boolean;
 }
 
@@ -1797,6 +1807,13 @@ function sitesListOperation(ops: RemoteOperations): Answer {
  * that schema's checks here. A Site that could not be asked at all (`SiteUnreadableError`) is left to
  * propagate: the dispatcher below answers every such fault the same way, `hima/site-unreadable`.
  */
+/** One sentence out of a `ZodError`, the shape this route's own field checks already answer in:
+ *  never the raw dump `ZodError#toString()` gives, which is JSON and names nothing a caller reads. */
+function zodSentence(err: ZodError): string {
+  const joined = err.issues.map((issue) => issue.message).join('; ');
+  return joined || 'the request does not match the expected shape';
+}
+
 async function sitesDiscoverOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
   const body = await readJsonBody(req);
   const sessionId = requiredString(body, 'sessionId');
@@ -1807,8 +1824,12 @@ async function sitesDiscoverOperation(ops: RemoteOperations, req: IncomingMessag
   try {
     return ok(await ops.discoverSite(body as unknown as Omit<SiteDiscoverBody, 'sessionId'>));
   } catch (err) {
-    if (err instanceof SiteUnreadableError) throw err;
-    throw new BadRequest(err instanceof Error ? err.message : String(err));
+    // Only a request-shape failure is the caller's mistake and answered as one, in the sentence its
+    // own schema states. Everything else — `SiteUnreadableError` included — propagates to the
+    // dispatcher's own handling: 503 for a Site that could not be asked, and a logged, generic 500
+    // for anything else, never a raw message that could carry a host path onto the wire.
+    if (err instanceof ZodError) throw new BadRequest(zodSentence(err));
+    throw err;
   }
 }
 
@@ -1822,6 +1843,17 @@ async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: UR
   if (ops.jobLogTail === undefined) return failure(500, 'hima/internal', 'the Job log tail is unavailable on this Host');
   const nodeId = url.searchParams.get('node');
   if (!nodeId) throw new BadRequest('"node" is required as a query parameter');
+  // A node id no reference graph of this Run declares is a caller mistake, not a fact to answer
+  // "no Job open" about — `executionContext` is what every other node-shaped read holds a node id
+  // against, so this route does not invent its own second notion of what a node id is. `nodes` is
+  // empty rather than absent for a historical automatic Run (`run.control === undefined`, before
+  // #41 task 3's owner model existed) or an uninstalled pack: neither is a reference graph this
+  // route can hold a node id against, so an empty list refuses nothing here — only a *non-empty*
+  // one that plainly does not name this node id is the caller's mistake.
+  const nodes = ops.executionContext?.(runId).nodes;
+  if (nodes !== undefined && nodes.length > 0 && !nodes.some((node) => node.id === nodeId)) {
+    throw new BadRequest(`node "${nodeId}" is not in this Run's method`);
+  }
   const rawLines = url.searchParams.get('lines');
   let lines = 1;
   if (rawLines !== null) {

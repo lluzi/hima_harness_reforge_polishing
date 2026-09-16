@@ -336,7 +336,14 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
   prepare?: (pack: string, site?: string, overrides?: PreparationOverrides) => PreparationView, knowledge?: { root: string },
   sites?: {
     readonly list: () => readonly SiteHeadView[];
-    readonly discover: (request: Omit<SiteDiscoverBody, 'sessionId'>) => Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView }>;
+    /** The tool's own discover/rediscover never passes `save` — a Site or Permit is written only
+     *  from the HTTP route's own `save: true`, which requires a live browser session (Q47/ADR-0009):
+     *  HimaGuide proposes a draft, and only a person's own action from the Configuration page saves
+     *  it. `saved` on this answer is therefore always absent for a tool caller. */
+    readonly discover: (request: Omit<SiteDiscoverBody, 'sessionId' | 'save'>) => Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView }>;
+    /** A saved ssh Site's own destination/jumps and its Permit's own roots, for `rediscover` (#41
+     *  task 4 review, important 3, minor 9): undefined when there is no such saved ssh Site to reuse. */
+    readonly rediscoverInput: (name: string) => { readonly ssh: SiteDiscoverBody['ssh']; readonly hints: NonNullable<SiteDiscoverBody['hints']> } | undefined;
   }): ToolDefinition[] {
   return [
     ...author ? [defineTool({
@@ -871,15 +878,15 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     }),
     ...sites === undefined ? [] : [defineTool({
       name: 'hima_site',
-      description: 'List every saved Site, or learn one through the caller\'s own SSH identity, keys and agent — no credential is read or stored. list returns each saved Site\'s readiness and capacity. discover and rediscover run the same bounded, read-only probe vocabulary on a named ssh destination; rediscover is discover run again against a Site already saved. Creates no Run, workspace, Job or Ledger row.',
+      description: 'List every saved Site, or learn one through the caller\'s own SSH identity, keys and agent — no credential is read or stored. list returns each saved Site\'s readiness and capacity. discover and rediscover run the same bounded, read-only probe vocabulary on an ssh destination and answer a draft (site, permit, unknowns, conflicts); rediscover reuses a saved Site\'s own destination, jumps and permitted roots, so it takes only name. Neither ever writes a Site or Permit file: this tool creates no Run, workspace, Job or Ledger row, and HimaGuide cannot grant a Permit\'s authority by itself — the person saves a reviewed draft from the Configuration page, which is a live browser session\'s own action.',
       parameters: {
         action: { type: 'string', required: true, enum: ['list', 'discover', 'rediscover'] },
         name: { type: 'string', description: 'Site name for discover/rediscover: starts with a letter, then letters, digits, ".", "_" or "-".' },
-        destination: { type: 'string', description: 'user@host or user@host:port for discover/rediscover.' },
-        jumps: { type: 'array', items: { type: 'string' }, description: 'Bastion hosts to pass through, in order, each user@host[:port].' },
+        destination: { type: 'string', description: 'user@host or user@host:port for discover. Ignored for rediscover, which reuses the saved Site\'s own destination.' },
+        jumps: { type: 'array', items: { type: 'string' }, description: 'Bastion hosts to pass through, in order, each user@host[:port]. discover only; rediscover reuses the saved Site\'s own.' },
         hints: {
           type: 'object', additionalProperties: false,
-          description: 'Non-secret direction for discover/rediscover: never a command, environment or credential.',
+          description: 'Non-secret direction for discover: never a command, environment or credential. Ignored for rediscover, which reuses the saved Site\'s own workspace root and permitted roots.',
           properties: {
             workspaceRoot: { type: 'string', description: 'Absolute path this Site\'s Campaign workspaces are created under.' },
             allowedReadRoots: { type: 'array', items: { type: 'string' } },
@@ -888,18 +895,25 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
             toolCommands: { type: 'array', items: { type: 'string' }, description: 'Executable names the selected Pack requires; discovery only asks which of these are on the Site\'s PATH.' },
           },
         },
-        save: { type: 'boolean', description: 'Persist the discovered profile as the Site and Permit files loadSite reads. Defaults to false: a preview the caller reviews before saving.' },
       },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args) => {
         if (args.action === 'list') return toolJson({ sites: sites.list() });
-        if (!args.name || !args.destination) throw new Error(`${args.action} requires name and destination`);
-        return toolJson(await sites.discover({
+        const nextAction = 'Ask the person to save this Site from the Configuration page; HimaGuide cannot write a Site Permit.';
+        if (args.action === 'rediscover') {
+          if (!args.name) throw new Error('rediscover requires name');
+          const input = sites.rediscoverInput(args.name);
+          if (!input) throw new Error(`no saved ssh Site named "${args.name}" to rediscover`);
+          const { result } = await sites.discover({ name: args.name, ssh: input.ssh, hints: input.hints });
+          return toolJson({ result, nextAction });
+        }
+        if (!args.name || !args.destination) throw new Error('discover requires name and destination');
+        const { result } = await sites.discover({
           name: args.name,
           ssh: { destination: args.destination, ...(args.jumps ? { jumps: args.jumps } : {}) },
           ...(args.hints === undefined ? {} : { hints: args.hints as SiteDiscoverBody['hints'] }),
-          ...(args.save === undefined ? {} : { save: args.save }),
-        }));
+        });
+        return toolJson({ result, nextAction });
       },
     })],
   ];

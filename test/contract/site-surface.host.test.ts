@@ -17,8 +17,8 @@ import { killSessions } from './support/fabric.ts';
 import { installPack, packsDirOf, writePackVariant } from './support/pack.ts';
 import { writeLocalSite, type LocalSite } from './support/site.ts';
 import { writeStandinFlow, type StandinFlow } from './support/standin-flow.ts';
-import { discoverSshSite, saveDiscoveredSite, type Channel } from '@hima/harness';
-import type { LogTailView, RunView, SiteHeadView } from '@hima/harness';
+import { discoverSshSite, nodeLogTail, saveDiscoveredSite, type Channel } from '@hima/harness';
+import type { JobDeps, LogTailView, RunView, SiteHeadView } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 
@@ -223,5 +223,58 @@ test('Case 4: GET /hima/api/runs/<id>/log-tail reads the currently running node 
   } finally {
     killSessions([...sessions]);
     await teardown(f);
+  }
+});
+
+test('Case 5: a running node whose log the Site cannot produce yet answers 200 with the session and an empty tail, never a 500 (#41 task 4 review, blocking)', async () => {
+  const h = await createHimaHome();
+  try {
+    const site = await writeLocalSite(h);
+    const host = await bootInProcess(h);
+    try {
+      const deps: JobDeps = { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir };
+      const run = await host.ctx.hima.ledger.createRun({ campaignId: 'log-tail-silent-job', siteId: 'local', status: 'running' });
+      // A launch this ledger records but that never actually ran on the Site: the session's log
+      // file was never created, so `tail` finds nothing there — the exact window the blocking review
+      // item named (the ledger's own `running` append, before the wrapper ever redirects anything),
+      // reproduced without needing to win a real race against a real Job.
+      const session = `hima-${randomUUID()}-never-started`;
+      await host.ctx.hima.ledger.appendJob(run.id, {
+        event: 'launched',
+        job: { session, workspace: h.workspace, name: 'synthesize', startedAt: new Date().toISOString(), wire: 'echo', pid: 1 },
+        nodeId: 'synthesize',
+      });
+      await host.ctx.hima.ledger.appendNode(run.id, { nodeId: 'synthesize', kind: 'act', state: 'running', attempt: 1, jobSession: session });
+      const found = await nodeLogTail(deps, { run: run.id, nodeId: 'synthesize', lines: 5 });
+      assert.equal(found.session, session, JSON.stringify(found));
+      assert.deepEqual(found.lines, []);
+      assert.equal(found.truncated, false);
+    } finally { await host.dispose(); }
+  } finally { await h.dispose(); }
+});
+
+test('Case 6: POST /hima/api/sites/discover answers 503 hima/site-unreadable when the Site cannot be reached, and writes no file', async (t) => {
+  const table = { connect: { fail: 'ssh: connect to host lab.example.com port 22: Connection refused' } };
+  const tableFile = path.join(os.tmpdir(), `hima-discovery-standin-${randomUUID()}.json`);
+  await writeFile(tableFile, JSON.stringify(table));
+  process.env.HIMA_TEST_DISCOVERY_STANDIN = tableFile;
+  try {
+    const f = await bootedFixture(t);
+    if (!f) return;
+    try {
+      const sessionId = await createLiveSession(f.host, f.cookie, f.h.workspace);
+      const res = await api(f.host, f.cookie, '/hima/api/sites/discover', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, name: 'lab-unreachable', ssh: { destination: 'engineer@lab.example.com' }, save: true }),
+      });
+      const body = await res.json() as { error?: { code: string; message: string } };
+      assert.equal(res.status, 503, JSON.stringify(body));
+      assert.equal(body.error?.code, 'hima/site-unreadable', JSON.stringify(body));
+      assert.match(body.error?.message ?? '', /Connection refused/);
+      await assert.rejects(readFile(path.join(f.site.sitesDir, 'lab-unreachable.yml'), 'utf8'), /ENOENT/, 'a Site that could not be reached is never saved');
+    } finally { await teardown(f); }
+  } finally {
+    delete process.env.HIMA_TEST_DISCOVERY_STANDIN;
+    await rm(tableFile, { force: true });
   }
 });

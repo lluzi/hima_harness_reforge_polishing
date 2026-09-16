@@ -43,6 +43,7 @@ import { strategyValue } from './run-arguments.js';
 import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, type Site, type SiteDiscoveryResult, type SshTarget } from './sites.js';
 import { SshChannel, type Channel } from './channel.js';
 import { nodeLogTail } from './jobs.js';
+import { SiteUnreadableError } from './errors.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
 import { registerHimaSkills } from './skills.js';
@@ -269,8 +270,8 @@ export type {
 // the day this one is tuned (#18). A test that has to act **between** two looks needs the third for
 // the same reason: how long it has is which interval the waiter has settled into (#61).
 export { jobPollFastForMs, jobPollFastMs, jobPollSlowMs } from './jobs.js';
-export { launchJob, reconcileLaunchIntent, jobStatus } from './jobs.js';
-export type { LaunchIntent, JobDeps, LaunchRequest, LaunchResult, ReconciledLaunch } from './jobs.js';
+export { launchJob, reconcileLaunchIntent, jobStatus, nodeLogTail, nodeLogTailMaxLines } from './jobs.js';
+export type { LaunchIntent, JobDeps, LaunchRequest, LaunchResult, ReconciledLaunch, NodeLogTailResult } from './jobs.js';
 export { claimSlotAndLaunch } from './job-cap.js';
 export { toolNode, observeNode, resumeNode, buildWorkshopScope, resolveWorkshop, launchWrittenWorkshop, exploreRecommendation } from './node-turns.js';
 export type { Driving, ResolvedWorkshop, ExploreRecommendation } from './node-turns.js';
@@ -348,9 +349,19 @@ export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: s
   return [`HimaHarness: ${versionLine()}.`, packLine, siteLine, campaignLine].join('\n');
 }
 
-/** `SiteHeadView.readiness`, computed the one way `Hima.preparation`'s own `siteReadiness` already
- *  is: `local` is always ready; an `ssh` Site with no saved discovery needs one; one whose saved
- *  discovery no longer matches its own connection input is stale; otherwise ready. */
+/**
+ * `SiteHeadView.readiness`, and the one rule `Hima.preparation`'s own site readiness calls this to
+ * compute too, so the two answers cannot disagree: `local` is always ready; an `ssh` Site with no
+ * saved discovery needs one; otherwise ready or stale by the saved `discovery.stale` flag alone.
+ *
+ * `stale` here is exactly the stored flag — nothing else. It is not a comparison against the
+ * connection input a caller has in hand right now: `discoveryIsStale` (`sites.ts`) does that
+ * comparison, but it needs the original discovery request (destination, jumps, hints) to compare
+ * against, and a Site file does not retain that request — only its own `discovery.stale` bit, which
+ * a save from a request that fails the same comparison already sets. A changed connection input a
+ * caller has not yet re-discovered against is therefore not detected by this function or by
+ * `GET /hima/api/sites`; only a `discoverSshSite` call that recomputes and compares can see it.
+ */
 function siteHeadReadiness(site: Site): SiteHeadView['readiness'] {
   if (site.kind === 'local') return 'ready';
   if (site.discovery === undefined) return 'needs-discovery';
@@ -374,18 +385,29 @@ function siteHeadViewOf(site: Site): SiteHeadView {
  * absent file already answers with, so an incomplete table still produces an ordinary discovery
  * rather than a thrown fault.
  *
+ * A table entry may instead be `{ "fail": "<message>" }` (#41 task 4 review, minor 4): the one way a
+ * test expresses "the Site could not be asked at all", answered as `SiteUnreadableError` — the same
+ * fault a real dropped connection or a hung ssh raises (#18). The distinguished key `"connect"`
+ * checks before any probe's own argv key, so a single entry stands for the whole channel refusing to
+ * answer, the way a real connection failure would before any command even reached the Site; naming
+ * one ordinary probe's own key instead fails only that one probe, for a narrower case.
+ *
  * @returns a `channelFor` for `discoverSshSite`, or undefined to keep its own `SshChannel` default.
  */
 function testDiscoveryChannelFor(): ((name: string, ssh: SshTarget) => Channel) | undefined {
   if (process.env.NODE_TEST_CONTEXT === undefined || !process.env.HIMA_TEST_DISCOVERY_STANDIN) return undefined;
-  const table = JSON.parse(readFileSync(process.env.HIMA_TEST_DISCOVERY_STANDIN, 'utf8')) as Readonly<Record<string, { readonly code: number; readonly stdout: string; readonly stderr?: string }>>;
+  type StandinEntry = { readonly code: number; readonly stdout: string; readonly stderr?: string } | { readonly fail: string };
+  const table = JSON.parse(readFileSync(process.env.HIMA_TEST_DISCOVERY_STANDIN, 'utf8')) as Readonly<Record<string, StandinEntry>>;
   return (name) => ({
     siteName: name,
     readFile: () => { throw new Error('the Site discovery stand-in answers exec only; it reads no file'); },
     realpath: (p: string) => Promise.resolve(p),
     absent: () => Promise.resolve(true),
     exec: (argv: readonly string[]) => {
+      const connect = table.connect;
+      if (connect !== undefined && 'fail' in connect) return Promise.reject(new SiteUnreadableError(name, connect.fail));
       const answer = table[argv.join(' ')] ?? { code: 1, stdout: '' };
+      if ('fail' in answer) return Promise.reject(new SiteUnreadableError(name, answer.fail));
       return Promise.resolve({ code: answer.code, stdout: Buffer.from(answer.stdout), stderr: answer.stderr ?? '' });
     },
   });
@@ -532,7 +554,7 @@ export default class Hima extends Service {
         const loadedPack = loadPack(this.config.packsDir, pack);
         return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site), overrides);
       }, { root: this.config.knowledgeDir },
-      { list: () => this.sites(), discover: (request) => this.discoverSite(request) },
+      { list: () => this.sites(), discover: (request) => this.discoverSite(request), rediscoverInput: (name) => this.rediscoverInput(name) },
     )) this.ctx.effect(() => this.ctx.tools.register(tool));
     // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
     // A person invokes one by typing its name; the model never chooses one for itself, because a
@@ -682,16 +704,34 @@ export default class Hima extends Service {
     return { result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, result)) };
   }
 
+  /** The `hima_site rediscover` input (#41 task 4 review, important 3, minor 9): a saved ssh Site's
+   *  own destination and jumps, and its Permit's own roots as hints — undefined for a Site this
+   *  Host cannot load, or one of kind `local`, which has no destination to rediscover at all. */
+  private rediscoverInput(name: string): { readonly ssh: SiteDiscoverBody['ssh']; readonly hints: NonNullable<SiteDiscoverBody['hints']> } | undefined {
+    let site: Site;
+    try { site = loadSite(this.config.sitesDir, name); }
+    catch { return undefined; }
+    if (site.kind !== 'ssh' || site.ssh === undefined) return undefined;
+    return {
+      ssh: { destination: site.ssh.destination, ...(site.ssh.jumps.length === 0 ? {} : { jumps: [...site.ssh.jumps] }) },
+      hints: {
+        workspaceRoot: site.workspaceRoot,
+        allowedReadRoots: [...site.permitRules.allowedReadRoots],
+        allowedWriteRoots: [...site.permitRules.allowedWriteRoots],
+        allowedWrappers: [...site.permitRules.allowedWrappers],
+      },
+    };
+  }
+
   /** `RemoteOperations.jobLogTail` (#41 task 4): the tail of the Job the named node currently has
    *  open on this Run, for any viewer — `nodeLogTail` (`jobs.ts`) is what actually reads the
-   *  ledger's own node records; this shapes that domain fact into the wire view. */
+   *  ledger's own current node records and bounds/truncates the read; this only adds the moment it
+   *  was read at. A `session` with `lines` still empty is the ordinary state of a Job that is open
+   *  and has simply written nothing yet, not a fault and not "no Job" — `nodeLogTail` never lets a
+   *  Job whose log is not there yet reach here as a thrown error (#41 task 4, blocking review item). */
   private async jobLogTail(runId: string, nodeId: string, lines: number): Promise<LogTailView> {
     const found = await nodeLogTail(this.deps(), { run: runId, nodeId, lines });
-    const at = new Date().toISOString();
-    if (found.session === undefined || found.text === undefined) return { nodeId, lines: [], at, truncated: false };
-    const rows = found.text.split('\n');
-    if (rows.length > 0 && rows.at(-1) === '') rows.pop();
-    return { nodeId, session: found.session, lines: rows, at, truncated: rows.length === lines };
+    return { nodeId, ...(found.session === undefined ? {} : { session: found.session }), lines: found.lines, at: new Date().toISOString(), truncated: found.truncated };
   }
 
   /** What every Hima operation is given: this host's ledger and judge, where its Sites and packs
@@ -758,8 +798,7 @@ export default class Hima extends Service {
       .filter((fact) => fact.probe[0] === 'which' && fact.code === 0 && fact.probe[1] !== undefined)
       .map((fact) => fact.probe[1]!) ?? []);
     const missingCommands = site?.kind === 'ssh' ? [...requiredCommands].filter((command) => !discoveredCommands.has(command)) : [];
-    const siteReadiness = site === undefined ? undefined : site.kind === 'local' ? 'ready' as const
-      : site.discovery === undefined ? 'needs-discovery' as const : site.discovery.stale ? 'stale' as const : 'ready' as const;
+    const siteReadiness = site === undefined ? undefined : siteHeadReadiness(site);
     const words = packWords(pack);
     const goalDeclared = goalDeclarationOf(pack);
     // Every way a Campaign file's own overrides can be wrong about this Pack (#41 task 3): a Goal
