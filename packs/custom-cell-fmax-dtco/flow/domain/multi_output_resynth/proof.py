@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from verilog_netlist import parse_modules
+from verilog_netlist import MODULE_RE, parse_modules
 
 
 class ProofError(RuntimeError):
@@ -144,4 +144,95 @@ def prove_top_equivalence(original, rewritten, top, cells, workdir, yosys="yosys
     (workdir / "equivalence.json").write_text(json.dumps(proof, indent=2, sort_keys=True) + "\n")
     if proc.returncode != 0:
         raise ProofError("Yosys top equivalence failed")
+    return proof
+
+
+def _module_matches(text):
+    result = {}
+    for match in MODULE_RE.finditer(text):
+        name = match.group(1)
+        if name in result:
+            raise ProofError("netlist repeats module %s" % name)
+        result[name] = match
+    return result
+
+
+def _without_modules(text, names):
+    matches = _module_matches(text)
+    missing = sorted(set(names) - set(matches))
+    if missing:
+        raise ProofError("hierarchical proof is missing modules: %s" % ", ".join(missing))
+    reduced = text
+    for name in sorted(names, key=lambda item: matches[item].start(), reverse=True):
+        match = matches[name]
+        reduced = reduced[: match.start()] + reduced[match.end() :]
+    return reduced, matches
+
+
+def prove_hierarchical_equivalence(
+    original, rewritten, proof_top, subject_modules, cells, workdir,
+    yosys="yosys", timeout=120,
+):
+    """Compose exact combinational leaf proofs under an unchanged hierarchy."""
+    modules = tuple(sorted(set(subject_modules)))
+    if not modules or proof_top in modules:
+        raise ProofError("hierarchical proof requires non-top subject modules")
+    original_text = Path(original).read_text()
+    rewritten_text = Path(rewritten).read_text()
+    original_outside, original_matches = _without_modules(original_text, modules)
+    rewritten_outside, rewritten_matches = _without_modules(rewritten_text, modules)
+    if original_outside != rewritten_outside:
+        raise ProofError("netlist outside the subject modules changed")
+    parsed = parse_modules(original_text)
+    rows = []
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    for module in modules:
+        original_header = original_matches[module].group(0).split(";", 1)[0]
+        rewritten_header = rewritten_matches[module].group(0).split(";", 1)[0]
+        if original_header != rewritten_header:
+            raise ProofError("module %s interface changed" % module)
+        sequential = sorted({
+            instance.cell_type
+            for instance in parsed[module]
+            if instance.cell_type in cells and cells[instance.cell_type].is_seq
+        })
+        if sequential:
+            raise ProofError(
+                "hierarchical subject module %s contains sequential cells: %s"
+                % (module, ", ".join(sequential))
+            )
+        module_dir = workdir / ("module-" + module)
+        row = prove_top_equivalence(
+            original, rewritten, module, cells, module_dir,
+            yosys=yosys, timeout=timeout,
+        )
+        proof_path = module_dir / "equivalence.json"
+        rows.append({
+            "module": module,
+            "status": row["status"],
+            "proofSha256": _sha256(proof_path),
+            "originalNetlistSha256": row["originalNetlistSha256"],
+            "rewrittenNetlistSha256": row["rewrittenNetlistSha256"],
+            "cellModelsSha256": row["cellModelsSha256"],
+        })
+    outside_hash = hashlib.sha256(original_outside.encode("utf-8")).hexdigest()
+    proof = {
+        "schema": "hima.multi-output-equivalence-proof/1",
+        "backend": "yosys-hierarchical-composition",
+        "status": "proved",
+        "proofTop": proof_top,
+        "subjectModules": list(modules),
+        "outsideSubjectsUnchangedSha256": outside_hash,
+        "originalNetlistSha256": _sha256(original),
+        "rewrittenNetlistSha256": _sha256(rewritten),
+        "moduleProofs": rows,
+        "claim": (
+            "Each changed combinational leaf is Yosys-equivalent, its interface is unchanged, "
+            "and every byte outside the changed module definitions is identical."
+        ),
+    }
+    (workdir / "equivalence.json").write_text(
+        json.dumps(proof, indent=2, sort_keys=True) + "\n"
+    )
     return proof

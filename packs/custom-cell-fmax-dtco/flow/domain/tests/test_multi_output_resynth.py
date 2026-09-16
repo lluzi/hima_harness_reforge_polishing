@@ -437,6 +437,44 @@ endmodule
         self.assertEqual(result["status"], "succeeded")
         self.assertEqual(result["selectedReplacements"][0]["module"], "leaf")
 
+    @mock.patch("multi_output_resynth.service.prove_hierarchical_equivalence")
+    def test_one_rewrite_can_patch_two_leaf_modules_and_roll_back(self, proof):
+        proof.return_value = {
+            "schema": "hima.multi-output-equivalence-proof/1",
+            "backend": "test-double-for-yosys-adapter",
+            "status": "proved",
+        }
+        netlist = '''module leaf0(input a, input b, output sum, output carry);
+  XOR2 x0 (.A(a), .B(b), .Y(sum));
+  AND2 y0 (.A(a), .B(b), .Y(carry));
+endmodule
+module leaf1(input a, input b, output sum, output carry);
+  XOR2 x0 (.A(a), .B(b), .Y(sum));
+  AND2 y0 (.A(a), .B(b), .Y(carry));
+endmodule
+module top(input a, input b, output s0, output c0, output s1, output c1);
+  leaf0 u0 (.a(a), .b(b), .sum(s0), .carry(c0));
+  leaf1 u1 (.a(a), .b(b), .sum(s1), .carry(c1));
+endmodule
+'''
+        work = Workspace(self, netlist, action="rewrite")
+        self.addCleanup(work.close)
+        work.data["targets"] = [
+            {"module": "leaf0", "instances": ["x0", "y0"],
+             "expectedBoundaryInputs": ["a", "b"],
+             "expectedBoundaryOutputs": ["carry", "sum"]},
+            {"module": "leaf1", "instances": ["x0", "y0"],
+             "expectedBoundaryInputs": ["a", "b"],
+             "expectedBoundaryOutputs": ["carry", "sum"]},
+        ]
+        result = work.write()
+        self.assertEqual(result["status"], "succeeded")
+        rewritten = Path(result["rewrittenNetlist"]["path"]).read_text()
+        self.assertEqual(rewritten.count("MO_HA HIMA_MO_"), 2)
+        manifest = json.loads(Path(result["patchManifest"]["path"]).read_text())
+        self.assertEqual(manifest["modules"], ["leaf0", "leaf1"])
+        self.assertEqual(rollback_text(rewritten, manifest), netlist)
+
 
 if __name__ == "__main__":
     unittest.main()

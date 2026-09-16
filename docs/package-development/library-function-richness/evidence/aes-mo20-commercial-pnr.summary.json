@@ -1,0 +1,287 @@
+{
+  "adoption": {
+    "initialExplicitInstances": 20,
+    "postRouteInstances": 6,
+    "retainedMasterCensus": {
+      "HMO_AES20_03_D1": 1,
+      "HMO_AES20_06_D1": 1,
+      "HMO_AES20_09_D1": 1,
+      "HMO_AES20_12_D1": 1,
+      "HMO_AES20_16_D1": 1,
+      "HMO_AES20_20_D1": 1
+    },
+    "retainedPercent": 30.0,
+    "top100TimingReportMasters": [
+      "HMO_AES20_06_D1",
+      "HMO_AES20_09_D1"
+    ]
+  },
+  "arms": {
+    "base": {
+      "allPaths": 659,
+      "averageWireLengthUm": 11.4388,
+      "connectivityInfoOnly": 2,
+      "coreAreaUm2": 34391.7,
+      "derivedFmaxMhz": 1795.3321364452422,
+      "drcViolations": 5,
+      "gateEquivalentCount": 59826,
+      "holdTnsNs": -43.725,
+      "holdWnsNs": -0.125,
+      "internalPower": 14.72508735,
+      "leakagePower": 0.02383026,
+      "logicAreaUm2": 22614.354,
+      "logicDensityPercent": 65.755,
+      "nonPhysicalCellCount": 16145,
+      "reg2regPaths": 529,
+      "runtimeSeconds": 805,
+      "switchingPower": 11.77410677,
+      "tnsNs": -7.213,
+      "totalPower": 26.52302438,
+      "totalStandardCellAreaUm2": 33994.296,
+      "violatingPaths": 315,
+      "wireLengthUm": 188099.67,
+      "wnsNs": -0.057
+    },
+    "generated": {
+      "allPaths": 659,
+      "averageWireLengthUm": 10.8002,
+      "connectivityInfoOnly": 2,
+      "coreAreaUm2": 34391.7,
+      "derivedFmaxMhz": 1798.5611510791366,
+      "drcViolations": 2,
+      "gateEquivalentCount": 55474,
+      "holdTnsNs": -40.849,
+      "holdWnsNs": -0.121,
+      "internalPower": 14.10479738,
+      "leakagePower": 0.02190374,
+      "logicAreaUm2": 20969.298,
+      "logicDensityPercent": 60.972,
+      "nonPhysicalCellCount": 15963,
+      "reg2regPaths": 529,
+      "runtimeSeconds": 727,
+      "switchingPower": 11.25752182,
+      "tnsNs": -6.313,
+      "totalPower": 25.38422295,
+      "totalStandardCellAreaUm2": 34053.264,
+      "violatingPaths": 240,
+      "wireLengthUm": 175859.64,
+      "wnsNs": -0.056
+    }
+  },
+  "businessExit": {
+    "met": false,
+    "observedFmaxImprovementPercent": 0.17985611510791255,
+    "targetFmaxImprovementPercent": 5.0
+  },
+  "claimLimits": {
+    "commercialPlacementCtsRouteCompleted": true,
+    "commercialTimingObserved": true,
+    "fmaxImprovementObservedUnderModel": true,
+    "fmaxTargetMet": false,
+    "gdsComplete": false,
+    "physicalAbstractRouted": false,
+    "postRouteIndependentEquivalence": false,
+    "siliconBenefit": false,
+    "timingModelMeasured": false
+  },
+  "conditions": {
+    "clockPeriodNs": 0.5,
+    "coreBoxUm": [
+      2.1,
+      2.0,
+      187.6,
+      187.4
+    ],
+    "dcUncertaintyNs": 0.25,
+    "gdsGenerated": false,
+    "pinPlanNormalizedSha256": "4eba642e5d2b1d1cca55d744eb415c50024ce767fb7ee8005e9b71bac3621df0",
+    "postRouteHoldOptimization": false,
+    "proofTop": "aes_cipher_top",
+    "routeUncertaintyNs": 0.175,
+    "rowGeometryNormalizedSha256": "77ad735b282b11cfef346bcb6a2968cd0c970a334a2815a3d82f48f0ad47aa96",
+    "sameSdcSha256": "50956c777f0f922f75bc9b93d7e1dc6200f473218c98dd82269c0895435c551a"
+  },
+  "date": "2026-09-16",
+  "deltaGeneratedMinusBase": {
+    "derivedFmaxMhz": {
+      "absolute": 3.229014633894394,
+      "percentOfBaseline": 0.17985611510791255
+    },
+    "drcViolations": {
+      "absolute": -3,
+      "percentOfBaseline": -60.0
+    },
+    "gateEquivalentCount": {
+      "absolute": -4352,
+      "percentOfBaseline": -7.274429177949386
+    },
+    "holdTnsNs": {
+      "absolute": 2.8760000000000048,
+      "percentOfBaseline": 6.577472841623795
+    },
+    "holdWnsNs": {
+      "absolute": 0.0040000000000000036,
+      "percentOfBaseline": 3.200000000000003
+    },
+    "logicAreaUm2": {
+      "absolute": -1645.0560000000005,
+      "percentOfBaseline": -7.274388647139779
+    },
+    "nonPhysicalCellCount": {
+      "absolute": -182,
+      "percentOfBaseline": -1.1272839888510375
+    },
+    "runtimeSeconds": {
+      "absolute": -78,
+      "percentOfBaseline": -9.68944099378882
+    },
+    "tnsNs": {
+      "absolute": 0.9000000000000004,
+      "percentOfBaseline": 12.477471232496885
+    },
+    "totalPower": {
+      "absolute": -1.1388014299999973,
+      "percentOfBaseline": -4.293633386917685
+    },
+    "violatingPaths": {
+      "absolute": -75,
+      "percentOfBaseline": -23.809523809523807
+    },
+    "wireLengthUm": {
+      "absolute": -12240.029999999999,
+      "percentOfBaseline": -6.507204398604206
+    },
+    "wnsNs": {
+      "absolute": 0.0010000000000000009,
+      "percentOfBaseline": 1.7543859649122824
+    }
+  },
+  "inputs": {
+    "baselineDcNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+    "foundryLefSha256": "44f50b6fcd71f523be5c8e62cd61ed88b27fc3ddd51fd59793fe0103bd393a4e",
+    "foundryLibertySha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5",
+    "generatedDbSha256": "6cf136c6efe4697ddd9ec792e826065ec15c85f973207d705cc3dacdfbd269ac",
+    "generatedEcoNetlistSha256": "fb3ffadb6a9b9975df962af52c002cd396c3878a3aa8cbb95d217aefdbbe794c",
+    "generatedLefSha256": "ae2138f34de82c41ef63bf6ce8b1fd7e9637d34042917f1c009410ba98edaa96",
+    "generatedLibertySha256": "64791d589c926ed3e74e6824a51b6d536e0ecb154b007e4a5f0e1b9d5d439cad",
+    "qrcTechSha256": "9783442472f884a18d75e4e8f72caeaafaa3126412068d78d0541c0db4ad393a",
+    "techLefSha256": "07087310c53e7439ffbf40c26174f0bddbec583cc5fd157ac683ba547250aab2"
+  },
+  "library": {
+    "abstractRoutingComplete": false,
+    "abstractWidthUmRange": [
+      0.7,
+      1.4
+    ],
+    "characterization": "learned-model-prediction",
+    "deviceCountRange": [
+      8,
+      18
+    ],
+    "functionIndex": {
+      "path": "docs/package-development/library-function-richness/evidence/aes-mo20-commercial-function-cells.lib",
+      "sha256": "870051b1df2b2a859b3d77b32ac121ec56c6983af0f34c92038dca9637dde5be"
+    },
+    "independentOutputNetworks": true,
+    "libraryCompilerAccepted": true,
+    "measuredCharacterization": false,
+    "offeredCellCount": 20,
+    "outputCountPerCell": 2,
+    "sharedTransistorOptimization": false
+  },
+  "postRouteEquivalence": {
+    "fullTopStatus": "timeout",
+    "generatedSha256": "dd9460ed4c3725bfc7782fae775fb484b3cb499ff6ccf4bad9607e3208a8af0b",
+    "independentlyProved": false,
+    "moduleAttempts": 23,
+    "moduleInterfacePortMismatch": 22,
+    "moduleTimeouts": 1,
+    "noCounterexampleProduced": true,
+    "originalSha256": "b7a40df34956bc6a04af3a9c3d7fad7e1d67fec6a6b24e06c1ec647669177b9b",
+    "timeoutSeconds": 900
+  },
+  "reportSha256": {
+    "base": {
+      "connectivity": "212cdaf387382ead7beaf397534e74020549033d428363917823c2550c3ef750",
+      "drc": "666dc68744f6aaf5f95064496891f2adf59914cf1c8f03ee6d5341a49cb084b3",
+      "gatecount": "df92f12ef4dcbbb0266906d88d407cd02b496f559fbbd4db25ebf5165a2c86c4",
+      "postrouteNetlist": "b7a40df34956bc6a04af3a9c3d7fad7e1d67fec6a6b24e06c1ec647669177b9b",
+      "power": "e9d71043a06f841f797c964a462ba49b3b7b518d7ade2c97568f1af78dc3904c",
+      "summary": "dbfa12f94b6c774a151b3ceefd28f50b190aa8d5d2cea3a09420eca87913cb1e",
+      "timing": "764c9e05b18d7b54f6a3f203e3dd95b50ad9437d4fbe3d96a2eac2ad325a25e5"
+    },
+    "generated": {
+      "connectivity": "7a02e6c7abd18e5758d16edc85cfc2aff64b1793b11fb7b969d786e18b2398bd",
+      "drc": "90ca7573d06bc8713ca7789904288dd4a2e69a772857c15ac8091583f5a94c55",
+      "gatecount": "de5e70e6944bdb2a9e1bca99c1c582d4366b4a756f8cb580bc1e45e1f6fd91d9",
+      "postrouteNetlist": "dd9460ed4c3725bfc7782fae775fb484b3cb499ff6ccf4bad9607e3208a8af0b",
+      "power": "fc2f1d9f05ba6e233b69d7fcef964dfc92b0ecaf7e8de9f057f345cae743332f",
+      "summary": "ccab189a948b0f3dff9fcbe7a257aa6af1176d40ed11f42acd8212c85d4473a3",
+      "timing": "0ccfc186a9825f2326558212896367954320efddff8fb95175d0b3780fa3505b"
+    }
+  },
+  "resynthesis": {
+    "budget": 20,
+    "inputNetInstanceReduction": 33,
+    "instancesInserted": 20,
+    "patchSha256": "c62bf9288c36935dbb1666f3882fe8e28c81af9cc98f4eef62ae59ee83f52eec",
+    "prePnrProof": {
+      "backend": "yosys-hierarchical-composition",
+      "claim": "Each changed combinational leaf is Yosys-equivalent, its interface is unchanged, and every byte outside the changed module definitions is identical.",
+      "moduleProofs": [
+        {
+          "cellModelsSha256": "f68e930059d4dee6c8cdb18c20c529e24b7a402af176d94fcf0d17c4a873ff8f",
+          "module": "aes_sbox_0",
+          "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+          "proofSha256": "2354a45ddba0e102b1b52c97a353cd16b178e1ef4fa06d55c3a78babe1d86a0c",
+          "rewrittenNetlistSha256": "fb3ffadb6a9b9975df962af52c002cd396c3878a3aa8cbb95d217aefdbbe794c",
+          "status": "proved"
+        },
+        {
+          "cellModelsSha256": "f68e930059d4dee6c8cdb18c20c529e24b7a402af176d94fcf0d17c4a873ff8f",
+          "module": "aes_sbox_8",
+          "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+          "proofSha256": "0334284f216bd6a1cf1ebf72b2ce5684594a7ce226b78985a2c26cce572f65a0",
+          "rewrittenNetlistSha256": "fb3ffadb6a9b9975df962af52c002cd396c3878a3aa8cbb95d217aefdbbe794c",
+          "status": "proved"
+        },
+        {
+          "cellModelsSha256": "f68e930059d4dee6c8cdb18c20c529e24b7a402af176d94fcf0d17c4a873ff8f",
+          "module": "aes_sbox_9",
+          "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+          "proofSha256": "9d10e72cccb81512e96232fbbc9a560ee1535b4e501e4595e5e83b4ee365bc20",
+          "rewrittenNetlistSha256": "fb3ffadb6a9b9975df962af52c002cd396c3878a3aa8cbb95d217aefdbbe794c",
+          "status": "proved"
+        }
+      ],
+      "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+      "outsideSubjectsUnchangedSha256": "770f5434b7532904f6b5ba090dd2be08d0fce07e192cd692d04d767159e847af",
+      "proofTop": "aes_cipher_top",
+      "rewrittenNetlistSha256": "fb3ffadb6a9b9975df962af52c002cd396c3878a3aa8cbb95d217aefdbbe794c",
+      "schema": "hima.multi-output-equivalence-proof/1",
+      "status": "proved",
+      "subjectModules": [
+        "aes_sbox_0",
+        "aes_sbox_8",
+        "aes_sbox_9"
+      ]
+    },
+    "selected": 20,
+    "sourceInstancesRemoved": 53,
+    "subjectModules": [
+      "aes_sbox_0",
+      "aes_sbox_8",
+      "aes_sbox_9"
+    ],
+    "uniqueMasters": 20
+  },
+  "schema": "hima.aes-mo20-commercial-pnr-evidence/1",
+  "siteEvidenceRoot": "/data/eda/project/hima_harness/polishing-runs/aes-mo20-commercial-20260916",
+  "status": "commercial-runs-complete-positive-small",
+  "tools": {
+    "designCompiler": "X-2025.06-SP3 (input netlist producer)",
+    "innovus": "23.14-s088_1",
+    "libraryCompiler": "T-2022.03",
+    "logicProof": "Yosys 0.69 portable"
+  }
+}

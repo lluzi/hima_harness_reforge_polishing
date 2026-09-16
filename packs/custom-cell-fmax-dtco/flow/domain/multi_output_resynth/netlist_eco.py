@@ -99,9 +99,43 @@ def apply_replacements(text, top, replacements):
     return rewritten, manifest
 
 
+def apply_replacement_groups(text, replacements):
+    """Apply replacements in multiple modules with one reversible manifest."""
+    by_module = {}
+    for row in replacements:
+        by_module.setdefault(row["module"], []).append(row)
+    rewritten = text
+    module_patches = []
+    for module in sorted(by_module):
+        rewritten, manifest = apply_replacements(
+            rewritten, module, by_module[module]
+        )
+        module_patches.append(manifest)
+    return rewritten, {
+        "schema": "hima.multi-output-eco-patches/1",
+        "top": None,
+        "modules": sorted(by_module),
+        "originalSha256": sha256_text(text),
+        "rewrittenSha256": sha256_text(rewritten),
+        "modulePatches": module_patches,
+        "edits": [
+            edit
+            for manifest in module_patches
+            for edit in manifest["edits"]
+        ],
+    }
+
+
 def rollback_text(rewritten, manifest):
     if sha256_text(rewritten) != manifest["rewrittenSha256"]:
         raise EcoError("rewritten netlist hash drift")
+    if "modulePatches" in manifest:
+        restored = rewritten
+        for module_patch in reversed(manifest["modulePatches"]):
+            restored = rollback_text(restored, module_patch)
+        if sha256_text(restored) != manifest["originalSha256"]:
+            raise EcoError("multi-module rollback did not reconstruct the original netlist")
+        return restored
     restored = rewritten
     for edit in sorted(manifest["edits"], key=lambda item: item["rewrittenStart"], reverse=True):
         start, end = edit["rewrittenStart"], edit["rewrittenEnd"]

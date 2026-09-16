@@ -23,12 +23,16 @@ from verilog_netlist import (
 from .boolean import eval_ast, format_table
 from .netlist_eco import (
     EcoError,
-    apply_replacements,
+    apply_replacement_groups,
     assert_only_allowed_masters,
     rollback_text,
     sha256_text,
 )
-from .proof import ProofError, prove_top_equivalence
+from .proof import (
+    ProofError,
+    prove_hierarchical_equivalence,
+    prove_top_equivalence,
+)
 
 
 REQUEST_SCHEMA = "hima.multi-output-resynthesis-request/1"
@@ -551,7 +555,10 @@ def _select(opportunities, maximum):
     for row in ranked:
         if len(selected) >= maximum:
             break
-        source = set(row["sourceInstances"])
+        source = {
+            (row["module"], instance)
+            for instance in row["sourceInstances"]
+        }
         if source.intersection(occupied):
             continue
         occupied.update(source)
@@ -641,24 +648,27 @@ def run_request(request_path, result_path):
                 proof = {"schema": "hima.multi-output-equivalence-proof/1", "backend": "identity-sha256", "status": "proved"}
             else:
                 selected_modules = sorted({row["module"] for row in selected})
-                if len(selected_modules) != 1:
-                    raise ResynthesisError(
-                        "multi-module-rewrite-not-implemented",
-                        "one rewrite request may currently modify one subject module",
-                        {"modules": selected_modules},
-                    )
-                subject_module = selected_modules[0]
-                rewritten, manifest = apply_replacements(text, subject_module, selected)
-                assert_only_allowed_masters(rewritten, subject_module, set(allowed))
+                rewritten, manifest = apply_replacement_groups(text, selected)
+                for subject_module in selected_modules:
+                    assert_only_allowed_masters(rewritten, subject_module, set(allowed))
                 if sha256_text(rollback_text(rewritten, manifest)) != netlist_hash:
                     raise ResynthesisError("rollback-proof-failed", "patch rollback did not reconstruct input")
                 candidate = output / "rewritten.candidate.v"
                 candidate.write_text(rewritten)
-                proof = prove_top_equivalence(
-                    netlist, candidate, request["top"], cells, output / "proof",
-                    yosys=((request.get("tools") or {}).get("yosys") or "yosys"),
-                    timeout=int((request.get("tools") or {}).get("proofTimeoutSeconds", 120)),
-                )
+                proof_args = {
+                    "yosys": ((request.get("tools") or {}).get("yosys") or "yosys"),
+                    "timeout": int((request.get("tools") or {}).get("proofTimeoutSeconds", 120)),
+                }
+                if len(selected_modules) == 1:
+                    proof = prove_top_equivalence(
+                        netlist, candidate, request["top"], cells, output / "proof",
+                        **proof_args,
+                    )
+                else:
+                    proof = prove_hierarchical_equivalence(
+                        netlist, candidate, request["top"], selected_modules,
+                        cells, output / "proof", **proof_args,
+                    )
             rewritten_path = output / "rewritten.v"
             patch_path = output / "patches.json"
             proof_path = output / "equivalence.json"

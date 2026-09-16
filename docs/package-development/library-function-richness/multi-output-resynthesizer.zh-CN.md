@@ -1,6 +1,6 @@
 # Multi-output Netlist Resynthesizer 规格
 
-状态：设计冻结；logical in-place ECO 隔离 POC 与 AES 十种新 Cell 的全设计等价证明已通过，物理模式与 Pack 接线未实现。
+状态：设计冻结；logical in-place ECO、层次化多模块 proof 和 AES 20-Cell 商业 P&R 已验证；物理收益为模型条件下的小幅正结果，Pack 接线未实现。
 归属：`custom-cell-fmax-dtco` Pack 的 domain tool；不是 Hima Runtime 组件，也不是通用 RTL synthesis 产品。
 
 ## 1. 决定

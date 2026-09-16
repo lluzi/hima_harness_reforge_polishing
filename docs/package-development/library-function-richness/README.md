@@ -18,6 +18,7 @@ GitHub tracker: [#40 — Build and integrate the Library Function Richness Frame
 - [Multi-output netlist resynthesizer specification](multi-output-resynthesizer.zh-CN.md)
 - [Multi-output resynthesizer isolated POC evidence](evidence/2026-09-16-multi-output-resynthesizer-poc.md)
 - [AES ten-cell multi-output logical ECO](evidence/2026-09-16-aes-10mo-logical-eco.md)
+- [AES 20-cell multi-output commercial P&R](evidence/2026-09-16-aes-mo20-commercial-pnr.md)
 - [Third-party theory review](evidence/2026-09-16-third-party-theory-review.md)
 - [Current HimaPack](../../../packs/custom-cell-fmax-dtco/)
 
@@ -47,7 +48,8 @@ of fitting a portable benefit forecast.
 | LFR-PACK-01 through LFR-PACK-06 | complete | Intent/Spec, contract, graph, stage dispatch, Readers/Judges and residual Workshop wrap the assessed Framework |
 | LFR-PACK-07 | in progress | Local contracts and real Yosys/ABC integration pass; Harness-owned test Campaign and Ledger evidence remain |
 | Fresh AES 50-Cell standalone E0 | complete, negative | Fresh F0-F3 admitted one Library; matched E0 observed -2.792% Fmax, so it is relationship evidence rather than a release candidate |
-| AES 10-cell multi-output logical ECO | complete, logical only | Ten P-canonical Cell types replace 23 instances with ten explicit masters; whole `aes_cipher_top` equivalence and rollback pass, physical benefit remains unknown |
+| AES 10-cell multi-output logical ECO | complete, logical only | Ten P-canonical Cell types replace 23 instances with ten explicit masters; whole `aes_cipher_top` equivalence and rollback pass |
+| AES 20-cell multi-output commercial P&R | complete, model-conditioned positive | Innovus retains 6/20 masters; Fmax +0.180%, logic area -7.274%, wirelength -6.507%, modeled power -4.294%; 5% target and post-route independent equivalence remain open |
 | LFR-PACK-08 | blocked by PACK-07 and business exit | A Harness-owned positive matched E0 benefit observation and Harness-generated release seal remain |
 
 No item is complete merely because code exists. Each item closes only with the evidence named in

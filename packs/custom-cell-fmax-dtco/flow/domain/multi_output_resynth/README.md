@@ -16,6 +16,11 @@ Yosys. A changed rewrite fails closed when Yosys is absent or inconclusive.
 The proof top and ECO subject module are independent: a leaf such as
 `aes_sbox_0` can be rewritten while equivalence is checked from
 `aes_cipher_top` without flattening or renaming the delivered hierarchy.
+One request may patch several combinational leaves. Conflict identity is
+`(module, instance)`, so repeated DC instance names in different modules do not
+silently consume each other's budget. Multi-module publication composes one
+Yosys proof per changed leaf with exact interface checks and byte-identical
+evidence for every byte outside those module definitions.
 
 `main.cpp` is a diagnostic against mockturtle commit
 `0886ebfdd101ce1110daf3d60b96d72edd3143ea`. It intentionally contains only the
