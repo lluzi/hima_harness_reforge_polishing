@@ -317,7 +317,7 @@ export const HIMA_STYLE = `
 .hima-config-field-row>span:first-child{min-width:120px;font-size:var(--hima-fs-label);color:var(--hima-ink)}
 .hima-config-mark{font-size:var(--hima-fs-eyebrow);color:var(--hima-accent);font-weight:600}
 .hima-changed{background:color-mix(in srgb, var(--hima-accent) 10%, transparent);border-radius:var(--hima-r-s)}
-.hima-config-mini-graph-wrap{max-width:100%;overflow:hidden;padding-right:4px}
+.hima-config-mini-graph-wrap{max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding-right:4px}
 .hima-config-mini-graph{display:block}
 .hima-config-mini-node{fill:var(--hima-paper);stroke:var(--hima-ink-2);stroke-width:1.25;vector-effect:non-scaling-stroke}
 .hima-config-mini-edge{fill:none;stroke:var(--hima-line-strong);stroke-width:1;vector-effect:non-scaling-stroke}

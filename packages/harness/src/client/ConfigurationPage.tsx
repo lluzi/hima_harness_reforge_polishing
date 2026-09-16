@@ -142,15 +142,22 @@ const rowProps = (path: string, changed: ReadonlySet<string>) => ({
  *  a graph with more rows must not shrink every node into an unreadable smudge just to keep the
  *  whole shape under some fixed box height. `NODE` is `layoutCanvas`'s own 36-unit node diameter; a
  *  14 px rendered diameter is what stays legible at this document's own label/eyebrow sizes. */
+/** The one true scale: a 36-unit (`NODE`) node rendered at a 14 px diameter, fixed regardless of how
+ *  many rows the reference graph has — never derived from fitting the whole scene into some box (a
+ *  many-row, many-node method must not shrink every node into an unreadable smudge just to keep the
+ *  overall shape under a fixed height; see item 3 below for what happens to a *wide* one instead). */
 const MINI_GRAPH_SCALE = 14 / NODE;
-const MINI_GRAPH_MIN_HEIGHT = 40;
-const MINI_GRAPH_MAX_HEIGHT = 72;
-/** Kind shapes are drawn at this fixed half-size in `layoutCanvas`'s own raw coordinate space (the
- *  `viewBox` below is the scene's own unscaled bounds; the `<svg>`'s `width`/`height` attributes are
- *  where the 14-px-node scale actually happens, left to the browser's own viewBox-to-viewport
- *  mapping) — never `NODE / 2`, which is the full canvas's own 18 px and would read as a formless
- *  blob once the whole scene is mapped down to a real diameter this small. */
-const MINI_GRAPH_NODE_HALF = 6;
+/** The desired on-screen node half-size in px (a 14 px diameter) — `KindOutline` draws in the same
+ *  raw scene units `node.x`/`node.y` and the `viewBox` below are in, so this is divided by `k` before
+ *  it reaches `KindOutline`, never passed through directly (that would be a raw-unit half-size of 7,
+ *  rendering at 7 times `k`, about 2.7 px — the exact bug a prior round of this fix shipped). */
+const MINI_GRAPH_NODE_HALF_PX = 7;
+/** The vertical margin (raw scene units) kept above the highest node/goal and below the lowest, so a
+ *  hung node's own stroke is never flush against the viewBox edge. */
+const MINI_GRAPH_Y_MARGIN = 20;
+/** The horizontal margin (raw scene units) kept to the right of the Goal roundel, the graph's own
+ *  rightmost mark. */
+const MINI_GRAPH_X_MARGIN = 24;
 
 function MiniReferenceGraph({ graph }: { graph: PreparationView['referenceGraph'] }): ReactElement {
   const scene = useMemo(() => layoutCanvas({
@@ -158,25 +165,23 @@ function MiniReferenceGraph({ graph }: { graph: PreparationView['referenceGraph'
     nodes: graph.nodes.map((node) => ({ id: node.id, kind: node.kind as NodeKind, caption: node.id })),
     edges: graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === true ? { revisit: true as const } : {}) })),
   }), [graph]);
-  // The scale is fixed by node size (a 36-unit node rendered at a legible 14 px), never derived from
-  // fitting the whole scene into some box: a graph with more rows must not shrink every node into an
-  // unreadable smudge just to keep the overall shape under a fixed height. The height clamp below is
-  // a display-box safety net, not the scale driver — `preserveAspectRatio="xMinYMid meet"` keeps the
-  // one true scale (`k`) as the limiting factor for the overwhelmingly common case (the clamp is a
-  // no-op whenever the natural scaled height already falls inside it), and only lets a genuinely tall
-  // (many-row) reference graph's whole shape shrink a little further, uniformly, rather than crop.
   const k = MINI_GRAPH_SCALE;
-  const width = scene.width * k;
-  const height = Math.min(MINI_GRAPH_MAX_HEIGHT, Math.max(MINI_GRAPH_MIN_HEIGHT, scene.height * k));
-  // `KindOutline`/the goal marker draw in the *same* raw scene units as `node.x`/`node.y` (the
-  // viewBox below maps those units down by `k`, not this component) — so their own half-size must be
-  // pre-divided by `k` here, or the 6 px this component asks for would be scaled down a second time
-  // by the viewBox mapping and read as a barely-there speck rather than a legible shape.
-  const rawHalf = MINI_GRAPH_NODE_HALF / k;
+  // The viewBox is trimmed to the node band, never the whole scene: `scene.height`/`scene.width`
+  // carry `layoutCanvas`'s own generous top padding (`PAD_Y`) and goal-roundel margin meant for the
+  // full-size canvas, which for even the shortest single-row graph is over 200 units tall — mapped by
+  // one fixed `k`, that is most of this preview's own height spent on empty margin, not method.
+  const ys = [...scene.nodes.map((node) => node.y), scene.goal.y];
+  const top = Math.min(...ys) - MINI_GRAPH_Y_MARGIN;
+  const bottom = Math.max(...ys) + MINI_GRAPH_Y_MARGIN;
+  const left = 0;
+  const right = scene.goal.x + MINI_GRAPH_X_MARGIN;
+  const width = (right - left) * k;
+  const height = (bottom - top) * k;
+  const rawHalf = MINI_GRAPH_NODE_HALF_PX / k;
   return (
     <div className="hima-config-mini-graph-wrap">
-      <svg className="hima-config-mini-graph" width={width} height={height} viewBox={`0 0 ${scene.width} ${scene.height}`}
-        preserveAspectRatio="xMinYMid meet" role="img" aria-label="Reference graph">
+      <svg className="hima-config-mini-graph" width={width} height={height} viewBox={`${left} ${top} ${right - left} ${bottom - top}`}
+        preserveAspectRatio="xMinYMin meet" role="img" aria-label={`Reference graph, ${scene.nodes.length} nodes`}>
         {scene.edges.map((edge, index) => <path key={index} d={edge.path} className={edge.kind === 'revisit' ? 'hima-config-mini-edge-revisit' : 'hima-config-mini-edge'} />)}
         {scene.nodes.map((node) => (
           <g key={node.id} transform={`translate(${node.x},${node.y})`} className="hima-config-mini-node">
