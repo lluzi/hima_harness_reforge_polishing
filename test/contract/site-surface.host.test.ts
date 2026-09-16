@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHimaHome, type HimaHome } from './support/dsh-home.ts';
 import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
 import { api, createLiveSession, openSession } from './support/hima-api.ts';
@@ -17,7 +17,7 @@ import { killSessions } from './support/fabric.ts';
 import { installPack, packsDirOf, writePackVariant } from './support/pack.ts';
 import { writeLocalSite, type LocalSite } from './support/site.ts';
 import { writeStandinFlow, type StandinFlow } from './support/standin-flow.ts';
-import { discoverSshSite, nodeLogTail, saveDiscoveredSite, type Channel } from '@hima/harness';
+import { discoverSshSite, nodeLogTail, saveDiscoveredSite, SiteUnreadableError, type Channel } from '@hima/harness';
 import type { JobDeps, LogTailView, RunView, SiteHeadView } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -244,11 +244,25 @@ test('Case 5: a running node whose log the Site cannot produce yet answers 200 w
         job: { session, workspace: h.workspace, name: 'synthesize', startedAt: new Date().toISOString(), wire: 'echo', pid: 1 },
         nodeId: 'synthesize',
       });
-      await host.ctx.hima.ledger.appendNode(run.id, { nodeId: 'synthesize', kind: 'act', state: 'running', attempt: 1, jobSession: session });
+      const nodeRecord = await host.ctx.hima.ledger.appendNode(run.id, { nodeId: 'synthesize', kind: 'act', state: 'running', attempt: 1, jobSession: session });
       const found = await nodeLogTail(deps, { run: run.id, nodeId: 'synthesize', lines: 5 });
       assert.equal(found.session, session, JSON.stringify(found));
       assert.deepEqual(found.lines, []);
       assert.equal(found.truncated, false);
+
+      // A revision that invalidates this node's own running record (#41 task 4 review round 3, item
+      // 1) removes it from what `nodeLogTail` sees as this node's *current* latest fact: `currentRecordsIn`
+      // must run over the Run's whole record set — including the `revision` record itself — before
+      // narrowing to node records, or the invalidation is never seen at all.
+      const sha = 'a'.repeat(64);
+      await host.ctx.hima.ledger.appendRevision(run.id, {
+        revisionId: 'rev-1', version: 1, event: 'applied',
+        proposalDigest: sha, methodIdentity: sha, sourceIdentity: sha, inputIdentity: sha, environmentIdentity: sha,
+        changedNodes: ['synthesize'], affectedNodes: ['synthesize'], invalidates: [nodeRecord.id],
+      });
+      const afterRevision = await nodeLogTail(deps, { run: run.id, nodeId: 'synthesize', lines: 5 });
+      assert.equal(afterRevision.session, undefined, JSON.stringify(afterRevision));
+      assert.deepEqual(afterRevision.lines, []);
     } finally { await host.dispose(); }
   } finally { await h.dispose(); }
 });
@@ -277,4 +291,58 @@ test('Case 6: POST /hima/api/sites/discover answers 503 hima/site-unreadable whe
     delete process.env.HIMA_TEST_DISCOVERY_STANDIN;
     await rm(tableFile, { force: true });
   }
+});
+
+test("Case 7: POST /hima/api/sites/discover with no ssh answers 400 naming \"ssh\", not a 500 (#41 task 4 review round 3, minor 2)", async (t) => {
+  const f = await bootedFixture(t);
+  if (!f) return;
+  try {
+    const sessionId = await createLiveSession(f.host, f.cookie, f.h.workspace);
+    const res = await api(f.host, f.cookie, '/hima/api/sites/discover', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, name: 'x' }),
+    });
+    const body = await res.json() as { error?: { code: string; message: string } };
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.equal(body.error?.code, 'hima/bad-request', JSON.stringify(body));
+    assert.match(body.error?.message ?? '', /ssh/);
+  } finally { await teardown(f); }
+});
+
+test('Case 8: a Site that cannot be asked for its log still reaches nodeLogTail as SiteUnreadableError, not a swallowed empty answer (#41 task 4 review round 3, minor 4)', async () => {
+  const h = await createHimaHome();
+  const savedPath = process.env.PATH;
+  try {
+    const site = await writeLocalSite(h);
+    const host = await bootInProcess(h);
+    try {
+      const deps: JobDeps = { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir };
+      const run = await host.ctx.hima.ledger.createRun({ campaignId: 'log-tail-unreadable', siteId: 'local', status: 'running' });
+      const session = `hima-${randomUUID()}-unreadable`;
+      await host.ctx.hima.ledger.appendJob(run.id, {
+        event: 'launched',
+        job: { session, workspace: h.workspace, name: 'synthesize', startedAt: new Date().toISOString(), wire: 'echo', pid: 1 },
+        nodeId: 'synthesize',
+      });
+      await host.ctx.hima.ledger.appendNode(run.id, { nodeId: 'synthesize', kind: 'act', state: 'running', attempt: 1, jobSession: session });
+      // No cheap `deps.channel` injection point exists on `JobDeps`/`jobTail` today (#41 task 4
+      // review round 3, minor 4) — `nodeLogTail` reaches a real `LocalChannel` through
+      // `loadSite`/`channelFor`, both hardcoded. The cheapest real fault this domain-level call can
+      // hit is the one `jobs-unreadable.test.ts` already uses for the same channel and the same
+      // reason: a PATH with no `tail` on it makes the spawn itself fail (ENOENT), which
+      // `LocalChannel.exec` turns into `SiteUnreadableError` — not a shell exiting non-zero (a plain
+      // `Error`, already covered by Case 5), but the channel failing to run anything at all.
+      const emptyBin = await mkdtemp(path.join(os.tmpdir(), 'hima-no-tail-'));
+      process.env.PATH = emptyBin;
+      try {
+        await assert.rejects(
+          nodeLogTail(deps, { run: run.id, nodeId: 'synthesize', lines: 5 }),
+          (err: unknown) => err instanceof SiteUnreadableError,
+        );
+      } finally {
+        process.env.PATH = savedPath;
+        await rm(emptyBin, { recursive: true, force: true });
+      }
+    } finally { await host.dispose(); }
+  } finally { await h.dispose(); }
 });

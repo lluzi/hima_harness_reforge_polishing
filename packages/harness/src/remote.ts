@@ -1810,8 +1810,10 @@ function sitesListOperation(ops: RemoteOperations): Answer {
 /** One sentence out of a `ZodError`, the shape this route's own field checks already answer in:
  *  never the raw dump `ZodError#toString()` gives, which is JSON and names nothing a caller reads. */
 function zodSentence(err: ZodError): string {
-  const joined = err.issues.map((issue) => issue.message).join('; ');
-  return joined || 'the request does not match the expected shape';
+  const issue = err.issues[0];
+  if (issue === undefined) return 'the request does not match the expected shape';
+  const field = issue.path.length > 0 ? issue.path.map(String).join('.') : 'the request body';
+  return `"${field}" ${issue.message.toLowerCase().replace(/\.$/, '')}`;
 }
 
 async function sitesDiscoverOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {

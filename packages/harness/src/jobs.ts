@@ -12,7 +12,7 @@ import { channelFor, mustRun, quote, type Channel } from './channel.js';
 import { loadSite } from './sites.js';
 import { decideLaunch } from './shell.js';
 import { existingRun, runFor } from './runs.js';
-import { currentRecordsIn, nodeRecordsIn } from './ledger.js';
+import { currentRecordsIn } from './ledger.js';
 import type { JobIdentity, JobRecord, LaunchedReading, LaunchedWorkshop, Ledger, NodeRecord, RefusalRecord, RunRecord } from './ledger.js';
 import { RunReferenceError, SiteUnreadableError, LaunchNotDispatchedError } from './errors.js';
 
@@ -579,7 +579,10 @@ export interface NodeLogTailResult {
  * A node's latest current record is what decides this, not any earlier one it may have gone through:
  * a node that ran and finished stopped having an open Job the moment its record stopped saying
  * `running`, whatever an older record of the same node still says, and a record a revision has
- * invalidated (`currentRecordsIn`) is not this node's latest fact either.
+ * invalidated (`currentRecordsIn`) is not this node's latest fact either. `currentRecordsIn` is run
+ * over the Run's *whole* record set, before narrowing to this node's own `node`-type records: it
+ * derives the invalidated set from the Run's `revision` records, which a pre-narrowed
+ * `nodeRecordsIn` result no longer carries, so the order here is load-bearing and not a style choice.
  *
  * A `running` node whose log the Site cannot yet produce — the window between the ledger's `running`
  * append and the launched wrapper's first redirect, or a workspace a caller removed from under it —
@@ -590,8 +593,12 @@ export interface NodeLogTailResult {
  */
 export async function nodeLogTail(deps: JobDeps, req: { readonly run: string; readonly nodeId: string; readonly lines?: number }): Promise<NodeLogTailResult> {
   const run = existingRun(deps.ledger, req.run);
-  const bound = Math.min(Math.max(Math.trunc(req.lines ?? defaultTailLines), 1), nodeLogTailMaxLines);
-  const latest = currentRecordsIn(nodeRecordsIn(deps.ledger, req.run))
+  const requested = req.lines !== undefined && Number.isFinite(req.lines) ? req.lines : defaultTailLines;
+  const bound = Math.min(Math.max(Math.trunc(requested), 1), nodeLogTailMaxLines);
+  // `currentRecordsIn` first, over every record of the Run — it is what tells an invalidated record
+  // apart from a current one by looking at the Run's own `revision` records, which a result already
+  // narrowed to `type: 'node'` (as `nodeRecordsIn` alone would be) no longer carries.
+  const latest = currentRecordsIn(deps.ledger.records({ runId: req.run }))
     .filter((record): record is NodeRecord => record.type === 'node' && record.nodeId === req.nodeId)
     .at(-1);
   if (latest === undefined || latest.state !== 'running' || latest.jobSession === undefined) {

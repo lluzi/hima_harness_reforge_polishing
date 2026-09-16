@@ -40,7 +40,7 @@ import { previewPackTransfer, applyPackTransfer } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
 import { strategyValue } from './run-arguments.js';
-import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, type Site, type SiteDiscoveryResult, type SshTarget } from './sites.js';
+import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteDiscoveryRequestSchema, type Site, type SiteDiscoveryResult, type SshTarget } from './sites.js';
 import { SshChannel, type Channel } from './channel.js';
 import { nodeLogTail } from './jobs.js';
 import { SiteUnreadableError } from './errors.js';
@@ -128,7 +128,7 @@ export { cancelRun, reconcileRuns } from './recovery.js';
 // suite and the live check both open one, and because the acceptance record names the preset.
 export { openMoment, momentOnCurrentNode, closeInterruptedMoments, openMomentsIn, nextMomentAttempt, HIMA_MOMENT_PRESET } from './moments.js';
 export type { Moment, MomentDeps, MomentRequest, MomentTurn, MomentOnNode } from './moments.js';
-export { MomentTurnError, NoCurrentNodeError } from './errors.js';
+export { MomentTurnError, NoCurrentNodeError, SiteUnreadableError } from './errors.js';
 export { writeExperience, readExperience, readMaterial, writeRunAssets, readRunAssets, readArchivedMaterial, listRunKnowledge, readRunKnowledge, HISTORY_SUMMARY_CAP, HISTORY_READ_CAP } from './experience.js';
 export type { WriteExperienceResult, ReadExperienceResult, WriteRunAssetsResult, ReadRunAssetsResult, ReadArchivedMaterialResult, RunKnowledgeCandidate, RunKnowledgeList, ReadRunKnowledgeResult } from './experience.js';
 export { RUN_ASSET_MANIFEST_SCHEMA } from './experience-report.js';
@@ -697,9 +697,16 @@ export default class Hima extends Service {
    * as `discoverSshSite`'s own default already does.
    */
   private async discoverSite(request: Omit<SiteDiscoverBody, 'sessionId'>): Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView }> {
+    // Held to the schema before anything here dereferences `request.ssh` (#41 task 4 review round
+    // 3, minor 2): a request body missing `ssh` entirely, or naming it as something other than an
+    // object, is the caller's own request-shape mistake — thrown here as the `ZodError` the route's
+    // own catch already turns into a 400 naming the field, rather than a `TypeError` that would
+    // reach the dispatcher as an unexplained 500.
+    const parsed = siteDiscoveryRequestSchema.safeParse({ name: request.name, ssh: request.ssh, hints: request.hints });
+    if (!parsed.success) throw parsed.error;
     const channelFor = testDiscoveryChannelFor() ?? ((name: string, ssh: SshTarget) => new SshChannel(name, ssh));
-    const ssh = { destination: request.ssh.destination, ...(request.ssh.jumps === undefined ? {} : { jumps: [...request.ssh.jumps] }) };
-    const result = await discoverSshSite({ name: request.name, ssh, hints: request.hints }, channelFor);
+    const ssh = { destination: parsed.data.ssh.destination, ...(parsed.data.ssh.jumps.length === 0 ? {} : { jumps: [...parsed.data.ssh.jumps] }) };
+    const result = await discoverSshSite({ name: parsed.data.name, ssh, hints: parsed.data.hints }, channelFor);
     if (request.save !== true) return { result };
     return { result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, result)) };
   }
