@@ -16,7 +16,7 @@
 // every keystroke, so a field mid-edit is never fighting the poll for the caret.
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { CampaignFile } from '../campaign-file.js';
-import { layoutCanvas, type NodeKind } from '../canvas-layout.js';
+import { layoutCanvas, NODE, type NodeKind } from '../canvas-layout.js';
 import type { CampaignFileView, RunView, SiteHeadView } from '../remote.js';
 import type { PreparationView, StartChoices } from '../workbench.js';
 import { discoverSite, fetchCampaignFile, fetchSites, fetchStartChoices, saveCampaignFile, startCampaign } from './api.js';
@@ -138,13 +138,18 @@ const rowProps = (path: string, changed: ReadonlySet<string>) => ({
 /** The mini reference graph (Global Constraints: 50 px tall, hollow) — the same `layoutCanvas` the
  *  Live canvas uses, drawn at a fraction of the size and with no state colour: a Campaign that has
  *  not started yet has no execution facts to show, only the method's own shape. */
-/** The mini reference graph's own cap (Global Constraints: 50 px; the review raised it to 64 px for
- *  legibility) — the height the scene's own bounds are scaled to fit, width following the same
- *  factor so the method's shape spans the row at whatever width that implies. */
-const MINI_GRAPH_MAX_HEIGHT = 64;
-/** Nodes on the mini graph are drawn at this fixed half-size (never `NODE / 2`, the full canvas's
- *  own 18 px): `layoutCanvas`'s own coordinates are what get compressed to fit the height cap above,
- *  and a full-size node drawn in that same compressed space would read as a formless blob. */
+/** The mini reference graph scales by node size, never by the row's own box (review, second pass):
+ *  a graph with more rows must not shrink every node into an unreadable smudge just to keep the
+ *  whole shape under some fixed box height. `NODE` is `layoutCanvas`'s own 36-unit node diameter; a
+ *  14 px rendered diameter is what stays legible at this document's own label/eyebrow sizes. */
+const MINI_GRAPH_SCALE = 14 / NODE;
+const MINI_GRAPH_MIN_HEIGHT = 40;
+const MINI_GRAPH_MAX_HEIGHT = 72;
+/** Kind shapes are drawn at this fixed half-size in `layoutCanvas`'s own raw coordinate space (the
+ *  `viewBox` below is the scene's own unscaled bounds; the `<svg>`'s `width`/`height` attributes are
+ *  where the 14-px-node scale actually happens, left to the browser's own viewBox-to-viewport
+ *  mapping) — never `NODE / 2`, which is the full canvas's own 18 px and would read as a formless
+ *  blob once the whole scene is mapped down to a real diameter this small. */
 const MINI_GRAPH_NODE_HALF = 6;
 
 function MiniReferenceGraph({ graph }: { graph: PreparationView['referenceGraph'] }): ReactElement {
@@ -153,18 +158,34 @@ function MiniReferenceGraph({ graph }: { graph: PreparationView['referenceGraph'
     nodes: graph.nodes.map((node) => ({ id: node.id, kind: node.kind as NodeKind, caption: node.id })),
     edges: graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === true ? { revisit: true as const } : {}) })),
   }), [graph]);
-  const height = Math.min(MINI_GRAPH_MAX_HEIGHT, scene.height);
-  const width = scene.width * (height / scene.height);
+  // The scale is fixed by node size (a 36-unit node rendered at a legible 14 px), never derived from
+  // fitting the whole scene into some box: a graph with more rows must not shrink every node into an
+  // unreadable smudge just to keep the overall shape under a fixed height. The height clamp below is
+  // a display-box safety net, not the scale driver — `preserveAspectRatio="xMinYMid meet"` keeps the
+  // one true scale (`k`) as the limiting factor for the overwhelmingly common case (the clamp is a
+  // no-op whenever the natural scaled height already falls inside it), and only lets a genuinely tall
+  // (many-row) reference graph's whole shape shrink a little further, uniformly, rather than crop.
+  const k = MINI_GRAPH_SCALE;
+  const width = scene.width * k;
+  const height = Math.min(MINI_GRAPH_MAX_HEIGHT, Math.max(MINI_GRAPH_MIN_HEIGHT, scene.height * k));
+  // `KindOutline`/the goal marker draw in the *same* raw scene units as `node.x`/`node.y` (the
+  // viewBox below maps those units down by `k`, not this component) — so their own half-size must be
+  // pre-divided by `k` here, or the 6 px this component asks for would be scaled down a second time
+  // by the viewBox mapping and read as a barely-there speck rather than a legible shape.
+  const rawHalf = MINI_GRAPH_NODE_HALF / k;
   return (
-    <svg className="hima-config-mini-graph" width={width} height={height} viewBox={`0 0 ${scene.width} ${scene.height}`}
-      preserveAspectRatio="xMinYMid meet" role="img" aria-label="Reference graph">
-      {scene.edges.map((edge, index) => <path key={index} d={edge.path} className="hima-config-mini-edge" />)}
-      {scene.nodes.map((node) => (
-        <g key={node.id} transform={`translate(${node.x},${node.y})`} className="hima-config-mini-node">
-          <KindOutline kind={node.kind} half={MINI_GRAPH_NODE_HALF} mark={node.kind === 'explore'} />
-        </g>
-      ))}
-    </svg>
+    <div className="hima-config-mini-graph-wrap">
+      <svg className="hima-config-mini-graph" width={width} height={height} viewBox={`0 0 ${scene.width} ${scene.height}`}
+        preserveAspectRatio="xMinYMid meet" role="img" aria-label="Reference graph">
+        {scene.edges.map((edge, index) => <path key={index} d={edge.path} className={edge.kind === 'revisit' ? 'hima-config-mini-edge-revisit' : 'hima-config-mini-edge'} />)}
+        {scene.nodes.map((node) => (
+          <g key={node.id} transform={`translate(${node.x},${node.y})`} className="hima-config-mini-node">
+            <KindOutline kind={node.kind} half={rawHalf} mark={node.kind === 'explore'} />
+          </g>
+        ))}
+        <circle cx={scene.goal.x} cy={scene.goal.y} r={rawHalf} className="hima-config-mini-goal" />
+      </svg>
+    </div>
   );
 }
 
@@ -211,11 +232,19 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
 
   const adopt = (next: CampaignFile) => { draftRef.current = next; setDraft(next); };
 
+  // Mounted-ness, read by `tick` after its own `await` — the Pack owner panel now replaces this page
+  // outright (`HimaWorkbench`'s mutually-exclusive render, #41 task 7 review), so opening it unmounts
+  // this component while a poll it started may still be in flight; that poll's `setState` calls must
+  // not fire into an unmounted component once its `fetch`es finally resolve.
+  const aliveRef = useRef(true);
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
+
   const tick = useRef(async () => {});
   tick.current = async () => {
     const [fileResult, choicesResult, sitesResult] = await Promise.all([
       fetchCampaignFile(sessionId), fetchStartChoices(), fetchSites(),
     ]);
+    if (!aliveRef.current) return;
     if (choicesResult.ok) setChoices(choicesResult.value);
     if (sitesResult.ok) setSites(sitesResult.value.sites);
     if (!fileResult.ok) { setError(fileResult.error.message); return; }
@@ -244,11 +273,10 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   };
 
   useEffect(() => {
-    let alive = true;
-    const poll = () => { if (alive) void tick.current(); };
+    const poll = () => { if (aliveRef.current) void tick.current(); };
     poll();
     const timer = setInterval(poll, 3000);
-    return () => { alive = false; clearInterval(timer); };
+    return () => { clearInterval(timer); };
   }, [sessionId]);
 
   const clearChanged = (path: string) => setChanged((prior) => { if (!prior.has(path)) return prior; const next = new Set(prior); next.delete(path); return next; });
@@ -270,11 +298,20 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
    * fresh file the Host just handed back (`result.error.current`) and retry once with that file's own
    * mtime — never a second, independently-reasoned write.
    */
-  const attemptSave = (path: string, updater: (file: CampaignFile) => CampaignFile, next: CampaignFile, expectedMtimeMs: number | undefined) => {
+  /**
+   * Save one edit, reading `expectedMtimeMs` off `server.current` at the moment the PUT is actually
+   * issued — inside the queued callback, never captured when this call was made (review: two fields
+   * committed back to back would otherwise each carry the mtime read *before either saved*, so the
+   * second request in the queue would always name a now-stale mtime and 409 as the common case,
+   * rather than only when something else genuinely changed the file first). Each save still reads
+   * whatever the *previous* save in this same queue already moved `server.current` to, so a
+   * successful chain of edits never conflicts with itself.
+   */
+  const attemptSave = (path: string, updater: (file: CampaignFile) => CampaignFile, next: CampaignFile) => {
     setInFlight((count) => count + 1);
     queue.current = queue.current.then(async () => {
       saving.current = true; setError(undefined);
-      const result = await saveCampaignFile(sessionId, next, expectedMtimeMs);
+      const result = await saveCampaignFile(sessionId, next, server.current?.mtimeMs);
       if (!result.ok && result.error.code === 'hima/campaign-file-changed' && result.error.current) {
         const remote = result.error.current;
         // HimaGuide's own changes are marked; the field this very save is retrying is not one of
@@ -286,7 +323,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         const retried = updater(remote.file);
         adopt(retried);
         setInFlight((count) => count - 1);
-        attemptSave(path, updater, retried, remote.mtimeMs);
+        attemptSave(path, updater, retried);
         return;
       }
       saving.current = false;
@@ -307,7 +344,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     if (base === undefined) return;
     const next = updater(base);
     adopt(next);
-    attemptSave(path, updater, next, server.current?.mtimeMs);
+    attemptSave(path, updater, next);
   };
 
   /** A generic non-file `commit` for the two actions (discovering a new Site, adding a document) that
@@ -529,15 +566,17 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
 
     <section data-hima-region="config-readiness" data-hima-state-ready={String(ready)}>
       <span className="hima-config-eyebrow">Readiness</span>
-      {unknowns.map((sentence, index) => <div key={index} className="hima-config-readiness-row" role="alert">
-        <Glyph name="circle" />
-        <span>{sentence}</span>
-        <button className="hima-button" data-hima-control={`config-ask-unknown-${index}`} onClick={() => ask(sentence)}>Ask HimaGuide</button>
-      </div>)}
-      {ready ? <div className="hima-config-readiness-row"><Glyph name="check" /><span>Every check passes; confirming creates the Campaign.</span></div> : null}
-      {error ? <div className="hima-config-readiness-row" role="alert"><Glyph name="warning" /><span>{error}</span>
-        <button className="hima-button" data-hima-control="config-retry" onClick={retry}>Retry</button>
+      {unknowns.length > 0 || error !== undefined ? <div role="alert">
+        {unknowns.map((sentence, index) => <div key={index} className="hima-config-readiness-row">
+          <Glyph name="circle" />
+          <span>{sentence}</span>
+          <button className="hima-button" data-hima-control={`config-ask-unknown-${index}`} onClick={() => ask(sentence)}>Ask HimaGuide</button>
+        </div>)}
+        {error ? <div className="hima-config-readiness-row"><Glyph name="warning" /><span>{error}</span>
+          <button className="hima-button" data-hima-control="config-retry" onClick={retry}>Retry</button>
+        </div> : null}
       </div> : null}
+      {ready ? <div className="hima-config-readiness-row"><Glyph name="check" /><span>Every check passes; confirming creates the Campaign.</span></div> : null}
       <div className="hima-config-confirm-row">
         <button className="hima-button hima-primary" data-hima-control="config-confirm" disabled={!ready || starting} onClick={() => { void onConfirm(); }}>{starting ? 'Starting Campaign…' : 'Confirm and start Campaign'}</button>
         <span className="hima-small">enabled when every check passes</span>

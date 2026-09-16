@@ -317,9 +317,12 @@ export const HIMA_STYLE = `
 .hima-config-field-row>span:first-child{min-width:120px;font-size:var(--hima-fs-label);color:var(--hima-ink)}
 .hima-config-mark{font-size:var(--hima-fs-eyebrow);color:var(--hima-accent);font-weight:600}
 .hima-changed{background:color-mix(in srgb, var(--hima-accent) 10%, transparent);border-radius:var(--hima-r-s)}
-.hima-config-mini-graph{display:block;max-width:100%}
-.hima-config-mini-node{fill:none;stroke:var(--hima-ink-3);stroke-width:1.4;vector-effect:non-scaling-stroke}
+.hima-config-mini-graph-wrap{max-width:100%;overflow:hidden;padding-right:4px}
+.hima-config-mini-graph{display:block}
+.hima-config-mini-node{fill:var(--hima-paper);stroke:var(--hima-ink-2);stroke-width:1.25;vector-effect:non-scaling-stroke}
 .hima-config-mini-edge{fill:none;stroke:var(--hima-line-strong);stroke-width:1;vector-effect:non-scaling-stroke}
+.hima-config-mini-edge-revisit{fill:none;stroke:var(--hima-accent);stroke-width:1;stroke-dasharray:3 2;vector-effect:non-scaling-stroke}
+.hima-config-mini-goal{fill:none;stroke:var(--hima-neutral);stroke-width:1.25;stroke-dasharray:3 2;vector-effect:non-scaling-stroke}
 .hima-config-empty-pack,.hima-config-knowledge-add-row{display:flex;gap:var(--hima-sp-2);align-items:center;flex-wrap:wrap}
 .hima-config-site-new{display:flex;flex-direction:column;gap:var(--hima-sp-2);margin-top:6px}
 .hima-config-site-new-label{display:flex;flex-direction:column;gap:2px;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
