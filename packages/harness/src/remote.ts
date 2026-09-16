@@ -86,7 +86,10 @@ import type { PackStageOrRefusal } from './packs.js';
 // person reads off this harness.
 import { packStageMark } from './card-labels.js';
 import { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
-import { campaignFileSchema, emptyCampaignFile, overridesOf, readCampaignFile, serializeCampaignFile, writeCampaignFile, type CampaignFile, type PreparationOverrides } from './campaign-file.js';
+// Type-only: this module reaches no filesystem of its own (see `RemoteOperations.readCampaignFile`/
+// `writeCampaignFile` below) and is bundled into the browser half through `client/api.ts`, where a
+// runtime import of `campaign-file.ts` would ship `node:fs` to every browser.
+import type { CampaignFile, CampaignFileReadResult, CampaignFileWriteResult, PreparationOverrides } from './campaign-file.js';
 
 // The one namespace and the one document, both from the leaf every face reads them from
 // (`paths.ts`): every Hima operation lives under `HIMA_API_PREFIX`, and the one thing Hima serves
@@ -571,6 +574,16 @@ export interface RemoteOperations {
    *  (`agent.session.header.cwd ?? agent.meta.cwd`) — where this session's `hima/campaign.yml`
    *  lives. Undefined for a session with no workspace, or one this Host does not know. */
   sessionWorkspace?(sessionId: string): string | undefined;
+  /** Read the session's own `hima/campaign.yml` (#41 task 3). This module reaches no filesystem of
+   *  its own — the caller has already checked `sessionWorkspace`/`validateSession` before reaching
+   *  this, and the implementation (`index.ts`) resolves the workspace and the file itself, letting a
+   *  filesystem fault other than "not found" or "not readable as this schema" propagate to the
+   *  Host's own internal-error path rather than answering it here. */
+  readCampaignFile?(sessionId: string): CampaignFileReadResult;
+  /** Validate and write the session's own `hima/campaign.yml` (#41 task 3). `file` is an unvalidated
+   *  request body field — the schema check happens inside the implementation, once, the same way a
+   *  hand-edited file on disk is checked. */
+  writeCampaignFile?(sessionId: string, file: unknown): CampaignFileWriteResult;
   executionContext?(runId: string): ExecutionContext;
   executionAction?(request: ExecutionActionRequest): Promise<ExecutionActionResult>;
   observe(request: ObserveRequest): Promise<ObserveResult>;
@@ -1067,18 +1080,31 @@ const startRequestOf = (request: StartRunBody): StartRunRequest => ({
 /**
  * Confirm straight from the session's own Campaign file (#41 task 3): read `hima/campaign.yml`
  * fresh, apply its overrides to a preparation and compare `proposalId` against that same
- * preparation, then apply the same overrides (Goal, Strategy, inputs, Budget) to the start itself —
- * so the comparison and the start are of the very same facts. `pack` and `site` remain the body's
- * own; the file's own `goal`/`strategy` replace the body's.
+ * preparation, then apply the same overrides object (Goal, Strategy, inputs, Budget) to the start
+ * itself — so the comparison and the start are of the very same facts, and `startRunOnce`'s own
+ * defence-in-depth recheck (`overrides` on `StartRunRequest`) recomputes that identity from the exact
+ * object this route already holds, never a lossily reconverted approximation of it. `pack` and `site`
+ * remain the body's own and must be the file's own `pack.id` too; `goal`/`strategy` are the file's,
+ * replacing the body's; `test`/`timeBox`/`retries`/`generations` are refused in this body exactly as
+ * the ordinary confirmed path refuses them, because a Campaign file's own Budget is what a
+ * Campaign-file start uses.
  */
 async function startFromCampaignFileOperation(ops: RemoteOperations, request: StartRunBody): Promise<Answer> {
   if (!request.sessionId) throw new BadRequest('a Campaign-file start requires a live conversation on this Host');
+  if (request.test !== undefined || request.timeBox !== undefined || request.retries !== undefined || request.generations !== undefined) {
+    throw new BadRequest('a Campaign-file start uses the file\'s own Budget and purpose; test/timeBox/retries/generations are refused in this body');
+  }
   const workspace = ops.sessionWorkspace?.(request.sessionId);
   if (workspace === undefined) throw new BadRequest('the selected conversation has no workspace to read a Campaign file from');
-  const found = readCampaignFile(workspace);
-  if (found === undefined) throw new BadRequest('no Campaign file exists in this conversation\'s workspace');
+  const read = ops.readCampaignFile?.(request.sessionId);
+  if (read === undefined) throw new BadRequest('Campaign file reads are unavailable on this Host');
+  if (read.kind === 'invalid') throw new BadRequest(read.message);
+  if (!read.exists) throw new BadRequest('no Campaign file exists in this conversation\'s workspace');
+  if (read.file.pack === undefined || read.file.pack.id !== request.pack) {
+    throw new BadRequest('the Campaign file does not name the Pack this start is for');
+  }
   if (request.proposalId === undefined) throw new BadRequest('confirm the current Campaign proposal before starting a Run');
-  const overrides = overridesOf(found.file);
+  const overrides = read.overrides;
   const current = ops.startPreparation(request.pack, request.site, overrides).proposal;
   if (current === undefined || !current.ready || !sameProposalFacts(current.id, request.proposalId)) {
     throw new BadRequest('Campaign preparation changed or is no longer ready; inspect the current Campaign file before confirming');
@@ -1092,6 +1118,10 @@ async function startFromCampaignFileOperation(ops: RemoteOperations, request: St
     goal: overrides.goal ?? {},
     strategy: overrides.strategy,
     inputs: overrides.inputs,
+    overrides,
+    // Unlike the identity above (which never converts units), the Run's own stored Budget is in
+    // milliseconds and a whole Generation count, so the file's own minutes/knobs are converted here,
+    // once, for the one place that actually needs them in that shape.
     ...(overrides.budget?.timeBoxMinutes === undefined ? {} : { timeBoxMs: Math.round(overrides.budget.timeBoxMinutes * 60_000) }),
     ...(overrides.budget?.retries === undefined ? {} : { retryAllowance: overrides.budget.retries }),
     ...(overrides.budget?.generations === undefined ? {} : { generationLimit: overrides.budget.generations }),
@@ -1620,62 +1650,51 @@ function startChoices(ops: RemoteOperations, askedPack: string | null, askedSite
   return pack === undefined ? selected : { ...selected, ...ops.startPreparation(pack, site) };
 }
 
-/** One sentence naming the field a Campaign file document failed on — the same shape
- *  `campaign-file.ts`'s own `parseCampaignFile` throws, applied here to a JSON body's `file` rather
- *  than to YAML text, so a PUT's schema error reads exactly as a hand-edited file's would. */
-function campaignFileFromBody(candidate: unknown): CampaignFile {
-  const result = campaignFileSchema.safeParse(candidate);
-  if (result.success) return result.data;
-  const issue = result.error.issues[0];
-  const field = issue === undefined ? 'the document' : issue.path.length > 0 ? issue.path.map(String).join('.') : 'the document';
-  const said = issue === undefined ? 'is not a readable Campaign file' : issue.message.toLowerCase().replace(/\.$/, '');
-  throw new BadRequest(`the Campaign file's "${field}" ${said}.`);
-}
-
 /** The session's own workspace, or the refusal every Campaign-file route answers the same way with:
- *  no live conversation named, or one with no workspace on this Host. */
-function campaignWorkspaceOf(ops: RemoteOperations, sessionId: string | null): string | { readonly refused: Answer } {
+ *  no live conversation named, or one with no workspace on this Host. Only a presence check — the
+ *  actual read/write goes through `ops.readCampaignFile`/`writeCampaignFile`, which take the session
+ *  id and resolve the workspace themselves, because this module reaches no filesystem of its own. */
+function campaignWorkspaceOf(ops: RemoteOperations, sessionId: string | null): true | { readonly refused: Answer } {
   if (!sessionId || !ops.validateSession?.(sessionId)) {
     return { refused: failure(404, 'hima/bad-request', 'select a live conversation on this Host before reading its Campaign file') };
   }
-  const workspace = ops.sessionWorkspace?.(sessionId);
-  if (workspace === undefined) {
+  if (ops.sessionWorkspace?.(sessionId) === undefined) {
     return { refused: failure(404, 'hima/bad-request', 'the selected conversation has no workspace to hold a Campaign file') };
   }
-  return workspace;
+  return true;
 }
 
 /** What either Campaign-file route answers: the file exactly as read (or the empty document when
  *  none exists), and — once it names a Pack — the same preparation shape `/start-options` answers,
  *  computed with this file's own overrides applied (#41 task 3). */
-function campaignFileViewOf(ops: RemoteOperations, workspace: string): CampaignFileView {
-  const found = readCampaignFile(workspace);
-  const file = found?.file ?? emptyCampaignFile();
-  const text = found?.text ?? serializeCampaignFile(file);
-  const siteName = file.site !== undefined && 'name' in file.site ? file.site.name : undefined;
-  const preparation = file.pack === undefined ? undefined : ops.startPreparation(file.pack.id, siteName, overridesOf(file));
+function campaignFileViewFrom(ops: RemoteOperations, read: { readonly exists: boolean; readonly file: CampaignFile; readonly text: string; readonly mtimeMs?: number; readonly overrides: PreparationOverrides }): CampaignFileView {
+  const siteName = read.file.site !== undefined && 'name' in read.file.site ? read.file.site.name : undefined;
+  const preparation = read.file.pack === undefined ? undefined : ops.startPreparation(read.file.pack.id, siteName, read.overrides);
   return {
-    exists: found !== undefined,
-    file, text,
-    ...(found === undefined ? {} : { mtimeMs: found.mtimeMs }),
+    exists: read.exists, file: read.file, text: read.text,
+    ...(read.mtimeMs === undefined ? {} : { mtimeMs: read.mtimeMs }),
     ...(preparation === undefined ? {} : { preparation }),
   };
 }
 
 async function campaignFileReadOperation(ops: RemoteOperations, sessionId: string | null): Promise<Answer> {
-  const workspace = campaignWorkspaceOf(ops, sessionId);
-  if (typeof workspace !== 'string') return workspace.refused;
-  return ok(campaignFileViewOf(ops, workspace));
+  const gate = campaignWorkspaceOf(ops, sessionId);
+  if (gate !== true) return gate.refused;
+  const read = ops.readCampaignFile?.(sessionId!);
+  if (read === undefined) return failure(500, 'hima/internal', 'Campaign file reads are unavailable on this Host');
+  if (read.kind === 'invalid') return failure(400, 'hima/bad-request', read.message);
+  return ok(campaignFileViewFrom(ops, read));
 }
 
 async function campaignFileWriteOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
   const body = await readJsonBody(req);
   const sessionId = requiredString(body, 'sessionId');
-  const workspace = campaignWorkspaceOf(ops, sessionId);
-  if (typeof workspace !== 'string') return workspace.refused;
-  const file = campaignFileFromBody(body.file);
-  writeCampaignFile(workspace, file);
-  return ok(campaignFileViewOf(ops, workspace));
+  const gate = campaignWorkspaceOf(ops, sessionId);
+  if (gate !== true) return gate.refused;
+  const written = ops.writeCampaignFile?.(sessionId, body.file);
+  if (written === undefined) return failure(500, 'hima/internal', 'Campaign file writes are unavailable on this Host');
+  if (written.kind === 'invalid') throw new BadRequest(written.message);
+  return ok(campaignFileViewFrom(ops, { exists: true, file: written.file, text: written.text, mtimeMs: written.mtimeMs, overrides: written.overrides }));
 }
 
 /**

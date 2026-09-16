@@ -164,6 +164,18 @@ export interface StartRunRequest {
    */
   readonly inputs?: Readonly<Record<string, string>>;
   /**
+   * The very overrides object the caller's own preparation used to mint `proposalId` (#41 task 3):
+   * a Campaign-file-aware caller (the `fromCampaignFile` route, `hima_run` applying a workspace
+   * file) already holds this from the same read that built `goal`/`strategy`/`inputs` above, and
+   * handing it straight through is what lets `startRunOnce`'s own defence-in-depth staleness recheck
+   * recompute the *exact* facts identity the proposal was minted with — including a Strategy knob
+   * away from its default, or a Budget override — rather than re-deriving an approximation from this
+   * request's own fields, which cannot always reconstruct it (a confirmed Campaign's Strategy may be
+   * omitted here because it already equals the reviewed proposal's; its Budget is refused here
+   * outright). Absent for every caller that predates that task, whose recheck is unchanged.
+   */
+  readonly overrides?: PreparationOverrides;
+  /**
    * What to set the pack's own Strategy knobs to for the first generation, by name (#58). A knob left
    * out takes the default that pack's contract declares, which is where a starting value comes from
    * now: what a Strategy is made of is the pack's, and so is what a Run of it starts at.
@@ -358,22 +370,24 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   // nothing was attempted anywhere, so nothing is recorded anywhere.
   const check = checkPack(pack, effectiveSite);
   const existingProposal = req.proposalId === undefined ? undefined : deps.ledger.runs().find((run) => run.proposalId === req.proposalId);
-  // `req.inputs` is the one signal that this confirmation followed an overrides-aware preparation
-  // (#41 task 3): a legacy caller — the workbench page, `/hima/api/start-options`, every tool call
-  // with no Campaign file — never sets it, and this recompute is then byte-identical to the one
-  // before this task, matching whatever `newCampaignProposalId(pack, site)` minted with no overrides.
-  // A caller that did apply a Campaign file always sets it (even to `{}`), and this recomputes the
-  // very same Goal/Strategy/Budget the file's own overrides put on the token when it was minted.
-  const identityOverrides: PreparationOverrides | undefined = req.inputs === undefined ? undefined : {
+  // Preferably the caller's own overrides object (#41 task 3): a Campaign-file-aware caller already
+  // holds the very `PreparationOverrides` its preparation minted `proposalId` from, and handing it
+  // straight through recomputes the *exact* facts identity — a Strategy knob away from its default
+  // that this request may leave out because it already equals the reviewed proposal's, a Budget
+  // override this request is refused from carrying outright, both included correctly.
+  //
+  // Falling back to `req.inputs` as the one signal that this confirmation followed an overrides-aware
+  // preparation without handing `overrides` through: a legacy caller — the workbench page,
+  // `/hima/api/start-options`, every tool call with no Campaign file — never sets either, and this
+  // recompute is then byte-identical to the one before this task, matching whatever
+  // `newCampaignProposalId(pack, site)` minted with no overrides. This fallback path cannot always
+  // reconstruct a Strategy or Budget override correctly (see above), which is why every caller that
+  // actually has one now hands `req.overrides` through instead of relying on it.
+  const identityOverrides: PreparationOverrides | undefined = req.overrides ?? (req.inputs === undefined ? undefined : {
     goal: Object.fromEntries(Object.entries(req.goal).map(([name, value]) => [name, typeof value === 'number' ? value : Number(value)])),
     strategy: req.strategy,
     inputs: req.inputs,
-    budget: {
-      ...(req.timeBoxMs === undefined ? {} : { timeBoxMinutes: req.timeBoxMs / 60_000 }),
-      ...(req.retryAllowance === undefined ? {} : { retries: req.retryAllowance }),
-      ...(req.generationLimit === undefined ? {} : { generations: req.generationLimit }),
-    },
-  };
+  });
   if (req.proposalId !== undefined && existingProposal === undefined && !proposalMatchesCurrentFacts(req.proposalId, pack, site, identityOverrides)) {
     throw new RunStartError('Campaign preparation changed after confirmation; inspect a fresh proposal before starting');
   }

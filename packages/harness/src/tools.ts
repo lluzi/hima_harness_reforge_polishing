@@ -31,23 +31,26 @@ type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]:
 /** Shared execution context crosses the same JSON boundary as the HTTP view. */
 function toolJson(value: object): Record<string, ToolJson> { return JSON.parse(JSON.stringify(value)) as Record<string, ToolJson>; }
 
-/** DSH already gives each Agent a workspace. Current knowledge import is confined to that workspace
- * instead of turning HimaGuide into a general local-file scanner. An explicit native picker can be
- * passed here later through the same `allowedRoots` seam without changing the knowledge runtime. */
-function knowledgeImportRoots(agent: Agent): readonly string[] {
-  const carrier = agent as unknown as { meta?: { cwd?: unknown }; session?: { header?: { cwd?: unknown } } };
-  const cwd = carrier.session?.header?.cwd ?? carrier.meta?.cwd;
-  return typeof cwd === 'string' && cwd.trim() !== '' ? [path.resolve(cwd)] : [];
-}
-
-/** The Agent's own workspace cwd, exactly as `knowledgeImportRoots` resolves one. Named separately
- *  from that function because a Campaign file lives at one fixed path inside a workspace, never
- *  among several allowed roots. */
-function agentWorkspace(agent: Agent | undefined): string | undefined {
+/**
+ * The Agent's own workspace cwd: dsh's own session header, with a fallback to the Agent's own meta
+ * for an older path. The one resolver every cwd-dependent Hima surface uses (#41 task 3) — current
+ * knowledge import roots below, the Campaign file `hima_prepare`/`hima_run` apply, and a live
+ * session's workspace looked up by id (`index.ts`'s own `sessionWorkspace`) — so no two of them can
+ * read the same two fields in a subtly different order.
+ */
+export function agentWorkspaceOf(agent: Agent | undefined): string | undefined {
   if (!agent) return undefined;
   const carrier = agent as unknown as { meta?: { cwd?: unknown }; session?: { header?: { cwd?: unknown } } };
   const cwd = carrier.session?.header?.cwd ?? carrier.meta?.cwd;
   return typeof cwd === 'string' && cwd.trim() !== '' ? cwd : undefined;
+}
+
+/** DSH already gives each Agent a workspace. Current knowledge import is confined to that workspace
+ * instead of turning HimaGuide into a general local-file scanner. An explicit native picker can be
+ * passed here later through the same `allowedRoots` seam without changing the knowledge runtime. */
+function knowledgeImportRoots(agent: Agent): readonly string[] {
+  const cwd = agentWorkspaceOf(agent);
+  return cwd === undefined ? [] : [path.resolve(cwd)];
 }
 
 /**
@@ -62,7 +65,7 @@ function agentWorkspace(agent: Agent | undefined): string | undefined {
  */
 function campaignFileApplication(agent: Agent | undefined, packId: string, useFile: boolean):
   { readonly campaignFile: { readonly path: string; readonly applied: boolean }; readonly overrides?: PreparationOverrides } {
-  const workspace = useFile ? agentWorkspace(agent) : undefined;
+  const workspace = useFile ? agentWorkspaceOf(agent) : undefined;
   const found = workspace === undefined ? undefined : readCampaignFile(workspace);
   const applied = found !== undefined && found.file.pack?.id === packId;
   return { campaignFile: { path: CAMPAIGN_FILE_RELATIVE, applied }, ...(applied ? { overrides: overridesOf(found!.file) } : {}) };
@@ -652,21 +655,29 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         // The same checks the command face and the route make, from the same tables: a tool call is
         // a caller like any other, and a time box no person could type must not be one a model can.
         const timeBox = toolNumber('timeBox', args.timeBox);
+        // The confirmation already held this Agent's own Strategy to the reviewed proposal's above
+        // (`samePreparedFacts`), which tolerates an omitted `args.strategy` because it already equals
+        // `current.strategy` — but the *actual* Run must still start at that same Strategy, not
+        // silently fall back to the Pack's plain defaults, when the file's own knob is what put it
+        // there. Budget is the same shape: a confirmed Campaign is refused explicit budget args
+        // above, so the file's own Budget override — the only other source — is what reaches the Run.
         const result = await startRun(deps, {
           ownerSessionId: legacyAutomaticAllowed() ? undefined : String(execution.agent.id),
           ...(args.proposalId === undefined ? {} : { proposalId: args.proposalId }),
           pack: args.pack,
           site: args.site,
           goal,
-          strategy,
+          strategy: strategy ?? overrides?.strategy,
           ...(overrides?.inputs === undefined ? {} : { inputs: overrides.inputs }),
+          ...(overrides === undefined ? {} : { overrides }),
           // An absent key, never an undefined one, as everywhere else a request is composed here:
           // the schema above has already held it to a boolean, so a caller that said nothing has
           // said nothing and the pack folder decides.
           ...(args.test === undefined ? {} : { test: args.test }),
-          timeBoxMs: timeBox === undefined ? undefined : Math.round(timeBox * 60_000),
-          retryAllowance: toolNumber('retries', args.retries),
-          generationLimit: toolNumber('generations', args.generations),
+          timeBoxMs: timeBox !== undefined ? Math.round(timeBox * 60_000)
+            : overrides?.budget?.timeBoxMinutes !== undefined ? Math.round(overrides.budget.timeBoxMinutes * 60_000) : undefined,
+          retryAllowance: toolNumber('retries', args.retries) ?? overrides?.budget?.retries,
+          generationLimit: toolNumber('generations', args.generations) ?? overrides?.budget?.generations,
         });
         return { ...runToolValue(result), campaignFile, ...(result.kind === 'ran' ? { context: toolJson(executionContext(deps, result.run.id)) } : {}) };
       },

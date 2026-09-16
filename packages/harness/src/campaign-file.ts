@@ -12,7 +12,7 @@
 // into overrides are one file because all three are read together everywhere this file is used: a
 // route that read it one way and wrote it another would drift, and a caller of `overridesOf` who did
 // not also parse the same schema could compute overrides no file on disk actually says.
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -55,6 +55,13 @@ export const campaignFileSchema = z.strictObject({
 
 export type CampaignFile = z.infer<typeof campaignFileSchema>;
 
+/** A document this file could not read as `hima-campaign/1`: bad YAML, or a value the schema
+ *  refuses. Its message is always the one sentence naming the field — never a raw `ZodError` or a
+ *  YAML library's own exception — so a caller can tell it apart from a filesystem fault (`EACCES`
+ *  and the like keep their own `NodeJS.ErrnoException`, uncaught) and answer it as the caller's own
+ *  mistake rather than this Host's. */
+export class CampaignFileError extends Error {}
+
 /** What a fresh workspace has before anyone has written anything: the schema line and nothing else,
  *  every collection empty. What `GET /hima/api/campaign` answers when no file exists yet, so a
  *  caller always has one shape to render whether or not a person has started editing. */
@@ -71,16 +78,17 @@ function oneSentence(error: z.ZodError): string {
   return `the Campaign file's "${field}" ${issue.message.toLowerCase().replace(/\.$/, '')}.`;
 }
 
-/** Parse a Campaign file's text. Throws one sentence naming the field on any schema error. */
+/** Parse a Campaign file's text. Throws `CampaignFileError` with one sentence naming the field on
+ *  any schema error. */
 export function parseCampaignFile(text: string): CampaignFile {
   let raw: unknown;
   try {
     raw = parseYaml(text);
   } catch (err) {
-    throw new Error(`the Campaign file is not readable YAML: ${(err as Error).message}`);
+    throw new CampaignFileError(`the Campaign file is not readable YAML: ${(err as Error).message}`);
   }
   const result = campaignFileSchema.safeParse(raw ?? { schema: CAMPAIGN_SCHEMA });
-  if (!result.success) throw new Error(oneSentence(result.error));
+  if (!result.success) throw new CampaignFileError(oneSentence(result.error));
   return result.data;
 }
 
@@ -119,16 +127,26 @@ export function readCampaignFile(workspace: string):
 }
 
 /** Write the file into a session workspace: `mkdir -p hima/`, then an atomic rename so a reader
- *  never observes a half-written document. */
-export function writeCampaignFile(workspace: string, file: CampaignFile): { readonly text: string; readonly mtimeMs: number } {
-  const validated = campaignFileSchema.parse(file);
-  const text = serializeCampaignFile(validated);
+ *  never observes a half-written document. `candidate` is unknown, never assumed already valid — a
+ *  caller handing this a JSON request body's own field gets the same one-sentence `CampaignFileError`
+ *  a hand-edited file's schema failure would, not a raw `ZodError`. A tmp file left by a failed write
+ *  or rename is removed before the fault propagates; nothing here writes a document to disk unless
+ *  it fully replaces the one that was there. */
+export function writeCampaignFile(workspace: string, candidate: unknown): { readonly text: string; readonly mtimeMs: number } {
+  const result = campaignFileSchema.safeParse(candidate);
+  if (!result.success) throw new CampaignFileError(oneSentence(result.error));
+  const text = serializeCampaignFile(result.data);
   const dir = path.join(workspace, 'hima');
   mkdirSync(dir, { recursive: true });
   const full = path.join(dir, 'campaign.yml');
   const tmp = path.join(dir, `.campaign.yml.tmp-${randomUUID()}`);
-  writeFileSync(tmp, text, 'utf8');
-  renameSync(tmp, full);
+  try {
+    writeFileSync(tmp, text, 'utf8');
+    renameSync(tmp, full);
+  } catch (err) {
+    try { unlinkSync(tmp); } catch { /* best-effort cleanup; the write's own fault is what matters */ }
+    throw err;
+  }
   return { text, mtimeMs: statSync(full).mtimeMs };
 }
 
@@ -142,6 +160,31 @@ export interface PreparationOverrides {
   readonly inputs?: Readonly<Record<string, string>>;
   readonly budget?: CampaignFile['budget'];
 }
+
+/**
+ * What `RemoteOperations.readCampaignFile`/`writeCampaignFile` answer with (#41 task 3): declared
+ * here, beside the schema and the functions that build them, rather than in `remote.ts` — `remote.ts`
+ * reaches no filesystem of its own (its own header says so, and it is bundled into the browser half
+ * through `client/api.ts`), so every filesystem-touching read or write of this file is a callback
+ * `index.ts` implements, and the shapes those callbacks answer with belong beside what they carry:
+ * the one `CampaignFile` reading this module already knows how to parse, serialize and turn into
+ * overrides. `remote.ts` imports these two as types only.
+ */
+export type CampaignFileReadResult =
+  /** A document on disk this module could not read as `hima-campaign/1`; `message` is the one
+   *  sentence `CampaignFileError` carries. A filesystem fault (`EACCES` and the like) is not this —
+   *  `index.ts`'s own implementation lets that propagate to the Host's internal-error path instead. */
+  | { readonly kind: 'invalid'; readonly message: string }
+  /** The file exactly as read, or the empty document (`exists: false`, no `mtimeMs`) when none is
+   *  there yet — one shape either way, with `overrides` already computed off `file`, so a caller
+   *  never has to call `overridesOf` itself. */
+  | { readonly kind: 'read'; readonly exists: boolean; readonly file: CampaignFile; readonly text: string; readonly mtimeMs?: number; readonly overrides: PreparationOverrides };
+
+export type CampaignFileWriteResult =
+  /** The candidate JSON body handed in did not read as `hima-campaign/1`; `message` is the one
+   *  sentence naming the field, never a raw `ZodError`. */
+  | { readonly kind: 'invalid'; readonly message: string }
+  | { readonly kind: 'written'; readonly file: CampaignFile; readonly text: string; readonly mtimeMs: number; readonly overrides: PreparationOverrides };
 
 /** The overrides a Campaign file states, read straight off its own fields. */
 export const overridesOf = (file: CampaignFile): PreparationOverrides => ({

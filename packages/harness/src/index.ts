@@ -32,12 +32,13 @@ import { drainExecutionObservers, reconcileExecutionIntents, executionAction, ex
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
 import { handleHimaCommand, himaCommandDescription, versionLine } from './commands.js';
-import { himaTools } from './tools.js';
+import { agentWorkspaceOf, himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes } from './remote.js';
 import { previewPackTransfer, applyPackTransfer } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
+import { strategyValue } from './run-arguments.js';
 import { installedSites, loadSite } from './sites.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
@@ -47,7 +48,10 @@ import { campaignKnowledgeScope, currentKnowledgeDocumentCount } from './worksho
 // The audit the routes answer with: the module-level pair every channel in this process records into.
 import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from './channel.js';
 import type { PreparationView } from './workbench.js';
-import type { PreparationOverrides } from './campaign-file.js';
+import {
+  CampaignFileError, emptyCampaignFile, overridesOf, parseCampaignFile, readCampaignFile, serializeCampaignFile, writeCampaignFile,
+  type CampaignFileReadResult, type CampaignFileWriteResult, type PreparationOverrides,
+} from './campaign-file.js';
 
 // The Site-facing pieces are part of the bundle's surface: an operator inspects a Site's warm channel
 // and the commands it has run, and the contract suite reads both.
@@ -393,6 +397,8 @@ export default class Hima extends Service {
           ledger: this.ledger,
           validateSession: (id) => this.ctx.get('agents')?.list().some((agent) => String(agent.id) === id) === true,
           sessionWorkspace: (id) => this.sessionWorkspace(id),
+          readCampaignFile: (id) => this.readCampaignFileOf(id),
+          writeCampaignFile: (id, file) => this.writeCampaignFileOf(id, file),
           packTransfer: (request) => {
             const installed = path.resolve(this.config.packsDir, validPackId.parse(request.pack));
             if ((request.mode === 'install' || request.mode === 'upgrade') && !request.source) throw new Error(`choose a Pack source for ${request.mode}`);
@@ -551,16 +557,49 @@ export default class Hima extends Service {
     return momentOnCurrentNode({ ledger: this.ledger, ctx: this.ctx }, runId, instructions);
   }
 
-  /** A live session's own workspace cwd, exactly as `tools.ts` resolves one for the actual
-   *  conversational Agent (`agent.session.header.cwd ?? agent.meta.cwd`) — where that session's
-   *  `hima/campaign.yml` lives (#41 task 3). Undefined for a session id this Host does not carry an
-   *  Agent for, or one with no workspace. */
+  /** A live session's own workspace cwd, through the one resolver every cwd-dependent Hima surface
+   *  uses (`agentWorkspaceOf`, `tools.ts`) — where that session's `hima/campaign.yml` lives (#41 task
+   *  3). Undefined for a session id this Host does not carry an Agent for, or one with no workspace. */
   private sessionWorkspace(sessionId: string): string | undefined {
-    const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === sessionId);
-    if (!agent) return undefined;
-    const carrier = agent as unknown as { meta?: { cwd?: unknown }; session?: { header?: { cwd?: unknown } } };
-    const cwd = carrier.session?.header?.cwd ?? carrier.meta?.cwd;
-    return typeof cwd === 'string' && cwd.trim() !== '' ? cwd : undefined;
+    return agentWorkspaceOf(this.ctx.get('agents')?.list().find((item) => String(item.id) === sessionId));
+  }
+
+  /** `RemoteOperations.readCampaignFile` (#41 task 3): resolve the session's workspace and read its
+   *  `hima/campaign.yml`, here rather than in `remote.ts` because that module reaches no filesystem
+   *  of its own. A schema/YAML failure (`CampaignFileError`) answers `invalid` with its own sentence;
+   *  any other fault (`EACCES` and the like) propagates to the Host's internal-error path. */
+  private readCampaignFileOf(sessionId: string): CampaignFileReadResult {
+    const workspace = this.sessionWorkspace(sessionId);
+    const empty = emptyCampaignFile();
+    if (workspace === undefined) return { kind: 'read', exists: false, file: empty, text: serializeCampaignFile(empty), overrides: overridesOf(empty) };
+    let found: ReturnType<typeof readCampaignFile>;
+    try {
+      found = readCampaignFile(workspace);
+    } catch (err) {
+      if (err instanceof CampaignFileError) return { kind: 'invalid', message: err.message };
+      throw err;
+    }
+    const file = found?.file ?? empty;
+    const text = found?.text ?? serializeCampaignFile(file);
+    return { kind: 'read', exists: found !== undefined, file, text, ...(found === undefined ? {} : { mtimeMs: found.mtimeMs }), overrides: overridesOf(file) };
+  }
+
+  /** `RemoteOperations.writeCampaignFile` (#41 task 3): resolve the session's workspace and validate
+   *  and write `candidate` as its `hima/campaign.yml`, for the same reason `readCampaignFileOf` is
+   *  here and not in `remote.ts`. A session with no workspace is a caller's mistake the route itself
+   *  already refused before reaching this. */
+  private writeCampaignFileOf(sessionId: string, candidate: unknown): CampaignFileWriteResult {
+    const workspace = this.sessionWorkspace(sessionId);
+    if (workspace === undefined) return { kind: 'invalid', message: 'the selected conversation has no workspace to write a Campaign file into.' };
+    let written: ReturnType<typeof writeCampaignFile>;
+    try {
+      written = writeCampaignFile(workspace, candidate);
+    } catch (err) {
+      if (err instanceof CampaignFileError) return { kind: 'invalid', message: err.message };
+      throw err;
+    }
+    const file = parseCampaignFile(written.text);
+    return { kind: 'written', file, text: written.text, mtimeMs: written.mtimeMs, overrides: overridesOf(file) };
   }
 
   /** What every Hima operation is given: this host's ledger and judge, where its Sites and packs
@@ -631,18 +670,31 @@ export default class Hima extends Service {
       : site.discovery === undefined ? 'needs-discovery' as const : site.discovery.stale ? 'stale' as const : 'ready' as const;
     const words = packWords(pack);
     const goalDeclared = goalDeclarationOf(pack);
-    const goalUnknowns: string[] = [];
+    // Every way a Campaign file's own overrides can be wrong about this Pack (#41 task 3): a Goal
+    // parameter it does not declare, a declared one this file leaves unset, one given a value the
+    // start path would itself refuse (`strategyValue`, the same check `goalFrom`/`strategyFrom`
+    // apply at admission — a value this preparation waved through and the start later refused would
+    // be a proposal calling itself ready about a Run that cannot happen), and an input override
+    // naming something this Pack never declared. Every one of these is a sentence, and any of them
+    // makes this preparation not ready — a Goal is never filled from a default (#41 task 3), and an
+    // override this Pack does not recognize is not silently ignored either.
+    const overrideUnknowns: string[] = [];
     const goal: Record<string, number> = overrides === undefined
       ? Object.fromEntries(Object.entries(goalDeclared).map(([name, declaration]) => [name, declaration.default]))
       : { ...(overrides.goal ?? {}) };
     if (overrides !== undefined) {
+      for (const name of Object.keys(overrides.goal ?? {})) {
+        if (!Object.hasOwn(goalDeclared, name)) overrideUnknowns.push(`Goal parameter "${name}" is not declared by Pack ${pack.id}.`);
+      }
       for (const [name, declaration] of Object.entries(goalDeclared)) {
         const label = words?.goal[name]?.label ?? name;
         const given = overrides.goal?.[name];
-        if (given === undefined) goalUnknowns.push(`Goal ${label} is not set.`);
-        else if (!Number.isFinite(given) || given < declaration.min || given > declaration.max) {
-          goalUnknowns.push(`Goal ${label} must be from ${String(declaration.min)} through ${String(declaration.max)}${declaration.unit ? ` ${declaration.unit}` : ''}.`);
-        }
+        if (given === undefined) { overrideUnknowns.push(`Goal ${label} is not set.`); continue; }
+        const held = strategyValue(name, declaration, given);
+        if ('error' in held) overrideUnknowns.push(held.error.replace('strategy knob', 'Goal parameter'));
+      }
+      for (const name of Object.keys(overrides.inputs ?? {})) {
+        if (!pack.contract.inputs.some((input) => input.name === name)) overrideUnknowns.push(`Input "${name}" is not declared by Pack ${pack.id}.`);
       }
     }
     const unknowns = [
@@ -651,14 +703,14 @@ export default class Hima extends Service {
       ...(siteReadiness === 'needs-discovery' ? ['The SSH Site has not completed bounded discovery.'] : []),
       ...(siteReadiness === 'stale' ? ['The saved SSH Site discovery is stale.'] : []),
       ...missingCommands.map((command) => `Required command ${command} was not found by Site discovery.`),
-      ...goalUnknowns,
+      ...overrideUnknowns,
     ];
     const strategy = overrides === undefined
       ? Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, declaration.default]))
       : Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, overrides.strategy?.[name] ?? declaration.default]));
     const referenceGraph = { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
       edges: pack.graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === undefined ? {} : { revisit: edge.revisit }) })) };
-    const ready = check?.fit === true && siteReadiness === 'ready' && missingCommands.length === 0 && (overrides === undefined || goalUnknowns.length === 0);
+    const ready = check?.fit === true && siteReadiness === 'ready' && missingCommands.length === 0 && (overrides === undefined || overrideUnknowns.length === 0);
     const proposalId = newCampaignProposalId(pack, site, overrides);
     const knowledgeScope = campaignKnowledgeScope(proposalId);
     const goalDeclaredView = Object.fromEntries(Object.entries(goalDeclared).map(([name, declaration]) => [name, {

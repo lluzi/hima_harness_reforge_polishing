@@ -6,6 +6,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { createHimaHome, type HimaHome } from './support/dsh-home.ts';
 import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
 import { api, createLiveSession, openSession } from './support/hima-api.ts';
@@ -219,11 +221,14 @@ test('Case 7: hima_prepare applies this Agent workspace\'s own Campaign file by 
     assert.equal(appliedJson.goal?.target_period_ns, 3.1, JSON.stringify(appliedJson));
     assert.equal(appliedJson.ready, true, JSON.stringify(appliedJson));
 
-    // `file: false` never reads the file at all: existing callers that pass no overrides — every
-    // hima_prepare call that predates this task, none of which ever names a Campaign file — behave
-    // exactly as before, which for this Pack's legacy Goal fallback (`legacyPeriodGoal.default`,
-    // 2.3) is a ready preparation stated at the Pack's own default, not this file's 3.1, and not the
-    // stricter "every Goal parameter must be explicit" rule a real Campaign file switches on.
+    // Ruling (review item 5): readiness strictness is gated on `overrides !== undefined`, which is
+    // the plan's own requirement, not an implementation shortcut. `file: false` never reads the file
+    // at all, so `overrides` is `undefined` here exactly as it is for every caller that predates this
+    // task and never named a Campaign file — the legacy workbench page, `/hima/api/start-options`,
+    // every `hima_prepare` call with no matching file. Legacy preparation without a file keeps the
+    // Pack's own defaults (`legacyPeriodGoal.default`, 2.3) and never asks about a Goal at all;
+    // strictness — every declared Goal parameter explicit, never defaulted — applies whenever
+    // overrides are actually supplied, which `file: false` deliberately opts out of.
     const notApplied = await host.ctx.tools.execute({
       callId: 'prepare-nofile' as never, name: 'hima_prepare', arguments: { pack: campaignFilePackId, site: 'local', file: false },
       agent, signal: AbortSignal.timeout(20_000),
@@ -234,4 +239,103 @@ test('Case 7: hima_prepare applies this Agent workspace\'s own Campaign file by 
     assert.equal(notAppliedJson.goal?.target_period_ns, 2.3, JSON.stringify(notAppliedJson));
     assert.equal(notAppliedJson.ready, true, JSON.stringify(notAppliedJson));
   } finally { await host.dispose(); await h.dispose(); }
+});
+
+// Review item CRITICAL 1: `hima_run` must confirm a file that sets a Strategy knob away from its
+// default and a Budget override, neither of which the tool's own arguments carry (Strategy may be
+// omitted once it already matches the reviewed proposal; a confirmed Campaign refuses Budget args
+// outright) — so `startRunOnce`'s own defence-in-depth staleness recheck must recompute the exact
+// facts identity the file's overrides minted, and the file's own Strategy/Budget must still reach the
+// actual Run.
+test('Case 8: hima_run confirms a file that sets a Strategy knob and a Budget override, with no strategy/budget args', async (t) => {
+  const h = await createHimaHome();
+  const flow = await writeStandinFlow(t, h, {});
+  assert.ok(flow, 'the stand-in flow is written');
+  await installCampaignFilePack(h);
+  await writeLocalSite(h, {
+    allowedReadRoots: [h.workspace, flow!.root],
+    allowedWriteRoots: [h.workspace],
+    bindings: { flowRoot: flow!.root, design: flow!.design, workspaceRoot: h.workspace },
+  });
+  const host: InProcessHost = await bootInProcess(h);
+  try {
+    // periodNs's declared default is 2.30 (min 0.5, max 10); 3.5 is away from it. The Pack itself
+    // declares budget.timeBoxMs: 300000 (installCampaignFilePack); the file's own 1.5 minutes
+    // (90000 ms) must win over that Pack default, matching the 'file' > 'pack' > 'harness' order.
+    writeCampaignFile(h.workspace, {
+      schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' },
+      inputs: {}, goal: { target_period_ns: 2.3 }, strategy: { periodNs: 3.5 },
+      budget: { timeBoxMinutes: 1.5 }, knowledge: [], notes: '',
+    });
+    const agent = await createRootAgent(host.ctx, h.workspace);
+    const prepared = jsonOf(await host.ctx.tools.execute({
+      callId: 'prepare-budget' as never, name: 'hima_prepare', arguments: { pack: campaignFilePackId, site: 'local' },
+      agent, signal: AbortSignal.timeout(20_000),
+    }) as unknown as ToolResult);
+    assert.equal(prepared.ready, true, JSON.stringify(prepared));
+    assert.equal(prepared.strategy?.periodNs, 3.5, JSON.stringify(prepared));
+
+    const started = await host.ctx.tools.execute({
+      callId: 'run-from-file' as never, name: 'hima_run',
+      arguments: { proposalId: prepared.id, pack: campaignFilePackId, site: 'local', goal: { target_period_ns: 2.3 } },
+      agent, signal: AbortSignal.timeout(20_000),
+    });
+    assert.equal(started.isError, false, JSON.stringify(started));
+    const startedJson = jsonOf(started as unknown as ToolResult);
+    assert.equal(startedJson.kind, 'ran', JSON.stringify(startedJson));
+    assert.equal(startedJson.strategy?.periodNs, 3.5, JSON.stringify(startedJson));
+    const run = host.ctx.hima.ledger.run(startedJson.runId as string);
+    assert.ok(run, 'the run exists in the ledger');
+    assert.equal(run!.budget!.timeBoxMs, 90_000, JSON.stringify(run!.budget));
+  } finally { await host.dispose(); await h.dispose(); }
+});
+
+// Review item IMPORTANT 2: a malformed file on disk (bad YAML content or a value the schema
+// refuses) is the caller's own mistake, not this Host's fault — it must answer 400 with the one
+// sentence naming the field, never 500.
+test('Case 9: a malformed Campaign file on disk answers 400 naming the field, not 500', async (t) => {
+  const f = await bootedFixture(t);
+  try {
+    mkdirSync(path.join(f.h.workspace, 'hima'), { recursive: true });
+    writeFileSync(path.join(f.h.workspace, 'hima', 'campaign.yml'), 'schema: hima-campaign/1\ngoal: [oops]\n', 'utf8');
+    const res = await getCampaign(f);
+    const body = await res.json() as any;
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.match(body.error?.message ?? '', /goal/i, JSON.stringify(body));
+  } finally { await teardown(f); }
+});
+
+test('Case 10: starting fromCampaignFile against a malformed file answers 400, not 500', async (t) => {
+  const f = await bootedFixture(t);
+  try {
+    mkdirSync(path.join(f.h.workspace, 'hima'), { recursive: true });
+    writeFileSync(path.join(f.h.workspace, 'hima', 'campaign.yml'), 'schema: hima-campaign/1\ngoal: [oops]\n', 'utf8');
+    const res = await api(f.host, f.cookie, '/hima/api/runs/start', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fromCampaignFile: true, sessionId: f.sessionId, pack: campaignFilePackId, site: 'local', proposalId: 'irrelevant.deadbeef.deadbeef' }),
+    });
+    const body = await res.json() as any;
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.match(body.error?.message ?? '', /goal/i, JSON.stringify(body));
+  } finally { await teardown(f); }
+});
+
+// Review item MINOR (f): the PUT 400 sentence, and the not-live-session 404.
+test('Case 11: PUT with a value the schema refuses answers 400 with the sentence naming the field', async (t) => {
+  const f = await bootedFixture(t);
+  try {
+    const res = await putCampaign(f, { schema: CAMPAIGN_SCHEMA, goal: 'not-an-object' });
+    const body = await res.json() as any;
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.match(body.error?.message ?? '', /goal/i, JSON.stringify(body));
+  } finally { await teardown(f); }
+});
+
+test('Case 12: a session id this Host does not carry answers 404 on GET', async (t) => {
+  const f = await bootedFixture(t);
+  try {
+    const res = await api(f.host, f.cookie, '/hima/api/campaign?session=not-a-live-session');
+    const body = await res.json() as any;
+    assert.equal(res.status, 404, JSON.stringify(body));
+  } finally { await teardown(f); }
 });
