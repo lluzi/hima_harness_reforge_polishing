@@ -1,0 +1,777 @@
+/* Function-only index for the hierarchy-scaled 2/3-output commercial experiment. */
+library (hima_aes_mo40_hier3_function_index) {
+  cell (HMO_AESX_001_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AESX_002_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B";
+    }
+  }
+  cell (HMO_AESX_003_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+  }
+  cell (HMO_AESX_004_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AESX_005_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B + !A*B";
+    }
+  }
+  cell (HMO_AESX_006_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*B";
+    }
+  }
+  cell (HMO_AESX_007_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*B";
+    }
+  }
+  cell (HMO_AESX_008_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AESX_009_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AESX_010_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "A*B";
+    }
+  }
+  cell (HMO_AESX_011_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AESX_012_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+  }
+  cell (HMO_AESX_013_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+  }
+  cell (HMO_AESX_014_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AESX_015_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AESX_016_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+  }
+  cell (HMO_AESX_017_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "A*B";
+    }
+  }
+  cell (HMO_AESX_018_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B*!C + A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*B*C";
+    }
+  }
+  cell (HMO_AESX_019_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B*!C + A*!B*!C + !A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AESX_020_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+  }
+  cell (HMO_AESX_021_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AESX_022_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AESX_023_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*B";
+    }
+  }
+  cell (HMO_AESX_024_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+  }
+  cell (HMO_AESX_025_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+  }
+  cell (HMO_AESX_026_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AESX_027_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+  }
+  cell (HMO_AESX_028_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B*!C + A*!B*!C + !A*B*!C + A*B*!C + A*!B*C + !A*B*C + A*B*C";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AESX_029_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+  }
+  cell (HMO_AESX_030_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B*!C";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AESX_031_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*B";
+    }
+  }
+  cell (HMO_AESX_032_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+    pin(Y2) {
+      direction : output;
+      function : "!A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AESX_033_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+  }
+  cell (HMO_AESX_034_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*B";
+    }
+  }
+  cell (HMO_AESX_035_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B*!C + A*!B*!C + !A*B*!C + A*B*!C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AESX_036_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B*!C + A*!B*!C + A*B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AESX_037_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B*!C + !A*B*!C + A*B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AESX_038_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*B";
+    }
+  }
+  cell (HMO_AESX_039_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AESX_040_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B + !A*B + A*B";
+    }
+  }
+}

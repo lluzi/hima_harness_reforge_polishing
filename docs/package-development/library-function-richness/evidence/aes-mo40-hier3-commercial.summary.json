@@ -1,0 +1,441 @@
+{
+  "adoption": {
+    "dualOutputInstances": 18,
+    "dualOutputMasterTypes": 15,
+    "initialInstances": 120,
+    "instanceRetentionPercent": 33.33333333333333,
+    "masterCensus": {
+      "HMO_AESX_002_D1": 1,
+      "HMO_AESX_003_D1": 2,
+      "HMO_AESX_004_D1": 1,
+      "HMO_AESX_005_D1": 1,
+      "HMO_AESX_006_D1": 1,
+      "HMO_AESX_009_D1": 1,
+      "HMO_AESX_010_D1": 1,
+      "HMO_AESX_011_D1": 3,
+      "HMO_AESX_013_D1": 2,
+      "HMO_AESX_014_D1": 2,
+      "HMO_AESX_016_D1": 1,
+      "HMO_AESX_017_D1": 4,
+      "HMO_AESX_018_D1": 1,
+      "HMO_AESX_021_D1": 1,
+      "HMO_AESX_022_D1": 4,
+      "HMO_AESX_023_D1": 1,
+      "HMO_AESX_024_D1": 1,
+      "HMO_AESX_025_D1": 2,
+      "HMO_AESX_026_D1": 1,
+      "HMO_AESX_027_D1": 1,
+      "HMO_AESX_028_D1": 1,
+      "HMO_AESX_029_D1": 2,
+      "HMO_AESX_031_D1": 1,
+      "HMO_AESX_033_D1": 1,
+      "HMO_AESX_034_D1": 1,
+      "HMO_AESX_039_D1": 1,
+      "HMO_AESX_040_D1": 1
+    },
+    "postRouteInstances": 40,
+    "postRouteMasterTypes": 27,
+    "top100TimingMasters": {
+      "HMO_AESX_013_D1": 2,
+      "HMO_AESX_014_D1": 3,
+      "HMO_AESX_017_D1": 3,
+      "HMO_AESX_018_D1": 2,
+      "HMO_AESX_021_D1": 2,
+      "HMO_AESX_039_D1": 2
+    },
+    "tripleOutputInstances": 22,
+    "tripleOutputMasterTypes": 12
+  },
+  "arms": {
+    "baseline": {
+      "derivedFmaxMhz": 1795.3321364452422,
+      "drcViolations": 5,
+      "gateEquivalentCount": 59826,
+      "logicAreaUm2": 22614.354,
+      "nonPhysicalCellCount": 16145,
+      "tnsNs": -7.213,
+      "totalPower": 26.52302438,
+      "violatingPaths": 315,
+      "wireLengthUm": 188099.67,
+      "wnsNs": -0.057
+    },
+    "hierMo40": {
+      "derivedFmaxMhz": 1792.1146953405016,
+      "drcViolations": 1,
+      "gateEquivalentCount": 65319,
+      "holdTnsNs": -41.713,
+      "holdWnsNs": -0.122,
+      "logicAreaUm2": 24690.582,
+      "nonPhysicalCellCount": 16224,
+      "runtimeSeconds": 814,
+      "tnsNs": -7.773,
+      "totalPower": 28.39844454,
+      "violatingPaths": 324,
+      "wireLengthUm": 193119.935,
+      "wnsNs": -0.058
+    },
+    "priorMo20": {
+      "derivedFmaxMhz": 1798.5611510791366,
+      "drcViolations": 2,
+      "gateEquivalentCount": 55474,
+      "logicAreaUm2": 20969.298,
+      "nonPhysicalCellCount": 15963,
+      "tnsNs": -6.313,
+      "totalPower": 25.38422295,
+      "violatingPaths": 240,
+      "wireLengthUm": 175859.64,
+      "wnsNs": -0.056
+    }
+  },
+  "businessExit": {
+    "met": false,
+    "observedVsBaselinePercent": -0.17921146953404632,
+    "targetFmaxImprovementPercent": 5.0
+  },
+  "claimLimits": {
+    "commercialPlacementCtsRouteCompleted": true,
+    "commercialTimingObserved": true,
+    "fmaxImprovementObserved": false,
+    "gdsComplete": false,
+    "physicalAbstractRouted": false,
+    "postRouteIndependentEquivalence": false,
+    "siliconBenefit": false,
+    "timingModelMeasured": false
+  },
+  "date": "2026-09-16",
+  "deltaVsBaseline": {
+    "derivedFmaxMhz": {
+      "absolute": -3.217441104740601,
+      "percentOfBaseline": -0.17921146953404632
+    },
+    "drcViolations": {
+      "absolute": -4,
+      "percentOfBaseline": -80.0
+    },
+    "gateEquivalentCount": {
+      "absolute": 5493,
+      "percentOfBaseline": 9.181626717480684
+    },
+    "logicAreaUm2": {
+      "absolute": 2076.227999999999,
+      "percentOfBaseline": 9.181018392123864
+    },
+    "nonPhysicalCellCount": {
+      "absolute": 79,
+      "percentOfBaseline": 0.48931557757818656
+    },
+    "tnsNs": {
+      "absolute": -0.5599999999999996,
+      "percentOfBaseline": 7.763759877998044
+    },
+    "totalPower": {
+      "absolute": 1.875420160000001,
+      "percentOfBaseline": 7.070913682883706
+    },
+    "violatingPaths": {
+      "absolute": 9,
+      "percentOfBaseline": 2.857142857142847
+    },
+    "wireLengthUm": {
+      "absolute": 5020.264999999985,
+      "percentOfBaseline": 2.668938759966988
+    },
+    "wnsNs": {
+      "absolute": -0.0010000000000000009,
+      "percentOfBaseline": 1.7543859649122862
+    }
+  },
+  "deltaVsPriorMo20": {
+    "derivedFmaxMhz": {
+      "absolute": -6.446455738634995,
+      "percentOfBaseline": -0.35842293906810374
+    },
+    "drcViolations": {
+      "absolute": -1,
+      "percentOfBaseline": -50.0
+    },
+    "gateEquivalentCount": {
+      "absolute": 9845,
+      "percentOfBaseline": 17.747052673324436
+    },
+    "logicAreaUm2": {
+      "absolute": 3721.2839999999997,
+      "percentOfBaseline": 17.746345156618972
+    },
+    "nonPhysicalCellCount": {
+      "absolute": 261,
+      "percentOfBaseline": 1.6350310092087872
+    },
+    "tnsNs": {
+      "absolute": -1.46,
+      "percentOfBaseline": 23.126881039125614
+    },
+    "totalPower": {
+      "absolute": 3.0142215899999982,
+      "percentOfBaseline": 11.874389836305777
+    },
+    "violatingPaths": {
+      "absolute": 84,
+      "percentOfBaseline": 35.00000000000001
+    },
+    "wireLengthUm": {
+      "absolute": 17260.294999999984,
+      "percentOfBaseline": 9.814813108908883
+    },
+    "wnsNs": {
+      "absolute": -0.0020000000000000018,
+      "percentOfBaseline": 3.571428571428581
+    }
+  },
+  "inputs": {
+    "baselineDcNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+    "generatedEcoNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+    "sameCoreBoxUm": [
+      2.1,
+      2.0,
+      187.6,
+      187.4
+    ],
+    "samePinPlanNormalizedSha256": "4eba642e5d2b1d1cca55d744eb415c50024ce767fb7ee8005e9b71bac3621df0",
+    "sameSdcSha256": "50956c777f0f922f75bc9b93d7e1dc6200f473218c98dd82269c0895435c551a"
+  },
+  "interpretation": {
+    "moreAdoptionImprovedQor": false,
+    "nextFocus": "post-route timing influence and true shared-transistor physical margin, not adoption count",
+    "threeOutputCommerciallyUsable": true
+  },
+  "library": {
+    "abstractRoutingComplete": false,
+    "characterization": "learned-model-prediction",
+    "dbSha256": "abe7b1459986b056bff98a571d9c5b07106debb74522f930590b55af7df19c6b",
+    "functionIndex": {
+      "path": "docs/package-development/library-function-richness/evidence/aes-mo40-hier3-function-cells.lib",
+      "sha256": "cdcfc3c868c839ec469cb7a605a37896c73f9930933f9c3bb195da80fcb795c2"
+    },
+    "independentOutputNetworks": true,
+    "lefSha256": "66c87256b4659cb6b6d730d72b50444efb8e95fcfdd8828df504e9d1ace060f0",
+    "libertySha256": "4809e0c10e51cfa56800cb50bd71525c9ae16831ea19caa62d24531dae9a2007",
+    "libraryCompilerAccepted": true,
+    "offeredCellCount": 40,
+    "outputCount": [
+      2,
+      3
+    ],
+    "sharedTransistorOptimization": false
+  },
+  "mining": {
+    "candidateFamilies": 93,
+    "candidateWindows": 3102,
+    "dualOutputEcos": 63,
+    "dualOutputTypes": 24,
+    "initialEcos": 120,
+    "inputNetInstanceReduction": 276,
+    "instancesInserted": 120,
+    "modules": 19,
+    "offeredTypes": 40,
+    "sourceInstancesRemoved": 396,
+    "tripleOutputEcos": 57,
+    "tripleOutputTypes": 16
+  },
+  "prePnrProof": {
+    "backend": "yosys-hierarchical-composition",
+    "claim": "Each changed combinational leaf is Yosys-equivalent, its interface is unchanged, and every byte outside the changed module definitions is identical.",
+    "moduleProofs": [
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_0",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "6a5370272082dc2970e652b8466f8d605f61d89c3d76e9092eb54de496ba22ae",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_1",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "e75b2c628fb1a95fee2bf0167edc2639928bdb435c927313746697fac4e04f4e",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_10",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "750f4aa6af7c084d5f69054ca676893255172a3221e6fe95793d19a0ca058146",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_11",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "b6ad6eb52f739e7b1c194fb12190ea02b3e3341c795e8901ac4366134baa66fa",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_12",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "c6ad77613e3311ff49fef8588318a7831ee7745b529c7141a146495d1adab54b",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_13",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "660a1bcb9dd35760d9dd8806164b64e5cd8528d3f9823801d1c37df276b0f533",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_14",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "5f0961f685f444c771fce7c2934eae9a28144bcb76937a18b9dad6856e573c8e",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_15",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "02441b58a9146a2a415e7d2d87aa94043e0ffbd141f32dc91b6388cc9d4db7cf",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_16",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "b0de8cd8373abac7cf41f90449f58bc270a1f3762ada818c10e7d19e202cce5c",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_17",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "70a0d96c0d8bd612794c9242ab342f4391f750b9de364d444eeb2c3a560c9707",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_18",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "f0c5ebb054fa6e5cef0dfeadbfcee62de8c556bce3132ffefd01961992d0b007",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_19",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "686fb616e0a362abaa9dfe64dfb6f7e3984cc338d411295d6951a74ea09bec2e",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_2",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "f77545a3bc856c477c1541b657db665ba16ecdd2d7dbeed866a248f565449e6e",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_3",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "ae5de89876c07420ae2f89331376ed21012f2b801e0b5b72520f84b4680af9f8",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_4",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "e944c2168cb40f128174822f455d48c61eb2f2afd27a81d7e57e165a28286512",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_5",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "c5a1952f999295231ace42b5c82a9623d208509ac1bb0f8b64a98796113c2778",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_7",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "0f10fc992743811e52dd9993e05d0e0f40da417373b0d6dee240fe3364ef7aee",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_8",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "b91265fc97eea0d751ac39bd00179b88e6fe84017770dd7bd7c1a0fd62c42815",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      },
+      {
+        "cellModelsSha256": "0bbbce051ddf05f7ecf7ee60da457dc60d6141ffcc8513a2e81e299df1d70308",
+        "module": "aes_sbox_9",
+        "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+        "proofSha256": "a52c1defaa3f894fac155f436f6a8cb3e4983333e69611dcfe05b7ecb30f56ed",
+        "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+        "status": "proved"
+      }
+    ],
+    "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+    "outsideSubjectsUnchangedSha256": "ce16cf3a72cfb7a02229f6da219c24751d058fd88f7af3bbec92a942775ce5c1",
+    "proofTop": "aes_cipher_top",
+    "rewrittenNetlistSha256": "daf129c9f743921ff0612373487ef935a9485c335ae294ee62b5b351e80d594a",
+    "schema": "hima.multi-output-equivalence-proof/1",
+    "status": "proved",
+    "subjectModules": [
+      "aes_sbox_0",
+      "aes_sbox_1",
+      "aes_sbox_10",
+      "aes_sbox_11",
+      "aes_sbox_12",
+      "aes_sbox_13",
+      "aes_sbox_14",
+      "aes_sbox_15",
+      "aes_sbox_16",
+      "aes_sbox_17",
+      "aes_sbox_18",
+      "aes_sbox_19",
+      "aes_sbox_2",
+      "aes_sbox_3",
+      "aes_sbox_4",
+      "aes_sbox_5",
+      "aes_sbox_7",
+      "aes_sbox_8",
+      "aes_sbox_9"
+    ]
+  },
+  "reportSha256": {
+    "connectivity": "81f9d2b492811f9e474c77cea893e43d93be69ad29c4aeba96162a250d585d20",
+    "drc": "f94e1c64ae185ac6ac92929572ceffa46ba5d0e107175213f01929fbe39c3762",
+    "gatecount": "810c1a09d0dbe2f534dffd0102722384831f4735a838c427c8efab9d04f4220c",
+    "postrouteNetlist": "a564c0d69afbcfde213ccba1db5856b895794dd3ba1933bf492b0241e84b8f67",
+    "power": "5f31f05e8dea9cf8ff64b8ad1438a24d3ec99e8f85e4d1ed7ce13c66dcb6cdd5",
+    "summary": "f630e4c279fab4342a7e0863085033aa90246a90ab3cf13f270b822a0e95bcf0",
+    "timing": "58241c06cc5149ff6f0ed0d9d956bc74e9fc3b2a7091baffdcd37b6173273780"
+  },
+  "reuse": {
+    "baselineEvidence": "aes-mo20-commercial-pnr.summary.json",
+    "reason": "same immutable DC netlist, SDC, floorplan, pin plan, foundry views and P&R method; baseline not rerun"
+  },
+  "schema": "hima.aes-mo40-hier3-commercial-evidence/1",
+  "siteEvidenceRoot": "/data/eda/project/hima_harness/polishing-runs/aes-mo40-hier3-commercial-20260916",
+  "status": "commercial-complete-negative-qor"
+}
