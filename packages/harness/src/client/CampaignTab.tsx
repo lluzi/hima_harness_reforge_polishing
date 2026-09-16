@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { layoutCanvas } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
-import { cancelAsked, cancelObserved } from '../card-labels.js';
+import { cancelAsked, cancelObserved, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
 import { runPath } from '../paths.js';
 import { reportBlocks } from '../experience-report.js';
 import type { RunView } from '../remote.js';
@@ -180,6 +180,14 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
 
   useEffect(() => { setSelectedNodeId(undefined); }, [runId]);
 
+  // The graph-less fallback's own reading of the same two facts `FabricCanvas` draws from `view`
+  // alone (never `context`): a blocker while waiting, and the Goal seal once ended. Named `legacy*`
+  // because the one Run kind that ever reaches this fallback with a real `view` behind it is the
+  // historical automatic path (`scene === undefined` otherwise only means "still reading").
+  const legacyBlocker = view?.run.status === 'waiting' ? view.blockers.at(-1) : undefined;
+  const legacyEnded = view?.run.status !== undefined && (view.run.status.startsWith('ended-') || view.run.status === 'cancelled');
+  const legacySeal = legacyEnded && view !== undefined ? sealSaid(view.run.status, view.run.meters?.endedBy) : undefined;
+
   return (
     <div className="hima-campaign" data-hima-region="campaign" data-hima-state-run={runId}
       data-hima-state-status={view?.run.status ?? ''} data-hima-state-owner={isOwner ? 'owner' : 'side-talk'}>
@@ -192,7 +200,45 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
       <div className="hima-campaign-content">
         {section === 'live' ? (
           scene === undefined
-            ? <div className="hima-empty"><p>{context?.reason ?? 'Reading the reference graph…'}</p></div>
+            ? <div className="hima-empty">
+                {/* A historical automatic Run (`control === undefined`) carries no method/reference
+                    graph at all (`executionContext`, `fabric.ts`) — HimaFabric's own fact, not a UI
+                    gap — so the Live view never reaches the canvas for one and never will. What the
+                    graph would have shown of the Run's own standing does not depend on that method,
+                    though: a blocker and a Goal seal are both plain facts on the view itself
+                    (`view.blockers`, `view.run.status`/`meters`), the same facts `FabricCanvas`'s own
+                    attention strip and Goal roundel read — so they are said here too, under the same
+                    markers, rather than left unsaid for exactly the Run this canvas cannot draw. */}
+                {view?.run.status !== 'waiting' || legacyBlocker === undefined ? null : (
+                  <div className="hima-canvas-attention hima-canvas-attention-waiting" data-hima-region="campaign-attention" data-hima-state-kind="waiting">
+                    <span>{legacyBlocker.reason}</span>
+                  </div>
+                )}
+                {!legacyEnded || view === undefined ? null : (
+                  <div data-hima-region="campaign-goal" data-hima-state-status={view.run.status}>
+                    <p className="hima-goal-title">{legacySeal!.title}</p>
+                    {legacySeal!.reason === '' ? null : <p className="hima-goal-reason">{legacySeal!.reason}</p>}
+                  </div>
+                )}
+                {legacyBlocker !== undefined || legacyEnded ? null : <p>{context?.reason ?? 'Reading the reference graph…'}</p>}
+                {/* Still nobody's Side Talk (`run-ownership.ts`'s own `isOwner`), so the same bare
+                    human controls the transcript's tool receipt offers such a Run (`RunControls`,
+                    `HimaRunCard.tsx`) belong here too: Continue while it waits, Stop whenever it is
+                    active, through the same `actOnRun` route and the same `runControls` words
+                    (#41 task 9 item B). */}
+                {control !== undefined || view === undefined ? null : (
+                  <div className="hima-campaign-legacy-controls">
+                    {showsResume(view.run.status) ? (
+                      <button type="button" className="hima-button" data-hima-control="resume" disabled={acting.inFlight !== undefined} onClick={() => acting.act('resume')}>{runControls.resume.said}</button>
+                    ) : null}
+                    {showsCancel(view.run.status) ? (
+                      <button type="button" className="hima-button" data-hima-control="cancel" disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>{runControls.cancel.said}</button>
+                    ) : null}
+                    {acting.notice === undefined ? null : <p role="status">{acting.notice}</p>}
+                    {acting.refusal === undefined ? null : <p role="alert" data-hima-region="run-error">{acting.refusal.message}</p>}
+                  </div>
+                )}
+              </div>
             : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
                 stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
                 openOwner={openOwner} openFiles={openFiles} acting={acting} />

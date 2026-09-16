@@ -40,6 +40,8 @@ test('added research is distinguishable from the reference and can be expanded a
     await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
     assert.ok((await driver.click('open-workbench')).ok); assert.ok((await driver.wait('studio', 'Campaign configuration')).ok);
     assert.ok((await driver.fill('studio-run', f.runId)).ok);
+    // Task 5: growth is an Evidence-only region now that Live is the HimaFabric canvas alone.
+    assert.ok((await driver.click('studio-evidence')).ok);
     assert.ok((await driver.wait('run-growth', 'critical-cell-probe')).ok);
     assert.ok((await driver.click('growth-expand-critical-cell-probe')).ok);
     const branch = await driver.read('growth-critical-cell-probe'); assert.ok(branch.ok);

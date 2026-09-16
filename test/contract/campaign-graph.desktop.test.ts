@@ -135,10 +135,16 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     // (`NodeCard.tsx`); this task's own node is clickable and marks itself selected in its own
     // region — asserted as a state change the click itself caused, not a fact already true of the
     // page before it (the node's id was already in `graph.text` at the read above).
-    await browser.mark('[data-hima-control="node-pnr-foundry"]', 'graph-probe-node');
-    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-node-pnr-foundry"]')?.getAttribute('data-hima-state-selected')`), 'false');
-    assert.ok((await d.click('graph-probe-node')).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="campaign-node-pnr-foundry"]')?.getAttribute('data-hima-state-selected') === 'true'`, 10_000);
+    // The follow rule keeps whichever node is *current* inside the window; a fixed downstream id
+    // (`pnr-foundry`) drifts off-screen once the run has moved past it at this zoom (x≈3393), so the
+    // probe selects the current node instead — wherever the follow camera actually put it.
+    const probeGraph = await d.read('campaign-graph'); assert.ok(probeGraph.ok, JSON.stringify(probeGraph));
+    const probeNode = probeGraph.state.current; assert.ok(probeNode, `campaign-graph names a current node: ${probeGraph.text}`);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-node-${probeNode}"]')?.getAttribute('data-hima-state-selected')`), 'false');
+    assert.ok((await d.click(`node-${probeNode}`)).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-node-${probeNode}"]')?.getAttribute('data-hima-state-selected') === 'true'`, 10_000);
+    const probeCard = await d.read('campaign-node-card'); assert.ok(probeCard.ok, JSON.stringify(probeCard));
+    assert.equal(probeCard.state.node, probeNode);
 
     await browser.mark('[aria-label="New session"]', 'new-side-talk'); assert.ok((await d.click('new-side-talk')).ok);
     await browser.wait(`document.body.innerText.includes('New session') && [...document.querySelectorAll('[contenteditable="true"]')].some(e=>e.getBoundingClientRect().height>0)`);
