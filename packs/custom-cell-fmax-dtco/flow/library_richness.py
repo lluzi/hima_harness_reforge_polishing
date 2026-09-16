@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""One hash-bound, license-free Library-richness round evaluation.
+"""One hash-bound, license-free Library-richness evaluation-agent round.
 
 The interface composes the existing paired Yosys/ABC mapper with the strict
 mapped-netlist proxy STA.  Its result is screening evidence only: it never
-claims commercial adoption, physical benefit, or Fmax improvement.
+claims commercial adoption, physical benefit, expected QoR, or Fmax improvement.
 """
 from __future__ import annotations
 
@@ -30,8 +30,8 @@ from cell_need_miner.liberty_timing import (  # type: ignore  # noqa: E402
 )
 
 
-SCHEMA = "lfr-round/1"
-RESULT_SCHEMA = "lfr-round-evaluation/1"
+SCHEMA = "lfr-round/3"
+RESULT_SCHEMA = "lfr-round-evaluation/3"
 SCENARIOS = ("optimistic", "nominal", "conservative")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _TIME_UNIT = re.compile(
@@ -39,6 +39,34 @@ _TIME_UNIT = re.compile(
     re.IGNORECASE,
 )
 _SCENARIO_KEYS = frozenset({"initial_slew_ps", "wire_capacitance_in_library_units"})
+_METRICS = frozenset({
+    "F0.candidate_adoption_fraction",
+    "F0.known_cell_fraction",
+    "F0.function_class_count",
+    "F2.mapped_instance_count",
+    "F2.combinational_instance_count",
+    "F2.max_logic_level",
+    "F2.mean_fanout",
+    "F2.mean_load_indicator",
+    "F2.buffer_inverter_pressure_ratio",
+    "F2.mean_path_stage_count",
+    "F3.worst_delay_indicator_ps",
+    "F3.negative_slack_mass_indicator_ps",
+    "F3.path_family_coverage",
+})
+_PARETO_DIRECTIONS = {
+    "F0.candidate_adoption_fraction": "maximize",
+    "F0.known_cell_fraction": "maximize",
+    "F2.mapped_instance_count": "minimize",
+    "F2.combinational_instance_count": "minimize",
+    "F2.max_logic_level": "minimize",
+    "F2.mean_fanout": "minimize",
+    "F2.mean_load_indicator": "minimize",
+    "F2.buffer_inverter_pressure_ratio": "minimize",
+    "F2.mean_path_stage_count": "minimize",
+    "F3.worst_delay_indicator_ps": "minimize",
+    "F3.negative_slack_mass_indicator_ps": "minimize",
+}
 
 
 class RoundRequestError(ValueError):
@@ -84,6 +112,13 @@ def _number(value: object, name: str, *, positive: bool = False) -> float:
     if not positive and result < 0.0:
         raise RoundRequestError(f"{name} must be non-negative")
     return result
+
+
+def _integer(value: object, name: str, *, positive: bool = False) -> int:
+    result = _number(value, name, positive=positive)
+    if not result.is_integer():
+        raise RoundRequestError(f"{name} must be an integer")
+    return int(result)
 
 
 def _digest(value: object, name: str) -> str:
@@ -192,32 +227,86 @@ def _validate_request(request: Mapping[str, object]) -> dict[str, object]:
             "unsupported_assumptions": sorted(set(source) - _SCENARIO_KEYS),
         }
 
-    objective = _mapping(request.get("objective"), "objective")
-    calibration = _mapping(request.get("calibration"), "calibration")
-    calibration_status = _string(calibration.get("status"), "calibration.status")
-    if calibration_status not in {"valid", "uncalibrated"}:
-        raise RoundRequestError("calibration.status must be 'valid' or 'uncalibrated'")
+    policy = _mapping(request.get("metric_policy"), "metric_policy")
+    raw_objectives = policy.get("objectives")
+    if not isinstance(raw_objectives, list) or not raw_objectives:
+        raise RoundRequestError("metric_policy.objectives must be a non-empty array")
+    objectives = []
+    seen_metrics = set()
+    for index, raw_item in enumerate(raw_objectives):
+        item = _mapping(raw_item, f"metric_policy.objectives[{index}]")
+        metric = _string(item.get("metric"), f"metric_policy.objectives[{index}].metric")
+        direction = _string(item.get("direction"), f"metric_policy.objectives[{index}].direction")
+        if metric not in _PARETO_DIRECTIONS:
+            raise RoundRequestError(f"unsupported objective metric {metric!r}")
+        canonical_direction = _PARETO_DIRECTIONS[metric]
+        if direction != canonical_direction:
+            raise RoundRequestError(
+                f"metric_policy.objectives[{index}].direction for {metric} must be "
+                f"system-owned canonical direction {canonical_direction!r}"
+            )
+        if metric in seen_metrics:
+            raise RoundRequestError(f"metric_policy.objectives repeats {metric}")
+        seen_metrics.add(metric)
+        objectives.append({"metric": metric, "direction": canonical_direction})
+
+    raw_required = policy.get("required_metrics")
+    if not isinstance(raw_required, list) or not raw_required:
+        raise RoundRequestError("metric_policy.required_metrics must be a non-empty array")
+    required_metrics = [
+        _string(value, f"metric_policy.required_metrics[{index}]")
+        for index, value in enumerate(raw_required)
+    ]
+    if len(set(required_metrics)) != len(required_metrics):
+        raise RoundRequestError("metric_policy.required_metrics contains duplicates")
+    unsupported_required = sorted(set(required_metrics) - _METRICS)
+    if unsupported_required:
+        raise RoundRequestError(
+            "metric_policy.required_metrics contains unsupported metrics: "
+            + ", ".join(unsupported_required)
+        )
+
+    budgets = _mapping(request.get("budgets"), "budgets")
+    budget_values = {
+        "max_candidate_cells": _integer(
+            budgets.get("max_candidate_cells"), "budgets.max_candidate_cells", positive=True
+        ),
+        "max_augmented_mapped_instances": _integer(
+            budgets.get("max_augmented_mapped_instances"),
+            "budgets.max_augmented_mapped_instances",
+            positive=True,
+        ),
+    }
+    if len(candidate_cells) > budget_values["max_candidate_cells"]:
+        raise RoundRequestError(
+            "candidate_cells exceeds budgets.max_candidate_cells before mapping"
+        )
+
+    comparison_source = request.get("comparison_evidence")
+    comparison = None
+    if comparison_source is not None:
+        comparison_mapping = _mapping(comparison_source, "comparison_evidence")
+        comparison = {
+            "identity": _string(
+                comparison_mapping.get("identity"), "comparison_evidence.identity"
+            ),
+            "sha256": _digest(
+                comparison_mapping.get("sha256"), "comparison_evidence.sha256"
+            ),
+        }
     return {
         "mapping": dict(mapping_request),
         "bound_inputs": bound_inputs,
         "candidate_cells": sorted(candidate_cells),
         "timing": timing_values,
         "scenarios": scenarios,
-        "objective": {
-            "target_delta_ps": _number(
-                objective.get("target_delta_ps"), "objective.target_delta_ps", positive=True
-            ),
+        "metric_policy": {
+            "objectives": objectives,
+            "canonical_directions": dict(sorted(_PARETO_DIRECTIONS.items())),
+            "required_metrics": sorted(required_metrics),
         },
-        "calibration": {
-            "status": calibration_status,
-            "error_band_ps": _number(
-                calibration.get("error_band_ps"), "calibration.error_band_ps"
-            ),
-            "scope": _string(calibration.get("scope"), "calibration.scope"),
-            "evidence_sha256": _digest(
-                calibration.get("evidence_sha256"), "calibration.evidence_sha256"
-            ),
-        },
+        "budgets": budget_values,
+        "comparison_evidence": comparison,
     }
 
 
@@ -255,29 +344,268 @@ def _worst_path(result: Mapping[str, Any]) -> dict[str, object]:
     }
 
 
-def _timing_summary(result: Mapping[str, Any], unit_ps: float) -> dict[str, object]:
+def _distribution(values: Sequence[float]) -> dict[str, object]:
+    ordered = sorted(float(value) for value in values)
+    if not ordered:
+        return {"count": 0, "min": None, "p50": None, "p90": None, "max": None, "mean": None}
+    p50 = ordered[(len(ordered) - 1) // 2]
+    p90 = ordered[max(0, math.ceil(0.9 * len(ordered)) - 1)]
     return {
-        "path_count": result["path_count"],
-        "endpoint_family_count": result["endpoint_family_count"],
-        "worst_delay_ps": result["worst_delay"] * unit_ps,
-        "worst_slack_ps": result["worst_slack"] * unit_ps,
-        "negative_slack_mass_ps": result["negative_slack_mass"] * unit_ps,
-        "worst_path": _worst_path(result),
+        "count": len(ordered),
+        "min": ordered[0],
+        "p50": p50,
+        "p90": p90,
+        "max": ordered[-1],
+        "mean": sum(ordered) / len(ordered),
+    }
+
+
+def _histogram(values: Sequence[int]) -> dict[str, int]:
+    result: dict[str, int] = {}
+    for value in sorted(values):
+        key = str(value)
+        result[key] = result.get(key, 0) + 1
+    return result
+
+
+def _structural_metrics(model: object, verilog_text: str, top: str,
+                        wire_capacitance: float) -> dict[str, object]:
+    from verilog_netlist import (  # type: ignore
+        VerilogNetlistError,
+        build_named_net_graph,
+        top_instances,
+    )
+
+    try:
+        instances = top_instances(verilog_text, top)
+        graph = build_named_net_graph(
+            instances,
+            {name: cell.pin_directions for name, cell in model.cells.items()},
+        )
+    except VerilogNetlistError as error:
+        raise LibertyTimingError(str(error)) from error
+
+    census: dict[str, int] = {}
+    for instance in instances:
+        census[instance.cell_type] = census.get(instance.cell_type, 0) + 1
+    sequential_names = {
+        instance.name for instance in instances if model.cell(instance.cell_type).sequential
+    }
+    combinational = sorted(
+        (instance for instance in instances if instance.name not in sequential_names),
+        key=lambda item: item.name,
+    )
+
+    net_depth = {net: 0 for net in graph.sinks if net not in graph.drivers}
+    for instance in instances:
+        if instance.name not in sequential_names:
+            continue
+        cell = model.cell(instance.cell_type)
+        for pin in cell.sequential_outputs:
+            net = instance.conns.get(pin)
+            if net:
+                net_depth[net] = 0
+    unresolved = {instance.name: instance for instance in combinational}
+    levels: dict[str, int] = {}
+    while unresolved:
+        progressed = False
+        for name in sorted(list(unresolved)):
+            instance = unresolved[name]
+            cell = model.cell(instance.cell_type)
+            inputs = [
+                instance.conns[pin]
+                for pin, direction in cell.pin_directions.items()
+                if direction == "input"
+            ]
+            if any(net not in net_depth for net in inputs):
+                continue
+            level = 1 + max((net_depth[net] for net in inputs), default=0)
+            levels[name] = level
+            for pin, direction in cell.pin_directions.items():
+                if direction == "output" and instance.conns.get(pin):
+                    net_depth[instance.conns[pin]] = level
+            del unresolved[name]
+            progressed = True
+        if not progressed:
+            raise LibertyTimingError(
+                "cannot derive complete combinational logic levels for "
+                + ", ".join(sorted(unresolved))
+            )
+
+    driven_nets = sorted(graph.drivers)
+    fanouts = [len(graph.sinks.get(net, ())) for net in driven_nets]
+    loads = []
+    for net in driven_nets:
+        load = float(wire_capacitance)
+        for sink in graph.sinks.get(net, ()):
+            load += model.input_capacitance(sink.cell_type, sink.pin)
+        loads.append(load)
+
+    buffer_instances = 0
+    inverter_instances = 0
+    for cell_name, count in census.items():
+        cell = model.cell(cell_name)
+        if cell.sequential:
+            continue
+        inputs = [pin for pin, direction in cell.pin_directions.items() if direction == "input"]
+        outputs = [pin for pin, direction in cell.pin_directions.items() if direction == "output"]
+        if len(inputs) == 1 and len(outputs) == 1 and len(cell.arcs) == 1:
+            if cell.arcs[0].timing_sense == "positive_unate":
+                buffer_instances += count
+            elif cell.arcs[0].timing_sense == "negative_unate":
+                inverter_instances += count
+    combinational_count = len(combinational)
+    pressure_count = buffer_instances + inverter_instances
+    return {
+        "mapped_instance_count": len(instances),
+        "cell_census": dict(sorted(census.items())),
+        "sequential_instance_count": len(sequential_names),
+        "combinational_instance_count": combinational_count,
+        "logic_level_distribution": _histogram(list(levels.values())),
+        "max_logic_level": max(levels.values(), default=0),
+        "fanout_distribution": _distribution(fanouts),
+        "mean_fanout": _distribution(fanouts)["mean"],
+        "load_indicator_distribution": _distribution(loads),
+        "mean_load_indicator": _distribution(loads)["mean"],
+        "load_indicator_unit": model.capacitive_load_unit,
+        "buffer_instance_count": buffer_instances,
+        "inverter_instance_count": inverter_instances,
+        "buffer_inverter_pressure_count": pressure_count,
+        "buffer_inverter_pressure_ratio": (
+            pressure_count / combinational_count if combinational_count else 0.0
+        ),
+    }
+
+
+def _layered_metrics(model: object, verilog_text: str, top: str,
+                     timing_result: Mapping[str, Any], unit_ps: float,
+                     adoption: Mapping[str, Any], candidates: Sequence[str],
+                     wire_capacitance: float) -> dict[str, object]:
+    census = adoption["cell_census"]
+    total_instances = sum(int(value) for value in census.values())
+    unknown_instances = sum(int(census.get(cell, 0)) for cell in adoption["unknown_cells"])
+    adopted_candidates = [cell for cell in candidates if census.get(cell, 0)]
+    structural = _structural_metrics(model, verilog_text, top, wire_capacitance)
+    path_stages = [len(path["stages"]) for path in timing_result["paths"]]
+    structural["path_stage_distribution"] = _distribution(path_stages)
+    structural["path_stage_histogram"] = _histogram(path_stages)
+    structural["mean_path_stage_count"] = structural["path_stage_distribution"]["mean"]
+    endpoint_families = sorted(timing_result["negative_slack_by_endpoint_family"])
+    return {
+        "F0": {
+            "candidate_cells_declared": len(candidates),
+            "candidate_cells_adopted": len(adopted_candidates),
+            "candidate_adoption_fraction": len(adopted_candidates) / len(candidates),
+            "candidate_instance_count": sum(int(census.get(cell, 0)) for cell in candidates),
+            "mapped_cell_type_count": len(census),
+            "known_cell_fraction": (
+                (total_instances - unknown_instances) / total_instances if total_instances else 0.0
+            ),
+            "unknown_cells": list(adoption["unknown_cells"]),
+            "function_class_count": len(adoption["function_class_census"]),
+            "function_class_census": adoption["function_class_census"],
+            "pin_interface_census": adoption["pin_interface_census"],
+            "drive_variant_census": adoption["drive_variant_census"],
+        },
+        "F2": structural,
+        "F3": {
+            "indicator_only": True,
+            "path_count": timing_result["path_count"],
+            "worst_delay_indicator_ps": timing_result["worst_delay"] * unit_ps,
+            "worst_slack_indicator_ps": timing_result["worst_slack"] * unit_ps,
+            "negative_slack_mass_indicator_ps": timing_result["negative_slack_mass"] * unit_ps,
+            "path_family_coverage": timing_result["endpoint_family_count"],
+            "path_families": endpoint_families,
+            "worst_path": _worst_path(timing_result),
+        },
     }
 
 
 def _migration(reference: Mapping[str, Any], augmented: Mapping[str, Any]) -> dict[str, object]:
-    before = reference["worst_path"]
-    after = augmented["worst_path"]
+    before = reference["F3"]["worst_path"]
+    after = augmented["F3"]["worst_path"]
+    before_families = set(reference["F3"]["path_families"])
+    after_families = set(augmented["F3"]["path_families"])
     return {
         "changed": before != after,
         "endpoint_changed": before["endpoint"] != after["endpoint"],
         "endpoint_family_changed": before["endpoint_family"] != after["endpoint_family"],
         "launchpoint_changed": before["launchpoint"] != after["launchpoint"],
         "stage_cells_changed": before["stage_cells"] != after["stage_cells"],
+        "path_families_added": sorted(after_families - before_families),
+        "path_families_removed": sorted(before_families - after_families),
+        "path_families_retained": sorted(before_families & after_families),
         "reference_worst": before,
         "augmented_worst": after,
     }
+
+
+def _metric(metrics: Mapping[str, Any], name: str) -> float:
+    layer, field = name.split(".", 1)
+    value = metrics.get(layer, {}).get(field)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        raise KeyError(name)
+    return float(value)
+
+
+def _metric_completeness(metrics: Mapping[str, Any], required: Sequence[str]) -> dict[str, object]:
+    available = []
+    missing = []
+    for name in required:
+        try:
+            _metric(metrics, name)
+            available.append(name)
+        except KeyError:
+            missing.append(name)
+    return {
+        "required": list(required),
+        "available": available,
+        "missing": missing,
+        "fraction": len(available) / len(required),
+        "complete": not missing,
+    }
+
+
+def _pairwise_relation(reference: Mapping[str, Any], augmented: Mapping[str, Any],
+                       policy: Sequence[Mapping[str, str]]) -> dict[str, object]:
+    comparisons = []
+    better = worse = False
+    for item in policy:
+        name = item["metric"]
+        direction = item["direction"]
+        before = _metric(reference, name)
+        after = _metric(augmented, name)
+        relation = "equal"
+        if after != before:
+            improved = after < before if direction == "minimize" else after > before
+            relation = "improved" if improved else "regressed"
+            better = better or improved
+            worse = worse or not improved
+        comparisons.append({
+            "metric": name,
+            "direction": direction,
+            "reference": before,
+            "augmented": after,
+            "augmented_minus_reference": after - before,
+            "relation": relation,
+        })
+    relation = (
+        "tradeoff" if better and worse
+        else "augmented-dominates" if better
+        else "reference-dominates" if worse
+        else "equal"
+    )
+    return {"relation": relation, "comparisons": comparisons}
+
+
+def _metric_changes(reference: Mapping[str, Any], augmented: Mapping[str, Any]) -> dict[str, float]:
+    changes = {}
+    for name in sorted(_METRICS):
+        try:
+            changes[name] = _metric(augmented, name) - _metric(reference, name)
+        except KeyError:
+            continue
+    return changes
 
 
 def _scenario_evaluation(
@@ -286,6 +614,9 @@ def _scenario_evaluation(
     timing: Mapping[str, float],
     models: Mapping[str, object],
     netlists: Mapping[str, str],
+    adoptions: Mapping[str, Mapping[str, Any]],
+    candidates: Sequence[str],
+    metric_policy: Mapping[str, Any],
 ) -> dict[str, object]:
     unsupported = list(assumptions["unsupported_assumptions"])  # type: ignore[arg-type]
     public_assumptions = {
@@ -318,22 +649,35 @@ def _scenario_evaluation(
             initial_slew=float(assumptions["initial_slew_ps"]) / unit_ps,
             wire_capacitance=float(assumptions["wire_capacitance_in_library_units"]),
         )
-        summaries[arm] = _timing_summary(raw, unit_ps)
-    predicted = summaries["reference"]["worst_delay_ps"] - summaries["augmented"]["worst_delay_ps"]
-    slack_gain = summaries["augmented"]["worst_slack_ps"] - summaries["reference"]["worst_slack_ps"]
-    mass_reduction = (
-        summaries["reference"]["negative_slack_mass_ps"]
-        - summaries["augmented"]["negative_slack_mass_ps"]
+        summaries[arm] = _layered_metrics(
+            model,
+            netlists[arm],
+            _string(models["top"], "top"),
+            raw,
+            unit_ps,
+            adoptions[arm],
+            candidates,
+            float(assumptions["wire_capacitance_in_library_units"]),
+        )
+    required = metric_policy["required_metrics"]
+    completeness = {
+        arm: _metric_completeness(summaries[arm], required)
+        for arm in ("reference", "augmented")
+    }
+    pairwise = _pairwise_relation(
+        summaries["reference"], summaries["augmented"], metric_policy["objectives"]
     )
     return {
         "status": "succeeded",
         "assumptions": public_assumptions,
         "reference": summaries["reference"],
         "augmented": summaries["augmented"],
-        "predicted_delta_ps": predicted,
-        "worst_slack_gain_ps": slack_gain,
-        "negative_slack_mass_reduction_ps": mass_reduction,
-        "direction": "improved" if predicted > 0.0 else "regressed" if predicted < 0.0 else "flat",
+        "changes": _metric_changes(summaries["reference"], summaries["augmented"]),
+        "metric_completeness": {
+            **completeness,
+            "complete": all(item["complete"] for item in completeness.values()),
+        },
+        "pairwise_relation": pairwise,
         "path_migration": _migration(summaries["reference"], summaries["augmented"]),
     }
 
@@ -353,6 +697,100 @@ def _mapping_adoption(mapping_result: Mapping[str, Any], candidates: Sequence[st
         "reference": reference,
         "augmented": augmented,
     }
+
+
+def _aggregate_pairwise_relation(scenarios: Mapping[str, Mapping[str, Any]]) -> dict[str, object]:
+    relations = {
+        name: scenario.get("pairwise_relation", {}).get("relation", "incomplete")
+        for name, scenario in scenarios.items()
+    }
+    values = list(relations.values())
+    if "incomplete" in values:
+        relation = "incomplete"
+    elif all(value == "equal" for value in values):
+        relation = "equal"
+    elif all(value in ("augmented-dominates", "equal") for value in values):
+        relation = "augmented-dominates"
+    elif all(value in ("reference-dominates", "equal") for value in values):
+        relation = "reference-dominates"
+    else:
+        relation = "tradeoff"
+    return {"relation": relation, "by_scenario": relations}
+
+
+def _commercial_candidate(
+    scenarios: Mapping[str, Mapping[str, Any]],
+    aggregate_pairwise: Mapping[str, Any],
+    adoption: Mapping[str, Any],
+    budgets: Mapping[str, int],
+) -> tuple[dict[str, object], dict[str, object]]:
+    augmented_instances = sum(
+        int(value) for value in adoption["augmented"]["cell_census"].values()
+    )
+    usage = {
+        "candidate_cells": len(adoption["candidate_cells"]),
+        "augmented_mapped_instances": augmented_instances,
+    }
+    violations = []
+    if usage["candidate_cells"] > budgets["max_candidate_cells"]:
+        violations.append("candidate-cell-budget-exceeded")
+    if usage["augmented_mapped_instances"] > budgets["max_augmented_mapped_instances"]:
+        violations.append("augmented-instance-budget-exceeded")
+    budget_status = {
+        "limits": dict(budgets),
+        "usage": usage,
+        "violations": violations,
+        "within_budget": not violations,
+    }
+
+    reasons = []
+    # A two-arm observation cannot establish membership in a portfolio frontier.
+    # FW-07 must supply cross-candidate/cross-round evidence before this gate can open.
+    blockers = ["portfolio-frontier-not-supplied"]
+    if adoption["candidate_instance_count"] > 0:
+        reasons.append("declared-candidate-adopted-by-open-source-mapper")
+    else:
+        blockers.append("no-declared-candidate-adoption")
+    if adoption["candidate_cells_present_in_reference"]:
+        blockers.append("declared-candidate-already-present-in-reference")
+    complete = all(
+        scenario.get("status") == "succeeded"
+        and scenario.get("metric_completeness", {}).get("complete") is True
+        for scenario in scenarios.values()
+    )
+    if complete:
+        reasons.append("required-metric-vectors-complete")
+    else:
+        blockers.append("required-metric-vectors-incomplete")
+    if budget_status["within_budget"]:
+        reasons.append("evaluation-budgets-satisfied")
+    else:
+        blockers.extend(violations)
+    relation = aggregate_pairwise["relation"]
+    if relation in ("augmented-dominates", "tradeoff"):
+        reasons.append(f"pairwise-relation:{relation}")
+    else:
+        blockers.append(f"pairwise-relation:{relation}")
+    for scenario_name, scenario in scenarios.items():
+        for item in scenario.get("pairwise_relation", {}).get("comparisons", []):
+            if item["metric"].startswith("F3.") and item["relation"] == "regressed":
+                blockers.append(f"f3-regression:{scenario_name}:{item['metric']}")
+    nominal_improvements = [
+        item["metric"]
+        for item in scenarios.get("nominal", {}).get("pairwise_relation", {}).get("comparisons", [])
+        if item["relation"] == "improved" and not item["metric"].startswith("F0.")
+    ]
+    if nominal_improvements:
+        reasons.append("nominal-non-f0-indicator-improvement:" + ",".join(nominal_improvements))
+    else:
+        blockers.append("no-nominal-non-f0-indicator-improvement")
+    candidate = {
+        "value": not blockers,
+        "meaning": "worth one commercial QoR observation; never an expected-benefit claim",
+        "reasons": reasons,
+        "blocking_reasons": blockers,
+    }
+    return candidate, budget_status
 
 
 def _hashes(
@@ -395,7 +833,7 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
             "stage": "request",
             "request_sha256": request_sha256,
             "error": {"code": "invalid-request", "message": str(error)},
-            "evidence_class": "license-free-proxy-screening",
+            "evidence_class": "license-free-evaluation-agent",
         }
 
     mapping_result = map_reference_and_augmented(validated["mapping"])
@@ -407,7 +845,7 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
             "request_sha256": request_sha256,
             "mapping": mapping_result,
             "error": mapping_result.get("error", {"code": "mapping-failed", "message": "paired mapping failed"}),
-            "evidence_class": "license-free-proxy-screening",
+            "evidence_class": "license-free-evaluation-agent",
         }
         result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))
         return result
@@ -434,6 +872,10 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
                 "one wire-capacitance assumption would not be comparable"
             )
 
+        adoptions = {
+            arm: mapping_result["arms"][arm]["adoption"]
+            for arm in ("reference", "augmented")
+        }
         scenarios = {
             name: _scenario_evaluation(
                 name,
@@ -441,65 +883,46 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
                 validated["timing"],
                 models,
                 netlists,
+                adoptions,
+                validated["candidate_cells"],
+                validated["metric_policy"],
             )
             for name in SCENARIOS
         }
         adoption = _mapping_adoption(mapping_result, validated["candidate_cells"])
-        target = validated["objective"]["target_delta_ps"]
-        error_band = validated["calibration"]["error_band_ps"]
-        nominal = scenarios["nominal"]
-        nominal_delta = nominal.get("predicted_delta_ps") if nominal["status"] == "succeeded" else None
-        margin = None if nominal_delta is None else nominal_delta - target - error_band
-
-        residual: list[dict[str, str]] = []
-        if validated["calibration"]["status"] != "valid":
-            residual.append({
-                "code": "calibration-unavailable",
-                "detail": "proxy evidence has no applicable validated calibration error band",
-            })
-        if adoption["candidate_instance_count"] == 0:
-            residual.append({"code": "no-candidate-adoption", "detail": "augmented mapping used no declared candidate Cell"})
-        if adoption["candidate_cells_present_in_reference"]:
-            residual.append({"code": "candidate-not-delta", "detail": "a declared candidate Cell is already present in reference mapping"})
-        for name in SCENARIOS:
-            scenario = scenarios[name]
-            if scenario["status"] != "succeeded":
-                residual.append({"code": f"scenario-unsupported:{name}", "detail": scenario["reason"]})
-            elif scenario["predicted_delta_ps"] <= 0.0:
-                residual.append({"code": f"scenario-not-improved:{name}", "detail": "augmented worst reg2reg delay did not improve"})
-        if nominal_delta is not None and nominal_delta < target:
-            residual.append({"code": "target-delta-not-met", "detail": "nominal predicted delta is below the requested target"})
-        if margin is not None and margin <= 0.0:
-            residual.append({"code": "calibration-margin-not-met", "detail": "nominal delta does not exceed target plus calibration error band"})
-        exit_ready = not residual
+        pairwise = _aggregate_pairwise_relation(scenarios)
+        commercial_candidate, budget_status = _commercial_candidate(
+            scenarios, pairwise, adoption, validated["budgets"]
+        )
+        completeness = {
+            name: scenario.get("metric_completeness", {"complete": False})
+            for name, scenario in scenarios.items()
+        }
 
         result: dict[str, object] = {
             "schema": RESULT_SCHEMA,
             "status": "succeeded",
             "request_sha256": request_sha256,
-            "evidence_class": "license-free-proxy-screening",
+            "evidence_class": "license-free-evaluation-agent",
             "claim_limits": {
                 "fmax_claimed": False,
                 "commercial_adoption_claimed": False,
                 "physical_benefit_claimed": False,
+                "expected_qor_claimed": False,
                 "commercial_eda_executed": False,
             },
             "hashes": _hashes(validated, mapping_result, artifacts),
             "mapping_adoption": adoption,
+            "metric_policy": validated["metric_policy"],
+            "budgets": budget_status,
+            "comparison_evidence": validated["comparison_evidence"],
             "scenarios": scenarios,
-            "objective": {
-                "target_delta_ps": target,
-                "calibration_error_band_ps": error_band,
-                "calibration_status": validated["calibration"]["status"],
-                "calibration_scope": validated["calibration"]["scope"],
-                "calibration_evidence_sha256": validated["calibration"]["evidence_sha256"],
-                "nominal_predicted_delta_ps": nominal_delta,
-                "margin_ps": margin,
+            "metric_completeness": {
+                "by_scenario": completeness,
+                "complete": all(item.get("complete") is True for item in completeness.values()),
             },
-            "path_migration": nominal.get("path_migration"),
-            "residual_reasons": residual,
-            "exit_ready": exit_ready,
-            "stopping_reason": "proxy-exit-ready" if exit_ready else "proxy-evidence-insufficient",
+            "pairwise_relation": pairwise,
+            "commercial_validation_candidate": commercial_candidate,
             "mapping": mapping_result,
         }
         result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))
@@ -512,7 +935,7 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
             "request_sha256": request_sha256,
             "mapping": mapping_result,
             "error": {"code": "proxy-sta-failed", "message": str(error)},
-            "evidence_class": "license-free-proxy-screening",
+            "evidence_class": "license-free-evaluation-agent",
         }
         result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))
         return result
@@ -535,7 +958,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             "status": "failed",
             "stage": "request",
             "error": {"code": "invalid-json", "message": str(error)},
-            "evidence_class": "license-free-proxy-screening",
+            "evidence_class": "license-free-evaluation-agent",
         }
         result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))
     output.parent.mkdir(parents=True, exist_ok=True)

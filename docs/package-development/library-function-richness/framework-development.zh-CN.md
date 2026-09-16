@@ -1,9 +1,13 @@
 # Library Function Richness Optimization Framework 开发文档
 
-状态：计划中  
-开发对象：`packs/custom-cell-fmax-dtco` HimaPack  
-跟踪标识：`LFR-FW-*` 与 `LFR-PACK-*`，独立于 Product Upgrade v2 的 PLS 主线  
-GitHub 跟踪：[Issue #40](https://github.com/lluzi/hima_harness_reforge_polishing/issues/40)  
+状态：开发中
+
+开发对象：`packs/custom-cell-fmax-dtco` HimaPack
+
+跟踪标识：`LFR-FW-*` 与 `LFR-PACK-*`，独立于 Product Upgrade v2 的 PLS 主线
+
+GitHub 跟踪：[Issue #40](https://github.com/lluzi/hima_harness_reforge_polishing/issues/40)
+
 英文对照：[framework-development.en.md](framework-development.en.md)
 
 ## 1. 文档目的与完成标准
@@ -18,8 +22,8 @@ GitHub 跟踪：[Issue #40](https://github.com/lluzi/hima_harness_reforge_polish
 
 最终标准不是“写出了算法”或“Pack 能启动”，而是同时满足：
 
-- Framework 对自己的输入、预测范围、误差和停止原因负责；
-- 高频试错只使用 license-free 工具；商业 EDA 只验证已经通过代理出口门的累计 Library；
+- Framework 对自己的输入、指标定义、适用范围和停止原因负责；
+- 高频优化只使用 license-free 工具；商业 EDA 用于观察真实 design QoR，不作为高频试错引擎；
 - 旧 Cell 及其交付件按 hash 复用，不随轮次重新生成；
 - AI 根据现场残余问题改变研究算法，确定性实现负责身份、计算、预算和证据；
 - HimaPack 能在满足 contract 的不同 design、Site 和兼容工具版本上运行，不携带 AES 固定答案；
@@ -39,12 +43,13 @@ Compiler、DC adoption 到 Innovus route 和 matched comparison 的技术链可�
 - adoption 数、单条 path 或理想 cone-removal 上界均不能预测最终 Fmax。
 
 因此，本次开发把问题改写成：在真实 EDA 之前，如何用目标 design 的逻辑图、累计 Library、
-Yosys/ABC 映射和代理 STA，持续增加对关键 timing frontier 有边际价值的 Library function。
+Yosys/ABC 映射和代理 STA，建立一套可重复的多层指标体系，持续增加能够有效改造逻辑结构的
+Library function。
 
-5% 目标必须同时写成频率百分比和 reg2reg frontier 上需要释放的 ps。当前两份基线约对应
-24.8 ps 与 26.5 ps。这个数是需要解释的收益预算，不是由某一个 Cell delay 直接相减得到的答案。
-逻辑融合可以同时消除 Cell、buffer、部分 net 与 fanout 代价，因此不能用“cell-delay 份额小于
-目标”单独宣告目标不可能。
+5% 是商业设计目标，只能由 matched commercial flow 判断。开源代理不预测这 5% 或对应的
+route Δps；它衡量 Boolean 可实现性、局部级数/节点/边/cut 变化、全设计映射采用、实例与
+buffer/inverter 压力、fanout/load、path-family 覆盖、proxy-STA frontier 和 Library 成本。
+商业结果用于观察这些指标与真实 QoR 的关系，不把代理训练成商用 EDA 的数值替代品。
 
 ## 3. 范围与架构约束
 
@@ -54,7 +59,7 @@ Yosys/ABC 映射和代理 STA，持续增加对关键 timing frontier 有边际�
 - 对 mapped netlist 和完整 Liberty 进行的代理 STA；
 - 从 RTL、mapped netlist 和已有 route 证据构建的 reg2reg timing-influence graph；
 - K-cut、dominator、reconvergence、重复 cone、path-family 和 fanout/load 影响分析；
-- function-level 与 predicted-cell 两级评估；
+- function-level、局部 subgraph、全设计 mapping 和 proxy-STA 的分层评估；
 - 单次 reference/augmented batch mapping 和少量有界 ablation；
 - 只追加新 Cell 的 immutable Library shards 与累计 manifest；
 - AI 主导的残余问题研究和确定性独立复算；
@@ -102,22 +107,24 @@ Request 至少包含：
 - foundry Liberty 与累计 custom-Library manifest；
 - 本轮 candidate delta；
 - Yosys、ABC、proxy-STA 工具身份和固定 profile；
-- 目标 reg2reg period、目标 Δps、轮次预算；
-- 可选的历史 DC/Innovus 校准证据，明确其来源与适用条件。
+- 目标 reg2reg period、指标优先级、Library/轮次预算；
+- 可选的历史 DC/Innovus 对照证据，明确其 design、条件和适用范围。
 
 Evaluation 至少包含：
 
 - request、脚本、工具、Library shards 和输出文件的 hash；
 - reference 与 augmented mapped netlist；
 - mapping adoption、instance、function class 和关键图覆盖；
-- reference/augmented worst reg2reg delay、negative-slack mass 与 path migration；
-- optimistic/nominal/conservative 三种候选 delay/load 假设下的方向；
-- target Δps、predicted Δps、当前 calibration error band 和 margin；
+- function feasibility，以及局部逻辑级数、节点、边、cut width、重汇聚和支配关系变化；
+- 全设计 mapping adoption、实例数、逻辑深度分布、buffer/inverter 压力、fanout/load 与 overlap；
+- reference/augmented proxy-STA frontier、negative-slack mass 与 path migration，明确只是指标；
+- optimistic/nominal/conservative 三种 slew/load 情景下的完整指标向量和两臂 `pairwise_relation`；
 - residual graph、未采用候选及原因、下一轮研究问题；
-- `exit_ready`、停止原因及其确定性复算依据。
+- 指标是否完备、两臂关系、收敛/停止原因及其确定性复算依据；跨候选、跨轮次 Pareto frontier
+  只能由 FW-07 portfolio 产生。
 
-Evaluation 永远是预测和筛选证据。只有现有 `compare` Reader/Judge 能根据商业数据库和报告产生
-最终比较事实。
+Evaluation 永远是结构评估和分级筛选证据，不预测商业收益。只有现有 `compare` Reader/Judge
+能根据商业数据库和报告产生最终 design QoR 比较事实。
 
 ## 5. 组件级开发要求
 
@@ -232,31 +239,32 @@ flow/library/
 **落点：**深化 `ai_research_runner.py` 与 `research-template.py`，继续使用唯一的
 `research-candidates` Workshop。
 
-AI 接收 compact、hash-bound 的 residual graph、proxy mapping、break-even、calibration error、
+AI 接收 compact、hash-bound 的 residual graph、proxy mapping、多层指标向量、Pareto frontier、
 cumulative manifest 和历史失败。它负责提出研究镜头、编写有界候选/portfolio 代码、决定下一轮扩展
-区域并解释预期收益。它不能修改 Goal、伪造测量、删除旧资产、直接写 Judge 事实或自行启动商业流。
+区域并解释希望改变哪些结构指标。它不能修改 Goal、伪造测量、删除旧资产、直接写 Judge 事实或
+自行启动商业流。
 
 `ai_research_runner.py` 继续负责完整 I/O、候选 membership、Boolean identity、预算、source hash、
 输出 schema 和代码 hash；`read-stage.py` 独立复算关键数值。第二梯队模型只需要解决明确的 residual
 problem，不需要重新理解 Yosys、ABC、Liberty 与整个 Pack。
 
-### 5.7 Calibration 与出口判断
+### 5.7 指标体系、商业对照与验证分级
 
-校准必须把两个职责分开：
+Framework 不以预测 DC/Innovus 数值为目标。指标分为四层：
 
-- **Mapping proxy：**检查 ABC 对 47-Cell Library 的 function/drive adoption、critical-family 排序与
-  DC 事实的一致性；
-- **Physical correction：**检查 predicted Liberty、proxy STA 与 Innovus 路径事实之间的误差，并
-  解释 wire、fanout、CTS、congestion 与 path migration 能否吞掉逻辑收益。
+- **F0 Function：**Boolean 等价、接口、generator feasibility、break-even local bound；
+- **F1 Local structure：**级数、节点/边、cut width、重汇聚、支配、重复/非重叠支持；
+- **F2 Design mapping：**全设计采用、实例/面积、深度分布、buffer/inverter 压力、fanout/load；
+- **F3 Timing indicator：**proxy-STA frontier、negative-slack mass、path-family coverage 和迁移。
 
-采用集合的 precision/recall、frontier rank correlation 和 sign agreement 都要报告，但第一份 AES
-样本不能把任意阈值升级成通用产品标准。尤其不能因为 ABC 没有预测 post-route 的负方向，就断言
-mapping proxy 无效。是否继续由根因和代理声明职责决定，不采用“失败两次自动终止”。
+商业 DC/Innovus 结果构成 **F4 Design QoR observation**。它与 F0～F3 做同条件对照，用来发现哪些
+指标在当前 design 上有解释力、哪些没有；precision/recall、rank correlation、方向和数值差异可以
+记录，但不作为追求预测准确率的训练目标，也不升级成跨 design 的通用阈值。
 
-商业出口至少要求：augmented frontier 改善；覆盖目标 path families；新 worst endpoint 可解释；
-候选实际被代理采用；overlap 已处理；三种 delay/load 情景方向一致；predicted Δps 超过目标 Δps 加
-当前组合误差；连续轮次已经收敛或达到目标。商业出口次数是 Campaign/Pack 的显式预算，默认可以
-是一次加一次经重新校准后的验证，但不是 Runtime 常量。
+一次商业验证候选至少要求：F0 完备；F1/F2 有可解释的结构改变；候选被真实开源 mapper 采用；
+overlap 已处理；F3 没有暴露明确反例；指标向量位于当前 Pareto frontier；连续轮次已收敛或预算要求
+一次真实 QoR 观测。它表示“值得验证”，不表示“预计会获得多少收益”。商业验证次数是 Campaign/Pack
+的显式预算，不是 Runtime 常量。
 
 ## 6. Phase 1：独立 Framework 建设与评估
 
@@ -267,14 +275,14 @@ mapping proxy 无效。是否继续由根因和代理声明职责决定，不采
 | LFR-FW-01 | 无 | 冻结 AES RTL、top、SDC 摘要、foundry Liberty、47-Cell predicted Liberty、DC adoption、两份 route timing/census 的 hash-bound calibration corpus；写清两轮条件不同 | corpus manifest、来源路径、hash、可用/缺失字段；不复制客户原始材料进 Git |
 | LFR-FW-02 | FW-01 | 实现 `proxy_mapping.py` 与薄 CLI；固定 Yosys/ABC profile；reference/augmented batch mapping | 相同输入重复运行的 netlist/census 身份；脚本唯一差异审计；失败反例 |
 | LFR-FW-03 | FW-01 | 扩展 `liberty_timing.py` 完成 NLDM 插值和 mapped-netlist reg2reg STA；决定是否需要 OpenSTA | 手算小电路、slew/load 边界、缺 arc、multi-clock 反例；同一引擎复算 reference/augmented |
-| LFR-FW-04 | FW-02、FW-03 | 用 47-Cell 证据校准 mapping 与 physical correction，记录适用范围和 error band | adoption、排序、delay/error 报告；明确 pass/fail/root cause；零 LC/DC/Innovus Job |
-| LFR-FW-05 | FW-04 | 深化 influence graph、K-cut、counterfactual、path migration 与 portfolio objective | synthetic reconvergence/dominator/overlap 用例；候选排序可从原始向量复算 |
+| LFR-FW-04 | FW-02、FW-03 | 用 47-Cell 证据建立可用的 F0/F2/F3 基线，并与保存的 F4 commercial QoR 做条件化对照；F1 缺失须明示 | 指标向量、adoption/排序/QoR 对照；明确适用范围与 root cause；零 LC/DC/Innovus Job |
+| LFR-FW-05 | FW-04 | 深化 influence graph、K-cut、结构 counterfactual、path migration 与多指标 Pareto portfolio | synthetic reconvergence/dominator/overlap 用例；Pareto 层可从原始向量复算 |
 | LFR-FW-06 | FW-01，可与 FW-05 并行 | 实现 immutable shards、累计 manifest、delta-only generation projection 与 invalidation | 两轮 synthetic Library；旧文件 hash 不变；第二轮不产生旧 Cell Job |
 | LFR-FW-07 | FW-05、FW-06 | 接入 AI residual research、两级 proxy、收敛和停止；实现独立 CLI 闭环 | 一个固定 replay 和一个第二梯队真实模型小任务；输出可复算，未越权启动商业工具 |
 | LFR-FW-08 | FW-07 | 对 Framework 做正式评估：可复现性、校准、优化趋势、成本、泛化边界与失败资产 | Framework assessment；决定进入 HimaPack、修正代理或停止，不能以代码完成代替评估通过 |
 
-FW-02 与 FW-03 可并行，FW-06 可在 FW-04 后半与 FW-05 并行。FW-04 是早期否证门：代理职责不成立
-时先修正模型，不继续堆积完整优化循环。
+FW-02 与 FW-03 可并行，FW-06 可在 FW-04 后半与 FW-05 并行。FW-04 是指标设计门：单一 timing
+指标不能解释结构变化时扩充指标体系，不把问题改写成追求商业结果预测精度。
 
 ### 6.2 Framework 测试分级
 
@@ -296,9 +304,9 @@ Phase 1 出口运行一次。测试 fixture 的期望来自手算、固定工具
 
 - 所有输入、工具、Library 和结果有稳定身份；
 - reference/augmented mapping 可重复，约束差异为零；
-- proxy STA 对受支持结构的误差与未知项可解释；
-- calibration 报告说明 mapping proxy 与 physical correction 各自能做什么、不能做什么；
-- 至少一个 held-out RTL 上，优化循环能从 residual graph 产生新候选并改善稳健代理目标；
+- proxy STA 对受支持结构的指标含义、保守假设和未知项可解释；
+- 对照报告说明已提供层与商业 F4 的条件、关系、缺失层和不可外推边界；
+- 至少一个 held-out RTL 上，优化循环能从 residual graph 产生新候选并推进多指标 Pareto frontier；
 - 旧 Cell 不重新生成，Library 只追加，失败候选不会重复试验；
 - 第二梯队模型能在给定 compact context 下完成研究程序；
 - Framework assessment 明确批准 Pack integration。
@@ -311,7 +319,7 @@ Phase 1 出口运行一次。测试 fixture 的期望来自手算、固定工具
 | --- | --- | --- | --- |
 | LFR-PACK-01 | FW-08 | `INTENT.md`, `SPEC.md` | 用现有五段/九段 authoring 格式重写方法目标、约束、Run contract、语义、Judge、Chooser、结束、Workshop 和知识；保留作者已确认决定 |
 | LFR-PACK-02 | PACK-01 | `contract.yml`, `flow/bind-inputs.py`, `knowledge/site-profile.md` | 声明 Yosys/ABC/proxy-STA 身份、超时和资源；增加 `MAX_NEW_CELLS`；原 `MAX_CELLS` 显式退休或保留累计硬上限；HimaGuide 默认发现，不要求用户手填 |
-| LFR-PACK-03 | PACK-01 | `graph.yml` | 用 proxy baseline 替代开头的商业 probe；在商业 compile/DC/APR 前放置 function proxy、delta materialization、predicted proxy、proxy Judge 与 research revisit；商业出口才进入现有最终链 |
+| LFR-PACK-03 | PACK-01 | `graph.yml` | 用 evaluation baseline 替代开头的商业 probe；在商业 compile/DC/APR 前放置 function/local/design/timing 分层评估、delta materialization、Pareto Judge 与 research revisit；值得验证时才进入现有最终链 |
 | LFR-PACK-04 | PACK-02、03 | `flow/stages.py`, `flow/library_richness.py`, `flow/domain/*`, `tools/stages.py` | 将 Phase 1 接口接入已有 stage dispatch；保留 attempt/artifact/hash；同步发布副本；不得复制算法或绕过 Permit/Job 记录 |
 | LFR-PACK-05 | PACK-03、04 | `contract.yml` outputs/workshop、`readers/`, `semantics.yml`, `rules/`, `choosers/`, `flow/read-stage.py`, `tools/read-stage.py` | 声明一个完整 proxy-evaluation 输出和必要 Library manifest；Reader 独立复算；Judge 只在证据完备时通过；Chooser 只调整研究策略，不改 Goal |
 | LFR-PACK-06 | PACK-05 | `flow/ai_research_runner.py`, `flow/research-template.py`, `knowledge/full-mining-method.md`, `knowledge/manifest.yml` | Workshop 读取 residual graph、calibration、manifest 和失败资产；更新方法知识与来源；不把运行结果自动写回 Pack |
@@ -325,10 +333,10 @@ bind-inputs
   -> proxy-baseline/read
   -> high-influence mining branches
   -> research-candidates/read
-  -> function-proxy/read/judge
+  -> function-and-local-evaluation/read/judge
        FAIL -> residual research revisit
        PASS -> generate/layout/characterize only delta
-  -> predicted-proxy/read/judge
+  -> design-mapping-and-timing-evaluation/read/judge
        FAIL -> residual research revisit
        PASS -> freeze cumulative Library
   -> compile -> matched foundry/custom DC -> adoption gate
@@ -344,14 +352,19 @@ bind-inputs
 
 优先把内部细节封装在一个 `proxyEvaluation` 输出中，其 Reader 发出最少但足够判断的类型：
 
-- `proxy_target_delta_ps`、`proxy_predicted_delta_ps`、`proxy_error_bound_ps`、
-  `proxy_gain_margin_ps`；
-- `proxy_worst_reg2reg_delay_ps`、`proxy_negative_slack_mass_ps`；
+- `proxy_local_level_delta`、`proxy_removed_node_count`、`proxy_cut_width`、
+  `proxy_reconvergence_coverage`；
+- `proxy_mapped_instance_delta`、`proxy_logic_depth_p95_delta`、
+  `proxy_buffer_inverter_pressure_delta`、`proxy_fanout_load_delta`；
+- `proxy_worst_reg2reg_delay_indicator`、`proxy_negative_slack_mass_indicator`；
 - `proxy_adopted_candidate_count`、`new_library_cell_count`、`cumulative_library_cell_count`；
-- `proxy_calibration_valid`、`proxy_robust_direction_count`、`proxy_exit_ready`。
+- `proxy_metric_vector_complete`、`proxy_pairwise_relation`、
+  `portfolio_frontier_membership`、`commercial_validation_candidate`。
 
 每一种 type 必须由 Pack Reader 实际发出并在 `semantics.yml` 声明；不为 UI 方便制造无人产生的语义。
-规则至少分开“校准证据可用”和“值得商业出口”，不能用一个大布尔值掩盖未知原因。
+规则至少分开“指标证据完备”“两臂 pairwise 关系”“FW-07 portfolio frontier 成员”和“值得一次
+商业验证”，不能用一个大布尔值掩盖未知原因，也不能把 `commercial_validation_candidate` 表述为
+收益预测。
 
 ### 7.4 HimaPack 标准门
 
@@ -384,10 +397,12 @@ Phase 2 继续使用仓库 L0～L5：
 
 - **L0/L1：**Pack schema、graph 引用、Python、proxy 纯逻辑；
 - **L2：**真实 Host、本地 Yosys/ABC、proxy STA、两轮 shards、Reader/Judge/恢复；
-- **L3：**只验证 Campaign graph、Library 增长、proxy 结果、商业出口与失败原因可见；所有 Desktop
+- **L3：**只验证 Campaign graph、Library 增长、多层指标、pairwise 关系、portfolio frontier 身份和
+  验证候选理由可见；所有 Desktop
   测试只在 Catsights 副屏；
-- **L4：**一次真实模型小任务和一次 AES 保存证据校准；没有 LC/DC/Innovus 搜索；
-- **L5：**代理出口通过后的一次 matched commercial validation。失败后回到代理校准，不能原样重跑。
+- **L4：**一次真实模型小任务和一次 AES 保存指标/F4 对照；没有 LC/DC/Innovus 搜索；
+- **L5：**Pareto 候选形成后的一次 matched commercial QoR observation。负结果写入关系证据，不能
+  原样重跑或反向拟合收益预测器。
 
 同一次修改不重复构建和跑完整桌面。先运行最便宜的可推翻测试；只有接口、真实依赖或用户路径变化
 才升级验证层。通过、失败、跳过和未运行分别记录。
@@ -404,6 +419,8 @@ Phase 2 继续使用仓库 L0～L5：
 
 ## 10. 当前开发前沿
 
-当前前沿是 **LFR-FW-01**。先冻结可校准的输入与已知商业结果，再并行进行 LFR-FW-02 mapping
-adapter 和 LFR-FW-03 proxy STA。任何新的完整 DC/APR Campaign 都不计作 Framework 进展，直到
-LFR-FW-04 证明代理的职责和误差边界。
+当前前沿是 **LFR-FW-07**：把已完成的多指标 influence/portfolio 和累计 Library 生命周期接入
+compact AI residual research，维护跨候选、跨轮次 frontier，并完成 held-out RTL 与第二梯队模型
+验证。FW-01～06 已建立真实工具、AES F0/F2/F3～F4 对照和确定性 portfolio 基础；这些数据不解释
+成收益预测精度。新的完整 DC/APR Campaign 不计作 Framework 进展，直到 FW-07/08 证明指标体系
+能够稳定推进 frontier 并形成值得观察的候选。

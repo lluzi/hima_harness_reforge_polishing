@@ -32,8 +32,11 @@ the library under NPN/NPNP equivalence. It is exhaustive only inside that bound.
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import itertools
 import json
+import math
 import os
 import re
 import sys
@@ -56,11 +59,14 @@ from cell_need_miner.generator_contract import (  # noqa: E402
 )
 from cell_need_miner.liberty import parse_skeleton  # noqa: E402
 from cell_need_miner.npn import npn_canonical, reduce_support  # noqa: E402
+from _generation_projection import canonical_cell_name  # noqa: E402
 from verilog_netlist import GENERIC_PREFIX, parse_modules  # noqa: E402
 
 REPORT_SCHEMA = "xspace_cell-pattern-search/v2"
 CONSTANT_NETS = ("1'b0", "1'b1", "1'h0", "1'h1")
 BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis"}
+PORTFOLIO_SCHEMA = "hima.library-richness.candidate-portfolio/1"
+PORTFOLIO_CANDIDATE_SCHEMA = "hima.library-richness.portfolio-candidate/1"
 
 
 @dataclass
@@ -407,6 +413,821 @@ def key_string(key):
     return "%s:k%d:m%d:[%s]" % (key[0], key[1], key[2], payload)
 
 
+def _stable_digest(value):
+    payload = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def project_candidate_identity(request):
+    """Project function, pin interface, and drive variants independently.
+
+    Candidate names are run-local and therefore are not an identity.  This
+    projection deliberately keeps the NPN/NPNP Boolean class separate from the
+    ordered generator interface and from physical drive/VT variants.  The
+    result is deterministic and contains enough raw material to recompute each
+    key; it makes no timing, mapping-adoption, or commercial-benefit claim.
+    """
+    if not isinstance(request, dict):
+        raise ValueError("candidate request must be an object")
+    contract = request.get("generator_contract")
+    if not isinstance(contract, dict):
+        raise ValueError("candidate generator_contract must be an object")
+    reference = contract.get("equivalence_reference")
+    if not isinstance(reference, dict):
+        raise ValueError("candidate equivalence_reference must be an object")
+    input_order = reference.get("input_order")
+    output_order = reference.get("output_order")
+    encoded_tables = reference.get("output_truth_tables_hex")
+    if (
+        not isinstance(input_order, list)
+        or not input_order
+        or not all(isinstance(pin, str) and pin for pin in input_order)
+    ):
+        raise ValueError("candidate input_order must be a non-empty string array")
+    if (
+        not isinstance(output_order, list)
+        or not output_order
+        or not all(isinstance(pin, str) and pin for pin in output_order)
+    ):
+        raise ValueError("candidate output_order must be a non-empty string array")
+    if not isinstance(encoded_tables, dict):
+        raise ValueError("candidate output_truth_tables_hex must be an object")
+    tables = []
+    for output in output_order:
+        encoded = encoded_tables.get(output)
+        if not isinstance(encoded, str):
+            raise ValueError("candidate truth table for %s must be a string" % output)
+        try:
+            table = int(encoded, 0)
+        except ValueError as exc:
+            raise ValueError(
+                "candidate truth table for %s is not an integer" % output
+            ) from exc
+        limit = 1 << (1 << len(input_order))
+        if table < 0 or table >= limit:
+            raise ValueError("candidate truth table for %s exceeds its interface" % output)
+        tables.append(table)
+
+    function_class = key_string(functional_key(tuple(tables), len(input_order)))
+    interface = {
+        "inputs": list(input_order),
+        "outputs": list(output_order),
+        "input_count": len(input_order),
+        "output_count": len(output_order),
+    }
+    implementation = contract.get("implementation_request")
+    if not isinstance(implementation, dict):
+        raise ValueError("candidate implementation_request must be an object")
+    drives = implementation.get("drive_strengths")
+    vt_classes = implementation.get("vt_classes")
+    if (
+        not isinstance(drives, list)
+        or not drives
+        or not all(isinstance(value, str) and value for value in drives)
+    ):
+        raise ValueError("candidate drive_strengths must be a non-empty string array")
+    if (
+        not isinstance(vt_classes, list)
+        or not vt_classes
+        or not all(isinstance(value, str) and value for value in vt_classes)
+    ):
+        raise ValueError("candidate vt_classes must be a non-empty string array")
+    drive_variants = [
+        {"drive_strength": drive, "vt_class": vt}
+        for drive in sorted(set(drives))
+        for vt in sorted(set(vt_classes))
+    ]
+    function_interface = {
+        "function_class": function_class,
+        "interface": interface,
+    }
+    function_interface_id = "LFRFI_" + _stable_digest(function_interface)[:24]
+    return {
+        "schema": "hima.library-richness.candidate-identity/1",
+        "function_class": function_class,
+        "interface": interface,
+        "function_interface_id": function_interface_id,
+        "drive_variants": [
+            dict(
+                variant,
+                variant_id="LFRDV_" + _stable_digest({
+                    "function_interface_id": function_interface_id,
+                    **variant,
+                })[:24],
+            )
+            for variant in drive_variants
+        ],
+    }
+
+
+def _finite_number(value):
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
+    )
+
+
+def _generation_request(candidate):
+    nested = candidate.get("generation_request") if isinstance(candidate, dict) else None
+    if isinstance(nested, dict):
+        return nested
+    if isinstance(candidate, dict) and isinstance(candidate.get("generator_contract"), dict):
+        return candidate
+    return None
+
+
+def _request_occurrence_keys(request):
+    evidence = request.get("discovery_evidence") or {}
+    occurrences = evidence.get("occurrences") or []
+    keys = set()
+    for occurrence in occurrences:
+        if not isinstance(occurrence, dict):
+            continue
+        module = occurrence.get("module")
+        if not isinstance(module, str) or not module:
+            continue
+        covered = occurrence.get("covered_instance_keys")
+        if isinstance(covered, list):
+            keys.update(
+                name for name in covered if isinstance(name, str) and name
+            )
+        origins = occurrence.get("mapped_origins")
+        if isinstance(origins, list):
+            keys.update(
+                "%s/%s" % (module, name)
+                for name in origins if isinstance(name, str) and name
+            )
+        root = occurrence.get("root_instance")
+        if isinstance(root, str) and root:
+            keys.add("%s/%s" % (module, root))
+        roots = occurrence.get("root_instances")
+        if isinstance(roots, list):
+            keys.update(
+                "%s/%s" % (module, name)
+                for name in roots if isinstance(name, str) and name
+            )
+    return sorted(keys)
+
+
+def _number_or_none(value):
+    return float(value) if _finite_number(value) else None
+
+
+def _counterfactual_bound(counterfactual):
+    if not isinstance(counterfactual, dict):
+        return {
+            "status": "missing",
+            "unit": "delay_unit",
+            "break_even_delay": None,
+            "proxy_cell_delay": None,
+            "margin": None,
+            "reasons": ["counterfactual evidence is absent"],
+        }
+    direct_break_even = _number_or_none(counterfactual.get("local_break_even_du"))
+    proxy_cell = _number_or_none(counterfactual.get("new_cell_delay_du"))
+    if proxy_cell is None:
+        proxy_cell = _number_or_none(counterfactual.get("proxy_cell_delay_du"))
+    penalty_keys = (
+        "boundary_penalty_du",
+        "fanout_penalty_du",
+        "wire_penalty_du",
+        "uncertainty_penalty_du",
+    )
+    penalties = [_number_or_none(counterfactual.get(key)) for key in penalty_keys]
+    reasons = []
+    gross = _number_or_none(counterfactual.get("gross_removable_delay_du"))
+    if direct_break_even is None and gross is None:
+        reasons.append("local break-even delay is missing")
+    if proxy_cell is None or proxy_cell <= 0.0:
+        reasons.append("proxy Cell delay must be positive")
+    if direct_break_even is None and any(
+        value is None or value < 0.0 for value in penalties
+    ):
+        reasons.append("counterfactual penalties must be finite and nonnegative")
+    if reasons:
+        return {
+            "status": "invalid",
+            "unit": "delay_unit",
+            "break_even_delay": None,
+            "proxy_cell_delay": proxy_cell,
+            "margin": None,
+            "reasons": reasons,
+        }
+    break_even = (
+        direct_break_even if direct_break_even is not None
+        else gross - sum(penalties)
+    )
+    margin = break_even - proxy_cell
+    if margin <= 0.0:
+        reasons.append("proxy Cell delay does not beat the local break-even bound")
+    return {
+        "status": "pass" if not reasons else "fail",
+        "unit": "delay_unit",
+        "break_even_delay": break_even,
+        "proxy_cell_delay": proxy_cell,
+        "margin": margin,
+        "reasons": reasons,
+    }
+
+
+def _structural_projection(influence):
+    if not isinstance(influence, dict):
+        influence = {}
+    supplied = influence.get("structural_metrics")
+    if isinstance(supplied, dict):
+        projection = copy.deepcopy(supplied)
+    else:
+        projection = {}
+    before = _number_or_none(influence.get("logic_depth_before"))
+    after = _number_or_none(influence.get("logic_depth_after"))
+    projection.update({
+        "levels_removed": projection.get("levels_removed", (
+            max(0.0, before - after) if before is not None and after is not None
+            else _number_or_none(influence.get("removable_depth"))
+        )),
+        "nodes_removed": projection.get(
+            "nodes_removed", _number_or_none(influence.get("removable_node_count"))
+        ),
+        "edges_removed": projection.get(
+            "edges_removed", _number_or_none(influence.get("removable_edge_count"))
+        ),
+        "cut_width": projection.get("cut_width", (
+            (_number_or_none(influence.get("cut_boundary_input_count")) or 0.0)
+            + (_number_or_none(influence.get("cut_boundary_output_count")) or 0.0)
+        )),
+        "reconvergence_coverage": projection.get(
+            "reconvergence_coverage", _number_or_none(
+            influence.get("reconvergence_node_count")
+        )),
+        "dominator_endpoint_coverage": _number_or_none(
+            influence.get("dominator_endpoint_coverage")
+        ),
+        "fanout": _number_or_none(influence.get("fanout_count")),
+        "buffer_inverter_pressure": copy.deepcopy(
+            influence.get("buffer_inverter_pressure")
+        ),
+        "overlap_ratio": _number_or_none(influence.get("overlap_ratio")),
+        "path_family_count": _number_or_none(influence.get("path_family_count")),
+        "negative_slack_mass_coverage_ns": _number_or_none(
+            influence.get("negative_slack_mass_coverage_ns")
+        ),
+    })
+    return projection
+
+
+def _mapped_netlist_hash(arm):
+    artifacts = arm.get("artifacts") if isinstance(arm, dict) else None
+    if not isinstance(artifacts, list):
+        raise ValueError("mapping arm artifacts must be an array")
+    rows = [
+        row for row in artifacts
+        if isinstance(row, dict) and row.get("role") == "mapped_netlist"
+    ]
+    if len(rows) != 1 or not re.fullmatch(r"[0-9a-f]{64}", str(rows[0].get("sha256"))):
+        raise ValueError("mapping arm must carry one hashed mapped_netlist artifact")
+    return rows[0]["sha256"]
+
+
+def _verified_digest(value, name):
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise ValueError("%s must be a lowercase SHA-256 digest" % name)
+    return value
+
+
+def mapper_evidence_from_mapping_result(request, result_path, expected_sha256):
+    """Verify one actual paired mapping result and project candidate adoption.
+
+    Adoption is derived only from the hash-bound result's two Cell censuses.
+    The reference arm must not contain any Cell generated for this candidate.
+    Missing augmented counts remain verified non-adoption evidence rather than
+    being converted into a caller assertion.
+    """
+    if not isinstance(expected_sha256, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", expected_sha256
+    ):
+        raise ValueError("expected mapping result SHA-256 must be lowercase hex")
+    path = Path(result_path).expanduser().resolve()
+    if not path.is_file():
+        raise ValueError("mapping result does not name a regular file")
+    payload = path.read_bytes()
+    actual_sha256 = hashlib.sha256(payload).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise ValueError("mapping result SHA-256 mismatch")
+    try:
+        result = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("mapping result is not valid JSON") from exc
+    if result.get("schema") != "lfr-proxy-mapping-result/1":
+        raise ValueError("unsupported mapping result schema")
+    if result.get("status") != "succeeded":
+        raise ValueError("mapping result did not succeed")
+    arms = result.get("arms")
+    if not isinstance(arms, dict):
+        raise ValueError("mapping result arms must be an object")
+    normalized = {}
+    for name in ("reference", "augmented"):
+        arm = arms.get(name)
+        if (
+            not isinstance(arm, dict)
+            or arm.get("status") != "succeeded"
+            or arm.get("return_code") != 0
+        ):
+            raise ValueError("mapping %s arm did not succeed" % name)
+        adoption = arm.get("adoption")
+        census = adoption.get("cell_census") if isinstance(adoption, dict) else None
+        if not isinstance(census, dict):
+            raise ValueError("mapping %s arm has no Cell census" % name)
+        checked = {}
+        for cell, count in census.items():
+            if (
+                not isinstance(cell, str)
+                or isinstance(count, bool)
+                or not isinstance(count, int)
+                or count < 0
+            ):
+                raise ValueError("mapping %s Cell census is invalid" % name)
+            checked[cell] = count
+        normalized[name] = {
+            "census": checked,
+            "plan_sha256": _verified_digest(
+                arm.get("plan_sha256"), "mapping %s plan_sha256" % name
+            ),
+            "mapped_netlist_sha256": _mapped_netlist_hash(arm),
+        }
+
+    candidate_id = request.get("candidate_id") if isinstance(request, dict) else None
+    interface = (
+        (request.get("generator_contract") or {}).get("interface")
+        if isinstance(request, dict) else None
+    )
+    outputs = interface.get("outputs") if isinstance(interface, dict) else None
+    if not isinstance(candidate_id, str) or not isinstance(outputs, list) or not outputs:
+        raise ValueError("generation request cannot derive candidate Cell identity")
+    output_names = []
+    for output in outputs:
+        name = output.get("name") if isinstance(output, dict) else None
+        if not isinstance(name, str) or not name:
+            raise ValueError("generation request output name is invalid")
+        output_names.append(name)
+    candidate_cells = [
+        canonical_cell_name(candidate_id, output) for output in output_names
+    ]
+    leaked = {
+        cell: normalized["reference"]["census"].get(cell, 0)
+        for cell in candidate_cells
+        if normalized["reference"]["census"].get(cell, 0) > 0
+    }
+    if leaked:
+        raise ValueError(
+            "candidate Cells leaked into reference census: %s"
+            % ", ".join(sorted(leaked))
+        )
+    augmented_counts = {
+        cell: normalized["augmented"]["census"].get(cell, 0)
+        for cell in candidate_cells
+    }
+    instance_count = sum(augmented_counts.values())
+    tool_identity = result.get("tool_identity") or {}
+    request_sha256 = _verified_digest(
+        result.get("request_sha256"), "mapping request_sha256"
+    )
+    yosys_sha256 = _verified_digest(
+        (tool_identity.get("yosys") or {}).get("sha256"), "Yosys sha256"
+    )
+    abc_sha256 = _verified_digest(
+        (tool_identity.get("abc") or {}).get("sha256"), "ABC sha256"
+    )
+    return {
+        "schema": "hima.library-richness.verified-mapper-adoption/1",
+        "verified": True,
+        "candidate_id": candidate_id,
+        "candidate_cells": candidate_cells,
+        "candidate_cell_counts": augmented_counts,
+        "status": "adopted" if instance_count > 0 else "not_adopted",
+        "adopted": instance_count > 0,
+        "candidate_instances": instance_count,
+        "source_hashes": {
+            "mapping_result_sha256": actual_sha256,
+            "mapping_request_sha256": request_sha256,
+            "reference_plan_sha256": normalized["reference"]["plan_sha256"],
+            "augmented_plan_sha256": normalized["augmented"]["plan_sha256"],
+            "reference_mapped_netlist_sha256":
+                normalized["reference"]["mapped_netlist_sha256"],
+            "augmented_mapped_netlist_sha256":
+                normalized["augmented"]["mapped_netlist_sha256"],
+            "yosys_sha256": yosys_sha256,
+            "abc_sha256": abc_sha256,
+        },
+        "result_path": str(path),
+    }
+
+
+def _mapper_evidence(stage, evidence, candidate_id):
+    if stage == "pre_mapping":
+        if evidence is not None:
+            raise ValueError("pre_mapping candidates cannot carry mapper evidence")
+        return {"status": "not_evaluated", "adopted": None, "candidate_instances": None}
+    if not isinstance(evidence, dict):
+        return {"status": "missing", "adopted": None, "candidate_instances": None}
+    if (
+        evidence.get("schema")
+        != "hima.library-richness.verified-mapper-adoption/1"
+        or evidence.get("verified") is not True
+        or evidence.get("candidate_id") != candidate_id
+    ):
+        raise ValueError("post_mapping requires verified hash-bound mapper evidence")
+    return copy.deepcopy(evidence)
+
+
+def portfolio_candidate_from_generation_request(
+    request, *, stage, verified_mapper_evidence=None, library_cost=None
+):
+    """Adapt one production generation request into the only portfolio DTO.
+
+    ``pre_mapping`` means function/generator/structure planning only.  A
+    ``post_mapping`` DTO requires a separate mapper observation; G4 generation
+    readiness never counts as adoption.  Design-level family baselines and the
+    paired reference/augmented proxy delta intentionally do not enter this DTO.
+    """
+    if stage not in {"pre_mapping", "post_mapping"}:
+        raise ValueError("portfolio stage must be pre_mapping or post_mapping")
+    if not isinstance(request, dict):
+        raise ValueError("generation request must be an object")
+    candidate_id = request.get("candidate_id")
+    if not isinstance(candidate_id, str) or not candidate_id:
+        raise ValueError("generation request candidate_id must be non-empty")
+    identity = project_candidate_identity(request)
+    gates = request.get("gate_evidence") or {}
+    function_gate = gates.get("G2_function") or {}
+    implementation = request.get("implementation_plan") or {}
+    generation_route = implementation.get("route")
+    generation_ready = (
+        function_gate.get("status") == "PASS"
+        and generation_route in BUILDABLE_ROUTES
+    )
+    evidence = request.get("discovery_evidence") or {}
+    influence = evidence.get("influence_vector") or {}
+    generation_ready = generation_ready and influence.get("mapping_feasible") is True
+    counterfactual = evidence.get("counterfactual")
+    if counterfactual is None:
+        counterfactual = request.get("counterfactual")
+    if library_cost is None:
+        library_cost = {"new_library_cells": 1, "generation_units": 1}
+    if not isinstance(library_cost, dict):
+        raise ValueError("library_cost must be an object")
+    return {
+        "schema": PORTFOLIO_CANDIDATE_SCHEMA,
+        "candidate_id": candidate_id,
+        "stage": stage,
+        "identity": identity,
+        "functional_equivalence": {
+            "status": "exact" if function_gate.get("status") == "PASS" else "unverified",
+            "evidence": function_gate.get("evidence"),
+        },
+        "generation_feasibility": {
+            "status": "ready" if generation_ready else "not_ready",
+            "route": generation_route,
+            "reasons": list(implementation.get("reasons") or []),
+        },
+        "mapper_evidence": _mapper_evidence(
+            stage, verified_mapper_evidence, candidate_id
+        ),
+        "local_break_even": _counterfactual_bound(counterfactual),
+        "covered_instance_keys": _request_occurrence_keys(request),
+        "path_family_ids": list(influence.get("path_family_ids") or []),
+        "structural_metrics": _structural_projection(influence),
+        "library_cost": copy.deepcopy(library_cost),
+        "raw_metrics": {
+            "influence_vector": copy.deepcopy(influence),
+            "counterfactual": copy.deepcopy(counterfactual),
+            "occurrences": copy.deepcopy(evidence.get("occurrences") or []),
+        },
+        "source_generation_request": copy.deepcopy(request),
+    }
+
+
+def _optional_metric(group, keys, *, invert=False, allow_bool=False):
+    if isinstance(keys, str):
+        keys = (keys,)
+    value = None
+    if isinstance(group, dict):
+        for key in keys:
+            if key in group:
+                value = group[key]
+                break
+    if allow_bool and isinstance(value, bool):
+        value = 1.0 if value else 0.0
+    if not _finite_number(value):
+        return None
+    value = float(value)
+    return -value if invert else value
+
+
+def _multi_index_projection(candidate):
+    structural = candidate.get("structural_metrics") or {}
+    mapping = candidate.get("mapper_evidence") or {}
+    cost = candidate.get("library_cost") or {}
+    definitions = (
+        ("structural.levels_removed", structural, "levels_removed", False, False),
+        ("structural.nodes_removed", structural, "nodes_removed", False, False),
+        ("structural.edges_removed", structural, "edges_removed", False, False),
+        ("structural.cut_width", structural, "cut_width", True, False),
+        (
+            "structural.reconvergence_coverage", structural,
+            "reconvergence_coverage", False, False,
+        ),
+        (
+            "structural.dominator_endpoint_coverage", structural,
+            "dominator_endpoint_coverage", False, False,
+        ),
+        ("structural.fanout", structural, "fanout", False, False),
+        ("structural.overlap_ratio", structural, "overlap_ratio", True, False),
+        ("mapping.adopted", mapping, "adopted", False, True),
+        (
+            "mapping.candidate_instances", mapping,
+            "candidate_instances", False, False,
+        ),
+        ("mapping.area_reduction", mapping, "area_reduction", False, False),
+        (
+            "mapping.buffer_inverter_pressure_reduction", mapping,
+            "buffer_inverter_pressure_reduction", False, False,
+        ),
+        ("mapping.fanout_relief", mapping, "fanout_relief", False, False),
+        ("cost.new_library_cells", cost, "new_library_cells", True, False),
+        ("cost.generation_units", cost, "generation_units", True, False),
+    )
+    axes = {}
+    missing = []
+    for name, group, key, invert, allow_bool in definitions:
+        value = _optional_metric(group, key, invert=invert, allow_bool=allow_bool)
+        if value is None:
+            missing.append(name)
+        else:
+            axes[name] = value
+    return {"axes": axes, "missing_axes": missing}
+
+
+def _validate_design_proxy_evidence(evidence):
+    if not isinstance(evidence, dict):
+        raise ValueError("design_proxy_evidence must be an object")
+    evidence_id = evidence.get("evidence_id")
+    if not isinstance(evidence_id, str) or not evidence_id:
+        raise ValueError("design_proxy_evidence.evidence_id must be non-empty")
+    baseline = evidence.get("baseline_slack_by_endpoint_family_ps")
+    delta = evidence.get("paired_delta_by_endpoint_family_ps")
+    if not isinstance(baseline, dict) or not baseline:
+        raise ValueError("design proxy family baseline must be a non-empty object")
+    if not isinstance(delta, dict):
+        raise ValueError("paired family delta must be an object")
+    if set(baseline) != set(delta):
+        raise ValueError("paired family delta keys must exactly match the design baseline")
+    normalized_baseline = {}
+    normalized_delta = {}
+    for family in sorted(baseline):
+        if not isinstance(family, str) or not family:
+            raise ValueError("endpoint family names must be non-empty strings")
+        if not _finite_number(baseline[family]) or not _finite_number(delta[family]):
+            raise ValueError("family baseline and paired delta must be finite")
+        normalized_baseline[family] = float(baseline[family])
+        normalized_delta[family] = float(delta[family])
+    return {
+        "evidence_id": evidence_id,
+        "baseline_slack_by_endpoint_family_ps": normalized_baseline,
+        "paired_delta_by_endpoint_family_ps": normalized_delta,
+        "raw": copy.deepcopy(evidence),
+    }
+
+
+def _proxy_objective(proxy, apply_delta):
+    baseline = proxy["baseline_slack_by_endpoint_family_ps"]
+    delta = proxy["paired_delta_by_endpoint_family_ps"] if apply_delta else {}
+    projected = {
+        family: slack + delta.get(family, 0.0)
+        for family, slack in baseline.items()
+    }
+    return {
+        "proxy_worst_frontier_indicator_ps": min(projected.values()),
+        "proxy_negative_slack_mass_indicator_ps": sum(
+            max(0.0, -slack) for slack in projected.values()
+        ),
+        "proxy_slack_by_endpoint_family_ps": dict(sorted(projected.items())),
+    }
+
+
+def _normalize_portfolio_candidate(candidate, stage):
+    if not isinstance(candidate, dict) or candidate.get("schema") != PORTFOLIO_CANDIDATE_SCHEMA:
+        raise ValueError("portfolio candidates must use the canonical portfolio-candidate DTO")
+    if candidate.get("stage") != stage:
+        raise ValueError("portfolio candidate stage differs from selector stage")
+    reasons = []
+    if candidate.get("functional_equivalence", {}).get("status") != "exact":
+        reasons.append("functional_equivalence_unverified")
+    if candidate.get("generation_feasibility", {}).get("status") != "ready":
+        reasons.append("generator_not_ready")
+    local = candidate.get("local_break_even") or {}
+    if local.get("status") != "pass":
+        reasons.append("local_break_even_not_satisfied")
+        reasons.extend(str(row) for row in (local.get("reasons") or []))
+    covered = candidate.get("covered_instance_keys")
+    if not isinstance(covered, list) or not covered:
+        reasons.append("covered_instance_keys_missing")
+    if stage == "post_mapping":
+        mapper = candidate.get("mapper_evidence") or {}
+        if mapper.get("status") != "adopted" or not mapper.get("candidate_instances"):
+            reasons.append("mapper_non_adoption")
+    return {
+        "candidate_id": candidate["candidate_id"],
+        "candidate": copy.deepcopy(candidate),
+        "multi_index": _multi_index_projection(candidate),
+        "covered_instance_keys": tuple(sorted(set(covered or []))),
+        "rejection_reasons": reasons,
+    }
+
+
+def _pareto_dominates(left, right):
+    if not set(left).issuperset(right):
+        return False
+    strictly_better = False
+    for axis, right_value in right.items():
+        left_value = left[axis]
+        if left_value < right_value - 1e-9:
+            return False
+        strictly_better |= left_value > right_value + 1e-9
+    return strictly_better
+
+
+def _pareto_front(proposals):
+    return [
+        proposal
+        for index, proposal in enumerate(proposals)
+        if not any(
+            _pareto_dominates(other[2], proposal[2])
+            for other_index, other in enumerate(proposals)
+            if other_index != index
+        )
+    ]
+
+
+_TIE_BREAK_AXES = (
+    "structural.levels_removed",
+    "structural.nodes_removed",
+    "structural.edges_removed",
+    "structural.reconvergence_coverage",
+    "structural.dominator_endpoint_coverage",
+    "structural.cut_width",
+    "mapping.adopted",
+    "mapping.candidate_instances",
+    "mapping.area_reduction",
+    "mapping.buffer_inverter_pressure_reduction",
+    "mapping.fanout_relief",
+    "cost.new_library_cells",
+    "cost.generation_units",
+)
+
+
+def select_candidate_portfolio(
+    candidates, max_candidates, *, stage, design_proxy_evidence
+):
+    """Select a gated Pareto portfolio from canonical production DTOs.
+
+    Family baselines and the paired augmented-mapping delta have one independent
+    design-level authority.  The delta is applied once to the resulting
+    portfolio, never once per candidate or occurrence.  Pre-mapping planning
+    cannot claim whole-design mapping evidence; post-mapping selection requires
+    explicit candidate adoption from the mapper.
+    """
+    if stage not in {"pre_mapping", "post_mapping"}:
+        raise ValueError("portfolio stage must be pre_mapping or post_mapping")
+    if not isinstance(candidates, list):
+        raise ValueError("portfolio candidates must be an array")
+    if (
+        isinstance(max_candidates, bool)
+        or not isinstance(max_candidates, int)
+        or max_candidates < 1
+    ):
+        raise ValueError("max_candidates must be a positive integer")
+    proxy = _validate_design_proxy_evidence(design_proxy_evidence)
+    evaluations = [
+        _normalize_portfolio_candidate(candidate, stage)
+        for candidate in sorted(candidates, key=lambda row: str(row.get("candidate_id")))
+    ]
+    candidate_ids = [row["candidate_id"] for row in evaluations]
+    duplicate_ids = sorted({value for value in candidate_ids if candidate_ids.count(value) > 1})
+    if duplicate_ids:
+        raise ValueError("duplicate candidate_id values: %s" % ", ".join(duplicate_ids))
+
+    baseline_objective = _proxy_objective(proxy, apply_delta=False)
+    paired_objective = _proxy_objective(proxy, apply_delta=True)
+    selected = []
+    trace = []
+    while len(selected) < max_candidates:
+        proposals = []
+        selected_ids = {row["candidate_id"] for row in selected}
+        for evaluation in evaluations:
+            if evaluation["candidate_id"] in selected_ids or evaluation["rejection_reasons"]:
+                continue
+            axes = dict(evaluation["multi_index"]["axes"])
+            axes["proxy.worst_frontier_indicator"] = paired_objective[
+                "proxy_worst_frontier_indicator_ps"
+            ]
+            axes["proxy.negative_slack_mass_reduction"] = (
+                baseline_objective["proxy_negative_slack_mass_indicator_ps"]
+                - paired_objective["proxy_negative_slack_mass_indicator_ps"]
+            )
+            proposals.append((evaluation, evaluation["covered_instance_keys"], axes))
+        if not proposals:
+            break
+        front = _pareto_front(proposals)
+        front.sort(key=lambda proposal: (
+            *tuple(-proposal[2].get(axis, float("-inf")) for axis in _TIE_BREAK_AXES),
+            proposal[0]["candidate_id"],
+        ))
+        evaluation, covered, axes = front[0]
+        selected.append({
+            "candidate_id": evaluation["candidate_id"],
+            "identity": evaluation["candidate"]["identity"],
+            "covered_instance_keys": list(covered),
+            "pareto_axes": axes,
+        })
+        trace.append({
+            "rank": len(selected),
+            "candidate_id": evaluation["candidate_id"],
+            "pareto_front_candidate_ids": sorted(
+                proposal[0]["candidate_id"] for proposal in front
+            ),
+            "pareto_axes": axes,
+        })
+
+    selected_ids = {row["candidate_id"] for row in selected}
+    for evaluation in evaluations:
+        if evaluation["candidate_id"] in selected_ids or evaluation["rejection_reasons"]:
+            continue
+        if len(selected) >= max_candidates:
+            evaluation["rejection_reasons"].append("portfolio_budget_reached")
+        else:
+            evaluation["rejection_reasons"].append("not_selected_from_pareto_front")
+
+    overlap_advisories = []
+    for left_index, left in enumerate(evaluations):
+        for right in evaluations[left_index + 1:]:
+            overlap = sorted(
+                set(left["covered_instance_keys"])
+                & set(right["covered_instance_keys"])
+            )
+            if overlap:
+                overlap_advisories.append({
+                    "candidate_ids": [left["candidate_id"], right["candidate_id"]],
+                    "discovery_overlap_instance_keys": overlap,
+                    "effect": (
+                        "advisory_only_pre_mapping_include_both_in_one_augmented_mapping"
+                        if stage == "pre_mapping" else
+                        "discovery_overlap_does_not_override_actual_mapper_adoption"
+                    ),
+                })
+
+    mapping_observed = stage == "post_mapping" and bool(selected)
+    return {
+        "schema": PORTFOLIO_SCHEMA,
+        "status": (
+            "PRE_MAPPING_PLANNING" if stage == "pre_mapping"
+            else "POST_MAPPING_SELECTION"
+        ),
+        "stage": stage,
+        "claims": {
+            "commercial_qor_prediction": False,
+            "commercial_adoption": False,
+            "post_route_benefit": False,
+            "fmax_improvement": False,
+        },
+        "evidence_layers": {
+            "F0_function_equivalence": bool(selected),
+            "F1_local_structure": bool(selected),
+            "F2_whole_design_mapping": mapping_observed,
+            "F3_proxy_sta_indicator": True,
+        },
+        "selection_method": (
+            "functional and generation gates; post-mapping adoption gate; "
+            "deterministic Pareto selection over separate structure, mapper and "
+            "Library-cost axes; one design-level paired proxy delta; discovery "
+            "cone overlap is advisory and never drops a distinct function"
+        ),
+        "max_candidates": max_candidates,
+        "design_proxy_evidence": proxy,
+        "baseline": baseline_objective,
+        "paired_augmented_indicator": paired_objective,
+        "family_delta_application": (
+            "once_for_the_paired_augmented_mapping_not_per_candidate_or_occurrence"
+        ),
+        "selected": selected,
+        "objective_trace": trace,
+        "overlap_advisories": overlap_advisories,
+        "candidate_evaluations": evaluations,
+    }
+
+
 # --------------------------------------------------------------------------
 # G4 feasibility: can the Package forge build this candidate today?
 # --------------------------------------------------------------------------
@@ -701,7 +1522,7 @@ def generator_request(candidate_id, sites, nonoverlap, cells, args):
         shared_logic_evidence(representative, cells)
         if output_count > 1 else None
     )
-    return {
+    request = {
         "schema_version": "standard-cell-generation-request/v2",
         "candidate_id": candidate_id,
         "generator_contract": {
@@ -833,6 +1654,8 @@ def generator_request(candidate_id, sites, nonoverlap, cells, args):
             },
         ],
     }
+    request["candidate_identity"] = project_candidate_identity(request)
+    return request
 
 
 def run(args):

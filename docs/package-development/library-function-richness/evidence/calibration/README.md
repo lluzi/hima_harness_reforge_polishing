@@ -1,6 +1,10 @@
 # LFR-FW-01 calibration corpus / 校准语料
 
-状态：**FW-T0 PASS；语料身份已冻结，代理校准尚未开始。**
+状态：**FW-01 语料冻结 PASS；FW-04 F0～F4 条件化关系对照已完成。**
+
+方法更新：这里冻结的商业证据用于把开源 F0～F3 指标与真实 F4 design QoR 并列观察，不用于训练
+一个商业收益预测器。`corpus.v1.json` 中早期的 “error band” 措辞属于冻结时的方法背景；当前
+实现以[开发文档](../../framework-development.zh-CN.md)的分层指标与 Pareto 定义为准。
 
 本目录是 Library Function Richness Framework 的开发证据，不是
 `custom-cell-fmax-dtco` HimaPack 的交付内容。它只保存路径、SHA-256、字节数、紧凑事实和明确缺口；
@@ -30,8 +34,8 @@ AES RTL、foundry Library、47-Cell predicted Liberty、商业网表、报告、
 | route 保留定制实例 | 250 | 222 |
 | matched Fmax 变化 | +0.192678% | -0.179211% |
 
-因此 FW-04 必须把 mapping proxy 与 physical correction 分开校准，不能把两轮的 sign 差异归因于
-Library 本身，也不能把两轮拼成一个同条件样本。
+因此 FW-04 必须把 mapping、结构、timing 指标与每轮真实 QoR 分层并列，不能把两轮的 sign 差异
+归因于 Library 本身，也不能把两轮拼成一个同条件样本或拟合成收益预测器。
 
 ## 证据覆盖与缺口
 
@@ -61,7 +65,12 @@ python3 -m unittest discover \
 
 ---
 
-Status: **FW-T0 PASS; corpus identities are frozen, proxy calibration has not started.**
+Status: **FW-01 corpus freeze PASS; the FW-04 conditional F0-F4 relationship comparison is complete.**
+
+Method update: retained commercial evidence is used to compare open-source F0-F3 indicators with
+observed F4 design QoR. It is not training data for a commercial-benefit predictor. Early “error
+band” wording in the frozen `corpus.v1.json` is historical context; the layered-metric and Pareto
+definitions in the [development document](../../framework-development.en.md) are authoritative.
 
 This directory is development evidence for the Library Function Richness Framework. It is not
 shipped HimaPack content. Git contains only locators, SHA-256 identities, byte counts, compact facts
@@ -75,7 +84,8 @@ changed from 0.125 ns to 0.175 ns and CTS changed from the legacy unrestricted p
 Site-declared DCCK-only policy. The first run retained 250 custom route instances and improved matched
 Fmax by 0.192678%; the corrected run retained 222 and changed matched Fmax by -0.179211%.
 
-FW-04 must therefore calibrate mapping behavior separately from physical correction. It must not
-attribute the sign change to the Library alone or pool these trials as identical-condition samples.
+FW-04 must place mapping, structural and timing indicators beside each trial's real QoR without
+attributing the sign change to the Library alone, pooling unlike conditions, or fitting a benefit
+predictor.
 The known gaps above remain explicit inputs to FW-02 through FW-04. No Yosys, ABC, LC, DC, Innovus,
 model or Desktop process was run for FW-01.

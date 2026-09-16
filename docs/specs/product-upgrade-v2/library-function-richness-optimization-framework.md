@@ -1,5 +1,13 @@
 # Library Function Richness Optimization Framework
 
+> **2026-09-15 methodology correction.** The implementation does not optimize prediction accuracy
+> against commercial EDA and does not forecast cross-design benefit. Yosys/ABC, structural graph
+> analysis and proxy STA form a layered evaluation agent: function, local structure, whole-design
+> mapping and timing indicators. Commercial DC/Innovus results are F4 design-QoR observations used
+> to study those indicators under matched conditions. Any predictive-delta, error-margin or
+> proxy-as-commercial-substitute wording below is superseded by the bilingual
+> [Package development document](../../package-development/library-function-richness/README.md).
+
 状态：方法论设计，尚未实施。本文定义 `custom-cell-fmax-dtco` Pack 下一阶段的业务方法，
 不表示 5% Fmax 已达成，也不授权新增 Hima Runtime 组件。实现必须继续使用现有 Pack、
 Fabric、Workshop、Job、Reader、Judge 和资产归档机制。

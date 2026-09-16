@@ -3,8 +3,11 @@
 
 Algorithm 1 builds a mapped directed hypergraph view, annotates cell vertices
 with a normalised delay proxy from the full site Liberty, computes relative
-arrival/required/slack, and ranks critical vertices by delay perturbation,
-path participation and dominator endpoint coverage.
+arrival/required/slack, and ranks structural transformations in deterministic
+Pareto layers.  Logic depth, removable nodes/edges, cut width, reconvergence,
+fanout/load, buffer/inverter pressure, timing-family coverage, mapping
+feasibility and overlap remain separate raw axes.  Local proxy timing is one
+axis and is never presented as a commercial QoR prediction.
 
 Algorithm 2 losslessly unmaps each eligible mapped function into a structurally
 hashed AIG and enumerates K-feasible cuts only around Algorithm-1 roots.  Each
@@ -124,8 +127,9 @@ def _mapped_graph(instances, cells):
     return eligible, drivers, loads, predecessors, successors, order, edge_nets
 
 
-def _arrivals(order, predecessors, weights, reduced=None):
+def _arrivals(order, predecessors, weights, reduced=None, replacement_weights=None):
     reduced = reduced or {}
+    replacement_weights = replacement_weights or {}
     arrival = {}
     predecessor_choice = {}
     for name in order:
@@ -136,7 +140,10 @@ def _arrivals(order, predecessors, weights, reduced=None):
                 predecessors[name], key=lambda item: (arrival[item], item)
             )
             best_value = arrival[best_predecessor]
-        arrival[name] = best_value + max(0.0, weights[name] - reduced.get(name, 0.0))
+        weight = replacement_weights.get(
+            name, max(0.0, weights[name] - reduced.get(name, 0.0))
+        )
+        arrival[name] = best_value + max(0.0, weight)
         predecessor_choice[name] = best_predecessor
     return arrival, predecessor_choice
 
@@ -167,8 +174,116 @@ def _dominators(order, predecessors):
     return dominators
 
 
+def _trace_path(endpoint, predecessor_choice):
+    path = []
+    cursor = endpoint
+    while cursor is not None:
+        path.append(cursor)
+        cursor = predecessor_choice[cursor]
+    return list(reversed(path))
+
+
+def _descendants(name, successors):
+    seen = set()
+    stack = list(successors[name])
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        stack.extend(successors[current] - seen)
+    return seen
+
+
+def _ancestors(name, predecessors):
+    seen = set()
+    stack = list(predecessors[name])
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        stack.extend(predecessors[current] - seen)
+    return seen
+
+
+def _logic_depths(order, predecessors):
+    depths = {}
+    for name in order:
+        depths[name] = 1 + max(
+            (depths[predecessor] for predecessor in predecessors[name]), default=0
+        )
+    return depths
+
+
+def _non_overlapping_type_support(names, predecessors, successors):
+    """Count deterministic one-hop replacement regions that do not overlap."""
+    regions = {
+        name: {name} | set(predecessors[name]) | set(successors[name])
+        for name in names
+    }
+    occupied = set()
+    selected = []
+    for name in sorted(names, key=lambda item: (len(regions[item]), item)):
+        if regions[name] & occupied:
+            continue
+        selected.append(name)
+        occupied.update(regions[name])
+    return len(selected), regions
+
+
+def _counterfactual_costs(name, local_delay, trial_reduction, overrides):
+    """Build an auditable replacement-delay budget for one mapped vertex.
+
+    This graph has Cell delay but no independently calibrated buffer or net
+    model. Those terms default to zero rather than invented values. The default
+    new-Cell estimate retains all but the bounded trial reduction, so the
+    counterfactual never erases a cone or treats it as zero-delay.
+    """
+    supplied = (overrides or {}).get(name, {})
+    values = {
+        "removable_cell_delay_du": local_delay,
+        "removable_buffer_delay_du": 0.0,
+        "removable_net_delay_du": 0.0,
+        "new_cell_delay_du": max(local_delay - trial_reduction, 1e-9),
+        "boundary_penalty_du": 0.0,
+        "fanout_penalty_du": 0.0,
+        "wire_penalty_du": 0.0,
+        "uncertainty_penalty_du": 0.0,
+    }
+    for key in values:
+        if key in supplied:
+            values[key] = float(supplied[key])
+        if not math.isfinite(values[key]) or values[key] < 0.0:
+            raise ValueError(
+                "counterfactual cost %s for %s must be finite and nonnegative" %
+                (key, name)
+            )
+    if values["new_cell_delay_du"] <= 0.0:
+        raise ValueError("counterfactual new Cell delay for %s must be positive" % name)
+    removable = sum(values[key] for key in (
+        "removable_cell_delay_du", "removable_buffer_delay_du", "removable_net_delay_du"
+    ))
+    penalties = sum(values[key] for key in (
+        "new_cell_delay_du", "boundary_penalty_du", "fanout_penalty_du",
+        "wire_penalty_du", "uncertainty_penalty_du",
+    ))
+    requested_reduction = removable - penalties
+    replacement = max(1e-9, local_delay - requested_reduction)
+    values.update({
+        "gross_removable_delay_du": removable,
+        "total_replacement_and_penalty_du": penalties,
+        "requested_proxy_reduction_du": requested_reduction,
+        "applied_proxy_reduction_du": local_delay - replacement,
+        "replacement_effective_delay_du": replacement,
+        "scope": "license_free_local_graph_proxy_not_commercial_qor_prediction",
+    })
+    return values
+
+
 def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, top_seeds=24,
-                           observed_reg2reg=None, generated_cell_pattern=None):
+                           observed_reg2reg=None, generated_cell_pattern=None,
+                           counterfactual_costs=None):
     (eligible, _drivers, _loads, predecessors, successors,
      order, edge_nets) = _mapped_graph(instances, cells)
     if not eligible:
@@ -178,28 +293,26 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
         for name, instance in eligible.items()
     }
     arrival, predecessor_choice = _arrivals(order, predecessors, weights)
-    endpoints = sorted(
+    all_endpoints = sorted(
         (name for name in order if not successors[name]),
         key=lambda name: (-arrival[name], name),
-    )[:top_paths]
-    if not endpoints:
+    )
+    if not all_endpoints:
         return None
-    baseline = max(arrival[name] for name in endpoints)
+    baseline = arrival[all_endpoints[0]]
+    baseline_worst_endpoint = all_endpoints[0]
     slack_window = max(0.05 * baseline, 0.10)
     endpoints = [
-        name for name in endpoints if baseline - arrival[name] <= slack_window
-    ] or endpoints[:1]
+        name for name in all_endpoints[:top_paths]
+        if baseline - arrival[name] <= slack_window
+    ] or all_endpoints[:1]
     required = _required(order, successors, weights, baseline)
     dominators = _dominators(order, predecessors)
+    logic_depths = _logic_depths(order, predecessors)
 
     paths = []
     for endpoint in endpoints:
-        path = []
-        cursor = endpoint
-        while cursor is not None:
-            path.append(cursor)
-            cursor = predecessor_choice[cursor]
-        path.reverse()
+        path = _trace_path(endpoint, predecessor_choice)
         paths.append({
             "endpoint": endpoint,
             "delay_du": round(arrival[endpoint], 6),
@@ -207,8 +320,8 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
             "instances": path,
         })
     # Expand the one representative predecessor trace into all near-critical
-    # predecessors.  Otherwise two equal parallel branches collapse to the
-    # lexical tie winner and delay perturbation can never observe masking.
+    # predecessors. Otherwise equal parallel branches collapse to the lexical
+    # tie winner and reconvergent masking is invisible.
     expanded = set(endpoints)
     frontier = list(endpoints)
     while frontier:
@@ -225,13 +338,29 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
     }
     total_endpoint_weight = sum(endpoint_weight.values()) or 1.0
     trial_global = max(0.05, 0.10 * sorted(weights.values())[len(weights) // 2])
+
+    repeated_by_type = defaultdict(list)
+    for name in subgraph_nodes:
+        repeated_by_type[eligible[name].base_type].append(name)
+    support_by_type = {}
+    region_by_name = {}
+    for cell_type, names in repeated_by_type.items():
+        support, regions = _non_overlapping_type_support(names, predecessors, successors)
+        support_by_type[cell_type] = support
+        region_by_name.update(regions)
+
     ranking = []
     for name in subgraph_nodes:
         trial = min(trial_global, weights[name])
-        perturbed, _choices = _arrivals(
-            order, predecessors, weights, reduced={name: trial}
+        costs = _counterfactual_costs(name, weights[name], trial, counterfactual_costs)
+        perturbed, perturbed_choices = _arrivals(
+            order, predecessors, weights,
+            replacement_weights={name: costs["replacement_effective_delay_du"]},
         )
-        after = max(perturbed[endpoint] for endpoint in endpoints)
+        new_worst_endpoint = min(
+            all_endpoints, key=lambda endpoint: (-perturbed[endpoint], endpoint)
+        )
+        after = perturbed[new_worst_endpoint]
         impact = max(0.0, baseline - after)
         participation = sum(
             endpoint_weight[path["endpoint"]]
@@ -241,6 +370,76 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
             endpoint_weight[endpoint]
             for endpoint in endpoints if name in dominators[endpoint]
         )
+        descendants = _descendants(name, successors)
+        reconvergences = sorted(
+            node for node in descendants if len(predecessors[node]) > 1
+        )
+        seen = (observed_reg2reg or {}).get(name, {})
+        family_ids = sorted(seen.get("path_family_ids") or [])
+        family_slacks = seen.get("path_family_worst_slacks_ns") or {}
+        negative_slack_mass = sum(
+            max(0.0, -float(family_slacks[family]))
+            for family in family_ids if family_slacks.get(family) is not None
+        )
+        same_type = repeated_by_type[eligible[name].base_type]
+        overlap_count = sum(
+            1 for other in same_type if other != name
+            and region_by_name[name] & region_by_name[other]
+        )
+        neighborhood = {name} | set(predecessors[name]) | set(successors[name])
+        buffer_inverter_count = sum(
+            1 for node in neighborhood
+            if re.search(r"(?:BUF|INV)", eligible[node].base_type, re.IGNORECASE)
+        )
+        removable_edges = len(predecessors[name]) + len(successors[name])
+        influence_vector = {
+            "logic_depth_before": logic_depths[name],
+            "logic_depth_after": logic_depths[name],
+            "removable_node_count": 1,
+            "removable_edge_count": removable_edges,
+            "worst_endpoint_relief_du": round(impact, 6),
+            "negative_slack_mass_coverage_ns": round(negative_slack_mass, 6),
+            "path_family_ids": family_ids,
+            "path_family_count": len(family_ids),
+            "dominator_endpoint_coverage": round(domination / total_endpoint_weight, 6),
+            "reconvergence_node_count": len(reconvergences),
+            "reconvergence_nodes": reconvergences,
+            "removable_depth": 1,
+            "cut_boundary_input_count": len(predecessors[name]),
+            "cut_boundary_output_count": len(successors[name]),
+            "repeat_support": len(same_type),
+            "non_overlapping_support": support_by_type[eligible[name].base_type],
+            "fanout_count": len(successors[name]),
+            "load_proxy": len(successors[name]),
+            "fanout_load_distribution": {
+                "fanout_count": len(successors[name]),
+                "successor_indegree_min": min(
+                    (len(predecessors[node]) for node in successors[name]), default=0
+                ),
+                "successor_indegree_max": max(
+                    (len(predecessors[node]) for node in successors[name]), default=0
+                ),
+            },
+            "buffer_inverter_pressure": {
+                "one_hop_count": buffer_inverter_count,
+                "one_hop_fraction": round(buffer_inverter_count / len(neighborhood), 6),
+            },
+            "overlap_count": overlap_count,
+            "overlap_ratio": round(overlap_count / max(1, len(same_type) - 1), 6),
+            "mapping_feasible": True,
+            "mapping_adoption_status": "not_evaluated",
+        }
+        counterfactual = dict(costs)
+        counterfactual.update({
+            "baseline_worst_endpoint": baseline_worst_endpoint,
+            "baseline_worst_delay_du": round(baseline, 6),
+            "new_worst_endpoint": new_worst_endpoint,
+            "new_worst_delay_du": round(after, 6),
+            "new_worst_path": _trace_path(new_worst_endpoint, perturbed_choices),
+            "path_migrated": new_worst_endpoint != baseline_worst_endpoint,
+            "logic_depth_before": logic_depths[baseline_worst_endpoint],
+            "logic_depth_after": logic_depths[new_worst_endpoint],
+        })
         ranking.append({
             "element_type": "cell_vertex",
             "mapped_instance": name,
@@ -253,6 +452,8 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
             "sensitivity": round(impact / trial if trial else 0.0, 6),
             "path_participation": round(participation, 6),
             "dominator_endpoint_coverage": round(domination / total_endpoint_weight, 6),
+            "influence_vector": influence_vector,
+            "counterfactual": counterfactual,
         })
     if observed_reg2reg is not None:
         aligned = []
@@ -270,20 +471,29 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
                 "reg2reg_beginpoint_families": seen["beginpoint_families"],
                 "reg2reg_endpoint_families": seen["endpoint_families"],
                 "reg2reg_worst_path_slack_ns": seen["worst_path_slack_ns"],
+                "reg2reg_path_family_worst_slacks_ns":
+                    seen.get("path_family_worst_slacks_ns", {}),
             })
             aligned.append(row)
         ranking = aligned
-    ranking.sort(key=lambda row: (
-        -row.get("reg2reg_path_hits", 0),
-        -row.get("reg2reg_increment_ns", 0.0),
-        -row["impact_du"],
-        -row["sensitivity"],
-        row["node_slack_du"],
-        -row["path_participation"],
-        -row["dominator_endpoint_coverage"],
-        -row["local_delay_du"],
-        row["mapped_instance"],
-    ))
+    # Structural transformation is a multi-index problem. Proxy timing is one
+    # axis in the Pareto vector, never a prediction of commercial QoR.
+    ranking = [item[1] for item in _pareto_order(
+        [(row["mapped_instance"], row) for row in ranking],
+        lambda item: (
+            -item[1]["influence_vector"]["removable_depth"],
+            -item[1]["influence_vector"]["removable_node_count"],
+            -item[1]["influence_vector"]["removable_edge_count"],
+            item[1]["influence_vector"]["cut_boundary_input_count"],
+            -item[1]["influence_vector"]["reconvergence_node_count"],
+            -item[1]["influence_vector"]["dominator_endpoint_coverage"],
+            -item[1]["influence_vector"]["path_family_count"],
+            -item[1]["influence_vector"]["negative_slack_mass_coverage_ns"],
+            -item[1]["influence_vector"]["worst_endpoint_relief_du"],
+            item[1]["influence_vector"]["overlap_ratio"],
+            -int(item[1]["influence_vector"]["mapping_feasible"]),
+        ),
+    )]
     for index, row in enumerate(ranking, 1):
         row["rank"] = index
     if not ranking:
@@ -309,6 +519,7 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
         "subgraph_boundary": {
             "startpoints": startpoints,
             "endpoints": endpoints,
+            "all_endpoint_count": len(all_endpoints),
             "node_count": len(subgraph_nodes),
             "hyperedge_count": sum(
                 1 for net in edge_nets
@@ -317,8 +528,21 @@ def rank_critical_subgraph(module, instances, cells, delay_units, top_paths=16, 
         },
         "representative_paths": paths,
         "critical_elements": selected,
+        "ranking_objective": {
+            "method": "deterministic_pareto_layers",
+            "axes": [
+                "logic_depth_and_removable_nodes_edges",
+                "cut_width_and_reconvergence_dominator_coverage",
+                "fanout_load_and_buffer_inverter_pressure",
+                "endpoint_path_family_and_negative_slack_mass",
+                "mapping_feasibility_and_overlap",
+                "local_graph_proxy_before_after_and_path_migration",
+            ],
+            "commercial_qor_prediction": False,
+        },
         "limitations": [
             "DC reg2reg path membership and incremental delay are measured; relative NLDM delay remains a search proxy.",
+            "Uncalibrated buffer and net removable-delay terms default to zero; the raw counterfactual budget records every term.",
             "The current Package has no lossless mapped-to-unmapped origin map across hierarchy; "
             "Algorithm 2 therefore rebuilds a local function-preserving AIG per mapped module.",
         ],
@@ -491,6 +715,11 @@ def parse_reg2reg_timing_graph(report, expected_top, modules):
                 "path_family_support": sum(family_support[value] for value in family_ids),
                 "beginpoint_families": sorted(item["beginpoint_families"]),
                 "endpoint_families": sorted(item["endpoint_families"]),
+                "path_family_worst_slacks_ns": {
+                    family_id: (round(min(families[family_id]["slacks"]), 6)
+                                if families[family_id]["slacks"] else None)
+                    for family_id in family_ids
+                },
                 "worst_path_slack_ns": (round(item["worst_path_slack_ns"], 6)
                                         if item["worst_path_slack_ns"] is not None else None),
             }
@@ -585,6 +814,9 @@ def _request(candidate_id, algorithm, tables_tuple, evidence, args, buildable):
     ]
     tables = dict(zip(output_order, tables_tuple))
     functions = {output: liberty_sop(tables[output], input_order) for output in output_order}
+    mapping_feasible = bool(buildable) and bool(
+        (evidence.get("influence_vector") or {}).get("mapping_feasible", True)
+    )
     request = {
         "schema_version": "standard-cell-generation-request/v2",
         "candidate_id": candidate_id,
@@ -622,6 +854,13 @@ def _request(candidate_id, algorithm, tables_tuple, evidence, args, buildable):
             "deliverables": ["SPICE", "GDS", "LEF", "LIBERTY", "VERILOG"],
         },
         "discovery_evidence": dict(evidence, discovery_algorithm=algorithm),
+        "influence_vector": evidence.get("influence_vector"),
+        "mapping_feasibility": {
+            "status": "FEASIBLE" if mapping_feasible else "INFEASIBLE",
+            "reasons": [] if mapping_feasible else [
+                "one or more proposed cut regions have side outputs or no supported generator"
+            ],
+        },
         "gate_evidence": {
             "G0_discovery": {"status": "PASS", "evidence": "current-run mapped design"},
             "G1_boundary": {"status": "PASS", "evidence": "K-feasible AIG cut and complete output vector"},
@@ -651,7 +890,346 @@ def _request(candidate_id, algorithm, tables_tuple, evidence, args, buildable):
     return request
 
 
-def _route_requests(modules, cells, critical_records, observed_reg2reg, library, args):
+def _cone_depth(cone, order, predecessors):
+    depths = {}
+    for name in order:
+        if name not in cone:
+            continue
+        depths[name] = 1 + max(
+            (depths[pred] for pred in predecessors[name] if pred in cone),
+            default=0,
+        )
+    return max(depths.values(), default=0)
+
+
+def _topological_order(predecessors, successors):
+    indegree = {name: len(values) for name, values in predecessors.items()}
+    ready = sorted(name for name, count in indegree.items() if count == 0)
+    order = []
+    while ready:
+        name = ready.pop(0)
+        order.append(name)
+        for successor in sorted(successors[name]):
+            indegree[successor] -= 1
+            if indegree[successor] == 0:
+                ready.append(successor)
+                ready.sort()
+    if len(order) != len(predecessors):
+        raise ValueError("collapsed counterfactual graph contains a cycle")
+    return order
+
+
+def _candidate_counterfactual(module, occurrence_id, cone_names, root_instance,
+                              eligible, predecessors, successors, order, weights,
+                              cut_boundary_input_count=None,
+                              cut_boundary_output_count=1):
+    """Collapse one proposed Cell's full mapped-origin cone and repropagate.
+
+    The replacement delay is a license-free structural indicator: the largest
+    constituent Cell DU. It is not a characterized candidate delay and is not
+    exported in ps. The raw basis remains on the occurrence so a later proxy
+    stage can replace it with evidenced candidate timing.
+    """
+    cone = set(cone_names) | {root_instance}
+    unknown = sorted(cone - set(eligible))
+    if unknown:
+        raise ValueError("candidate cone contains unknown mapped origins: %s" % unknown)
+    incoming = sorted({
+        predecessor for name in cone for predecessor in predecessors[name]
+        if predecessor not in cone
+    })
+    outgoing = sorted({
+        successor for name in cone for successor in successors[name]
+        if successor not in cone
+    })
+    exit_nodes = sorted(
+        name for name in cone
+        if not successors[name] or any(node not in cone for node in successors[name])
+    )
+    side_output_nodes = sorted(name for name in exit_nodes if name != root_instance)
+    cut_region = cone | set(incoming) | set(outgoing)
+    qualified = lambda values: ["%s/%s" % (module, name) for name in sorted(values)]
+    if cut_boundary_input_count is None:
+        cut_boundary_input_count = len(incoming)
+    if cut_boundary_input_count < 1 or cut_boundary_output_count < 1:
+        raise ValueError("candidate Boolean cut must have input and output boundaries")
+
+    baseline_arrival, baseline_choices = _arrivals(order, predecessors, weights)
+    baseline_endpoints = sorted(
+        (name for name in order if not successors[name]),
+        key=lambda name: (-baseline_arrival[name], name),
+    )
+    baseline_worst = baseline_endpoints[0]
+    baseline_delay = baseline_arrival[baseline_worst]
+
+    replacement = "@candidate:%s" % occurrence_id
+    collapsed_nodes = [name for name in order if name not in cone] + [replacement]
+    collapsed_predecessors = {name: set() for name in collapsed_nodes}
+    collapsed_successors = {name: set() for name in collapsed_nodes}
+    for name in order:
+        if name in cone:
+            continue
+        for predecessor in predecessors[name]:
+            collapsed_predecessors[name].add(
+                replacement if predecessor in cone else predecessor
+            )
+    collapsed_predecessors[replacement] = set(incoming)
+    for name, values in collapsed_predecessors.items():
+        for predecessor in values:
+            collapsed_successors[predecessor].add(name)
+    collapsed_order = _topological_order(collapsed_predecessors, collapsed_successors)
+    proxy_delay = max(weights[name] for name in cone)
+    collapsed_weights = {
+        name: (proxy_delay if name == replacement else weights[name])
+        for name in collapsed_order
+    }
+    collapsed_arrival, collapsed_choices = _arrivals(
+        collapsed_order, collapsed_predecessors, collapsed_weights
+    )
+    collapsed_endpoints = sorted(
+        (name for name in collapsed_order if not collapsed_successors[name]),
+        key=lambda name: (-collapsed_arrival[name], name),
+    )
+    new_worst = collapsed_endpoints[0]
+    new_delay = collapsed_arrival[new_worst]
+    proposed_paths = {
+        endpoint: _trace_path(endpoint, collapsed_choices)
+        for endpoint in collapsed_endpoints
+        if replacement in _trace_path(endpoint, collapsed_choices)
+    }
+    proposed_endpoint = min(
+        proposed_paths,
+        key=lambda endpoint: (-collapsed_arrival[endpoint], endpoint),
+    )
+
+    cone_depth_before = _cone_depth(cone, order, predecessors)
+    cone_depth_after = 1
+    internal_edges = sum(
+        1 for name in cone for predecessor in predecessors[name] if predecessor in cone
+    )
+    original_cone_delay = {}
+    for name in order:
+        if name not in cone:
+            continue
+        original_cone_delay[name] = weights[name] + max(
+            (original_cone_delay[pred] for pred in predecessors[name] if pred in cone),
+            default=0.0,
+        )
+    break_even_delay = max(
+        (original_cone_delay[name] for name in exit_nodes), default=0.0
+    )
+    return {
+        "occurrence_id": occurrence_id,
+        "mapped_origin_instance_keys": qualified(cone),
+        "covered_instance_keys": qualified(cut_region),
+        "cut_region_instance_keys": qualified(cut_region),
+        "cut_boundary_input_count": cut_boundary_input_count,
+        "cut_boundary_output_count": cut_boundary_output_count,
+        "side_output_instance_keys": qualified(side_output_nodes),
+        "mapping_feasible": not side_output_nodes,
+        "logic_depth_before": cone_depth_before,
+        "logic_depth_after": cone_depth_after,
+        "logic_depth_delta": cone_depth_before - cone_depth_after,
+        "removable_node_count": max(0, len(cone) - 1),
+        "removable_edge_count": internal_edges,
+        "local_break_even_du": round(break_even_delay, 6),
+        "proxy_cell_delay_du": round(proxy_delay, 6),
+        "proxy_frontier_indicator_du": round(break_even_delay - proxy_delay, 6),
+        "removable_cell_delay_du": round(break_even_delay, 6),
+        "removable_buffer_delay_du": 0.0,
+        "removable_net_delay_du": 0.0,
+        "new_cell_delay_du": round(proxy_delay, 6),
+        "boundary_penalty_du": 0.0,
+        "fanout_penalty_du": 0.0,
+        "wire_penalty_du": 0.0,
+        "uncertainty_penalty_du": 0.0,
+        "proxy_delay_basis": "max_constituent_cell_delay_from_full_liberty_relative_DU",
+        "baseline_worst_endpoint": baseline_worst,
+        "baseline_worst_delay_du": round(baseline_delay, 6),
+        "baseline_worst_path": _trace_path(baseline_worst, baseline_choices),
+        "new_worst_endpoint": new_worst,
+        "new_worst_delay_du": round(new_delay, 6),
+        "new_worst_path": _trace_path(new_worst, collapsed_choices),
+        "path_migrated": new_worst != baseline_worst,
+        "proposed_cell_node": replacement,
+        "proposed_cell_endpoint": proposed_endpoint,
+        "proposed_cell_path": proposed_paths[proposed_endpoint],
+        "worst_endpoint_relief_du": round(max(0.0, baseline_delay - new_delay), 6),
+        "scope": "license_free_structural_proxy_not_commercial_qor_prediction",
+    }
+
+
+def _greedy_non_overlapping_occurrences(occurrences):
+    """Select disjoint globally-qualified cut regions and report every clash."""
+    selected = []
+    occupied = set()
+    overlap_pairs = []
+    ordered = sorted(
+        occurrences,
+        key=lambda row: (-row["logic_depth_delta"], row["occurrence_id"]),
+    )
+    for row in ordered:
+        region = set(row["cut_region_instance_keys"])
+        overlap = sorted(region & occupied)
+        if overlap:
+            overlap_pairs.append({
+                "occurrence_id": row["occurrence_id"],
+                "overlap_instance_keys": overlap,
+            })
+            continue
+        selected.append(row)
+        occupied.update(region)
+    return selected, overlap_pairs
+
+
+def _aggregate_candidate_influence(occurrences, buildable=True):
+    """Aggregate occurrence vectors without counting a timing family twice."""
+    family_slacks = {}
+    for row in occurrences:
+        for family, slack in (row.get("reg2reg_path_family_worst_slacks_ns") or {}).items():
+            if slack is None:
+                continue
+            family_slacks[family] = min(float(slack), family_slacks.get(family, float("inf")))
+    vectors = [row.get("influence_vector") or {} for row in occurrences]
+    family_ids = sorted({
+        family for vector in vectors for family in vector.get("path_family_ids", [])
+    })
+    selected, overlap_pairs = _greedy_non_overlapping_occurrences(occurrences)
+    depth_distribution = [{
+        "occurrence_id": row["occurrence_id"],
+        "before": row["logic_depth_before"],
+        "after": row["logic_depth_after"],
+        "delta": row["logic_depth_delta"],
+    } for row in sorted(occurrences, key=lambda item: item["occurrence_id"])]
+    reconvergence_nodes = sorted({
+        "%s/%s" % (row["module"], node)
+        for row in occurrences
+        for node in (row.get("influence_vector") or {}).get("reconvergence_nodes", [])
+    })
+    return {
+        "structural_metrics": {
+            "levels_removed": sum(row["logic_depth_delta"] for row in selected),
+            "nodes_removed": sum(row["removable_node_count"] for row in selected),
+            "edges_removed": sum(row["removable_edge_count"] for row in selected),
+            "cut_width": max(
+                (row["cut_boundary_input_count"] + row["cut_boundary_output_count"]
+                 for row in selected), default=0
+            ),
+            "reconvergence_coverage": len(reconvergence_nodes),
+        },
+        "logic_depth_delta_distribution": depth_distribution,
+        "logic_depth_delta_nonoverlap_sum": sum(
+            row["logic_depth_delta"] for row in selected
+        ),
+        "logic_depth_delta_max": max(
+            (row["logic_depth_delta"] for row in occurrences), default=0
+        ),
+        "removable_node_count": sum(row["removable_node_count"] for row in selected),
+        "removable_edge_count": sum(row["removable_edge_count"] for row in selected),
+        "worst_endpoint_relief_du": max(
+            (float(row["counterfactual"]["worst_endpoint_relief_du"])
+             for row in occurrences),
+            default=0.0,
+        ),
+        "negative_slack_mass_coverage_ns": round(sum(
+            max(0.0, -slack) for slack in family_slacks.values()
+        ), 6),
+        "path_family_ids": family_ids,
+        "path_family_count": len(family_ids),
+        "dominator_endpoint_coverage": max(
+            (float(vector.get("dominator_endpoint_coverage", 0.0)) for vector in vectors),
+            default=0.0,
+        ),
+        "reconvergence_node_count": len(reconvergence_nodes),
+        "reconvergence_nodes": reconvergence_nodes,
+        "removable_depth": max(
+            (row["logic_depth_delta"] for row in occurrences), default=0
+        ),
+        "cut_boundary_input_count": max(
+            (row["cut_boundary_input_count"] for row in occurrences), default=0
+        ),
+        "cut_boundary_output_count": max(
+            (row["cut_boundary_output_count"] for row in occurrences), default=0
+        ),
+        "repeat_support": len(occurrences),
+        "non_overlapping_support": len(selected),
+        "non_overlapping_occurrence_ids": [row["occurrence_id"] for row in selected],
+        "overlap_pairs": overlap_pairs,
+        "fanout_count": max(
+            (int(vector.get("fanout_count", 0)) for vector in vectors), default=0
+        ),
+        "load_proxy": max(
+            (int(vector.get("load_proxy", 0)) for vector in vectors), default=0
+        ),
+        "fanout_load_distribution": max(
+            (vector.get("fanout_load_distribution", {}) for vector in vectors),
+            key=lambda value: (value.get("fanout_count", 0),
+                               value.get("successor_indegree_max", 0)),
+            default={},
+        ),
+        "buffer_inverter_pressure": max(
+            (vector.get("buffer_inverter_pressure", {}) for vector in vectors),
+            key=lambda value: (value.get("one_hop_fraction", 0.0),
+                               value.get("one_hop_count", 0)),
+            default={},
+        ),
+        "overlap_count": len(overlap_pairs),
+        "overlap_ratio": round(
+            len(overlap_pairs) / max(1, len(occurrences)), 6
+        ),
+        "mapping_feasible": bool(buildable) and all(
+            row["counterfactual"]["mapping_feasible"] for row in occurrences
+        ),
+        "mapping_adoption_status": "not_evaluated",
+        "whole_design_mapping": {"status": "not_evaluated"},
+        "library_cost": {"new_library_cells": 1, "generation_units": 1},
+        "occurrences": [
+            {
+                key: row[key] for key in (
+                    "occurrence_id", "endpoint_family", "baseline_indicator",
+                    "baseline_slack_ps", "covered_instance_keys",
+                    "cut_region_instance_keys",
+                    "logic_depth_before", "logic_depth_after", "logic_depth_delta",
+                    "local_break_even_du", "proxy_cell_delay_du",
+                    "proxy_frontier_indicator_du",
+                ) if key in row
+            }
+            for row in sorted(occurrences, key=lambda item: item["occurrence_id"])
+        ],
+    }
+
+
+def _aggregate_precomputed_influence(rows, buildable):
+    vectors = [row["influence_vector"] for row in rows]
+    strongest = max(
+        vectors,
+        key=lambda vector: (
+            vector["worst_endpoint_relief_du"],
+            vector["negative_slack_mass_coverage_ns"],
+            repr(vector.get("path_family_ids", [])),
+        ),
+    )
+    result = dict(strongest)
+    result["path_family_ids"] = sorted({
+        family for vector in vectors for family in vector.get("path_family_ids", [])
+    })
+    result["path_family_count"] = len(result["path_family_ids"])
+    result["reconvergence_nodes"] = sorted({
+        node for vector in vectors for node in vector.get("reconvergence_nodes", [])
+    })
+    result["reconvergence_node_count"] = len(result["reconvergence_nodes"])
+    result["repeat_support"] = len(rows)
+    result["non_overlapping_support"] = len({
+        (row["module"], tuple(row.get("root_instances", ()))) for row in rows
+    })
+    result["overlap_count"] = max(0, len(rows) - result["non_overlapping_support"])
+    result["overlap_ratio"] = round(result["overlap_count"] / max(1, len(rows)), 6)
+    result["mapping_feasible"] = bool(buildable)
+    return result
+
+
+def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
+                    delay_units, args):
     single_groups = defaultdict(list)
     multi_groups = defaultdict(list)
     statistics = Counter()
@@ -660,6 +1238,12 @@ def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
         critical = critical_by_module.get(module)
         if not critical:
             continue
+        (mapped_eligible, _mapped_drivers, _mapped_loads, mapped_predecessors,
+         mapped_successors, mapped_order, _mapped_edges) = _mapped_graph(instances, cells)
+        mapped_weights = {
+            name: float(delay_units.get(instance.base_type, 1.0))
+            for name, instance in mapped_eligible.items()
+        }
         aig, _eligible, roots_by_instance, node_origins = _build_aig(module, instances, cells)
         cuts = enumerate_cuts(aig, k=args.max_inputs, max_cuts=args.max_cuts_per_root)
         leafset_roots = defaultdict(list)
@@ -680,10 +1264,15 @@ def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
                         statistics["library_covered"] += 1
                         continue
                     replacement, _input_perm, _output_perm = mapped_core.replacement_canonical((table,), count)
+                    mapped_root_region = (
+                        _ancestors(seed["mapped_instance"], mapped_predecessors)
+                        | {seed["mapped_instance"]}
+                    )
                     mapped_origins = sorted({
                         origin for node in _ancestor_nodes(aig, root_literal, leaves)
                         for origin in node_origins.get(node, ())
-                    })
+                        if origin in mapped_root_region
+                    } | {seed["mapped_instance"]})
                     cone_delay_by_path = {
                         rank: round(sum(
                             (observed_reg2reg.get(module, {}).get(origin, {})
@@ -692,7 +1281,46 @@ def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
                         ), 6)
                         for rank in (seed.get("reg2reg_path_ranks") or [])
                     }
+                    occurrence_key = json.dumps([
+                        module, seed["mapped_instance"], output_pin,
+                        list(ordered_leaves), mapped_origins,
+                    ], separators=(",", ":"), sort_keys=True)
+                    occurrence_id = "OCC_%s" % hashlib.sha256(
+                        occurrence_key.encode("utf-8")
+                    ).hexdigest()[:16].upper()
+                    counterfactual = _candidate_counterfactual(
+                        module, occurrence_id, mapped_origins,
+                        seed["mapped_instance"], mapped_eligible,
+                        mapped_predecessors, mapped_successors, mapped_order,
+                        mapped_weights,
+                        cut_boundary_input_count=len(ordered_leaves),
+                        cut_boundary_output_count=1,
+                    )
+                    family_slacks = seed.get("reg2reg_path_family_worst_slacks_ns", {})
+                    family_ids = sorted(seed.get("reg2reg_path_family_ids") or [])
+                    endpoint_family = min(
+                        family_ids,
+                        key=lambda family: (
+                            family_slacks.get(family) is None,
+                            family_slacks.get(family) or 0.0,
+                            family,
+                        ),
+                    ) if family_ids else "relative-internal/%s" % seed["mapped_instance"]
+                    baseline_slack = family_slacks.get(endpoint_family)
+                    influence = dict(
+                        seed["influence_vector"],
+                        logic_depth_before=counterfactual["logic_depth_before"],
+                        logic_depth_after=counterfactual["logic_depth_after"],
+                        removable_depth=counterfactual["logic_depth_delta"],
+                        removable_node_count=counterfactual["removable_node_count"],
+                        removable_edge_count=counterfactual["removable_edge_count"],
+                        cut_boundary_input_count=counterfactual["cut_boundary_input_count"],
+                        cut_boundary_output_count=counterfactual["cut_boundary_output_count"],
+                        worst_endpoint_relief_du=counterfactual["worst_endpoint_relief_du"],
+                        mapping_feasible=counterfactual["mapping_feasible"],
+                    )
                     occurrence = {
+                        "occurrence_id": occurrence_id,
                         "module": module,
                         "root_instance": seed["mapped_instance"],
                         "root_pin": output_pin,
@@ -702,16 +1330,47 @@ def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
                         "reg2reg_increment_ns": seed.get("reg2reg_increment_ns"),
                         "reg2reg_path_ranks": seed.get("reg2reg_path_ranks"),
                         "reg2reg_path_family_count": seed.get("reg2reg_path_family_count"),
-                        "reg2reg_path_family_ids": seed.get("reg2reg_path_family_ids"),
+                        "endpoint_family": endpoint_family,
+                        "baseline_indicator": ({
+                            "kind": "observed_reg2reg_worst_slack",
+                            "value_ns": baseline_slack,
+                        } if baseline_slack is not None else {
+                            "kind": "relative_internal_proxy",
+                            "value_du": -seed["node_slack_du"],
+                        }),
+                        "reg2reg_path_family_ids": family_ids,
                         "reg2reg_path_family_support": seed.get("reg2reg_path_family_support"),
                         "reg2reg_beginpoint_families": seed.get("reg2reg_beginpoint_families"),
                         "reg2reg_endpoint_families": seed.get("reg2reg_endpoint_families"),
                         "reg2reg_worst_path_slack_ns": seed.get("reg2reg_worst_path_slack_ns"),
+                        "reg2reg_path_family_worst_slacks_ns":
+                            seed.get("reg2reg_path_family_worst_slacks_ns", {}),
                         "cut_leaf_nodes": list(ordered_leaves),
                         "mapped_origins": mapped_origins,
+                        "mapped_origin_instance_keys":
+                            counterfactual["mapped_origin_instance_keys"],
+                        "covered_instance_keys": counterfactual["covered_instance_keys"],
+                        "cut_region_instance_keys": counterfactual["cut_region_instance_keys"],
                         "observed_cone_delay_by_path_ns": cone_delay_by_path,
                         "observed_cone_delay_upper_ns": max(cone_delay_by_path.values(), default=0.0),
+                        "logic_depth_before": counterfactual["logic_depth_before"],
+                        "logic_depth_after": counterfactual["logic_depth_after"],
+                        "logic_depth_delta": counterfactual["logic_depth_delta"],
+                        "removable_node_count": counterfactual["removable_node_count"],
+                        "removable_edge_count": counterfactual["removable_edge_count"],
+                        "cut_boundary_input_count": counterfactual["cut_boundary_input_count"],
+                        "cut_boundary_output_count": counterfactual["cut_boundary_output_count"],
+                        "local_break_even_du": counterfactual["local_break_even_du"],
+                        "proxy_cell_delay_du": counterfactual["proxy_cell_delay_du"],
+                        "proxy_frontier_indicator_du":
+                            counterfactual["proxy_frontier_indicator_du"],
+                        "influence_vector": influence,
+                        "counterfactual": counterfactual,
                     }
+                    if baseline_slack is not None:
+                        occurrence["baseline_slack_ps"] = round(
+                            float(baseline_slack) * 1000.0, 6
+                        )
                     single_groups[(replacement, table, count)].append(occurrence)
                     leafset_roots[ordered_leaves].append((root_literal, table, occurrence))
         for leaves, rooted in leafset_roots.items():
@@ -739,21 +1398,38 @@ def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
                 "cut_leaf_nodes": list(leaves),
                 "root_instances": [item[1]["root_instance"] for item in choices],
                 "shared_aig_nodes": sorted(shared),
+                "influence_vector": _aggregate_candidate_influence(
+                    [item[1] for item in choices], buildable=False
+                ),
             })
 
     def single_rank(item):
         _key, occurrences = item
+        influence = _aggregate_candidate_influence(occurrences)
+        structural = influence["structural_metrics"]
         return (
-            -max(row["critical_impact_du"] for row in occurrences),
+            -structural["levels_removed"],
+            -structural["nodes_removed"],
+            -structural["edges_removed"],
+            structural["cut_width"],
+            -structural["reconvergence_coverage"],
+            -influence["path_family_count"],
+            -influence["negative_slack_mass_coverage_ns"],
+            -influence["worst_endpoint_relief_du"],
             min(row["critical_rank"] for row in occurrences),
-            -len(occurrences),
+            -influence["non_overlapping_support"],
             repr(_key),
         )
 
     single_items = list(single_groups.items())
     if args.objective == "critical_context_pareto":
         single_items = _pareto_order(single_items, lambda item: (
-            -max(row["critical_impact_du"] for row in item[1]),
+            -_aggregate_candidate_influence(item[1])["removable_node_count"],
+            _aggregate_candidate_influence(item[1])["cut_boundary_input_count"],
+            -_aggregate_candidate_influence(item[1])["reconvergence_node_count"],
+            -_aggregate_candidate_influence(item[1])["path_family_count"],
+            -_aggregate_candidate_influence(item[1])["negative_slack_mass_coverage_ns"],
+            -_aggregate_candidate_influence(item[1])["worst_endpoint_relief_du"],
             min(row["critical_rank"] for row in item[1]),
             -len({(row["module"], row["root_instance"]) for row in item[1]}),
         ))
@@ -764,6 +1440,7 @@ def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
     for index, ((replacement, table, count), occurrences) in enumerate(
         single_items[:args.top], 1
     ):
+        aggregate_influence = _aggregate_candidate_influence(occurrences)
         evidence = {
             "strategy_id": args.strategy_id,
             "search_objective": args.objective,
@@ -774,14 +1451,19 @@ def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
             ),
             "library_function_match": "ABSENT_UNDER_NPN_EQUIVALENCE",
             "raw_support": len(occurrences),
-            "non_overlapping_support": len({
-                (row["module"], row["root_instance"]) for row in occurrences
-            }),
-            "non_overlapping_support_method": "distinct critical roots",
+            "non_overlapping_support": aggregate_influence["non_overlapping_support"],
+            "non_overlapping_support_method":
+                "deterministic greedy disjoint globally-qualified cut regions",
             "input_count": count,
             "output_count": 1,
             "critical_root_rank": min(row["critical_rank"] for row in occurrences),
             "critical_impact_du": max(row["critical_impact_du"] for row in occurrences),
+            "influence_vector": aggregate_influence,
+            "counterfactual": max(
+                (row["counterfactual"] for row in occurrences),
+                key=lambda row: (row["baseline_worst_delay_du"] - row["new_worst_delay_du"],
+                                 row["new_worst_endpoint"]),
+            ),
             "reg2reg_path_hits": max(row.get("reg2reg_path_hits") or 0 for row in occurrences),
             "reg2reg_increment_ns": max(row.get("reg2reg_increment_ns") or 0.0 for row in occurrences),
             "reg2reg_cone_delay_upper_ns": max(
@@ -834,6 +1516,9 @@ def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
             "input_count": count,
             "output_count": len(tables),
             "occurrences": occurrences,
+            "influence_vector": _aggregate_precomputed_influence(
+                occurrences, buildable=False
+            ),
             "shared_logic_audit": {
                 "status": "PASS",
                 "condition": "all output cones share at least one internal AIG node",
@@ -911,7 +1596,8 @@ def run(args):
         raise ValueError("Algorithm 1 found no combinational critical subgraph")
     library = mapped_core.library_indexes(cells, args.max_inputs, args.max_outputs)
     requests, statistics = _route_requests(
-        modules, cells, critical_records, observed_reg2reg, library, args
+        modules, cells, critical_records, observed_reg2reg, library,
+        delay_model["delay_units"], args
     )
     report = {
         "report_schema": REPORT_SCHEMA,

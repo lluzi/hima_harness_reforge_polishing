@@ -1,9 +1,13 @@
 # Library Function Richness Optimization Framework Development Document
 
-Status: planned  
-Development target: the `packs/custom-cell-fmax-dtco` HimaPack  
-Tracking identifiers: `LFR-FW-*` and `LFR-PACK-*`, separate from the Product Upgrade v2 PLS line  
-GitHub tracker: [Issue #40](https://github.com/lluzi/hima_harness_reforge_polishing/issues/40)  
+Status: in development
+
+Development target: the `packs/custom-cell-fmax-dtco` HimaPack
+
+Tracking identifiers: `LFR-FW-*` and `LFR-PACK-*`, separate from the Product Upgrade v2 PLS line
+
+GitHub tracker: [Issue #40](https://github.com/lluzi/hima_harness_reforge_polishing/issues/40)
+
 Chinese counterpart: [framework-development.zh-CN.md](framework-development.zh-CN.md)
 
 ## 1. Purpose and completion standard
@@ -21,9 +25,9 @@ independently verified method implementation and then integrate that same implem
 Completion means more than “the algorithm exists” or “the Pack starts.” All of the following must
 hold:
 
-- the Framework accounts for its inputs, prediction scope, error and stopping reason;
-- frequent search uses license-free tools; commercial EDA only validates a cumulative Library that
-  passed the proxy exit gate;
+- the Framework accounts for its inputs, metric definitions, applicability and stopping reason;
+- frequent optimization uses license-free tools; commercial EDA observes real design QoR and is
+  not the frequent trial engine;
 - old Cells and deliverables are reused by hash and are not regenerated in later rounds;
 - the AI changes its research algorithm from current evidence, while deterministic code owns
   identity, calculations, budgets and evidence;
@@ -47,14 +51,15 @@ Innovus route and matched comparison. It has not demonstrated a competitive rese
 - adoption count, one path and an ideal cone-removal bound do not predict final Fmax.
 
 This work therefore asks a different question: before real EDA, how can the target design's logic
-graph, a cumulative Library, Yosys/ABC mapping and proxy STA continuously add Library functions
-with positive marginal value on the critical timing frontier?
+graph, a cumulative Library, Yosys/ABC mapping and proxy STA establish a repeatable, layered metric
+system and continuously add Library functions that effectively transform logic structure?
 
-The 5% target must be expressed both as frequency and as picoseconds to release from the reg2reg
-frontier. The retained baselines imply about 24.8 ps and 26.5 ps. That number is the benefit budget
-the method must explain; it is not an answer obtained by subtracting one Cell delay. Logic fusion
-may remove Cells, buffers, intermediate nets and fanout cost. A cell-delay share below the target is
-therefore not, on its own, proof that the target is impossible.
+The 5% target is a commercial-design objective and only a matched commercial flow can judge it. The
+open-source evaluator does not forecast that 5% or its route delta in ps. It measures Boolean
+feasibility; local levels, nodes, edges, cuts, reconvergence and domination; whole-design mapping,
+depth, buffer/inverter pressure and fanout/load; proxy-STA frontier indicators; and Library cost.
+Commercial results characterize how those indicators relate to real QoR on the observed design;
+they do not train the proxy to imitate commercial EDA numerically.
 
 ## 3. Scope and architectural constraints
 
@@ -64,7 +69,7 @@ therefore not, on its own, proof that the target is impossible.
 - proxy STA over a mapped netlist and full Liberty;
 - a reg2reg timing-influence graph built from RTL, mapped netlists and retained route evidence;
 - K-cut, dominator, reconvergence, repeated-cone, path-family and fanout/load analysis;
-- function-level and predicted-cell proxy evaluation;
+- layered function, local-subgraph, whole-design mapping and proxy-STA evaluation;
 - one reference/augmented batch mapping and a small amount of bounded ablation;
 - append-only immutable Library shards and a cumulative manifest;
 - AI-led residual-problem research with deterministic independent recomputation;
@@ -115,22 +120,29 @@ The request contains at least:
 - the foundry Liberty and cumulative custom-Library manifest;
 - this round's candidate delta;
 - Yosys, ABC and proxy-STA identities and a fixed profile;
-- the target reg2reg period, target delta in ps and round budget;
-- optional historical DC/Innovus calibration evidence with source and applicability.
+- the target reg2reg period, metric priorities and Library/round budgets;
+- optional historical DC/Innovus comparison evidence with design, conditions and applicability.
 
 The evaluation contains at least:
 
 - hashes of the request, scripts, tools, Library shards and outputs;
 - reference and augmented mapped netlists;
 - mapping adoption, instances, function classes and critical-graph coverage;
-- reference/augmented worst reg2reg delay, negative-slack mass and path migration;
-- direction under optimistic, nominal and conservative candidate delay/load assumptions;
-- target delta, predicted delta, current calibration error band and margin, all in ps;
+- function feasibility plus local changes in levels, nodes, edges, cut width, reconvergence and
+  domination;
+- whole-design mapping adoption, instances, logic-depth distribution, buffer/inverter pressure,
+  fanout/load and overlap;
+- reference/augmented proxy-STA frontiers, negative-slack mass and path migration, explicitly as
+  indicators;
+- complete metric vectors and two-arm `pairwise_relation` values under optimistic, nominal and conservative
+  slew/load scenarios;
 - the residual graph, unadopted candidates and reasons, and the next research question;
-- `exit_ready`, a stopping reason and the deterministic recomputation that supports it.
+- metric completeness, two-arm relations and recomputable convergence/stopping reasons;
+  only the FW-07 portfolio may establish a cross-candidate, cross-round Pareto frontier.
 
-An evaluation is always prediction and screening evidence. Only the existing commercial `compare`
-Reader/Judge may produce final comparison facts from held databases and reports.
+An evaluation is always structural grading and screening evidence; it does not predict commercial
+benefit. Only the existing commercial `compare` Reader/Judge may produce final design-QoR facts
+from held databases and reports.
 
 ## 5. Component-level development requirements
 
@@ -266,39 +278,40 @@ Requirements:
 **Location:** deepen `ai_research_runner.py` and `research-template.py`; retain the one
 `research-candidates` Workshop.
 
-The AI receives a compact, hash-bound residual graph, proxy mapping, break-even values, calibration
-error, cumulative manifest and prior failures. It proposes research lenses, writes bounded
-candidate/portfolio code, chooses the region for the next round and explains expected benefit. It
-cannot change the Goal, invent measurements, delete old assets, write Judge facts or launch the
-commercial flow itself.
+The AI receives a compact, hash-bound residual graph, proxy mapping, layered metric vector, Pareto
+frontier, cumulative manifest and prior failures. It proposes research lenses, writes bounded
+candidate/portfolio code, chooses the next region and explains which structural indicators should
+change. It cannot change the Goal, invent measurements, delete old assets, write Judge facts or
+launch the commercial flow itself.
 
 `ai_research_runner.py` continues to own complete I/O, candidate membership, Boolean identity,
 budgets, source hashes, output schema and code hash. `read-stage.py` independently recomputes the
 important numbers. A second-tier model should solve a clearly stated residual problem rather than
 relearn Yosys, ABC, Liberty and the whole Pack.
 
-### 5.7 Calibration and exit decision
+### 5.7 Metric system, commercial comparison and validation tiers
 
-Calibration separates two responsibilities:
+The Framework does not try to predict DC/Innovus numbers. Metrics have four open-source layers:
 
-- **Mapping proxy:** compare ABC function/drive adoption and critical-family ordering for the saved
-  47-Cell Library with the DC facts.
-- **Physical correction:** measure the error between predicted Liberty, proxy STA and Innovus path
-  facts, and explain whether wire, fanout, CTS, congestion and path migration can consume the logic
-  benefit.
+- **F0 Function:** Boolean equivalence, interface, generator feasibility and a local break-even
+  bound;
+- **F1 Local structure:** levels, nodes/edges, cut width, reconvergence, domination and repeated or
+  non-overlapping support;
+- **F2 Design mapping:** whole-design adoption, instances/area, depth distribution,
+  buffer/inverter pressure and fanout/load;
+- **F3 Timing indicator:** proxy-STA frontier, negative-slack mass, path-family coverage and
+  migration.
 
-Report adoption precision/recall, frontier rank correlation and sign agreement, but do not promote
-thresholds from one AES sample into universal product standards. In particular, failure to predict
-the post-route negative direction does not by itself invalidate ABC as a mapping proxy. Root cause
-and the proxy's declared role decide whether development continues; there is no mechanical
-“terminate after two failures” rule.
+Commercial DC/Innovus results form **F4 Design QoR observations**. Compare them with F0 through F3
+under matched conditions to discover which indicators explain the current design. Precision,
+recall, rank correlation, direction and numeric gaps may be recorded, but prediction accuracy is
+not an optimization target and one design never creates a universal threshold.
 
-A commercial exit requires at least: an improved augmented frontier; coverage of target path
-families; an explainable new worst endpoint; actual proxy adoption; handled overlap; the same
-direction under three delay/load scenarios; predicted delta greater than target delta plus current
-combined error; and either evidenced convergence or target attainment. Commercial exit count is an
-explicit Campaign/Pack budget. A default of one exit plus one after real recalibration is reasonable,
-but it is not a Runtime constant.
+A candidate for one commercial validation requires complete F0 evidence; explainable F1/F2
+structural change; actual open-source mapper adoption; handled overlap; no explicit F3
+counterexample; membership in the current Pareto frontier; and either convergence or a budgeted
+need for a real QoR observation. “Worth validating” never means “predicted to gain X.” Commercial
+validation count is an explicit Campaign/Pack budget, not a Runtime constant.
 
 ## 6. Phase 1: independent Framework construction and assessment
 
@@ -309,15 +322,15 @@ but it is not a Runtime constant.
 | LFR-FW-01 | none | Freeze a hash-bound calibration corpus: AES RTL, top, SDC summary, foundry Liberty, 47-Cell predicted Liberty, DC adoption and both route timing/census results. State that the two commercial runs used different conditions | corpus manifest, source paths, hashes, available/missing fields; no customer raw material committed |
 | LFR-FW-02 | FW-01 | Implement `proxy_mapping.py` and the thin CLI; pin the Yosys/ABC profile; perform reference/augmented batch mapping | repeated-input netlist/census identity, script-difference audit, failure counterexamples |
 | LFR-FW-03 | FW-01 | Extend `liberty_timing.py` for NLDM interpolation and mapped-netlist reg2reg STA; decide whether OpenSTA is necessary | hand-computed small circuits, slew/load boundaries, missing-arc and multi-clock counterexamples; one engine recomputes both arms |
-| LFR-FW-04 | FW-02, FW-03 | Calibrate mapping and physical correction against the 47-Cell evidence and record applicability/error bands | adoption, ordering and delay/error report; explicit pass/fail/root cause; zero LC/DC/Innovus Jobs |
-| LFR-FW-05 | FW-04 | Deepen the influence graph, K-cuts, counterfactual, path migration and portfolio objective | synthetic reconvergence/dominator/overlap cases; rankings recomputable from raw vectors |
+| LFR-FW-04 | FW-02, FW-03 | Establish available F0/F2/F3 baselines from the 47-Cell evidence, compare them conditionally with retained F4 commercial QoR and declare missing F1 evidence | metric vectors and adoption/ordering/QoR relationship; explicit scope/root cause; zero LC/DC/Innovus Jobs |
+| LFR-FW-05 | FW-04 | Deepen the influence graph, K-cuts, structural counterfactual, path migration and multi-index Pareto portfolio | synthetic reconvergence/dominator/overlap cases; Pareto layers recomputable from raw vectors |
 | LFR-FW-06 | FW-01; may overlap FW-05 | Implement immutable shards, cumulative manifest, delta-only generation projection and invalidation | two synthetic Library rounds; old hashes unchanged; round two creates no old-Cell Jobs |
 | LFR-FW-07 | FW-05, FW-06 | Connect AI residual research, both proxies, convergence and stopping in the standalone loop | one fixed replay and one small real second-tier-model task; recomputable output; no commercial-tool launch |
 | LFR-FW-08 | FW-07 | Assess reproducibility, calibration, optimization trend, cost, generalization boundary and failure assets | a Framework assessment that chooses Pack integration, proxy correction or stop; code completion is insufficient |
 
-FW-02 and FW-03 may run in parallel. FW-06 may overlap FW-05 late in FW-04. FW-04 is an early
-falsification gate: if the declared proxy role does not hold, correct the model before building the
-full optimization loop.
+FW-02 and FW-03 may run in parallel. FW-06 may overlap FW-05 late in FW-04. FW-04 is a metric-design
+gate: when one timing indicator cannot explain structural change, expand the metric system rather
+than turning the task into commercial-QoR prediction.
 
 ### 6.2 Framework test levels
 
@@ -340,10 +353,10 @@ Phase 2 starts only when all are true:
 
 - every input, tool, Library and result has stable identity;
 - reference/augmented mapping is reproducible with zero constraint drift;
-- proxy-STA error and unknown terms are explainable for supported structures;
-- calibration states separately what the mapping proxy and physical correction can and cannot do;
-- on at least one held-out RTL, the loop produces new candidates from the residual graph and improves
-  the robust proxy objective;
+- proxy-STA indicator meaning, conservative assumptions and unknown terms are explainable;
+- the comparison report states supplied-layer/F4 conditions, missing layers, observed relationships and non-extrapolation;
+- on at least one held-out RTL, the loop produces new candidates from the residual graph and advances
+  the multi-index Pareto frontier;
 - old Cells are not regenerated, the Library only grows, and failed candidates are not retried as
   new work;
 - a second-tier model completes the research program from the compact context;
@@ -357,7 +370,7 @@ Phase 2 starts only when all are true:
 | --- | --- | --- | --- |
 | LFR-PACK-01 | FW-08 | `INTENT.md`, `SPEC.md` | Rewrite the method goal, constraints, Run contract, semantics, Judge, Chooser, endings, Workshop and knowledge in the existing five/nine-section authoring formats while preserving accepted author decisions |
 | LFR-PACK-02 | PACK-01 | `contract.yml`, `flow/bind-inputs.py`, `knowledge/site-profile.md` | Declare Yosys/ABC/proxy-STA identity, timeouts and resources; add `MAX_NEW_CELLS`; explicitly retire `MAX_CELLS` or retain it as a cumulative cap; HimaGuide discovers defaults instead of asking the user to fill them |
-| LFR-PACK-03 | PACK-01 | `graph.yml` | Replace the opening commercial probe with a proxy baseline; place function proxy, delta materialization, predicted proxy, proxy Judge and research revisit before commercial compile/DC/APR; enter the existing final chain only at commercial exit |
+| LFR-PACK-03 | PACK-01 | `graph.yml` | Replace the opening commercial probe with an evaluation baseline; place function/local/design/timing evaluation, delta materialization, Pareto Judge and research revisit before commercial compile/DC/APR; enter the existing final chain only for a validation candidate |
 | LFR-PACK-04 | PACK-02, PACK-03 | `flow/stages.py`, `flow/library_richness.py`, `flow/domain/*`, `tools/stages.py` | Wire the Phase 1 interface into existing stage dispatch; retain attempts/artifacts/hashes; synchronize published copies; do not copy the algorithm or bypass Permit/Job records |
 | LFR-PACK-05 | PACK-03, PACK-04 | `contract.yml` outputs/workshop, `readers/`, `semantics.yml`, `rules/`, `choosers/`, `flow/read-stage.py`, `tools/read-stage.py` | Declare one complete proxy-evaluation output plus necessary Library manifest; independently recompute in the Reader; pass Judge only with complete evidence; Chooser changes research strategy only |
 | LFR-PACK-06 | PACK-05 | `flow/ai_research_runner.py`, `flow/research-template.py`, `knowledge/full-mining-method.md`, `knowledge/manifest.yml` | Have the Workshop read residual graph, calibration, manifest and failure assets; update method knowledge and sources; never auto-promote Run results into the Pack |
@@ -371,10 +384,10 @@ bind-inputs
   -> proxy-baseline/read
   -> high-influence mining branches
   -> research-candidates/read
-  -> function-proxy/read/judge
+  -> function-and-local-evaluation/read/judge
        FAIL -> residual research revisit
        PASS -> generate/layout/characterize only the delta
-  -> predicted-proxy/read/judge
+  -> design-mapping-and-timing-evaluation/read/judge
        FAIL -> residual research revisit
        PASS -> freeze cumulative Library
   -> compile -> matched foundry/custom DC -> adoption gate
@@ -392,16 +405,20 @@ create a second Run owner.
 Prefer one `proxyEvaluation` output that hides internal detail. Its Reader emits the minimum values
 needed for decisions:
 
-- `proxy_target_delta_ps`, `proxy_predicted_delta_ps`, `proxy_error_bound_ps` and
-  `proxy_gain_margin_ps`;
-- `proxy_worst_reg2reg_delay_ps` and `proxy_negative_slack_mass_ps`;
+- `proxy_local_level_delta`, `proxy_removed_node_count`, `proxy_cut_width` and
+  `proxy_reconvergence_coverage`;
+- `proxy_mapped_instance_delta`, `proxy_logic_depth_p95_delta`,
+  `proxy_buffer_inverter_pressure_delta` and `proxy_fanout_load_delta`;
+- `proxy_worst_reg2reg_delay_indicator` and `proxy_negative_slack_mass_indicator`;
 - `proxy_adopted_candidate_count`, `new_library_cell_count` and
   `cumulative_library_cell_count`;
-- `proxy_calibration_valid`, `proxy_robust_direction_count` and `proxy_exit_ready`.
+- `proxy_metric_vector_complete`, `proxy_pairwise_relation`,
+  `portfolio_frontier_membership` and `commercial_validation_candidate`.
 
 Every type must be emitted by a real Pack Reader and declared in `semantics.yml`; no unused type is
-invented for UI convenience. Keep “calibration evidence is usable” separate from “commercial exit
-is justified” rather than hiding unknown reasons behind one large boolean.
+invented for UI convenience. Keep “metrics are complete,” “the two arms have this pairwise
+relation,” “the FW-07 portfolio admits this frontier member” and “one commercial validation is
+justified” separate. Never present the last value as a benefit forecast.
 
 ### 7.4 HimaPack standard gates
 
@@ -441,12 +458,13 @@ Phase 2 continues to use repository levels L0 through L5:
 
 - **L0/L1:** Pack schema, graph references, Python and pure proxy logic;
 - **L2:** real Host, local Yosys/ABC, proxy STA, two-round shards, Reader/Judge and recovery;
-- **L3:** only visibility of the Campaign graph, Library growth, proxy result, commercial exit and
-  failure reason; every Desktop test runs on the Catsights secondary display;
-- **L4:** one small real-model task and one retained-evidence AES calibration, with no LC/DC/Innovus
-  search;
-- **L5:** one matched commercial validation after the proxy exit passes. A failure returns to proxy
-  calibration and is not rerun unchanged.
+- **L3:** only visibility of the Campaign graph, Library growth, layered metrics, pairwise relation,
+  portfolio-frontier membership and validation-candidate reasons; every Desktop test runs on the
+  Catsights secondary display;
+- **L4:** one small real-model task and one retained AES indicator/F4 comparison, with no
+  LC/DC/Innovus search;
+- **L5:** one matched commercial QoR observation after a Pareto candidate forms. A negative result
+  becomes relationship evidence and is neither rerun unchanged nor used to fit a benefit predictor.
 
 Do not rebuild and rerun the whole Desktop for one change. Start with the cheapest test capable of
 falsifying the behavior and escalate only when an interface, real dependency or user path changes.
@@ -467,7 +485,10 @@ Report pass, failure, skip and not-run separately.
 
 ## 10. Current development frontier
 
-The current frontier is **LFR-FW-01**. Freeze the calibratable inputs and known commercial outcomes,
-then run LFR-FW-02 mapping-adapter and LFR-FW-03 proxy-STA work in parallel. No new full DC/APR
-Campaign counts as Framework progress until LFR-FW-04 establishes the proxies' responsibilities and
-error bounds.
+The current frontier is **LFR-FW-07**: connect the completed multi-index influence/portfolio and
+cumulative-Library lifecycle to compact AI residual research, maintain a cross-candidate and
+cross-round frontier, and run held-out RTL plus second-tier-model validation. FW-01 through FW-06
+established real-tool, AES F0/F2/F3-to-F4 and deterministic portfolio foundations; those
+observations are not benefit-prediction accuracy. A new full DC/APR Campaign is not Framework
+progress until FW-07/08 shows that the metric system advances a stable frontier and produces a
+candidate worth observing.

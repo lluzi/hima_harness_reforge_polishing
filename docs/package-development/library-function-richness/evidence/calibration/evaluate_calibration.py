@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Calibrate the LFR mapping proxy and physical correction from retained evidence.
+"""Compare LFR open-source metric layers with retained commercial QoR.
 
 This is development-evidence tooling.  It reads compact JSON records and never
 launches Yosys, ABC, DC, Innovus, Library Compiler, or a HimaPack stage.
@@ -18,14 +18,18 @@ from typing import Any, Iterable, Mapping, Sequence
 from validate_corpus import load_manifest, validate_manifest
 
 
-REPORT_SCHEMA = "hima.library-richness.proxy-calibration-report/1"
+REPORT_SCHEMA = "hima.library-richness.metric-qor-relationship-report/1"
 MAPPING_SCHEMA = "lfr-proxy-mapping-result/1"
-ROUND_SCHEMA = "lfr-round-evaluation/1"
+ROUND_SCHEMAS = {
+    "lfr-round-evaluation/1",
+    "lfr-round-evaluation/2",
+    "lfr-round-evaluation/3",
+}
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class CalibrationError(ValueError):
-    """The supplied evidence cannot support the requested calibration."""
+    """The supplied evidence cannot support a metric/QoR relationship report."""
 
 
 def _require(condition: bool, message: str) -> None:
@@ -271,22 +275,6 @@ def _manifest_adoption_hashes(corpus: Mapping[str, Any]) -> dict[str, set[str]]:
     return result
 
 
-def _predicted_delta(round_evaluation: Mapping[str, Any]) -> float:
-    _require(round_evaluation.get("schema") == ROUND_SCHEMA, "round evaluation schema")
-    _require(round_evaluation.get("status") == "succeeded", "round evaluation did not succeed")
-    objective = round_evaluation.get("objective")
-    if isinstance(objective, Mapping) and objective.get("nominal_predicted_delta_ps") is not None:
-        return _number(objective["nominal_predicted_delta_ps"], "nominal predicted delta")
-    scenarios = round_evaluation.get("scenarios")
-    if isinstance(scenarios, Mapping) and isinstance(scenarios.get("nominal"), Mapping):
-        nominal = scenarios["nominal"]
-        if nominal.get("predicted_delta_ps") is not None:
-            return _number(nominal["predicted_delta_ps"], "nominal predicted delta")
-    if round_evaluation.get("predicted_delta_ps") is not None:
-        return _number(round_evaluation["predicted_delta_ps"], "predicted delta")
-    raise CalibrationError("round evaluation has no nominal predicted_delta_ps")
-
-
 def _verify_round_mapping_identity(
     round_evaluation: Mapping[str, Any], mapping_result: Mapping[str, Any]
 ) -> None:
@@ -308,25 +296,286 @@ def _verify_round_mapping_identity(
     raise CalibrationError("round evaluation does not bind its mapping request identity")
 
 
-def _physical_correction(
-    corpus: Mapping[str, Any], predicted_delta_ps: float
+def _nested_metric(metrics: Mapping[str, Any], name: str) -> float | None:
+    if "." not in name:
+        return None
+    layer, field = name.split(".", 1)
+    layer_value = metrics.get(layer)
+    if not isinstance(layer_value, Mapping):
+        return None
+    raw = layer_value.get(field)
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    value = float(raw)
+    return value if math.isfinite(value) else None
+
+
+def _metric_change(
+    *,
+    metric: str,
+    raw_change: float,
+    direction: str,
+    reference: float | None,
+    augmented: float | None,
 ) -> dict[str, object]:
-    trials = []
-    signed_errors = []
-    signs = []
+    _require(direction in {"minimize", "maximize", "descriptive-only"}, f"{metric}: direction")
+    normalized = (
+        -raw_change
+        if direction == "minimize"
+        else raw_change
+        if direction == "maximize"
+        else None
+    )
+    relation = (
+        "descriptive-only"
+        if normalized is None
+        else "improved"
+        if normalized > 0
+        else "regressed"
+        if normalized < 0
+        else "equal"
+    )
+    return {
+        "metric": metric,
+        "layer": metric.split(".", 1)[0],
+        "reference": reference,
+        "augmented": augmented,
+        "raw_augmented_minus_reference": raw_change,
+        "canonical_direction": direction,
+        "direction_owned_by_system": direction != "descriptive-only",
+        "improvement_positive_change": normalized,
+        "relation": relation,
+    }
+
+
+def _production_scenario_changes(
+    scenario_name: str,
+    scenario: Mapping[str, Any],
+    canonical_directions: Mapping[str, Any],
+) -> list[dict[str, object]]:
+    changes = _mapping(scenario.get("changes"), f"round scenario {scenario_name}.changes")
+    reference = _mapping(scenario.get("reference"), f"round scenario {scenario_name}.reference")
+    augmented = _mapping(scenario.get("augmented"), f"round scenario {scenario_name}.augmented")
+    records = []
+    for metric, raw in sorted(changes.items()):
+        raw_change = _number(raw, f"round scenario {scenario_name}.changes.{metric}")
+        raw_direction = canonical_directions.get(metric, "descriptive-only")
+        direction = str(raw_direction)
+        records.append(
+            _metric_change(
+                metric=str(metric),
+                raw_change=raw_change,
+                direction=direction,
+                reference=_nested_metric(reference, str(metric)),
+                augmented=_nested_metric(augmented, str(metric)),
+            )
+        )
+    _require(records, f"round scenario {scenario_name} has no numeric metric changes")
+    return records
+
+
+def _legacy_scenario_changes(
+    scenario_name: str, scenario: Mapping[str, Any]
+) -> list[dict[str, object]]:
+    """Adapt only the retained v1 prediction-named fields into indicator changes."""
+
+    release = _number(
+        scenario.get("predicted_delta_ps"),
+        f"round scenario {scenario_name}.predicted_delta_ps",
+    )
+    slack_gain = _number(
+        scenario.get("worst_slack_gain_ps"),
+        f"round scenario {scenario_name}.worst_slack_gain_ps",
+    )
+    mass_reduction = _number(
+        scenario.get("negative_slack_mass_reduction_ps"),
+        f"round scenario {scenario_name}.negative_slack_mass_reduction_ps",
+    )
+    return [
+        _metric_change(
+            metric="F3.worst_delay_indicator_ps",
+            raw_change=-release,
+            direction="minimize",
+            reference=None,
+            augmented=None,
+        ),
+        _metric_change(
+            metric="F3.worst_slack_indicator_ps",
+            raw_change=slack_gain,
+            direction="maximize",
+            reference=None,
+            augmented=None,
+        ),
+        _metric_change(
+            metric="F3.negative_slack_mass_indicator_ps",
+            raw_change=-mass_reduction,
+            direction="minimize",
+            reference=None,
+            augmented=None,
+        ),
+    ]
+
+
+def _read_round_metrics(round_evaluation: Mapping[str, Any]) -> dict[str, object]:
+    """Read the production scenario seam or explicitly adapt retained schema v1."""
+
+    schema = round_evaluation.get("schema")
+    _require(schema in ROUND_SCHEMAS, "round evaluation schema")
+    _require(round_evaluation.get("status") == "succeeded", "round evaluation did not succeed")
+    scenarios = _mapping(round_evaluation.get("scenarios"), "round scenarios")
+    production_shape = any(
+        isinstance(raw, Mapping)
+        and all(key in raw for key in ("reference", "augmented", "changes"))
+        for raw in scenarios.values()
+    )
+    if schema != "lfr-round-evaluation/1":
+        _require(
+            production_shape,
+            f"{schema} must expose scenarios.*.reference/augmented/changes",
+        )
+        policy = _mapping(round_evaluation.get("metric_policy"), "round metric_policy")
+        canonical_directions = _mapping(
+            policy.get("canonical_directions"), "round canonical directions"
+        )
+        reader_mode = "production-layered-scenario-interface"
+        legacy_fields: list[str] = []
+    else:
+        _require(
+            not production_shape,
+            "schema v1 unexpectedly uses the production layered scenario seam",
+        )
+        canonical_directions = {}
+        reader_mode = "legacy-lfr-round-evaluation-v1-adapter"
+        legacy_fields = [
+            "scenarios.*.predicted_delta_ps",
+            "scenarios.*.worst_slack_gain_ps",
+            "scenarios.*.negative_slack_mass_reduction_ps",
+        ]
+
+    scenario_rows: list[dict[str, object]] = []
+    unsupported = []
+    metric_names: set[str] = set()
+    for scenario_name, raw_scenario in sorted(scenarios.items()):
+        scenario = _mapping(raw_scenario, f"round scenario {scenario_name}")
+        if scenario.get("status", "succeeded") != "succeeded":
+            unsupported.append(
+                {
+                    "scenario": str(scenario_name),
+                    "status": scenario.get("status"),
+                    "reason": scenario.get("reason"),
+                }
+            )
+            continue
+        changes = (
+            _production_scenario_changes(
+                str(scenario_name), scenario, canonical_directions
+            )
+            if production_shape
+            else _legacy_scenario_changes(str(scenario_name), scenario)
+        )
+        metric_names.update(str(item["metric"]) for item in changes)
+        scenario_rows.append(
+            {
+                "scenario": str(scenario_name),
+                "assumptions": dict(scenario.get("assumptions", {})),
+                "metric_changes": changes,
+                "producer_pairwise_relation": scenario.get("pairwise_relation"),
+                "path_migration": scenario.get("path_migration"),
+            }
+        )
+    _require(scenario_rows, "round evaluation has no usable scenario metric changes")
+
+    availability: dict[str, dict[str, object]] = {}
+    for layer in ("F0", "F1", "F2", "F3"):
+        names = sorted(name for name in metric_names if name.startswith(f"{layer}."))
+        availability[layer] = {
+            "available": bool(names),
+            "metrics": names,
+            "source": "round scenarios.*.changes" if names else None,
+        }
+    availability["F2"] = {
+        "available": True,
+        "metrics": sorted(
+            set(availability["F2"]["metrics"])
+            | {
+                "mapping.adopted_custom_master_count",
+                "mapping.custom_instance_count",
+                "mapping.instance_count_order",
+            }
+        ),
+        "source": "round scenarios.*.changes and paired Yosys/ABC mapping result",
+    }
+    return {
+        "reader_mode": reader_mode,
+        "legacy_source_fields": legacy_fields,
+        "availability": availability,
+        "scenario_metric_layers": sorted(
+            {
+                name.split(".", 1)[0]
+                for name in metric_names
+                if "." in name
+            }
+        ),
+        "scenarios": scenario_rows,
+        "unsupported_scenarios": unsupported,
+    }
+
+
+def _sign_relationship(left: float | None, right: float | None) -> str:
+    if left is None or right is None:
+        return "unavailable"
+    left_sign = 1 if left > 0 else -1 if left < 0 else 0
+    right_sign = 1 if right > 0 else -1 if right < 0 else 0
+    if left_sign == 0 or right_sign == 0:
+        return "one-or-both-flat"
+    return "same-direction" if left_sign == right_sign else "opposite-direction"
+
+
+def _metric_relationship(
+    change: Mapping[str, Any],
+    observed_wns_improvement_ps: float,
+    observed_fmax_improvement_pct: float | None,
+) -> dict[str, object]:
+    normalized_raw = change.get("improvement_positive_change")
+    normalized = (
+        _number(normalized_raw, f"{change.get('metric')}.improvement_positive_change")
+        if normalized_raw is not None
+        else None
+    )
+    metric = str(change.get("metric"))
+    return {
+        **dict(change),
+        "wns_sign_relationship": _sign_relationship(normalized, observed_wns_improvement_ps),
+        "fmax_sign_relationship": _sign_relationship(normalized, observed_fmax_improvement_pct),
+        "wns_numeric_gap_ps": (
+            normalized - observed_wns_improvement_ps
+            if normalized is not None and metric.endswith("_ps")
+            else None
+        ),
+        "meaning": (
+            "descriptive open-source metric/F4 relationship on this scenario and trial; "
+            "not a commercial-benefit estimate or optimization target"
+        ),
+    }
+
+
+def _open_source_f4_relationship(
+    corpus: Mapping[str, Any], round_metrics: Mapping[str, Any]
+) -> dict[str, object]:
+    rows: list[dict[str, object]] = []
     condition_keys = set()
+    scenarios = _list(round_metrics.get("scenarios"), "round scenarios")
     for raw_trial in _list(corpus.get("trials"), "corpus trials"):
         trial = _mapping(raw_trial, "corpus trial")
         facts = _mapping(trial.get("facts"), f"{trial.get('id')}.facts")
         _require(facts.get("comparisonValid") is True, f"{trial.get('id')} comparison is invalid")
         foundry = _number(facts.get("foundrySetupWnsNs"), "foundrySetupWnsNs")
         generated = _number(facts.get("generatedSetupWnsNs"), "generatedSetupWnsNs")
-        observed = (generated - foundry) * 1000.0
-        error = observed - predicted_delta_ps
-        signed_errors.append(error)
-        predicted_sign = 1 if predicted_delta_ps > 0 else -1 if predicted_delta_ps < 0 else 0
-        observed_sign = 1 if observed > 0 else -1 if observed < 0 else 0
-        signs.append(predicted_sign == observed_sign)
+        observed_wns_improvement_ps = (generated - foundry) * 1000.0
+        fmax_raw = facts.get("fmaxImprovementPct")
+        observed_fmax_improvement_pct = (
+            _number(fmax_raw, "fmaxImprovementPct") if fmax_raw is not None else None
+        )
         conditions = _mapping(trial.get("conditions"), f"{trial.get('id')}.conditions")
         condition_identity = {
             "route_uncertainty_ns": conditions.get("routeUncertaintyNs"),
@@ -335,41 +584,44 @@ def _physical_correction(
             "pin_plan_sha256": conditions.get("pinPlanSha256"),
         }
         condition_keys.add(json.dumps(condition_identity, sort_keys=True))
-        trials.append(
-            {
-                "trial_id": trial.get("id"),
-                "predicted_delta_ps": predicted_delta_ps,
-                "observed_matched_route_wns_delta_ps": observed,
-                "signed_error_ps": error,
-                "absolute_error_ps": abs(error),
-                "direction_agrees": predicted_sign == observed_sign,
-                "conditions": condition_identity,
-            }
-        )
-    _require(trials, "corpus contains no commercial trial")
-    bound = max(abs(value) for value in signed_errors)
+        for raw_scenario in scenarios:
+            scenario = _mapping(raw_scenario, "round scenario")
+            changes = _list(scenario.get("metric_changes"), "open-source metric changes")
+            rows.append(
+                {
+                    "scenario": scenario.get("scenario"),
+                    "producer_pairwise_relation": scenario.get(
+                        "producer_pairwise_relation"
+                    ),
+                    "open_source_metric_changes": [
+                        _metric_relationship(
+                            _mapping(change, "metric change"),
+                            observed_wns_improvement_ps,
+                            observed_fmax_improvement_pct,
+                        )
+                        for change in changes
+                    ],
+                    "scenario_assumptions": scenario.get("assumptions"),
+                    "f4_trial_id": trial.get("id"),
+                    "f4_qor_improvements": {
+                        "matched_route_setup_wns_improvement_ps": observed_wns_improvement_ps,
+                        "fmax_change_mhz": facts.get("fmaxDeltaMhz"),
+                        "fmax_improvement_pct": observed_fmax_improvement_pct,
+                        "route_custom_instance_count": facts.get("routeCustomInstanceCount"),
+                    },
+                    "f4_conditions": condition_identity,
+                }
+            )
+    _require(rows, "corpus contains no commercial trial relationship rows")
     return {
         "status": "passed",
-        "meaning": "calculation completed; passed is not a quality threshold",
-        "predicted_delta_ps": predicted_delta_ps,
-        "commercial_trials": trials,
-        "sign_agreement": {
-            "agreeing_trials": sum(signs),
-            "trial_count": len(signs),
-            "fraction": sum(signs) / len(signs),
-        },
-        "observed_error_band_ps": {
-            "method": "envelope of observed route-WNS delta minus nominal proxy delta",
-            "signed_lower": min(signed_errors),
-            "signed_upper": max(signed_errors),
-            "conservative_absolute_bound": bound,
-        },
+        "meaning": "relationship rows were computed; passed is not a correlation threshold",
+        "scenario_count": len(scenarios),
+        "commercial_trial_count": len(rows) // len(scenarios),
+        "relationship_row_count": len(rows),
+        "rows": rows,
         "conditions_homogeneous": len(condition_keys) == 1,
-        "interpretation": (
-            "The envelope combines proxy error with trial-condition spread. The retained trials "
-            "use different APR uncertainty, CTS policy, timing expansion, and pin-plan identity, "
-            "so it does not isolate a universal physical correction."
-        ),
+        "unsupported_scenarios": round_metrics.get("unsupported_scenarios", []),
     }
 
 
@@ -409,16 +661,24 @@ def build_calibration_report(
 
     commercial_counts, offered = _commercial_master_counts(commercial)
     proxy_counts = _proxy_master_counts(mapping_result, offered)
-    mapping_report = {
+    mapping_relationship = {
         "status": "passed",
-        "meaning": "evidence was valid and metrics were computed; no quality threshold was applied",
-        "adoption": _adoption_metrics(proxy_counts, commercial_counts),
-        "rank_correlation": _spearman_with_ties(proxy_counts, commercial_counts),
-        "top_k_overlap": _top_k_overlap(proxy_counts, commercial_counts, top_ks),
-        "counts": {
-            "proxy_by_master": dict(sorted(proxy_counts.items())),
-            "commercial_by_master": dict(sorted(commercial_counts.items())),
+        "meaning": (
+            "F2 mapping and F4 commercial adoption relationship observations were computed; "
+            "they are not benefit estimates or optimization targets"
+        ),
+        "relationship_observations": {
+            "adoption_overlap": _adoption_metrics(proxy_counts, commercial_counts),
+            "instance_count_rank_correlation": _spearman_with_ties(
+                proxy_counts, commercial_counts
+            ),
+            "top_k_overlap": _top_k_overlap(proxy_counts, commercial_counts, top_ks),
         },
+        "counts": {
+            "f2_open_source_mapping_by_master": dict(sorted(proxy_counts.items())),
+            "f4_commercial_adoption_by_master": dict(sorted(commercial_counts.items())),
+        },
+        "optimization_target": False,
         "applicable_scope": (
             "Exact master-name adoption and instance-count ordering for the retained AES RTL, "
             "47-Cell Library, fixed Yosys/ABC profile, and represented mapping constraints."
@@ -444,26 +704,47 @@ def build_calibration_report(
     gaps = [
         {
             "code": "commercial-record-has-no-function-interface-drive-identity",
-            "impact": "mapping calibration is exact-master based, not function-class based",
-        }
+            "impact": "F2/F4 adoption relationship is exact-master based, not function-class based",
+        },
+        {
+            "code": "single-design-evidence",
+            "impact": "no cross-design relationship or universal threshold can be inferred",
+        },
     ]
+
+    metric_availability: dict[str, dict[str, object]] = {
+        "F0": {"available": False, "metrics": [], "source": None},
+        "F1": {"available": False, "metrics": [], "source": None},
+        "F2": {
+            "available": True,
+            "metrics": [
+                "mapping.adopted_custom_master_count",
+                "mapping.custom_instance_count",
+                "mapping.instance_count_order",
+            ],
+            "source": "paired Yosys/ABC mapping result",
+        },
+        "F3": {"available": False, "metrics": [], "source": None},
+    }
 
     if round_evaluation_path is None:
         _require(
             round_evaluation_sha256 is None,
             "round evaluation SHA-256 was supplied without a round evaluation file",
         )
-        physical_report: dict[str, object] = {
+        metric_relationship: dict[str, object] = {
             "status": "not_evaluated",
             "root_causes": ["no round evaluation was supplied"],
             "applicable_scope": None,
         }
         gaps.append(
             {
-                "code": "physical-correction-not-evaluated",
-                "impact": "no predicted delta/error band or sign agreement is available",
+                "code": "open-source-f4-relationship-not-evaluated",
+                "impact": "no scenario metric changes were supplied for comparison with F4 QoR",
             }
         )
+        round_reader = None
+        scenario_metric_layers: set[str] = set()
     else:
         _require(
             round_evaluation_sha256 is not None,
@@ -477,41 +758,86 @@ def build_calibration_report(
         identities["round_evaluation_sha256"] = observed_round_sha
         round_evaluation = _load_json(round_evaluation_path, "round evaluation")
         _verify_round_mapping_identity(round_evaluation, mapping_result)
-        physical_report = _physical_correction(corpus, _predicted_delta(round_evaluation))
-        physical_report["applicable_scope"] = (
-            "Observed envelope for this nominal proxy result against each retained AES commercial "
-            "trial, with each trial's APR/CTS conditions kept distinct."
+        round_metrics = _read_round_metrics(round_evaluation)
+        metric_availability = dict(round_metrics["availability"])
+        scenario_metric_layers = set(round_metrics["scenario_metric_layers"])
+        metric_relationship = _open_source_f4_relationship(corpus, round_metrics)
+        metric_relationship["applicable_scope"] = (
+            "Descriptive F0-F3 scenario-metric and F4 QoR relationships for retained AES trials, "
+            "with each commercial trial's APR/CTS conditions kept distinct."
         )
-        physical_report["excluded_claims"] = [
-            "a universal proxy-to-route correction",
+        metric_relationship["excluded_claims"] = [
+            "commercial QoR estimation from open-source metrics",
             "causal isolation of wire, fanout, CTS, congestion, or path migration",
             "commercial Fmax prediction on another design, Library, Site, or tool version",
         ]
-        if physical_report["conditions_homogeneous"] is False:
+        round_reader = {
+            "mode": round_metrics["reader_mode"],
+            "legacy_source_fields": round_metrics["legacy_source_fields"],
+        }
+        if metric_relationship["conditions_homogeneous"] is False:
             gaps.append(
                 {
                     "code": "commercial-trial-conditions-differ",
-                    "impact": "the error envelope contains both proxy error and APR/CTS condition spread",
+                    "impact": (
+                        "metric/F4 relationship rows remain trial-specific and cannot define a "
+                        "cross-condition transform or universal numeric threshold"
+                    ),
                 }
             )
 
+    available_layers = [
+        layer for layer, row in metric_availability.items() if row.get("available") is True
+    ]
+    for layer in ("F0", "F1", "F2", "F3"):
+        if layer not in available_layers:
+            gaps.append(
+                {
+                    "code": f"{layer.lower()}-metrics-unavailable",
+                    "impact": f"no {layer}/F4 relationship is present in this report",
+                }
+            )
     return {
         "schema": REPORT_SCHEMA,
         "status": "passed",
-        "meaning": "all supplied evidence was authenticated and applicable calculations completed",
+        "meaning": (
+            "all supplied identities were verified and available relationship observations were "
+            "computed; passed means computation complete"
+        ),
         "universal_thresholds_applied": False,
         "commercial_eda_executed": False,
-        "assessment_complete": physical_report["status"] == "passed",
+        "assessment_complete": metric_relationship["status"] == "passed",
         "identities": identities,
-        "mapping_proxy": mapping_report,
-        "physical_correction": physical_report,
+        "metric_availability": metric_availability,
+        "available_metric_layers": available_layers,
+        "round_reader": round_reader,
+        "f2_to_f4_adoption_relationship": mapping_relationship,
+        "f0_f3_to_f4_qor_relationship": metric_relationship,
+        "relation_evidence_coverage": {
+            **{
+                f"{layer}_to_F4": (
+                    "observed-scenario-by-trial"
+                    if layer in scenario_metric_layers
+                    and metric_relationship["status"] == "passed"
+                    else "observed-exact-master-adoption-only"
+                    if layer == "F2"
+                    else "not-observed"
+                )
+                for layer in ("F0", "F1", "F2", "F3")
+            },
+            "F2_adoption_to_F4": "observed-exact-master-adoption",
+            "design_count": 1,
+            "commercial_trial_count": len(corpus["trials"]),
+            "scenario_count": metric_relationship.get("scenario_count", 0),
+            "relationship_row_count": metric_relationship.get("relationship_row_count", 0),
+        },
         "root_causes": [],
         "gaps": gaps,
         "applicable_scope": {
             "design_top": corpus["design"]["top"],
             "corpus_id": corpus["corpusId"],
-            "mapping": mapping_report["applicable_scope"],
-            "physical": physical_report.get("applicable_scope"),
+            "F2_to_F4": mapping_relationship["applicable_scope"],
+            "F0_F3_to_F4": metric_relationship.get("applicable_scope"),
         },
     }
 
@@ -520,7 +846,7 @@ def failed_report(error: Exception) -> dict[str, object]:
     return {
         "schema": REPORT_SCHEMA,
         "status": "failed",
-        "meaning": "calibration evidence was rejected before conclusions were drawn",
+        "meaning": "relationship evidence was rejected before observations were drawn",
         "universal_thresholds_applied": False,
         "commercial_eda_executed": False,
         "assessment_complete": False,

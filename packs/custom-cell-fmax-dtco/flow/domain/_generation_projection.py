@@ -28,6 +28,17 @@ EVIDENCE_STATES = (
     "discovered", "proxy-mapped", "materialized", "predicted", "cumulative",
     "commercially-adopted", "route-retained", "final-benefit", "proxy-rejected",
 )
+EVIDENCE_TRANSITIONS = {
+    "discovered": {"proxy-mapped", "proxy-rejected"},
+    "proxy-mapped": {"materialized", "proxy-rejected"},
+    "materialized": {"predicted"},
+    "predicted": {"cumulative"},
+    "cumulative": {"commercially-adopted"},
+    "commercially-adopted": {"route-retained"},
+    "route-retained": {"final-benefit"},
+    "final-benefit": set(),
+    "proxy-rejected": set(),
+}
 
 
 def canonical_cell_name(candidate_id, output_name):
@@ -227,6 +238,19 @@ def validate_cumulative_manifest(manifest):
                 "Library function candidate ids must be unique identifiers within a shard")
         if state not in EVIDENCE_STATES:
             raise ValueError("Library function %s has an invalid evidence state" % candidate_id)
+        history = row.get("stateHistory")
+        failures = row.get("knownFailures")
+        if (not isinstance(history, list) or not history or history[0] != "discovered"
+                or history[-1] != state or any(item not in EVIDENCE_STATES for item in history)):
+            raise ValueError("Library function %s has an invalid state history" % candidate_id)
+        if any(after not in EVIDENCE_TRANSITIONS[before]
+               for before, after in zip(history, history[1:])):
+            raise ValueError("Library function %s has an invalid state transition" % candidate_id)
+        if not isinstance(failures, list) or any(
+                not isinstance(item, str) or not item for item in failures):
+            raise ValueError("Library function %s has invalid failure evidence" % candidate_id)
+        if state == "proxy-rejected" and not failures:
+            raise ValueError("proxy-rejected Library function %s has no failure reason" % candidate_id)
         if row.get("shardId") not in shard_ids:
             raise ValueError("Library function %s refers to an unknown shard" % candidate_id)
         keys.add(key)
@@ -254,6 +278,44 @@ def delta_generation_requests(patterns, manifest):
         if key not in existing:
             selected.append(request)
     return selected
+
+
+def expected_delta_generation_jobs(patterns, manifest):
+    """Project generation Jobs only for functions absent from the cumulative Library."""
+    return expected_generation_jobs({
+        "generation_requests": delta_generation_requests(patterns, manifest),
+    })
+
+
+def advance_function_state(manifest, function_key, next_state, failure=None):
+    """Return a new manifest with one monotonic, evidence-backed state change."""
+    validate_cumulative_manifest(manifest)
+    if not isinstance(function_key, str) or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}", function_key):
+        raise ValueError("function_key must be a SHA-256 identity")
+    if next_state not in EVIDENCE_STATES:
+        raise ValueError("next Library function state is invalid")
+    matches = [row for row in manifest["functions"] if row["functionKey"] == function_key]
+    if len(matches) != 1:
+        raise ValueError("function_key does not identify one cumulative function")
+    current = matches[0]["state"]
+    if next_state not in EVIDENCE_TRANSITIONS[current]:
+        raise ValueError(
+            "Library function state cannot advance from %s to %s" % (current, next_state)
+        )
+    if next_state == "proxy-rejected":
+        if not isinstance(failure, str) or not failure.strip():
+            raise ValueError("proxy rejection requires a failure reason")
+    elif failure is not None:
+        raise ValueError("failure reason is only valid for proxy rejection")
+    updated = json.loads(json.dumps(manifest))
+    row = next(item for item in updated["functions"] if item["functionKey"] == function_key)
+    row["state"] = next_state
+    row["stateHistory"].append(next_state)
+    if failure is not None:
+        row["knownFailures"].append(failure.strip())
+    validate_cumulative_manifest(updated)
+    return updated
 
 
 def _file_reference(path):
@@ -349,6 +411,8 @@ def append_cumulative_shard(root, manifest, shard_id, requests, artifacts=None):
             "candidateId": candidate_id,
             "shardId": shard_id,
             "state": "discovered",
+            "stateHistory": ["discovered"],
+            "knownFailures": [],
             "identity": {key: value for key, value in identity.items() if key != "key"},
         })
     artifact_refs = []

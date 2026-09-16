@@ -1,4 +1,4 @@
-# LFR-FW-04 calibration assessment
+# LFR-FW-04 indicator baseline and commercial-QoR comparison
 
 Date: 2026-09-15
 
@@ -8,19 +8,21 @@ Commercial EDA jobs started for this assessment: **0**
 
 ## Decision
 
-The calibration calculation **passed**: all supplied identities were verified and the mapping and
-physical comparisons were computed. The current proxy **does not pass the commercial-exit role**.
-It may continue as a license-free structural screen, provided every conclusion remains scoped to
-the fixed AES corpus and the exit gate carries the observed error band.
+The supplied-relationship calculation **passed**: all supplied identities were verified and the
+available F0/F2/F3 indicators were compared with retained F4 design-QoR observations. F1 evidence
+was not present and remains a declared gap. “Complete” here means all supplied relationships were
+computed; it does not mean every layer exists. This comparison is not an accuracy test and does not
+turn the open-source evaluator into a commercial-QoR predictor.
 
 This is the LFR-FW-04 early-falsification result:
 
-- mapping proxy: **conditionally admitted for screening**, not admitted as a DC adoption or ranking
-  predictor;
-- physical correction: **not admitted as a magnitude predictor**;
-- current 47-Cell Library: **not exit-ready**;
-- next Framework work may optimize the proxy objective, but it cannot send this Library to another
-  commercial trial on the strength of the current proxy result.
+- F0/F1: function feasibility and local structural indices remain the primary high-volume search
+  evidence;
+- F2: whole-design mapping proves that candidate functions can materially change one design, while
+  ABC/DC adoption differences remain descriptive rather than an accuracy score;
+- F3: proxy timing is a scenario-sensitive indicator and cannot stand alone;
+- F4: only the matched commercial flow states the actual QoR outcome;
+- next Framework work must optimize a multi-index Pareto frontier, not a predicted delta.
 
 ## Identity-bound inputs and outputs
 
@@ -36,7 +38,7 @@ The mapping, round and calibration payloads remain under the ignored local direc
 portable evaluator, not RTL, foundry Liberty, generated Liberty, commercial reports or mapped
 netlists.
 
-## Mapping role
+## F2 mapping indicators and F4 adoption observation
 
 Flattening removed three RTL submodules that the first smoke had incorrectly counted as Cells. In
 the corrected mapping, ABC used 26 of the 47 custom masters; DC used 21; 14 were common:
@@ -50,41 +52,42 @@ the corrected mapping, ABC used 26 of the 47 custom masters; DC used 21; 14 were
 | Top-10 overlap | 4 common; proxy tie-expanded set 11, DC set 10 |
 | Positive-count top-20 overlap | 12 common; both tie-expanded sets 21 |
 
-This is enough to prove that the proxy sees and uses real candidate functions. It is not strong
-enough to treat ABC instance count or order as a DC prediction. The commercial record also lacks
-function-class, pin-interface and drive-variant identities, so this calibration is exact-master
-only.
+This proves that the evaluation agent sees and uses real candidate functions. Precision, recall and
+rank correlation describe how two different optimizers behaved on this design; they are not targets
+to maximize. The commercial record also lacks function-class, pin-interface and drive-variant
+identities, so the relationship can currently be observed only at exact-master level.
 
-## Timing and physical correction role
+## F3 timing indicators and F4 QoR observation
 
 The round used the same flattened mapped netlists in three explicit NLDM slew/load scenarios:
 
-| Scenario | Reference worst delay | Augmented worst delay | Predicted release |
+| Scenario | Reference worst delay | Augmented worst delay | F3 worst-delay indicator reduction |
 | --- | ---: | ---: | ---: |
 | optimistic | 891.727 ps | 886.011 ps | 5.717 ps |
 | nominal | 1605.062 ps | 1473.115 ps | 131.947 ps |
 | conservative | 4350.838 ps | 3474.201 ps | 876.637 ps |
 
-All three directions are positive, but the magnitude changes by more than two orders of magnitude.
-The nominal prediction was compared with each retained matched route result:
+All three indicator directions are positive, but their magnitude changes by more than two orders of
+magnitude. This sensitivity is itself an index-system result: proxy timing cannot be the sole
+grading axis. The nominal indicator was placed beside each retained matched route result:
 
-| Trial | APR / CTS condition | Route WNS delta | Absolute proxy error | Direction agrees |
+The table uses `reference - augmented`, so a positive reduction means the augmented proxy has a
+smaller indicator. The machine interface stores raw changes as `augmented - reference`; it does not
+call either orientation a predicted release.
+
+| Trial | APR / CTS condition | Route WNS delta | Numeric gap to F3 indicator | Same direction |
 | --- | --- | ---: | ---: | --- |
 | first clean | 0.125 ns uncertainty; legacy unrestricted CTS | +1 ps | 130.947 ps | yes |
 | corrected pressure | 0.175 ns uncertainty; DCCK-only CTS | -1 ps | 132.947 ps | no |
 
-The observed conservative error band is therefore **132.947 ps**. It contains proxy error and the
-spread from changed APR uncertainty, CTS policy, timing expansion and pin-plan identity; it is not
-a universal correction. Sign agreement is 1/2.
-
-For the current 25 ps target, a commercial-exit candidate would need all supported scenarios to
-show more than `25 + 132.947 = 157.947 ps` release, together with the other adoption, path-family
-and convergence gates. The current optimistic and nominal scenarios fail that requirement.
+The 130.947/132.947 ps gaps and 1/2 direction relationship are retained observations, not a fitted
+error band. The two commercial trials changed APR uncertainty, CTS policy, timing expansion and
+pin-plan identity, so they cannot define a correction function or a cross-design threshold.
 
 ## Root causes and retained gaps
 
-1. ABC and DC use different optimization engines; exact adoption overlap exists but ranking
-   correlation is weak.
+1. ABC and DC use different optimization engines; their adoption relationship is useful evidence,
+   but matching their ranking is not the Framework objective.
 2. The proxy omits clock-to-Q, setup and extracted physical RC. Conditional foundry arcs use an
    explicit worst-case-over-conditions policy and do not claim sensitization.
 3. The frozen predicted custom Liberty omitted `timing_sense`; FW-03 derived it exactly from Boolean
@@ -94,5 +97,7 @@ and convergence gates. The current optimistic and nominal scenarios fail that re
    fanout, congestion, CTS or path migration.
 5. No held-out non-AES design has been evaluated yet.
 
-FW-05 may proceed only as development of a better influence/portfolio objective under this large
-error band. A later proxy or calibration change must rerun FW-04 before any commercial exit.
+FW-05 proceeds by building a layered metric vector: Boolean feasibility; local levels/nodes/edges,
+cut and reconvergence; whole-design adoption, depth, buffer/inverter and fanout/load; and proxy-STA
+frontier/path migration. Candidate portfolios advance by Pareto relation and cost. A later
+commercial run records another F4 observation; it does not certify a learned benefit predictor.

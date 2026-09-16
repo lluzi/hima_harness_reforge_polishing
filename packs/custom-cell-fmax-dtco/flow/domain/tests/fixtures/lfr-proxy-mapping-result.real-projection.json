@@ -1,0 +1,57 @@
+{
+  "schema": "lfr-proxy-mapping-result/1",
+  "status": "succeeded",
+  "request_sha256": "b4acd6553fece83c3c596734093383e320b450a99f8b9cd4f285819cce760483",
+  "profile": "lfr-yosys-abc-deterministic/1",
+  "fixture_provenance": {
+    "source_result_sha256": "6f040ad6c1e439f1ab71c9eb0c28a21589e8c2eb15d00282858d61fa79466b25",
+    "description": "Minimal identity and adoption projection of the retained AES flattened paired mapping result; raw netlists and Site paths are intentionally excluded."
+  },
+  "tool_identity": {
+    "yosys": {
+      "sha256": "133b83a5a43a1ab350a891970447c0f6b83535fa4276a2115c1670375dd47ec4"
+    },
+    "abc": {
+      "sha256": "3eef85baf428494c3a3ea926c01f4cf898b1bdcd6a0215752b0fbb9d462dda44"
+    }
+  },
+  "arms": {
+    "reference": {
+      "status": "succeeded",
+      "return_code": 0,
+      "plan_sha256": "de49acb65c48384d65f0a5777742a38e31ddaebf55ceb19c3272276ae5c3044e",
+      "artifacts": [
+        {
+          "role": "mapped_netlist",
+          "bytes": 1554051,
+          "sha256": "e94b1eb707fd9886f612c6863e46db398799cee62e636dcd44b744775e9cedd9"
+        }
+      ],
+      "adoption": {
+        "cell_census": {
+          "ND2D0BWP40P140": 1265,
+          "NR2D0BWP40P140": 2407
+        }
+      }
+    },
+    "augmented": {
+      "status": "succeeded",
+      "return_code": 0,
+      "plan_sha256": "de49acb65c48384d65f0a5777742a38e31ddaebf55ceb19c3272276ae5c3044e",
+      "artifacts": [
+        {
+          "role": "mapped_netlist",
+          "bytes": 1347975,
+          "sha256": "0e19c7917c30497207278111172a096944dcf633256de1569953b4fb9681419d"
+        }
+      ],
+      "adoption": {
+        "cell_census": {
+          "ND2D0BWP40P140": 1234,
+          "NR2D0BWP40P140": 1597,
+          "XS_TIMING_CRITICALITY_A2_SINGLE_0004_Y": 11
+        }
+      }
+    }
+  }
+}
