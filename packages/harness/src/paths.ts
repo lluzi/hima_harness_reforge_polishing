@@ -30,6 +30,9 @@ export const HIMA_RUNS_START_PATH = `${HIMA_RUNS_PATH}/start`;
 /** The same local Pack/Site preparation used by both workbench presentations. */
 export const HIMA_START_OPTIONS_PATH = `${HIMA_API_PREFIX}/start-options`;
 
+/** The Campaign file route: read and write `hima/campaign.yml` in a session's own workspace. */
+export const HIMA_CAMPAIGN_FILE_PATH = `${HIMA_API_PREFIX}/campaign`;
+
 /** One Run's own route, which is what the card reads itself from. */
 export const runPath = (runId: string): string => `${HIMA_RUNS_PATH}/${encodeURIComponent(runId)}`;
 

@@ -24,6 +24,7 @@ import { campaignKnowledgeScope, clearCurrentKnowledge, importCurrentKnowledge, 
 import { releasePack } from './release.js';
 import { runView, type RunWords } from './remote.js';
 import type { PreparationView } from './workbench.js';
+import { CAMPAIGN_FILE_RELATIVE, overridesOf, readCampaignFile, type PreparationOverrides } from './campaign-file.js';
 import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyValue } from './run-arguments.js';
 
 type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]: ToolJson };
@@ -37,6 +38,34 @@ function knowledgeImportRoots(agent: Agent): readonly string[] {
   const carrier = agent as unknown as { meta?: { cwd?: unknown }; session?: { header?: { cwd?: unknown } } };
   const cwd = carrier.session?.header?.cwd ?? carrier.meta?.cwd;
   return typeof cwd === 'string' && cwd.trim() !== '' ? [path.resolve(cwd)] : [];
+}
+
+/** The Agent's own workspace cwd, exactly as `knowledgeImportRoots` resolves one. Named separately
+ *  from that function because a Campaign file lives at one fixed path inside a workspace, never
+ *  among several allowed roots. */
+function agentWorkspace(agent: Agent | undefined): string | undefined {
+  if (!agent) return undefined;
+  const carrier = agent as unknown as { meta?: { cwd?: unknown }; session?: { header?: { cwd?: unknown } } };
+  const cwd = carrier.session?.header?.cwd ?? carrier.meta?.cwd;
+  return typeof cwd === 'string' && cwd.trim() !== '' ? cwd : undefined;
+}
+
+/**
+ * The Campaign file `hima_prepare`/`hima_run` apply (#41 task 3): the Agent's own workspace holds
+ * `hima/campaign.yml` and its declared `pack.id` equals the pack this call names. `useFile: false`
+ * (only `hima_prepare`'s own argument offers this) never looks: an Agent asking to prepare a Pack
+ * plainly, in spite of a stale or unrelated file sitting in its workspace, gets exactly that.
+ *
+ * Reported back on both tools' JSON as `campaignFile: { path, applied }` so a person reading either
+ * receipt knows whether the numbers it saw came from that file or from the Pack's own declaration —
+ * and so a caller comparing a confirmation to a preparation is comparing like with like.
+ */
+function campaignFileApplication(agent: Agent | undefined, packId: string, useFile: boolean):
+  { readonly campaignFile: { readonly path: string; readonly applied: boolean }; readonly overrides?: PreparationOverrides } {
+  const workspace = useFile ? agentWorkspace(agent) : undefined;
+  const found = workspace === undefined ? undefined : readCampaignFile(workspace);
+  const applied = found !== undefined && found.file.pack?.id === packId;
+  return { campaignFile: { path: CAMPAIGN_FILE_RELATIVE, applied }, ...(applied ? { overrides: overridesOf(found!.file) } : {}) };
 }
 
 function authorizedKnowledgeImport(agent: Agent, file: string): string | undefined {
@@ -300,7 +329,7 @@ function resumeToolValue(result: ResumeResult): ResumeToolValue {
  * and this module has nothing to say about that.
  */
 export function himaTools(deps: FabricDeps, author?: (request: { pack: string; create?: boolean }, agent?: Agent) => Promise<{ pack: string; folder: string; sessionId: string; created: boolean }>,
-  prepare?: (pack: string, site?: string) => PreparationView, knowledge?: { root: string }): ToolDefinition[] {
+  prepare?: (pack: string, site?: string, overrides?: PreparationOverrides) => PreparationView, knowledge?: { root: string }): ToolDefinition[] {
   return [
     ...author ? [defineTool({
       name: 'hima_author',
@@ -538,15 +567,17 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     }),
     defineTool({
       name: 'hima_prepare',
-      description: 'Inspect one installed HimaPack and, when named, one saved Site. Returns a read-only Campaign proposal with purpose, inputs, tools, knowledge, reference graph, unknowns and next actions. Creates no Campaign, Run, workspace, Job, Ledger row or hidden Agent. Use this before hima_run; ask the user only for unresolved business choices or facts Hima cannot discover.',
+      description: 'Inspect one installed HimaPack and, when named, one saved Site. Returns a read-only Campaign proposal with purpose, inputs, tools, knowledge, reference graph, unknowns and next actions. When this Agent\'s own workspace holds hima/campaign.yml naming this same Pack, its Goal, Strategy, input and Budget overrides are applied (report: campaignFile.applied). Creates no Campaign, Run, workspace, Job, Ledger row or hidden Agent. Use this before hima_run; ask the user only for unresolved business choices or facts Hima cannot discover.',
       parameters: {
         pack: { type: 'string', required: true, description: 'Installed HimaPack id.' },
         site: { type: 'string', description: 'Saved Site name. Omit while helping the user connect one.' },
+        file: { type: 'boolean', description: 'Apply this workspace\'s own hima/campaign.yml when it names this same Pack. Default true; false prepares the Pack plainly, ignoring any Campaign file present.' },
       },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
-      execute: (args) => {
+      execute: (args, execution) => {
         if (!prepare) throw new Error('Campaign preparation is unavailable on this Host');
-        return Promise.resolve(toolJson(prepare(args.pack, args.site)));
+        const { campaignFile, overrides } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
+        return Promise.resolve(toolJson({ ...prepare(args.pack, args.site, overrides), campaignFile }));
       },
     }),
     defineTool({
@@ -587,6 +618,8 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
             currentNode: { type: 'string' },
             strategy: { type: 'object', additionalProperties: true, description: 'The strategy the run now stands at: the next one to try, or the one that met the goal.' },
             reason: { type: 'string', description: 'Why the run could not start, on an unfit pack or a workspace that is not this campaign\'s.' },
+            campaignFile: { type: 'object', additionalProperties: false, description: 'Whether this Agent\'s own hima/campaign.yml was applied (#41 task 3).', properties: {
+              path: { type: 'string', required: true }, applied: { type: 'boolean', required: true } } },
           },
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
@@ -598,9 +631,14 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         }
         const goal = strategyArgument(args.goal, 'goal') ?? {};
         const strategy = strategyArgument(args.strategy);
+        // The same file `hima_prepare` applied by default, applied here the same way (#41 task 3),
+        // so a confirmation compares like with like: the freshness check below and the actual start
+        // both see the workspace's own input overrides, whether or not this Agent's workspace holds
+        // one naming this Pack.
+        const { campaignFile, overrides } = campaignFileApplication(execution.agent, args.pack, true);
         if (args.proposalId !== undefined) {
           if (args.test === true) throw new Error('a confirmed product Campaign cannot be changed into a Pack test');
-          const current = prepare?.(args.pack, args.site);
+          const current = prepare?.(args.pack, args.site, overrides);
           if (current === undefined || !current.ready || !sameCampaignProposalFacts(current.id, args.proposalId)) {
             throw new Error('Campaign preparation changed or is no longer ready; call hima_prepare again before confirming');
           }
@@ -621,6 +659,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
           site: args.site,
           goal,
           strategy,
+          ...(overrides?.inputs === undefined ? {} : { inputs: overrides.inputs }),
           // An absent key, never an undefined one, as everywhere else a request is composed here:
           // the schema above has already held it to a boolean, so a caller that said nothing has
           // said nothing and the pack folder decides.
@@ -629,7 +668,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
           retryAllowance: toolNumber('retries', args.retries),
           generationLimit: toolNumber('generations', args.generations),
         });
-        return { ...runToolValue(result), ...(result.kind === 'ran' ? { context: toolJson(executionContext(deps, result.run.id)) } : {}) };
+        return { ...runToolValue(result), campaignFile, ...(result.kind === 'ran' ? { context: toolJson(executionContext(deps, result.run.id)) } : {}) };
       },
     }),
     // The resume face as a tool, beside the run face: a waiting Run is cleared the same way from

@@ -112,6 +112,14 @@ export interface PrepareRequest {
    * its own operation and takes its own reading.
    */
   readonly folder?: PackFolderSnapshot;
+  /**
+   * Campaign-file input overrides (#41 task 3), merged over the Site's own bindings in memory before
+   * this preparation reads or copies anything: `{...site, bindings: {...site.bindings, ...inputs}}`.
+   * The Permit is untouched — every overridden path still resolves through this same Site's own
+   * `permitFile`/`permitRules`, so it still passes `decideRead`/`decideWrite` exactly as a bound path
+   * from the site file would. Absent, this call reads and copies exactly as it always has.
+   */
+  readonly inputs?: Readonly<Record<string, string>>;
 }
 
 export type PrepareResult =
@@ -252,7 +260,8 @@ interface PreparationIdentity {
  *          cannot host the pack at all.
  */
 export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest): Promise<PrepareResult> {
-  const site = loadSite(deps.sitesDir, req.site);
+  const loadedSite = loadSite(deps.sitesDir, req.site);
+  const site = req.inputs === undefined ? loadedSite : { ...loadedSite, bindings: { ...loadedSite.bindings, ...req.inputs } };
   // One reading of the pack's folder, which the pack is parsed out of and the check is made from
   // (#64): a preparation that loaded the pack from one reading and checked it against another could
   // copy a workspace for a folder neither of them describes. The caller's, where the caller is

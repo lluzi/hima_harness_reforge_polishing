@@ -38,6 +38,7 @@ import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from
 import { z } from 'zod';
 import { loadRunPack, preservePackMethod } from './release.js';
 import { applyWorkspaceRevision, campaignIdFor, prepareWorkspace, verifyWorkspaceRevisionSources, type PrepareResult, type WorkspaceRevisionChange } from './workspace.js';
+import type { PreparationOverrides } from './campaign-file.js';
 import { listRunKnowledge, readRunKnowledge, writeExperience } from './experience.js';
 import { loadSite, pathsOf, type Site } from './sites.js';
 import { driving, existingRun, legacyAutomaticAllowed } from './runs.js';
@@ -154,6 +155,15 @@ export interface StartRunRequest {
   /** The Goal as bound parameters, typed and checkable, immutable for the Campaign (D3). */
   readonly goal: Readonly<Record<string, number | string>>;
   /**
+   * Campaign-file input overrides (#41 task 3), merged over the Site's own bindings in memory
+   * (`{...site, bindings: {...site.bindings, ...inputs}}`) before `checkPack` and `boundInputs` see
+   * them, and before the workspace is prepared. The Permit is untouched: every overridden path still
+   * resolves through this same Site's own `permitFile`/`permitRules`, so it still passes
+   * `decideRead`/`decideWrite` exactly as a bound path from the site file would. Absent, a start
+   * reads and binds exactly as it always has.
+   */
+  readonly inputs?: Readonly<Record<string, string>>;
+  /**
    * What to set the pack's own Strategy knobs to for the first generation, by name (#58). A knob left
    * out takes the default that pack's contract declares, which is where a starting value comes from
    * now: what a Strategy is made of is the pack's, and so is what a Run of it starts at.
@@ -207,21 +217,44 @@ export type StartRunResult =
   /** The graph was executed. The Run carries where it got to; `ended-*` and `waiting` are all here. */
   | { readonly kind: 'ran'; readonly run: RunRecord; readonly workspace: string };
 
-/** Facts a preparation promises, computed again from the final Pack/Site snapshots at admission. */
-export function campaignProposalFactsIdentity(pack: Pack, site?: Site): string {
-  const check = site === undefined ? undefined : checkPack(pack, site);
-  const goal = Object.fromEntries(Object.entries(goalDeclarationOf(pack)).map(([name, declaration]) => [name, declaration.default]));
-  const strategy = Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, declaration.default]));
+/** The Site a preparation actually checks facts against: the Site's own bindings, with a Campaign
+ *  file's input overrides (#41 task 3) merged over them in memory. The Permit is untouched — every
+ *  overridden path still resolves through this same Site's own `permitFile`/`permitRules`. */
+function siteWithInputOverrides(site: Site, overrides: PreparationOverrides | undefined): Site {
+  return overrides?.inputs === undefined ? site : { ...site, bindings: { ...site.bindings, ...overrides.inputs } };
+}
+
+/**
+ * Facts a preparation promises, computed again from the final Pack/Site snapshots at admission.
+ *
+ * `overrides` is absent for every caller that predates #41 task 3 — the legacy workbench page,
+ * `/hima/api/start-options`, every existing tool and command path — and this function's answer for
+ * them is unchanged: a Goal and Strategy filled from the Pack's own declared defaults, and Site
+ * inputs bound exactly as the Site file states them. Given `overrides`, the Campaign file's own
+ * declared Goal stands with **no default filled in** (a Goal is never filled from a default), its
+ * Strategy knobs overlay the Pack's defaults, its Budget overrides join the identity, and its input
+ * overrides are merged over the Site's own bindings before `checkPack` binds them.
+ */
+export function campaignProposalFactsIdentity(pack: Pack, site?: Site, overrides?: PreparationOverrides): string {
+  const effectiveSite = site === undefined ? undefined : siteWithInputOverrides(site, overrides);
+  const check = effectiveSite === undefined ? undefined : checkPack(pack, effectiveSite);
+  const goal = overrides === undefined
+    ? Object.fromEntries(Object.entries(goalDeclarationOf(pack)).map(([name, declaration]) => [name, declaration.default]))
+    : { ...(overrides.goal ?? {}) };
+  const strategy = overrides === undefined
+    ? Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, declaration.default]))
+    : Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, overrides.strategy?.[name] ?? declaration.default]));
   const referenceGraph = { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
     edges: pack.graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === undefined ? {} : { revisit: edge.revisit }) })) };
   return identityOf({ pack: { id: pack.id, version: pack.contract.version, digest: pack.folder.digest(packDigestExcludes) },
     site: site === undefined ? undefined : identityOf(site), goal, strategy, referenceGraph,
-    inputs: check?.inputs.map((input) => ({ name: input.name, bound: input.bound })) });
+    inputs: check?.inputs.map((input) => ({ name: input.name, bound: input.bound })),
+    ...(overrides === undefined ? {} : { budget: overrides.budget ?? {} }) });
 }
 
 /** Each preparation is confirmable once while retaining a recomputable facts prefix. */
-export function newCampaignProposalId(pack: Pack, site?: Site): string {
-  const facts = campaignProposalFactsIdentity(pack, site);
+export function newCampaignProposalId(pack: Pack, site?: Site, overrides?: PreparationOverrides): string {
+  const facts = campaignProposalFactsIdentity(pack, site, overrides);
   const pending = pendingProposalIds.get(facts);
   if (pending !== undefined && authenticCampaignProposalId(pending)) return pending;
   const nonce = randomBytes(16).toString('hex');
@@ -249,9 +282,9 @@ export function sameCampaignProposalFacts(left: string, right: string): boolean 
   return a !== undefined && a === b;
 }
 
-function proposalMatchesCurrentFacts(proposalId: string, pack: Pack, site: Site): boolean {
+function proposalMatchesCurrentFacts(proposalId: string, pack: Pack, site: Site, overrides?: PreparationOverrides): boolean {
   const [facts, nonce, signature] = proposalId.split('.');
-  if (proposalFactsPart(proposalId) !== campaignProposalFactsIdentity(pack, site) || nonce === undefined || signature === undefined) return false;
+  if (proposalFactsPart(proposalId) !== campaignProposalFactsIdentity(pack, site, overrides) || nonce === undefined || signature === undefined) return false;
   const expected = createHmac('sha256', proposalSigningKey).update(`${facts}.${nonce}`).digest();
   return timingSafeEqual(expected, Buffer.from(signature!, 'hex'));
 }
@@ -298,6 +331,13 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
     throw new RunStartError('the execution owner must be a live conversation on this Host');
   }
   const site = loadSite(deps.sitesDir, req.site);
+  // Campaign-file input overrides (#41 task 3), merged over the Site's own bindings in memory: the
+  // Permit is untouched, since `effectiveSite` keeps this same Site's own `permitFile`/`permitRules`
+  // and only its `bindings` differ, so every overridden path still passes `decideRead`/`decideWrite`
+  // exactly as a bound path from the site file would. `site` itself (unmerged) is what a later
+  // resumption reloads and compares its own control identity against (`recovery.ts`), so it is kept
+  // and never replaced by the merged copy; only what depends on bindings uses `effectiveSite`.
+  const effectiveSite = siteWithInputOverrides(site, req.inputs === undefined ? undefined : { inputs: req.inputs });
   // **One reading of the pack folder, and everything this start says about it is derived from it**
   // (#64) — the contract and graph this Campaign is driven by, the rung the folder stands on, the
   // seal the check verifies, and the digest the row records. Two readings would be two folders
@@ -316,9 +356,25 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   }
   // A pack the Site cannot host is answered before a Campaign exists, exactly as preparation does:
   // nothing was attempted anywhere, so nothing is recorded anywhere.
-  const check = checkPack(pack, site);
+  const check = checkPack(pack, effectiveSite);
   const existingProposal = req.proposalId === undefined ? undefined : deps.ledger.runs().find((run) => run.proposalId === req.proposalId);
-  if (req.proposalId !== undefined && existingProposal === undefined && !proposalMatchesCurrentFacts(req.proposalId, pack, site)) {
+  // `req.inputs` is the one signal that this confirmation followed an overrides-aware preparation
+  // (#41 task 3): a legacy caller — the workbench page, `/hima/api/start-options`, every tool call
+  // with no Campaign file — never sets it, and this recompute is then byte-identical to the one
+  // before this task, matching whatever `newCampaignProposalId(pack, site)` minted with no overrides.
+  // A caller that did apply a Campaign file always sets it (even to `{}`), and this recomputes the
+  // very same Goal/Strategy/Budget the file's own overrides put on the token when it was minted.
+  const identityOverrides: PreparationOverrides | undefined = req.inputs === undefined ? undefined : {
+    goal: Object.fromEntries(Object.entries(req.goal).map(([name, value]) => [name, typeof value === 'number' ? value : Number(value)])),
+    strategy: req.strategy,
+    inputs: req.inputs,
+    budget: {
+      ...(req.timeBoxMs === undefined ? {} : { timeBoxMinutes: req.timeBoxMs / 60_000 }),
+      ...(req.retryAllowance === undefined ? {} : { retries: req.retryAllowance }),
+      ...(req.generationLimit === undefined ? {} : { generations: req.generationLimit }),
+    },
+  };
+  if (req.proposalId !== undefined && existingProposal === undefined && !proposalMatchesCurrentFacts(req.proposalId, pack, site, identityOverrides)) {
     throw new RunStartError('Campaign preparation changed after confirmation; inspect a fresh proposal before starting');
   }
   if (req.proposalId !== undefined && req.test === true) {
@@ -428,7 +484,10 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   const control = req.ownerSessionId === undefined ? {} : { control: { mode: 'agent' as const, owner: req.ownerSessionId, epoch: 1, revision: 0, paused: [], executions: {}, requests: {}, siteDigest: identityOf(site) } };
   const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, ...(req.proposalId === undefined ? {} : { proposalId: req.proposalId }), packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1, ...control });
   if (req.proposalId !== undefined) {
-    const facts = campaignProposalFactsIdentity(pack, site);
+    // The same basis `identityOverrides` above recomputed the confirmed facts with: a pending id for
+    // a Campaign-file-aware preparation was stored under a facts key that included its overrides,
+    // and evicting it under the overrides-free key would never find it.
+    const facts = campaignProposalFactsIdentity(pack, site, identityOverrides);
     if (pendingProposalIds.get(facts) === req.proposalId) pendingProposalIds.delete(facts);
   }
   // Said as soon as it is true, and before the preparation below can take seconds over a 56 MB copy:
@@ -455,7 +514,7 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   // report only that HimaFabric never started this Run.
   let prepared: PrepareResult;
   try {
-    prepared = await prepareWorkspace(deps, { pack: pack.id, site: site.name, campaign: campaignId, run: opened.id, folder });
+    prepared = await prepareWorkspace(deps, { pack: pack.id, site: site.name, campaign: campaignId, run: opened.id, folder, inputs: req.inputs });
   } catch (err) {
     const message = (err as Error).message;
     await blockAtEntry(deps, opened, pack, `the campaign workspace could not be prepared: ${message}`, strategy);
@@ -490,7 +549,7 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
     runId: opened.id,
     site,
     pack,
-    bindings: boundInputs(pack, site),
+    bindings: boundInputs(pack, effectiveSite),
     workspace,
     campaignId,
     // A Run opened a moment ago has waited on nobody: there is no blocker to have waited at.
@@ -1013,7 +1072,7 @@ const latestDecision = (ctx: Driving): DecisionRecord | undefined =>
  * happen to be written in. A graph where no Explore node revisits declares no Loop for the limit to
  * bound, and any node's number is as good as another's.
  */
-const convergeOf = (pack: Pack): PackConverge | undefined => {
+export const convergeOf = (pack: Pack): PackConverge | undefined => {
   const revisits = new Set(pack.graph.edges.filter((e) => e.revisit === true).map((e) => e.from));
   const declared = pack.graph.nodes.flatMap((n) =>
     (n.kind === 'explore' && n.parameters.converge ? [{ id: n.id, converge: n.parameters.converge }] : []));

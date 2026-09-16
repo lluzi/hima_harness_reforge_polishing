@@ -26,7 +26,8 @@ import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-commands';
 import { hasEnded, Ledger, ledgerSpec } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { newCampaignProposalId, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
+import { convergeOf, newCampaignProposalId, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
+import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs } from './budget.js';
 import { drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
 import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
@@ -46,6 +47,7 @@ import { campaignKnowledgeScope, currentKnowledgeDocumentCount } from './worksho
 // The audit the routes answer with: the module-level pair every channel in this process records into.
 import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from './channel.js';
 import type { PreparationView } from './workbench.js';
+import type { PreparationOverrides } from './campaign-file.js';
 
 // The Site-facing pieces are part of the bundle's surface: an operator inspects a Site's warm channel
 // and the commands it has run, and the contract suite reads both.
@@ -144,7 +146,7 @@ export type { Chooser, ChooserClause, ChooserExpression, ChooserInput, ChooserRe
 // `remote.ts` states these shapes once, the browser module imports them from there, and every other
 // caller — the contract tests, the acceptance script — takes them from here rather than retyping
 // them by hand, where a drift in the host's answer would go unnoticed until a person read the JSON.
-export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
+export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH, HIMA_CAMPAIGN_FILE_PATH } from './paths.js';
 export type {
   HimaErrorCode,
   HimaErrorBody,
@@ -170,6 +172,7 @@ export type {
   ExperienceFileView,
   ExperienceAnswer,
   MomentAnswer,
+  CampaignFileView,
 } from './remote.js';
 
 // The Campaign's technical report (#30): what it says, and how a face reads one back. On the surface
@@ -389,6 +392,7 @@ export default class Hima extends Service {
         () => registerHimaRoutes(webCtx, {
           ledger: this.ledger,
           validateSession: (id) => this.ctx.get('agents')?.list().some((agent) => String(agent.id) === id) === true,
+          sessionWorkspace: (id) => this.sessionWorkspace(id),
           packTransfer: (request) => {
             const installed = path.resolve(this.config.packsDir, validPackId.parse(request.pack));
             if ((request.mode === 'install' || request.mode === 'upgrade') && !request.source) throw new Error(`choose a Pack source for ${request.mode}`);
@@ -434,21 +438,21 @@ export default class Hima extends Service {
             try { return runPackWords(this.config.packsDir, run); }
             catch { return undefined; }
           },
-          startPreparation: (packId, siteName) => {
+          startPreparation: (packId, siteName, overrides) => {
             let pack;
             try { pack = loadPack(this.config.packsDir, packId); }
             catch (err) {
               return { preparation: { kind: 'pack', message: `Pack owner: repair Pack ${packId} files: ${err instanceof Error ? err.message : String(err)}` } };
             }
             const fields = { goal: goalDeclarationOf(pack), strategy: pack.contract.strategy, words: packWords(pack) };
-            if (siteName === undefined) return { ...fields, proposal: this.preparation(pack, undefined) };
+            if (siteName === undefined) return { ...fields, proposal: this.preparation(pack, undefined, overrides) };
             let site;
             try { site = loadSite(this.config.sitesDir, siteName); }
             catch (err) {
               return { ...fields, preparation: { kind: 'site', message: `Site owner: repair configuration for ${siteName}: ${err instanceof Error ? err.message : String(err)}` } };
             }
             // Only local declarations are read. Fabric rechecks them when a Run is actually started.
-            return { ...fields, check: checkPack(pack, site), proposal: this.preparation(pack, site) };
+            return { ...fields, check: checkPack(pack, site), proposal: this.preparation(pack, site, overrides) };
           },
           packStages: () => installedPackStages(this.config.packsDir),
         }),
@@ -466,9 +470,9 @@ export default class Hima extends Service {
       }),
     );
     for (const tool of himaTools(this.deps(), (request, agent) => openAuthoringSession(this.ctx, this.config.packsDir, request, agent),
-      (pack, site) => {
+      (pack, site, overrides) => {
         const loadedPack = loadPack(this.config.packsDir, pack);
-        return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site));
+        return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site), overrides);
       }, { root: this.config.knowledgeDir })) this.ctx.effect(() => this.ctx.tools.register(tool));
     // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
     // A person invokes one by typing its name; the model never chooses one for itself, because a
@@ -547,6 +551,18 @@ export default class Hima extends Service {
     return momentOnCurrentNode({ ledger: this.ledger, ctx: this.ctx }, runId, instructions);
   }
 
+  /** A live session's own workspace cwd, exactly as `tools.ts` resolves one for the actual
+   *  conversational Agent (`agent.session.header.cwd ?? agent.meta.cwd`) — where that session's
+   *  `hima/campaign.yml` lives (#41 task 3). Undefined for a session id this Host does not carry an
+   *  Agent for, or one with no workspace. */
+  private sessionWorkspace(sessionId: string): string | undefined {
+    const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === sessionId);
+    if (!agent) return undefined;
+    const carrier = agent as unknown as { meta?: { cwd?: unknown }; session?: { header?: { cwd?: unknown } } };
+    const cwd = carrier.session?.header?.cwd ?? carrier.meta?.cwd;
+    return typeof cwd === 'string' && cwd.trim() !== '' ? cwd : undefined;
+  }
+
   /** What every Hima operation is given: this host's ledger and judge, where its Sites and packs
    *  are installed, and the host log. The log is for the one thing HimaFabric has to say that is not
    *  a record: a stretch of polls during which a Site could not be asked (#18). It goes there rather
@@ -583,11 +599,29 @@ export default class Hima extends Service {
   }
 
   /** Compose the deterministic, non-creating Campaign proposal used by the route and HimaGuide. */
-  private preparation(pack: ReturnType<typeof loadPack>, site: ReturnType<typeof loadSite> | undefined): PreparationView {
+  /**
+   * Compose the deterministic, non-creating Campaign proposal used by the route, HimaGuide and the
+   * Campaign-file routes (#41 task 3).
+   *
+   * `overrides` is absent for every caller that predates that task — the legacy workbench page,
+   * `/hima/api/start-options`, every `hima_prepare`/`hima_run` call with no applicable Campaign
+   * file — and this method's answer for them is unchanged down to the byte: a Goal and Strategy
+   * filled from the Pack's own defaults, and readiness that never asks about a Goal at all. Given
+   * `overrides` (a Campaign file's own, however empty), a Goal is **never** filled from a default:
+   * every declared Goal parameter must be present in `overrides.goal` and within its declared
+   * bounds for this preparation to be ready, and an absent one adds a sentence naming that
+   * parameter's own label rather than a raw name.
+   */
+  private preparation(pack: ReturnType<typeof loadPack>, site: ReturnType<typeof loadSite> | undefined, overrides?: PreparationOverrides): PreparationView {
     // Authoring records and PACK.md remain inspectable Pack assets. The proposal carries their
     // compact declared structure, never entire documents on every HimaGuide turn.
     const { intent: _intent, spec: _spec, pack: _packDocument, ...overview } = packOverview(pack);
-    const check = site === undefined ? undefined : checkPack(pack, site);
+    // Campaign-file input overrides (#41 task 3), merged over the Site's own bindings in memory. The
+    // Permit is untouched: `effectiveSite` keeps this same Site's own `permitFile`/`permitRules`, so
+    // every overridden path still passes `decideRead`/`decideWrite` exactly as a bound path from the
+    // site file would.
+    const effectiveSite = site === undefined || overrides?.inputs === undefined ? site : { ...site, bindings: { ...site.bindings, ...overrides.inputs } };
+    const check = effectiveSite === undefined ? undefined : checkPack(pack, effectiveSite);
     const requiredCommands = new Set(pack.contract.environment.commands);
     const discoveredCommands = new Set(site?.discovery?.facts
       .filter((fact) => fact.probe[0] === 'which' && fact.code === 0 && fact.probe[1] !== undefined)
@@ -595,29 +629,71 @@ export default class Hima extends Service {
     const missingCommands = site?.kind === 'ssh' ? [...requiredCommands].filter((command) => !discoveredCommands.has(command)) : [];
     const siteReadiness = site === undefined ? undefined : site.kind === 'local' ? 'ready' as const
       : site.discovery === undefined ? 'needs-discovery' as const : site.discovery.stale ? 'stale' as const : 'ready' as const;
+    const words = packWords(pack);
+    const goalDeclared = goalDeclarationOf(pack);
+    const goalUnknowns: string[] = [];
+    const goal: Record<string, number> = overrides === undefined
+      ? Object.fromEntries(Object.entries(goalDeclared).map(([name, declaration]) => [name, declaration.default]))
+      : { ...(overrides.goal ?? {}) };
+    if (overrides !== undefined) {
+      for (const [name, declaration] of Object.entries(goalDeclared)) {
+        const label = words?.goal[name]?.label ?? name;
+        const given = overrides.goal?.[name];
+        if (given === undefined) goalUnknowns.push(`Goal ${label} is not set.`);
+        else if (!Number.isFinite(given) || given < declaration.min || given > declaration.max) {
+          goalUnknowns.push(`Goal ${label} must be from ${String(declaration.min)} through ${String(declaration.max)}${declaration.unit ? ` ${declaration.unit}` : ''}.`);
+        }
+      }
+    }
     const unknowns = [
       ...(site === undefined ? ['No Site is selected.'] : []),
       ...(check?.errors ?? []),
       ...(siteReadiness === 'needs-discovery' ? ['The SSH Site has not completed bounded discovery.'] : []),
       ...(siteReadiness === 'stale' ? ['The saved SSH Site discovery is stale.'] : []),
       ...missingCommands.map((command) => `Required command ${command} was not found by Site discovery.`),
+      ...goalUnknowns,
     ];
-    const goal = Object.fromEntries(Object.entries(goalDeclarationOf(pack)).map(([name, declaration]) => [name, declaration.default]));
-    const strategy = Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, declaration.default]));
+    const strategy = overrides === undefined
+      ? Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, declaration.default]))
+      : Object.fromEntries(Object.entries(pack.contract.strategy).map(([name, declaration]) => [name, overrides.strategy?.[name] ?? declaration.default]));
     const referenceGraph = { entry: pack.graph.entry, nodes: pack.graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
       edges: pack.graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === undefined ? {} : { revisit: edge.revisit }) })) };
-    const ready = check?.fit === true && siteReadiness === 'ready' && missingCommands.length === 0;
-    const proposalId = newCampaignProposalId(pack, site);
+    const ready = check?.fit === true && siteReadiness === 'ready' && missingCommands.length === 0 && (overrides === undefined || goalUnknowns.length === 0);
+    const proposalId = newCampaignProposalId(pack, site, overrides);
     const knowledgeScope = campaignKnowledgeScope(proposalId);
+    const goalDeclaredView = Object.fromEntries(Object.entries(goalDeclared).map(([name, declaration]) => [name, {
+      label: words?.goal[name]?.label ?? name,
+      ...(declaration.unit === undefined ? {} : { unit: declaration.unit }),
+      min: declaration.min, max: declaration.max,
+      ...(declaration.precision === undefined ? {} : { precision: declaration.precision }),
+    }]));
+    const generationLimit = convergeOf(pack)?.generationLimit;
+    const budget: PreparationView['budget'] = {
+      timeBoxMinutes: overrides?.budget?.timeBoxMinutes !== undefined ? { value: overrides.budget.timeBoxMinutes, source: 'file' }
+        : pack.contract.budget.timeBoxMs !== undefined ? { value: pack.contract.budget.timeBoxMs / 60_000, source: 'pack' }
+        : { value: defaultTimeBoxMs / 60_000, source: 'harness' },
+      retries: overrides?.budget?.retries !== undefined ? { value: overrides.budget.retries, source: 'file' }
+        : { value: defaultRetryAllowance, source: 'harness' },
+      generations: overrides?.budget?.generations !== undefined ? { value: overrides.budget.generations, source: 'file' }
+        : generationLimit !== undefined ? { value: generationLimit, source: 'pack' }
+        : { value: defaultGenerationLimit, source: 'harness' },
+      ...(site === undefined ? {} : { jobCap: site.capacity.parallelJobs }),
+      ...(site !== undefined && Object.keys(site.capacity.licences).length > 0 ? { licences: site.capacity.licences } : {}),
+    };
     return {
       id: proposalId, ready, pack: overview,
       ...(site === undefined ? {} : { site: { name: site.name, kind: site.kind, readiness: siteReadiness!, resources: { cores: site.capacity.cores, memoryGiB: site.capacity.memoryGiB, parallelJobs: site.capacity.parallelJobs } } }),
-      inputs: pack.contract.inputs.map((input) => { const found = check?.inputs.find((item) => item.name === input.name); return { name: input.name, description: input.description, ...(found?.bound === undefined ? {} : { value: found.bound }), ready: found?.bound !== undefined }; }),
+      inputs: pack.contract.inputs.map((input) => {
+        const found = check?.inputs.find((item) => item.name === input.name);
+        const fromFile = overrides?.inputs?.[input.name] !== undefined;
+        return { name: input.name, description: input.description, ...(found?.bound === undefined ? {} : { value: found.bound }),
+          ready: found?.bound !== undefined, ...(fromFile ? { source: 'file' as const } : found?.bound !== undefined ? { source: 'site' as const } : {}) };
+      }),
       knowledge: { documents: pack.contract.knowledge.length, ready: true,
         currentDocuments: currentKnowledgeDocumentCount(this.config.knowledgeDir, knowledgeScope) },
       probe: site === undefined ? { status: 'needed' } : site.kind === 'local' ? { status: 'declaration-only' } : siteReadiness === 'stale'
         ? { status: 'stale', observedAt: site.discovery?.observedAt } : site.discovery === undefined ? { status: 'needed' } : { status: 'discovered', observedAt: site.discovery.observedAt },
-      goal, strategy, referenceGraph, unknowns,
+      goal, strategy, goalDeclared: goalDeclaredView, budget, referenceGraph, unknowns,
       nextActions: ready ? ['Review this proposal and confirm once to create the Campaign.']
         : unknowns.length > 0 ? unknowns : ['Ask HimaGuide to complete Campaign preparation.'],
     };
@@ -640,3 +716,9 @@ export { goalDeclarationOf } from './packs.js';
 // PITCH` and rule 9's Goal placement both need them) and the contract test imports both.
 export { layoutCanvas, fitToWidth, labelsVisibleAt, PITCH, ROW, NODE, X0, PAD_Y } from './canvas-layout.js';
 export type { CanvasScene, LayoutGraph, LayoutFacts, PlacedNode, PlacedEdge, Frame, NodeVisualState } from './canvas-layout.js';
+// The Campaign file (#41 task 3): `hima-campaign/1`'s schema, parse/serialize, read/write under a
+// session workspace, and the overrides it hands Preparation. Exported here for the same reason every
+// other business format is: `test/contract/campaign-file.host.test.ts`, `tools.ts` and `remote.ts`
+// all need the one reading of what this file may say.
+export { CAMPAIGN_FILE_RELATIVE, CAMPAIGN_SCHEMA, campaignFileSchema, changedFields, emptyCampaignFile, overridesOf, parseCampaignFile, readCampaignFile, serializeCampaignFile, writeCampaignFile } from './campaign-file.js';
+export type { CampaignFile, PreparationOverrides } from './campaign-file.js';

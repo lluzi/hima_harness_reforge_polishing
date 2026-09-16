@@ -10,6 +10,7 @@
     "test/contract/knowledge-documents.test.ts",
     "test/contract/side-talk.host.test.ts",
     "test/contract/preparation.host.test.ts",
+    "test/contract/campaign-file.host.test.ts",
     "test/contract/research-analysis.host.test.ts",
     "test/contract/growth.test.ts",
     "test/contract/growth.host.test.ts",

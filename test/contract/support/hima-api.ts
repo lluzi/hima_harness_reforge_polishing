@@ -37,3 +37,29 @@ export function postObserve(host: BootedHost, cookie: string, body: ObserveBody 
     headers: { 'content-type': 'application/json' },
   });
 }
+
+/**
+ * Create a live conversation with a chosen workspace, through dsh's own public `session/create`
+ * Host RPC — the same fixture seam `unified-workbench.test.ts` uses for `workspace/create`, over the
+ * same `client-request` envelope every native session-management action already rides. Its answer
+ * is the session id `agents.list()` carries, which is exactly what `?session=<id>` and a body's
+ * `sessionId` name across the Hima namespace: no Electron window and no native folder picker are
+ * needed to give a session a real, live cwd.
+ *
+ * @param host - the booted web host.
+ * @param cookie - its browser session cookie.
+ * @param cwd - the workspace this session's Agent stands in.
+ * @returns the created session's id.
+ */
+export async function createLiveSession(host: BootedHost, cookie: string, cwd: string): Promise<string> {
+  const response = await api(host, cookie, '/api/session/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'client-request', rpcId: `hima-session-${Date.now()}`, method: 'session/create', payload: { args: { request: { cwd } } } }),
+  });
+  const answer = await response.json() as { result?: { ok?: boolean; value?: { sessionId?: string } }; error?: unknown };
+  if (answer.result?.ok !== true || typeof answer.result.value?.sessionId !== 'string') {
+    throw new Error(`session/create did not answer a session id: ${JSON.stringify(answer)}`);
+  }
+  return answer.result.value.sessionId;
+}

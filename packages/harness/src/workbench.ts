@@ -1272,11 +1272,29 @@ export interface PreparationView {
     readonly readiness: 'ready' | 'needs-discovery' | 'stale';
     readonly resources: { readonly cores: number; readonly memoryGiB: number; readonly parallelJobs: number };
   };
-  readonly inputs: readonly { readonly name: string; readonly description: string; readonly value?: string; readonly ready: boolean }[];
+  readonly inputs: readonly { readonly name: string; readonly description: string; readonly value?: string; readonly ready: boolean; readonly source?: 'file' | 'site' }[];
   readonly knowledge: { readonly documents: number; readonly ready: boolean; readonly currentDocuments: number };
   readonly probe: { readonly status: 'declaration-only' | 'discovered' | 'needed' | 'stale'; readonly observedAt?: string };
   readonly goal: Readonly<Record<string, number>>;
   readonly strategy: Readonly<Record<string, string | number>>;
+  /**
+   * What this Pack calls each Goal parameter it declares, in the same order `goal` above states
+   * them, for a caller that must ask a person for a value this file did not supply (#41 task 3): a
+   * Campaign file editor renders one field per entry here, whether or not the Campaign file — or
+   * this call's overrides — currently answers it.
+   */
+  readonly goalDeclared: Readonly<Record<string, { readonly label: string; readonly unit?: string; readonly min?: number; readonly max?: number; readonly precision?: number }>>;
+  /** The Budget this preparation would start with, and where each of its three numbers comes from:
+   *  a Campaign file's own override, the Pack's own declaration, or this Harness's own default,
+   *  applied in that order (#41 task 3). `jobCap`/`licences` are the Site's own declared scarcity,
+   *  carried here rather than computed twice, and absent with no Site selected. */
+  readonly budget: {
+    readonly timeBoxMinutes: { readonly value: number; readonly source: 'file' | 'pack' | 'harness' };
+    readonly retries: { readonly value: number; readonly source: 'file' | 'pack' | 'harness' };
+    readonly generations: { readonly value: number; readonly source: 'file' | 'pack' | 'harness' };
+    readonly jobCap?: number;
+    readonly licences?: Readonly<Record<string, number>>;
+  };
   readonly referenceGraph: { readonly entry: string; readonly nodes: readonly { readonly id: string; readonly kind: string }[]; readonly edges: readonly { readonly from: string; readonly to: string; readonly outcome?: string; readonly revisit?: boolean }[] };
   readonly unknowns: readonly string[];
   readonly nextActions: readonly string[];
