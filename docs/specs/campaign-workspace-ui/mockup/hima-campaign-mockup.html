@@ -1,0 +1,418 @@
+<title>Hima Campaign Workspace</title>
+<style>
+:root{
+  --ground:#F3F2EE; --paper:#FFFFFF; --soft:#F7F6F2; --line:#E3E0D8; --line-strong:#CFCBC1;
+  --ink:#1E1D1A; --muted:#6E6A62; --faint:#9A958B;
+  --good:#2E7A45; --good-soft:#E8F2EA; --live:#C4593B; --live-soft:#FBEDE7;
+  --wait:#9C6B0F; --wait-soft:#FBF2DD; --bad:#B5423A; --bad-soft:#F9E7E5;
+  --accent:#4A55C8; --accent-soft:#ECEEFA; --neutral:#8E887E;
+  --glass:#151412; --glass-ink:#D5D0C5; --glass-dim:#8A8478;
+  --shadow:0 10px 30px rgba(30,29,26,.10), 0 1px 2px rgba(30,29,26,.08);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Helvetica,Arial,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --ground:#141311; --paper:#1C1B19; --soft:#232220; --line:#33312C; --line-strong:#4A473F;
+  --ink:#ECE9E2; --muted:#ABA69B; --faint:#7D786E;
+  --good:#8FCB9B; --good-soft:#1E2E22; --live:#E39A7C; --live-soft:#33221B;
+  --wait:#DDB45F; --wait-soft:#33290F; --bad:#E39089; --bad-soft:#3A1F1C;
+  --accent:#A5ADFF; --accent-soft:#252A44; --neutral:#8E887E;
+  --shadow:0 10px 30px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.4);
+}}
+:root[data-theme="dark"]{
+  --ground:#141311; --paper:#1C1B19; --soft:#232220; --line:#33312C; --line-strong:#4A473F;
+  --ink:#ECE9E2; --muted:#ABA69B; --faint:#7D786E;
+  --good:#8FCB9B; --good-soft:#1E2E22; --live:#E39A7C; --live-soft:#33221B;
+  --wait:#DDB45F; --wait-soft:#33290F; --bad:#E39089; --bad-soft:#3A1F1C;
+  --accent:#A5ADFF; --accent-soft:#252A44; --neutral:#8E887E;
+  --shadow:0 10px 30px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:14px/1.45 var(--font);-webkit-font-smoothing:antialiased;padding-block:32px;padding-inline:24px}
+.page{max-width:1328px;margin:0 auto;display:grid;gap:28px}
+.intro{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.intro h1{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:0}
+.intro p{margin:0;color:var(--muted);font-size:13px}
+.toggle{font:inherit;font-size:13px;border:1px solid var(--line-strong);background:var(--paper);color:var(--ink);border-radius:6px;padding:5px 10px;cursor:pointer}
+.toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.caption{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:0 0 8px 2px}
+.frame-wrap{overflow-x:auto}
+.win{width:1280px;height:800px;background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);display:grid;grid-template-columns:56px 464px 760px;grid-template-rows:40px 1fr;overflow:hidden}
+.titlebar{grid-column:1/-1;height:40px;display:flex;align-items:center;padding:0 14px;gap:8px;border-bottom:1px solid var(--line)}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--line-strong)}
+.rail{border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:18px;color:var(--muted)}
+.rail svg{width:20px;height:20px}
+.rail .mark{color:var(--ink)}
+.chat{display:flex;flex-direction:column;border-right:1px solid var(--line);min-width:0}
+.shead{height:52px;display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid var(--line)}
+.shead .t{font-weight:600;font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px 0 8px;border-radius:12px;font-size:12px;font-weight:600;white-space:nowrap}
+.chip.live{background:var(--live-soft);color:var(--live)}
+.chip.wait{background:var(--wait-soft);color:var(--wait)}
+.chip .ring{width:10px;height:10px;border-radius:50%;border:2px solid currentColor;position:relative}
+.chip .ring::after{content:"";position:absolute;inset:2px;border-radius:50%;background:currentColor}
+.chip .badge{background:currentColor;color:var(--paper);border-radius:9px;min-width:16px;height:16px;font-size:11px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+.chip .badge span{color:var(--paper)}
+.chat .body{flex:1;padding:22px 18px;display:flex;flex-direction:column;gap:18px;color:var(--muted);font-size:13px}
+.msg{max-width:360px;background:var(--soft);border-radius:12px;padding:10px 14px;color:var(--ink);align-self:flex-end}
+.reply{color:var(--ink);max-width:400px}
+.receipt{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;font-size:12px;align-items:center;max-width:400px}
+.receipt .k{color:var(--faint)}
+.receipt .v{color:var(--ink)}
+.receipt .a{color:var(--accent);font-weight:600}
+.composer{margin:0 18px 18px;border:1px solid var(--line-strong);border-radius:12px;height:96px;display:flex;flex-direction:column;justify-content:space-between;padding:12px 14px;color:var(--faint);font-size:13px}
+.composer .row{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px}
+.composer .send{margin-left:auto;width:28px;height:28px;border-radius:50%;background:var(--accent);opacity:.5}
+.pane{display:flex;flex-direction:column;min-width:0;background:var(--paper)}
+.dock-tabs{height:40px;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
+.dock-tabs .tab{padding:5px 10px;border-radius:6px}
+.dock-tabs .tab.on{background:var(--soft);color:var(--ink);font-weight:600}
+.dock-tabs .sp{flex:1}
+.dock-tabs svg{width:16px;height:16px;margin-left:8px}
+.mast{display:flex;align-items:flex-start;gap:12px;padding:12px 18px 0;height:66px;border-bottom:1px solid var(--line)}
+.mast .id{flex:1;min-width:0}
+.mast h2{margin:0;font-size:16px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.mast .seal{font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.mast .seal.live{color:var(--live)}
+.mast .seal .ring{width:10px;height:10px;border-radius:50%;border:2px solid currentColor;position:relative}
+.mast .seal .ring::after{content:"";position:absolute;inset:2px;border-radius:50%;background:currentColor}
+.mast .sub{margin:3px 0 0;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mast .sub b{font-weight:500;color:var(--ink)}
+.ibtn{width:28px;height:28px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);display:inline-flex;align-items:center;justify-content:center}
+.ibtn svg{width:14px;height:14px}
+.views{height:36px;display:flex;gap:20px;padding:0 18px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
+.views span{display:flex;align-items:center;border-bottom:2px solid transparent;margin-bottom:-1px}
+.views span.on{color:var(--ink);font-weight:600;border-bottom-color:var(--live)}
+.canvas{position:relative;height:618px;background:var(--soft);overflow:hidden}
+.canvas>svg{position:absolute;left:0;top:0;width:760px;height:618px}
+.canvas .tools{position:absolute;right:14px;bottom:14px;display:flex;gap:4px}
+.canvas .legend{position:absolute;left:18px;top:14px;font-size:12px;color:var(--faint);display:flex;gap:16px}
+.canvas .legend span{display:inline-flex;align-items:center;gap:6px}
+.legend svg{position:static;width:14px;height:14px}
+.card{position:absolute;width:384px;background:var(--paper);border:1px solid var(--line-strong);border-radius:10px;box-shadow:var(--shadow);font-size:13px}
+.card::before{content:"";position:absolute;top:-7px;left:34px;width:12px;height:12px;background:var(--paper);border-left:1px solid var(--line-strong);border-top:1px solid var(--line-strong);transform:rotate(45deg)}
+.card .hd{display:flex;align-items:baseline;gap:10px;padding:12px 14px 0;white-space:nowrap}
+.card .hd .kind{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.card .hd b{font-size:14px;font-weight:600}
+.card .hd .kind{color:var(--muted);font-size:12px}
+.card .hd .st{color:var(--live);font-size:12px;font-weight:600;margin-left:auto}
+.card .hd .x{color:var(--faint);margin-left:6px;font-size:14px;line-height:1}
+.card .tabs{display:flex;gap:16px;padding:8px 14px 0;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+.card .tabs span{padding-bottom:7px;border-bottom:2px solid transparent;margin-bottom:-1px}
+.card .tabs span.on{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.card dl{margin:0;padding:10px 14px 4px;display:grid;grid-template-columns:78px 1fr;gap:5px 10px;font-size:12px}
+.card dt{color:var(--faint)}
+.card dd{margin:0;color:var(--ink);font-variant-numeric:tabular-nums}
+.card .raw{margin:8px 14px 12px;background:var(--glass);color:var(--glass-ink);border-radius:6px;padding:9px 10px;font:12px/1.6 var(--mono);white-space:pre;overflow:hidden}
+.card .raw i{color:var(--glass-dim);font-style:normal}
+.card .ft{display:flex;justify-content:flex-end;gap:6px;padding:0 14px 12px}
+.btn{font:inherit;font-size:12px;font-weight:500;border:1px solid var(--line-strong);background:var(--paper);color:var(--ink);border-radius:6px;padding:4px 10px}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary.off{opacity:.45}
+.btn.ask{color:var(--accent);border-color:var(--accent-soft);background:var(--accent-soft)}
+/* configuration page */
+.cfg{flex:1;overflow:auto;padding:0 18px 18px}
+.cfg section{display:grid;grid-template-columns:96px 1fr;gap:4px 14px;padding:8px 0;border-bottom:1px solid var(--line);align-items:baseline}
+.cfg section:last-child{border-bottom:0}
+.cfg .lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding-top:2px}
+.cfg .full{grid-column:1/-1}
+.cfg .rows{display:grid;gap:6px}
+.row3{display:grid;grid-template-columns:18px 150px 1fr auto;gap:10px;align-items:center;font-size:13px}
+.row3 .d{color:var(--muted)}
+.gl{width:14px;height:14px;border-radius:50%;display:inline-block}
+.gl.ok{background:var(--good)}
+.gl.no{border:1.5px solid var(--faint)}
+.gl.hg{background:var(--wait)}
+.fld{font:inherit;font-size:13px;height:26px;border:1px solid var(--line-strong);border-radius:6px;background:var(--paper);color:var(--ink);padding:0 8px;width:118px;font-variant-numeric:tabular-nums}
+.fld.ph{color:var(--faint)}
+.fld.by{border-color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.kv{display:grid;grid-template-columns:118px 124px 1fr;gap:5px 10px;font-size:13px;font-variant-numeric:tabular-nums;align-items:center}
+.kv .s{color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.kv6{display:grid;grid-template-columns:100px 60px 1fr 110px 50px 1fr;gap:5px 10px;font-size:13px;font-variant-numeric:tabular-nums}
+.kv6 .s{color:var(--muted)}
+.pill{display:inline-block;font-size:12px;border-radius:10px;padding:1px 8px;background:var(--accent-soft);color:var(--accent);font-weight:600}
+.pill.wait{background:var(--wait-soft);color:var(--wait)}
+.mini{height:50px;border:1px dashed var(--line-strong);border-radius:8px;background:var(--soft);position:relative}
+.mini svg{position:absolute;inset:0;width:100%;height:100%}
+.ready{display:grid;gap:6px}
+.ready .r{display:grid;grid-template-columns:18px 1fr auto;gap:10px;align-items:center;font-size:13px}
+.by{font-size:12px;color:var(--accent)}
+</style>
+
+<div class="page">
+  <div class="intro">
+    <div><h1>Hima Campaign Workspace</h1><p>Mockup at 1280 × 800, dock widened to 760 px. Example values only; every form is Fabric's, every word is the Pack's.</p></div>
+    <button class="toggle" id="theme" type="button">Dark theme</button>
+  </div>
+
+  <div>
+    <p class="caption">State A · Live view · running, generation 3, card open on the running node</p>
+    <div class="frame-wrap"><div class="win">
+      <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="rail">
+        <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 5v14M20 5v14M4 12h16M4 5l5-3M15 22l5-3"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+      </div>
+      <div class="chat">
+        <div class="shead"><span class="t">Timing closure on core_top</span><span class="chip live"><span class="ring"></span>running · analyze</span></div>
+        <div class="body">
+          <div class="msg">Confirm the Campaign and keep me posted when a person is needed.</div>
+          <div class="reply">Confirmed. The Campaign is running on linglong; this conversation owns it. I'll write here when a decision needs you.</div>
+          <div class="receipt"><span class="k">hima_execute</span><span class="v">begin analyze · generation 3 · attempt 1</span><span class="a">Open in Campaign</span></div>
+        </div>
+        <div class="composer"><span>Message HimaGuide…</span><div class="row"><span>Workspace write</span><span>deepseek-v4</span><span class="send"></span></div></div>
+      </div>
+      <div class="pane">
+        <div class="dock-tabs"><span class="tab on">Campaign · analyze</span><span class="tab">Files</span><span class="sp"></span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 3v10"/></svg>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 4l8 8M12 4l-8 8"/></svg></div>
+        <div class="mast">
+          <div class="id"><h2>Timing closure on core_top <span class="seal live"><span class="ring"></span>running · analyze</span></h2>
+            <p class="sub">generation <b>3</b> of ≤ 6 · <b>18 min 40 s</b> · budget active · linglong · Pack v3</p></div>
+          <span class="ibtn" title="Pause"><svg viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/></svg></span>
+          <span class="ibtn" title="Stop"><svg viewBox="0 0 14 14" fill="currentColor"><rect x="2.5" y="2.5" width="9" height="9" rx="1.5"/></svg></span>
+          <span class="ibtn" title="More"><svg viewBox="0 0 14 14" fill="currentColor"><circle cx="3" cy="7" r="1.4"/><circle cx="7" cy="7" r="1.4"/><circle cx="11" cy="7" r="1.4"/></svg></span>
+        </div>
+        <div class="views"><span class="on">Live</span><span>Generations</span><span>Evidence</span><span>Report</span></div>
+        <div class="canvas" id="canvasA">
+          <svg id="fabricA" viewBox="0 0 760 618" width="760" height="618" aria-label="Fabric canvas"></svg>
+          <div class="card" style="left:120px;top:334px">
+            <div class="hd"><b>analyze</b><span class="kind">act · observes timing</span><span class="st">running · attempt 1</span><span class="x">✕</span></div>
+            <div class="tabs"><span>Facts</span><span class="on">Job</span><span>Code</span><span>Knowledge</span><span>Evidence</span></div>
+            <dl><dt>launched</dt><dd>14:02:11 · 2 min 04 s ago</dd><dt>licences</dt><dd>Design-Compiler 1 of 1</dd><dt>exit</dt><dd>—</dd></dl>
+            <div class="raw"><i>14:03:58</i>  Loading design core_top
+<i>14:04:02</i>  compile_ultra -timing_high_effort
+<i>14:04:10</i>  Optimizing… 62 % of paths<i>  ▍</i></div>
+            <div class="ft"><span class="btn">Pause analyze</span></div>
+          </div>
+          <div class="legend">
+            <span><svg viewBox="0 0 14 14"><rect x="1" y="3" width="12" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>act</span>
+            <span><svg viewBox="0 0 14 14"><path d="M7 1l6 6-6 6-6-6z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>judge</span>
+            <span><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>explore</span>
+            <span><svg viewBox="0 0 14 14"><path d="M4.5 1h5l3.5 3.5v5L9.5 13h-5L1 9.5v-5z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>wait</span>
+          </div>
+          <div class="tools">
+            <span class="ibtn" title="Locate current"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2"/></svg></span>
+            <span class="ibtn" title="Zoom in"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M7 3v8M3 7h8"/></svg></span>
+            <span class="ibtn" title="Zoom out"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7h8"/></svg></span>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <div>
+    <p class="caption">State B · Configuration page · no Run yet, HimaGuide has filled two fields</p>
+    <div class="frame-wrap"><div class="win">
+      <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="rail">
+        <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 5v14M20 5v14M4 12h16M4 5l5-3M15 22l5-3"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+      </div>
+      <div class="chat">
+        <div class="shead"><span class="t">Timing closure on core_top</span></div>
+        <div class="body">
+          <div class="msg">Set up a timing closure Campaign on core_top using the linglong server.</div>
+          <div class="reply">I've filled the Pack, the Site and the design input in the Campaign file. Two things need you: the clock period goal, and the constraints file, which I couldn't find under the workspace root.</div>
+          <div class="receipt"><span class="k">hima_prepare</span><span class="v">not ready · 2 unknowns</span><span class="a">Open configuration</span></div>
+        </div>
+        <div class="composer"><span>Bind the input constraints for this Campaign</span><div class="row"><span>Workspace write</span><span>deepseek-v4</span><span class="send"></span></div></div>
+      </div>
+      <div class="pane">
+        <div class="dock-tabs"><span class="tab on">Campaign · configure</span><span class="tab">Files</span><span class="sp"></span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 3v10"/></svg>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 4l8 8M12 4l-8 8"/></svg></div>
+        <div class="mast">
+          <div class="id"><h2>Campaign configuration</h2><p class="sub">hima/campaign.yml · <span class="by">HimaGuide filled 2 fields since you last looked</span></p></div>
+          <span class="btn">Open file</span>
+        </div>
+        <div class="cfg">
+          <section>
+            <span class="lbl">Name</span><span>Timing closure on core_top</span>
+            <span class="lbl">Pack</span><span>Timing research · aes-timing-research@3 · <span class="pill">trial</span></span>
+            <span></span><div class="mini"><svg id="miniB" viewBox="0 0 620 50" preserveAspectRatio="xMidYMid meet"></svg></div>
+          </section>
+          <section>
+            <span class="lbl">Site</span><span>linglong · ssh · <span class="pill wait">needs discovery</span> &nbsp; <span class="btn ask">Discover with HimaGuide ↗</span></span>
+            <span></span><span class="d" style="color:var(--muted);font-size:13px">user@linglong · no jump host · workspace root /work/hima</span>
+          </section>
+          <section>
+            <span class="lbl">Inputs</span>
+            <div class="rows">
+              <div class="row3"><span class="gl ok"></span><span>design</span><span class="d">bound by HimaGuide · rtl/core_top.v <span class="by">· new</span></span><span></span></div>
+              <div class="row3"><span class="gl ok"></span><span>libraries</span><span class="d">bound by Site · /pdk/lib/std_tt.db</span><span></span></div>
+              <div class="row3"><span class="gl no"></span><span>constraints</span><span class="d">unbound · the SDC the Pack synthesizes against</span><span class="btn ask">Ask HimaGuide ↗</span></div>
+            </div>
+          </section>
+          <section>
+            <span class="lbl">Goal</span>
+            <div class="kv"><span>clock period</span><input class="fld ph" value="default 2.5" readonly><span class="s">ns · 0.5 – 10 · required, not yet set</span></div>
+          </section>
+          <section>
+            <span class="lbl">Strategy</span>
+            <div class="rows">
+              <div class="kv"><span>starting period</span><input class="fld ph" value="Pack default 2.8" readonly><span class="s">ns · 0.5 – 10</span></div>
+              <div class="kv"><span>effort</span><input class="fld" value="high" readonly><span class="s">choice · medium, high, ultra</span></div>
+            </div>
+          </section>
+          <section>
+            <span class="lbl">Budget</span>
+            <div class="kv6"><span>time box</span><span>60 min</span><span class="s">Harness default</span><span>generations</span><span>6</span><span class="s">Pack converge</span><span>retries</span><span>3</span><span class="s">Harness default</span><span>job cap · seats</span><span>4 · 2</span><span class="s">from Site, read-only</span></div>
+          </section>
+          <section>
+            <span class="lbl">Knowledge</span><span>3 Pack documents · 1 current document &nbsp; <span class="btn">Add a document</span></span>
+          </section>
+          <section>
+            <span class="lbl">Readiness</span>
+            <div class="ready">
+              <div class="r"><span class="gl ok"></span><span>Pack check fits this Site</span><span></span></div>
+              <div class="r"><span class="gl hg"></span><span>The SSH Site has not completed bounded discovery.</span><span class="btn ask">Ask HimaGuide ↗</span></div>
+              <div class="r"><span class="gl hg"></span><span>Goal clock period is not set.</span><span></span></div>
+              <div class="r"><span class="gl hg"></span><span>Input constraints is not bound.</span><span class="btn ask">Ask HimaGuide ↗</span></div>
+              <div style="margin-top:6px;display:flex;align-items:center;gap:12px"><span class="btn primary off">Confirm and start Campaign</span><span style="font-size:12px;color:var(--faint)">enabled when every check passes</span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('theme');
+  if(location.hash==='#light') root.setAttribute('data-theme','light'); if(location.hash==='#dark') root.setAttribute('data-theme','dark');
+  function dark(){ return root.getAttribute('data-theme')==='dark' || (!root.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches); }
+  function label(){ btn.textContent = dark() ? 'Light theme' : 'Dark theme'; }
+  btn.addEventListener('click', function(){ root.setAttribute('data-theme', dark() ? 'light' : 'dark'); label(); });
+  label();
+})();
+
+/* ---- Fabric canvas: one SVG, positions computed from a Fabric-shaped fixture ---- */
+(function(){
+  var NS='http://www.w3.org/2000/svg';
+  var C={ good:'var(--good)', live:'var(--live)', wait:'var(--wait)', bad:'var(--bad)', accent:'var(--accent)', neutral:'var(--neutral)', ink:'var(--ink)', muted:'var(--muted)', faint:'var(--faint)', paper:'var(--paper)', goodSoft:'var(--good-soft)', liveSoft:'var(--live-soft)' };
+  var X0=64, PITCH=90, Y0=176, ROW=96;
+  var nodes=[
+    {id:'prepare',   kind:'act',     sub:'tool dc-shell',       rank:0,row:0, state:'done'},
+    {id:'analyze',   kind:'act',     sub:'observes',     rank:1,row:0, state:'running', progress:.62, log:'compile_ultra · 62 % of paths'},
+    {id:'check',     kind:'judge',   sub:'rules 2',             rank:2,row:0, state:'pending'},
+    {id:'blocked',   kind:'wait',    sub:'needs clearance',     rank:2.5,row:1, state:'pending'},
+    {id:'select',    kind:'explore', sub:'chooser',rank:3,row:0, state:'pending'},
+    {id:'implement', kind:'act',     sub:'tool innovus',        rank:4,row:0, state:'pending'},
+    {id:'route-a',   kind:'act',     sub:'branch',      rank:5,row:-0.6, state:'pending'},
+    {id:'route-b',   kind:'act',     sub:'branch',      rank:5,row:0.6, state:'pending'},
+    {id:'sign-off',  kind:'judge',   sub:'join',      rank:6,row:0, state:'pending'},
+  ];
+  var goal={rank:7,row:0,label:'≤ 2.5 ns'};
+  var edges=[
+    {from:'prepare',to:'analyze',state:'done'},
+    {from:'analyze',to:'check'},
+    {from:'check',to:'select',outcome:'PASS'},
+    {from:'check',to:'blocked',outcome:'FAIL'},
+    {from:'select',to:'implement',outcome:'goal-met'},
+    {from:'implement',to:'route-a'},{from:'implement',to:'route-b'},
+    {from:'route-a',to:'sign-off'},{from:'route-b',to:'sign-off'},
+    {from:'sign-off',to:'goal'},
+    {from:'select',to:'analyze',revisit:true,count:2},
+  ];
+  var byId={}; nodes.forEach(function(n){ n.x=X0+n.rank*PITCH; n.y=Y0+n.row*ROW; byId[n.id]=n; });
+  goal.x=X0+goal.rank*PITCH; goal.y=Y0; byId.goal=goal;
+  var HALF=22; /* horizontal half-extent of every node form */
+  var svg=document.getElementById('fabricA');
+  function el(tag,attrs,parent){ var e=document.createElementNS(NS,tag); for(var k in attrs) e.setAttribute(k,attrs[k]); (parent||svg).appendChild(e); return e; }
+  var defs=el('defs',{});
+  function marker(id,color){ var m=el('marker',{id:id,viewBox:'0 0 8 8',refX:'7.5',refY:'4',markerWidth:'7',markerHeight:'7',orient:'auto'},defs); el('path',{d:'M0 0.5L7.5 4L0 7.5z',fill:color},m); }
+  marker('m-neutral',C.neutral); marker('m-good',C.good); marker('m-accent',C.accent);
+
+  /* edges first, under nodes */
+  edges.forEach(function(e){
+    var a=byId[e.from], b=byId[e.to];
+    if(e.revisit){
+      var x1=a.x, y1=a.y-18, x2=b.x, y2=b.y-16, top=Y0-74;
+      el('path',{d:'M'+x1+' '+y1+' C '+x1+' '+top+', '+x2+' '+top+', '+x2+' '+y2,fill:'none',stroke:C.accent,'stroke-width':'1.5','stroke-dasharray':'5 4','marker-end':'url(#m-accent)'});
+      var mx=(x1+x2)/2, my=top+12;
+      el('rect',{x:mx-17,y:my-9,width:34,height:18,rx:9,fill:C.paper,stroke:C.accent,'stroke-width':'1'});
+      el('text',{x:mx,y:my+4,'text-anchor':'middle','font-size':'12','font-weight':'600',fill:C.accent,'font-family':'inherit'}).textContent='×'+e.count;
+      return;
+    }
+    var col = e.state==='done'?C.good:C.neutral, mk = e.state==='done'?'url(#m-good)':'url(#m-neutral)', w = e.state==='done'?2:1.2;
+    var sx=a.x+HALF, sy=a.y, tx=b.x-HALF, ty=b.y;
+    if(e.to==='goal'){ tx=goal.x-24; }
+    var d;
+    if(Math.abs(sy-ty)<1){ d='M'+sx+' '+sy+' L'+tx+' '+ty; }
+    else { var cx=(sx+tx)/2; d='M'+sx+' '+sy+' C '+cx+' '+sy+', '+cx+' '+ty+', '+tx+' '+ty; }
+    if(e.outcome==='FAIL'){ /* leave from the judge's right vertex and curve down, clear of its label */
+      sx=a.x+18; sy=a.y; tx=b.x; ty=b.y-18; d='M'+sx+' '+sy+' C '+(sx+22)+' '+sy+', '+tx+' '+(sy+30)+', '+tx+' '+ty;
+    }
+    el('path',{d:d,fill:'none',stroke:col,'stroke-width':w,'marker-end':mk,'stroke-dasharray': e.to==='goal'?'3 3':'none'});
+    if(e.outcome){
+      var vertical = e.outcome==='FAIL';
+      var txt=e.outcome, wdt=txt.length*7+12;
+      var mx2 = vertical ? tx-wdt/2-12 : (sx+tx)/2, my2 = vertical ? sy+62 : sy-24;
+      var fill = txt==='PASS'?C.good: txt==='FAIL'?C.bad: C.muted;
+      el('rect',{x:mx2-wdt/2,y:my2-9,width:wdt,height:18,rx:4,fill:C.paper,stroke:fill,'stroke-width':'1'});
+      el('text',{x:mx2,y:my2+4,'text-anchor':'middle','font-size':'11.5','font-weight':'600',fill:fill,'font-family':'inherit','letter-spacing':'.02em'}).textContent=txt;
+    }
+  });
+
+  /* nodes */
+  function stroke(n){ return n.state==='done'?C.good: n.state==='running'?C.live: n.state==='available'?C.accent: C.neutral; }
+  function fillOf(n){ return n.state==='done'?C.goodSoft: n.state==='running'?C.liveSoft: C.paper; }
+  nodes.forEach(function(n){
+    var g=el('g',{});
+    var s=stroke(n), f=fillOf(n), w=n.state==='running'?2:1.4;
+    if(n.kind==='act') el('rect',{x:n.x-22,y:n.y-14,width:44,height:28,rx:7,fill:f,stroke:s,'stroke-width':w},g);
+    if(n.kind==='judge') el('path',{d:'M'+n.x+' '+(n.y-18)+' L'+(n.x+18)+' '+n.y+' L'+n.x+' '+(n.y+18)+' L'+(n.x-18)+' '+n.y+' Z',fill:f,stroke:s,'stroke-width':w,'stroke-linejoin':'round'},g);
+    if(n.kind==='explore'){ el('circle',{cx:n.x,cy:n.y,r:16,fill:f,stroke:s,'stroke-width':w},g); el('circle',{cx:n.x,cy:n.y,r:4,fill:'none',stroke:s,'stroke-width':1.4},g); }
+    if(n.kind==='wait'){ var r=17,k=r*0.414; el('path',{d:'M'+(n.x-k)+' '+(n.y-r)+' L'+(n.x+k)+' '+(n.y-r)+' L'+(n.x+r)+' '+(n.y-k)+' L'+(n.x+r)+' '+(n.y+k)+' L'+(n.x+k)+' '+(n.y+r)+' L'+(n.x-k)+' '+(n.y+r)+' L'+(n.x-r)+' '+(n.y+k)+' L'+(n.x-r)+' '+(n.y-k)+' Z',fill:f,stroke:s,'stroke-width':w,'stroke-linejoin':'round'},g); }
+    if(n.state==='done') el('path',{d:'M'+(n.x-5)+' '+n.y+' l3.5 3.5 l7 -7',fill:'none',stroke:C.good,'stroke-width':'2','stroke-linecap':'round','stroke-linejoin':'round'},g);
+    if(n.state==='running'){ el('circle',{cx:n.x,cy:n.y,r:4,fill:C.live},g); el('circle',{cx:n.x,cy:n.y,r:8,fill:'none',stroke:C.live,'stroke-width':'1.5',class:'pulse'},g); }
+    var ly=n.y+(n.kind==='wait'||n.kind==='judge'?34:30);
+    el('text',{x:n.x,y:ly,'text-anchor':'middle','font-size':'13','font-weight':'600',fill: n.state==='pending'?C.muted:C.ink,'font-family':'inherit'},g).textContent=n.id;
+    el('text',{x:n.x,y:ly+16,'text-anchor':'middle','font-size':'12',fill:C.faint,'font-family':'inherit'},g).textContent=n.sub;
+    if(n.state==='running'){
+      el('rect',{x:n.x-22,y:ly+24,width:44,height:3,rx:1.5,fill:'var(--line-strong)'},g);
+      el('rect',{x:n.x-22,y:ly+24,width:44*n.progress,height:3,rx:1.5,fill:C.live},g);
+      el('text',{x:n.x,y:ly+42,'text-anchor':'middle','font-size':'12',fill:C.live,'font-family':'inherit','font-weight':'600'},g).textContent='2 min 04 s';
+    }
+  });
+  /* loop chip under select */
+  (function(){ var n=byId.select, y=n.y+ROW-8, cx=n.x+PITCH/2, w=132; el('path',{d:'M'+n.x+' '+(n.y+16)+' C '+n.x+' '+(y-30)+', '+cx+' '+(y-40)+', '+cx+' '+(y-11),fill:'none',stroke:'var(--line-strong)','stroke-width':1,'stroke-dasharray':'3 3'}); el('rect',{x:cx-w/2,y:y-11,width:w,height:22,rx:11,fill:C.paper,stroke:'var(--line-strong)','stroke-width':1,'stroke-dasharray':'3 3'}); el('text',{x:cx,y:y+4,'text-anchor':'middle','font-size':'12',fill:C.muted,'font-family':'inherit'}).textContent='loop detail · not opened'; })();
+  /* goal roundel */
+  el('circle',{cx:goal.x,cy:goal.y,r:22,fill:C.paper,stroke:C.neutral,'stroke-width':1.4,'stroke-dasharray':'4 3'});
+  el('circle',{cx:goal.x,cy:goal.y,r:5,fill:'none',stroke:C.neutral,'stroke-width':1.4});
+  el('circle',{cx:goal.x,cy:goal.y,r:1.5,fill:C.neutral});
+  el('text',{x:goal.x,y:goal.y+40,'text-anchor':'middle','font-size':'13','font-weight':'600',fill:C.muted,'font-family':'inherit'}).textContent='clock period';
+  el('text',{x:goal.x,y:goal.y+56,'text-anchor':'middle','font-size':'12',fill:C.faint,'font-family':'inherit'}).textContent=goal.label;
+  /* branch row labels */
+  ['route-a','route-b'].forEach(function(id){ /* labels already carry 'branch' */ });
+
+  /* mini reference graph on the configuration page: same forms, hollow */
+  var m=document.getElementById('miniB');
+  function mel(tag,attrs){ var e=document.createElementNS(NS,tag); for(var k in attrs) e.setAttribute(k,attrs[k]); m.appendChild(e); return e; }
+  var md=mel('defs',{}); var mm=mel('marker',{id:'mm',viewBox:'0 0 8 8',refX:'7.5',refY:'4',markerWidth:'6',markerHeight:'6',orient:'auto'}); md.appendChild(mm); var mp=document.createElementNS(NS,'path'); mp.setAttribute('d','M0 0.5L7.5 4L0 7.5z'); mp.setAttribute('fill',C.neutral); mm.appendChild(mp);
+  var mx0=40, mpitch=72, my=22;
+  var mk=['act','act','judge','explore','act','act','judge'], names=['prepare','analyze','check','select','implement','route','sign-off'];
+  mk.forEach(function(kind,i){ var x=mx0+i*mpitch;
+    if(i<mk.length-1) mel('path',{d:'M'+(x+13)+' '+my+' L'+(x+mpitch-14)+' '+my,stroke:C.neutral,'stroke-width':1,'marker-end':'url(#mm)'});
+    if(kind==='act') mel('rect',{x:x-13,y:my-8,width:26,height:16,rx:4,fill:'none',stroke:C.neutral,'stroke-width':1.2});
+    if(kind==='judge') mel('path',{d:'M'+x+' '+(my-11)+' L'+(x+11)+' '+my+' L'+x+' '+(my+11)+' L'+(x-11)+' '+my+' Z',fill:'none',stroke:C.neutral,'stroke-width':1.2});
+    if(kind==='explore') mel('circle',{cx:x,cy:my,r:10,fill:'none',stroke:C.neutral,'stroke-width':1.2});
+    mel('text',{x:x,y:my+24,'text-anchor':'middle','font-size':'11',fill:C.faint,'font-family':'inherit'}).textContent=names[i];
+  });
+  mel('path',{d:'M'+(mx0+3*mpitch)+' '+(my-10)+' C '+(mx0+3*mpitch)+' '+(my-30)+', '+(mx0+mpitch)+' '+(my-30)+', '+(mx0+mpitch)+' '+(my-8),fill:'none',stroke:C.accent,'stroke-width':1,'stroke-dasharray':'3 3','marker-end':'url(#mm)'});
+  mel('circle',{cx:mx0+7*mpitch,cy:my,r:12,fill:'none',stroke:C.neutral,'stroke-width':1.2,'stroke-dasharray':'3 2'});
+  mel('text',{x:mx0+7*mpitch,y:my+24,'text-anchor':'middle','font-size':'11',fill:C.faint,'font-family':'inherit'}).textContent='goal';
+})();
+</script>
+<style>
+@keyframes hima-pulse{0%{opacity:.9;r:8}100%{opacity:0;r:15}}
+.pulse{animation:hima-pulse 1.6s ease-out infinite}
+@media (prefers-reduced-motion: reduce){.pulse{animation:none}}
+</style>
