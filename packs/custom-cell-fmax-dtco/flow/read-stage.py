@@ -937,10 +937,10 @@ def design_evaluation_values(evaluation, frontier_request, frontier, workspace):
         raise ValueError("current evaluation is not uniquely represented in the cross-round portfolio")
     current_round = current[0]["round_id"]
     frontier_member = current_round in frontier.get("frontier_member_ids", [])
-    candidate = frontier.get("commercial_validation_candidate")
+    candidate = frontier.get("e0_library_validation_candidate")
     if not isinstance(candidate, dict) or not isinstance(candidate.get("value"), bool):
         raise ValueError("frontier commercial-observation decision is malformed")
-    commercial = candidate["value"] and candidate.get("round_id") == current_round and frontier_member
+    e0_eligible = candidate["value"] and candidate.get("round_id") == current_round and frontier_member
     relation = evaluation["pairwise_relation"]["relation"]
     if relation not in LFR_RELATION_CODES:
         raise ValueError("current pairwise relation is incomplete")
@@ -965,7 +965,7 @@ def design_evaluation_values(evaluation, frontier_request, frontier, workspace):
         number("proxy_pairwise_relation", LFR_RELATION_CODES[relation], "relation_code"),
         number("proxy_pairwise_relation_valid", 1),
         number("portfolio_frontier_membership", int(frontier_member)),
-        number("commercial_validation_candidate", int(commercial)),
+        number("e0_library_validation_candidate", int(e0_eligible)),
     ]
     return values
 

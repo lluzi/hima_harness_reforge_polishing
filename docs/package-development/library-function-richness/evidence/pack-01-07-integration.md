@@ -55,17 +55,27 @@ Key retained hashes under `.hima-tmp/lfr-pack-pilot-20260915-v2`:
 
 The augmented open-source mapping adopted one of the two proposed Cells. F2 mapping indicators and
 the nominal/conservative F3 scenarios improved, while the optimistic scenario regressed on
-`F3.worst_delay_indicator_ps`. The aggregate relation was `tradeoff`. The current round remained on
-the Pareto frontier, but `commercial_validation_candidate` was false with the explicit blocker
-`f3-regression:optimistic:F3.worst_delay_indicator_ps`.
+`F3.worst_delay_indicator_ps`. The aggregate relation was `tradeoff`. Under the gate implemented at
+the time of the pilot, that single F3 regression blocked commercial validation.
 
 The Pack therefore retained both attempted functions as `proxy-rejected`, recorded the failure and a
 new residual question, and did not run Library Compiler, Design Compiler or Innovus. This is the
 intended use of commercial tools as final observations instead of trial engines.
 
+The 2026-09-15 factor-gate update changed the ontology: F1/F2/F3 are parallel free factors and the
+expensive commercial observation is E0. A hash-bound replay of the same retained Library evaluation
+classified F1=`positive`, F2=`positive`, F3=`mixed`; because the factors were not all explicitly
+negative and the Library was a frontier member, `e0_library_validation_candidate` became true. The
+replay result is retained as
+`.hima-tmp/lfr-pack-pilot-20260915-v2/final-proxy/e0-factor-gate-replay.json`, SHA-256
+`fa8b55fe48eddd820d58f774a706c98073378124164cc4d54149899ec3ac7b5b`. This replay authorizes an E0
+observation; it is not itself commercial evidence or an Fmax claim.
+
 ## Verification
 
-- Framework/domain Python: 56/56 pass.
+- Factor-gate modification: primary development model `gpt-6-astra`, High effort; no subagents;
+  request/token usage not measured for this slice.
+- Framework/domain Python: 57/57 pass.
 - LFR round/calibration contracts: 4/4 pass.
 - Custom Cell Pack contract: 26/26 pass after integration.
 - Real local baseline, six miners, residual context/runner/Reader/merge and paired Yosys/ABC

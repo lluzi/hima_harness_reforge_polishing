@@ -100,7 +100,6 @@ nodes:
     parameters:
       rules:
         - proxy-metric-vector-complete
-        - function-local-structure-effective
   - id: merge
     kind: act
     parameters:
@@ -150,7 +149,7 @@ nodes:
         - proxy-metric-vector-complete
         - proxy-pairwise-relation-valid
         - portfolio-frontier-member
-        - commercial-validation-candidate
+        - e0-library-validation-candidate
   - id: freeze-cumulative-library
     kind: act
     parameters:
@@ -285,32 +284,22 @@ edges:
   - from: mine-timing-criticality
     to: select-timing-criticality
   - from: select-timing-criticality
-    to: merge-join
-  - from: read-evaluation-baseline
     to: mine-timing-context
   - from: mine-timing-context
     to: select-timing-context
   - from: select-timing-context
-    to: merge-join
-  - from: read-evaluation-baseline
     to: mine-structure-frequency
   - from: mine-structure-frequency
     to: select-structure-frequency
   - from: select-structure-frequency
-    to: merge-join
-  - from: read-evaluation-baseline
     to: mine-structure-compaction
   - from: mine-structure-compaction
     to: select-structure-compaction
   - from: select-structure-compaction
-    to: merge-join
-  - from: read-evaluation-baseline
     to: mine-mapper-compatibility
   - from: mine-mapper-compatibility
     to: select-mapper-compatibility
   - from: select-mapper-compatibility
-    to: merge-join
-  - from: read-evaluation-baseline
     to: mine-functional-diversity
   - from: mine-functional-diversity
     to: select-functional-diversity

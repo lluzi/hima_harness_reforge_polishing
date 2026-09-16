@@ -29,4 +29,4 @@ emits:
   - proxy_pairwise_relation
   - proxy_pairwise_relation_valid
   - portfolio_frontier_membership
-  - commercial_validation_candidate
+  - e0_library_validation_candidate

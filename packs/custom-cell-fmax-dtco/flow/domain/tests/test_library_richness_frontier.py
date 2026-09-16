@@ -74,7 +74,8 @@ def _layer(*, adoption, levels_removed, level, delay, slack_mass):
     }
 
 
-def _evaluation(*, token, level, delay, slack_mass, complete=True, adopted=True):
+def _evaluation(*, token, level, delay, slack_mass, complete=True, adopted=True,
+                levels_removed=2.0):
     objectives = [
         {"metric": "F0.candidate_adoption_fraction", "direction": "maximize"},
         {"metric": "F1.levels_removed", "direction": "maximize"},
@@ -93,7 +94,7 @@ def _evaluation(*, token, level, delay, slack_mass, complete=True, adopted=True)
         )
         augmented = _layer(
             adoption=1.0 if adopted else 0.0,
-            levels_removed=2.0,
+            levels_removed=levels_removed,
             level=level,
             delay=delay * index,
             slack_mass=slack_mass * index,
@@ -263,15 +264,16 @@ def _evaluation(*, token, level, delay, slack_mass, complete=True, adopted=True)
             "violations": [],
             "within_budget": True,
         },
-        "commercial_validation_candidate": {
+        "e0_library_validation_candidate": {
             "value": False,
-            "meaning": "worth one commercial QoR observation; never an expected-benefit claim",
+            "unit_of_analysis": "candidate-library-round",
+            "validation_layer": "E0",
+            "meaning": "candidate Library is eligible for one expensive commercial observation; never an expected-benefit claim",
             "reasons": [
-                "declared-candidate-adopted-by-open-source-mapper",
+                "candidate-library-adopted-by-open-source-mapper",
                 "required-metric-vectors-complete",
                 "evaluation-budgets-satisfied",
                 "pairwise-relation:augmented-dominates",
-                "nominal-non-f0-indicator-improvement:F2.max_logic_level",
             ],
             "blocking_reasons": ["portfolio-frontier-not-supplied"],
         },
@@ -353,8 +355,8 @@ class FrontierContractTests(unittest.TestCase):
             ],
         )
         self.assertEqual(["no-new-residual-question"], result["stopping"]["reasons"])
-        self.assertTrue(result["commercial_validation_candidate"]["value"])
-        self.assertEqual("r2", result["commercial_validation_candidate"]["round_id"])
+        self.assertTrue(result["e0_library_validation_candidate"]["value"])
+        self.assertEqual("r2", result["e0_library_validation_candidate"]["round_id"])
         self.assertFalse(result["claim_limits"]["commercial_qor_predicted"])
         self.assertEqual("r1", result["rounds"][1]["parent_round"]["round_id"])
         self.assertEqual(
@@ -444,15 +446,12 @@ class FrontierContractTests(unittest.TestCase):
         self.assertEqual(["r1", "r2"], result["frontier"]["rejected_round_ids"])
         self.assertIn("payload hash mismatch", " ".join(result["rounds"][0]["reasons"]))
         self.assertIn("required-metric-vectors-incomplete", result["rounds"][1]["reasons"])
-        self.assertFalse(result["commercial_validation_candidate"]["value"])
+        self.assertFalse(result["e0_library_validation_candidate"]["value"])
 
-    def test_f3_regression_stays_on_frontier_but_blocks_commercial_observation(self):
+    def test_one_negative_factor_stays_e0_eligible_when_other_factors_are_positive(self):
         key = _key(1)
         manifest = _manifest([key])
         regressed = _evaluation(token=1, level=5.0, delay=110.0, slack_mass=220.0)
-        regressed["commercial_validation_candidate"]["blocking_reasons"] += [
-            "f3-regression:nominal:F3.worst_delay_indicator_ps"
-        ]
         regressed["evaluation_payload_sha256"] = _canonical_sha({
             key: value for key, value in regressed.items()
             if key != "evaluation_payload_sha256"
@@ -464,11 +463,31 @@ class FrontierContractTests(unittest.TestCase):
 
         self.assertEqual(["r1"], result["frontier"]["member_round_ids"])
         self.assertTrue(result["rounds"][0]["f3_regressions"])
-        self.assertFalse(result["commercial_validation_candidate"]["value"])
-        self.assertTrue(any(
-            reason.startswith("f3-regression:")
-            for reason in result["commercial_validation_candidate"]["blocking_reasons"]
-        ))
+        self.assertTrue(result["e0_library_validation_candidate"]["value"])
+        factors = result["e0_library_validation_candidate"]["factor_assessment"]["factors"]
+        self.assertEqual("positive", factors["F1"]["status"])
+        self.assertEqual("positive", factors["F2"]["status"])
+        self.assertEqual("negative", factors["F3"]["status"])
+
+    def test_all_three_parallel_free_factors_negative_blocks_e0(self):
+        key = _key(1)
+        manifest = _manifest([key])
+        negative = _evaluation(
+            token=1, levels_removed=-1.0, level=12.0, delay=110.0, slack_mass=220.0
+        )
+
+        result = evaluate_frontier(_request([_round("r1", key, negative)], manifest))
+
+        self.assertEqual(["r1"], result["frontier"]["member_round_ids"])
+        self.assertFalse(result["e0_library_validation_candidate"]["value"])
+        self.assertIn(
+            "all-free-factors-explicitly-negative",
+            result["e0_library_validation_candidate"]["blocking_reasons"],
+        )
+        factors = result["rounds"][0]["factor_assessment"]["factors"]
+        self.assertEqual({"F1": "negative", "F2": "negative", "F3": "negative"}, {
+            name: factors[name]["status"] for name in ("F1", "F2", "F3")
+        })
 
     def test_budget_and_duplicate_next_question_are_explicit_stop_reasons(self):
         key = _key(1)
@@ -511,7 +530,7 @@ class FrontierContractTests(unittest.TestCase):
         self.assertEqual(["r1"], result["frontier"]["rejected_round_ids"])
         self.assertIn("new-library-cell-budget-overshoot", result["rounds"][0]["reasons"])
         self.assertIn("generation-unit-budget-overshoot", result["rounds"][0]["reasons"])
-        self.assertFalse(result["commercial_validation_candidate"]["value"])
+        self.assertFalse(result["e0_library_validation_candidate"]["value"])
 
     def test_budget_equality_stops_but_keeps_frontier_member_eligible(self):
         key = _key(1)
@@ -529,7 +548,7 @@ class FrontierContractTests(unittest.TestCase):
 
         self.assertEqual(["r1"], result["frontier"]["member_round_ids"])
         self.assertNotIn("new-library-cell-budget-overshoot", result["rounds"][0]["reasons"])
-        self.assertTrue(result["commercial_validation_candidate"]["value"])
+        self.assertTrue(result["e0_library_validation_candidate"]["value"])
 
     def test_self_hashed_forged_adoption_is_rejected(self):
         key = _key(1)
@@ -628,7 +647,7 @@ class FrontierContractTests(unittest.TestCase):
         self.assertEqual(["r2"], result["frontier"]["rejected_round_ids"])
         self.assertIn("reference-library-lineage-mismatch", result["rounds"][1]["reasons"])
 
-    def test_rejected_rounds_do_not_create_a_plateau_or_open_gate(self):
+    def test_rejected_rounds_do_not_hide_an_existing_e0_eligible_library(self):
         keys = [_key(1), _key(2), _key(3)]
         manifest = _manifest(keys)
         first = _round("r1", keys[0], _evaluation(
@@ -659,9 +678,10 @@ class FrontierContractTests(unittest.TestCase):
         ])
         self.assertFalse(result["convergence"]["plateau"])
         self.assertFalse(result["stopping"]["should_stop"])
-        self.assertFalse(result["commercial_validation_candidate"]["value"])
+        self.assertTrue(result["e0_library_validation_candidate"]["value"])
+        self.assertEqual("r1", result["e0_library_validation_candidate"]["round_id"])
 
-    def test_nonadopted_f1_positive_round_never_enters_frontier_or_lineage(self):
+    def test_nonadoption_is_f2_evidence_and_does_not_alone_reject_a_library(self):
         keys = [_key(1), _key(2), _key(3)]
         manifest = _manifest(keys)
         first = _round("r1", keys[0], _evaluation(
@@ -686,11 +706,14 @@ class FrontierContractTests(unittest.TestCase):
 
         result = evaluate_frontier(_request([first, nonadopted, third], manifest))
 
-        self.assertEqual(["r2"], result["frontier"]["rejected_round_ids"])
-        self.assertIn("no-declared-candidate-adoption", result["rounds"][1]["reasons"])
-        self.assertNotIn("r2", result["frontier_member_ids"])
-        self.assertFalse(result["rounds"][1]["commercial_validation_candidate"]["value"])
-        self.assertEqual("r1", result["rounds"][2]["parent_round"]["round_id"])
+        self.assertEqual(["r3"], result["frontier"]["rejected_round_ids"])
+        self.assertIn(
+            "candidate-library-not-adopted-by-open-source-mapper:F2-negative-evidence",
+            result["rounds"][1]["round_gate_reasons"],
+        )
+        self.assertIn("r2", result["frontier_member_ids"])
+        self.assertTrue(result["rounds"][1]["e0_library_validation_candidate"]["value"])
+        self.assertEqual("r2", result["e0_library_validation_candidate"]["round_id"])
         self.assertEqual(0, result["convergence"][
             "trailing_rounds_without_frontier_progress"
         ])

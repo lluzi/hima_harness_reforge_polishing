@@ -1,0 +1,11 @@
+id: e0-library-validation-candidate
+version: "1"
+title: Candidate Library passes F0 and the parallel free factors are not all explicitly negative
+requires:
+  - type: e0_library_validation_candidate
+subject:
+  type: e0_library_validation_candidate
+predicate:
+  op: eq
+  threshold: 1
+  unit: count

@@ -7,8 +7,9 @@ The Library-richness integration has passed local contract, Reader, graph, stage
 tamper/refusal tests. A real local Yosys 0.69/ABC 1.01 pilot also passed baseline mapping, six mining
 views, F0/F1 residual-context construction, proposal-key binding, delta merge and paired F0-F3
 evaluation. One of two proposed Cells was adopted by the open-source mapper. The aggregate relation
-was `tradeoff` because the optimistic F3 worst-delay indicator regressed, so the Pack correctly kept
-the commercial-validation gate closed and launched no LC/DC/Innovus job.
+was `tradeoff`: F1 was positive, F2 was positive and F3 was mixed because the optimistic worst-delay
+indicator regressed. A replay under the current parallel-factor rule admits this whole Library to E0
+because F1/F2/F3 are not all explicitly negative. No LC/DC/Innovus E0 job has yet run.
 
 The pilot's generated timing models were reused Phase 1 fixtures. That test establishes the Pack and
 Framework integration seam; it does not establish fresh characterization, commercial adoption,

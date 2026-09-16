@@ -203,6 +203,6 @@ values:
   portfolio_frontier_membership:
     unit: count
     description: One only when the current evaluation is a member of the independently recomputed FW-07 cross-round Pareto frontier.
-  commercial_validation_candidate:
+  e0_library_validation_candidate:
     unit: count
-    description: One only when the independently recomputed frontier authorizes one scarce commercial QoR observation; it never states expected gain.
+    description: One only when the candidate Library has valid F0 evidence, is a current frontier member, and its parallel F1/F2/F3 factors are not all explicitly negative. E0 eligibility never states expected gain.

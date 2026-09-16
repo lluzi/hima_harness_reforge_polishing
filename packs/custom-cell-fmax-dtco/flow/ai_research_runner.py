@@ -312,7 +312,8 @@ def _normalize_frontier(frontier, allowed_evaluation_hashes, *, candidate_pool_n
     if not objectives or not members or not declared:
         if objectives or members or declared:
             raise ValueError("empty frontier requires empty objectives, members and member ids")
-        gate = frontier.get("commercial_validation_candidate")
+        gate = (frontier.get("e0_library_validation_candidate")
+                or frontier.get("commercial_validation_candidate"))
         if (not candidate_pool_nonempty or not isinstance(gate, dict)
                 or gate.get("value") is not False):
             raise ValueError("empty frontier is valid only for a noncommercial candidate-pool cold start")

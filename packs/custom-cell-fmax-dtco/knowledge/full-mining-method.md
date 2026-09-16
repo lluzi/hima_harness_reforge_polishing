@@ -9,7 +9,9 @@ portfolio gate.
 
 This method extends the released v2 foundry probe. The same conversation owner requests every
 node. Fabric records state, enforces dependencies and budgets, runs Jobs and admits observations.
-The six fork branches share the Site cap; no branch has a hidden Agent or separate model budget.
+The six bounded source views run in the fixed graph order; no view has a hidden Agent or separate
+model budget. They remain independent research lenses even though the current Harness serializes
+them so the downstream Campaign Explore node reads one unambiguous generation state.
 
 Each mechanical miner enumerates source-linked `generation_requests` from a hashed probe netlist,
 the exact DC reg2reg report and Site-held Liberty. Routes are timing_criticality, timing_context,

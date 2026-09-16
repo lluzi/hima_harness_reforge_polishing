@@ -69,10 +69,8 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
 
   const routes = ['timing-criticality', 'timing-context', 'structure-frequency', 'structure-compaction',
     'mapper-compatibility', 'functional-diversity'];
-  for (const route of routes) {
-    assert.ok(chain([`mine-${route}`, `select-${route}`, 'merge-join']));
-    assert.ok(edge('read-evaluation-baseline', `mine-${route}`));
-  }
+  assert.ok(chain(['read-evaluation-baseline', ...routes.flatMap((route) =>
+    [`mine-${route}`, `select-${route}`]), 'merge-join']));
   assert.ok(edge('merge-join', 'function-local-evaluation', 'PASS'));
   assert.ok(chain(['function-local-evaluation', 'read-function-local-evaluation',
     'function-local-gate']));
@@ -99,7 +97,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   assert.deepEqual(graph.nodes.filter((item) => item.kind === 'explore').map((item) => item.id), ['next-research']);
   assert.deepEqual(node.get('portfolio-gate')?.parameters.rules,
     ['proxy-metric-vector-complete', 'proxy-pairwise-relation-valid', 'portfolio-frontier-member',
-      'commercial-validation-candidate']);
+      'e0-library-validation-candidate']);
   assert.deepEqual(node.get('final-judge')?.parameters.rules,
     ['comparison-evidence-valid', 'fmax-improvement-at-least-target', 'fmax-improved', 'clock-period-at-most']);
 });

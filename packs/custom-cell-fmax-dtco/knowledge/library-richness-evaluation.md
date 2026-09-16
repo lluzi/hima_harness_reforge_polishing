@@ -5,9 +5,10 @@ not predict commercial QoR, Fmax gain or the error of a future DC/Innovus result
 many cheap, reproducible observations about how an additive custom Cell Library changes logic before
 the Campaign spends a commercial-tool trial.
 
-## Evidence layers
+## Free factors and expensive observation
 
-The evaluation uses four license-free layers and one observed commercial layer:
+F means license-free evidence. E means an expensive observation. F0 is the feasibility prerequisite;
+F1, F2 and F3 are parallel factors over one candidate Library:
 
 - **F0 function and feasibility** checks the exact Boolean/interface identity, foundry absence,
   generator contract and whether the mapping flow can see the proposed Cell.
@@ -17,12 +18,14 @@ The evaluation uses four license-free layers and one observed commercial layer:
   instances and depth, buffer/inverter pressure and fanout/load indicators.
 - **F3 timing indicators** record scenario-specific proxy delay, negative-slack mass, path-family
   coverage and path migration. These are indicators from a declared model, not routed timing.
-- **F4 commercial QoR** is one matched DC/Innovus observation under the Campaign's controlled
+- **E0 commercial QoR** is one matched DC/Innovus observation under the Campaign's controlled
   conditions. It is evidence for this design and flow only.
 
-Never fit F0-F3 to produce a portable benefit prediction. Compare F4 observations with the retained
-F0-F3 vectors to learn which indicators were useful under the named design and flow. A disagreement
-is evidence, not an invitation to invent a correction factor.
+Never fit F0-F3 to produce a portable benefit prediction. Compare each condition-labelled E0 outcome
+with the retained factor vector to learn which F1/F2/F3 axes have positive association with expensive
+commercial benefit. Future free factors may be added as F4, F5 and beyond. This is factor discovery,
+similar to retaining research factors in quantitative analysis; it is not permission to turn one
+design into a universal threshold or expected-gain model.
 
 ## One cumulative Library and delta-only work
 
@@ -33,8 +36,8 @@ physical Cell name, shard hash, state and known failure. `MAX_NEW_CELLS` limits 
 `MAX_CELLS` limits the cumulative Library.
 
 Each open-source design-mapping comparison uses the same RTL, top, constraints, tool identities and
-mapping plan for its reference and augmented arms. A candidate is useful only if the evidence shows
-an effective transformation on at least one declared metric without hiding regressions or cost. The
+mapping plan for its reference and augmented arms. The judgment object is the whole candidate
+Library round, never an individual Cell. The
 single-round `pairwise_relation` describes only that reference/augmented pair. Cross-round selection
 comes from the independently recomputed Pareto frontier; the two are never interchangeable.
 
@@ -58,12 +61,14 @@ that authoring action is separate from Campaign execution.
 
 ## Gates and endings
 
-Missing hashes, incomplete metric vectors, failed mapping, hidden scenario regressions, budget
-exhaustion or an unreproducible frontier cannot pass. A portfolio member becomes a commercial
-validation candidate only when the declared gate says one matched observation is justified. That
-decision means “worth measuring once”; it does not mean “expected to improve.”
+Missing hashes, incomplete metric vectors, failed mapping, budget overshoot or an unreproducible
+frontier cannot pass because they are not valid factor observations. With valid F0 and a current
+Library frontier member, F1/F2/F3 are classified independently as positive, neutral, mixed or
+explicitly negative. The free-factor gate rejects on direction only when all three are explicitly
+negative. One negative factor cannot veto the other two. Passing authorizes E0 once; it does not mean
+the Library is expected to improve.
 
 If no candidate passes, retain the negative result, the failed hypotheses and the next residual
 question. If the budget or plateau condition ends the loop, stop honestly. If a candidate passes,
 freeze the cumulative manifest and run the existing matched commercial tail once. Only the resulting
-F4 evidence may support a design-specific Fmax claim.
+E0 evidence may support a design-specific Fmax claim.

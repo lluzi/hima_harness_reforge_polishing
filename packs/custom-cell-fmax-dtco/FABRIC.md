@@ -1,8 +1,8 @@
 ## Files written
 
 LFR-PACK-03 replaces the opening licensed synthesis probe with one fixed reference graph. After
-`bind-inputs`, the graph establishes a license-free evaluation baseline and forks the six existing
-high-influence mining views. Their join builds and reads the function/local indicator portfolio and
+`bind-inputs`, the graph establishes a license-free evaluation baseline and runs the six existing
+high-influence mining views in a deterministic sequence. Their join builds and reads the function/local indicator portfolio and
 the hash-bound residual context before it opens the existing `research-candidates` Workshop. The
 existing merge, generate, layout and
 characterize stages materialize only that delta. A second license-free evaluation compares the
@@ -27,16 +27,17 @@ phases and cumulative-Library freeze reuse the existing stage, record, artifact,
 surfaces; no Runtime component or second asset system was added.
 
 The remaining gaps are validation facts. The Pack still needs one Harness-owned test Campaign whose
-Ledger holds its CodeRecord and refusal evidence. It also needs a portfolio candidate that passes the
-commercial-observation gate before the existing matched DC/Innovus tail may run. The current retained
-license-free pilot ended at an optimistic F3 regression, so it correctly produced no F4 observation
-and cannot support a release seal. `loadPack` and `/hima pack check` passing establish structural fit,
+Ledger holds its CodeRecord and refusal evidence. The retained pilot Library now passes the updated
+factor gate: F1 is positive, F2 is positive and F3 is mixed, so the three parallel free factors are
+not all explicitly negative. It is therefore eligible for E0, but no E0 job has yet run and the Pack
+cannot support a release seal. `loadPack` and `/hima pack check` passing establish structural fit,
 not release readiness or commercial benefit.
 
 ## Reviews
 
-The graph uses the assessed F0 Function, F1 Local structure, F2 Design mapping and F3 Timing indicator
-layers as a license-free evaluation agent. F4 remains the matched commercial design-QoR observation.
+The graph uses F0 as the feasibility prerequisite and F1 Local structure, F2 Design mapping and F3
+Timing indicator as parallel free factors over one candidate Library. E0 is the matched expensive
+commercial design-QoR observation.
 The graph does not optimize prediction accuracy, estimate a portable benefit, or treat open-source
 metrics as substitute commercial truth.
 

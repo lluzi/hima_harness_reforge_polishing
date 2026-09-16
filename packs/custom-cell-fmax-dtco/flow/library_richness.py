@@ -36,6 +36,7 @@ RESULT_SCHEMA = "lfr-round-evaluation/3"
 FRONTIER_REQUEST_SCHEMA = "lfr-frontier-request/1"
 FRONTIER_RESULT_SCHEMA = "lfr-frontier-evaluation/1"
 SCENARIOS = ("optimistic", "nominal", "conservative")
+FREE_FACTOR_LAYERS = ("F1", "F2", "F3")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _TIME_UNIT = re.compile(
     r"^\s*(?:(\d+(?:\.\d*)?|\.\d+)\s*)?(fs|ps|ns|us)\s*$",
@@ -1042,7 +1043,50 @@ def _aggregate_pairwise_relation(scenarios: Mapping[str, Mapping[str, Any]]) -> 
     return {"relation": relation, "by_scenario": relations}
 
 
-def _commercial_candidate(
+def _free_factor_assessment(
+    scenarios: Mapping[str, Mapping[str, Any]],
+) -> dict[str, object]:
+    """Classify parallel free factors without turning them into an E0 predictor."""
+    factors: dict[str, dict[str, object]] = {}
+    for layer in FREE_FACTOR_LAYERS:
+        rows = [
+            {"scenario": scenario_name, **comparison}
+            for scenario_name, scenario in scenarios.items()
+            for comparison in scenario.get("pairwise_relation", {}).get("comparisons", [])
+            if comparison.get("metric", "").startswith(layer + ".")
+        ]
+        relations = {row["relation"] for row in rows}
+        improved = "improved" in relations
+        regressed = "regressed" in relations
+        if not rows:
+            status = "unknown"
+        elif improved and regressed:
+            status = "mixed"
+        elif improved:
+            status = "positive"
+        elif regressed:
+            status = "negative"
+        else:
+            status = "neutral"
+        factors[layer] = {
+            "status": status,
+            "explicitly_negative": status == "negative",
+            "observations": rows,
+        }
+    all_negative = all(
+        factors[layer]["explicitly_negative"] is True for layer in FREE_FACTOR_LAYERS
+    )
+    return {
+        "unit_of_analysis": "candidate-library-round",
+        "parallel_factors": list(FREE_FACTOR_LAYERS),
+        "factors": factors,
+        "all_parallel_factors_explicitly_negative": all_negative,
+        "passes_free_factor_gate": not all_negative,
+        "expensive_outcome": "E0",
+    }
+
+
+def _e0_library_candidate(
     scenarios: Mapping[str, Mapping[str, Any]],
     aggregate_pairwise: Mapping[str, Any],
     adoption: Mapping[str, Any],
@@ -1072,9 +1116,9 @@ def _commercial_candidate(
     # FW-07 must supply cross-candidate/cross-round evidence before this gate can open.
     blockers = ["portfolio-frontier-not-supplied"]
     if adoption["candidate_instance_count"] > 0:
-        reasons.append("declared-candidate-adopted-by-open-source-mapper")
+        reasons.append("candidate-library-adopted-by-open-source-mapper")
     else:
-        blockers.append("no-declared-candidate-adoption")
+        reasons.append("candidate-library-not-adopted-by-open-source-mapper:F2-negative-evidence")
     if adoption["candidate_cells_present_in_reference"]:
         blockers.append("declared-candidate-already-present-in-reference")
     complete = all(
@@ -1091,26 +1135,26 @@ def _commercial_candidate(
     else:
         blockers.extend(violations)
     relation = aggregate_pairwise["relation"]
-    if relation in ("augmented-dominates", "tradeoff"):
-        reasons.append(f"pairwise-relation:{relation}")
-    else:
-        blockers.append(f"pairwise-relation:{relation}")
-    for scenario_name, scenario in scenarios.items():
-        for item in scenario.get("pairwise_relation", {}).get("comparisons", []):
-            if item["metric"].startswith("F3.") and item["relation"] == "regressed":
-                blockers.append(f"f3-regression:{scenario_name}:{item['metric']}")
-    nominal_improvements = [
-        item["metric"]
-        for item in scenarios.get("nominal", {}).get("pairwise_relation", {}).get("comparisons", [])
-        if item["relation"] == "improved" and not item["metric"].startswith("F0.")
+    reasons.append(f"pairwise-relation:{relation}")
+    factors = _free_factor_assessment(scenarios)
+    reasons.extend(
+        f"free-factor:{layer}:{factors['factors'][layer]['status']}"
+        for layer in FREE_FACTOR_LAYERS
+    )
+    unobserved = [
+        layer for layer in FREE_FACTOR_LAYERS
+        if factors["factors"][layer]["status"] == "unknown"
     ]
-    if nominal_improvements:
-        reasons.append("nominal-non-f0-indicator-improvement:" + ",".join(nominal_improvements))
-    else:
-        blockers.append("no-nominal-non-f0-indicator-improvement")
+    if unobserved:
+        blockers.extend("free-factor-unobserved:" + layer for layer in unobserved)
+    elif factors["all_parallel_factors_explicitly_negative"]:
+        blockers.append("all-free-factors-explicitly-negative")
     candidate = {
         "value": not blockers,
-        "meaning": "worth one commercial QoR observation; never an expected-benefit claim",
+        "unit_of_analysis": "candidate-library-round",
+        "validation_layer": "E0",
+        "meaning": "candidate Library is eligible for one expensive commercial observation; never an expected-benefit claim",
+        "factor_assessment": factors,
         "reasons": reasons,
         "blocking_reasons": blockers,
     }
@@ -1481,9 +1525,9 @@ def _recomputed_round_facts(evaluation: Mapping[str, Any]) -> dict[str, object]:
     reasons = []
     blockers = []
     if candidate_instance_count > 0:
-        reasons.append("declared-candidate-adopted-by-open-source-mapper")
+        reasons.append("candidate-library-adopted-by-open-source-mapper")
     else:
-        blockers.append("no-declared-candidate-adoption")
+        reasons.append("candidate-library-not-adopted-by-open-source-mapper:F2-negative-evidence")
     if leaked:
         blockers.append("declared-candidate-already-present-in-reference")
     if complete:
@@ -1495,18 +1539,20 @@ def _recomputed_round_facts(evaluation: Mapping[str, Any]) -> dict[str, object]:
     else:
         blockers.extend(violations)
     relation = aggregate_pairwise["relation"]
-    if relation in ("augmented-dominates", "tradeoff"):
-        reasons.append(f"pairwise-relation:{relation}")
-    else:
-        blockers.append(f"pairwise-relation:{relation}")
-    blockers.extend(f"f3-regression:{axis}" for axis in f3_regressions)
-    if nominal_non_f0_improvements:
-        reasons.append(
-            "nominal-non-f0-indicator-improvement:"
-            + ",".join(nominal_non_f0_improvements)
-        )
-    else:
-        blockers.append("no-nominal-non-f0-indicator-improvement")
+    reasons.append(f"pairwise-relation:{relation}")
+    factors = _free_factor_assessment(scenarios)
+    reasons.extend(
+        f"free-factor:{layer}:{factors['factors'][layer]['status']}"
+        for layer in FREE_FACTOR_LAYERS
+    )
+    unobserved = [
+        layer for layer in FREE_FACTOR_LAYERS
+        if factors["factors"][layer]["status"] == "unknown"
+    ]
+    if unobserved:
+        blockers.extend("free-factor-unobserved:" + layer for layer in unobserved)
+    elif factors["all_parallel_factors_explicitly_negative"]:
+        blockers.append("all-free-factors-explicitly-negative")
     return {
         "candidate_cells": candidate_cells,
         "candidate_instance_count": candidate_instance_count,
@@ -1514,6 +1560,7 @@ def _recomputed_round_facts(evaluation: Mapping[str, Any]) -> dict[str, object]:
         "metric_complete": complete,
         "pairwise_relation": aggregate_pairwise,
         "f3_regressions": f3_regressions,
+        "factor_assessment": factors,
         "evaluation_budget": expected_budget,
         "reasons": reasons,
         "blockers": blockers,
@@ -1548,8 +1595,8 @@ def evaluate_frontier(request: Mapping[str, object]) -> dict[str, object]:
     """Maintain the hash-bound cross-round Pareto frontier for one Library.
 
     The interface consumes completed ``lfr-round-evaluation/3`` observations.
-    It never predicts F4 commercial QoR.  A positive validation candidate only
-    means that one surviving frontier member is worth one commercial observation.
+    It never predicts E0 commercial QoR. A positive validation candidate only
+    means that one surviving Library frontier member is eligible for one expensive observation.
     """
     request_sha256 = _sha256_bytes(_canonical_json(request))
     try:
@@ -1696,10 +1743,9 @@ def evaluate_frontier(request: Mapping[str, object]) -> dict[str, object]:
                 if sorted(f3_regressions) != sorted(recomputed["f3_regressions"]):
                     row["reasons"].append("recomputed-f3-regression-disagreement")
                 row["f3_regressions"] = recomputed["f3_regressions"]
+                row["factor_assessment"] = recomputed["factor_assessment"]
                 if recomputed["metric_complete"] is not True:
                     row["reasons"].append("required-metric-vectors-incomplete")
-                if recomputed["candidate_instance_count"] <= 0:
-                    row["reasons"].append("no-declared-candidate-adoption")
                 if recomputed["reference_leakage"]:
                     row["reasons"].append("declared-candidate-already-present-in-reference")
                 evaluation_budget = recomputed["evaluation_budget"]
@@ -1876,17 +1922,8 @@ def evaluate_frontier(request: Mapping[str, object]) -> dict[str, object]:
         selected_blockers: list[str] = []
         for row in reversed(rows):
             blockers = list(row.get("round_gate_blockers", []))
-            blockers.extend(f"f3-regression:{axis}" for axis in row.get("f3_regressions", []))
-            if row.get("f3_metrics_present") is not True:
-                blockers.append("required-f3-frontier-indicators-missing")
-            if row.get("f2_structural_improvement") is not True:
-                blockers.append("no-f2-structural-indicator-improvement")
             if row["status"] != "frontier":
                 blockers.append("not-a-current-frontier-member")
-            if not should_stop:
-                blockers.append("research-loop-has-not-reached-a-stop-condition")
-            if not eligible_stop_reasons:
-                blockers.append("no-accepted-round-stop-condition")
             if budget_violations:
                 blockers.extend(
                     f"frontier-{reason}" for reason in budget_violations
@@ -1897,7 +1934,7 @@ def evaluate_frontier(request: Mapping[str, object]) -> dict[str, object]:
                 selected = row
                 selected_reasons = list(row.get("round_gate_reasons", [])) + [
                     "verified-cross-round-pareto-frontier-member",
-                    "research-stop-condition-reached",
+                    "free-factor-gate:F1-F2-F3-not-all-explicitly-negative",
                 ]
                 break
             if row["status"] == "frontier" and not selected_blockers:
@@ -1906,16 +1943,22 @@ def evaluate_frontier(request: Mapping[str, object]) -> dict[str, object]:
         candidate = {
             "value": selected is not None,
             "round_id": selected["round_id"] if selected is not None else None,
-            "meaning": "worth one commercial QoR observation; never an expected-benefit claim",
+            "unit_of_analysis": "candidate-library-round",
+            "validation_layer": "E0",
+            "meaning": "candidate Library is eligible for one expensive commercial observation; never an expected-benefit claim",
+            "factor_assessment": selected.get("factor_assessment") if selected is not None else None,
             "reasons": selected_reasons,
             "blocking_reasons": [] if selected is not None else (
                 selected_blockers or ["no-eligible-frontier-member"]
             ),
         }
         for row in rows:
-            row["commercial_validation_candidate"] = {
+            row["e0_library_validation_candidate"] = {
                 "value": selected is row,
+                "unit_of_analysis": "candidate-library-round",
+                "validation_layer": "E0",
                 "meaning": candidate["meaning"],
+                "factor_assessment": row.get("factor_assessment"),
                 "reasons": selected_reasons if selected is row else [],
                 "blocking_reasons": row.get(
                     "validation_blockers", ["not-evaluated-for-commercial-validation"]
@@ -1998,7 +2041,13 @@ def evaluate_frontier(request: Mapping[str, object]) -> dict[str, object]:
                 "commercial_gate_eligible_reasons": eligible_stop_reasons,
             },
             "next_residual_question": next_question,
-            "commercial_validation_candidate": candidate,
+            "factor_model": {
+                "free_factors": list(FREE_FACTOR_LAYERS),
+                "expensive_outcome": "E0",
+                "unit_of_analysis": "candidate-library-round",
+                "relationship_goal": "measure condition-labelled factor association with E0; do not predict portable benefit",
+            },
+            "e0_library_validation_candidate": candidate,
         }
         result["frontier_payload_sha256"] = _sha256_bytes(_canonical_json(result))
         return result
@@ -2115,7 +2164,7 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
         }
         adoption = _mapping_adoption(mapping_result, validated["candidate_cells"])
         pairwise = _aggregate_pairwise_relation(scenarios)
-        commercial_candidate, budget_status = _commercial_candidate(
+        e0_candidate, budget_status = _e0_library_candidate(
             scenarios, pairwise, adoption, validated["budgets"]
         )
         completeness = {
@@ -2154,7 +2203,7 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
                 "complete": all(item.get("complete") is True for item in completeness.values()),
             },
             "pairwise_relation": pairwise,
-            "commercial_validation_candidate": commercial_candidate,
+            "e0_library_validation_candidate": e0_candidate,
             "mapping": mapping_result,
         }
         result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))

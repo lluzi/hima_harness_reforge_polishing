@@ -250,21 +250,24 @@ problem，不需要重新理解 Yosys、ABC、Liberty 与整个 Pack。
 
 ### 5.7 指标体系、商业对照与验证分级
 
-Framework 不以预测 DC/Innovus 数值为目标。指标分为四层：
+Framework 不以预测 DC/Innovus 数值为目标。F 表示免费评估，E 表示昂贵验证。F0 是前提，
+F1、F2、F3 是并列因子：
 
 - **F0 Function：**Boolean 等价、接口、generator feasibility、break-even local bound；
 - **F1 Local structure：**级数、节点/边、cut width、重汇聚、支配、重复/非重叠支持；
 - **F2 Design mapping：**全设计采用、实例/面积、深度分布、buffer/inverter 压力、fanout/load；
 - **F3 Timing indicator：**proxy-STA frontier、negative-slack mass、path-family coverage 和迁移。
 
-商业 DC/Innovus 结果构成 **F4 Design QoR observation**。它与 F0～F3 做同条件对照，用来发现哪些
-指标在当前 design 上有解释力、哪些没有；precision/recall、rank correlation、方向和数值差异可以
-记录，但不作为追求预测准确率的训练目标，也不升级成跨 design 的通用阈值。
+商业 DC/Innovus 结果构成 **E0 Design QoR observation**。判断对象是一轮候选 Library，而不是某一颗
+Cell。E0 与 F1/F2/F3 向量做同条件对照，用来发现哪些因子与商业收益存在正相关关系；未来可按同一
+接口增加 F4、F5。precision/recall、rank correlation、方向和数值差异可以记录，但不作为追求预测
+准确率的训练目标，也不升级成跨 design 的通用阈值。
 
-一次商业验证候选至少要求：F0 完备；F1/F2 有可解释的结构改变；候选被真实开源 mapper 采用；
-overlap 已处理；F3 没有暴露明确反例；指标向量位于当前 Pareto frontier；连续轮次已收敛或预算要求
-一次真实 QoR 观测。它表示“值得验证”，不表示“预计会获得多少收益”。商业验证次数是 Campaign/Pack
-的显式预算，不是 Runtime 常量。
+一次 E0 候选至少要求：证据完备可复算、F0 有效、overlap 已处理，而且候选 Library 位于当前 Pareto
+frontier。F1/F2/F3 分别标记为 positive、neutral、mixed 或 explicitly negative；只有三者全部明确
+负向时才因因子方向拒绝。单独的 F1、F2 或 F3 负向结果不能否决整份 Library，缺失证据也不能被当成
+“非负”。通过表示“值得验证”，不表示“预计会获得多少收益”。E0 次数是 Campaign/Pack 的显式预算，
+不是 Runtime 常量。
 
 ## 6. Phase 1：独立 Framework 建设与评估
 
@@ -275,7 +278,7 @@ overlap 已处理；F3 没有暴露明确反例；指标向量位于当前 Paret
 | LFR-FW-01 | 无 | 冻结 AES RTL、top、SDC 摘要、foundry Liberty、47-Cell predicted Liberty、DC adoption、两份 route timing/census 的 hash-bound calibration corpus；写清两轮条件不同 | corpus manifest、来源路径、hash、可用/缺失字段；不复制客户原始材料进 Git |
 | LFR-FW-02 | FW-01 | 实现 `proxy_mapping.py` 与薄 CLI；固定 Yosys/ABC profile；reference/augmented batch mapping | 相同输入重复运行的 netlist/census 身份；脚本唯一差异审计；失败反例 |
 | LFR-FW-03 | FW-01 | 扩展 `liberty_timing.py` 完成 NLDM 插值和 mapped-netlist reg2reg STA；决定是否需要 OpenSTA | 手算小电路、slew/load 边界、缺 arc、multi-clock 反例；同一引擎复算 reference/augmented |
-| LFR-FW-04 | FW-02、FW-03 | 用 47-Cell 证据建立可用的 F0/F2/F3 基线，并与保存的 F4 commercial QoR 做条件化对照；F1 缺失须明示 | 指标向量、adoption/排序/QoR 对照；明确适用范围与 root cause；零 LC/DC/Innovus Job |
+| LFR-FW-04 | FW-02、FW-03 | 用 47-Cell 证据建立可用的 F0/F2/F3 基线，并与保存的 E0 commercial QoR 做条件化对照；F1 缺失须明示 | 指标向量、adoption/排序/QoR 对照；明确适用范围与 root cause；零 LC/DC/Innovus Job |
 | LFR-FW-05 | FW-04 | 深化 influence graph、K-cut、结构 counterfactual、path migration 与多指标 Pareto portfolio | synthetic reconvergence/dominator/overlap 用例；Pareto 层可从原始向量复算 |
 | LFR-FW-06 | FW-01，可与 FW-05 并行 | 实现 immutable shards、累计 manifest、delta-only generation projection 与 invalidation | 两轮 synthetic Library；旧文件 hash 不变；第二轮不产生旧 Cell Job |
 | LFR-FW-07 | FW-05、FW-06 | 接入 AI residual research、两级 proxy、收敛和停止；实现独立 CLI 闭环 | 一个固定 replay 和一个第二梯队真实模型小任务；输出可复算，未越权启动商业工具 |
@@ -305,7 +308,7 @@ Phase 1 出口运行一次。测试 fixture 的期望来自手算、固定工具
 - 所有输入、工具、Library 和结果有稳定身份；
 - reference/augmented mapping 可重复，约束差异为零；
 - proxy STA 对受支持结构的指标含义、保守假设和未知项可解释；
-- 对照报告说明已提供层与商业 F4 的条件、关系、缺失层和不可外推边界；
+- 对照报告说明已提供层与商业 E0 的条件、关系、缺失层和不可外推边界；
 - 至少一个 held-out RTL 上，优化循环能从 residual graph 产生新候选并推进多指标 Pareto frontier；
 - 旧 Cell 不重新生成，Library 只追加，失败候选不会重复试验；
 - 第二梯队模型能在给定 compact context 下完成研究程序；
@@ -359,11 +362,11 @@ bind-inputs
 - `proxy_worst_reg2reg_delay_indicator`、`proxy_negative_slack_mass_indicator`；
 - `proxy_adopted_candidate_count`、`new_library_cell_count`、`cumulative_library_cell_count`；
 - `proxy_metric_vector_complete`、`proxy_pairwise_relation`、
-  `portfolio_frontier_membership`、`commercial_validation_candidate`。
+  `portfolio_frontier_membership`、`e0_library_validation_candidate`。
 
 每一种 type 必须由 Pack Reader 实际发出并在 `semantics.yml` 声明；不为 UI 方便制造无人产生的语义。
 规则至少分开“指标证据完备”“两臂 pairwise 关系”“FW-07 portfolio frontier 成员”和“值得一次
-商业验证”，不能用一个大布尔值掩盖未知原因，也不能把 `commercial_validation_candidate` 表述为
+E0 验证”，不能用一个大布尔值掩盖未知原因，也不能把 `e0_library_validation_candidate` 表述为
 收益预测。
 
 ### 7.4 HimaPack 标准门
@@ -400,7 +403,7 @@ Phase 2 继续使用仓库 L0～L5：
 - **L3：**只验证 Campaign graph、Library 增长、多层指标、pairwise 关系、portfolio frontier 身份和
   验证候选理由可见；所有 Desktop
   测试只在 Catsights 副屏；
-- **L4：**一次真实模型小任务和一次 AES 保存指标/F4 对照；没有 LC/DC/Innovus 搜索；
+- **L4：**一次真实模型小任务和一次 AES 保存指标/E0 对照；没有 LC/DC/Innovus 搜索；
 - **L5：**Pareto 候选形成后的一次 matched commercial QoR observation。负结果写入关系证据，不能
   原样重跑或反向拟合收益预测器。
 
@@ -420,7 +423,7 @@ Phase 2 继续使用仓库 L0～L5：
 ## 10. 当前开发前沿
 
 当前前沿是 **LFR-PACK-07**。PACK-01 至 PACK-06 已在现有 HimaPack 文件中接入冻结的
-Framework。本地合同和一次真实 Yosys/ABC 集成 pilot 已通过；pilot 因 optimistic F3 regression
-诚实停止，没有调用商业 EDA。下一项必须取得的事实，是一条由 Harness 持有、带 Ledger、
-CodeRecord 和 refusal 证据的 test Campaign。只有 portfolio candidate 到达 matched-observation
-gate，并且 Harness 能从已测试目录生成 release seal，才进入 PACK-08。
+Framework。本地合同和一次真实 Yosys/ABC 集成 pilot 已通过。按当前并列因子规则，保留 Library
+已经具备 E0 资格：F1 positive、F2 positive、F3 mixed。下一项必须取得的事实，是一条由 Harness
+持有、带 Ledger、CodeRecord 和 refusal 证据的 test Campaign。随后 PACK-08 还需要 matched E0
+observation，以及 Harness 从已测试目录生成的 release seal。

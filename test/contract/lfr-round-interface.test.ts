@@ -298,18 +298,22 @@ test('LFR round interface binds evidence, evaluates paired reg2reg timing, and f
   assert.equal(accepted.result.metric_completeness.complete, true);
   assert.equal(accepted.result.scenarios.nominal.pairwise_relation.relation, 'augmented-dominates');
   assert.equal(accepted.result.pairwise_relation.relation, 'augmented-dominates');
-  assert.equal(accepted.result.commercial_validation_candidate.value, false);
+  assert.equal(accepted.result.e0_library_validation_candidate.value, false);
   assert.match(
-    accepted.result.commercial_validation_candidate.meaning,
-    /worth one commercial QoR observation; never an expected-benefit claim/,
+    accepted.result.e0_library_validation_candidate.meaning,
+    /candidate Library is eligible for one expensive commercial observation/,
   );
+  assert.equal(accepted.result.e0_library_validation_candidate.unit_of_analysis,
+    'candidate-library-round');
+  assert.equal(accepted.result.e0_library_validation_candidate.validation_layer, 'E0');
+  assert.equal(accepted.result.e0_library_validation_candidate.factor_assessment.factors.F1.status,
+    'positive');
+  assert.equal(accepted.result.e0_library_validation_candidate.factor_assessment.factors.F2.status,
+    'positive');
+  assert.equal(accepted.result.e0_library_validation_candidate.factor_assessment.factors.F3.status,
+    'positive');
   assert.ok(
-    accepted.result.commercial_validation_candidate.reasons.some((reason: string) =>
-      reason.startsWith('nominal-non-f0-indicator-improvement:') && reason.includes('F3.'),
-    ),
-  );
-  assert.ok(
-    accepted.result.commercial_validation_candidate.blocking_reasons.includes(
+    accepted.result.e0_library_validation_candidate.blocking_reasons.includes(
       'portfolio-frontier-not-supplied',
     ),
   );
@@ -329,9 +333,9 @@ test('LFR round interface binds evidence, evaluates paired reg2reg timing, and f
   assert.equal(unsupported.result.scenarios.optimistic.status, 'unsupported');
   assert.deepEqual(unsupported.result.scenarios.optimistic.unsupported_assumptions, ['delay_scale']);
   assert.equal(unsupported.result.pairwise_relation.relation, 'incomplete');
-  assert.equal(unsupported.result.commercial_validation_candidate.value, false);
+  assert.equal(unsupported.result.e0_library_validation_candidate.value, false);
   assert.ok(
-    unsupported.result.commercial_validation_candidate.blocking_reasons.includes(
+    unsupported.result.e0_library_validation_candidate.blocking_reasons.includes(
       'required-metric-vectors-incomplete',
     ),
   );
@@ -379,7 +383,7 @@ test('LFR rejects missing, hash-mismatched, or identity-inconsistent local F1 ev
   assert.match(identityResult.result.error.message, /function identity mismatch/);
 });
 
-test('LFR blocks commercial validation when F2 improves but an F3 indicator regresses', async (t) => {
+test('LFR keeps F1 F2 F3 parallel and does not reject E0 unless all three are negative', async (t) => {
   const held = await fixture();
   t.after(() => rm(held.root, { recursive: true, force: true }));
   const regressed = await run(
@@ -398,10 +402,15 @@ test('LFR blocks commercial validation when F2 improves but an F3 indicator regr
   assert.equal(nominal.reference.F3.worst_delay_indicator_ps, 400);
   assert.equal(nominal.augmented.F3.worst_delay_indicator_ps, 500);
   assert.equal(nominal.pairwise_relation.relation, 'tradeoff');
-  assert.equal(regressed.result.commercial_validation_candidate.value, false);
-  assert.ok(
-    regressed.result.commercial_validation_candidate.blocking_reasons.includes(
-      'f3-regression:nominal:F3.worst_delay_indicator_ps',
-    ),
-  );
+  assert.equal(regressed.result.e0_library_validation_candidate.value, false);
+  assert.deepEqual(regressed.result.e0_library_validation_candidate.blocking_reasons,
+    ['portfolio-frontier-not-supplied']);
+  assert.equal(regressed.result.e0_library_validation_candidate.factor_assessment.factors.F1.status,
+    'positive');
+  assert.equal(regressed.result.e0_library_validation_candidate.factor_assessment.factors.F2.status,
+    'positive');
+  assert.equal(regressed.result.e0_library_validation_candidate.factor_assessment.factors.F3.status,
+    'negative');
+  assert.equal(regressed.result.e0_library_validation_candidate.factor_assessment
+    .all_parallel_factors_explicitly_negative, false);
 });

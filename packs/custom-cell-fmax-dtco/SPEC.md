@@ -1,16 +1,17 @@
 ## Goal template
 
-The primary Goal is a matched F4 design-QoR result for the Site-bound design. Parameter
+The primary Goal is a matched E0 design-QoR result for the Site-bound design. Parameter
 `target_fmax_improvement_pct` is a number in percent, minimum 0.1, maximum 25, default 5. Parameter
 `target_period_ns` is a number in ns, minimum 0.1, maximum 5, default 0.5; it identifies the common
 requested clock and bounds `clock-period-at-most`. Goal met requires, on the same admitted cumulative
 Library and matched final-database comparison, `comparison-evidence-valid`,
 `fmax-improvement-at-least-target`, `fmax-improved` and `clock-period-at-most` all PASS.
 
-F0-F3 do not predict that Goal. They decide which cumulative-Library candidate deserves a bounded F4
-observation. The open-source optimization objective is a Pareto frontier over function feasibility,
-local structural change, whole-design mapping change and timing indicators, with no fitted route
-delta, expected Fmax gain or cross-design prediction target.
+F0-F3 do not predict that Goal. F0 is the function/interface/generator feasibility prerequisite.
+F1 local structure, F2 design mapping and F3 timing are parallel free factors, not sequential
+confidence levels. They describe which candidate Library deserves a bounded E0 observation. The
+open-source optimization objective is a Pareto frontier over their complete vectors, with no fitted
+route delta, expected Fmax gain or cross-design prediction target.
 
 Knowledge shaping this section: `over-constrain-and-read-the-violation.md` makes the common requested
 clock and its pressure explicit; `end-honestly-in-more-than-one-way.md` prevents the research gate
@@ -33,13 +34,15 @@ negative-slack mass, path-family coverage and migration under the same assumptio
 indicator, not commercial timing. A `pairwise_relation` belongs only to this two-arm evaluation; it
 cannot assert FW-07 portfolio-frontier membership.
 
-An F4 observation is admitted only when the metric vector is complete for its supported scope, F0 is
-valid, F1/F2 show an explainable intended structural change, the open-source mapper adopts a candidate,
-overlap has been handled, F3 exposes no explicit counterexample, the independently recomputed FW-07
-portfolio places the vector on its current Pareto frontier, and the research has converged or the
-declared budget calls for observation. Admission means “worth observing”, never “expected to gain”.
+An E0 observation judges one candidate Library, never one Cell in isolation. Admission requires
+complete and recomputable evidence, valid F0 identity/feasibility, handled overlap and membership in
+the independently recomputed Library frontier. F1, F2 and F3 are classified independently as
+positive, neutral, mixed or explicitly negative. The free-factor condition passes unless all three
+parallel factors are explicitly negative. A negative F3 alone, zero open-source adoption in F2, or a
+negative F1 alone remains evidence but cannot veto the Library. Admission means “worth observing”,
+never “expected to gain”. Missing evidence still fails closed because it is not a factor result.
 
-F4 holds RTL, constraints, tool/core count, once-expanded 25% target-utilization core, frozen IO pins,
+E0 holds RTL, constraints, tool/core count, once-expanded 25% target-utilization core, frozen IO pins,
 physical inputs, route settings and analysis view fixed. Both DC arms use 50% clock uncertainty and
 explicit high-weight reg2reg pressure. Both route arms use 25% uncertainty plus 50 ps. Both clock
 trees use only Site-declared DCCK buffer/inverter families. The cumulative custom Library is the sole
@@ -73,14 +76,14 @@ single file. `MAX_NEW_CELLS` is 1..50 per research round. It does not change the
 `MAX_CELLS`; a separate measured cumulative cap limits storage and mapping cost. The existing six-hour
 Campaign time box, 240 infrastructure act-attempt ceiling, final five-minute closing reserve and Site
 Job cap of at most five remain explicit; they do not authorize 240 commercial routes. Commercial
-validation has a default two-exit Campaign budget, not a Runtime constant. A frozen F4 baseline may be
+validation has a default two-exit Campaign budget, not a Runtime constant. A frozen E0 baseline may be
 reused only while every input and method identity remains unchanged.
 
 Required Framework outputs include one complete evaluation record, reference/augmented mapped
 netlists, F0-F3 raw vectors and pairwise relation, residual graph, cumulative manifest, failure
 reasons and deterministic recomputation facts. The FW-07 portfolio separately writes cross-candidate
 and cross-round frontier identity. Existing generation, compile, adoption, route, verification and
-compare records remain the F4 evidence chain. Immutable attempts and their artifacts remain under
+compare records remain the E0 evidence chain. Immutable attempts and their artifacts remain under
 `flow/artifacts/STAGE/run-UUID`; a reader verifies referenced bytes before admitting observations.
 
 Knowledge shaping this section: `what-a-golden-flow-is.md` keeps the Framework as the authored method
@@ -105,11 +108,11 @@ indicators and never commercial Fmax facts.
 
 Library values are `new_library_cell_count` and `cumulative_library_cell_count`, both count.
 Decision-support values are `proxy_metric_vector_complete`, `portfolio_frontier_membership` and
-`commercial_validation_candidate`, each count 0 or 1. `proxy_pairwise_relation` is a declared
+`e0_library_validation_candidate`, each count 0 or 1. `proxy_pairwise_relation` is a declared
 categorical relation over the current reference/augmented vectors; it never denotes a cross-round
 frontier. The FW-07 portfolio is the sole producer of `portfolio_frontier_membership`.
 
-F4 retains the existing independently read `comparison_valid`, `matched_conditions`,
+E0 retains the existing independently read `comparison_valid`, `matched_conditions`,
 `foundry_setup_wns`, `setup_wns_delta`, `foundry_fmax_mhz`, `generated_fmax_mhz`, `fmax_delta_mhz`,
 `fmax_improvement_pct`, `fmax_improved`, adoption, route-retention and verification values. Fmax is
 derived only from each restored final database's common requested clock and setup slack. Area, power,
@@ -129,17 +132,17 @@ keeps predicted/indicator/commercial evidence classes distinct.
 vector recomputability. `proxy-pairwise-relation-known` checks that the two arms are comparable and
 that the full current relation was retained; it does not require every metric to improve and does not
 assert benefit. `portfolio-frontier-member` accepts only the FW-07 portfolio's independently
-recomputed cross-candidate, cross-round membership. `commercial-validation-candidate` requires those
-three rules, F0 validity, actual mapper adoption, handled overlap, explainable F1/F2 change, no explicit
-F3 counterexample and the convergence/budget condition. Its PASS authorizes one scarce observation;
-it is not a gain prediction.
+recomputed cross-Library, cross-round membership. `e0-library-validation-candidate` requires complete
+evidence, F0 validity, handled overlap, current Library frontier membership and verifies that F1, F2
+and F3 are not all explicitly negative. Its PASS authorizes one scarce E0 observation; it is not a
+gain prediction and does not state that any individual Cell passed.
 
 The commercial adoption gate still requires at least one generated master in the custom synthesis
 netlist. The final Judge applies `comparison-evidence-valid`,
 `fmax-improvement-at-least-target`, `fmax-improved` and `clock-period-at-most` in that order. Only all
-four PASS on the same matched F4 record can support Goal met. Each verdict cites the exact evaluation,
+four PASS on the same matched E0 record can support Goal met. Each verdict cites the exact evaluation,
 manifest, mapped netlist or restored final database/report bytes from which it was read. A missing
-mandatory fact is UNDETERMINED and routes to the blocker; no inner evaluation PASS can replace F4.
+mandatory fact is UNDETERMINED and routes to the blocker; no inner evaluation PASS can replace E0.
 
 Knowledge shaping this section: `attribute-by-database-relation.md`,
 `assert-the-checker-options.md`, `end-honestly-in-more-than-one-way.md` and
@@ -148,17 +151,17 @@ Knowledge shaping this section: `attribute-by-database-relation.md`,
 ## Choosers
 
 `research-next` reads the current residual graph, complete F0-F3 vector, pairwise relation, FW-07
-frontier, cumulative manifest, failures, round budget and any condition-matched F4 observation. On a
+frontier, cumulative manifest, failures, round budget and any condition-matched E0 observation. On a
 failed or dominated license-free candidate it may change research lenses, K-cut bounds,
 dominator/reconvergence/repetition analysis, overlap handling, portfolio composition or next search
 region. It records which residual structure the change is meant to affect and advances
 `algorithmRevision` only with current evidence. It cannot change the Goal, delete or rewrite a shard,
-silently retry a failed identity, write a metric/Judge fact, reinterpret F4 as a prediction target or
+silently retry a failed identity, write a metric/Judge fact, reinterpret E0 as a prediction target or
 start commercial tools.
 
 On a frontier candidate, `research-next` chooses commercial validation only after
-`commercial-validation-candidate` PASS and only while the explicit commercial budget remains. On a
-sub-target F4 observation it returns to residual research with the observed condition and unexplained
+`e0-library-validation-candidate` PASS and only while the explicit commercial budget remains. On a
+sub-target E0 observation it returns to residual research with the observed condition and unexplained
 relationship; it does not fit a numeric correction or rerun the same cumulative Library. It declares
 Goal met only after the final commercial Judge PASS. Its converge block watches the recomputed
 multi-index frontier across consecutive rounds and stops only when no evidence-backed new direction
@@ -173,12 +176,12 @@ choices; `knowledge/full-mining-method.md` bounds AI revision and preserves the 
 Goal met is reached only when `research-next` receives all four fresh final commercial Judge PASS
 verdicts for one matched cumulative Library, including the bound Fmax-improvement target. Research
 converged is reached through `research-next`'s converge block after independently recomputed
-multi-index frontier stability and no remaining evidence-backed residual hypothesis; it is not an F4
+multi-index frontier stability and no remaining evidence-backed residual hypothesis; it is not an E0
 success claim.
 
 Budget exhausted is reached when the time, round, new-Cell, infrastructure-attempt, Site-resource or
 commercial-observation budget prevents the next admitted action. It retains all completed vectors,
-shards, failures and unknowns. Valid negative commercial observation is reached when F4 completed
+shards, failures and unknowns. Valid negative commercial observation is reached when E0 completed
 under matched conditions but did not meet the Goal and no commercial budget or evidence-backed new
 license-free direction remains; it remains a design-conditioned negative result. Hard blocker is
 reached when a mandatory input/tool/reader is absent or fails, a Library is refused, identity cannot
@@ -197,7 +200,7 @@ Knowledge shaping this section: `end-honestly-in-more-than-one-way.md` and
 One `research-candidates` Workshop uses the existing owned Coding interface after deterministic
 mining/evaluation has produced a compact, hash-bound residual context. It receives the residual logic
 and timing graph, raw F0-F3 vector, current pairwise relation, FW-07 portfolio frontier, cumulative
-manifest, prior candidate identities and failures, remaining budgets and condition-labelled F4
+manifest, prior candidate identities and failures, remaining budgets and condition-labelled E0
 observations. It reads detailed sources by their retained hashes when a hypothesis needs them.
 
 The Campaign Agent implements only the bounded research function in `research-template.py`.
@@ -205,7 +208,7 @@ The Campaign Agent implements only the bounded research function in `research-te
 schema, timeout and budget. The Workshop forms at least three evidence-linked research lenses,
 explains which structural indices each should change, and produces exact source-linked candidate
 identities. Its Reader emits `research_hypothesis_count` and `selected_count`; later deterministic
-evaluation, not the Workshop, emits all F0-F4 facts.
+evaluation, not the Workshop, emits all F0-F3/E0 facts.
 
 The Workshop may write candidate/portfolio code and suggest the next search region. It may not embed
 candidate ids as fixed Pack answers, forge an observation, delete assets, edit the Goal, alter the
@@ -217,8 +220,8 @@ Knowledge shaping this section: `knowledge/full-mining-method.md`,
 
 ## Knowledge
 
-`knowledge/full-mining-method.md` is the method document to update for F0-F4 evaluation, pairwise
-versus FW-07 portfolio authority, residual AI research, immutable delta Library growth, scarce F4
+`knowledge/full-mining-method.md` is the method document to update for F0-F3/E0 evaluation, pairwise
+versus FW-07 portfolio authority, residual AI research, immutable delta Library growth, scarce E0
 observation and honest stopping. `knowledge/custom-cell-fmax-probe-method.md` remains the commercial
 pressure and matched-reading reference; it must not describe the probe as the license-free search
 front end. `knowledge/site-profile.md` remains the portable design/process/tool binding reference and

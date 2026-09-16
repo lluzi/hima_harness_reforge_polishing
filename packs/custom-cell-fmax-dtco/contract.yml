@@ -559,7 +559,7 @@ rules:
   - function-local-structure-effective
   - proxy-pairwise-relation-valid
   - portfolio-frontier-member
-  - commercial-validation-candidate
+  - e0-library-validation-candidate
 knowledge:
   - file: custom-cell-fmax-probe-method.md
     purpose: "How to read this pack's numbers and what they do not say: the
@@ -570,8 +570,8 @@ knowledge:
     purpose: Six-route candidate research, exact Boolean provenance, bounded
       selection, library gates and limits of paired measurements.
   - file: library-richness-evaluation.md
-    purpose: F0-F4 indicator ontology, pairwise-versus-frontier authority, cumulative Library
-      evidence, residual research boundaries and commercial-observation admission.
+    purpose: F0 feasibility, parallel F1/F2/F3 factors and E0 expensive observation;
+      pairwise-versus-frontier authority, cumulative Library evidence and residual research boundaries.
   - file: site-profile.md
     purpose: Complete Site-local physical and tool profile fields, types, ownership, discovery sources and readiness rules used before a Campaign starts.
 goal:

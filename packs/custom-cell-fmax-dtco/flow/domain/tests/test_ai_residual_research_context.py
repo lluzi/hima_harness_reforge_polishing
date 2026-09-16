@@ -267,7 +267,7 @@ class ResidualResearchContextTests(unittest.TestCase):
             frontier = json.loads((root / request["frontier"]["path"]).read_text())
             frontier.update({
                 "objectives": [], "members": [], "frontier_member_ids": [],
-                "commercial_validation_candidate": {
+                "e0_library_validation_candidate": {
                     "value": False, "meaning": "no commercial observation before paired mapping",
                     "reasons": [],
                 },
@@ -318,7 +318,7 @@ class ResidualResearchContextTests(unittest.TestCase):
             frontier = json.loads((root / request["frontier"]["path"]).read_text())
             frontier.update({
                 "objectives": [], "members": [], "frontier_member_ids": [],
-                "commercial_validation_candidate": {
+                "e0_library_validation_candidate": {
                     "value": False,
                     "meaning": "no adopted frontier member",
                     "reasons": [],

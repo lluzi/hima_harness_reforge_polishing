@@ -723,8 +723,10 @@ def stage_function_local(ctx):
             "id": "cold-start-function-richness",
             "prompt": "Select evidence-bound functions that can improve F0/F1 structure before paired mapping.",
         },
-        "commercial_validation_candidate": {"value": False,
-            "meaning": "no commercial observation before paired mapping"},
+        "e0_library_validation_candidate": {
+            "value": False, "unit_of_analysis": "candidate-library-round",
+            "validation_layer": "E0",
+            "meaning": "no expensive commercial observation before paired Library evaluation"},
     }
     frontier_path = expected_root / "frontier.json"
     rounds_root = expected_root / "rounds"
@@ -1031,12 +1033,12 @@ def stage_design_mapping_timing(ctx):
     history_path = rounds_root / (round_id + ".json")
     if history_path.exists():
         raise Rejected("Library richness round history already exists: " + round_id)
-    blockers = list(frontier["commercial_validation_candidate"].get("blocking_reasons") or [])
+    blockers = list(frontier["e0_library_validation_candidate"].get("blocking_reasons") or [])
     history = {
         "schema": "hima.library-richness.round-history/1",
         "round_id": round_id, "status": "screened", "failures": blockers,
         "stop_reason": ("commercial validation admitted" if
-                        frontier["commercial_validation_candidate"]["value"] else
+                        frontier["e0_library_validation_candidate"]["value"] else
                         "residual structural or timing indicator work remains"),
         "evaluation_payload_sha256": evaluation["evaluation_payload_sha256"],
         "frontier_round": current_round,
@@ -1050,7 +1052,7 @@ def stage_design_mapping_timing(ctx):
     target_shard.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(projected_root / "shards" / shard_id, target_shard)
     persisted = projected
-    if frontier["commercial_validation_candidate"]["value"] is not True:
+    if frontier["e0_library_validation_candidate"]["value"] is not True:
         failure = "; ".join(blockers) or "not admitted by the cross-round portfolio gate"
         for key in function_keys:
             persisted = advance_function_state(persisted, key, "proxy-rejected", failure=failure)
@@ -1071,7 +1073,7 @@ def stage_design_mapping_timing(ctx):
         "metricVectorComplete": evaluation["metric_completeness"]["complete"],
         "pairwiseRelation": evaluation["pairwise_relation"]["relation"],
         "portfolioFrontierMember": round_id in frontier["frontier_member_ids"],
-        "commercialValidationCandidate": frontier["commercial_validation_candidate"]["value"],
+        "e0LibraryValidationCandidate": frontier["e0_library_validation_candidate"]["value"],
         "roundId": round_id,
     })
 
@@ -1079,8 +1081,8 @@ def stage_design_mapping_timing(ctx):
 def stage_freeze_cumulative_library(ctx):
     evaluation_record = prior(ctx, "design-mapping-timing-evaluation")
     frontier = read_json(artifact(evaluation_record, ctx.workspace, "portfolio_frontier"))
-    if frontier.get("commercial_validation_candidate", {}).get("value") is not True:
-        raise Rejected("frontier does not admit a commercial validation candidate")
+    if frontier.get("e0_library_validation_candidate", {}).get("value") is not True:
+        raise Rejected("frontier does not admit the candidate Library to E0")
     characterize = prior(ctx, "characterize")
     patterns = artifact(characterize, ctx.workspace, "characterized_patterns")
     generated = artifact(characterize, ctx.workspace, "generated_liberty")

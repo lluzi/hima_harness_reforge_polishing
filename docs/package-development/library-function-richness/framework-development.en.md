@@ -302,16 +302,20 @@ The Framework does not try to predict DC/Innovus numbers. Metrics have four open
 - **F3 Timing indicator:** proxy-STA frontier, negative-slack mass, path-family coverage and
   migration.
 
-Commercial DC/Innovus results form **F4 Design QoR observations**. Compare them with F0 through F3
-under matched conditions to discover which indicators explain the current design. Precision,
+F means free evaluation and E means expensive validation. F0 is the prerequisite; F1 local
+structure, F2 design mapping and F3 timing are parallel factors over one candidate Library.
+Commercial DC/Innovus results form **E0 Design QoR observations**. Compare them with the retained
+factor vector under matched conditions to discover which factors have positive association with
+commercial benefit. Future free factors may be added as F4, F5 and beyond. Precision,
 recall, rank correlation, direction and numeric gaps may be recorded, but prediction accuracy is
 not an optimization target and one design never creates a universal threshold.
 
-A candidate for one commercial validation requires complete F0 evidence; explainable F1/F2
-structural change; actual open-source mapper adoption; handled overlap; no explicit F3
-counterexample; membership in the current Pareto frontier; and either convergence or a budgeted
-need for a real QoR observation. “Worth validating” never means “predicted to gain X.” Commercial
-validation count is an explicit Campaign/Pack budget, not a Runtime constant.
+An E0 candidate requires complete recomputable evidence, valid F0, handled overlap and current
+Library-frontier membership. F1/F2/F3 are classified independently as positive, neutral, mixed or
+explicitly negative. Factor direction rejects the Library only when all three are explicitly
+negative. One negative factor cannot veto the others, and missing evidence is not treated as
+nonnegative. “Worth validating” never means “predicted to gain X.” E0 count is an explicit
+Campaign/Pack budget, not a Runtime constant.
 
 ## 6. Phase 1: independent Framework construction and assessment
 
@@ -322,7 +326,7 @@ validation count is an explicit Campaign/Pack budget, not a Runtime constant.
 | LFR-FW-01 | none | Freeze a hash-bound calibration corpus: AES RTL, top, SDC summary, foundry Liberty, 47-Cell predicted Liberty, DC adoption and both route timing/census results. State that the two commercial runs used different conditions | corpus manifest, source paths, hashes, available/missing fields; no customer raw material committed |
 | LFR-FW-02 | FW-01 | Implement `proxy_mapping.py` and the thin CLI; pin the Yosys/ABC profile; perform reference/augmented batch mapping | repeated-input netlist/census identity, script-difference audit, failure counterexamples |
 | LFR-FW-03 | FW-01 | Extend `liberty_timing.py` for NLDM interpolation and mapped-netlist reg2reg STA; decide whether OpenSTA is necessary | hand-computed small circuits, slew/load boundaries, missing-arc and multi-clock counterexamples; one engine recomputes both arms |
-| LFR-FW-04 | FW-02, FW-03 | Establish available F0/F2/F3 baselines from the 47-Cell evidence, compare them conditionally with retained F4 commercial QoR and declare missing F1 evidence | metric vectors and adoption/ordering/QoR relationship; explicit scope/root cause; zero LC/DC/Innovus Jobs |
+| LFR-FW-04 | FW-02, FW-03 | Establish available F0/F2/F3 baselines from the 47-Cell evidence, compare them conditionally with retained E0 commercial QoR and declare missing F1 evidence | metric vectors and adoption/ordering/QoR relationship; explicit scope/root cause; zero LC/DC/Innovus Jobs |
 | LFR-FW-05 | FW-04 | Deepen the influence graph, K-cuts, structural counterfactual, path migration and multi-index Pareto portfolio | synthetic reconvergence/dominator/overlap cases; Pareto layers recomputable from raw vectors |
 | LFR-FW-06 | FW-01; may overlap FW-05 | Implement immutable shards, cumulative manifest, delta-only generation projection and invalidation | two synthetic Library rounds; old hashes unchanged; round two creates no old-Cell Jobs |
 | LFR-FW-07 | FW-05, FW-06 | Connect AI residual research, both proxies, convergence and stopping in the standalone loop | one fixed replay and one small real second-tier-model task; recomputable output; no commercial-tool launch |
@@ -354,7 +358,7 @@ Phase 2 starts only when all are true:
 - every input, tool, Library and result has stable identity;
 - reference/augmented mapping is reproducible with zero constraint drift;
 - proxy-STA indicator meaning, conservative assumptions and unknown terms are explainable;
-- the comparison report states supplied-layer/F4 conditions, missing layers, observed relationships and non-extrapolation;
+- the comparison report states supplied-layer/E0 conditions, missing layers, observed relationships and non-extrapolation;
 - on at least one held-out RTL, the loop produces new candidates from the residual graph and advances
   the multi-index Pareto frontier;
 - old Cells are not regenerated, the Library only grows, and failed candidates are not retried as
@@ -413,7 +417,7 @@ needed for decisions:
 - `proxy_adopted_candidate_count`, `new_library_cell_count` and
   `cumulative_library_cell_count`;
 - `proxy_metric_vector_complete`, `proxy_pairwise_relation`,
-  `portfolio_frontier_membership` and `commercial_validation_candidate`.
+  `portfolio_frontier_membership` and `e0_library_validation_candidate`.
 
 Every type must be emitted by a real Pack Reader and declared in `semantics.yml`; no unused type is
 invented for UI convenience. Keep “metrics are complete,” “the two arms have this pairwise
@@ -461,7 +465,7 @@ Phase 2 continues to use repository levels L0 through L5:
 - **L3:** only visibility of the Campaign graph, Library growth, layered metrics, pairwise relation,
   portfolio-frontier membership and validation-candidate reasons; every Desktop test runs on the
   Catsights secondary display;
-- **L4:** one small real-model task and one retained AES indicator/F4 comparison, with no
+- **L4:** one small real-model task and one retained AES indicator/E0 comparison, with no
   LC/DC/Innovus search;
 - **L5:** one matched commercial QoR observation after a Pareto candidate forms. A negative result
   becomes relationship evidence and is neither rerun unchanged nor used to fit a benefit predictor.
@@ -486,8 +490,8 @@ Report pass, failure, skip and not-run separately.
 ## 10. Current development frontier
 
 The current frontier is **LFR-PACK-07**. PACK-01 through PACK-06 now wrap the frozen Framework in the
-existing HimaPack files. Local contracts and one real Yosys/ABC integration pilot pass; the pilot
-ended honestly at an optimistic F3 regression and did not invoke commercial EDA. The next required
-fact is one Harness-owned test Campaign with Ledger/CodeRecord/refusal evidence. PACK-08 remains
-blocked until a portfolio candidate reaches the matched-observation gate and the Harness can create
-the release seal from that tested folder.
+existing HimaPack files. Local contracts and one real Yosys/ABC integration pilot pass. Under the
+current parallel-factor rule the retained Library is E0-eligible: F1 is positive, F2 is positive and
+F3 is mixed. The next required fact is one Harness-owned test Campaign with Ledger/CodeRecord/refusal
+evidence. PACK-08 then requires the matched E0 observation and a release seal generated from that
+tested folder.
