@@ -13,14 +13,22 @@ import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SIT
  * Why a Hima request did not answer. `hima/unreachable` is the one code minted here rather than by
  * the host: the request never got an answer at all. Every other code is the host's own.
  */
-export interface HimaFailure { readonly code: HimaErrorCode | 'hima/unreachable'; readonly message: string }
+export interface HimaFailure {
+  readonly code: HimaErrorCode | 'hima/unreachable';
+  readonly message: string;
+  /** `hima/campaign-file-changed` alone: the file exactly as the Host now has it, so a caller who
+   *  lost the save race can reconcile without a separate re-read (#41 task 7 review). */
+  readonly current?: CampaignFileView;
+}
 
 /** A remote answer, coded either way: a failure is a value the caller must render, not an exception. */
 export type HimaResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: HimaFailure };
 
 function failureFrom(status: number, body: unknown): HimaFailure {
   const error = (body as Partial<HimaErrorBody> | null)?.error;
-  if (error && typeof error.code === 'string' && typeof error.message === 'string') return { code: error.code, message: error.message };
+  if (error && typeof error.code === 'string' && typeof error.message === 'string') {
+    return { code: error.code, message: error.message, ...(error.current === undefined ? {} : { current: error.current }) };
+  }
   return { code: 'hima/unreachable', message: answeredWithNoCode(String(status)) };
 }
 
@@ -72,8 +80,9 @@ export function fetchCampaignFile(sessionId: string, signal?: AbortSignal): Prom
 /** Write the session's own Campaign file. `file` is handed to the Host unvalidated — its own schema
  *  check runs once, there, and a rejection answers the same one-sentence message a hand-edited file
  *  on disk would. */
-export function saveCampaignFile(sessionId: string, file: CampaignFile, signal?: AbortSignal): Promise<HimaResult<CampaignFileView>> {
-  return runRequest(HIMA_CAMPAIGN_FILE_PATH, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, file }), signal });
+export function saveCampaignFile(sessionId: string, file: CampaignFile, expectedMtimeMs?: number, signal?: AbortSignal): Promise<HimaResult<CampaignFileView>> {
+  return runRequest(HIMA_CAMPAIGN_FILE_PATH, { method: 'PUT', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId, file, ...(expectedMtimeMs === undefined ? {} : { expectedMtimeMs }) }), signal });
 }
 
 /** Every saved Site (#41 task 4): what the Configuration page's Site picker and readiness roundel

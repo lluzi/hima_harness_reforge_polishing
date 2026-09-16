@@ -339,3 +339,44 @@ test('Case 12: a session id this Host does not carry answers 404 on GET', async 
     assert.equal(res.status, 404, JSON.stringify(body));
   } finally { await teardown(f); }
 });
+
+// #41 task 7 review: the save-conflict re-read. A PUT names the mtime it last read
+// (`expectedMtimeMs`); a file that changed on disk since — HimaGuide's own edit, in this case,
+// exactly like Case 4's hand-written file — answers 409 naming the code and carrying the file
+// exactly as it now stands, so the caller reconciles without a second round trip to re-read it.
+test('Case 13: a PUT racing another writer 409s naming the current file, and the same PUT with the fresh mtime then saves', async (t) => {
+  const f = await bootedFixture(t);
+  try {
+    const before = await (await putCampaign(f, { schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' } })).json() as any;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    writeCampaignFile(f.h.workspace, {
+      schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' },
+      inputs: {}, goal: { target_period_ns: 2.3 }, strategy: {}, budget: {}, knowledge: [], notes: '',
+    });
+    const stalePut = () => api(f.host, f.cookie, campaignPath, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: f.sessionId,
+        file: { schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' }, name: 'from the person' },
+        expectedMtimeMs: before.mtimeMs,
+      }),
+    });
+    const stale = await stalePut();
+    const staleBody = await stale.json() as any;
+    assert.equal(stale.status, 409, JSON.stringify(staleBody));
+    assert.equal(staleBody.error.code, 'hima/campaign-file-changed', JSON.stringify(staleBody));
+    assert.match(staleBody.error.message, /changed since it was last read/);
+    assert.equal(staleBody.error.current.file.goal.target_period_ns, 2.3, JSON.stringify(staleBody.error.current));
+    const fresh = await api(f.host, f.cookie, campaignPath, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: f.sessionId,
+        file: { schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' }, name: 'from the person', goal: { target_period_ns: 2.3 } },
+        expectedMtimeMs: staleBody.error.current.mtimeMs,
+      }),
+    });
+    const freshBody = await fresh.json() as any;
+    assert.equal(fresh.status, 200, JSON.stringify(freshBody));
+    assert.equal(freshBody.file.name, 'from the person', JSON.stringify(freshBody));
+  } finally { await teardown(f); }
+});

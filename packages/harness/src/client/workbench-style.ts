@@ -88,7 +88,6 @@ export const HIMA_STYLE = `
 .hima-studio-header>div{flex:1;min-width:0}
 .hima-run-picker{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-run-picker select{flex:1;min-width:0}
-.hima-start-form{padding:var(--hima-sp-4);overflow:auto;min-height:0;display:flex;flex-direction:column;gap:var(--hima-sp-4)}
 
 /* The Campaign tab (#41 task 5): masthead, view switch, and the HimaFabric canvas that makes the
    Live view. Every colour and every font-size is a token, SVG text included — an SVG user unit at
@@ -318,13 +317,13 @@ export const HIMA_STYLE = `
 .hima-config-field-row>span:first-child{min-width:120px;font-size:var(--hima-fs-label);color:var(--hima-ink)}
 .hima-config-mark{font-size:var(--hima-fs-eyebrow);color:var(--hima-accent);font-weight:600}
 .hima-changed{background:color-mix(in srgb, var(--hima-accent) 10%, transparent);border-radius:var(--hima-r-s)}
-.hima-config-mini-graph{display:block;width:100%;height:50px}
-.hima-config-mini-node{fill:none;stroke:var(--hima-ink-3);stroke-width:1.4}
-.hima-config-mini-edge{fill:none;stroke:var(--hima-line-strong);stroke-width:1}
+.hima-config-mini-graph{display:block;max-width:100%}
+.hima-config-mini-node{fill:none;stroke:var(--hima-ink-3);stroke-width:1.4;vector-effect:non-scaling-stroke}
+.hima-config-mini-edge{fill:none;stroke:var(--hima-line-strong);stroke-width:1;vector-effect:non-scaling-stroke}
 .hima-config-empty-pack,.hima-config-knowledge-add-row{display:flex;gap:var(--hima-sp-2);align-items:center;flex-wrap:wrap}
 .hima-config-site-new{display:flex;flex-direction:column;gap:var(--hima-sp-2);margin-top:6px}
 .hima-config-site-new-label{display:flex;flex-direction:column;gap:2px;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
-.hima-config-input-row,.hima-config-readiness-row{display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap}
+.hima-config-readiness-row{display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap}
 .hima-config-readiness-row{padding:2px 0}
 .hima-config-confirm-row{display:flex;align-items:center;gap:var(--hima-sp-3);margin-top:var(--hima-sp-2)}
 .hima-pill{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;background:var(--hima-soft);color:var(--hima-ink-2);font-size:var(--hima-fs-eyebrow);font-weight:600;margin-left:6px}

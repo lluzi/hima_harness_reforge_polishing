@@ -82,6 +82,21 @@ async function currentRun(d: BootedDriver): Promise<string> {
   return id;
 }
 
+/** Wait for the Configuration page's own pane to have settled into its final width (review MINOR):
+ *  a screenshot taken mid-layout (the dock still animating open, or the pane not yet at its resting
+ *  size) would capture a transient, narrower frame rather than the document a person actually sees. */
+async function waitForConfigurationPaneSettled(browser: Inspector, minWidth = 500): Promise<void> {
+  await browser.wait(`(() => {
+    const el = document.querySelector('[data-hima-region="configuration"]');
+    if (!el) return false;
+    const width = el.getBoundingClientRect().width;
+    if (width <= ${minWidth}) return false;
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+      resolve(el.getBoundingClientRect().width === width);
+    })));
+  })()`, 10_000);
+}
+
 async function capture(d: BootedDriver, browser: Inspector, name: string) {
   const out = process.env.HIMA_UI_ARTIFACTS;
   if (!out) return;
@@ -156,6 +171,7 @@ test('conversation draft, native files and verified reports share one workspace 
     browser = await inspectWindow(port);
     const { host, cookie } = await prepareSession(d, browser);
     const url = await browser.evaluate<string>('location.href');
+    await waitForConfigurationPaneSettled(browser);
     await capture(d, browser, 'configuration-empty');
     await fillStart(d, browser);
     await capture(d, browser, 'configuration-ready');
@@ -405,9 +421,11 @@ test('a native declared improvement Goal shows its units, refuses precision loss
     // finally makes the page ready (Budget does not gate readiness, but a save still in flight when
     // Confirm reads the current proposal id would make that id stale the instant it lands).
     assert.ok((await d.fill('config-budget-generations', '1')).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="configuration"]')?.textContent.includes('relative improvement')`);
+    // The declared unit shown beside the Goal's own label (review item 3), not just the label alone.
+    await browser.wait(`document.querySelector('[data-hima-region="configuration"]')?.textContent.includes('relative improvement (%)')`);
     assert.ok((await d.fill('config-goal-improvement_pct', '1.001')).ok);
     await browser.wait(`document.querySelector('[data-hima-region="config-readiness"]')?.textContent.includes('at most 2 decimal places')`);
+    await browser.wait(`document.querySelector('[role="alert"]')?.textContent.includes('invalid Goal parameter')`);
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="config-confirm"]').disabled`), true);
     assert.deepEqual(await (await api(host, cookie, '/hima/api/runs')).json(), { runs: [] });
     await capture(d, browser, 'pls21-relative-goal-invalid');

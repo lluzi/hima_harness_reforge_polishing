@@ -184,6 +184,10 @@ export type CampaignFileWriteResult =
   /** The candidate JSON body handed in did not read as `hima-campaign/1`; `message` is the one
    *  sentence naming the field, never a raw `ZodError`. */
   | { readonly kind: 'invalid'; readonly message: string }
+  /** The caller's own `expectedMtimeMs` no longer matches the file on disk (#41 task 7 review): the
+   *  candidate was never written, and `file`/`text`/`mtimeMs`/`overrides` are the file exactly as it
+   *  now stands, for the caller to reconcile against before saving again. */
+  | { readonly kind: 'conflict'; readonly file: CampaignFile; readonly text: string; readonly mtimeMs: number; readonly overrides: PreparationOverrides }
   | { readonly kind: 'written'; readonly file: CampaignFile; readonly text: string; readonly mtimeMs: number; readonly overrides: PreparationOverrides };
 
 /** The overrides a Campaign file states, read straight off its own fields. */

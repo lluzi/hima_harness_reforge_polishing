@@ -6,10 +6,10 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { reviewPackTransfer } from './api.js';
 
-export function PackOwnerPanel({ sessionId, initialPack }: { sessionId: string; initialPack: string }): ReactElement {
+export function PackOwnerPanel({ sessionId, initialPack, initialLocation }: { sessionId: string; initialPack: string; initialLocation?: string }): ReactElement {
   const [pack, setPack] = useState(initialPack);
   const [mode, setMode] = useState<'install' | 'share' | 'migrate' | 'upgrade'>(initialPack ? 'share' : 'install');
-  const [location, setLocation] = useState('');
+  const [location, setLocation] = useState(initialLocation ?? '');
   const [assets, setAssets] = useState('');
   const [review, setReview] = useState<import('../release.js').PackTransferReview>();
   const [message, setMessage] = useState('');

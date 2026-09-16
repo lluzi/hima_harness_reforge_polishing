@@ -481,7 +481,7 @@ export default class Hima extends Service {
           validateSession: (id) => this.ctx.get('agents')?.list().some((agent) => String(agent.id) === id) === true,
           sessionWorkspace: (id) => this.sessionWorkspace(id),
           readCampaignFile: (id) => this.readCampaignFileOf(id),
-          writeCampaignFile: (id, file) => this.writeCampaignFileOf(id, file),
+          writeCampaignFile: (id, file, expectedMtimeMs) => this.writeCampaignFileOf(id, file, expectedMtimeMs),
           sites: () => this.sites(),
           discoverSite: (request) => this.discoverSite(request),
           jobLogTail: (runId, nodeId, lines) => this.jobLogTail(runId, nodeId, lines),
@@ -676,9 +676,24 @@ export default class Hima extends Service {
    *  and write `candidate` as its `hima/campaign.yml`, for the same reason `readCampaignFileOf` is
    *  here and not in `remote.ts`. A session with no workspace is a caller's mistake the route itself
    *  already refused before reaching this. */
-  private writeCampaignFileOf(sessionId: string, candidate: unknown): CampaignFileWriteResult {
+  private writeCampaignFileOf(sessionId: string, candidate: unknown, expectedMtimeMs?: number): CampaignFileWriteResult {
     const workspace = this.sessionWorkspace(sessionId);
     if (workspace === undefined) return { kind: 'invalid', message: 'the selected conversation has no workspace to write a Campaign file into.' };
+    // The save-conflict re-read (#41 task 7 review): a caller's own `expectedMtimeMs` is held
+    // against the file exactly as it now stands, immediately before the write — a second writer's
+    // edit that landed after this caller's own last read must never be silently overwritten.
+    if (expectedMtimeMs !== undefined) {
+      let current: ReturnType<typeof readCampaignFile>;
+      try {
+        current = readCampaignFile(workspace);
+      } catch (err) {
+        if (err instanceof CampaignFileError) return { kind: 'invalid', message: err.message };
+        throw err;
+      }
+      if (current !== undefined && current.mtimeMs !== expectedMtimeMs) {
+        return { kind: 'conflict', file: current.file, text: current.text, mtimeMs: current.mtimeMs, overrides: overridesOf(current.file) };
+      }
+    }
     let written: ReturnType<typeof writeCampaignFile>;
     try {
       written = writeCampaignFile(workspace, candidate);

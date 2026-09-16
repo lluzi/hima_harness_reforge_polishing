@@ -16,10 +16,11 @@
 // every keystroke, so a field mid-edit is never fighting the poll for the caret.
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { CampaignFile } from '../campaign-file.js';
-import { layoutCanvas, NODE, type NodeKind } from '../canvas-layout.js';
+import { layoutCanvas, type NodeKind } from '../canvas-layout.js';
 import type { CampaignFileView, RunView, SiteHeadView } from '../remote.js';
 import type { PreparationView, StartChoices } from '../workbench.js';
 import { discoverSite, fetchCampaignFile, fetchSites, fetchStartChoices, saveCampaignFile, startCampaign } from './api.js';
+import { KindOutline } from './FabricNode.js';
 import { Glyph } from './glyphs.js';
 
 export interface ConfigurationPageProps {
@@ -27,7 +28,13 @@ export interface ConfigurationPageProps {
   askGuide?(text: string): void;
   pickFolder?: () => Promise<string | null>;
   onStarted(view: RunView): void;
-  openPackOwner?: () => void;
+  /** Opens the Pack owner panel; `location` is a folder `pickFolder` already picked, so the panel
+   *  opens with its own "source folder" field already filled in rather than empty (review MINOR). */
+  openPackOwner?: (location?: string) => void;
+  /** Told `true` for as long as Confirm's own request is in flight, `false` once it settles either
+   *  way — `HimaWorkbench` disables the Run picker while it is true (review MINOR: switching Runs
+   *  mid-confirmation is not a case this page's own guard needs to also reason about). */
+  onBusy?: (busy: boolean) => void;
 }
 
 /** Place a draft in the composer without ever sending it, the way every "Ask HimaGuide" control in
@@ -57,6 +64,19 @@ function diffCampaignFile(before: unknown, after: unknown): string[] {
   };
   walk(before, after, '');
   return changed;
+}
+
+/** A field's own bounds hint (review item 3, US58): `unit · min–max · precision`, each part left out
+ *  when the declaration does not carry it — never `undefined – undefined`, and never a bare `·`
+ *  where a missing part would otherwise leave one. */
+function boundsHint(min: number | undefined, max: number | undefined, precision: number | undefined, unit?: string): string {
+  const parts: string[] = [];
+  if (unit) parts.push(unit);
+  if (min !== undefined && max !== undefined) parts.push(`${min} – ${max}`);
+  else if (min !== undefined) parts.push(`at least ${min}`);
+  else if (max !== undefined) parts.push(`at most ${max}`);
+  if (precision !== undefined) parts.push(`${precision} decimal place${precision === 1 ? '' : 's'}`);
+  return parts.join(' · ');
 }
 
 const withoutKey = <T extends Record<string, unknown>>(record: T, key: string): T => {
@@ -118,23 +138,39 @@ const rowProps = (path: string, changed: ReadonlySet<string>) => ({
 /** The mini reference graph (Global Constraints: 50 px tall, hollow) — the same `layoutCanvas` the
  *  Live canvas uses, drawn at a fraction of the size and with no state colour: a Campaign that has
  *  not started yet has no execution facts to show, only the method's own shape. */
+/** The mini reference graph's own cap (Global Constraints: 50 px; the review raised it to 64 px for
+ *  legibility) — the height the scene's own bounds are scaled to fit, width following the same
+ *  factor so the method's shape spans the row at whatever width that implies. */
+const MINI_GRAPH_MAX_HEIGHT = 64;
+/** Nodes on the mini graph are drawn at this fixed half-size (never `NODE / 2`, the full canvas's
+ *  own 18 px): `layoutCanvas`'s own coordinates are what get compressed to fit the height cap above,
+ *  and a full-size node drawn in that same compressed space would read as a formless blob. */
+const MINI_GRAPH_NODE_HALF = 6;
+
 function MiniReferenceGraph({ graph }: { graph: PreparationView['referenceGraph'] }): ReactElement {
   const scene = useMemo(() => layoutCanvas({
     entry: graph.entry,
     nodes: graph.nodes.map((node) => ({ id: node.id, kind: node.kind as NodeKind, caption: node.id })),
     edges: graph.edges.map((edge) => ({ from: edge.from, to: edge.to, ...(edge.outcome === undefined ? {} : { outcome: edge.outcome }), ...(edge.revisit === true ? { revisit: true as const } : {}) })),
   }), [graph]);
+  const height = Math.min(MINI_GRAPH_MAX_HEIGHT, scene.height);
+  const width = scene.width * (height / scene.height);
   return (
-    <svg className="hima-config-mini-graph" viewBox={`0 0 ${scene.width} ${scene.height}`} preserveAspectRatio="xMinYMid meet" role="img" aria-label="Reference graph">
+    <svg className="hima-config-mini-graph" width={width} height={height} viewBox={`0 0 ${scene.width} ${scene.height}`}
+      preserveAspectRatio="xMinYMid meet" role="img" aria-label="Reference graph">
       {scene.edges.map((edge, index) => <path key={index} d={edge.path} className="hima-config-mini-edge" />)}
-      {scene.nodes.map((node) => <circle key={node.id} cx={node.x} cy={node.y} r={NODE / 2} className="hima-config-mini-node" />)}
+      {scene.nodes.map((node) => (
+        <g key={node.id} transform={`translate(${node.x},${node.y})`} className="hima-config-mini-node">
+          <KindOutline kind={node.kind} half={MINI_GRAPH_NODE_HALF} mark={node.kind === 'explore'} />
+        </g>
+      ))}
     </svg>
   );
 }
 
 interface ServerSnapshot { readonly file: CampaignFile; readonly text: string; readonly mtimeMs?: number }
 
-export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, openPackOwner }: ConfigurationPageProps): ReactElement {
+export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, openPackOwner, onBusy }: ConfigurationPageProps): ReactElement {
   const ask = askGuide ?? draftToGuide;
   const [draft, setDraft] = useState<CampaignFile>();
   const [view, setView] = useState<CampaignFileView>();
@@ -157,6 +193,9 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   // proposal id Confirm would read (`ready`, below `commitField`).
   const [pendingFields, setPendingFields] = useState<ReadonlySet<string>>(new Set());
   const [inFlight, setInFlight] = useState(0);
+  /** One sentence per field whose last-typed value does not parse (review MINOR: "Enter a number for
+   *  '‹label›'." and no PUT at all), keyed by the same dotted path `changed`/`pendingFields` use. */
+  const [fieldErrors, setFieldErrors] = useState<ReadonlyMap<string, string>>(new Map());
   const server = useRef<ServerSnapshot>();
   // The latest draft, read synchronously: two fields blurred in the same tick (a person tabbing
   // fast, or a test driver's `fill` — which focuses the next control before setting it, blurring
@@ -172,39 +211,48 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
 
   const adopt = (next: CampaignFile) => { draftRef.current = next; setDraft(next); };
 
+  const tick = useRef(async () => {});
+  tick.current = async () => {
+    const [fileResult, choicesResult, sitesResult] = await Promise.all([
+      fetchCampaignFile(sessionId), fetchStartChoices(), fetchSites(),
+    ]);
+    if (choicesResult.ok) setChoices(choicesResult.value);
+    if (sitesResult.ok) setSites(sitesResult.value.sites);
+    if (!fileResult.ok) { setError(fileResult.error.message); return; }
+    if (saving.current) return;
+    const value = fileResult.value;
+    const previous = server.current;
+    if (previous === undefined) {
+      server.current = { file: value.file, text: value.text, mtimeMs: value.mtimeMs };
+      adopt(value.file); setView(value);
+      return;
+    }
+    // Monotonic adoption (review item 2): a save that just completed already moved `server.current`
+    // to its own (newer) mtime; a poll whose request raced that save and is only now answering with
+    // what the file held *before* it must never roll this page back to that stale read, no matter
+    // which response happens to arrive last. Equal or older mtimes still refresh `view` (a Site or
+    // Pack list can change on its own) but never adopt the file or mark anything changed.
+    const isNewer = value.mtimeMs !== undefined && (previous.mtimeMs === undefined || value.mtimeMs > previous.mtimeMs);
+    if (isNewer && value.text !== previous.text) {
+      const marks = diffCampaignFile(previous.file, value.file);
+      server.current = { file: value.file, text: value.text, mtimeMs: value.mtimeMs };
+      adopt(value.file); setView(value);
+      setChanged((prior) => new Set([...prior, ...marks]));
+    } else {
+      setView(value);
+    }
+  };
+
   useEffect(() => {
     let alive = true;
-    const tick = async () => {
-      const [fileResult, choicesResult, sitesResult] = await Promise.all([
-        fetchCampaignFile(sessionId), fetchStartChoices(), fetchSites(),
-      ]);
-      if (!alive) return;
-      if (choicesResult.ok) setChoices(choicesResult.value);
-      if (sitesResult.ok) setSites(sitesResult.value.sites);
-      if (!fileResult.ok) { setError(fileResult.error.message); return; }
-      if (saving.current) return;
-      const value = fileResult.value;
-      const previous = server.current;
-      if (previous === undefined) {
-        server.current = { file: value.file, text: value.text, mtimeMs: value.mtimeMs };
-        adopt(value.file); setView(value);
-        return;
-      }
-      if (value.mtimeMs !== previous.mtimeMs && value.text !== previous.text) {
-        const marks = diffCampaignFile(previous.file, value.file);
-        server.current = { file: value.file, text: value.text, mtimeMs: value.mtimeMs };
-        adopt(value.file); setView(value);
-        setChanged((prior) => new Set([...prior, ...marks]));
-      } else {
-        setView(value);
-      }
-    };
-    void tick();
-    const timer = setInterval(() => { void tick(); }, 3000);
+    const poll = () => { if (alive) void tick.current(); };
+    poll();
+    const timer = setInterval(poll, 3000);
     return () => { alive = false; clearInterval(timer); };
   }, [sessionId]);
 
   const clearChanged = (path: string) => setChanged((prior) => { if (!prior.has(path)) return prior; const next = new Set(prior); next.delete(path); return next; });
+  const clearFieldError = (path: string) => setFieldErrors((prior) => { if (!prior.has(path)) return prior; const next = new Map(prior); next.delete(path); return next; });
 
   /** A field's debounce armed or fired — tracked by its own control name, so two fields pending at
    *  once are counted correctly and neither's flush clears the other's flag. */
@@ -215,12 +263,32 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     return next;
   });
 
-  const commit = (next: CampaignFile) => {
-    adopt(next);
+  /**
+   * Save one edit, reconciling a save-conflict re-read (review item 1) rather than overwriting
+   * whatever changed the file since this session's own last read: `updater` is the person's edit as
+   * a pure function of the file it is applied to, so a 409 can recompute the very same edit onto the
+   * fresh file the Host just handed back (`result.error.current`) and retry once with that file's own
+   * mtime — never a second, independently-reasoned write.
+   */
+  const attemptSave = (path: string, updater: (file: CampaignFile) => CampaignFile, next: CampaignFile, expectedMtimeMs: number | undefined) => {
     setInFlight((count) => count + 1);
     queue.current = queue.current.then(async () => {
       saving.current = true; setError(undefined);
-      const result = await saveCampaignFile(sessionId, next);
+      const result = await saveCampaignFile(sessionId, next, expectedMtimeMs);
+      if (!result.ok && result.error.code === 'hima/campaign-file-changed' && result.error.current) {
+        const remote = result.error.current;
+        // HimaGuide's own changes are marked; the field this very save is retrying is not one of
+        // them, even if it numerically differs — that field is the person's own unconfirmed edit,
+        // not something to tell them arrived from elsewhere.
+        const marks = diffCampaignFile(server.current?.file ?? remote.file, remote.file).filter((changedPath) => changedPath !== path);
+        server.current = { file: remote.file, text: remote.text, mtimeMs: remote.mtimeMs };
+        if (marks.length > 0) setChanged((prior) => new Set([...prior, ...marks]));
+        const retried = updater(remote.file);
+        adopt(retried);
+        setInFlight((count) => count - 1);
+        attemptSave(path, updater, retried, remote.mtimeMs);
+        return;
+      }
       saving.current = false;
       setInFlight((count) => count - 1);
       if (!result.ok) { setError(result.error.message); return; }
@@ -234,9 +302,29 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
 
   const commitField = (path: string, updater: (file: CampaignFile) => CampaignFile) => {
     clearChanged(path);
+    clearFieldError(path);
     const base = draftRef.current;
     if (base === undefined) return;
-    commit(updater(base));
+    const next = updater(base);
+    adopt(next);
+    attemptSave(path, updater, next, server.current?.mtimeMs);
+  };
+
+  /** A generic non-file `commit` for the two actions (discovering a new Site, adding a document) that
+   *  build their own next file directly rather than through one field's own updater — reconciliation
+   *  on a 409 simply reapplies the same fixed replacement, since neither reads the file it is based
+   *  on beyond spreading it. */
+  const commit = (path: string, next: (file: CampaignFile) => CampaignFile) => commitField(path, next);
+
+  /** A number field's own commit (review MINOR): text that does not parse as a finite number shows
+   *  "Enter a number for '‹label›'." beside the field and saves nothing — silently rounding, coercing
+   *  or ignoring it would tell the person their edit landed when it did not. */
+  const commitNumericField = (path: string, label: string, text: string, apply: (file: CampaignFile, value: number | undefined) => CampaignFile) => {
+    if (text === '') { clearFieldError(path); commitField(path, (file) => apply(file, undefined)); return; }
+    const numeric = Number(text);
+    if (!Number.isFinite(numeric)) { setFieldErrors((prior) => new Map(prior).set(path, `Enter a number for '${label}'.`)); return; }
+    clearFieldError(path);
+    commitField(path, (file) => apply(file, numeric));
   };
 
   if (draft === undefined) {
@@ -257,7 +345,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   const siteNeedsAttention = siteHead !== undefined && siteHead.readiness !== 'ready';
 
   const installPack = async () => {
-    if (pickFolder) await pickFolder();
+    if (pickFolder) { const picked = await pickFolder(); openPackOwner?.(picked ?? undefined); return; }
     openPackOwner?.();
   };
 
@@ -271,29 +359,33 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     const result = await discoverSite({ sessionId, name, ssh: { destination }, save: true, ...(workspaceRoot === undefined ? {} : { hints: { workspaceRoot } }) });
     setDiscovering(false);
     if (!result.ok) { setError(result.error.message); return; }
-    commit({ ...(draftRef.current ?? draft), site: { name } });
+    commit('site', (file) => ({ ...file, site: { name } }));
   };
 
   const addKnowledge = async () => {
     if (pickFolder) {
       const picked = await pickFolder();
-      if (picked) commit({ ...(draftRef.current ?? draft), knowledge: [...(draftRef.current ?? draft).knowledge, picked] });
+      if (picked) commit('knowledge', (file) => ({ ...file, knowledge: [...file.knowledge, picked] }));
       return;
     }
     const path = knowledgePath.trim();
     if (path === '') return;
     setKnowledgePath('');
-    commit({ ...(draftRef.current ?? draft), knowledge: [...(draftRef.current ?? draft).knowledge, path] });
+    commit('knowledge', (file) => ({ ...file, knowledge: [...file.knowledge, path] }));
   };
 
   const onConfirm = async () => {
     if (!ready || confirming.current || draft.pack === undefined || proposal === undefined) return;
-    confirming.current = true; setStarting(true); setError(undefined);
+    confirming.current = true; setStarting(true); setError(undefined); onBusy?.(true);
     const result = await startCampaign({ fromCampaignFile: true, sessionId, pack: draft.pack.id, ...(siteName === '' ? {} : { site: siteName }), proposalId: proposal.id });
-    confirming.current = false; setStarting(false);
+    confirming.current = false; setStarting(false); onBusy?.(false);
     if (!result.ok) { setError(result.error.message); return; }
     onStarted(result.value);
   };
+
+  /** `config-retry` (review MINOR): clear the last save's error and re-run the same read the poll
+   *  makes, at once rather than waiting out the rest of the 3 s interval. */
+  const retry = () => { setError(undefined); void tick.current(); };
 
   const unknowns = proposal?.unknowns ?? (draft.pack === undefined ? ['Choose a HimaPack to begin Campaign preparation.'] : []);
 
@@ -315,7 +407,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     <section data-hima-region="config-pack">
       <span className="hima-config-eyebrow">Pack</span>
       <div {...rowProps('pack', changed)}>
-        <select data-hima-control="config-pack" value={draft.pack?.id ?? ''}
+        <select data-hima-control="config-pack" value={draft.pack?.id ?? ''} onFocus={() => clearChanged('pack')}
           onChange={(event) => { const id = event.target.value; clearChanged('pack'); commitField('pack', (file) => ({ ...file, pack: id === '' ? undefined : { id } })); }}>
           <option value="">Choose a Pack…</option>
           {choices?.packs.map((id) => <option key={id} value={id} disabled={choices?.cannotStart?.includes(id)}>{id}{choices?.marks?.[id] ? ` — ${choices.marks[id]}` : ''}</option>)}
@@ -335,7 +427,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     <section data-hima-region="config-site">
       <span className="hima-config-eyebrow">Site</span>
       <div {...rowProps('site', changed)}>
-        <select data-hima-control="config-site" value={siteName}
+        <select data-hima-control="config-site" value={siteName} onFocus={() => clearChanged('site')}
           onChange={(event) => { const name = event.target.value; clearChanged('site'); commitField('site', (file) => ({ ...file, site: name === '' ? undefined : { name } })); }}>
           <option value="">Choose a Site…</option>
           {sites.map((site) => <option key={site.name} value={site.name}>{site.name} — {site.kind}{site.readiness !== 'ready' ? ` (${site.readiness})` : ''}</option>)}
@@ -373,15 +465,16 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
       <span className="hima-config-eyebrow">Goal</span>
       {Object.entries(proposal?.goalDeclared ?? {}).map(([name, declared]) => {
         const path = `goal.${name}`;
+        const label = declared.label + (declared.unit ? ` (${declared.unit})` : '');
+        const hint = boundsHint(declared.min, declared.max, declared.precision);
+        const packDefault = view?.preparation?.goal?.[name]?.default;
         return <div key={name} {...rowProps(path, changed)}>
-          <span>{declared.label}</span>
-          <EditableField control={`config-goal-${name}`} value={draft.goal[name] !== undefined ? String(draft.goal[name]) : ''} placeholder="required, not yet set" onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-goal-${name}`)}
-            onCommit={(text) => commitField(path, (file) => {
-              if (text === '') return { ...file, goal: withoutKey(file.goal, name) };
-              const numeric = Number(text);
-              return Number.isFinite(numeric) ? { ...file, goal: { ...file.goal, [name]: numeric } } : file;
-            })} />
-          <span className="hima-small">{declared.unit ?? ''} · {declared.min} – {declared.max}<ChangedMark path={path} changed={changed} /></span>
+          <span>{label}</span>
+          <EditableField control={`config-goal-${name}`} value={draft.goal[name] !== undefined ? String(draft.goal[name]) : ''}
+            placeholder={packDefault !== undefined ? `default ${packDefault}` : 'required, not yet set'} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-goal-${name}`)}
+            onCommit={(text) => commitNumericField(path, label, text, (file, value) => ({ ...file, goal: value === undefined ? withoutKey(file.goal, name) : { ...file.goal, [name]: value } }))} />
+          <span className="hima-small">{hint}<ChangedMark path={path} changed={changed} /></span>
+          {fieldErrors.get(path) ? <span className="hima-notice" role="alert">{fieldErrors.get(path)}</span> : null}
         </div>;
       })}
     </section>
@@ -401,12 +494,9 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
                 {knob.options.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
             : <EditableField control={`config-knob-${name}`} value={current !== undefined ? String(current) : ''} placeholder={`Pack default ${knob.default}`} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-knob-${name}`)}
-                onCommit={(text) => commitField(path, (file) => {
-                  if (text === '') return { ...file, strategy: withoutKey(file.strategy, name) };
-                  const numeric = Number(text);
-                  return { ...file, strategy: { ...file.strategy, [name]: Number.isFinite(numeric) ? numeric : text } };
-                })} />}
-          <span className="hima-small">{knob.type === 'number' ? `${knob.unit} · ${knob.min} – ${knob.max}` : `choice · ${knob.options.join(', ')}`}<ChangedMark path={path} changed={changed} /></span>
+                onCommit={(text) => commitNumericField(path, label, text, (file, value) => ({ ...file, strategy: value === undefined ? withoutKey(file.strategy, name) : { ...file.strategy, [name]: value } }))} />}
+          <span className="hima-small">{knob.type === 'number' ? boundsHint(knob.min, knob.max, knob.precision, knob.unit) : `choice · ${knob.options.join(', ')}`}<ChangedMark path={path} changed={changed} /></span>
+          {fieldErrors.get(path) ? <span className="hima-notice" role="alert">{fieldErrors.get(path)}</span> : null}
         </div>;
       })}
     </section>
@@ -419,12 +509,9 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         return <div key={key} {...rowProps(path, changed)}>
           <span>{label}</span>
           <EditableField control={`config-budget-${key}`} value={draft.budget[key] !== undefined ? String(draft.budget[key]) : ''} placeholder={declared ? `${declared.source} default ${declared.value}` : ''} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-budget-${key}`)}
-            onCommit={(text) => commitField(path, (file) => {
-              if (text === '') return { ...file, budget: withoutKey(file.budget, key) };
-              const numeric = Number(text);
-              return Number.isFinite(numeric) ? { ...file, budget: { ...file.budget, [key]: numeric } } : file;
-            })} />
+            onCommit={(text) => commitNumericField(path, label, text, (file, value) => ({ ...file, budget: value === undefined ? withoutKey(file.budget, key) : { ...file.budget, [key]: value } }))} />
           <span className="hima-small">{declared ? declared.source : ''}<ChangedMark path={path} changed={changed} /></span>
+          {fieldErrors.get(path) ? <span className="hima-notice" role="alert">{fieldErrors.get(path)}</span> : null}
         </div>;
       })}
       {proposal?.budget.jobCap !== undefined ? <p className="hima-small">Job cap · seats: {proposal.budget.jobCap}{proposal.budget.licences ? ` · ${Object.entries(proposal.budget.licences).map(([name, seats]) => `${name} ${seats}`).join(', ')}` : ''} · from Site, read-only</p> : null}
@@ -442,13 +529,15 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
 
     <section data-hima-region="config-readiness" data-hima-state-ready={String(ready)}>
       <span className="hima-config-eyebrow">Readiness</span>
-      {unknowns.map((sentence, index) => <div key={index} className="hima-config-readiness-row">
+      {unknowns.map((sentence, index) => <div key={index} className="hima-config-readiness-row" role="alert">
         <Glyph name="circle" />
         <span>{sentence}</span>
         <button className="hima-button" data-hima-control={`config-ask-unknown-${index}`} onClick={() => ask(sentence)}>Ask HimaGuide</button>
       </div>)}
       {ready ? <div className="hima-config-readiness-row"><Glyph name="check" /><span>Every check passes; confirming creates the Campaign.</span></div> : null}
-      {error ? <p className="hima-notice" role="alert">{error}</p> : null}
+      {error ? <div className="hima-config-readiness-row" role="alert"><Glyph name="warning" /><span>{error}</span>
+        <button className="hima-button" data-hima-control="config-retry" onClick={retry}>Retry</button>
+      </div> : null}
       <div className="hima-config-confirm-row">
         <button className="hima-button hima-primary" data-hima-control="config-confirm" disabled={!ready || starting} onClick={() => { void onConfirm(); }}>{starting ? 'Starting Campaign…' : 'Confirm and start Campaign'}</button>
         <span className="hima-small">enabled when every check passes</span>

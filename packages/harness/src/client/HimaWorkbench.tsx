@@ -50,6 +50,8 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const requested = typeof params?.runId === 'string' ? params.runId : undefined;
   const [selected, setSelected] = useState<string | undefined>(requested);
   const [managingPack, setManagingPack] = useState(false);
+  const [managingPackLocation, setManagingPackLocation] = useState<string>();
+  const [confirming, setConfirming] = useState(false);
   const list = usePollingRead('runs', fetchRuns, tab.visible);
   const read = useCallback((signal: AbortSignal) => fetchRun(selected!, signal), [selected]);
   const snapshot = usePollingRead(selected ?? '', read, selected !== undefined && tab.visible);
@@ -66,22 +68,35 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
     <header className='hima-studio-header'>
       <div><h2>Campaign workspace</h2></div>
       <button className='hima-button' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
-      <button className='hima-button' data-hima-control='studio-pack-owner' onClick={() => setManagingPack(value => !value)}>Pack & assets</button>
+      <button className='hima-button' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
     </header>
     <div className='hima-run-picker'>
       <span className='hima-studio-eyebrow'>CAMPAIGN</span>
-      <select aria-label='Campaign on this host' data-hima-control='studio-run' value={selected ?? ''} onChange={(e) => { setSelected(e.target.value || undefined); }}>
+      <select aria-label='Campaign on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { setSelected(e.target.value || undefined); }}>
         <option value=''>Select a Campaign</option>
         {selected && !list.value?.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
         {list.value?.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
       </select>
       <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); }}><Glyph name='retry' /></button>
+      {selected !== undefined
+        ? <button className='hima-button' data-hima-control='studio-configure' disabled={confirming} onClick={() => setSelected(undefined)}>Start another Campaign</button>
+        : null}
     </div>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
-    {managingPack ? <PackOwnerPanel key={activeSessionId} sessionId={activeSessionId} initialPack={view?.run.packId ?? ''} /> : null}
-    {selected === undefined
-      ? <ConfigurationPage key={activeSessionId} sessionId={activeSessionId} openPackOwner={() => setManagingPack(true)} onStarted={(started) => { setSelected(started.run.id); list.refresh(); }} />
-      : <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} refresh={() => { snapshot.refresh(); execution.refresh(); }} />}
+    {managingPack
+      // The Pack owner panel replaces the Configuration page or the Live canvas below it rather than
+      // stacking above it (review MINOR: "give the canvas its full height") — the two once shared one
+      // scrollable column, which starved the Live canvas of the height its own camera fit depends on
+      // the moment both were open, and is also what "close" toggling this same state on and off was
+      // found not to reliably tear down while a second, independently polling section stayed mounted
+      // beside it. Mutually exclusive rendering removes the concurrent-mount case entirely.
+      ? <PackOwnerPanel key={activeSessionId} sessionId={activeSessionId} initialPack={view?.run.packId ?? ''} initialLocation={managingPackLocation} />
+      : selected === undefined
+        ? <ConfigurationPage key={activeSessionId} sessionId={activeSessionId}
+            openPackOwner={(location) => { setManagingPackLocation(location); setManagingPack(true); }}
+            onBusy={setConfirming}
+            onStarted={(started) => { setSelected(started.run.id); list.refresh(); }} />
+        : <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} refresh={() => { snapshot.refresh(); execution.refresh(); }} />}
   </div>;
 }
 

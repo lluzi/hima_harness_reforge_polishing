@@ -159,8 +159,17 @@ export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
  * (`startRunOperation` in this file states which).
  * A failure is never an empty answer: the client renders the code.
  */
-export type HimaErrorCode = 'hima/run-not-found' | 'hima/record-not-found' | 'hima/bad-request' | 'hima/run-not-in-state' | 'hima/run-not-stopped' | 'hima/run-running' | 'hima/workshop-node' | 'hima/experience-changed' | 'hima/material-changed' | 'hima/not-authorized' | 'hima/site-unreadable' | 'hima/moment-failed' | 'hima/internal';
-export interface HimaErrorBody { readonly error: { readonly code: HimaErrorCode; readonly message: string } }
+export type HimaErrorCode = 'hima/run-not-found' | 'hima/record-not-found' | 'hima/bad-request' | 'hima/run-not-in-state' | 'hima/run-not-stopped' | 'hima/run-running' | 'hima/workshop-node' | 'hima/experience-changed' | 'hima/material-changed' | 'hima/not-authorized' | 'hima/site-unreadable' | 'hima/moment-failed' | 'hima/campaign-file-changed' | 'hima/internal';
+export interface HimaErrorBody {
+  readonly error: {
+    readonly code: HimaErrorCode;
+    readonly message: string;
+    /** `hima/campaign-file-changed` alone: the file exactly as it now stands, so a caller who lost
+     *  the race never has to re-read separately before reconciling and saving again (#41 task 7
+     *  review). */
+    readonly current?: CampaignFileView;
+  };
+}
 
 /** One refusal as HimaGuide shows it: a Run that read nothing still says why. */
 export interface RefusalView {
@@ -667,8 +676,10 @@ export interface RemoteOperations {
   readCampaignFile?(sessionId: string): CampaignFileReadResult;
   /** Validate and write the session's own `hima/campaign.yml` (#41 task 3). `file` is an unvalidated
    *  request body field — the schema check happens inside the implementation, once, the same way a
-   *  hand-edited file on disk is checked. */
-  writeCampaignFile?(sessionId: string, file: unknown): CampaignFileWriteResult;
+   *  hand-edited file on disk is checked. `expectedMtimeMs`, when given, is the mtime the caller's
+   *  own last read carried; a file that now stands at a different mtime answers `conflict` instead
+   *  of silently overwriting whatever changed it (#41 task 7 review — the save-conflict re-read). */
+  writeCampaignFile?(sessionId: string, file: unknown, expectedMtimeMs?: number): CampaignFileWriteResult;
   /** Every saved Site, in the order `installedSites` lists them (#41 task 4). No Site is contacted
    *  to answer this: each one's own saved file already says what this reads. */
   sites?(): readonly SiteHeadView[];
@@ -1023,6 +1034,15 @@ function optionalBoolean(body: Record<string, unknown>, key: string): boolean | 
   const value = body[key];
   if (value === undefined) return undefined;
   if (typeof value !== 'boolean') throw new BadRequest(`"${key}" must be true or false when given; got ${JSON.stringify(value)}`);
+  return value;
+}
+
+/** One optional mtime a caller's own last read carried (#41 task 7 review's save-conflict re-read):
+ *  absent when that caller had no file to read a mtime off of, never coerced from a string. */
+function optionalFiniteNumber(body: Record<string, unknown>, key: string): number | undefined {
+  const value = body[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new BadRequest(`"${key}" must be a finite number when given`);
   return value;
 }
 
@@ -1813,11 +1833,24 @@ async function campaignFileReadOperation(ops: RemoteOperations, sessionId: strin
 async function campaignFileWriteOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
   const body = await readJsonBody(req);
   const sessionId = requiredString(body, 'sessionId');
+  const expectedMtimeMs = optionalFiniteNumber(body, 'expectedMtimeMs');
   const gate = campaignWorkspaceOf(ops, sessionId);
   if (gate !== true) return gate.refused;
-  const written = ops.writeCampaignFile?.(sessionId, body.file);
+  const written = ops.writeCampaignFile?.(sessionId, body.file, expectedMtimeMs);
   if (written === undefined) return failure(500, 'hima/internal', 'Campaign file writes are unavailable on this Host');
   if (written.kind === 'invalid') throw new BadRequest(written.message);
+  if (written.kind === 'conflict') {
+    return {
+      status: 409,
+      body: {
+        error: {
+          code: 'hima/campaign-file-changed',
+          message: 'the Campaign file changed since it was last read; inspect the current file before saving again.',
+          current: campaignFileViewFrom(ops, { exists: true, file: written.file, text: written.text, mtimeMs: written.mtimeMs, overrides: written.overrides }),
+        },
+      } satisfies HimaErrorBody,
+    };
+  }
   return ok(campaignFileViewFrom(ops, { exists: true, file: written.file, text: written.text, mtimeMs: written.mtimeMs, overrides: written.overrides }));
 }
 
