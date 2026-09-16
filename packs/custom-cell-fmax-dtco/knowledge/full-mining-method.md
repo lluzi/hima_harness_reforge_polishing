@@ -1,5 +1,12 @@
 # Full custom Cell candidate research
 
+The current Campaign uses the layered Library-richness evaluation method in
+`library-richness-evaluation.md`. The older DC-probe material below remains useful for the final
+commercial observation and for reading retained historical records. It is not the first-generation
+search engine. The first generation now starts from a hash-bound Yosys/ABC mapping and structural
+timing indicator report; DC and Innovus are reserved for a candidate that passes the license-free
+portfolio gate.
+
 This method extends the released v2 foundry probe. The same conversation owner requests every
 node. Fabric records state, enforces dependencies and budgets, runs Jobs and admits observations.
 The six fork branches share the Site cap; no branch has a hidden Agent or separate model budget.
@@ -21,6 +28,12 @@ and capture clock-tree tables are excluded from data-path mining. The resulting 
 sampled timing-graph view, not a claim that 100 reported paths exhaust the timing graph.
 
 ## Your research work
+
+Before authoring the residual research program, read the current baseline evaluation, the complete
+candidate pool and local portfolio, the cumulative Library manifest, the cross-round Pareto frontier,
+and retained failure/history records named by the Workshop. Those files are the current Campaign
+evidence. A prior Pack knowledge document may explain a method, but it cannot substitute for the
+current hash-bound evidence.
 
 There is one `research-candidates` Workshop after all six method-evidence routes. These routes are
 different ways to propose or rank Cells, not separate algorithms that receive their own EDA trials. Read each compact

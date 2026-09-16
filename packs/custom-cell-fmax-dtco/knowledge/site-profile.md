@@ -33,7 +33,8 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `CCFMAX_SWITCHING_ACTIVITY` | number in `[0,1]` | Common activity used for the retained power report. |
 | `CCFMAX_POWER_TEMPLATE_BASE_CELL` | one-line text | Baseline cell used by the prediction adapter. |
 | `GENERATED_LIBRARY_NAME`, `GENERATED_LIB_CELL_PATTERN` | one-line text | Generated library identity and exact master pattern used for visibility/adoption checks. |
-| `MAX_CELLS` | integer `1..50` | Cheap generation breadth before one pressured DC adoption screen. |
+| `MAX_NEW_CELLS` | integer `1..50` | Maximum new Cell delta admitted in one Library-richness round. It does not count already retained shards. HimaGuide defaults to the Pack's tested breadth and only asks when the Site has a stricter resource limit. |
+| `MAX_CELLS` | positive integer | Cumulative custom-Library hard cap across immutable shards. This is no longer the per-round generation breadth; it must be at least `MAX_NEW_CELLS`. HimaGuide derives it from `MAX_NEW_CELLS` and the Pack's bounded research-round budget rather than asking the engineer for a Cell count. |
 | `MAX_ROUTE_CANDIDATES` | integer `1..40` | Per-method raw evidence bound; equivalent proposals are folded before AI research and never create separate DC/APR arms. |
 
 ## Tool and adapter inputs
@@ -41,6 +42,13 @@ Paths remain on the Site. Both comparison arms use the same values.
 | Field | Type | Meaning and discovery source |
 | --- | --- | --- |
 | `EDA_WRAPPER` | executable plain file | Existing Site wrapper that dispatches `dc_shell`, `lc_shell` and `innovus`; discover from Site documentation/PATH. |
+| `LFR_YOSYS_BIN`, `LFR_ABC_BIN` | executable plain files | License-free mapping executables. HimaGuide discovers them from the Site PATH, an installed Yosys data directory or the Pack-tested tool image; the engineer is not asked to browse for them. |
+| `LFR_YOSYS_SHA256`, `LFR_ABC_SHA256` | lowercase SHA-256 | Hashes computed by HimaGuide from the discovered executables. `bind-inputs` independently recomputes them and refuses an identity mismatch. |
+| `LFR_YOSYS_COMMIT`, `LFR_ABC_COMMIT` | one-line text | Commit or build identity reported by the executable/package metadata. Use an explicit package-build identity when the source commit is unavailable; do not invent `unknown`. |
+| `LFR_YOSYS_BUILD_FLAGS`, `LFR_ABC_BUILD_FLAGS` | nonempty arrays of one-line strings | Build/package flags discovered from the tool package or retained tested profile. These are provenance, not user tuning knobs. |
+| `LFR_PROXY_CONTAINER_DIGEST` | one-line `sha256:...` or `host:...` identity | Exact tool-image digest, or a stable host build identity when the tools are installed directly. |
+| `LFR_PROXY_TIMEOUT_SEC` | positive integer | Wall-time bound for one reference or augmented open-source mapping arm. |
+| `LFR_PROXY_CPU_COUNT`, `LFR_PROXY_MEMORY_MB` | positive integers | Site resource envelope for the license-free evaluator. These values bound scheduling; they do not change metric meaning. |
 | `BOOL2CMOS_CMD` | nonempty argv text | Site command for candidate transistor generation; parsed as argv, never as a shell program. |
 | `BOOL2CMOS_CWD` | plain directory | Working directory for that generator. |
 | `CCFMAX_CONTAINER_RUNTIME` | executable plain file | Existing container runtime used only by the abstract-layout adapter. |
@@ -53,11 +61,33 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `MULTI_CPU` | positive integer | Common CPU count passed to both arms. |
 | `DRC_LIMIT` | positive integer | Explicit uncapped verification limit; reaching the cap invalidates the result. |
 
+## Pack-owned Framework paths and profiles
+
+HimaGuide does not ask the engineer to choose Framework evidence paths or proxy profiles. After the
+Site values above pass validation, `bind-inputs` materializes these Campaign-private defaults under
+the existing workspace:
+
+| Binding | Pack-owned value |
+| --- | --- |
+| `LFR_MAPPING_PROFILE` | `lfr-yosys-abc-deterministic/1` |
+| `LFR_PROXY_STA_PROFILE` | `lfr-round-evaluation/3:proxy-sta` |
+| `LFR_LOCAL_PORTFOLIO` | `flow/library-richness/local-portfolio.json` |
+| `LFR_CANDIDATE_POOL` | `flow/library-richness/candidate-pool.json` |
+| `LFR_CUMULATIVE_LIBRARY_MANIFEST` | `flow/library/cumulative-manifest.json` |
+
+The files are produced and hash-bound by later Pack nodes. They are not required to exist during
+Campaign Preparation, and a Site profile cannot redirect them outside the Campaign workspace.
+Yosys/ABC and proxy STA provide layered function, local-graph, mapped-design and timing indicators
+for grading structural changes. Their purpose is not to predict a portable commercial QoR gain or
+to imitate DC/Innovus numerically. The matched commercial flow remains the design-specific Fmax
+observation.
+
 ## Readiness rule
 
 HimaGuide should discover values from the supplied constraints, PDK/library setup, Site documentation,
-PATH and existing flow configuration. It asks the engineer only when multiple valid choices remain or
-a required fact cannot be observed. A missing file, ambiguous helper, invalid scalar, nonexistent tool
-entry, or disagreement with the supplied design stops `bind-inputs`; no later node may infer a default.
-A different tool version may be adapted inside the Campaign, but the tool name and retained evidence
-must remain explicit.
+PATH, Yosys package metadata and existing flow configuration. It computes executable hashes, reuses
+the Pack-tested proxy profile and resource defaults when the Site has no tighter limit, and asks the
+engineer only when multiple valid choices remain or a required fact cannot be observed. A missing file,
+ambiguous helper, invalid scalar, nonexistent tool entry, identity mismatch or disagreement with the
+supplied design stops `bind-inputs`; no later node may infer a default. A different tool version may be
+adapted inside the Campaign, but the tool name, build identity and retained evidence remain explicit.

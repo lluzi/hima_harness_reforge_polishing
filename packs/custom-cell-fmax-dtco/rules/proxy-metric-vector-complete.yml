@@ -1,0 +1,11 @@
+id: proxy-metric-vector-complete
+version: "1"
+title: Required license-free indicator vector is complete and independently recomputable
+requires:
+  - type: proxy_metric_vector_complete
+subject:
+  type: proxy_metric_vector_complete
+predicate:
+  op: eq
+  threshold: 1
+  unit: count

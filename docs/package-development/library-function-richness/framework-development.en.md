@@ -485,8 +485,9 @@ Report pass, failure, skip and not-run separately.
 
 ## 10. Current development frontier
 
-The current frontier is **LFR-PACK-01**. FW-08 approved the frozen Framework for HimaPack
-integration. The next work updates the existing `INTENT.md` and `SPEC.md` to express F0-F4,
-pairwise/frontier semantics, the cumulative Library and AI residual research without reimplementing
-the Framework. Commercial DC/APR remains outside the current development loop until Pack testing
-reaches the declared matched-observation gate.
+The current frontier is **LFR-PACK-07**. PACK-01 through PACK-06 now wrap the frozen Framework in the
+existing HimaPack files. Local contracts and one real Yosys/ABC integration pilot pass; the pilot
+ended honestly at an optimistic F3 regression and did not invoke commercial EDA. The next required
+fact is one Harness-owned test Campaign with Ledger/CodeRecord/refusal evidence. PACK-08 remains
+blocked until a portfolio candidate reaches the matched-observation gate and the Harness can create
+the release seal from that tested folder.

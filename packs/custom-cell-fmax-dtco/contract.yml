@@ -28,11 +28,12 @@ inputs:
     description: "Site-bound Liberty/DB inputs for the baseline library."
   - name: physicalInputs
     description: "Site-bound LEF, extraction, layer-map, row-site, tap/filler, DCCK clock-tree Cells and process
-      profile used identically by both route arms. Every path and scalar consumed by the
-      physical method is validated before the Campaign writes inputs.json."
+      profile plus the per-round and cumulative Library bounds used identically by both route arms.
+      Every path and scalar consumed by the method is validated before the Campaign writes inputs.json."
   - name: toolStack
-    description: "A Site-local JSON profile with the EDA wrapper and bounded tool timeouts.
-      HimaGuide can construct it from Site discovery; the user does not write Pack YAML."
+    description: "A Site-local JSON profile with the commercial EDA wrapper, bounded tool
+      timeouts and the discovered Yosys/ABC executable identities used by the layered structural
+      evaluation proxy. HimaGuide constructs it from Site discovery; the user does not write Pack YAML."
   - name: workspaceRoot
     description: Where Campaign workspaces are created. The Site's Permit must allow
       writes under it; nothing the pack does writes anywhere else.
@@ -195,13 +196,33 @@ outputs:
   - name: aiResearchSelection
     path: flow/research/research.json
     reader: read-ai-research-selection
-    description: Source-hashed report from the one AI-authored cross-route discovery
-      algorithm. It records hypotheses and exact candidate identities but makes no
-      mapper-adoption or PPA claim.
+    description: Hash-bound residual-research report from the one AI-authored cross-route
+      discovery program. The runner resolves proposal keys to exact source requests; the
+      report makes no mapper-adoption, commercial-QoR or PPA claim.
   - name: researchTemplate
     path: flow/research-template.py
     description: Small fixed entry scaffold. The Campaign Agent implements only
-      research(candidates, context); the Pack runner owns I/O and validation.
+      residual_research(context); the Pack runner owns I/O, identity and validation.
+  - name: record_evaluation_baseline
+    path: flow/records/evaluation-baseline.json
+    reader: read-evaluation-baseline
+    description: Hash-bound license-free baseline mapping and proxy reg2reg timing evidence;
+      its Reader independently checks every retained artifact before emitting indicators.
+  - name: record_function_local_evaluation
+    path: flow/records/function-local-evaluation.json
+    reader: read-function-local-evaluation
+    description: Deterministic F0/F1 portfolio evidence prepared from the unified candidate pool;
+      it carries structural indices and explicit non-prediction claim limits.
+  - name: record_design_mapping_timing_evaluation
+    path: flow/records/design-mapping-timing-evaluation.json
+    reader: read-design-mapping-timing-evaluation
+    description: Paired F0-F3 design-mapping and timing-indicator evaluation plus the FW-07
+      cross-round frontier; it never claims commercial QoR.
+  - name: record_cumulative_library
+    path: flow/records/freeze-cumulative-library.json
+    reader: read-cumulative-library
+    description: Frozen append-only cumulative Library manifest admitted for the commercial exit;
+      the Reader validates function, shard and state identities from held bytes.
 environment:
   wrappers:
     - /usr/bin/python3
@@ -215,6 +236,7 @@ workspace:
     - synth.tcl
     - read-probe.py
     - stages.py
+    - library_richness.py
     - domain
     - read-stage.py
     - research-template.py
@@ -253,6 +275,31 @@ tools:
       - ${PHYSICAL_INPUTS}
       - --tool-stack
       - ${TOOL_STACK}
+  - id: evaluate-library-richness
+    file: tools/stages.py
+    description: Run one bounded license-free Framework phase through the existing stage adapter.
+      The phase establishes a baseline, evaluates F0/F1 locally, or evaluates paired F0-F3 design
+      mapping and timing indicators; none predicts commercial QoR.
+    inputs:
+      - WORKSPACE
+      - EVALUATION_PHASE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - evaluate-library-richness
+      - ${WORKSPACE}
+      - ${EVALUATION_PHASE}
+  - id: freeze-cumulative-library
+    file: tools/stages.py
+    description: Validate and freeze the append-only cumulative Library manifest selected by the
+      Pareto gate before assembling the existing commercial validation input.
+    inputs:
+      - WORKSPACE
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/stages.py
+      - freeze-cumulative-library
+      - ${WORKSPACE}
   - id: synthesize
     recommendedVersion: "Design Compiler current Site-supported release"
     file: tools/probe.py
@@ -508,6 +555,11 @@ rules:
   - fmax-improvement-at-least-target
   - custom-cell-adopted
   - route-candidate-pool-known
+  - proxy-metric-vector-complete
+  - function-local-structure-effective
+  - proxy-pairwise-relation-valid
+  - portfolio-frontier-member
+  - commercial-validation-candidate
 knowledge:
   - file: custom-cell-fmax-probe-method.md
     purpose: "How to read this pack's numbers and what they do not say: the
@@ -517,6 +569,9 @@ knowledge:
   - file: full-mining-method.md
     purpose: Six-route candidate research, exact Boolean provenance, bounded
       selection, library gates and limits of paired measurements.
+  - file: library-richness-evaluation.md
+    purpose: F0-F4 indicator ontology, pairwise-versus-frontier authority, cumulative Library
+      evidence, residual research boundaries and commercial-observation admission.
   - file: site-profile.md
     purpose: Complete Site-local physical and tool profile fields, types, ownership, discovery sources and readiness rules used before a Campaign starts.
 goal:
@@ -572,39 +627,24 @@ words:
     unit: count
 workshops:
   - id: research-candidates
-    purpose: Read every research_ROUTE projection, raw_ROUTE source, mine record,
-      researchTemplate and full-mining-method.md. This is the Campaign's one
-      creative discovery node. The six Pack miners are broad evidence generators,
-      not the selection authority. Copy researchTemplate as entry.py and implement
-      only research(candidates, context). Author a cross-route, data-dependent
-      algorithm from the current design's explicit reg2reg path membership,
-      incremental delay, timing-family coverage, worst slack, theoretical benefit,
-      Boolean function, occurrence, implementation route and any retained
-      synthesis/adoption feedback. Generation one reads DC; later generations read
-      the prior generated routed netlist and expanded post-route reg2reg paths.
-      Examine at least three collaborative research lenses. Before the Workshop, equivalent proposals from the six methods
-      are folded into one candidate. Each candidate supplies stable route,
-      source_methods, method_rankings, evidence, interface, equivalence_digest and
-      implementation_route aliases alongside the complete source request. Retain
-      the strongest actually adopted candidates in at most half the active library,
-      fill min(remaining slots, unique new candidates), and order new candidates
-      best-first; this is the one
-      common generation ranking. Cell creation is
-      cheap, while the next pressured DC screen is the scarce experiment. Do not
-      rank methods as winners, create method-specific DC/APR arms, embed candidate
-      ids, reproduce a fixed ranking, claim adoption/PPA, or hide a negative result.
-      The adoption record attributes used Cells and instances back to every method
-      that contributed them. On a later algorithmRevision, change the algorithm in
-      response to recorded evidence and preserve the prior CodeRecord.
+    purpose: Read the current hash-bound residual context prepared by the function/local
+      evaluation, every source projection needed to inspect it, the fixed template and the
+      layered evaluation method. This is the Campaign's one creative discovery node. Copy
+      researchTemplate as entry.py and implement only residual_research(context). Author
+      several evidence-linked F0-F3 lenses and one bounded pure candidate program that
+      selects immutable proposal_key values from the supplied candidate pool. Respond to
+      the current residual graph, Pareto frontier, cumulative Library, known failures and
+      remaining budget. Do not assign identity, alter the Goal or evidence, predict
+      commercial QoR, launch EDA, create parallel validation arms, repeat a fixed ranking,
+      or write Judge facts. Invalid output is retained as a refusal. A later revision must
+      answer new retained evidence; Run results never auto-promote into Pack knowledge.
     directory: research/ai-discovery
     entry: entry.py
     language: python
-    inputs:
-      - REVISION
-      - TARGET_GAIN_PCT
+    inputs: []
     reads:
-      - probe
-      - timingManifest
+      - record_evaluation_baseline
+      - record_function_local_evaluation
       - raw_timing_criticality
       - source_timing_criticality
       - research_timing_criticality
@@ -626,10 +666,11 @@ workshops:
       - researchTemplate
     knowledge:
       - full-mining-method.md
+      - library-richness-evaluation.md
     produces: aiResearchSelection
     argv:
       - /usr/bin/python3
       - ${ENTRY}
+      - --lfr-residual
       - ${WORKSPACE}
-      - ${REVISION}
-      - ${TARGET_GAIN_PCT}
+      - ${WORKSPACE}/flow/research/research.json

@@ -21,10 +21,14 @@ project_texts = None
 project_attributed_texts = None
 expected_generation_jobs = None
 retained_candidate_ids = None
+select_candidate_portfolio = None
+validate_cumulative_manifest = None
+evaluate_frontier = None
 
 
 def load_domain(workspace):
     global validate_generation_request, project_texts, project_attributed_texts, expected_generation_jobs, retained_candidate_ids
+    global select_candidate_portfolio, validate_cumulative_manifest
     domain = (workspace / "flow" / "domain").resolve()
     if not domain.is_dir() or not domain.is_relative_to(workspace.resolve()):
         raise ValueError("staged domain parser directory is absent or escapes workspace")
@@ -38,11 +42,27 @@ def load_domain(workspace):
     from _cell_adoption_projection import project_attributed_texts as attributed_projector
     from _generation_projection import expected_generation_jobs as generation_projector
     from _generation_projection import retained_candidate_ids as retention_projector
+    from _generation_projection import validate_cumulative_manifest as manifest_validator
+    from mine_patterns import select_candidate_portfolio as portfolio_selector
     validate_generation_request = validator
     project_texts = projector
     project_attributed_texts = attributed_projector
     expected_generation_jobs = generation_projector
     retained_candidate_ids = retention_projector
+    select_candidate_portfolio = portfolio_selector
+    validate_cumulative_manifest = manifest_validator
+
+
+def load_frontier(workspace):
+    global evaluate_frontier
+    flow = workspace / "flow"
+    source = flow / "library_richness.py"
+    if not source.is_file() or source.is_symlink():
+        raise ValueError("staged Library-richness evaluator is absent or invalid")
+    if str(flow) not in sys.path:
+        sys.path.insert(0, str(flow))
+    from library_richness import evaluate_frontier as frontier_evaluator
+    evaluate_frontier = frontier_evaluator
 
 
 def unique(pairs):
@@ -523,9 +543,452 @@ def checked_condition(record, workspace, derived):
     return derived
 
 
+LFR_SCENARIOS = ("optimistic", "nominal", "conservative")
+LFR_RELATION_CODES = {
+    "equal": 0,
+    "augmented-dominates": 1,
+    "tradeoff": 2,
+    "reference-dominates": 3,
+}
+
+
+def canonical_payload_sha(document, field):
+    if not isinstance(document, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(document.get(field) or "")):
+        raise ValueError("LFR document has no canonical payload identity: " + field)
+    payload = dict(document)
+    expected = payload.pop(field)
+    raw = (json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != expected:
+        raise ValueError("LFR document payload identity mismatch: " + field)
+    return expected
+
+
+def finite(value, name):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        raise ValueError(name + " is not finite")
+    return float(value)
+
+
+def lfr_metric(metrics, name):
+    layer, field = name.split(".", 1)
+    if not isinstance(metrics, dict) or not isinstance(metrics.get(layer), dict):
+        raise ValueError("LFR metric layer is absent: " + layer)
+    return finite(metrics[layer].get(field), name)
+
+
+def recompute_pairwise(reference, augmented, objectives):
+    comparisons = []
+    better = False
+    worse = False
+    seen = set()
+    for index, objective in enumerate(objectives):
+        if not isinstance(objective, dict) or set(objective) != {"metric", "direction"}:
+            raise ValueError("LFR objective %d is malformed" % index)
+        metric = objective["metric"]
+        direction = objective["direction"]
+        if not isinstance(metric, str) or metric in seen or direction not in ("minimize", "maximize"):
+            raise ValueError("LFR objective identity/direction is invalid")
+        seen.add(metric)
+        before = lfr_metric(reference, metric)
+        after = lfr_metric(augmented, metric)
+        relation = "equal"
+        if after != before:
+            improved = after < before if direction == "minimize" else after > before
+            relation = "improved" if improved else "regressed"
+            better = better or improved
+            worse = worse or not improved
+        comparisons.append({
+            "metric": metric, "direction": direction, "reference": before,
+            "augmented": after, "augmented_minus_reference": after - before,
+            "relation": relation,
+        })
+    relation = ("tradeoff" if better and worse else "augmented-dominates" if better
+                else "reference-dominates" if worse else "equal")
+    return {"relation": relation, "comparisons": comparisons}
+
+
+def recompute_completeness(metrics, required):
+    available, missing = [], []
+    for name in required:
+        try:
+            lfr_metric(metrics, name)
+            available.append(name)
+        except ValueError:
+            missing.append(name)
+    return {
+        "required": list(required), "available": available, "missing": missing,
+        "fraction": len(available) / len(required) if required else 0.0,
+        "complete": not missing and bool(required),
+    }
+
+
+def validate_round_evaluation(evaluation, schemas=("lfr-round-evaluation/3",)):
+    if not isinstance(evaluation, dict) or evaluation.get("schema") not in schemas:
+        raise ValueError("unsupported LFR evaluation schema")
+    if evaluation.get("status") != "succeeded" or evaluation.get("evidence_class") != "license-free-evaluation-agent":
+        raise ValueError("LFR evaluation did not succeed as license-free evidence")
+    canonical_payload_sha(evaluation, "evaluation_payload_sha256")
+    limits = evaluation.get("claim_limits")
+    if (not isinstance(limits, dict) or not limits
+            or any(value is not False for value in limits.values())):
+        raise ValueError("LFR evaluation claim limits are absent or assert commercial meaning")
+    policy = evaluation.get("metric_policy")
+    if not isinstance(policy, dict):
+        raise ValueError("LFR evaluation metric policy is absent")
+    objectives = policy.get("objectives")
+    required = policy.get("required_metrics")
+    if not isinstance(objectives, list) or not objectives or not isinstance(required, list) or not required:
+        raise ValueError("LFR metric policy is incomplete")
+    scenarios = evaluation.get("scenarios")
+    if not isinstance(scenarios, dict) or set(scenarios) != set(LFR_SCENARIOS):
+        raise ValueError("LFR scenarios are incomplete")
+    relations = {}
+    completeness = {}
+    for name in LFR_SCENARIOS:
+        scenario = scenarios[name]
+        if not isinstance(scenario, dict) or scenario.get("status") != "succeeded":
+            raise ValueError("LFR scenario did not succeed: " + name)
+        reference = scenario.get("reference")
+        augmented = scenario.get("augmented")
+        expected_pairwise = recompute_pairwise(reference, augmented, objectives)
+        if scenario.get("pairwise_relation") != expected_pairwise:
+            raise ValueError("LFR scenario pairwise relation is not reproducible: " + name)
+        expected_completeness = {
+            "reference": recompute_completeness(reference, required),
+            "augmented": recompute_completeness(augmented, required),
+        }
+        expected_completeness["complete"] = all(
+            row["complete"] for row in expected_completeness.values())
+        if scenario.get("metric_completeness") != expected_completeness:
+            raise ValueError("LFR scenario metric completeness is not reproducible: " + name)
+        completeness[name] = expected_completeness
+        relations[name] = expected_pairwise["relation"]
+    aggregate = ("incomplete" if "incomplete" in relations.values()
+                 else "equal" if all(value == "equal" for value in relations.values())
+                 else "augmented-dominates" if all(value in ("equal", "augmented-dominates") for value in relations.values())
+                 else "reference-dominates" if all(value in ("equal", "reference-dominates") for value in relations.values())
+                 else "tradeoff")
+    expected_relation = {"relation": aggregate, "by_scenario": relations}
+    if evaluation.get("pairwise_relation") != expected_relation:
+        raise ValueError("LFR aggregate pairwise relation is not reproducible")
+    expected_top = {"by_scenario": completeness, "complete": all(
+        row["complete"] for row in completeness.values())}
+    if evaluation.get("metric_completeness") != expected_top:
+        raise ValueError("LFR aggregate metric completeness is not reproducible")
+    return evaluation
+
+
+def histogram_percentile(histogram, percentile, name):
+    if not isinstance(histogram, dict) or not histogram:
+        raise ValueError(name + " histogram is absent")
+    rows = []
+    for value, count in histogram.items():
+        level = int(value)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError(name + " histogram count is invalid")
+        rows.append((level, count))
+    total = sum(count for _level, count in rows)
+    if total <= 0:
+        return 0.0
+    target = max(1, math.ceil(percentile * total))
+    seen = 0
+    for level, count in sorted(rows):
+        seen += count
+        if seen >= target:
+            return float(level)
+    raise ValueError(name + " histogram percentile is not reachable")
+
+
+def mapping_values(evaluation):
+    scenario = evaluation["scenarios"]["nominal"]
+    reference = scenario["reference"]
+    augmented = scenario["augmented"]
+    rf2, af2 = reference["F2"], augmented["F2"]
+    rf3, af3 = reference["F3"], augmented["F3"]
+    p95_reference = histogram_percentile(rf2.get("logic_level_distribution"), 0.95, "reference logic level")
+    p95_augmented = histogram_percentile(af2.get("logic_level_distribution"), 0.95, "augmented logic level")
+    pressure_reference = finite(rf2.get("buffer_instance_count"), "reference buffer count") + finite(
+        rf2.get("inverter_instance_count"), "reference inverter count")
+    pressure_augmented = finite(af2.get("buffer_instance_count"), "augmented buffer count") + finite(
+        af2.get("inverter_instance_count"), "augmented inverter count")
+    fanout_load_reference = finite(rf2.get("mean_fanout"), "reference mean fanout") * finite(
+        rf2.get("mean_load_indicator"), "reference mean load")
+    fanout_load_augmented = finite(af2.get("mean_fanout"), "augmented mean fanout") * finite(
+        af2.get("mean_load_indicator"), "augmented mean load")
+    adopted = evaluation.get("mapping_adoption", {}).get("candidate_instances_in_augmented")
+    if not isinstance(adopted, dict) or any(isinstance(value, bool) or not isinstance(value, int) or value < 1
+                                            for value in adopted.values()):
+        raise ValueError("LFR candidate adoption census is malformed")
+    return [
+        number("proxy_mapped_instance_delta", lfr_metric(augmented, "F2.mapped_instance_count")
+               - lfr_metric(reference, "F2.mapped_instance_count")),
+        number("proxy_logic_depth_p95_delta", p95_augmented - p95_reference),
+        number("proxy_buffer_inverter_pressure_delta", pressure_augmented - pressure_reference),
+        number("proxy_fanout_load_delta", fanout_load_augmented - fanout_load_reference, "index"),
+        number("proxy_adopted_candidate_count", len(adopted)),
+        number("proxy_worst_reg2reg_delay_indicator",
+               finite(af3.get("worst_delay_indicator_ps"), "augmented worst delay") / 1000.0, "ns"),
+        number("proxy_negative_slack_mass_indicator",
+               finite(af3.get("negative_slack_mass_indicator_ps"), "augmented negative slack mass") / 1000.0, "ns"),
+    ]
+
+
+def validate_local_portfolio(portfolio):
+    if not isinstance(portfolio, dict) or portfolio.get("schema") != "hima.library-richness.portfolio/1":
+        raise ValueError("function/local evaluation has the wrong schema")
+    if portfolio.get("stage") != "pre_mapping" or portfolio.get("status") != "PRE_MAPPING_PLANNING":
+        raise ValueError("function/local evaluation is not a pre-mapping portfolio")
+    claims = portfolio.get("claims")
+    if (not isinstance(claims, dict) or set(claims) != {
+            "commercial_adoption", "commercial_qor_prediction", "fmax_improvement", "post_route_benefit"}
+            or any(value is not False for value in claims.values())):
+        raise ValueError("function/local evaluation asserts a forbidden commercial claim")
+    evaluations = portfolio.get("candidate_evaluations")
+    if not isinstance(evaluations, list) or not evaluations:
+        raise ValueError("function/local evaluation has no candidate evaluations")
+    candidates = []
+    for index, row in enumerate(evaluations):
+        if not isinstance(row, dict) or not isinstance(row.get("candidate"), dict):
+            raise ValueError("function/local candidate evaluation %d is malformed" % index)
+        candidates.append(row["candidate"])
+    proxy = portfolio.get("design_proxy_evidence")
+    if not isinstance(proxy, dict) or not isinstance(proxy.get("raw"), dict):
+        raise ValueError("function/local design proxy evidence is absent")
+    recomputed = select_candidate_portfolio(
+        candidates, portfolio.get("max_candidates"), stage="pre_mapping",
+        design_proxy_evidence=proxy["raw"],
+    )
+    if json.loads(json.dumps(recomputed, sort_keys=True)) != portfolio:
+        raise ValueError("function/local portfolio differs from independent recomputation")
+    return portfolio
+
+
+def function_local_values(portfolio):
+    validate_local_portfolio(portfolio)
+    evaluations = {row["candidate_id"]: row for row in portfolio["candidate_evaluations"]}
+    selected_ids = [row["candidate_id"] for row in portfolio.get("selected", [])]
+    selected = [evaluations[candidate_id]["candidate"] for candidate_id in selected_ids]
+    boolean_ok = bool(selected) and all(
+        row.get("functional_equivalence", {}).get("status") == "exact" for row in selected)
+    generator_ok = bool(selected) and all(
+        row.get("generation_feasibility", {}).get("status") == "ready" for row in selected)
+    interface_ok = bool(selected)
+    for row in selected:
+        interface = row.get("identity", {}).get("interface")
+        if not isinstance(interface, dict):
+            interface_ok = False
+            continue
+        inputs, outputs = interface.get("inputs"), interface.get("outputs")
+        interface_ok = interface_ok and isinstance(inputs, list) and isinstance(outputs, list) and bool(outputs)
+        interface_ok = interface_ok and interface.get("input_count") == len(inputs or [])
+        interface_ok = interface_ok and interface.get("output_count") == len(outputs or [])
+        interface_ok = interface_ok and len(set(inputs or [])) == len(inputs or [])
+        interface_ok = interface_ok and len(set(outputs or [])) == len(outputs or [])
+    local_bounds = []
+    structural = []
+    new_cells = 0.0
+    local_ok = bool(selected)
+    for row in selected:
+        bound = row.get("local_break_even")
+        metrics = row.get("structural_metrics")
+        cost = row.get("library_cost")
+        if (not isinstance(bound, dict) or bound.get("status") != "pass"
+                or bound.get("unit") != "delay_unit" or not isinstance(metrics, dict)
+                or not isinstance(cost, dict)):
+            local_ok = False
+            continue
+        local_bounds.append(finite(bound.get("break_even_delay"), "local break-even bound"))
+        structural.append({
+            "levels": finite(metrics.get("levels_removed"), "levels removed"),
+            "nodes": finite(metrics.get("nodes_removed"), "nodes removed"),
+            "edges": finite(metrics.get("edges_removed"), "edges removed"),
+            "cut": finite(metrics.get("cut_width"), "cut width"),
+            "reconvergence": finite(metrics.get("reconvergence_coverage"), "reconvergence coverage"),
+        })
+        new_cells += finite(cost.get("new_library_cells"), "new Library Cells")
+    complete = boolean_ok and interface_ok and generator_ok and local_ok and bool(structural)
+    levels = max((row["levels"] for row in structural), default=0.0)
+    nodes = max((row["nodes"] for row in structural), default=0.0)
+    edges = max((row["edges"] for row in structural), default=0.0)
+    cut = max((row["cut"] for row in structural), default=0.0)
+    reconvergence = max((row["reconvergence"] for row in structural), default=0.0)
+    effective = complete and any(value > 0 for value in (levels, nodes, edges))
+    bound_value = (number("proxy_break_even_local_bound", min(local_bounds), "delay_unit")
+                   if local_bounds else unknown("proxy_break_even_local_bound",
+                                                "no selected candidate has a valid local break-even bound",
+                                                "delay_unit"))
+    return [
+        number("proxy_boolean_equivalent", int(boolean_ok)),
+        number("proxy_interface_compatible", int(interface_ok)),
+        number("proxy_generator_feasible", int(generator_ok)),
+        bound_value,
+        number("proxy_local_level_delta", levels),
+        number("proxy_removed_node_count", nodes),
+        number("proxy_cut_width", cut),
+        number("proxy_reconvergence_coverage", reconvergence * 100.0, "percent"),
+        number("new_library_cell_count", new_cells),
+        number("proxy_metric_vector_complete", int(complete)),
+        number("function_local_structure_effective", int(effective)),
+    ]
+
+
+def cumulative_library_values(manifest):
+    validate_cumulative_manifest(manifest)
+    functions = manifest["functions"]
+    cells = {cell for row in functions for cell in row["physicalCellNames"]}
+    shards = manifest["shards"]
+    newest = set(shards[-1]["functionKeys"]) if shards else set()
+    new_cells = {cell for row in functions if row["functionKey"] in newest
+                 for cell in row["physicalCellNames"]}
+    return [number("new_library_cell_count", len(new_cells)),
+            number("cumulative_library_cell_count", len(cells))]
+
+
+def baseline_evaluation_values(evaluation, mapped_netlist, timing_document):
+    if (not isinstance(evaluation, dict) or evaluation.get("schema") != "lfr-baseline-evaluation/1"
+            or evaluation.get("status") != "succeeded"
+            or evaluation.get("evidence_class") != "license-free-evaluation-agent"):
+        raise ValueError("baseline evaluation did not succeed as license-free evidence")
+    canonical_payload_sha(evaluation, "evaluation_payload_sha256")
+    limits = evaluation.get("claim_limits")
+    if not isinstance(limits, dict) or not limits or any(value is not False for value in limits.values()):
+        raise ValueError("baseline evaluation asserts a forbidden commercial claim")
+    mapping = evaluation.get("mapping")
+    if not isinstance(mapping, dict) or mapping.get("status") != "succeeded":
+        raise ValueError("baseline mapping did not succeed")
+    reference_artifacts = mapping.get("arms", {}).get("reference", {}).get("artifacts")
+    mapped_refs = [row for row in (reference_artifacts or []) if row.get("role") == "mapped_netlist"]
+    if (len(mapped_refs) != 1 or Path(mapped_refs[0].get("path", "")).resolve() != mapped_netlist
+            or mapped_refs[0].get("sha256") != hashlib.sha256(mapped_netlist.read_bytes()).hexdigest()):
+        raise ValueError("baseline mapped netlist differs from mapping evidence")
+    if (not isinstance(timing_document, dict)
+            or timing_document.get("schema") != "hima.lfr-proxy-reg2reg/1"
+            or timing_document.get("status") != "succeeded"
+            or timing_document.get("path_group") != "reg2reg"
+            or not isinstance(timing_document.get("design"), str)):
+        raise ValueError("baseline proxy reg2reg document is malformed")
+    timing_limits = timing_document.get("claim_limits")
+    if (not isinstance(timing_limits, dict) or not timing_limits
+            or any(value is not False for value in timing_limits.values())):
+        raise ValueError("baseline proxy timing asserts a forbidden commercial claim")
+    time_unit_ns = finite(timing_document.get("time_unit_ns"), "baseline time unit")
+    if time_unit_ns <= 0:
+        raise ValueError("baseline time unit must be positive")
+    timing = timing_document.get("timing")
+    if not isinstance(timing, dict) or not isinstance(timing.get("paths"), list) or not timing["paths"]:
+        raise ValueError("baseline proxy timing has no reg2reg paths")
+    scenarios = evaluation.get("scenarios")
+    if not isinstance(scenarios, dict) or set(scenarios) != set(LFR_SCENARIOS):
+        raise ValueError("baseline scenarios are incomplete")
+    for name in LFR_SCENARIOS:
+        scenario = scenarios[name]
+        if (not isinstance(scenario, dict) or scenario.get("status") != "succeeded"
+                or scenario.get("reference") != scenario.get("augmented")
+                or scenario.get("pairwise_relation") != {"relation": "equal", "comparisons": []}):
+            raise ValueError("baseline scenario is not a self-comparison: " + name)
+    if (evaluation.get("pairwise_relation") != {"relation": "equal", "comparisons": []}
+            or evaluation.get("metric_completeness") != {"complete": True}):
+        raise ValueError("baseline relation/completeness is not reproducible")
+    nominal = scenarios["nominal"]["augmented"]
+    f2, f3 = nominal["F2"], nominal["F3"]
+    expected = {
+        "path_count": timing.get("path_count"),
+        "worst_delay_indicator_ps": finite(timing.get("worst_delay"), "baseline worst delay") * time_unit_ns * 1000.0,
+        "negative_slack_mass_indicator_ps": finite(timing.get("negative_slack_mass"), "baseline negative slack mass") * time_unit_ns * 1000.0,
+        "path_family_coverage": timing.get("endpoint_family_count"),
+    }
+    for key, value in expected.items():
+        if f3.get(key) != value:
+            raise ValueError("baseline nominal F3 disagrees with retained proxy timing: " + key)
+    histogram_percentile(f2.get("logic_level_distribution"), 0.95, "baseline logic level")
+    finite(f2.get("buffer_instance_count"), "baseline buffer count")
+    finite(f2.get("inverter_instance_count"), "baseline inverter count")
+    finite(f2.get("mean_fanout"), "baseline mean fanout")
+    finite(f2.get("mean_load_indicator"), "baseline mean load")
+    return [
+        number("proxy_metric_vector_complete", 1),
+        number("proxy_mapped_instance_delta", 0),
+        number("proxy_logic_depth_p95_delta", 0),
+        number("proxy_buffer_inverter_pressure_delta", 0),
+        number("proxy_fanout_load_delta", 0, "index"),
+        number("proxy_worst_reg2reg_delay_indicator", expected["worst_delay_indicator_ps"] / 1000.0, "ns"),
+        number("proxy_negative_slack_mass_indicator", expected["negative_slack_mass_indicator_ps"] / 1000.0, "ns"),
+    ]
+
+
+def design_evaluation_values(evaluation, frontier_request, frontier, workspace):
+    validate_round_evaluation(evaluation)
+    # Loaded only for this route so legacy stage Readers do not depend on the Framework entrypoint.
+    # The caller has already established the Campaign workspace through the held stage-record path.
+    load_frontier(workspace)
+    recomputed = evaluate_frontier(frontier_request)
+    if recomputed != frontier:
+        raise ValueError("cross-round frontier differs from independent recomputation")
+    if frontier.get("schema") != "lfr-frontier-evaluation/1" or frontier.get("status") != "succeeded":
+        raise ValueError("cross-round frontier did not succeed")
+    canonical_payload_sha(frontier, "frontier_payload_sha256")
+    manifest = frontier_request.get("library_manifest")
+    validate_cumulative_manifest(manifest)
+    evaluation_sha = evaluation["evaluation_payload_sha256"]
+    current = [row for row in frontier.get("members", [])
+               if row.get("evaluation_sha256") == evaluation_sha]
+    if len(current) != 1:
+        raise ValueError("current evaluation is not uniquely represented in the cross-round portfolio")
+    current_round = current[0]["round_id"]
+    frontier_member = current_round in frontier.get("frontier_member_ids", [])
+    candidate = frontier.get("commercial_validation_candidate")
+    if not isinstance(candidate, dict) or not isinstance(candidate.get("value"), bool):
+        raise ValueError("frontier commercial-observation decision is malformed")
+    commercial = candidate["value"] and candidate.get("round_id") == current_round and frontier_member
+    relation = evaluation["pairwise_relation"]["relation"]
+    if relation not in LFR_RELATION_CODES:
+        raise ValueError("current pairwise relation is incomplete")
+    local = evaluation.get("local_portfolio", {}).get("augmented")
+    if not isinstance(local, dict):
+        raise ValueError("round evaluation has no validated F1 projection")
+    functions = manifest["functions"]
+    cumulative_cells = {cell for row in functions for cell in row["physicalCellNames"]}
+    values = [
+        number("proxy_boolean_equivalent", 1),
+        number("proxy_interface_compatible", 1),
+        number("proxy_generator_feasible", 1),
+        number("proxy_local_level_delta", finite(local.get("levels_removed"), "F1 levels removed")),
+        number("proxy_removed_node_count", finite(local.get("nodes_removed"), "F1 nodes removed")),
+        number("proxy_cut_width", finite(local.get("cut_width_max"), "F1 cut width")),
+        number("proxy_reconvergence_coverage",
+               finite(local.get("reconvergence_coverage"), "F1 reconvergence") * 100.0, "percent"),
+        *mapping_values(evaluation),
+        number("new_library_cell_count", finite(local.get("new_library_cells"), "new Library Cells")),
+        number("cumulative_library_cell_count", len(cumulative_cells)),
+        number("proxy_metric_vector_complete", 1),
+        number("proxy_pairwise_relation", LFR_RELATION_CODES[relation], "relation_code"),
+        number("proxy_pairwise_relation_valid", 1),
+        number("portfolio_frontier_membership", int(frontier_member)),
+        number("commercial_validation_candidate", int(commercial)),
+    ]
+    return values
+
+
 def values_for(record, workspace, stage):
     values = []
-    if stage.startswith("mine-"):
+    if stage == "evaluation-baseline":
+        evaluation = load(one(record, workspace, "library_richness_evaluation"))
+        mapped_netlist = one(record, workspace, "baseline_mapped_netlist")
+        timing_document = load(one(record, workspace, "baseline_proxy_reg2reg"))
+        return baseline_evaluation_values(evaluation, mapped_netlist, timing_document)
+    elif stage == "function-local-evaluation":
+        portfolio = load(one(record, workspace, "function_local_evaluation"))
+        return function_local_values(portfolio)
+    elif stage == "design-mapping-timing-evaluation":
+        evaluation = load(one(record, workspace, "library_richness_evaluation"))
+        frontier_request = load(one(record, workspace, "portfolio_frontier_request"))
+        frontier = load(one(record, workspace, "portfolio_frontier"))
+        return design_evaluation_values(evaluation, frontier_request, frontier, workspace)
+    elif stage == "freeze-cumulative-library":
+        manifest = load(one(record, workspace, "cumulative_library_manifest"))
+        return cumulative_library_values(manifest)
+    elif stage.startswith("mine-"):
         raw = load(one(record, workspace, "mining_raw"))
         requests = raw.get("generation_requests")
         if not isinstance(requests, list):
@@ -930,6 +1393,74 @@ def read_mining_research(report, out, stage):
     out.write_text(json.dumps({"values": [number("candidate_count", len(view["candidates"]))]}, sort_keys=True) + "\n")
 
 
+def read_residual_ai_research(report, out, document):
+    workspace = report.parents[2]
+    flow = workspace / "flow"
+    if str(flow) not in sys.path:
+        sys.path.insert(0, str(flow))
+    from ai_research_runner import (  # type: ignore
+        load_candidate_pool_registry, load_residual_research_context,
+        validate_residual_research_proposal,
+    )
+    required = {"schema", "status", "round_id", "context_sha256", "evidence",
+                "next_residual_question", "budgets", "research_lenses", "candidate_program",
+                "candidate_proposals", "candidate_execution", "stop_reason", "claims", "output_sha256"}
+    if set(document) != required or document.get("status") != "proposed":
+        raise ValueError("residual AI research document has unexpected fields or status")
+    canonical_payload_sha(document, "output_sha256")
+    claims = document.get("claims")
+    if (not isinstance(claims, dict) or any(value is not False for value in claims.values())):
+        raise ValueError("residual AI research asserts a forbidden claim")
+    root = flow / "library-richness"
+    request = load(root / "research-context.json")
+    context = load_residual_research_context(request, evidence_root=root)
+    for field in ("round_id", "context_sha256", "evidence", "next_residual_question", "budgets"):
+        if document.get(field) != context.get(field):
+            raise ValueError("residual AI research differs from verified context: " + field)
+    normalized = validate_residual_research_proposal({
+        "research_lenses": document["research_lenses"],
+        "candidate_program": document["candidate_program"],
+        "stop_reason": document["stop_reason"],
+    }, context)
+    if any(normalized[key] != document[key] for key in normalized):
+        raise ValueError("residual AI research proposal is not canonical")
+    execution, proposals = document.get("candidate_execution"), document.get("candidate_proposals")
+    if not isinstance(execution, dict) or not isinstance(proposals, list):
+        raise ValueError("residual candidate execution/proposals are absent")
+    input_payload = (json.dumps({"residual": context, "budget": context["budgets"]},
+                                sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+    if (execution.get("program_sha256") != document["candidate_program"]["sha256"]
+            or execution.get("input_sha256") != hashlib.sha256(input_payload).hexdigest()
+            or execution.get("proposal_count") != len(proposals) or execution.get("return_code") != 0):
+        raise ValueError("residual candidate execution identity is inconsistent")
+    registry = load_candidate_pool_registry(workspace)
+    detached, selected_keys = [], set()
+    lens_names = {row["name"] for row in document["research_lenses"]}
+    for row in proposals:
+        if not isinstance(row, dict) or row.get("lens") not in lens_names or not isinstance(row.get("transformation"), dict):
+            raise ValueError("residual candidate proposal is malformed")
+        proposal_key = row["transformation"].get("proposal_key")
+        if registry:
+            if proposal_key not in registry or proposal_key in selected_keys:
+                raise ValueError("residual proposal_key is unknown or repeated")
+            selected_keys.add(proposal_key)
+            generation = row.get("generation_request")
+            raw = (json.dumps(generation, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+            if generation != registry[proposal_key] or row.get("generation_request_sha256") != hashlib.sha256(raw).hexdigest():
+                raise ValueError("residual generation request identity is inconsistent")
+        detached.append({key: row[key] for key in ("lens", "transformation", "rationale")})
+    output_payload = (json.dumps(detached, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+    if execution.get("output_sha256") != hashlib.sha256(output_payload).hexdigest():
+        raise ValueError("residual candidate output identity is inconsistent")
+    retained = context.get("cumulative_library", {}).get("function_count")
+    if isinstance(retained, bool) or not isinstance(retained, int) or retained < 0:
+        raise ValueError("residual context has no cumulative Library function count")
+    values = [number("research_hypothesis_count", len(document["research_lenses"])),
+              number("selected_count", len(proposals)), number("retained_candidate_count", retained),
+              unknown("theoretical_gain_upper_pct", "residual research does not estimate commercial gain", "percent")]
+    out.write_text(json.dumps({"values": values}, sort_keys=True) + "\n")
+
+
 def read_ai_research(report, out):
     workspace = report.parents[2]
     expected = workspace / "flow" / "research" / "research.json"
@@ -937,6 +1468,9 @@ def read_ai_research(report, out):
         raise ValueError("AI research report is outside flow/research")
     load_domain(workspace)
     document = load(report)
+    if document.get("schema") == "lfr-ai-residual-research/1":
+        read_residual_ai_research(report, out, document)
+        return
     if set(document) != {"schema", "target", "algorithm", "sources", "priorCandidateSource",
                          "retainedCandidates", "priorFeedback", "hypotheses", "selected",
                          "theoreticalEstimates", "stopReason", "limitations"}:

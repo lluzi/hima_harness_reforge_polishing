@@ -38,8 +38,9 @@ forecast.
 | LFR-FW-06 | complete | Immutable shards, disk hash verification, delta-only Jobs and state history |
 | LFR-FW-07 | complete | Real held-out mapping rounds, cross-round frontier, DeepSeek residual code and bounded execution |
 | LFR-FW-08 | complete | Independent assessment approved Phase 2; no commercial EDA search loop |
-| LFR-PACK-01 | ready | Update accepted Intent/Spec around the exact Framework implementation |
-| LFR-PACK-02 through LFR-PACK-08 | blocked by Pack dependencies | Pack check, test Campaign and release evidence complete |
+| LFR-PACK-01 through LFR-PACK-06 | complete | Intent/Spec, contract, graph, stage dispatch, Readers/Judges and residual Workshop wrap the assessed Framework |
+| LFR-PACK-07 | in progress | Local contracts and real Yosys/ABC integration pass; Harness-owned test Campaign and Ledger evidence remain |
+| LFR-PACK-08 | blocked by PACK-07 and portfolio gate | One admitted matched commercial observation and Harness-generated release seal remain |
 
 No item is complete merely because code exists. Each item closes only with the evidence named in
 the development document.

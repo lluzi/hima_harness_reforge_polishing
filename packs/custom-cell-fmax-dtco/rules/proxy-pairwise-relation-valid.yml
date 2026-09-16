@@ -1,0 +1,11 @@
+id: proxy-pairwise-relation-valid
+version: "1"
+title: Current reference and augmented indicator relation is complete and independently recomputed
+requires:
+  - type: proxy_pairwise_relation_valid
+subject:
+  type: proxy_pairwise_relation_valid
+predicate:
+  op: eq
+  threshold: 1
+  unit: count

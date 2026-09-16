@@ -419,7 +419,8 @@ Phase 2 继续使用仓库 L0～L5：
 
 ## 10. 当前开发前沿
 
-当前前沿是 **LFR-PACK-01**。FW-08 已批准当前已冻结 Framework 进入 HimaPack integration；下一步
-只更新既有 `INTENT.md` 与 `SPEC.md` 来准确表达 F0～F4、pairwise/frontier、累计 Library 和 AI residual
-research，不重新实现 Framework。商业 DC/APR 仍不是当前开发手段，直到 Pack 测试链到达声明的
-matched observation 门。
+当前前沿是 **LFR-PACK-07**。PACK-01 至 PACK-06 已在现有 HimaPack 文件中接入冻结的
+Framework。本地合同和一次真实 Yosys/ABC 集成 pilot 已通过；pilot 因 optimistic F3 regression
+诚实停止，没有调用商业 EDA。下一项必须取得的事实，是一条由 Harness 持有、带 Ledger、
+CodeRecord 和 refusal 证据的 test Campaign。只有 portfolio candidate 到达 matched-observation
+gate，并且 Harness 能从已测试目录生成 release seal，才进入 PACK-08。

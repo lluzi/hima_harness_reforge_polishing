@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -24,21 +25,40 @@ import uuid
 
 HERE = Path(__file__).resolve().parent
 DOMAIN = HERE / "domain"
+sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(DOMAIN))
 
 from cell_need_miner.generator_contract import validate_generation_request  # noqa: E402
 from _cell_adoption_projection import project_attributed_texts  # noqa: E402
 from _generation_projection import (  # noqa: E402
+    advance_function_state,
+    append_cumulative_shard,
+    empty_cumulative_manifest,
+    expected_delta_generation_jobs,
     expected_generation_jobs,
+    function_identity,
     retained_candidate_ids,
     spice_netlist_is_structural,
+    validate_cumulative_manifest,
 )
+from cell_need_miner.liberty import parse_skeleton  # noqa: E402
+from cell_need_miner.liberty_timing import (  # noqa: E402
+    analyze_mapped_netlist_reg2reg,
+    parse_liberty_timing,
+)
+from proxy_mapping import map_reference_and_augmented  # noqa: E402
+from mine_patterns import (  # noqa: E402
+    portfolio_candidate_from_generation_request,
+    select_candidate_portfolio,
+)
+import library_richness as lfr  # noqa: E402
 from mining_strategy_contract import STRATEGIES  # noqa: E402
 
 
 SCHEMA = "custom-cell-fmax-stage/1"
 ROUTES = tuple(STRATEGIES)
 STAGES = (
+    "evaluate-library-richness", "freeze-cumulative-library",
     "mine", "merge", "generate", "layout", "characterize", "compile",
     "foundry-synth", "custom-synth", "adoption", "pnr-foundry",
     "pnr-generated", "verify", "compare",
@@ -338,6 +358,807 @@ def artifact(record, workspace, role):
     return checked_ref(hits[0], workspace, role)
 
 
+def canonical_sha(value):
+    return sha_bytes(json.dumps(value, sort_keys=True, separators=(",", ":"),
+                                allow_nan=False).encode())
+
+
+def canonical_json_sha(value):
+    """SHA used by the residual runner's newline-terminated canonical JSON."""
+    return sha_bytes((json.dumps(value, sort_keys=True, separators=(",", ":"),
+                                  ensure_ascii=False, allow_nan=False) + "\n").encode())
+
+
+def lfr_new_cell_budget(ctx):
+    value = ctx.inputs_doc.get("MAX_NEW_CELLS")
+    if value is None and ctx.evidence_class == "synthetic-fixture":
+        value = ctx.inputs_doc.get("MAX_CELLS")
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 50:
+        raise Rejected("MAX_NEW_CELLS must be within 1..50")
+    return value
+
+
+def lfr_tool_identity(ctx):
+    return {
+        "container_digest": str(ctx.binding("LFR_PROXY_CONTAINER_DIGEST")),
+        "timeout_seconds": int(ctx.binding("LFR_PROXY_TIMEOUT_SEC")),
+        "yosys": {
+            "path": str(ctx.binding("LFR_YOSYS_BIN")),
+            "sha256": str(ctx.binding("LFR_YOSYS_SHA256")),
+            "commit": str(ctx.binding("LFR_YOSYS_COMMIT")),
+            "build_flags": list(ctx.binding("LFR_YOSYS_BUILD_FLAGS")),
+        },
+        "abc": {
+            "path": str(ctx.binding("LFR_ABC_BIN")),
+            "sha256": str(ctx.binding("LFR_ABC_SHA256")),
+            "commit": str(ctx.binding("LFR_ABC_COMMIT")),
+            "build_flags": list(ctx.binding("LFR_ABC_BUILD_FLAGS")),
+        },
+    }
+
+
+def lfr_rtl_files(ctx):
+    design_root = Path(str(ctx.binding("designRoot"))).resolve()
+    files = sorted(Path(value).resolve() for value in glob.glob(str(ctx.binding("rtlGlob"))))
+    if (not files or any(not path.is_file() or path.is_symlink()
+                         or not path.is_relative_to(design_root) for path in files)):
+        raise Rejected("validated RTL binding no longer resolves inside designRoot")
+    ctx.inputs.extend(file_ref(path, ctx.workspace, "lfr_rtl:" + path.name, "site-input")
+                      for path in files)
+    return files
+
+
+def _proxy_axes(model, required_cells):
+    slews, loads, input_caps = [], [], []
+    for name in sorted(required_cells):
+        cell = model.cell(name)
+        input_caps.extend(value for value in cell.pin_capacitance.values() if value > 0)
+        for arc in cell.arcs:
+            for table in arc.tables.values():
+                dimensions = ((table.variable_1, table.index_1),
+                              (table.variable_2, table.index_2))
+                for variable, values in dimensions:
+                    if variable in ("input_net_transition", "related_pin_transition"):
+                        slews.extend(values)
+                    elif variable in ("total_output_net_capacitance", "output_net_capacitance"):
+                        loads.extend(values)
+    if not slews or not loads or not input_caps:
+        raise Rejected("foundry Liberty cannot derive a bounded proxy slew/load profile")
+    slews, loads, input_caps = sorted(slews), sorted(loads), sorted(input_caps)
+    median = lambda values: values[len(values) // 2]
+    return {
+        "driving_cell": sorted(
+            name for name in required_cells
+            if (not model.cell(name).sequential and len(model.cell(name).pin_capacitance) == 1
+                and any(arc.timing_sense == "positive_unate" for arc in model.cell(name).arcs))
+        )[0],
+        "output_load": median(input_caps),
+        "scenarios": {
+            "optimistic": {"initial_slew_ps": min(slews) * lfr._time_unit_ps(model.time_unit),
+                           "wire_capacitance_in_library_units": 0.0},
+            "nominal": {"initial_slew_ps": median(slews) * lfr._time_unit_ps(model.time_unit),
+                        "wire_capacitance_in_library_units": median(loads)},
+            "conservative": {"initial_slew_ps": max(slews) * lfr._time_unit_ps(model.time_unit),
+                             "wire_capacitance_in_library_units": max(loads)},
+        },
+    }
+
+
+def lfr_mapping_request(ctx, output_dir, reference_liberty=None, augmented_liberty=None):
+    rtl = lfr_rtl_files(ctx)
+    foundry = ctx.file_binding("FOUNDRY_LIB")
+    cells = parse_skeleton(foundry)
+    buffers = sorted(name for name, cell in cells.items()
+                     if not cell.is_seq and len(cell.inputs) == 1 and len(cell.outputs) == 1
+                     and next(iter(cell.outputs.values())) == ("var", cell.inputs[0]))
+    if not buffers:
+        raise Rejected("foundry Liberty has no non-inverting buffer for ABC constraints")
+    strict = parse_liberty_timing(foundry, {buffers[0]})
+    profile = _proxy_axes(strict, {buffers[0]})
+    constraints = ctx.file_binding("CONSTRAINTS_FILE")
+    reference = {"mapping": str(reference_liberty or foundry), "support": [], "drive_variants": {}}
+    augmented = reference if augmented_liberty is None else {
+        "mapping": str(augmented_liberty), "support": [], "drive_variants": {},
+    }
+    request = {
+        "schema": "lfr-proxy-mapping/1", "top": str(ctx.binding("DESIGN_TOP")),
+        "rtl_files": [str(path) for path in rtl], "output_dir": str(output_dir),
+        "tools": lfr_tool_identity(ctx),
+        "libraries": {"reference": reference, "augmented": augmented},
+        "constraints": {
+            "delay_target_ps": float(ctx.binding("CLOCK_NS")) * 1000.0,
+            "output_load": profile["output_load"], "driving_cell": buffers[0],
+            "sdc_files": [str(constraints)],
+        },
+    }
+    return request, profile
+
+
+def _mapping_artifact(mapping, arm, role):
+    hits = [row for row in mapping["arms"][arm]["artifacts"] if row.get("role") == role]
+    if len(hits) != 1:
+        raise Rejected("LFR mapping arm %s has no unique %s" % (arm, role))
+    path = Path(hits[0]["path"]).resolve()
+    if not path.is_file() or sha_file(path) != hits[0]["sha256"]:
+        raise Rejected("LFR mapping artifact identity changed: %s" % path)
+    return path
+
+
+def _record_mapping(ctx, mapping):
+    for arm, result in sorted(mapping.get("arms", {}).items()):
+        ctx.executions.append({
+            "argv": result.get("command"), "cwd": str((ctx.run_dir / "mapping" / arm).resolve()),
+            "exitCode": result.get("return_code"), "elapsedSeconds": None,
+            "log": file_ref(_mapping_artifact(mapping, arm, "yosys_log"), ctx.workspace,
+                            "lfr_%s_yosys_log" % arm, "tool-log"),
+        })
+
+
+def _baseline_metrics(mapping, profile, ctx):
+    netlist = _mapping_artifact(mapping, "reference", "mapped_netlist")
+    foundry = ctx.file_binding("FOUNDRY_LIB")
+    census = mapping["arms"]["reference"]["adoption"]["cell_census"]
+    model = parse_liberty_timing(foundry, set(census))
+    text = netlist.read_text(errors="replace")
+    unit_ps = lfr._time_unit_ps(model.time_unit)
+    timing = {}
+    scenarios = {}
+    for name, assumptions in profile["scenarios"].items():
+        raw = analyze_mapped_netlist_reg2reg(
+            model, text, str(ctx.binding("DESIGN_TOP")),
+            clock_period=float(ctx.binding("CLOCK_NS")) * 1000.0 / unit_ps,
+            uncertainty=0.0,
+            initial_slew=float(assumptions["initial_slew_ps"]) / unit_ps,
+            wire_capacitance=float(assumptions["wire_capacitance_in_library_units"]),
+        )
+        timing[name] = raw
+        structural = lfr._structural_metrics(
+            model, text, str(ctx.binding("DESIGN_TOP")),
+            float(assumptions["wire_capacitance_in_library_units"]),
+        )
+        f3 = {
+            "indicator_only": True, "path_count": raw["path_count"],
+            "worst_delay_indicator_ps": raw["worst_delay"] * unit_ps,
+            "worst_slack_indicator_ps": raw["worst_slack"] * unit_ps,
+            "negative_slack_mass_indicator_ps": raw["negative_slack_mass"] * unit_ps,
+            "path_family_coverage": raw["endpoint_family_count"],
+            "path_families": sorted(raw["negative_slack_by_endpoint_family"]),
+            "worst_path": lfr._worst_path(raw),
+        }
+        metrics = {"F0": {"candidate_cells_declared": 0, "candidate_cells_adopted": 0},
+                   "F1": {}, "F2": structural, "F3": f3}
+        scenarios[name] = {
+            "status": "succeeded", "assumptions": assumptions,
+            "reference": metrics, "augmented": json.loads(json.dumps(metrics)),
+            "changes": {"F2.mapped_instance_count": 0.0,
+                        "F3.worst_delay_indicator_ps": 0.0,
+                        "F3.negative_slack_mass_indicator_ps": 0.0},
+            "pairwise_relation": {"relation": "equal", "comparisons": []},
+            "path_migration": lfr._migration(metrics, metrics),
+        }
+    result = {
+        "schema": "lfr-baseline-evaluation/1", "status": "succeeded",
+        "evidence_class": "license-free-evaluation-agent",
+        "claim_limits": {"commercial_qor_predicted": False, "fmax_predicted": False,
+                         "commercial_eda_executed": False},
+        "mapping": mapping, "scenarios": scenarios,
+        "pairwise_relation": {"relation": "equal", "comparisons": []},
+        "metric_completeness": {"complete": True},
+    }
+    result["evaluation_payload_sha256"] = canonical_sha(result)
+    return result, timing, netlist
+
+
+def stage_evaluation_baseline(ctx):
+    request, profile = lfr_mapping_request(ctx, ctx.run_dir / "mapping")
+    request_path = ctx.run_dir / "baseline-request.json"
+    atomic_json(request_path, request)
+    ctx.inputs.append(file_ref(request_path, ctx.workspace, "lfr_baseline_request",
+                               "pack-derived-proxy-request"))
+    mapping = map_reference_and_augmented(request)
+    if mapping.get("status") != "succeeded":
+        error = mapping.get("error") or {}
+        if error.get("code") in {"mapping-timeout", "mapping-tool-failed", "mapping-artifact-missing"}:
+            raise ToolFailure("license-free baseline mapping failed: %s" % error.get("message"))
+        raise Rejected("license-free baseline mapping rejected: %s" % error.get("message"))
+    _record_mapping(ctx, mapping)
+    evaluation, timing, netlist = _baseline_metrics(mapping, profile, ctx)
+    evaluation_path = ctx.run_dir / "evaluation.json"
+    atomic_json(evaluation_path, evaluation)
+    nominal = timing["nominal"]
+    timing_document = {
+        "schema": "hima.lfr-proxy-reg2reg/1", "status": "succeeded",
+        "design": str(ctx.binding("DESIGN_TOP")), "path_group": "reg2reg",
+        "source": "license-free-mapped-netlist-proxy-sta",
+        "time_unit_ns": lfr._time_unit_ps(nominal["time_unit"]) / 1000.0,
+        "timing": nominal,
+        "claim_limits": {"commercial_sta": False, "commercial_qor_predicted": False},
+    }
+    timing_path = ctx.run_dir / "proxy-reg2reg.json"
+    atomic_json(timing_path, timing_document)
+    ctx.add_artifact(evaluation_path, "library_richness_evaluation",
+                     "license-free-layered-evaluation")
+    ctx.add_artifact(netlist, "baseline_mapped_netlist", "license-free-mapping-output")
+    ctx.add_artifact(timing_path, "baseline_proxy_reg2reg", "license-free-proxy-sta")
+    library_root = ctx.flow / "library"
+    manifest_path = Path(str(ctx.binding("LFR_CUMULATIVE_LIBRARY_MANIFEST"))).resolve()
+    if manifest_path != (library_root / "cumulative-manifest.json").resolve():
+        raise Rejected("cumulative Library manifest binding differs from the Pack-owned path")
+    if manifest_path.exists():
+        manifest = read_json(manifest_path)
+        validate_cumulative_manifest(manifest)
+    else:
+        foundry = ctx.file_binding("FOUNDRY_LIB")
+        manifest = empty_cumulative_manifest({
+            "source": str(foundry), "bytes": foundry.stat().st_size, "sha256": sha_file(foundry),
+        })
+        atomic_json(manifest_path, manifest)
+    baseline_copy = library_root / "baseline-reference.json"
+    if not baseline_copy.exists():
+        atomic_json(baseline_copy, manifest["baselineReference"])
+    ctx.inputs.append(file_ref(manifest_path, ctx.workspace, "cumulative_library_manifest",
+                               "campaign-library-state"))
+    ctx.facts.update({
+        "evaluationPhase": "baseline", "commercialEdaExecuted": False,
+        "mappedNetlistSha256": sha_file(netlist), "proxyTimingSha256": sha_file(timing_path),
+        "cumulativeLibraryCellCount": len(manifest["functions"]),
+    })
+
+
+def _all_mined_requests(ctx):
+    rows = []
+    for route in ROUTES:
+        record = prior(ctx, "mine-" + route)
+        raw = artifact(record, ctx.workspace, "mining_raw")
+        document = read_json(raw)
+        if (document.get("report_schema") != "xspace_cell-pattern-search/v2"
+                or document.get("strategy_id") != route
+                or not isinstance(document.get("generation_requests"), list)):
+            raise Rejected("mining candidate pool has invalid route %s" % route)
+        ctx.inputs.append(file_ref(raw, ctx.workspace, "candidate_pool:" + route,
+                                   "algorithm-output"))
+        rows.extend(json.loads(json.dumps(item)) for item in document["generation_requests"])
+    deduplicated = {}
+    for request in rows:
+        errors = validate_generation_request(request)
+        if errors:
+            raise Rejected("candidate pool contains an invalid request: " + "; ".join(errors))
+        try:
+            key = function_identity(request)["key"]
+        except ValueError as exc:
+            raise Rejected(str(exc)) from exc
+        current = deduplicated.get(key)
+        if current is None or candidate_rank(request) < candidate_rank(current):
+            deduplicated[key] = request
+    result, used = [], set()
+    for key in sorted(deduplicated):
+        request = deduplicated[key]
+        request["candidate_id"] = collision_safe_candidate_id(
+            request["candidate_id"], key, used)
+        used.add(request["candidate_id"])
+        result.append(request)
+    return result
+
+
+def _baseline_family_slacks(timing_document):
+    unit_ps = float(timing_document["time_unit_ns"]) * 1000.0
+    rows = {}
+    for path in timing_document["timing"]["paths"]:
+        family = str(path["endpoint_family"])
+        slack = float(path["slack"]) * unit_ps
+        rows[family] = min(rows.get(family, math.inf), slack)
+    if not rows:
+        raise Rejected("baseline proxy timing has no endpoint-family slack")
+    return dict(sorted(rows.items()))
+
+
+def stage_function_local(ctx):
+    baseline_record = prior(ctx, "evaluation-baseline")
+    baseline_eval = artifact(baseline_record, ctx.workspace, "library_richness_evaluation")
+    baseline_timing = artifact(baseline_record, ctx.workspace, "baseline_proxy_reg2reg")
+    timing_document = read_json(baseline_timing)
+    manifest_path = Path(str(ctx.binding("LFR_CUMULATIVE_LIBRARY_MANIFEST"))).resolve()
+    manifest = read_json(manifest_path)
+    validate_cumulative_manifest(manifest)
+    attempted_function_keys = {row["functionKey"] for row in manifest["functions"]}
+    candidates = []
+    by_id = {}
+    for request in _all_mined_requests(ctx):
+        if function_identity(request)["key"] in attempted_function_keys:
+            continue
+        try:
+            candidate = portfolio_candidate_from_generation_request(
+                request, stage="pre_mapping")
+        except ValueError as exc:
+            raise Rejected("cannot project function/local candidate: %s" % exc) from exc
+        candidates.append(candidate)
+        by_id[candidate["candidate_id"]] = request
+    baseline = _baseline_family_slacks(timing_document)
+    portfolio = select_candidate_portfolio(
+        candidates, lfr_new_cell_budget(ctx), stage="pre_mapping",
+        design_proxy_evidence={
+            "evidence_id": sha_file(baseline_timing),
+            "baseline_slack_by_endpoint_family_ps": baseline,
+            "paired_delta_by_endpoint_family_ps": {key: 0.0 for key in baseline},
+        },
+    )
+    selected_ids = [row["candidate_id"] for row in portfolio["selected"]]
+    if not selected_ids:
+        raise Rejected("function/local evaluation found no generator-ready candidate")
+    permitted_ranking_reasons = {"portfolio_budget_reached", "not_selected_from_pareto_front"}
+    eligible_ids = [
+        row["candidate_id"] for row in portfolio["candidate_evaluations"]
+        if set(row.get("rejection_reasons") or ()) <= permitted_ranking_reasons
+    ]
+    exposed_ids = list(dict.fromkeys([*selected_ids, *eligible_ids]))[:128]
+    pool = {
+        "report_schema": "xspace_cell-pattern-search/v2",
+        "strategy_id": "library_richness_function_local_portfolio",
+        "source_graph": "license-free-baseline-mapped",
+        "search_bound": {"max_candidates": 128,
+                         "proposal_budget": lfr_new_cell_budget(ctx),
+                         "total_verified_candidates": len(eligible_ids),
+                         "exposed_candidates": len(exposed_ids),
+                         "truncated_candidates": max(0, len(eligible_ids) - len(exposed_ids))},
+        "generation_requests": [by_id[value] for value in exposed_ids],
+        "limitations": [
+            "F0/F1 portfolio evidence only; mapping adoption and commercial QoR remain unobserved.",
+            "Candidate identities bind measured source requests and are not assigned by the model.",
+        ],
+    }
+    portfolio_path = Path(str(ctx.binding("LFR_LOCAL_PORTFOLIO"))).resolve()
+    pool_path = Path(str(ctx.binding("LFR_CANDIDATE_POOL"))).resolve()
+    expected_root = (ctx.flow / "library-richness").resolve()
+    if portfolio_path.parent != expected_root or pool_path.parent != expected_root:
+        raise Rejected("LFR portfolio/candidate-pool binding differs from the Pack-owned path")
+    atomic_json(portfolio_path, portfolio)
+    atomic_json(pool_path, pool)
+    cold_frontier = {
+        "schema": "lfr-frontier-evaluation/1", "status": "succeeded",
+        "claim_limits": {"commercial_qor_predicted": False, "fmax_predicted": False,
+                         "commercial_eda_executed": False},
+        "objectives": [], "members": [], "frontier_member_ids": [],
+        "library_cost": {"new_library_cells": 0, "generation_units": 0},
+        "next_residual_question": {
+            "id": "cold-start-function-richness",
+            "prompt": "Select evidence-bound functions that can improve F0/F1 structure before paired mapping.",
+        },
+        "commercial_validation_candidate": {"value": False,
+            "meaning": "no commercial observation before paired mapping"},
+    }
+    frontier_path = expected_root / "frontier.json"
+    rounds_root = expected_root / "rounds"
+    history_paths = sorted(rounds_root.glob("*.json")) if rounds_root.is_dir() else []
+    if history_paths and frontier_path.is_file():
+        frontier = read_json(frontier_path)
+        if (frontier.get("schema") != "lfr-frontier-evaluation/1"
+                or frontier.get("status") != "succeeded"
+                or not isinstance(frontier.get("next_residual_question"), dict)):
+            raise Rejected("prior frontier has no usable residual question")
+    else:
+        frontier = cold_frontier
+        atomic_json(frontier_path, frontier)
+    evaluation_copy = expected_root / "evaluation.json"
+    manifest_copy = expected_root / "manifest.json"
+    if not history_paths or not evaluation_copy.is_file():
+        evaluation_copy.write_bytes(baseline_eval.read_bytes())
+    manifest_copy.write_bytes(manifest_path.read_bytes())
+    ref = lambda path: {"path": path.name, "sha256": sha_file(path)}
+    history_refs = [{"path": str(path.relative_to(expected_root)), "sha256": sha_file(path)}
+                    for path in history_paths]
+    context_inputs = {
+        "schema": "lfr-ai-residual-request/1",
+        "round_id": "round-%04d" % (len(history_paths) + 1),
+        "evaluation": ref(evaluation_copy),
+        "frontier": ref(frontier_path),
+        "manifest": ref(manifest_copy),
+        "candidate_pool": ref(pool_path),
+        "history": history_refs,
+        "next_residual_question": frontier["next_residual_question"]["prompt"],
+        "budgets": {"max_research_lenses": 12,
+                    "max_candidate_proposals": lfr_new_cell_budget(ctx),
+                    "max_candidate_code_bytes": 65536},
+    }
+    context_inputs_path = expected_root / "research-context.json"
+    atomic_json(context_inputs_path, context_inputs)
+    ctx.inputs.extend([
+        file_ref(baseline_eval, ctx.workspace, "baseline_evaluation", "prior-stage-evidence"),
+        file_ref(baseline_timing, ctx.workspace, "baseline_proxy_reg2reg", "prior-stage-evidence"),
+        file_ref(manifest_path, ctx.workspace, "cumulative_library_manifest", "campaign-library-state"),
+    ])
+    ctx.add_artifact(portfolio_path, "function_local_evaluation", "license-free-F0-F1-evaluation")
+    ctx.add_artifact(pool_path, "candidate_pool", "source-bound-candidate-pool")
+    ctx.add_artifact(frontier_path, "portfolio_frontier", "license-free-cold-start-frontier")
+    ctx.add_artifact(context_inputs_path, "research_context_inputs", "hash-bound-context-inputs")
+    ctx.facts.update({"evaluationPhase": "function-local", "candidatePoolCount": len(exposed_ids),
+                      "candidatePoolTotal": len(eligible_ids),
+                      "candidatePoolTruncated": max(0, len(eligible_ids) - len(exposed_ids)),
+                      "commercialEdaExecuted": False, "researchContextReady": True})
+
+
+def _liberty_cell_blocks(text):
+    blocks = []
+    start_re = re.compile(r"(?m)^\s*cell\s*\(")
+    cursor = 0
+    while True:
+        match = start_re.search(text, cursor)
+        if match is None:
+            break
+        brace = text.find("{", match.end())
+        if brace < 0:
+            raise Rejected("generated Liberty has an unterminated Cell declaration")
+        depth, index, quote, escaped = 0, brace, None, False
+        while index < len(text):
+            character = text[index]
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == quote:
+                    quote = None
+            elif character in ('"', "'"):
+                quote = character
+            elif character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+                if depth == 0:
+                    blocks.append(text[match.start():index + 1])
+                    cursor = index + 1
+                    break
+            index += 1
+        else:
+            raise Rejected("generated Liberty Cell block is not balanced")
+    if not blocks:
+        raise Rejected("generated Liberty contains no Cell blocks")
+    return blocks
+
+
+def _mapping_library(ctx, name, generated_libraries):
+    foundry = ctx.file_binding("FOUNDRY_LIB")
+    text = foundry.read_text(errors="replace")
+    closing = text.rfind("}")
+    if closing < 0:
+        raise Rejected("foundry Liberty has no closing library group")
+    blocks = []
+    for library in generated_libraries:
+        ctx.inputs.append(file_ref(library, ctx.workspace, "mapping_library_delta:" + library.name,
+                                   "learned-model-prediction"))
+        blocks.extend(_liberty_cell_blocks(library.read_text(errors="replace")))
+    target = ctx.run_dir / name
+    target.write_text(text[:closing] + "\n/* Hima cumulative custom Cell delta. */\n"
+                      + "\n".join(blocks) + "\n" + text[closing:])
+    parse_skeleton(target)
+    return target
+
+
+def _custom_library(ctx, name, generated_libraries):
+    if not generated_libraries:
+        raise Rejected("cumulative custom Library has no shard Liberty")
+    template = generated_libraries[-1].read_text(errors="replace")
+    first_cell = re.search(r"(?m)^\s*cell\s*\(", template)
+    closing = template.rfind("}")
+    if first_cell is None or closing < first_cell.start():
+        raise Rejected("custom Liberty template has no complete library group")
+    blocks = []
+    for library in generated_libraries:
+        blocks.extend(_liberty_cell_blocks(library.read_text(errors="replace")))
+    target = ctx.run_dir / name
+    target.write_text(template[:first_cell.start()] + "\n" + "\n".join(blocks)
+                      + "\n" + template[closing:])
+    parse_skeleton(target)
+    return target
+
+
+def _retained_shard_libraries(ctx, manifest):
+    root = ctx.flow / "library" / "shards"
+    libraries = []
+    active_keys = {row["functionKey"] for row in manifest["functions"]
+                   if row["state"] != "proxy-rejected"}
+    for shard in manifest["shards"]:
+        if not active_keys.intersection(shard["functionKeys"]):
+            continue
+        directory = root / shard["id"]
+        shard_doc = read_json(directory / "manifest.json")
+        for ref in shard_doc.get("artifacts", []):
+            if str(ref.get("path", "")).endswith(".lib"):
+                at = directory / ref["path"]
+                if sha_file(at) != ref.get("sha256"):
+                    raise Rejected("retained cumulative Liberty hash changed")
+                libraries.append(at)
+    return libraries
+
+
+def _filtered_portfolio(portfolio, admitted_ids):
+    evaluations = [row["candidate"] for row in portfolio.get("candidate_evaluations", [])
+                   if row.get("candidate_id") in admitted_ids]
+    if not evaluations:
+        raise Rejected("no function/local portfolio candidate survived materialization")
+    filtered = select_candidate_portfolio(
+        evaluations, len(evaluations), stage="pre_mapping",
+        design_proxy_evidence=portfolio["design_proxy_evidence"],
+    )
+    selected = {row["candidate_id"] for row in filtered["selected"]}
+    if selected != set(admitted_ids):
+        raise Rejected("materialized delta and function/local portfolio selection differ")
+    return filtered
+
+
+def _frontier_rounds(ctx):
+    rounds = []
+    root = ctx.flow / "library-richness" / "rounds"
+    if not root.is_dir():
+        return rounds
+    for path in sorted(root.glob("*.json")):
+        document = read_json(path)
+        if document.get("schema") != "hima.library-richness.round-history/1":
+            raise Rejected("LFR round history schema is unsupported")
+        rounds.append(document["frontier_round"])
+        ctx.inputs.append(file_ref(path, ctx.workspace, "lfr_round_history:" + path.stem,
+                                   "prior-license-free-evaluation"))
+    return rounds
+
+
+def stage_design_mapping_timing(ctx):
+    characterize = prior(ctx, "characterize")
+    generated = artifact(characterize, ctx.workspace, "generated_liberty")
+    patterns = artifact(characterize, ctx.workspace, "characterized_patterns")
+    current_patterns = read_json(patterns)
+    all_requests = current_patterns.get("generation_requests")
+    if not isinstance(all_requests, list) or not all_requests:
+        raise Rejected("characterized patterns contain no current Library delta")
+    manifest_path = Path(str(ctx.binding("LFR_CUMULATIVE_LIBRARY_MANIFEST"))).resolve()
+    manifest = read_json(manifest_path)
+    validate_cumulative_manifest(manifest)
+    portfolio = read_json(Path(str(ctx.binding("LFR_LOCAL_PORTFOLIO"))))
+    admitted_ids = {request["candidate_id"] for request in all_requests}
+    portfolio = _filtered_portfolio(portfolio, admitted_ids)
+    selected_ids = {row["candidate_id"] for row in portfolio["selected"]}
+    requests = [request for request in all_requests if request["candidate_id"] in selected_ids]
+    if len(manifest["functions"]) + len(requests) > int(ctx.binding("MAX_CELLS")):
+        raise Rejected("current delta would exceed the MAX_CELLS cumulative Library cap")
+    current_patterns = json.loads(json.dumps(current_patterns))
+    current_patterns["generation_requests"] = requests
+    candidate_cells = sorted({job["cell_name"] for job in expected_generation_jobs(current_patterns)})
+    admitted_ids = selected_ids
+    previous_libraries = _retained_shard_libraries(ctx, manifest)
+    reference = (_mapping_library(ctx, "reference-cumulative.lib", previous_libraries)
+                 if previous_libraries else ctx.file_binding("FOUNDRY_LIB"))
+    augmented = _mapping_library(ctx, "augmented-cumulative.lib", [*previous_libraries, generated])
+    portfolio_path = ctx.run_dir / "design-local-portfolio.json"
+    atomic_json(portfolio_path, portfolio)
+    mapping, profile = lfr_mapping_request(
+        ctx, ctx.run_dir / "mapping", reference_liberty=reference,
+        augmented_liberty=augmented)
+    input_hashes = {str(path): sha_file(path) for path in lfr.required_mapping_input_paths(mapping)}
+    selected_identity = {row["candidate_id"]: row["identity"] for row in portfolio["selected"]}
+    baseline_record = prior(ctx, "evaluation-baseline")
+    baseline_mapping = read_json(artifact(
+        baseline_record, ctx.workspace, "library_richness_evaluation"))["mapping"]
+    baseline_instances = sum(baseline_mapping["arms"]["reference"]["adoption"]["cell_census"].values())
+    request = {
+        "schema": "lfr-round/3", "mapping": mapping, "input_hashes": input_hashes,
+        "candidate_cells": candidate_cells,
+        "candidate_functions": [{
+            "candidate_id": candidate_id,
+            "candidate_cells": sorted(job["cell_name"] for job in expected_generation_jobs({
+                "generation_requests": [next(row for row in requests if row["candidate_id"] == candidate_id)]
+            })),
+            "identity": selected_identity[candidate_id], "selected": True,
+        } for candidate_id in sorted(admitted_ids)],
+        "local_portfolio": {"path": str(portfolio_path), "sha256": sha_file(portfolio_path)},
+        "timing": {"clock_period_ps": float(ctx.binding("CLOCK_NS")) * 1000.0,
+                   "uncertainty_ps": 0.0},
+        "scenarios": profile["scenarios"],
+        "metric_policy": {
+            "objectives": [
+                {"metric": "F0.candidate_adoption_fraction", "direction": "maximize"},
+                {"metric": "F1.levels_removed", "direction": "maximize"},
+                {"metric": "F2.mapped_instance_count", "direction": "minimize"},
+                {"metric": "F2.buffer_inverter_pressure_ratio", "direction": "minimize"},
+                {"metric": "F3.worst_delay_indicator_ps", "direction": "minimize"},
+                {"metric": "F3.negative_slack_mass_indicator_ps", "direction": "minimize"},
+            ],
+            "required_metrics": [
+                "F0.candidate_adoption_fraction", "F0.known_cell_fraction",
+                "F2.mapped_instance_count", "F2.max_logic_level", "F2.mean_fanout",
+                "F2.mean_load_indicator", "F2.buffer_inverter_pressure_ratio",
+                "F2.mean_path_stage_count", "F3.worst_delay_indicator_ps",
+                "F3.negative_slack_mass_indicator_ps", "F3.path_family_coverage",
+            ],
+        },
+        "budgets": {"max_candidate_cells": lfr_new_cell_budget(ctx),
+                    "max_augmented_mapped_instances": max(1, baseline_instances * 2)},
+    }
+    request_path = ctx.run_dir / "round-request.json"
+    atomic_json(request_path, request)
+    evaluation = lfr.evaluate_round(request)
+    if evaluation.get("status") != "succeeded":
+        raise ToolFailure("license-free round evaluation failed at %s: %s" % (
+            evaluation.get("stage"), (evaluation.get("error") or {}).get("message")))
+    _record_mapping(ctx, evaluation["mapping"])
+    evaluation_path = ctx.run_dir / "evaluation.json"
+    atomic_json(evaluation_path, evaluation)
+    projected_root = ctx.run_dir / "projected-library"
+    if manifest["shards"]:
+        shutil.copytree(ctx.flow / "library" / "shards", projected_root / "shards")
+    layout = prior(ctx, "layout")
+    shard_artifacts = [generated, patterns]
+    shard_artifacts.extend(checked_ref(ref, ctx.workspace) for ref in layout.get("artifacts", [])
+                           if str(ref.get("role", "")).startswith("abstract_lef:"))
+    projected = append_cumulative_shard(
+        projected_root, manifest, "%04d" % (len(manifest["shards"]) + 1), requests,
+        artifacts=shard_artifacts)
+    function_keys = [function_identity(request)["key"] for request in requests]
+    for key in function_keys:
+        projected = advance_function_state(projected, key, "proxy-mapped")
+    rounds = _frontier_rounds(ctx)
+    round_id = "%04d" % (len(rounds) + 1)
+    current_round = {
+        "round_id": round_id,
+        "research_question": {"id": "round-" + round_id + "-structure",
+                              "prompt": "Does this cumulative Library delta advance F0-F3 indicators?"},
+        "function_keys": function_keys,
+        "library_cost": {"new_library_cells": len(candidate_cells),
+                         "generation_units": len(candidate_cells)},
+        "evaluation": evaluation,
+    }
+    frontier_request = {
+        "schema": "lfr-frontier-request/1", "library_manifest": projected,
+        "library_manifest_sha256": canonical_json_sha(projected),
+        "budgets": {"max_rounds": 4, "max_new_library_cells": int(ctx.binding("MAX_CELLS")),
+                    "max_generation_units": float(ctx.binding("MAX_CELLS")), "plateau_rounds": 2},
+        "rounds": [*rounds, current_round],
+        "next_residual_question": {
+            "id": "round-" + round_id + "-residual",
+            "prompt": "Find a new source-bound function that preserves F0/F1/F2 gains while resolving the current F3 or adoption blockers.",
+        },
+    }
+    frontier = lfr.evaluate_frontier(frontier_request)
+    if frontier.get("status") != "succeeded":
+        raise Rejected("portfolio frontier rejected: %s" % (frontier.get("error") or {}).get("message"))
+    frontier_request_path = ctx.run_dir / "frontier-request.json"
+    frontier_path = ctx.run_dir / "frontier.json"
+    atomic_json(frontier_request_path, frontier_request)
+    atomic_json(frontier_path, frontier)
+    persistent_root = ctx.flow / "library-richness"
+    persistent_root.mkdir(parents=True, exist_ok=True)
+    (persistent_root / "evaluation.json").write_bytes(evaluation_path.read_bytes())
+    (persistent_root / "frontier.json").write_bytes(frontier_path.read_bytes())
+    rounds_root = persistent_root / "rounds"
+    rounds_root.mkdir(parents=True, exist_ok=True)
+    history_path = rounds_root / (round_id + ".json")
+    if history_path.exists():
+        raise Rejected("Library richness round history already exists: " + round_id)
+    blockers = list(frontier["commercial_validation_candidate"].get("blocking_reasons") or [])
+    history = {
+        "schema": "hima.library-richness.round-history/1",
+        "round_id": round_id, "status": "screened", "failures": blockers,
+        "stop_reason": ("commercial validation admitted" if
+                        frontier["commercial_validation_candidate"]["value"] else
+                        "residual structural or timing indicator work remains"),
+        "evaluation_payload_sha256": evaluation["evaluation_payload_sha256"],
+        "frontier_round": current_round,
+        "frontier_payload_sha256": frontier["frontier_payload_sha256"],
+    }
+    atomic_json(history_path, history)
+    shard_id = "%04d" % (len(manifest["shards"]) + 1)
+    target_shard = ctx.flow / "library" / "shards" / shard_id
+    if target_shard.exists():
+        raise Rejected("cumulative Library shard already exists: " + shard_id)
+    target_shard.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(projected_root / "shards" / shard_id, target_shard)
+    persisted = projected
+    if frontier["commercial_validation_candidate"]["value"] is not True:
+        failure = "; ".join(blockers) or "not admitted by the cross-round portfolio gate"
+        for key in function_keys:
+            persisted = advance_function_state(persisted, key, "proxy-rejected", failure=failure)
+    atomic_json(manifest_path, persisted)
+    ctx.inputs.extend([
+        file_ref(patterns, ctx.workspace, "characterized_patterns", "layout-admitted-algorithm-output"),
+        file_ref(portfolio_path, ctx.workspace, "local_portfolio", "F0-F1-evaluation"),
+        file_ref(manifest_path, ctx.workspace, "cumulative_library_manifest", "campaign-library-state"),
+        file_ref(request_path, ctx.workspace, "lfr_round_request", "pack-derived-proxy-request"),
+    ])
+    ctx.add_artifact(evaluation_path, "library_richness_evaluation",
+                     "license-free-layered-evaluation")
+    ctx.add_artifact(frontier_request_path, "portfolio_frontier_request",
+                     "license-free-frontier-request")
+    ctx.add_artifact(frontier_path, "portfolio_frontier", "license-free-cross-round-frontier")
+    ctx.facts.update({
+        "evaluationPhase": "design-mapping-timing", "commercialEdaExecuted": False,
+        "metricVectorComplete": evaluation["metric_completeness"]["complete"],
+        "pairwiseRelation": evaluation["pairwise_relation"]["relation"],
+        "portfolioFrontierMember": round_id in frontier["frontier_member_ids"],
+        "commercialValidationCandidate": frontier["commercial_validation_candidate"]["value"],
+        "roundId": round_id,
+    })
+
+
+def stage_freeze_cumulative_library(ctx):
+    evaluation_record = prior(ctx, "design-mapping-timing-evaluation")
+    frontier = read_json(artifact(evaluation_record, ctx.workspace, "portfolio_frontier"))
+    if frontier.get("commercial_validation_candidate", {}).get("value") is not True:
+        raise Rejected("frontier does not admit a commercial validation candidate")
+    characterize = prior(ctx, "characterize")
+    patterns = artifact(characterize, ctx.workspace, "characterized_patterns")
+    generated = artifact(characterize, ctx.workspace, "generated_liberty")
+    requests = read_json(patterns).get("generation_requests")
+    if not isinstance(requests, list) or not requests:
+        raise Rejected("freeze has no characterized Library delta")
+    manifest_path = Path(str(ctx.binding("LFR_CUMULATIVE_LIBRARY_MANIFEST"))).resolve()
+    manifest = read_json(manifest_path)
+    validate_cumulative_manifest(manifest)
+    updated = manifest
+    for request in requests:
+        key = function_identity(request)["key"]
+        matches = [row for row in updated["functions"] if row["functionKey"] == key]
+        if len(matches) != 1 or matches[0]["state"] != "proxy-mapped":
+            raise Rejected("freeze candidate is absent from the admitted proxy-mapped shard")
+        for state in ("materialized", "predicted", "cumulative"):
+            updated = advance_function_state(updated, key, state)
+    atomic_json(manifest_path, updated)
+    cumulative_libraries = _retained_shard_libraries(ctx, updated)
+    cumulative_liberty = _custom_library(ctx, "cumulative-custom.lib", cumulative_libraries)
+    published_liberty = ctx.flow / "library" / "cumulative-custom.lib"
+    published_liberty.write_bytes(cumulative_liberty.read_bytes())
+    cumulative_requests, cumulative_lefs = [], []
+    active_keys = {row["functionKey"] for row in updated["functions"]
+                   if row["state"] != "proxy-rejected"}
+    for shard in updated["shards"]:
+        if not active_keys.intersection(shard["functionKeys"]):
+            continue
+        directory = ctx.flow / "library" / "shards" / shard["id"]
+        shard_doc = read_json(directory / "manifest.json")
+        for ref in shard_doc["artifacts"]:
+            at = directory / ref["path"]
+            if ref["path"].endswith("characterized-patterns.json"):
+                cumulative_requests.extend(read_json(at)["generation_requests"])
+            elif ref["path"].endswith(".lef"):
+                cumulative_lefs.append(at)
+    cumulative_patterns = ctx.flow / "library" / "cumulative-patterns.json"
+    atomic_json(cumulative_patterns, {
+        "report_schema": "xspace_cell-pattern-search/v2",
+        "strategy_id": "cumulative_library", "source_graph": "append-only-shards",
+        "generation_requests": cumulative_requests,
+    })
+    cumulative_lef = ctx.flow / "library" / "cumulative-custom.lef"
+    bodies = []
+    for lef in cumulative_lefs:
+        body, keep = [], False
+        for line in lef.read_text(errors="replace").splitlines():
+            if line.startswith("MACRO"):
+                keep = True
+            if line.startswith("END LIBRARY"):
+                keep = False
+                continue
+            if keep:
+                body.append(line)
+        if body:
+            bodies.append("\n".join(body))
+    if not bodies:
+        raise Rejected("cumulative Library has no abstract LEF macros")
+    cumulative_lef.write_text("VERSION 5.7 ;\n" + "\n".join(bodies) + "\nEND LIBRARY\n")
+    round_id = str(evaluation_record.get("facts", {}).get("roundId") or "")
+    history_path = ctx.flow / "library-richness" / "rounds" / (round_id + ".json")
+    if not history_path.is_file():
+        raise Rejected("admitted round history is absent: " + round_id)
+    ctx.inputs.extend([
+        file_ref(patterns, ctx.workspace, "characterized_patterns", "layout-admitted-algorithm-output"),
+        file_ref(generated, ctx.workspace, "generated_liberty", "learned-model-prediction"),
+    ])
+    ctx.add_artifact(manifest_path, "cumulative_library_manifest", "campaign-library-state")
+    ctx.add_artifact(published_liberty, "cumulative_custom_liberty", "cumulative-custom-library")
+    ctx.add_artifact(cumulative_lef, "cumulative_custom_lef", "cumulative-custom-library")
+    ctx.add_artifact(cumulative_patterns, "cumulative_patterns", "cumulative-custom-library")
+    ctx.add_artifact(history_path, "library_richness_round_history", "license-free-round-history")
+    ctx.facts.update({"cumulativeLibraryCellCount": len(updated["functions"]),
+                      "cumulativeLibraryShardCount": len(updated["shards"]),
+                      "newLibraryCellCount": len(expected_generation_jobs({"generation_requests": requests})),
+                      "roundId": round_id})
+
+
 def require_hash(path, expected, what):
     if sha_file(path) != expected:
         raise Rejected("%s hash mismatch" % what)
@@ -468,6 +1289,20 @@ def mining_source(ctx):
             ])
             ctx.add_artifact(timing, "postroute_source_timing", "decompressed-innovus-output")
             return netlist, timing, "generated-postroute", generated_liberty
+    baseline_path = ctx.flow / "records" / "evaluation-baseline.json"
+    if baseline_path.is_file():
+        baseline = prior(ctx, "evaluation-baseline")
+        netlist = artifact(baseline, ctx.workspace, "baseline_mapped_netlist")
+        timing = artifact(baseline, ctx.workspace, "baseline_proxy_reg2reg")
+        ctx.inputs.extend([
+            file_ref(baseline_path, ctx.workspace, "license_free_baseline_record",
+                     "prior-stage-record"),
+            file_ref(netlist, ctx.workspace, "license_free_baseline_netlist",
+                     "license-free-mapping-output"),
+            file_ref(timing, ctx.workspace, "license_free_baseline_reg2reg",
+                     "license-free-proxy-sta"),
+        ])
+        return netlist, timing, "license-free-baseline", None
     probe_path = ctx.flow / "probe.json"
     probe = read_json(probe_path)
     if probe.get("format") != "custom-cell-fmax-probe/2" or probe.get("toolExit") != 0:
@@ -632,24 +1467,83 @@ def retained_prior_requests(ctx, budget):
 
 
 def stage_merge(ctx):
-    budget = ctx.binding("MAX_CELLS")
+    budget = lfr_new_cell_budget(ctx)
     if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 50:
-        raise Rejected("MAX_CELLS must be within 1..50")
+        raise Rejected("MAX_NEW_CELLS must be within 1..50")
     research_path = ctx.flow / "research" / "research.json"
     if not research_path.is_file() or research_path.is_symlink():
         raise Rejected("AI research report is absent before merge")
     research = read_json(research_path)
+    if research.get("schema") == "lfr-ai-residual-research/1":
+        proposals = research.get("candidate_proposals")
+        if not isinstance(proposals, list) or not 1 <= len(proposals) <= budget:
+            raise Rejected("residual research candidate_proposals exceed MAX_NEW_CELLS or are empty")
+        pool_path = Path(str(ctx.binding("LFR_CANDIDATE_POOL"))).resolve()
+        pool = read_json(pool_path)
+        pool_requests = pool.get("generation_requests")
+        if not isinstance(pool_requests, list):
+            raise Rejected("function/local candidate pool has no generation requests")
+        allowed = {canonical_json_sha(request): request for request in pool_requests}
+        selected = []
+        proposal_keys = set()
+        for index, proposal in enumerate(proposals):
+            if not isinstance(proposal, dict):
+                raise Rejected("residual research proposal %d is not an object" % index)
+            transformation = proposal.get("transformation")
+            key = (transformation.get("proposal_key")
+                   if isinstance(transformation, dict) else None)
+            request = proposal.get("generation_request")
+            expected = proposal.get("generation_request_sha256")
+            observed = canonical_json_sha(request) if isinstance(request, dict) else None
+            if (not isinstance(key, str) or not key or key in proposal_keys
+                    or observed != expected or observed not in allowed):
+                raise Rejected("residual research proposal identity is not bound to the candidate pool")
+            proposal_keys.add(key)
+            errors = validate_generation_request(request)
+            if errors or (request.get("implementation_plan") or {}).get("route") not in BUILDABLE_ROUTES:
+                raise Rejected("residual research selected an invalid/unbuildable generation request")
+            selected.append(json.loads(json.dumps(request)))
+        identities = [function_identity(request)["key"] for request in selected]
+        if len(identities) != len(set(identities)):
+            raise Rejected("residual research selected a duplicate function identity")
+        merged = {
+            "report_schema": "xspace_cell-pattern-search/v2",
+            "strategy_id": "residual_research_delta", "source_graph": "license-free-baseline-mapped",
+            "search_bound": {"global_cell_budget": budget, "validation_flow_count": 1,
+                             "selection_authority": "bounded-residual-research"},
+            "generation_requests": selected,
+            "candidate_set_accounting": {"selected_candidate_count": len(selected),
+                                         "new_candidate_count": len(selected),
+                                         "retained_candidate_count": 0},
+            "provenance": {"researchSha256": sha_file(research_path),
+                           "candidatePoolSha256": sha_file(pool_path),
+                           "proposalKeys": sorted(proposal_keys)},
+            "limitations": ["This is one cumulative-Library delta, not a commercial QoR prediction."],
+        }
+        held = ctx.run_dir / "merged.json"
+        atomic_json(held, merged)
+        target = ctx.flow / "mining" / "merged.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(held.read_bytes())
+        ctx.inputs.extend([
+            file_ref(research_path, ctx.workspace, "ai_residual_research", "agent-research"),
+            file_ref(pool_path, ctx.workspace, "candidate_pool", "source-bound-candidate-pool"),
+        ])
+        ctx.add_artifact(held, "merged_patterns", "algorithm-output")
+        ctx.facts.update({"candidate_count": len(selected), "retained_candidate_count": 0,
+                          "research_schema": research["schema"]})
+        return
     if (research.get("schema") != "custom-cell-fmax-ai-research/1"
             or not isinstance(research.get("selected"), list)
             or not isinstance(research.get("hypotheses"), list)
             or not 3 <= len(research["hypotheses"]) <= 12):
         raise Rejected("AI research report identity/hypotheses are invalid")
-    retained = retained_prior_requests(ctx, budget)
+    retained = retained_prior_requests(ctx, budget) if ctx.evidence_class == "synthetic-fixture" else []
     retained_ids = [row["candidate_id"] for row in retained]
     report_retained = research.get("retainedCandidates")
     if (not isinstance(report_retained, list)
             or [row.get("candidate_id") for row in report_retained if isinstance(row, dict)] != retained_ids):
-        raise Rejected("AI research retained-candidate set differs from prior adoption evidence")
+        raise Rejected("AI research retained-candidate set differs from cumulative/fixture evidence")
     research_ids = {route: [] for route in ROUTES}
     for row in research["selected"]:
         if (not isinstance(row, dict) or row.get("route") not in ROUTES
@@ -819,11 +1713,16 @@ def stage_generate(ctx):
     merged_record = prior(ctx, "merge")
     patterns = artifact(merged_record, ctx.workspace, "merged_patterns")
     ctx.inputs.append(file_ref(patterns, ctx.workspace, "merged_patterns", "algorithm-output"))
-    jobs = expected_generation_jobs(read_json(patterns))
+    manifest_path = Path(str(ctx.binding("LFR_CUMULATIVE_LIBRARY_MANIFEST"))).resolve()
+    manifest = read_json(manifest_path)
+    validate_cumulative_manifest(manifest)
+    jobs = expected_delta_generation_jobs(read_json(patterns), manifest)
     if not jobs:
         raise Rejected("merged candidate set is empty")
-    if len({job["candidate_id"] for job in jobs}) > int(ctx.binding("MAX_CELLS")):
-        raise Rejected("merged candidates exceed MAX_CELLS")
+    if len({job["candidate_id"] for job in jobs}) > lfr_new_cell_budget(ctx):
+        raise Rejected("new candidate delta exceeds MAX_NEW_CELLS")
+    ctx.inputs.append(file_ref(manifest_path, ctx.workspace, "cumulative_library_manifest",
+                               "campaign-library-state"))
     pdk = ctx.file_binding("BOOL2CMOS_PDK_PROFILE")
     command = shlex.split(str(ctx.binding("BOOL2CMOS_CMD")))
     if not command:
@@ -1016,8 +1915,17 @@ def stage_characterize(ctx):
 
 
 def stage_compile(ctx):
-    liberty = artifact(prior(ctx, "characterize"), ctx.workspace, "generated_liberty")
-    ctx.inputs.append(file_ref(liberty, ctx.workspace, "generated_liberty", "learned-model-prediction"))
+    frozen_path = ctx.flow / "records" / "freeze-cumulative-library.json"
+    if frozen_path.is_file():
+        liberty = artifact(prior(ctx, "freeze-cumulative-library"), ctx.workspace,
+                           "cumulative_custom_liberty")
+        role, source = "cumulative_custom_liberty", "cumulative-custom-library"
+    elif ctx.evidence_class == "synthetic-fixture":
+        liberty = artifact(prior(ctx, "characterize"), ctx.workspace, "generated_liberty")
+        role, source = "generated_liberty", "learned-model-prediction"
+    else:
+        raise Rejected("cumulative Library must be frozen before compile")
+    ctx.inputs.append(file_ref(liberty, ctx.workspace, role, source))
     name = str(ctx.binding("GENERATED_LIBRARY_NAME"))
     db = ctx.run_dir / (name + ".db")
     script = ctx.run_dir / "compile.tcl"
@@ -1189,9 +2097,17 @@ def stage_adoption(ctx):
     if not isinstance(visible, int) or visible <= 0:
         raise Rejected("custom synthesis did not prove the generated library visible")
     netlist = artifact(synth, ctx.workspace, "synthesis_netlist")
-    characterize = prior(ctx, "characterize")
-    liberty = artifact(characterize, ctx.workspace, "generated_liberty")
-    patterns = artifact(characterize, ctx.workspace, "characterized_patterns")
+    frozen_path = ctx.flow / "records" / "freeze-cumulative-library.json"
+    if frozen_path.is_file():
+        frozen = prior(ctx, "freeze-cumulative-library")
+        liberty = artifact(frozen, ctx.workspace, "cumulative_custom_liberty")
+        patterns = artifact(frozen, ctx.workspace, "cumulative_patterns")
+    elif ctx.evidence_class == "synthetic-fixture":
+        characterize = prior(ctx, "characterize")
+        liberty = artifact(characterize, ctx.workspace, "generated_liberty")
+        patterns = artifact(characterize, ctx.workspace, "characterized_patterns")
+    else:
+        raise Rejected("cumulative Library must be frozen before adoption")
     synth_log = execution_log(synth, ctx.workspace, "custom-dc_log")
     projection = project_attributed_texts(netlist.read_text(errors="replace"), liberty.read_text(errors="replace"),
                                           read_json(patterns))
@@ -1377,11 +2293,23 @@ def pin_plan_identity(path):
 
 def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, fixed_floorplan=None):
     foundry_synth, custom_synth = prior(ctx, "foundry-synth"), prior(ctx, "custom-synth")
-    layout, char = prior(ctx, "layout"), prior(ctx, "characterize")
-    generated_lib = artifact(char, ctx.workspace, "generated_liberty")
-    characterized_patterns = artifact(char, ctx.workspace, "characterized_patterns")
+    frozen_path = ctx.flow / "records" / "freeze-cumulative-library.json"
+    if frozen_path.is_file():
+        frozen = prior(ctx, "freeze-cumulative-library")
+        generated_lib = artifact(frozen, ctx.workspace, "cumulative_custom_liberty")
+        generated_lef = artifact(frozen, ctx.workspace, "cumulative_custom_lef")
+        characterized_patterns = artifact(frozen, ctx.workspace, "cumulative_patterns")
+    elif ctx.evidence_class == "synthetic-fixture":
+        layout, char = prior(ctx, "layout"), prior(ctx, "characterize")
+        generated_lib = artifact(char, ctx.workspace, "generated_liberty")
+        characterized_patterns = artifact(char, ctx.workspace, "characterized_patterns")
+        characterized_cells = {job["cell_name"] for job in expected_generation_jobs(read_json(characterized_patterns))}
+        generated_lef = merged_lef(ctx, layout, characterized_cells)
+    else:
+        raise Rejected("cumulative Library must be frozen before P&R")
     characterized_cells = {job["cell_name"] for job in expected_generation_jobs(read_json(characterized_patterns))}
-    generated_lef = merged_lef(ctx, layout, characterized_cells)
+    if not characterized_cells:
+        raise Rejected("cumulative Library has no characterized Cell identities")
     ctx.inputs.append(file_ref(characterized_patterns, ctx.workspace, "characterized_patterns",
                                "layout-admitted-algorithm-output"))
     site = {name: ctx.file_binding(name) for name in
@@ -2118,7 +3046,18 @@ def stage_compare(ctx):
 
 
 def dispatch(ctx, stage, route):
-    if stage == "mine":
+    if stage == "evaluate-library-richness":
+        if route == "baseline":
+            stage_evaluation_baseline(ctx)
+        elif route == "function-local":
+            stage_function_local(ctx)
+        elif route == "design-mapping-timing":
+            stage_design_mapping_timing(ctx)
+        else:
+            raise Rejected("evaluation phase must be baseline, function-local or design-mapping-timing")
+    elif stage == "freeze-cumulative-library":
+        stage_freeze_cumulative_library(ctx)
+    elif stage == "mine":
         stage_mine(ctx, route)
     elif stage == "merge":
         stage_merge(ctx)
@@ -2144,8 +3083,6 @@ def dispatch(ctx, stage, route):
         stage_verify(ctx)
     elif stage == "compare":
         stage_compare(ctx)
-    elif stage == "compare":
-        stage_compare(ctx)
     else:
         raise Rejected("stage must be one of: " + ",".join(STAGES))
 
@@ -2153,17 +3090,26 @@ def dispatch(ctx, stage, route):
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
     if len(args) not in (2, 3):
-        print("usage: stages.py STAGE WORKSPACE [ROUTE for mine]", file=sys.stderr)
+        print("usage: stages.py STAGE WORKSPACE [evaluation phase, mine route, period or utilization]", file=sys.stderr)
         return 2
     stage, workspace = args[:2]
     route = args[2] if len(args) == 3 else None
-    record_stage = "mine-" + route if stage == "mine" and route else stage
+    evaluation_records = {
+        "baseline": "evaluation-baseline",
+        "function-local": "function-local-evaluation",
+        "design-mapping-timing": "design-mapping-timing-evaluation",
+    }
+    record_stage = (("mine-" + route) if stage == "mine" and route else
+                    evaluation_records.get(route, "evaluate-library-richness-invalid") if stage == "evaluate-library-richness" else stage)
     ctx = None
     try:
-        if stage not in ("mine", "foundry-synth", "custom-synth", "pnr-foundry", "pnr-generated") and route is not None:
-            raise Rejected("third argument is accepted only for mine, synthesis period or P&R utilization")
+        if stage not in ("evaluate-library-richness", "mine", "foundry-synth", "custom-synth",
+                         "pnr-foundry", "pnr-generated") and route is not None:
+            raise Rejected("third argument is accepted only for evaluation phase, mine, synthesis period or P&R utilization")
         if stage == "mine" and route is None:
             raise Rejected("mine requires ROUTE")
+        if stage == "evaluate-library-richness" and route is None:
+            raise Rejected("evaluate-library-richness requires EVALUATION_PHASE")
         ctx = Context(record_stage, workspace)
         dispatch(ctx, stage, route)
         ctx.write("passed")

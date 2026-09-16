@@ -157,13 +157,17 @@ def _metric_layer(name):
 
 def _compact_metric_vectors(evaluation):
     """Project the paired agent result without carrying reports or QoR claims."""
-    if (evaluation.get("schema") != "lfr-round-evaluation/3"
+    schema = evaluation.get("schema")
+    if (schema not in {"lfr-round-evaluation/3", "lfr-baseline-evaluation/1"}
             or evaluation.get("status") != "succeeded"):
-        raise ValueError("evaluation must be one succeeded lfr-round-evaluation/3")
+        raise ValueError(
+            "evaluation must be one succeeded lfr-round-evaluation/3 or lfr-baseline-evaluation/1")
     limits = evaluation.get("claim_limits") or {}
-    if any(limits.get(key) is not False for key in (
-            "fmax_claimed", "commercial_adoption_claimed", "physical_benefit_claimed",
-            "expected_qor_claimed", "commercial_eda_executed")):
+    required_limits = (("commercial_qor_predicted", "fmax_predicted", "commercial_eda_executed")
+                       if schema == "lfr-baseline-evaluation/1" else
+                       ("fmax_claimed", "commercial_adoption_claimed", "physical_benefit_claimed",
+                        "expected_qor_claimed", "commercial_eda_executed"))
+    if any(limits.get(key) is not False for key in required_limits):
         raise ValueError("evaluation claim limits do not describe a license-free indicator agent")
     scenarios = evaluation.get("scenarios")
     if not isinstance(scenarios, dict) or not scenarios:
@@ -180,6 +184,42 @@ def _compact_metric_vectors(evaluation):
             continue
         relation = scenario.get("pairwise_relation") or {}
         comparisons = relation.get("comparisons")
+        if schema == "lfr-baseline-evaluation/1" and comparisons == []:
+            # A cold-start baseline has no augmented delta yet.  Preserve its
+            # measured F0/F2/F3 scalar indicators as equal reference values so
+            # the research Agent can reason from the actual design state.  The
+            # F1 candidate vectors arrive through the separately hash-bound
+            # candidate pool; none of these equal rows predicts commercial QoR.
+            directions = {
+                "F0.candidate_cells_declared": "maximize",
+                "F0.candidate_cells_adopted": "maximize",
+                "F2.mapped_instance_count": "minimize",
+                "F2.max_logic_level": "minimize",
+                "F2.mean_fanout": "minimize",
+                "F2.mean_load_indicator": "minimize",
+                "F2.buffer_inverter_pressure_ratio": "minimize",
+                "F2.mean_path_stage_count": "minimize",
+                "F3.worst_delay_indicator_ps": "minimize",
+                "F3.worst_slack_indicator_ps": "maximize",
+                "F3.negative_slack_mass_indicator_ps": "minimize",
+                "F3.path_family_coverage": "maximize",
+                "F3.path_count": "maximize",
+            }
+            comparisons = []
+            reference = scenario.get("reference") or {}
+            for layer in ("F0", "F2", "F3"):
+                values = reference.get(layer) or {}
+                if not isinstance(values, dict):
+                    continue
+                for name, value in sorted(values.items()):
+                    metric = "%s.%s" % (layer, name)
+                    if (metric in directions and not isinstance(value, bool)
+                            and isinstance(value, (int, float)) and math.isfinite(float(value))):
+                        comparisons.append({
+                            "metric": metric, "direction": directions[metric],
+                            "reference": float(value), "augmented": float(value),
+                            "relation": "equal",
+                        })
         if not isinstance(comparisons, list):
             raise ValueError("scenario %s has no pairwise comparisons" % scenario_name)
         rows = []

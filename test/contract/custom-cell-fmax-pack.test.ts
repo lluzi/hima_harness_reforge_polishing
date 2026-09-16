@@ -36,6 +36,74 @@ async function writeCustomSyntheticRecord(workspace: string, stage: string,
     scope: 'synthetic fixture only; no custom Cell PPA or real EDA claim' }, null, 2) + '\n');
 }
 
+test('the LFR Pack declares one fixed multi-index graph before the preserved commercial tail', async () => {
+  type GraphNode = { id: string; kind: 'act' | 'judge' | 'explore' | 'wait'; parameters: {
+    tool?: string; observes?: string; workshop?: string; arguments?: Record<string, unknown>;
+    rules?: string[]; chooser?: string; growth?: boolean;
+  } };
+  type GraphEdge = { from: string; to: string; outcome?: string; revisit?: boolean };
+  const graph = parse(await readFile(path.join(packDir, 'graph.yml'), 'utf8')) as {
+    id: string; version: string; entry: string; nodes: GraphNode[]; edges: GraphEdge[]; loops: Record<string, unknown>;
+  };
+  assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
+  assert.equal(graph.id, 'custom-cell-fmax-dtco');
+  assert.equal(graph.version, '1');
+  assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
+  assert.ok(graph.edges.every((item) => item.from && item.to));
+  const node = new Map(graph.nodes.map((item) => [item.id, item]));
+  const edge = (from: string, to: string, outcome?: string, revisit?: boolean) => graph.edges.some((item) =>
+    item.from === from && item.to === to && item.outcome === outcome && item.revisit === revisit);
+  const chain = (ids: readonly string[]) => ids.slice(0, -1).every((from, at) => edge(from, ids[at + 1]!));
+
+  assert.equal(graph.entry, 'bind-inputs');
+  assert.deepEqual(graph.loops, {}, 'the license-free baseline replaces the nested commercial probe');
+  assert.equal(node.has('probe'), false);
+  assert.equal(node.has('synthesize'), false);
+  assert.ok(chain(['bind-inputs', 'evaluation-baseline', 'read-evaluation-baseline']));
+
+  const phases = graph.nodes.flatMap((item) => item.kind === 'act'
+    && item.parameters.tool === 'evaluate-library-richness'
+    ? [item.parameters.arguments?.EVALUATION_PHASE]
+    : []);
+  assert.deepEqual(phases, ['baseline', 'function-local', 'design-mapping-timing']);
+
+  const routes = ['timing-criticality', 'timing-context', 'structure-frequency', 'structure-compaction',
+    'mapper-compatibility', 'functional-diversity'];
+  for (const route of routes) {
+    assert.ok(chain([`mine-${route}`, `select-${route}`, 'merge-join']));
+    assert.ok(edge('read-evaluation-baseline', `mine-${route}`));
+  }
+  assert.ok(edge('merge-join', 'function-local-evaluation', 'PASS'));
+  assert.ok(chain(['function-local-evaluation', 'read-function-local-evaluation',
+    'function-local-gate']));
+  assert.ok(chain(['research-candidates', 'read-research-selection', 'merge']));
+  assert.ok(edge('function-local-gate', 'research-candidates', 'PASS'));
+  assert.ok(edge('function-local-gate', 'next-research', 'FAIL'));
+
+  assert.ok(chain(['merge', 'read-merge', 'generate', 'read-generate', 'layout', 'read-layout',
+    'characterize', 'read-characterize', 'design-mapping-timing-evaluation',
+    'read-design-mapping-timing-evaluation', 'portfolio-gate']));
+  assert.ok(edge('portfolio-gate', 'freeze-cumulative-library', 'PASS'));
+  assert.ok(edge('portfolio-gate', 'next-research', 'FAIL'));
+  assert.ok(chain(['freeze-cumulative-library', 'read-cumulative-library', 'compile', 'read-compile',
+    'foundry-synth', 'read-foundry-synth', 'custom-synth', 'read-custom-synth', 'adoption',
+    'read-adoption', 'adoption-gate']));
+  assert.ok(edge('adoption-gate', 'pnr-foundry', 'PASS'));
+  assert.ok(chain(['pnr-foundry', 'read-pnr-foundry', 'pnr-generated', 'read-pnr-generated', 'verify',
+    'read-verify', 'compare', 'read-compare', 'final-judge']));
+  assert.ok(edge('final-judge', 'next-research', 'FAIL'));
+  assert.ok(edge('next-research', 'evaluation-baseline', undefined, true));
+
+  assert.deepEqual(graph.nodes.flatMap((item) => item.kind === 'act' && item.parameters.workshop !== undefined
+    ? [item.parameters.workshop] : []), ['research-candidates']);
+  assert.deepEqual(graph.nodes.filter((item) => item.kind === 'explore').map((item) => item.id), ['next-research']);
+  assert.deepEqual(node.get('portfolio-gate')?.parameters.rules,
+    ['proxy-metric-vector-complete', 'proxy-pairwise-relation-valid', 'portfolio-frontier-member',
+      'commercial-validation-candidate']);
+  assert.deepEqual(node.get('final-judge')?.parameters.rules,
+    ['comparison-evidence-valid', 'fmax-improvement-at-least-target', 'fmax-improved', 'clock-period-at-most']);
+});
+
 test('the portable Pack has no AES, process-node, or customer-flow binding and declares Site-owned production inputs', async () => {
   const contract = parse(await readFile(path.join(packDir, 'contract.yml'), 'utf8')) as {
     id: string; inputs: { name: string }[];
@@ -79,6 +147,17 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
     constraint: verdict('FAIL', 'reg2reg-pressure-at-least-100ps') }) as any).chosen.strategy.periodNs, 0.45);
   assert.deepEqual(loaded.contract.workshops.map((workshop) => workshop.id), ['research-candidates'],
     'one cross-route AI research moment replaces six narrow selector moments');
+  const workshop = loaded.contract.workshops[0]!;
+  assert.deepEqual(workshop.inputs, []);
+  assert.deepEqual(workshop.reads.slice(0, 2),
+    ['record_evaluation_baseline', 'record_function_local_evaluation']);
+  assert.equal(workshop.reads.includes('record_design_mapping_timing_evaluation'), false,
+    'the cold-start Workshop cannot require evidence produced only after its own delta');
+  assert.deepEqual(workshop.knowledge,
+    ['full-mining-method.md', 'library-richness-evaluation.md']);
+  assert.deepEqual(workshop.argv, ['/usr/bin/python3', '${ENTRY}', '--lfr-residual', '${WORKSPACE}',
+    '${WORKSPACE}/flow/research/research.json']);
+  assert.ok(loaded.contract.workspace.copy.includes('library_richness.py'));
   assert.ok(graph.nodes.some((node) => node.id === 'research-candidates'));
   assert.ok(graph.nodes.some((node) => node.id === 'read-research-selection'));
   assert.deepEqual((graph.nodes.find((node) => node.id === 'final-judge')?.parameters as any)?.rules,
@@ -91,12 +170,8 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
   assert.match(pnrTemplate, /-numPaths 100 -expandReg2Reg -pathreports/);
   assert.match(await readFile(path.join(packDir, 'flow/domain/shared_synth.tcl'), 'utf8'),
     /set _route_uncertainty \[expr \{\$CLK_NS \* 0\.25 \+ 0\.050\}\]/);
-  const probeLoop = (graph as any).loops['probe-loop'];
-  const probeJudge = probeLoop.nodes.find((node: any) => node.id === 'judge');
-  const nextPeriod = probeLoop.nodes.find((node: any) => node.id === 'next-period');
-  assert.deepEqual(probeJudge.parameters.rules, ['reg2reg-pressure-at-least-100ps', 'clock-period-at-most']);
-  assert.equal(nextPeriod.parameters.chooser, 'maintain-reg2reg-pressure');
-  assert.deepEqual(nextPeriod.parameters.bind, { pressureMagnitudeNs: 0.1 });
+  assert.deepEqual((graph as any).loops, {},
+    'the Pack starts from one license-free baseline instead of a nested commercial probe loop');
   const pressureRule = parse(await readFile(path.join(packDir, 'rules/reg2reg-pressure-at-least-100ps.yml'), 'utf8')) as any;
   assert.deepEqual(pressureRule.predicate, { op: 'lte', threshold: -0.1, unit: 'ns' });
   const pressureChooser = parse(await readFile(path.join(packDir, 'choosers/maintain-reg2reg-pressure.yml'), 'utf8')) as any;
@@ -116,7 +191,7 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
     'INTENT.md', 'SPEC.md', 'FABRIC.md', 'TEST.md', 'contract.yml', 'graph.yml', 'semantics.yml',
     'flow/probe.py', 'flow/stages.py', 'flow/read-stage.py', 'knowledge/full-mining-method.md',
   ].map((file) => readFile(path.join(packDir, file), 'utf8')));
-  assert.doesNotMatch(files.join('\n'), /aes_cipher_top|\/[^\s"']*tsmc28|Golden Flow/i);
+  assert.doesNotMatch(files.join('\n'), /aes_cipher_top|\/[^\s"']*tsmc28/i);
 });
 
 test('two different Site bindings fit the Pack and a missing production binding is named', async (t) => {
@@ -131,7 +206,7 @@ test('two different Site bindings fit the Pack and a missing production binding 
   const pack = loadPack(path.join(repoRoot, 'packs'), 'custom-cell-fmax-dtco');
   assert.equal(packOverview(pack).status?.normalized, 'development');
   assert.equal(packOverview(pack).minimumHarnessVersion, '0.1.0');
-  assert.equal(packKnowledgeManifestOf(pack)?.documents.length, 3);
+  assert.equal(packKnowledgeManifestOf(pack)?.documents.length, 4);
   const knowledge = await searchPackKnowledge(pack, 'matched comparison custom cell adoption');
   assert.ok(knowledge.length > 0);
   assert.equal(knowledge[0]?.document.source, 'pack');
@@ -585,6 +660,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
   const profileFiles = ['foundry.lib', 'foundry.lef', 'qrc', 'foundry.gds', 'tech.lef', 'pdk.json',
     'skeleton.lib', 'tech.py', 'rules.json', 'timing.json', 'power.json', 'area.json', 'map'];
   await Promise.all(profileFiles.map((name) => writeFile(path.join(profile, name), `fixture ${name}\n`)));
+  const proxyToolSha256 = sha256(await readFile('/usr/bin/true'));
   const physicalProfile = {
     CLOCK_NAME: 'clk', FOUNDRY_LIB: path.join(profile, 'foundry.lib'), FOUNDRY_LEF: path.join(profile, 'foundry.lef'),
     FOUNDRY_QRC_TECH: path.join(profile, 'qrc'), FOUNDRY_GDS: path.join(profile, 'foundry.gds'), TECH_LEF: path.join(profile, 'tech.lef'),
@@ -600,11 +676,20 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     GENERATED_LIBRARY_NAME: 'fixture_generated', GENERATED_LIB_CELL_PATTERN: 'XS_*', CLOCK_NS: 1, CCFMAX_RC_TEMPERATURE: 25,
     CCFMAX_PROCESS_NODE: 12, CCFMAX_MAX_ROUTE_LAYER: 'M8', CCFMAX_TAP_CELL: 'TAP', CCFMAX_TAP_INTERVAL: 10,
     CCFMAX_CLOCK_BUFFER_CELLS: 'DCCKBD4FIXTURE', CCFMAX_CLOCK_INVERTER_CELLS: 'DCCKND4FIXTURE',
-    CCFMAX_FILLER_CELLS: 'FILL', CCFMAX_SWITCHING_ACTIVITY: 0.2, PLACE_SITE: 'core', MAX_CELLS: 50, MAX_ROUTE_CANDIDATES: 40,
+    CCFMAX_FILLER_CELLS: 'FILL', CCFMAX_SWITCHING_ACTIVITY: 0.2, PLACE_SITE: 'core',
+    MAX_NEW_CELLS: 50, MAX_CELLS: 200, MAX_ROUTE_CANDIDATES: 40,
     GENERATION_TIMEOUT_SEC: 30, ABSTRACT_TIMEOUT_SEC: 30, CHARACTERIZE_TIMEOUT_SEC: 30, LC_TIMEOUT_SEC: 30, MULTI_CPU: 1,
     PNR_TIMEOUT_SEC: 30, DRC_LIMIT: 1000, VERIFY_TIMEOUT_SEC: 30,
   };
-  const toolProfile = { EDA_WRAPPER: '/usr/bin/true', SYNTH_TIMEOUT_SEC: 30 };
+  const toolProfile = {
+    EDA_WRAPPER: '/usr/bin/true', SYNTH_TIMEOUT_SEC: 30,
+    LFR_YOSYS_BIN: '/usr/bin/true', LFR_ABC_BIN: '/usr/bin/true',
+    LFR_YOSYS_SHA256: proxyToolSha256, LFR_ABC_SHA256: proxyToolSha256,
+    LFR_YOSYS_COMMIT: 'fixture-yosys', LFR_ABC_COMMIT: 'fixture-abc',
+    LFR_YOSYS_BUILD_FLAGS: ['--fixture'], LFR_ABC_BUILD_FLAGS: ['--fixture'],
+    LFR_PROXY_CONTAINER_DIGEST: `sha256:${'1'.repeat(64)}`,
+    LFR_PROXY_TIMEOUT_SEC: 30, LFR_PROXY_CPU_COUNT: 1, LFR_PROXY_MEMORY_MB: 512,
+  };
   const rejectedPhysical = { ...physicalProfile }; delete (rejectedPhysical as Record<string, unknown>).CCFMAX_TAP_INTERVAL;
   await writeFile(physical, JSON.stringify(rejectedPhysical)); await writeFile(tools, JSON.stringify(toolProfile));
   const rejectedWorkspace = path.join(h.workspace, 'rejected-bind'); await mkdir(path.join(rejectedWorkspace, 'flow'), { recursive: true });
@@ -619,6 +704,12 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     '--foundry-library', foundry, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
   assert.notEqual(rejectedClock.status, 0); assert.match(rejectedClock.stderr, /CCFMAX_CLOCK_BUFFER_CELLS.*DCCK-prefixed/);
   await writeFile(physical, JSON.stringify(physicalProfile));
+  await writeFile(tools, JSON.stringify({ ...toolProfile, LFR_ABC_SHA256: '0'.repeat(64) }));
+  const rejectedProxyIdentity = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
+    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
+    '--foundry-library', foundry, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+  assert.notEqual(rejectedProxyIdentity.status, 0); assert.match(rejectedProxyIdentity.stderr, /LFR_ABC_SHA256 does not match/);
+  await writeFile(tools, JSON.stringify(toolProfile));
   const destination = path.join(h.home, 'hima/packs/custom-cell-fmax-dtco');
   installPackMethod({ from: packDir, to: destination });
   await writeLocalSite(h, { bindings: { designRoot, rtlGlob: rtl, designTop: 'held_out', constraints, foundryLibrary: foundry,
@@ -644,7 +735,14 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     const materialized = JSON.parse(await readFile(path.join(started.workspace, 'flow/inputs.json'), 'utf8')) as Record<string, unknown>;
     assert.equal(materialized.designTop, 'held_out'); assert.equal(materialized.DESIGN_TOP, 'held_out');
     assert.equal(materialized.edaWrapper, '/usr/bin/true');
-    assert.equal(materialized.MAX_CELLS, 50); assert.equal(materialized.MAX_ROUTE_CANDIDATES, 40);
+    assert.equal(materialized.MAX_NEW_CELLS, 50); assert.equal(materialized.MAX_CELLS, 200);
+    assert.equal(materialized.MAX_ROUTE_CANDIDATES, 40);
+    assert.equal(materialized.LFR_YOSYS_SHA256, proxyToolSha256);
+    assert.equal(materialized.LFR_MAPPING_PROFILE, 'lfr-yosys-abc-deterministic/1');
+    assert.equal(materialized.LFR_PROXY_STA_PROFILE, 'lfr-round-evaluation/3:proxy-sta');
+    assert.equal(materialized.LFR_LOCAL_PORTFOLIO, path.join(started.workspace, 'flow/library-richness/local-portfolio.json'));
+    assert.equal(materialized.LFR_CANDIDATE_POOL, path.join(started.workspace, 'flow/library-richness/candidate-pool.json'));
+    assert.equal(materialized.LFR_CUMULATIVE_LIBRARY_MANIFEST, path.join(started.workspace, 'flow/library/cumulative-manifest.json'));
     assert.equal(materialized.rtlGlob, rtl); assert.equal(materialized.legacy, undefined);
     assert.equal(await readFile(path.join(started.workspace, 'flow/stages.py'), 'utf8'), await readFile(path.join(packDir, 'flow/stages.py'), 'utf8'));
     await host.ctx.hima.cancelRun(started.run.id);

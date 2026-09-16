@@ -556,6 +556,90 @@ def _endpoint_family(point):
     return re.sub(r"[0-9]+", "#", value)
 
 
+def _proxy_reg2reg_timing_graph(document, expected_top, modules):
+    if (document.get("schema") != "hima.lfr-proxy-reg2reg/1"
+            or document.get("status") != "succeeded"
+            or document.get("design") != expected_top
+            or document.get("path_group") != "reg2reg"
+            or document.get("claim_limits") != {
+                "commercial_sta": False, "commercial_qor_predicted": False}):
+        raise ValueError("proxy timing evidence has the wrong identity or claim limits")
+    timing = document.get("timing")
+    paths = timing.get("paths") if isinstance(timing, dict) else None
+    unit_ns = document.get("time_unit_ns")
+    if (not isinstance(paths, list) or not paths
+            or isinstance(unit_ns, bool) or not isinstance(unit_ns, (int, float))
+            or not math.isfinite(float(unit_ns)) or unit_ns <= 0):
+        raise ValueError("proxy timing evidence has no finite reg2reg paths/time unit")
+    instances = {module: {item.name: item for item in rows} for module, rows in modules.items()}
+    observed = defaultdict(lambda: defaultdict(lambda: {
+        "path_ranks": set(), "max_increment_ns": 0.0, "path_increments_ns": {},
+        "path_family_ids": set(), "beginpoint_families": set(),
+        "endpoint_families": set(), "worst_path_slack_ns": None,
+    }))
+    families = defaultdict(lambda: {"path_ranks": [], "slacks": []})
+    for rank, path in enumerate(paths, 1):
+        if not isinstance(path, dict) or not isinstance(path.get("stages"), list):
+            raise ValueError("proxy timing path %d is malformed" % rank)
+        begin = str(path.get("launchpoint") or "")
+        end = str(path.get("endpoint") or "")
+        begin_family, end_family = _endpoint_family(begin), _endpoint_family(end)
+        family_id = begin_family + "->" + end_family
+        slack = float(path.get("slack")) * float(unit_ns)
+        family = families[family_id]
+        family.update({"beginpoint_family": begin_family, "endpoint_family": end_family})
+        family["path_ranks"].append(rank)
+        family["slacks"].append(slack)
+        for stage in path["stages"]:
+            name, cell = stage.get("instance"), stage.get("cell")
+            if not isinstance(name, str) or not isinstance(cell, str):
+                raise ValueError("proxy timing stage has no instance/Cell identity")
+            local = instances.get(expected_top, {}).get(name)
+            if local is None or local.base_type != cell:
+                raise ValueError("proxy timing stage does not map to the held netlist: %s" % name)
+            delay = stage.get("delay") or {}
+            increment = float(delay.get("value")) * float(unit_ns)
+            item = observed[expected_top][name]
+            item["path_ranks"].add(rank)
+            item["max_increment_ns"] = max(item["max_increment_ns"], increment)
+            item["path_increments_ns"][rank] = increment
+            item["path_family_ids"].add(family_id)
+            item["beginpoint_families"].add(begin_family)
+            item["endpoint_families"].add(end_family)
+            prior = item["worst_path_slack_ns"]
+            item["worst_path_slack_ns"] = slack if prior is None else min(prior, slack)
+    family_support = {name: len(row["path_ranks"]) for name, row in families.items()}
+    family_rows = [{
+        "family_id": name, "beginpoint_family": row["beginpoint_family"],
+        "endpoint_family": row["endpoint_family"], "path_count": len(row["path_ranks"]),
+        "path_ranks": row["path_ranks"], "worst_slack_ns": min(row["slacks"]),
+    } for name, row in sorted(families.items())]
+    result = {}
+    for module, rows in observed.items():
+        result[module] = {}
+        for name, item in rows.items():
+            ids = sorted(item["path_family_ids"])
+            result[module][name] = {
+                "path_hits": len(item["path_ranks"]), "path_ranks": sorted(item["path_ranks"]),
+                "max_increment_ns": round(item["max_increment_ns"], 6),
+                "path_increments_ns": {key: round(value, 6) for key, value in sorted(item["path_increments_ns"].items())},
+                "path_family_count": len(ids), "path_family_ids": ids,
+                "path_family_support": sum(family_support[value] for value in ids),
+                "beginpoint_families": sorted(item["beginpoint_families"]),
+                "endpoint_families": sorted(item["endpoint_families"]),
+                "path_family_worst_slacks_ns": {value: round(min(families[value]["slacks"]), 6) for value in ids},
+                "worst_path_slack_ns": round(item["worst_path_slack_ns"], 6),
+            }
+    if not result:
+        raise ValueError("proxy timing evidence has no mapped combinational instance")
+    return {"instances": result, "graph": {
+        "path_group": "reg2reg", "path_count": len(paths),
+        "path_family_count": len(family_rows), "path_families": family_rows,
+        "endpoint_family_method": "remove terminal pin and replace every decimal run with #",
+        "evidence_source": "license-free-proxy-sta-not-commercial-timing",
+    }}
+
+
 def parse_reg2reg_timing_graph(report, expected_top, modules):
     """Map full reg2reg paths onto routed instances and endpoint families.
 
@@ -566,6 +650,12 @@ def parse_reg2reg_timing_graph(report, expected_top, modules):
     after the reported data beginpoint and stops before ``Other End Path``.
     """
     text = report.read_text(encoding="utf-8", errors="replace")
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError:
+        document = None
+    if isinstance(document, dict) and document.get("schema") == "hima.lfr-proxy-reg2reg/1":
+        return _proxy_reg2reg_timing_graph(document, expected_top, modules)
     designs = re.findall(r"(?m)^\s*#?\s*Design\s*:\s*(\S+)\s*$", text)
     groups = re.findall(r"(?m)^\s*Path Group:\s*(\S+)\s*$", text)
     groups.extend(re.findall(r"(?m)^Path Groups:\s*\{([^}]+)\}\s*$", text))

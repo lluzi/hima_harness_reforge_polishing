@@ -1,0 +1,18 @@
+id: read-evaluation-baseline
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - evaluation-baseline
+reportKind: custom-cell-fmax-stage/1
+emits:
+  - proxy_metric_vector_complete
+  - proxy_mapped_instance_delta
+  - proxy_logic_depth_p95_delta
+  - proxy_buffer_inverter_pressure_delta
+  - proxy_fanout_load_delta
+  - proxy_worst_reg2reg_delay_indicator
+  - proxy_negative_slack_mass_indicator

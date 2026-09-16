@@ -1,0 +1,13 @@
+id: read-cumulative-library
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - freeze-cumulative-library
+reportKind: custom-cell-fmax-stage/1
+emits:
+  - new_library_cell_count
+  - cumulative_library_cell_count

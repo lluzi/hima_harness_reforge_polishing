@@ -137,3 +137,72 @@ values:
   research_hypothesis_count:
     unit: count
     description: Distinct evidence-linked research lenses used to rank the one collaborative candidate set.
+  proxy_boolean_equivalent:
+    unit: count
+    description: One only when every selected function has exact Boolean-equivalence evidence independently retained in the F0/F1 portfolio.
+  proxy_interface_compatible:
+    unit: count
+    description: One only when every selected function has a complete canonical input/output interface matching its declared candidate identity.
+  proxy_generator_feasible:
+    unit: count
+    description: One only when every selected function is admitted by the current deterministic generator contract.
+  proxy_break_even_local_bound:
+    unit: delay_unit
+    description: Tightest selected local break-even Cell-delay bound in the source Library-relative delay unit. It is not expected route gain or commercial timing.
+  proxy_local_level_delta:
+    unit: count
+    description: Overlap-aware local logic levels removed by the selected F1 portfolio; positive means less local depth and does not predict commercial timing.
+  proxy_removed_node_count:
+    unit: count
+    description: Overlap-aware local logic nodes removed by the selected F1 portfolio.
+  proxy_cut_width:
+    unit: count
+    description: Largest selected local cut boundary width retained by the independently recomputed F1 portfolio.
+  proxy_reconvergence_coverage:
+    unit: percent
+    description: Largest selected local reconvergence coverage, converted from the F1 fraction to percent.
+  proxy_mapped_instance_delta:
+    unit: count
+    description: Augmented minus reference mapped instance count under one invariant license-free mapping plan.
+  proxy_logic_depth_p95_delta:
+    unit: count
+    description: Augmented minus reference 95th-percentile combinational logic level, recomputed from the retained level histograms.
+  proxy_buffer_inverter_pressure_delta:
+    unit: count
+    description: Augmented minus reference buffer and inverter instance count in the mapped netlists.
+  proxy_fanout_load_delta:
+    unit: index
+    description: Augmented minus reference product of mean fanout and mean load indicator under one declared capacitance unit.
+  proxy_adopted_candidate_count:
+    unit: count
+    description: Number of declared candidate Cell masters instantiated by the license-free augmented mapper; this is not commercial adoption.
+  proxy_worst_reg2reg_delay_indicator:
+    unit: ns
+    description: Augmented-arm worst reg2reg delay from the nominal proxy-STA scenario, converted from ps; it is not commercial timing.
+  proxy_negative_slack_mass_indicator:
+    unit: ns
+    description: Augmented-arm endpoint-family-deduplicated negative-slack mass from the nominal proxy-STA scenario, converted from ps.
+  new_library_cell_count:
+    unit: count
+    description: Physical custom Cell variants introduced by the current immutable Library delta.
+  cumulative_library_cell_count:
+    unit: count
+    description: Unique physical custom Cell variants in the independently validated cumulative Library manifest.
+  proxy_metric_vector_complete:
+    unit: count
+    description: One only when the Reader can recompute all mandatory indicators for the current evaluation scope; missing evidence remains zero or unknown at its source value.
+  function_local_structure_effective:
+    unit: count
+    description: One only when the exact-function, interface and generator gates pass and the selected overlap-aware F1 portfolio contains an explainable positive structural change.
+  proxy_pairwise_relation:
+    unit: relation_code
+    description: Current two-arm indicator relation code recomputed from all declared objectives; 0 equal, 1 augmented-dominates, 2 tradeoff and 3 reference-dominates. It is not a frontier or benefit prediction.
+  proxy_pairwise_relation_valid:
+    unit: count
+    description: One only when every scenario is comparable and the declared two-arm relation exactly matches independent recomputation.
+  portfolio_frontier_membership:
+    unit: count
+    description: One only when the current evaluation is a member of the independently recomputed FW-07 cross-round Pareto frontier.
+  commercial_validation_candidate:
+    unit: count
+    description: One only when the independently recomputed frontier authorizes one scarce commercial QoR observation; it never states expected gain.

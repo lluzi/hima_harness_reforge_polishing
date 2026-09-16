@@ -1,25 +1,47 @@
-## Fabric use
+## Files written
 
-The reference graph is fixed. The Campaign Agent owns node execution, may use the
-single declared AI research Workshop and grow/revise surfaces for evidence-driven discovery, and
-records each added investigation's affected nodes, end condition, and return point.
-Fabric retains dependency, Permit, job, evidence, and Judge enforcement.
+LFR-PACK-03 replaces the opening licensed synthesis probe with one fixed reference graph. After
+`bind-inputs`, the graph establishes a license-free evaluation baseline and forks the six existing
+high-influence mining views. Their join builds and reads the function/local indicator portfolio and
+the hash-bound residual context before it opens the existing `research-candidates` Workshop. The
+existing merge, generate, layout and
+characterize stages materialize only that delta. A second license-free evaluation compares the
+reference and augmented design-mapping/timing indicator vectors; the portfolio gate either revisits
+research or freezes the cumulative Library before the existing commercial chain.
 
-The six mining branches are cheap source-linked method views, not six evaluation flows. They converge
-before `research-candidates`, where Boolean/interface-equivalent proposals are already represented once
-with all source methods and rankings attached. The one model-authored program sees that unified pool and
-prior feedback, then orders at most 50 Cells for one generated library, one pressured DC pair and one P&R
-pair. If matched gain is below the Goal, the fixed revisit edge returns to the same miners. They read the
-preceding generated routed netlist and expanded reg2reg timing graph; up to half the library slots preserve
-the strongest actually adopted Cells and the remaining slots admit new research candidates. Its output is
-read and hash-checked before merge. Adoption is attributed back to source methods;
-those non-additive method totals guide later research rather than declare an algorithm winner. The
-adoption Judge stops the Campaign before P&R
-when the pressured custom synthesis does not instantiate a generated Cell.
+The commercial chain remains `compile` -> matched foundry/custom DC -> adoption gate -> matched
+foundry/custom APR -> verify -> compare -> final Judge. A failed final commercial observation may
+return through the same `next-research` Explore node. A passing final Judge is the terminal path. The
+only revisit edge returns to `evaluation-baseline`, so each research generation evaluates the current
+cumulative Library before producing another delta.
 
-Site bindings own paths, environments, capacity, and tool wrappers. This Pack recommends
-Design Compiler, Library Compiler, and Innovus; it does not require a particular minor
-release. A version or interface discrepancy is first investigated in Campaign-local
-adapter work using Pack knowledge, the installed tool documentation, and safe local
-inspection. A successful adaptation is a Pack Owner candidate; a failed adaptation is
-reported with the complete evidence to the engineer.
+There is one Campaign Run and one visible Campaign Agent. AI-authored code remains confined to the
+existing `research-candidates` Workshop; strategy revision and additive bounded research remain
+confined to the existing `next-research` Explore node. No second graph owner, hidden planner or
+commercial trial fan-out is introduced.
+
+## Gaps
+
+The tool, output, Reader, rule and chooser references in this graph resolve. The three Framework
+phases and cumulative-Library freeze reuse the existing stage, record, artifact, Permit and Job
+surfaces; no Runtime component or second asset system was added.
+
+The remaining gaps are validation facts. The Pack still needs one Harness-owned test Campaign whose
+Ledger holds its CodeRecord and refusal evidence. It also needs a portfolio candidate that passes the
+commercial-observation gate before the existing matched DC/Innovus tail may run. The current retained
+license-free pilot ended at an optimistic F3 regression, so it correctly produced no F4 observation
+and cannot support a release seal. `loadPack` and `/hima pack check` passing establish structural fit,
+not release readiness or commercial benefit.
+
+## Reviews
+
+The graph uses the assessed F0 Function, F1 Local structure, F2 Design mapping and F3 Timing indicator
+layers as a license-free evaluation agent. F4 remains the matched commercial design-QoR observation.
+The graph does not optimize prediction accuracy, estimate a portable benefit, or treat open-source
+metrics as substitute commercial truth.
+
+All reference nodes are fixed. The Campaign Agent may revisit them by changing strategy at the
+declared Explore/Workshop surfaces, but may not delete nodes, rewrite the Goal or create another Run
+owner. The adoption, route, verification and final comparison semantics are preserved from the
+existing commercial tail. Missing, incomplete or contradictory proxy evidence cannot pass either
+pre-commercial gate and is not converted into a predicted result.

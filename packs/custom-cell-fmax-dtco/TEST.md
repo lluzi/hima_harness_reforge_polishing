@@ -1,16 +1,21 @@
 # Validation status
 
-Local contract tests validate the Pack shape, complete flat Site-profile materialization,
-late required-binding refusal before `inputs.json`, actual reg2reg path membership,
-one cross-route AI-authored algorithm with source-hash-bound hypotheses and candidate handoff,
-matched-condition rejection, and the final adoption/Fmax evidence contract. Their fixtures are
-synthetic: they do not establish a vendor-tool invocation, report-format compatibility, Fmax,
-PPA, or silicon results.
+This Pack is still in `development`. It deliberately has no `VERSION.yml` release seal and this file
+is not a Hima authoring test record: no Harness-owned test Campaign Run id exists yet.
 
-The required L4 checks remain separate: one read-only/current-tool report-format probe
-for the target Site and one bounded model task that writes a discovery program
-from fresh design evidence. L5 held-out-design acceptance belongs to PLS-35.
+The Library-richness integration has passed local contract, Reader, graph, stage-adapter and
+tamper/refusal tests. A real local Yosys 0.69/ABC 1.01 pilot also passed baseline mapping, six mining
+views, F0/F1 residual-context construction, proposal-key binding, delta merge and paired F0-F3
+evaluation. One of two proposed Cells was adopted by the open-source mapper. The aggregate relation
+was `tradeoff` because the optimistic F3 worst-delay indicator regressed, so the Pack correctly kept
+the commercial-validation gate closed and launched no LC/DC/Innovus job.
 
-The Pack remains in declared `development` status, so it deliberately has no `VERSION.yml`
-release seal. HimaHarness creates that file only after the authoring test and release gates; a
-handwritten seal here would misrepresent this validation record as a released method.
+The pilot's generated timing models were reused Phase 1 fixtures. That test establishes the Pack and
+Framework integration seam; it does not establish fresh characterization, commercial adoption,
+post-route Fmax, PPA or silicon benefit. Detailed hashes and limits are recorded in
+`docs/package-development/library-function-richness/evidence/pack-01-07-integration.md` outside the
+deliverable Pack.
+
+Release still requires one Harness-owned test Campaign with Ledger, CodeRecord and refusal evidence,
+then one candidate that passes the portfolio gate and receives the necessary matched commercial
+observation. Only `/hima pack release` may create `VERSION.yml` after those facts exist.

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import sys
+import json
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +18,7 @@ from mine_timing_route import (  # noqa: E402
     _aggregate_candidate_influence,
     _candidate_counterfactual,
     _mapped_graph,
+    parse_reg2reg_timing_graph,
     rank_critical_subgraph,
 )
 from verilog_netlist import Instance  # noqa: E402
@@ -50,6 +53,29 @@ def _observed(families):
 
 
 class TimingInfluenceTests(unittest.TestCase):
+    def test_license_free_baseline_timing_is_a_first_generation_mining_source(self):
+        document = {
+            "schema": "hima.lfr-proxy-reg2reg/1", "status": "succeeded",
+            "design": "top", "path_group": "reg2reg",
+            "source": "license-free-mapped-netlist-proxy-sta", "time_unit_ns": 1.0,
+            "claim_limits": {"commercial_sta": False, "commercial_qor_predicted": False},
+            "timing": {"paths": [{
+                "launchpoint": "launch/Q", "endpoint": "capture/D", "endpoint_family": "capture/D",
+                "slack": -0.05,
+                "stages": [{"instance": "U0", "cell": "BUF", "delay": {"value": 0.02}}],
+            }]},
+        }
+        with tempfile.TemporaryDirectory() as root:
+            report = Path(root) / "proxy-reg2reg.json"
+            report.write_text(json.dumps(document))
+            parsed = parse_reg2reg_timing_graph(
+                report, "top", {"top": [_instance("BUF", "U0", "n0", A="q")]})
+        self.assertEqual(parsed["graph"]["evidence_source"],
+                         "license-free-proxy-sta-not-commercial-timing")
+        self.assertEqual(parsed["instances"]["top"]["U0"]["path_hits"], 1)
+        self.assertAlmostEqual(parsed["instances"]["top"]["U0"]["max_increment_ns"], 0.02)
+        self.assertAlmostEqual(parsed["instances"]["top"]["U0"]["worst_path_slack_ns"], -0.05)
+
     def test_dominator_and_reconvergence_remain_separate_raw_axes(self):
         cells = {"BUF": _cell(), "MERGE": _cell(("A", "B"))}
         instances = [

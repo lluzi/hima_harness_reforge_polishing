@@ -1,0 +1,11 @@
+id: portfolio-frontier-member
+version: "1"
+title: Current round belongs to the independently recomputed cross-round Pareto frontier
+requires:
+  - type: portfolio_frontier_membership
+subject:
+  type: portfolio_frontier_membership
+predicate:
+  op: eq
+  threshold: 1
+  unit: count

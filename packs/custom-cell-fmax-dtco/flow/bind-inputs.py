@@ -6,6 +6,7 @@ inputs; no pre-existing Golden Flow or legacy-shaped inputs.json is required.
 """
 import argparse
 import glob
+import hashlib
 import json
 import math
 import re
@@ -39,6 +40,37 @@ def plain_dir(value, label):
     if not at.is_dir() or at.is_symlink():
         raise ValueError(f"{label} must be one plain directory: {at}")
     return str(at)
+
+
+def executable_file(value, label):
+    at = Path(plain_file(value, label))
+    if not at.stat().st_mode & 0o111:
+        raise ValueError(f"{label} must be executable: {at}")
+    return str(at)
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def sha256_identity(value, path, label):
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise ValueError(f"{label} must be one lowercase SHA-256 digest")
+    observed = sha256_file(path)
+    if value != observed:
+        raise ValueError(f"{label} does not match {path}: expected {value}, observed {observed}")
+    return value
+
+
+def string_list(value, label):
+    if (not isinstance(value, list) or not value
+            or any(not isinstance(item, str) or not item or "\n" in item or "\r" in item for item in value)):
+        raise ValueError(f"{label} must be a nonempty array of one-line strings")
+    return value
 
 
 def text(value, label):
@@ -89,6 +121,7 @@ def materialize_profile(document):
         "MAX_ROUTE_CANDIDATES", "GENERATION_TIMEOUT_SEC", "ABSTRACT_TIMEOUT_SEC",
         "CHARACTERIZE_TIMEOUT_SEC", "LC_TIMEOUT_SEC", "SYNTH_TIMEOUT_SEC", "MULTI_CPU",
         "CCFMAX_TAP_INTERVAL", "PNR_TIMEOUT_SEC", "DRC_LIMIT", "VERIFY_TIMEOUT_SEC",
+        "LFR_PROXY_TIMEOUT_SEC", "LFR_PROXY_CPU_COUNT", "LFR_PROXY_MEMORY_MB",
     )
     for name in file_fields:
         document[name] = plain_file(document.get(name), name)
@@ -119,9 +152,25 @@ def materialize_profile(document):
         document[name] = positive_integer(document.get(name), name)
     if document["MAX_ROUTE_CANDIDATES"] > 40:
         raise ValueError("MAX_ROUTE_CANDIDATES must be within 1..40")
+    document["MAX_NEW_CELLS"] = positive_integer(
+        document.get("MAX_NEW_CELLS"), "MAX_NEW_CELLS")
+    if document["MAX_NEW_CELLS"] > 50:
+        raise ValueError("MAX_NEW_CELLS must be within 1..50")
     document["MAX_CELLS"] = positive_integer(document.get("MAX_CELLS"), "MAX_CELLS")
-    if document["MAX_CELLS"] > 50:
-        raise ValueError("MAX_CELLS must be within 1..50")
+    if document["MAX_NEW_CELLS"] > document["MAX_CELLS"]:
+        raise ValueError("MAX_NEW_CELLS cannot exceed the MAX_CELLS cumulative Library cap")
+    for name in ("LFR_YOSYS_BIN", "LFR_ABC_BIN"):
+        document[name] = executable_file(document.get(name), name)
+    for name in ("LFR_YOSYS", "LFR_ABC"):
+        document[f"{name}_SHA256"] = sha256_identity(
+            document.get(f"{name}_SHA256"), document[f"{name}_BIN"], f"{name}_SHA256")
+        document[f"{name}_COMMIT"] = text(document.get(f"{name}_COMMIT"), f"{name}_COMMIT")
+        document[f"{name}_BUILD_FLAGS"] = string_list(
+            document.get(f"{name}_BUILD_FLAGS"), f"{name}_BUILD_FLAGS")
+    container_digest = text(document.get("LFR_PROXY_CONTAINER_DIGEST"), "LFR_PROXY_CONTAINER_DIGEST")
+    if not (container_digest.startswith("sha256:") or container_digest.startswith("host:")):
+        raise ValueError("LFR_PROXY_CONTAINER_DIGEST must start with sha256: or host:")
+    document["LFR_PROXY_CONTAINER_DIGEST"] = container_digest
     document["CLOCK_NS"] = positive_number(document.get("CLOCK_NS"), "CLOCK_NS")
     document["CCFMAX_RC_TEMPERATURE"] = positive_number(document.get("CCFMAX_RC_TEMPERATURE"), "CCFMAX_RC_TEMPERATURE", -273.15)
     document["CCFMAX_PROCESS_NODE"] = positive_number(document.get("CCFMAX_PROCESS_NODE"), "CCFMAX_PROCESS_NODE")
@@ -184,6 +233,16 @@ def main():
         raise ValueError("Site profiles redefine Campaign identity: " + ", ".join(sorted(collision)))
     document = {**physical, **tools, **primary}
     materialize_profile(document)
+    # These are Campaign-private products of the existing Framework. They are
+    # fixed by the Pack instead of becoming Site questions or customer inputs.
+    lfr_root = flow / "library-richness"
+    document.update({
+        "LFR_MAPPING_PROFILE": "lfr-yosys-abc-deterministic/1",
+        "LFR_PROXY_STA_PROFILE": "lfr-round-evaluation/3:proxy-sta",
+        "LFR_LOCAL_PORTFOLIO": str(lfr_root / "local-portfolio.json"),
+        "LFR_CANDIDATE_POOL": str(lfr_root / "candidate-pool.json"),
+        "LFR_CUMULATIVE_LIBRARY_MANIFEST": str(flow / "library" / "cumulative-manifest.json"),
+    })
     target = flow / "inputs.json"
     if target.exists():
         raise ValueError(f"Campaign inputs already exist and are never overwritten: {target}")

@@ -1,13 +1,16 @@
+# This chooser changes only the Pack's research-strategy revision. It cannot change the Goal,
+# select a commercial result, alter a Library shard or write a proxy/Judge fact. The owner cites
+# the current independently read constraint and Goal verdicts when requesting another generation.
 id: research-next
 version: "1"
-title: Conclude from current physical evidence or revise selection
+title: Conclude from current evidence or revise the residual research strategy
 parameter:
   name: revisionStep
   unit: count
 reads:
-  gain:
-    type: fmax_improvement_pct
-    unit: percent
+  relation:
+    type: proxy_pairwise_relation
+    unit: relation_code
 decide:
   - when:
       constraint: PASS

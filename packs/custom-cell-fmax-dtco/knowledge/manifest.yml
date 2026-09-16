@@ -10,6 +10,11 @@ documents:
     title: Data-dependent custom Cell mining and matched implementation method
     version: "1"
     mediaType: text/markdown
+  - id: library-richness-evaluation
+    file: library-richness-evaluation.md
+    title: Layered Library richness evaluation and residual research method
+    version: "1"
+    mediaType: text/markdown
   - id: site-profile
     file: site-profile.md
     title: Portable custom Cell Fmax Site profile

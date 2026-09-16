@@ -1,0 +1,32 @@
+id: read-design-mapping-timing-evaluation
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - design-mapping-timing-evaluation
+reportKind: custom-cell-fmax-stage/1
+emits:
+  - proxy_boolean_equivalent
+  - proxy_interface_compatible
+  - proxy_generator_feasible
+  - proxy_local_level_delta
+  - proxy_removed_node_count
+  - proxy_cut_width
+  - proxy_reconvergence_coverage
+  - proxy_mapped_instance_delta
+  - proxy_logic_depth_p95_delta
+  - proxy_buffer_inverter_pressure_delta
+  - proxy_fanout_load_delta
+  - proxy_adopted_candidate_count
+  - proxy_worst_reg2reg_delay_indicator
+  - proxy_negative_slack_mass_indicator
+  - new_library_cell_count
+  - cumulative_library_cell_count
+  - proxy_metric_vector_complete
+  - proxy_pairwise_relation
+  - proxy_pairwise_relation_valid
+  - portfolio_frontier_membership
+  - commercial_validation_candidate

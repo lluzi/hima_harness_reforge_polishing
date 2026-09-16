@@ -1,0 +1,22 @@
+id: read-function-local-evaluation
+version: "1"
+file: tools/read-stage.py
+argv:
+  - /usr/bin/python3
+  - ${READER}
+  - ${REPORT}
+  - ${OUT}
+  - function-local-evaluation
+reportKind: custom-cell-fmax-stage/1
+emits:
+  - proxy_boolean_equivalent
+  - proxy_interface_compatible
+  - proxy_generator_feasible
+  - proxy_break_even_local_bound
+  - proxy_local_level_delta
+  - proxy_removed_node_count
+  - proxy_cut_width
+  - proxy_reconvergence_coverage
+  - new_library_cell_count
+  - proxy_metric_vector_complete
+  - function_local_structure_effective

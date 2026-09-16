@@ -7,7 +7,7 @@ argv:
   - ${REPORT}
   - ${OUT}
   - research-selection
-reportKind: custom-cell-fmax-ai-research/1
+reportKind: lfr-ai-residual-research/1
 emits:
   - research_hypothesis_count
   - selected_count

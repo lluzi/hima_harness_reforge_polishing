@@ -1,0 +1,11 @@
+id: function-local-structure-effective
+version: "1"
+title: Exact buildable functions produce an explainable local structural change
+requires:
+  - type: function_local_structure_effective
+subject:
+  type: function_local_structure_effective
+predicate:
+  op: eq
+  threshold: 1
+  unit: count

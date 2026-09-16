@@ -114,6 +114,46 @@ def _evaluation() -> dict:
     return document
 
 
+def _baseline_evaluation() -> dict:
+    scenarios = {}
+    for name in ("optimistic", "nominal", "conservative"):
+        metrics = {
+            "F0": {"candidate_cells_declared": 0, "candidate_cells_adopted": 0},
+            "F1": {},
+            "F2": {"mapped_instance_count": 121, "max_logic_level": 11},
+            "F3": {
+                "indicator_only": True,
+                "worst_delay_indicator_ps": 438.0,
+                "worst_slack_indicator_ps": -38.0,
+                "negative_slack_mass_indicator_ps": 71.0,
+                "path_family_coverage": 3,
+            },
+        }
+        scenarios[name] = {
+            "status": "succeeded",
+            "reference": metrics,
+            "augmented": copy.deepcopy(metrics),
+            "pairwise_relation": {"relation": "equal", "comparisons": []},
+            "path_migration": {
+                "path_families_added": [], "path_families_removed": [],
+                "path_families_retained": ["launch->capture"],
+            },
+        }
+    document = {
+        "schema": "lfr-baseline-evaluation/1", "status": "succeeded",
+        "claim_limits": {
+            "commercial_qor_predicted": False, "fmax_predicted": False,
+            "commercial_eda_executed": False,
+        },
+        "scenarios": scenarios,
+        "pairwise_relation": {"relation": "equal", "comparisons": []},
+    }
+    document["evaluation_payload_sha256"] = hashlib.sha256(
+        (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    ).hexdigest()
+    return document
+
+
 def _manifest() -> dict:
     function_key = "sha256:" + "1" * 64
     return {
@@ -218,6 +258,30 @@ def _proposal(context: dict) -> dict:
 
 
 class ResidualResearchContextTests(unittest.TestCase):
+    def test_cold_start_baseline_exposes_f0_f2_f3_without_qor_prediction(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request = _request(root)
+            request["evaluation"] = _write_json(root, "baseline-evaluation.json", _baseline_evaluation())
+            request["candidate_pool"] = _write_json(root, "candidate-pool.json", _candidate_pool())
+            frontier = json.loads((root / request["frontier"]["path"]).read_text())
+            frontier.update({
+                "objectives": [], "members": [], "frontier_member_ids": [],
+                "commercial_validation_candidate": {
+                    "value": False, "meaning": "no commercial observation before paired mapping",
+                    "reasons": [],
+                },
+            })
+            request["frontier"] = _write_json(root, "cold-frontier.json", frontier)
+
+            context = load_residual_research_context(request, evidence_root=root)
+
+            self.assertEqual(["F0", "F2", "F3"], context["metric_vectors"]["available_layers"])
+            nominal = context["metric_vectors"]["scenarios"]["nominal"]
+            self.assertTrue(all(row["relation"] == "equal" for row in nominal["metrics"]))
+            self.assertFalse(context["agent_scope"]["commercial_qor_prediction"])
+            self.assertEqual(1, context["candidate_pool"]["count"])
+
     def test_candidate_pool_identity_separates_drive_variants_and_rejects_exact_duplicate(self):
         pool = _candidate_pool()
         x1 = pool["generation_requests"][0]

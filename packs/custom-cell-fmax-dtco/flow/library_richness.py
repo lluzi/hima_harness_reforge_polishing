@@ -202,6 +202,15 @@ def _required_mapping_inputs(mapping_request: Mapping[str, Any]) -> list[Path]:
     return list(dict.fromkeys(paths))
 
 
+def required_mapping_input_paths(mapping_request: Mapping[str, Any]) -> list[Path]:
+    """Return the exact files one round request must bind by SHA-256.
+
+    Pack integration uses this narrow public seam instead of duplicating the
+    Framework's input-enumeration policy.
+    """
+    return _required_mapping_inputs(mapping_request)
+
+
 def _bound_inputs(mapping_request: Mapping[str, Any], value: object) -> dict[str, str]:
     supplied = _mapping(value, "input_hashes")
     normalized: dict[str, str] = {}
@@ -2130,6 +2139,8 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
             "local_portfolio": {
                 "source": validated["local_portfolio"]["source"],
                 "selected_candidate_ids": validated["local_portfolio"]["selected_candidate_ids"],
+                "reference": validated["local_portfolio"]["reference"],
+                "augmented": validated["local_portfolio"]["augmented"],
                 "evidence_layer": "F1_local_structure",
                 "status": "PRE_MAPPING_PLANNING",
             },
