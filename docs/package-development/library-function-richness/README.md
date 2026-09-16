@@ -14,6 +14,7 @@ GitHub tracker: [#40 — Build and integrate the Library Function Richness Frame
 - [中文开发文档](framework-development.zh-CN.md)
 - [English development document](framework-development.en.md)
 - [Methodology design](../../specs/product-upgrade-v2/library-function-richness-optimization-framework.md)
+- [Methodology v2 implementation specification](methodology-v2.zh-CN.md)
 - [Current HimaPack](../../../packs/custom-cell-fmax-dtco/)
 
 The Chinese and English documents carry the same section and task identities. The Chinese document
