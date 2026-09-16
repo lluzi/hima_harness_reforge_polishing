@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createHimaHome, repoRoot } from './support/dsh-home.ts';
 import { writeLocalSite } from './support/site.ts';
-import { bootDriver } from './support/driver.ts';
+import { bootDriver, waitForConfigurationReady } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
 import { api } from './support/hima-api.ts';
 import { inspectWindow } from './support/inspect-window.ts';
@@ -98,9 +98,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     assert.ok((await d.wait('studio', 'Campaign workspace', 12_000)).ok);
     const owner = (await d.read('studio')); assert.ok(owner.ok); const ownerSession = owner.state.session; assert.ok(ownerSession);
 
-    assert.ok((await d.click('studio-new')).ok);
-    assert.ok((await d.wait('studio-empty-pack', 'No HimaPack is installed', 10_000)).ok);
-    await browser.mark('[aria-label="Close Campaign preparation"]', 'close-preparation'); assert.ok((await d.click('close-preparation')).ok);
+    assert.ok((await d.wait('config-empty-pack', 'No HimaPack is installed', 10_000)).ok);
     assert.ok((await d.click('studio-pack-owner')).ok);
     assert.ok((await d.fill('owner-pack', 'custom-cell-fmax-dtco')).ok);
     assert.ok((await d.fill('owner-location', packSource)).ok);
@@ -110,16 +108,19 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     assert.ok((await d.wait('pack-owner-message', 'Confirmed files verified and written', 12_000)).ok);
     assert.ok((await d.click('studio-pack-owner')).ok);
 
-    assert.ok((await d.click('studio-new')).ok);
     // Pre-existing race, unrelated to the canvas: the freshly-installed pack reaches the select's
     // own option list asynchronously, after `fetchStartChoices`'s own read settles.
-    await browser.wait(`!!document.querySelector('[data-hima-control="studio-pack"] option[value="custom-cell-fmax-dtco"]')`, 10_000);
-    assert.ok((await d.fill('studio-pack', 'custom-cell-fmax-dtco')).ok);
-    assert.ok((await d.fill('studio-site', 'local')).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status')==='ready'`, 15_000);
-    assert.ok((await d.wait('studio-proposal', 'Portable custom Cell Fmax research', 10_000)).ok);
-    assert.equal(await browser.evaluate(`document.querySelector('.hima-advanced')?.open`), false, 'internal knobs are folded by default');
-    assert.ok((await d.click('studio-start')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="config-pack"] option[value="custom-cell-fmax-dtco"]')`, 10_000);
+    assert.ok((await d.fill('config-pack', 'custom-cell-fmax-dtco')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="config-goal-target_period_ns"]')`);
+    // The real title, never the stale one an earlier draft of this test carried (#41 task 7): the
+    // Pack section states this Pack's own words, read fresh off its contract.
+    assert.ok((await d.wait('config-pack', 'Portable custom Cell Fmax Campaign with matched physical implementation', 10_000)).ok);
+    assert.ok((await d.fill('config-goal-target_period_ns', '0.5')).ok);
+    assert.ok((await d.fill('config-goal-target_fmax_improvement_pct', '5')).ok);
+    assert.ok((await d.fill('config-site', 'local')).ok);
+    await waitForConfigurationReady(d, 'custom-cell-fmax-dtco', 'local', 30_000);
+    assert.ok((await d.click('config-confirm')).ok);
     await browser.wait(`Number(document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-nodes'))>=48`, 20_000);
     const graph = await d.read('campaign-graph'); assert.ok(graph.ok); assert.ok(Number(graph.state.nodes) >= 48, graph.text);
     assert.ok(graph.text.includes('pnr-foundry') && graph.text.includes('compare'), graph.text);

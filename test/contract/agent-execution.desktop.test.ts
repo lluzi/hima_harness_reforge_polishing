@@ -5,7 +5,7 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { RunView } from '@hima/harness';
 import { localHome, killSessions } from './support/fabric.ts';
-import { bootDriver } from './support/driver.ts';
+import { bootDriver, fillConfiguration } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
 import { api } from './support/hima-api.ts';
 import { inspectWindow } from './support/inspect-window.ts';
@@ -55,14 +55,11 @@ test('native selected conversation runs one explicit Job, accepts typed steering
     const studio = await d.read('studio'); assert.ok(studio.ok);
     const selectedSession = studio.state.session;
     const url = await browser.evaluate<string>('location.href');
-    assert.ok((await d.click('studio-new')).ok);
-    assert.ok((await d.fill('studio-pack', timingProbePackId)).ok);
-    assert.ok((await d.fill('studio-site', 'local')).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status')==='ready'`);
-    await browser.mark('.hima-advanced>summary', 'studio-advanced'); assert.ok((await d.click('studio-advanced')).ok);
-    for (const [control, value] of Object.entries({ 'studio-target': '2.0', 'studio-knob-periodNs': '2.3', 'studio-timeBox': '2', 'studio-generations': '2' })) {
-      assert.ok((await d.fill(control, value)).ok);
-    }
+    await fillConfiguration(d, browser, {
+      pack: timingProbePackId, site: 'local',
+      goal: { target_period_ns: '2.0' }, knobs: { periodNs: '2.3' },
+      budget: { timeBoxMinutes: '2', generations: '2' },
+    });
     await browser.evaluate(`(() => {
       window.__himaDelivery = [];
       addEventListener('error', event => window.__himaDelivery.push({ error: event.message, stack: event.error?.stack }));
@@ -75,7 +72,7 @@ test('native selected conversation runs one explicit Job, accepts typed steering
         return response;
       };
     })()`);
-    assert.ok((await d.click('studio-start')).ok);
+    assert.ok((await d.click('config-confirm')).ok);
     await browser.wait(`document.body.innerText.includes(${JSON.stringify(replayJobStarted)})`, 30_000);
     const running = await d.read('studio'); assert.ok(running.ok);
     const runId = running.state.run; assert.ok(runId);

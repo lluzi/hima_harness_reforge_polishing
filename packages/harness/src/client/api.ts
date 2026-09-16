@@ -2,10 +2,12 @@
 // and the only place the HimaGuide module talks to the host. The wire contract lives in
 // `../remote.ts`; this file imports it as types alone, so nothing host-side reaches the bundle.
 import type { ExecutionContext } from '../fabric.js';
-import type { HimaErrorBody, HimaErrorCode, LogTailView, MaterialAnswer, RunHeadView, RunView } from '../remote.js';
+import type { CampaignFile } from '../campaign-file.js';
+import type { CampaignFileView, HimaErrorBody, HimaErrorCode, LogTailView, MaterialAnswer, RunHeadView, RunView, SiteDiscoverBody, SiteHeadView } from '../remote.js';
+import type { SiteDiscoveryResult } from '../sites.js';
 import type { StartChoices } from '../workbench.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
-import { HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath } from '../paths.js';
+import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, siteDiscoverPath } from '../paths.js';
 
 /**
  * Why a Hima request did not answer. `hima/unreachable` is the one code minted here rather than by
@@ -58,6 +60,32 @@ export const startCampaign = (body: Record<string, unknown>, signal?: AbortSigna
 
 export const reviewPackTransfer = (body: import('../remote.js').PackTransferBody & { sessionId: string }, signal?: AbortSignal): Promise<HimaResult<import('../release.js').PackTransferReview>> =>
   runRequest('/hima/api/packs/transfer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+
+/** Read the session's own Campaign file (#41 task 7): the draft exactly as the Host has it, and —
+ *  once it names a Pack — the same preparation shape `fetchStartChoices` answers, computed with this
+ *  file's own overrides. */
+export function fetchCampaignFile(sessionId: string, signal?: AbortSignal): Promise<HimaResult<CampaignFileView>> {
+  const query = new URLSearchParams({ session: sessionId });
+  return runRequest(`${HIMA_CAMPAIGN_FILE_PATH}?${query}`, { signal });
+}
+
+/** Write the session's own Campaign file. `file` is handed to the Host unvalidated — its own schema
+ *  check runs once, there, and a rejection answers the same one-sentence message a hand-edited file
+ *  on disk would. */
+export function saveCampaignFile(sessionId: string, file: CampaignFile, signal?: AbortSignal): Promise<HimaResult<CampaignFileView>> {
+  return runRequest(HIMA_CAMPAIGN_FILE_PATH, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, file }), signal });
+}
+
+/** Every saved Site (#41 task 4): what the Configuration page's Site picker and readiness roundel
+ *  read, and nothing a Permit governs. */
+export const fetchSites = (signal?: AbortSignal): Promise<HimaResult<{ sites: readonly SiteHeadView[] }>> =>
+  runRequest(HIMA_SITES_PATH, { signal });
+
+/** Learn a Site through the caller's own SSH identity (#41 task 4): a preview when `save` is left
+ *  false or absent, a saved Site and Permit file when it is true. No credential is read or stored. */
+export function discoverSite(body: SiteDiscoverBody, signal?: AbortSignal): Promise<HimaResult<{ result: SiteDiscoveryResult; saved?: SiteHeadView }>> {
+  return runRequest(siteDiscoverPath(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+}
 
 export const fetchExecutionContext = (runId: string, signal?: AbortSignal): Promise<HimaResult<ExecutionContext>> =>
   runRequest(`${runPath(runId)}/context`, { signal });

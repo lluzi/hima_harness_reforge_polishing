@@ -298,4 +298,34 @@ export const HIMA_STYLE = `
 .hima-owner-file-cell{padding:8px 6px 8px 0;overflow-wrap:anywhere}
 .hima-owner-manifest{margin:12px 0}
 .hima-owner-manifest-json{max-height:220px;overflow:auto;font-size:var(--hima-fs-eyebrow)}
+
+/* The Configuration page (#41 task 7): the Campaign file rendered as one document, every section
+   visible at once — never a wizard. A two-column grid per section (a 12 px tracked eyebrow naming
+   it, its content stacked beneath), the same label/body/eyebrow steps the rest of the sheet uses. */
+.hima-config{flex:1;min-height:0;min-width:0;overflow:auto;padding:var(--hima-sp-5) var(--hima-sp-6) var(--hima-sp-8);display:flex;flex-direction:column}
+.hima-config-header{padding-bottom:var(--hima-sp-3);margin-bottom:var(--hima-sp-2);border-bottom:1px solid var(--hima-line-strong)}
+.hima-config-header h2{margin:0;font-size:var(--hima-fs-title);font-weight:650;letter-spacing:-.01em}
+.hima-config-header-sub{margin:4px 0 0;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.hima-config>section{display:grid;grid-template-columns:150px minmax(0,1fr);gap:6px var(--hima-sp-4);padding:var(--hima-sp-3) 0;border-bottom:1px solid var(--hima-line);align-items:start}
+.hima-config-eyebrow{font-size:var(--hima-fs-eyebrow);letter-spacing:var(--hima-track);font-weight:600;color:var(--hima-ink-2);text-transform:uppercase;padding-top:6px}
+.hima-config>section>*{grid-column:2;min-width:0}
+.hima-config>section>.hima-config-eyebrow{grid-column:1}
+.hima-config-detail{margin:0;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.hima-config select,.hima-config input,.hima-config textarea{border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:6px var(--hima-sp-2);font-size:var(--hima-fs-label);min-width:0}
+.hima-config textarea{min-height:48px;resize:vertical;width:100%}
+.hima-config-field-row{display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap}
+.hima-config-field-row+.hima-config-field-row{margin-top:6px}
+.hima-config-field-row>span:first-child{min-width:120px;font-size:var(--hima-fs-label);color:var(--hima-ink)}
+.hima-config-mark{font-size:var(--hima-fs-eyebrow);color:var(--hima-accent);font-weight:600}
+.hima-changed{background:color-mix(in srgb, var(--hima-accent) 10%, transparent);border-radius:var(--hima-r-s)}
+.hima-config-mini-graph{display:block;width:100%;height:50px}
+.hima-config-mini-node{fill:none;stroke:var(--hima-ink-3);stroke-width:1.4}
+.hima-config-mini-edge{fill:none;stroke:var(--hima-line-strong);stroke-width:1}
+.hima-config-empty-pack,.hima-config-knowledge-add-row{display:flex;gap:var(--hima-sp-2);align-items:center;flex-wrap:wrap}
+.hima-config-site-new{display:flex;flex-direction:column;gap:var(--hima-sp-2);margin-top:6px}
+.hima-config-site-new-label{display:flex;flex-direction:column;gap:2px;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
+.hima-config-input-row,.hima-config-readiness-row{display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap}
+.hima-config-readiness-row{padding:2px 0}
+.hima-config-confirm-row{display:flex;align-items:center;gap:var(--hima-sp-3);margin-top:var(--hima-sp-2)}
+.hima-pill{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;background:var(--hima-soft);color:var(--hima-ink-2);font-size:var(--hima-fs-eyebrow);font-weight:600;margin-left:6px}
 `;

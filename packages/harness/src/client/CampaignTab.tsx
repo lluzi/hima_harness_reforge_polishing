@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { layoutCanvas } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import { cancelAsked, cancelObserved } from '../card-labels.js';
-import { experienceMarkdownPath } from '../paths.js';
+import { runPath } from '../paths.js';
 import { reportBlocks } from '../experience-report.js';
 import type { RunView } from '../remote.js';
 import { sceneInputs } from '../scene.js';
@@ -132,7 +132,10 @@ function ReportView({ view, runId }: { view: RunView; runId: string }): ReactEle
     const own = new AbortController(); pending.current = own;
     setSaved({ loading: true });
     try {
-      const response = await fetch(experienceMarkdownPath(runId), { signal: own.signal, headers: { accept: 'application/json' } });
+      // The JSON route (no `.md` suffix), never `experienceMarkdownPath` — that one answers with the
+      // raw file itself (`media: 'text/markdown'`, `remote.ts`'s own `experienceOperation`), which is
+      // what the anchor's own `href` is for, not this fetch.
+      const response = await fetch(`${runPath(runId)}/experience`, { signal: own.signal, headers: { accept: 'application/json' } });
       const body = await response.json() as { markdown?: string; error?: { message?: string } };
       if (!response.ok || typeof body.markdown !== 'string') throw new Error(body.error?.message ?? `Report read failed (HTTP ${String(response.status)})`);
       if (!own.signal.aborted) setSaved({ markdown: body.markdown });

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { appendFile, mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { bootDriver, type BootedDriver } from './support/driver.ts';
+import { bootDriver, fillConfiguration, waitForConfigurationReady, type BootedDriver } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
 import { api } from './support/hima-api.ts';
 import { inspectWindow } from './support/inspect-window.ts';
@@ -53,14 +53,26 @@ async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = 
   return { host, cookie };
 }
 
+/** Fill the Configuration page (#41 task 7) for the shipped timing-probe Pack: the same document
+ *  every case in this file confirms a Campaign from, replacing the old start form's own advanced
+ *  disclosure and knob fields. */
 async function fillStart(d: BootedDriver, browser: Inspector, target = '2.25', retries = '0') {
-  assert.ok((await d.click('studio-new')).ok);
-  assert.ok((await d.fill('studio-pack', timingProbePackId)).ok);
-  assert.ok((await d.fill('studio-site', 'local')).ok);
-  await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status')==='ready'`);
-  await browser.mark('.hima-advanced>summary', 'studio-advanced'); assert.ok((await d.click('studio-advanced')).ok);
-  for (const [key, value] of Object.entries({ 'studio-target': target, 'studio-knob-periodNs': '2.3', 'studio-timeBox': '5', 'studio-retries': retries, 'studio-generations': '6' })) {
-    assert.ok((await d.fill(key, value)).ok);
+  await fillConfiguration(d, browser, {
+    pack: timingProbePackId, site: 'local',
+    goal: { target_period_ns: target }, knobs: { periodNs: '2.3' },
+    budget: { timeBoxMinutes: '5', retries, generations: '6' },
+  });
+}
+
+/** The next paused request of a given HTTP method, passing any other one straight through — the
+ *  Configuration page polls `GET /hima/api/campaign` every three seconds on the very same path a
+ *  test pauses to fail one particular `PUT` on, so a plain `nextPaused()` could just as easily hand
+ *  back an unrelated poll instead of the save under test. */
+async function nextPausedMethod(browser: Inspector, method: string) {
+  for (;;) {
+    const candidate = await browser.nextPaused();
+    if (candidate.request.method === method) return candidate;
+    await browser.send('Fetch.continueRequest', { requestId: candidate.requestId });
   }
 }
 
@@ -144,9 +156,11 @@ test('conversation draft, native files and verified reports share one workspace 
     browser = await inspectWindow(port);
     const { host, cookie } = await prepareSession(d, browser);
     const url = await browser.evaluate<string>('location.href');
+    await capture(d, browser, 'configuration-empty');
     await fillStart(d, browser);
+    await capture(d, browser, 'configuration-ready');
     await capture(d, browser, 'light-start');
-    assert.ok((await d.click('studio-start')).ok);
+    assert.ok((await d.click('config-confirm')).ok);
     // This start route returns after legacy automatic drive settles. Running interaction itself is
     // held by the controlled Job/replay path below; this case needs a real created Run to inspect.
     assert.ok((await d.wait('campaign-masthead', 'ended — goal met', 35_000)).ok);
@@ -171,7 +185,7 @@ test('conversation draft, native files and verified reports share one workspace 
     const original = await readFile(file);
     try {
       await writeFile(file, 'changed after publication');
-      await browser.markText('button', '← Current ledger preview', 'current-preview');
+      await browser.markText('button', 'Current ledger preview', 'current-preview');
       assert.ok((await d.click('current-preview')).ok);
       await browser.mark('.hima-studio a[href$="/experience.md"]', 'open-saved-report');
       assert.ok((await d.click('open-saved-report')).ok);
@@ -191,6 +205,10 @@ test('conversation draft, native files and verified reports share one workspace 
     assert.equal(await browser.evaluate('location.href'), url);
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
     await capture(d, browser, 'light-code');
+  } catch (error) {
+    t.diagnostic(await browser!.evaluate<string>('document.body.innerText'));
+    t.diagnostic(d.stderr());
+    throw error;
   } finally { await finish(d, browser); }
 });
 
@@ -208,23 +226,29 @@ test('preparation retries preserve drafts, pending starts cannot be replaced, an
     const probe = await (await api(host, cookie, '/hima/api/observe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ site: 'local', path: path.join(d.home.workspace, sample.rel) }) })).json() as RunView;
     assert.ok(probe.run?.id);
     await fillStart(d, browser, '2.3');
-    await browser.pause('*/hima/api/start-options*');
-    assert.ok((await d.fill('studio-site', 'other')).ok);
-    const failedCheck = await browser.nextPaused();
-    await browser.send('Fetch.fulfillRequest', { requestId: failedCheck.requestId, responseCode: 503, body: Buffer.from(JSON.stringify({ error: { code: 'hima/internal', message: 'temporary preparation failure' } })).toString('base64') });
-    assert.ok((await d.wait('studio-start', 'temporary preparation failure', 12_000)).ok);
-    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="studio-target"]').value`), '2.3');
-    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="studio-start"]').disabled`), true);
+    // A failed save keeps what the person typed, and never enables Confirm until the file is ready
+    // again — the Configuration page's own equivalent of the old form's preparation-check retry.
+    await browser.pause('*/hima/api/campaign*');
+    assert.ok((await d.fill('config-site', 'other')).ok);
+    const failedSave = await nextPausedMethod(browser, 'PUT');
+    await browser.send('Fetch.fulfillRequest', { requestId: failedSave.requestId, responseCode: 503, body: Buffer.from(JSON.stringify({ error: { code: 'hima/internal', message: 'temporary preparation failure' } })).toString('base64') });
+    assert.ok((await d.wait('configuration', 'temporary preparation failure', 12_000)).ok);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="config-goal-target_period_ns"]').value`), '2.3');
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="config-confirm"]').disabled`), true);
     await browser.send('Fetch.disable');
-    assert.ok((await d.click('studio-recheck')).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]').getAttribute('data-hima-state-status')==='ready'`);
+    assert.ok((await d.fill('config-site', 'other')).ok);
+    await waitForConfigurationReady(d, timingProbePackId, 'other');
     await browser.pause('*/hima/api/runs/start');
-    assert.ok((await d.click('studio-start')).ok);
+    assert.ok((await d.click('config-confirm')).ok);
     const starting = await browser.nextPaused();
-    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="studio-run"]').disabled`), true);
-    await browser.evaluate(`document.querySelector('[data-hima-region="studio-start"]').requestSubmit()`);
+    // Confirm is disabled the instant the first click's own state update lands, so an ordinary
+    // second click cannot even reach the page — proven directly, then the guard behind it is proven
+    // by dispatching a raw click event, which reaches React's delegated listener regardless of the
+    // `disabled` attribute the way a fast double click racing that same re-render could.
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="config-confirm"]').disabled`), true);
+    await browser.evaluate(`document.querySelector('[data-hima-control="config-confirm"]').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))`);
     const runs = await (await api(host, cookie, '/hima/api/runs')).json() as { runs: RunView['run'][] };
-    assert.equal(runs.runs.length, 2, 'one Probe and exactly one Campaign despite repeated submit');
+    assert.equal(runs.runs.length, 2, 'one Probe and exactly one Campaign despite repeated confirm clicks');
     await browser.send('Fetch.continueRequest', { requestId: starting.requestId }); await browser.send('Fetch.disable');
     assert.ok((await d.wait('campaign-masthead', 'waiting', 25_000)).ok);
     const id = await currentRun(d);
@@ -244,6 +268,10 @@ test('preparation retries preserve drafts, pending starts cannot be replaced, an
     assert.equal(ended.jobs.filter((job) => job.event === 'launched').length, 2, 'Run selection never launches another continuation');
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
     await capture(d, browser, 'dark-cancelled');
+  } catch (error) {
+    t.diagnostic(await browser!.evaluate<string>('document.body.innerText'));
+    t.diagnostic(d.stderr());
+    throw error;
   } finally { await finish(d, browser); }
 });
 
@@ -281,13 +309,14 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     const { host, cookie } = await prepareSession(d, browser, true);
     const url = await browser.evaluate<string>('location.href');
     await fillStart(d, browser, '2.0');
-    const options = await browser.evaluate<{ value: string; text: string; disabled: boolean }[]>(`[...document.querySelector('[data-hima-control="studio-pack"]').options].map(o=>({value:o.value,text:o.textContent,disabled:o.disabled}))`);
+    const options = await browser.evaluate<{ value: string; text: string; disabled: boolean }[]>(`[...document.querySelector('[data-hima-control="config-pack"]').options].map(o=>({value:o.value,text:o.textContent,disabled:o.disabled}))`);
     assert.ok(options.find((o) => o.value === pack)?.text.includes('test pack (intent)'));
     assert.equal(options.find((o) => o.value === 'broken-pack')?.disabled, true);
     assert.ok(options.find((o) => o.value === 'broken-pack')?.text.includes('unreadable'));
-    assert.ok((await d.fill('studio-pack', pack)).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]').getAttribute('data-hima-state-status')==='ready'`);
-    assert.ok((await d.click('studio-start')).ok);
+    assert.ok((await d.fill('config-pack', pack)).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="configuration"]').getAttribute('data-hima-state-ready')==='true'`);
+    assert.ok((await d.click('config-confirm')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="campaign-masthead"]')`, 15_000);
     // Task 5: the Live view is the HimaFabric canvas alone; the workshop section moved to Evidence.
     assert.ok((await d.click('studio-evidence')).ok);
     assert.ok((await d.wait('run-workshop', 'miner.sh', 40_000)).ok);
@@ -340,6 +369,10 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     assert.ok((await d.click('chat-material-record')).ok);
     await browser.wait(`!!${chatMaterial}.querySelector('[data-hima-region="material-content"]') && ${chatMaterial}.querySelector('[data-hima-region="material-content"]').textContent.includes('set -eu')`, 12_000);
     await capture(d, browser, 'light-workshop');
+  } catch (error) {
+    t.diagnostic(await browser!.evaluate<string>('document.body.innerText'));
+    t.diagnostic(d.stderr());
+    throw error;
   } finally { await finish(d, browser); await home.h.dispose(); }
 });
 
@@ -360,25 +393,35 @@ test('a native declared improvement Goal shows its units, refuses precision loss
     await writeFile(graph, (await readFile(graph, 'utf8')).replaceAll('name: target_period_ns', 'name: improvement_pct'));
     browser = await inspectWindow(port);
     const { host, cookie } = await prepareSession(d, browser);
-    assert.ok((await d.click('studio-new')).ok);
-    await browser.wait(`!!document.querySelector('[data-hima-control="studio-pack"] option[value="relative-goal"]')`);
-    assert.ok((await d.fill('studio-pack', pack)).ok);
-    await browser.wait(`document.querySelector('[data-hima-control="studio-goal-improvement_pct"]') && document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status') === 'ready'`);
-    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="studio-target"]') === null`), true);
-    assert.ok((await d.wait('studio-start', 'relative improvement (%)', 10_000)).ok);
-    assert.ok((await d.fill('studio-goal-improvement_pct', '1.001')).ok);
-    assert.ok((await d.click('studio-start')).ok);
-    assert.ok((await d.wait('studio-start', 'at most 2 decimal places', 10_000)).ok);
-    await browser.wait(`document.querySelector('[role="alert"]')?.textContent.includes('invalid Goal parameter')`);
+    await browser.wait(`!!document.querySelector('[data-hima-control="config-pack"]')`);
+    await browser.wait(`!!document.querySelector('[data-hima-control="config-pack"] option[value="relative-goal"]')`);
+    assert.ok((await d.fill('config-pack', pack)).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="config-goal-improvement_pct"]')`);
+    // The Goal is never prefilled from the Pack's own default (#41 task 3): the field starts empty.
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="config-goal-improvement_pct"]').value`), '');
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="config-goal-target_period_ns"]') === null`), true, 'the relative-goal Pack never declares the shipped Pack\'s own goal name');
+    assert.ok((await d.fill('config-site', 'local')).ok);
+    // Set early and given a whole wait cycle to land, so its own save can never race the one that
+    // finally makes the page ready (Budget does not gate readiness, but a save still in flight when
+    // Confirm reads the current proposal id would make that id stale the instant it lands).
+    assert.ok((await d.fill('config-budget-generations', '1')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="configuration"]')?.textContent.includes('relative improvement')`);
+    assert.ok((await d.fill('config-goal-improvement_pct', '1.001')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="config-readiness"]')?.textContent.includes('at most 2 decimal places')`);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="config-confirm"]').disabled`), true);
     assert.deepEqual(await (await api(host, cookie, '/hima/api/runs')).json(), { runs: [] });
     await capture(d, browser, 'pls21-relative-goal-invalid');
-    assert.ok((await d.fill('studio-goal-improvement_pct', '5.25')).ok);
-    assert.ok((await d.fill('studio-generations', '1')).ok);
-    assert.ok((await d.click('studio-start')).ok);
-    await browser.wait(`!document.querySelector('[data-hima-control="studio-goal-improvement_pct"]') && !!document.querySelector('[data-hima-region="campaign-masthead"]')`);
+    assert.ok((await d.fill('config-goal-improvement_pct', '5.25')).ok);
+    await waitForConfigurationReady(d, pack, 'local');
+    assert.ok((await d.click('config-confirm')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="campaign-masthead"]')`);
     const id = await currentRun(d);
     const view = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
     assert.deepEqual(view.run.goal, { improvement_pct: 5.25 });
     await capture(d, browser, 'pls21-relative-goal-started');
+  } catch (error) {
+    t.diagnostic(await browser!.evaluate<string>('document.body.innerText'));
+    t.diagnostic(d.stderr());
+    throw error;
   } finally { await finish(d, browser); }
 });

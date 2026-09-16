@@ -525,6 +525,89 @@ export async function waitForStartCheck(
   }
 }
 
+/** What `fillConfiguration` accepts (#41 task 7): the Pack and Site every case names, plus whichever
+ *  Goal parameters, Strategy knobs and Budget fields that case's proposal needs to become ready. Keys
+ *  are the Pack's own names — `target_period_ns`, `periodNs`, and so on — never a harness alias, and
+ *  Budget keys are the Campaign file's own `timeBoxMinutes`/`retries`/`generations`. */
+export interface ConfigurationFill {
+  readonly pack: string;
+  readonly site: string;
+  readonly goal?: Readonly<Record<string, string>>;
+  readonly knobs?: Readonly<Record<string, string>>;
+  readonly budget?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Fill the Configuration page (#41 task 7) — the Campaign file rendered as one document, replacing
+ * the old step-by-step start form `fillForm`/`waitForKnobs` drove. The Pack is chosen first, because
+ * it is what makes the Goal and Strategy fields below belong to it (`config-goal-<name>`/
+ * `config-knob-<name>`, re-read from the Host the moment the Pack changes, exactly as the old form's
+ * own knobs were); the Site is filled *last*, deliberately: every Goal/Strategy/Budget field saves on
+ * blur, and the driver's own `fill` script focuses the next control before setting it — which blurs
+ * whatever text field was focused before, true of every field but the very last one filled. Ending on
+ * the Site's `<select>` (which saves the moment it changes, no blur needed) guarantees every field
+ * filled before it has already been committed through `saveCampaignFile` once this returns.
+ *
+ * Waits for the Host's own readiness before returning: `config-confirm` is enabled only once
+ * `data-hima-region="configuration"` reports `ready`, exactly as `waitForStartCheck` did for the old
+ * form's own `start-check`.
+ *
+ * @param d - the booted shell.
+ * @param browser - the same Chromium inspector every desktop test already opens, used here only to
+ *                  wait for a Pack's own Goal/Strategy fields to actually be on the page before they
+ *                  are filled — a replacement pack's fields arrive asynchronously off the Host.
+ * @param fill - the Pack, the Site, and whatever fields that Pack's own proposal needs filled.
+ */
+export async function fillConfiguration(
+  d: BootedDriver,
+  browser: { wait(expression: string, timeout?: number): Promise<void> },
+  fill: ConfigurationFill,
+): Promise<void> {
+  await browser.wait(`!!document.querySelector('[data-hima-control="config-pack"]')`);
+  const filledPack = await d.fill('config-pack', fill.pack);
+  assert.ok(filledPack.ok, `fill config-pack: ${JSON.stringify(filledPack)}`);
+  await browser.wait(`document.querySelector('[data-hima-region="configuration"]')?.getAttribute('data-hima-state-pack') === ${JSON.stringify(fill.pack)}`);
+  for (const name of Object.keys(fill.goal ?? {})) {
+    await browser.wait(`!!document.querySelector('[data-hima-control="config-goal-${name}"]')`);
+  }
+  for (const name of Object.keys(fill.knobs ?? {})) {
+    await browser.wait(`!!document.querySelector('[data-hima-control="config-knob-${name}"]')`);
+  }
+  for (const [name, value] of Object.entries(fill.goal ?? {})) {
+    const filled = await d.fill(`config-goal-${name}`, value);
+    assert.ok(filled.ok, `fill config-goal-${name}: ${JSON.stringify(filled)}`);
+  }
+  for (const [name, value] of Object.entries(fill.knobs ?? {})) {
+    const filled = await d.fill(`config-knob-${name}`, value);
+    assert.ok(filled.ok, `fill config-knob-${name}: ${JSON.stringify(filled)}`);
+  }
+  for (const [name, value] of Object.entries(fill.budget ?? {})) {
+    const filled = await d.fill(`config-budget-${name}`, value);
+    assert.ok(filled.ok, `fill config-budget-${name}: ${JSON.stringify(filled)}`);
+  }
+  const filledSite = await d.fill('config-site', fill.site);
+  assert.ok(filledSite.ok, `fill config-site: ${JSON.stringify(filledSite)}`);
+  await waitForConfigurationReady(d, fill.pack, fill.site);
+}
+
+/** Wait for the Configuration page's own readiness (#41 task 7): `data-hima-region="configuration"`
+ *  reports `ready` once the Host's preparation, computed off the current Campaign file, is satisfied
+ *  for exactly the Pack and Site named — the same guard `waitForStartCheck` gave the old form. */
+export async function waitForConfigurationReady(
+  d: BootedDriver,
+  pack: string,
+  site: string,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const region = await d.read('configuration');
+    if (region.ok && region.state.pack === pack && region.state.site === site && region.state.ready === 'true') return;
+    if (Date.now() >= deadline) throw new Error(`the Configuration page did not become ready for ${pack}/${site}: ${JSON.stringify(region)}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 /** The one Run the ledger holds, read off the page's own run list — which is where a person reads it. */
 export async function theOneRunId(d: BootedDriver): Promise<string> {
   const listed = await d.open('/hima/');

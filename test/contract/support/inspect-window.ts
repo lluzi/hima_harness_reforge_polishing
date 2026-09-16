@@ -10,9 +10,9 @@ export async function inspectWindow(port: number) {
   await new Promise<void>((resolve, reject) => { socket.addEventListener('open', () => resolve(), { once: true }); socket.addEventListener('error', reject, { once: true }); });
   let seq = 0;
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
-  const paused: { requestId: string; request: { url: string } }[] = [];
+  const paused: { requestId: string; request: { url: string; method: string } }[] = [];
   socket.addEventListener('message', (event) => {
-    const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: { message: string }; method?: string; params?: { requestId: string; request: { url: string } } };
+    const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: { message: string }; method?: string; params?: { requestId: string; request: { url: string; method: string } } };
     if (message.id !== undefined) {
       const waiting = pending.get(message.id); pending.delete(message.id);
       if (message.error) waiting?.reject(new Error(message.error.message)); else waiting?.resolve(message.result);

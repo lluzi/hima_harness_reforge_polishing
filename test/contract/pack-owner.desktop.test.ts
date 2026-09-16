@@ -38,6 +38,9 @@ test('owner reviews selected knowledge files and confirms the exact local sharin
     await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
     assert.ok((await d.click('open-workbench')).ok); assert.ok((await d.wait('studio', 'Campaign workspace')).ok);
     assert.ok((await d.click('studio-pack-owner')).ok);
+    // No Campaign is selected, so the panel's own default (`initialPack ? 'share' : 'install'`)
+    // opens on Install; this case shares selected materials, so it chooses that mode explicitly.
+    assert.ok((await d.fill('owner-mode', 'share')).ok);
     for (const [control, value] of Object.entries({ 'owner-pack': pack, 'owner-location': destination, 'owner-assets': relative })) assert.ok((await d.fill(control, value)).ok);
     assert.ok((await d.click('owner-review')).ok);
     assert.ok((await d.wait('pack-review', relative)).ok);
