@@ -45,6 +45,7 @@ import type {
   RevisionRecord,
   RefusalRecord,
   ResearchWriteRecord,
+  ResumedRecord,
   RunBudget,
   RunLoop,
   RunFork,
@@ -246,6 +247,19 @@ export interface CancelView {
 }
 
 /**
+ * A person clearing a Hard blocker, as HimaGuide shows it (#41 task 6, the node card's own
+ * Clearance tab): who did it, and the node the Run re-entered. `who` is the ledger's own session
+ * word — the session's agent id, or `workbench` for the route — never resolved to a person's name
+ * here: a face beyond this one is where that resolution, if any, belongs.
+ */
+export interface ResumeView {
+  readonly recordId: string;
+  readonly at: string;
+  readonly nodeId?: string;
+  readonly who: string;
+}
+
+/**
  * What one of a Run's numbers is called and what it is measured in, as the pack that owns it
  * declares (#42): `{ label: 'clock period at most', unit: 'ns' }` for `declared_parameter`.
  *
@@ -354,8 +368,11 @@ export interface RunView {
   readonly analyses?: readonly AnalysisView[];
   readonly archive?: { readonly recordId: string; readonly delivery: 'pending' | 'complete' | 'failed'; readonly directory: string; readonly reason?: string };
   readonly run: RunHeadView;
-  /** Workspace declarations, not an observed runtime/tool-version inventory. */
-  readonly workspace?: { readonly design?: string; readonly flowRoot: string; readonly containerName: string };
+  /** Workspace declarations, not an observed runtime/tool-version inventory. `bindings` is the
+   *  Site's own resolved value for each of the pack's declared inputs (#41 task 6, the node card's
+   *  own Facts tab), carried on the workspace record since the preparation that resolved them;
+   *  absent on a workspace prepared before this field existed. */
+  readonly workspace?: { readonly design?: string; readonly flowRoot: string; readonly containerName: string; readonly bindings?: Readonly<Record<string, string>> };
   readonly observations: readonly ObservationView[];
   readonly refusals: readonly RefusalView[];
   /** Every pre-effect research writer reservation, including refused and failed calls. */
@@ -375,6 +392,11 @@ export interface RunView {
   readonly blockers: readonly BlockerView[];
   /** Every request to stop this Run, in the order they were made. Empty for a Run nobody cancelled. */
   readonly cancels: readonly CancelView[];
+  /** Every Hard blocker a person cleared, in the order they cleared them (#41 task 6, the node
+   *  card's own Clearance tab) — who, and the node the Run re-entered. Empty for a Run nobody has
+   *  had to resume. A resume and a cancel are two different facts and stay two different lists: a
+   *  cancel is a request to stop, this is a person carrying a stopped Run on. */
+  readonly resumes: readonly ResumeView[];
   /** The Run's latest decision, or null when it has made none. */
   readonly decision: DecisionView | null;
   /**
@@ -782,6 +804,10 @@ function cancelView(record: CancelRecord): CancelView {
   return record.jobSession === undefined ? withSessions : { ...withSessions, jobSession: record.jobSession };
 }
 
+function resumeView(record: ResumedRecord): ResumeView {
+  return { recordId: record.id, at: record.at, nodeId: record.nodeId, who: record.who };
+}
+
 function decisionView(record: DecisionRecord): DecisionView {
   return {
     recordId: record.id,
@@ -867,7 +893,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
   const workshop = standingWorkshop(run, records);
   return {
     run: runHeadView(run, prepared?.packVersion, words),
-    ...(prepared === undefined ? {} : { workspace: { ...(prepared.design === undefined ? {} : { design: prepared.design }), flowRoot: prepared.flowRoot, containerName: prepared.containerName } }),
+    ...(prepared === undefined ? {} : { workspace: { ...(prepared.design === undefined ? {} : { design: prepared.design }), flowRoot: prepared.flowRoot, containerName: prepared.containerName, ...(prepared.bindings === undefined ? {} : { bindings: prepared.bindings }) } }),
     observations,
     refusals: records.filter((r): r is RefusalRecord => r.type === 'refusal').map(refusalView),
     researchWrites: records.filter((r): r is ResearchWriteRecord => r.type === 'research-write').map((record) => ({
@@ -895,6 +921,7 @@ export function runView(ledger: Ledger, run: RunRecord, words?: RunWords): RunVi
     jobs: records.filter((r): r is JobRecord => r.type === 'job').map(jobView),
     blockers: records.filter((r): r is BlockerRecord => r.type === 'blocker').map(blockerView),
     cancels: records.filter((r): r is CancelRecord => r.type === 'cancel').map(cancelView),
+    resumes: records.filter((r): r is ResumedRecord => r.type === 'resumed').map(resumeView),
     decision: decision ? decisionView(decision) : null,
     code: records.filter((r): r is CodeRecord => r.type === 'code').map(codeView),
     knowledge: records.filter((r): r is KnowledgeRecord => r.type === 'knowledge').map(knowledgeView),

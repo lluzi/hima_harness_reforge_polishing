@@ -90,6 +90,12 @@ function FrameBox({ frame }: { frame: Frame }): ReactElement {
  *  about this particular edge. */
 const edgeKey = (edge: PlacedEdge): string => `${edge.from}->${edge.to}:${edge.kind}`;
 
+/** Whether an event's target is inside the node card — the card is a sibling of the canvas's own
+ *  `<svg>`, so its events never bubble into the svg's own wheel/pointer listeners by themselves; this
+ *  is the explicit guard for the one path that still could (a pointer captured by the svg before the
+ *  card opened, then dragged over it). */
+const insideCard = (target: EventTarget | null): boolean => target instanceof Element && target.closest('.hima-node-card') !== null;
+
 export function FabricCanvas({
   runId, sessionId, scene, entryNodeId, view, context, stale, reducedMotion, isOwner, selectedNodeId, onSelectNode, openOwner, openFiles, acting,
 }: FabricCanvasProps): ReactElement {
@@ -127,10 +133,13 @@ export function FabricCanvas({
 
   // A native listener, not React's `onWheel`: React attaches wheel listeners passively at the root,
   // so a synthetic handler's own `preventDefault` would silently do nothing and the page would
-  // scroll under the canvas as well as zooming it.
+  // scroll under the canvas as well as zooming it. The node card is a sibling of this `<svg>`, so its
+  // own wheel scroll never reaches this listener by bubbling — the guard below is a second, explicit
+  // line of defence for the same reason `onPointerDown`'s has one.
   useEffect(() => {
     const el = svgRef.current; if (el === null) return;
     const onWheel = (event: globalThis.WheelEvent) => {
+      if (insideCard(event.target)) return;
       event.preventDefault();
       const rect = el.getBoundingClientRect();
       const cx = event.clientX - rect.left, cy = event.clientY - rect.top;
@@ -225,21 +234,42 @@ export function FabricCanvas({
     if (target === undefined) return;
     setTransform((previous) => ({ scale: previous.scale, tx: viewport.width / 2 - target.x * previous.scale, ty: viewport.height / 2 - target.y * previous.scale }));
   };
+  // Whether the pointer actually moved past a hair's width since `onPointerDown` — a plain click
+  // (down, no move, up) on the canvas's own background closes an open card; a drag that panned the
+  // canvas must never also close it.
+  const moved = useRef(false);
   const onPointerDown = (event: PointerEvent<SVGSVGElement>): void => {
+    if (insideCard(event.target)) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    moved.current = false;
     dragging.current = { x: event.clientX, y: event.clientY, tx: transform.tx, ty: transform.ty };
   };
   const onPointerMove = (event: PointerEvent<SVGSVGElement>): void => {
     const drag = dragging.current; if (drag === undefined) return;
+    if (Math.abs(event.clientX - drag.x) > 3 || Math.abs(event.clientY - drag.y) > 3) moved.current = true;
     setTransform((previous) => ({ ...previous, tx: drag.tx + (event.clientX - drag.x), ty: drag.ty + (event.clientY - drag.y) }));
   };
-  const onPointerUp = (): void => { dragging.current = undefined; };
+  const onPointerUp = (event: PointerEvent<SVGSVGElement>): void => {
+    // A plain click straight on the `<svg>` itself — never a node, never the card, and never the end
+    // of a drag that panned the canvas — closes the open card, exactly as `node-card-close` does.
+    if (dragging.current !== undefined && !moved.current && selectedNodeId !== undefined && event.target === svgRef.current) onSelectNode(undefined);
+    dragging.current = undefined;
+  };
 
   const labelsVisible = labelsVisibleAt(transform.scale);
   const run = view?.run;
   const ended = run?.status !== undefined && (run.status.startsWith('ended-') || run.status === 'cancelled');
   const goalText = run?.goal === undefined ? '' : goalSaid(run.goal, run.words);
   const seal = run?.status === undefined ? undefined : sealSaid(run.status, run.meters?.endedBy);
+
+  // The selected node, only while it is still actually in the scene — a poll can move a node out of
+  // the drawn set (a Loop that collapsed again, a growth's frame that closed) between the click that
+  // selected it and the next render, and a card anchored to a node that is no longer there is a card
+  // anchored to nothing. Cleared below rather than left to render a stale card.
+  const selectedPlaced = selectedNodeId === undefined ? undefined : scene.nodes.find((candidate) => candidate.id === selectedNodeId);
+  useEffect(() => {
+    if (selectedNodeId !== undefined && selectedPlaced === undefined) onSelectNode(undefined);
+  }, [selectedNodeId, selectedPlaced, onSelectNode]);
 
   const blocker = run?.status === 'waiting' ? view?.blockers.at(-1) : undefined;
   const fenceReason = context !== undefined && (context.budget.phase !== 'active' || context.reason !== undefined)
@@ -313,22 +343,20 @@ export function FabricCanvas({
               )}
             </g>
           </g>
-          {/* The node card: one at a time, anchored to its own node's current screen position — the
-              transform is applied here, once, rather than inside the pan/zoom group, so the card's
-              own type stays a fixed size at any zoom. */}
-          {(() => {
-            const selected = selectedNodeId === undefined ? undefined : scene.nodes.find((candidate) => candidate.id === selectedNodeId);
-            if (selected === undefined || view === undefined) return null;
-            return (
-              <NodeCard
-                node={selected} view={view} context={context} runId={runId} sessionId={sessionId} owner={isOwner}
-                anchor={{ x: transform.tx + selected.x * transform.scale, y: transform.ty + selected.y * transform.scale }}
-                canvas={viewport}
-                onClose={() => onSelectNode(undefined)} openFiles={openFiles} acting={acting}
-              />
-            );
-          })()}
         </svg>
+        {/* The node card: one at a time, a plain HTML overlay sibling of the `<svg>` — never a
+            `<foreignObject>` inside it — so the card's own wheel scroll and pointer events are the
+            card's own DOM events, never the canvas's (see the file header and `insideCard` above),
+            and its own type stays a fixed size at any zoom. Its screen position is computed here,
+            once, from the node's placed coordinates and the canvas's own pan/zoom transform. */}
+        {selectedPlaced === undefined || view === undefined ? null : (
+          <NodeCard
+            node={selectedPlaced} view={view} context={context} runId={runId} sessionId={sessionId} owner={isOwner}
+            anchor={{ x: transform.tx + selectedPlaced.x * transform.scale, y: transform.ty + selectedPlaced.y * transform.scale }}
+            canvas={viewport}
+            onClose={() => onSelectNode(undefined)} openFiles={openFiles} acting={acting}
+          />
+        )}
         <div className="hima-canvas-legend">
           <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="act" half={7} /></svg>act</span>
           <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="judge" half={7} /></svg>judge</span>
@@ -342,9 +370,10 @@ export function FabricCanvas({
         </div>
       </div>
       {/* The node card's own Job tab is where a person reads an execution's own row (#41 task 6); while
-          no card is open at all, this visually-hidden list keeps the same `node-execution` marker
-          reachable under `.hima-studio`, since a driver polls it without opening a node. */}
-      {selectedNodeId !== undefined || view === undefined ? null : (
+          no card is actually rendered — nothing selected, or a selection the scene no longer carries
+          (cleared above) — this visually-hidden list keeps the same `node-execution` marker reachable
+          under `.hima-studio`, since a driver polls it without opening a node. */}
+      {selectedPlaced !== undefined || view === undefined ? null : (
         <div className="hima-visually-hidden" aria-hidden="true">
           {Object.values(view.run.control?.executions ?? {}).map((execution) => (
             <div key={execution.id} data-hima-region="node-execution" data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>

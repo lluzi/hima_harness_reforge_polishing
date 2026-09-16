@@ -1,21 +1,27 @@
 // The node card (#41 task 6): anchored to its own node inside the canvas, kind-specific tabs, the
 // owner/non-owner footer, and the compact tool receipt's sibling for what a person reads about one
-// node rather than the whole Run. Mounted as an SVG `<foreignObject>` at the node's own screen
-// position — computed once per render from the canvas's own transform and clamped inside the
-// viewport — so its position is a plain numeric attribute and never an inline style.
+// node rather than the whole Run.
+//
+// Mounted as a plain HTML overlay — a sibling of the canvas's own `<svg>`, not a `<foreignObject>`
+// inside it — so the card's own wheel scroll, text selection and pointer events are the card's own
+// DOM events and never reach the canvas's wheel-zoom or pointer-drag-pan listeners (those live on
+// the `<svg>` itself; a sibling's events never bubble through it), and so the card's own type never
+// scales with the canvas's own zoom. Its position is two numbers (`cardPosition`) applied to the host
+// element's own `left`/`top` through the DOM style property in an effect — never a JSX inline style
+// prop, which the client style contract test bans — because a canvas-anchored overlay's position is
+// a per-render layout computation no static class can state.
 //
 // Every fact this cannot find is a sentence (`absentSaid`), never an empty tab or raw JSON: a node
 // card a person opens on a node the Run has not reached yet still reads as prose, not as a blank.
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
-import type { NodeKind, PlacedNode } from '../canvas-layout.js';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import type { PlacedNode } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import type { PackNode } from '../packs.js';
-import type { CancelView, ObservationView, RunView, VerdictView } from '../remote.js';
-import {
-  absentSaid, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, groupSaid, jobFolded, nameOf, strategySaid,
-} from '../card-labels.js';
-import { actOnRun, controlRun, fetchLogTail } from './api.js';
-import { GenerationsTable, type Acting } from './HimaRunCard.js';
+import { cardPosition, NODE_CARD_HEIGHT, NODE_CARD_WIDTH, TABS_BY_KIND, type NodeCardTabKey } from '../node-card-layout.js';
+import type { ObservationView, RunView } from '../remote.js';
+import { absentSaid, counted, jobFolded, loopsIn, strategySaid } from '../card-labels.js';
+import { fetchLogTail } from './api.js';
+import { BlockerRow, CancelRow, DecisionRow, GenerationsTable, ObservationRow, VerdictRow, type Acting } from './HimaRunCard.js';
 import { Glyph } from './glyphs.js';
 
 export interface NodeCardProps {
@@ -36,36 +42,7 @@ export interface NodeCardProps {
   readonly acting: Acting;
 }
 
-const CARD_WIDTH = 384;
-const CARD_HEIGHT = 320;
-const GAP = 28;
-const MARGIN = 8;
-
-/** Where the card sits: to the right of its node, or to the left when the right would clip past the
- *  canvas's own edge, then clamped fully inside the viewport on both axes. */
-function cardPosition(anchor: { readonly x: number; readonly y: number }, canvas: { readonly width: number; readonly height: number }): { readonly x: number; readonly y: number } {
-  const rightX = anchor.x + GAP;
-  const leftX = anchor.x - GAP - CARD_WIDTH;
-  const fitsRight = rightX + CARD_WIDTH <= canvas.width - MARGIN;
-  const maxX = Math.max(MARGIN, canvas.width - CARD_WIDTH - MARGIN);
-  const maxY = Math.max(MARGIN, canvas.height - CARD_HEIGHT - MARGIN);
-  return {
-    x: Math.min(Math.max(fitsRight ? rightX : leftX, MARGIN), maxX),
-    y: Math.min(Math.max(anchor.y - CARD_HEIGHT / 2, MARGIN), maxY),
-  };
-}
-
-type TabKey = 'facts' | 'job' | 'code' | 'knowledge' | 'evidence' | 'rules' | 'verdicts' | 'decision' | 'strategy' | 'generations' | 'blocker' | 'clearance';
-
-/** The tab set for each node kind, in the order the card shows them; the first is the default. */
-const TABS_BY_KIND: Readonly<Record<NodeKind, readonly TabKey[]>> = {
-  act: ['facts', 'job', 'code', 'knowledge', 'evidence'],
-  judge: ['rules', 'verdicts', 'evidence'],
-  explore: ['decision', 'strategy', 'generations'],
-  wait: ['blocker', 'clearance'],
-};
-
-const TAB_LABEL: Readonly<Record<TabKey, string>> = {
+const TAB_LABEL: Readonly<Record<NodeCardTabKey, string>> = {
   facts: 'Facts', job: 'Job', code: 'Code', knowledge: 'Knowledge', evidence: 'Evidence',
   rules: 'Rules', verdicts: 'Verdicts', decision: 'Decision', strategy: 'Strategy',
   generations: 'Generations', blocker: 'Blocker', clearance: 'Clearance',
@@ -79,48 +56,37 @@ function packNodeOf(context: ExecutionContext | undefined, nodeId: string): Pack
 }
 
 /**
- * The observations an act node's own declared output produced. An observation record carries no
- * node id of its own (`ObservationView`); the one correlation there is is the semantic value type
- * its reader wrote, which is the same name the node's `observes` parameter names. Empty for a node
- * this cannot correlate — a tool node, or a Run whose method this view cannot read.
+ * The latest observation an act node's own declared output produced, and the type name it was
+ * correlated by. `ObservationView` carries no node id of its own — the one correlation there is is
+ * the semantic value type its reader wrote, which is the same name the node's `observes` parameter
+ * names — so this is never a run-wide list, only ever the one, latest reading of that type.
+ * `type` is undefined for a node this cannot correlate at all (a tool node, or a Run whose method
+ * this view cannot read), which the Facts tab reads as "no correlation", not as "nothing observed".
  */
-function observationsOf(node: PlacedNode, view: RunView, context: ExecutionContext | undefined): readonly ObservationView[] {
+function latestObservationOf(node: PlacedNode, view: RunView, context: ExecutionContext | undefined): { readonly type?: string; readonly observation?: ObservationView } {
   const packNode = packNodeOf(context, node.id);
-  if (packNode?.kind !== 'act' || packNode.parameters.observes === undefined) return [];
-  const observes = packNode.parameters.observes;
-  return view.observations.filter((observation) => observation.values.some((value) => value.type === observes));
-}
-
-/** One typed value, exactly as the run card's own `ValueRows` reads it — kept local rather than
- *  exported, since the two mounts read different node facts around it. */
-function ValueLine({ observation }: { observation: ObservationView }): ReactElement {
-  return (
-    <div className="hima-fact-block">
-      <div className="hima-mono">{observation.path}</div>
-      {observation.values.map((value) => (
-        <div key={nameOf(value)} className="hima-mono">
-          {nameOf(value)}:{' '}
-          {value.value === null ? <span className="hima-muted">unknown — {value.unknownReason}</span> : <span>{value.value} {value.unit}</span>}
-          {value.group === undefined ? null : <span className="hima-muted">{groupSaid(value)}</span>}
-        </div>
-      ))}
-    </div>
-  );
+  if (packNode?.kind !== 'act' || packNode.parameters.observes === undefined) return {};
+  const type = packNode.parameters.observes;
+  return { type, observation: view.observations.findLast((observation) => observation.values.some((value) => value.type === type)) };
 }
 
 function FactsTab({ node, view, context }: { node: PlacedNode; view: RunView; context?: ExecutionContext }): ReactElement {
   const inputs = context?.method?.contract.inputs ?? [];
-  const observations = observationsOf(node, view, context);
+  const bindings = view.workspace?.bindings;
+  const { type, observation } = latestObservationOf(node, view, context);
   return (
     <>
       <h5>Declared inputs</h5>
       {inputs.length === 0 ? <p className="hima-muted">{absentSaid('declared input')}</p> : (
         <ul>{inputs.map((input) => (
-          <li key={input.name}><span className="hima-mono">{input.name}</span>{input.description === '' ? null : <span className="hima-muted"> — {input.description}</span>}</li>
+          <li key={input.name}>
+            <span className="hima-mono">{input.name}</span>: <span className="hima-mono">{bindings?.[input.name] ?? 'unbound'}</span>
+            {input.description === '' ? null : <span className="hima-muted"> — {input.description}</span>}
+          </li>
         ))}</ul>
       )}
-      <h5>Latest observation</h5>
-      {observations.length === 0 ? <p className="hima-muted">{absentSaid('observation')}</p> : observations.map((observation) => <ValueLine key={observation.recordId} observation={observation} />)}
+      <h5>{type === undefined ? 'Observation' : `Latest reading of ${type}`}</h5>
+      {observation === undefined ? <p className="hima-muted">{absentSaid('observation')}</p> : <ObservationRow observation={observation} />}
     </>
   );
 }
@@ -193,30 +159,20 @@ function KnowledgeTab({ node, view }: { node: PlacedNode; view: RunView }): Reac
   const files = view.knowledge.filter((entry) => entry.nodeId === node.id);
   if (files.length === 0) return <p className="hima-muted">{absentSaid('knowledge')}</p>;
   return <>{files.map((entry) => (
-    <div key={entry.recordId} className="hima-fact-block">
+    <div key={entry.recordId} className="hima-block">
       <div className="hima-mono">{entry.file}</div>
       <div className="hima-muted">{entry.purpose}</div>
     </div>
   ))}</>;
 }
 
-function VerdictLine({ verdict, view }: { verdict: VerdictView; view: RunView }): ReactElement {
-  return (
-    <div className="hima-fact-block">
-      <div><span className="hima-outcome-word" data-outcome={verdict.outcome}>{verdict.outcome}</span> <span className="hima-mono">{verdict.ruleId}@{verdict.ruleVersion}</span></div>
-      {verdict.cites.length === 0 ? <div className="hima-muted">cites nothing</div> : verdict.cites.map((cite) => <div key={cite.recordId} className="hima-muted">cites {citedSaid(view, cite.recordId)}</div>)}
-    </div>
-  );
-}
-
 function EvidenceTab({ node, view, context }: { node: PlacedNode; view: RunView; context?: ExecutionContext }): ReactElement {
-  const observations = observationsOf(node, view, context);
+  const { observation } = latestObservationOf(node, view, context);
   const packNode = packNodeOf(context, node.id);
   const ruleIds = packNode?.kind === 'judge' ? packNode.parameters.rules : [];
-  const ids = new Set(observations.map((observation) => observation.recordId));
-  const verdicts = view.verdicts.filter((verdict) => ruleIds.includes(verdict.ruleId) || verdict.cites.some((cite) => ids.has(cite.recordId)));
+  const verdicts = view.verdicts.filter((verdict) => ruleIds.includes(verdict.ruleId) || verdict.cites.some((cite) => cite.recordId === observation?.recordId));
   if (verdicts.length === 0) return <p className="hima-muted">{absentSaid('verdict')}</p>;
-  return <>{verdicts.map((verdict) => <VerdictLine key={verdict.recordId} verdict={verdict} view={view} />)}</>;
+  return <>{verdicts.map((verdict) => <VerdictRow key={verdict.recordId} verdict={verdict} />)}</>;
 }
 
 function RulesTab({ node, context }: { node: PlacedNode; context?: ExecutionContext }): ReactElement {
@@ -231,22 +187,13 @@ function VerdictsTab({ node, view, context }: { node: PlacedNode; view: RunView;
   const ruleIds = packNode?.kind === 'judge' ? packNode.parameters.rules : [];
   const verdicts = view.verdicts.filter((verdict) => ruleIds.includes(verdict.ruleId));
   if (verdicts.length === 0) return <p className="hima-muted">{absentSaid('verdict')}</p>;
-  return <>{verdicts.map((verdict) => <VerdictLine key={verdict.recordId} verdict={verdict} view={view} />)}</>;
+  return <>{verdicts.map((verdict) => <VerdictRow key={verdict.recordId} verdict={verdict} />)}</>;
 }
 
 function DecisionTab({ node, view }: { node: PlacedNode; view: RunView }): ReactElement {
   const decision = view.decision;
   if (decision === null || decision === undefined || decision.nodeId !== node.id) return <p className="hima-muted">{absentSaid('decision')}</p>;
-  const state = decisionState(decision);
-  return (
-    <div className="hima-fact-block">
-      <div>
-        <span className="hima-outcome-word" data-outcome={state.chosen}>{chosenSaid(decision, view.run.words)}</span>{' '}
-        <span className="hima-muted">{decision.agent ? `by the conversational Agent at ${decision.nodeId}` : `by ${decision.chooser} at ${decision.nodeId}`}</span>
-      </div>
-      {decision.cites.map((recordId) => <div key={recordId} className="hima-muted">cites {citedSaid(view, recordId)}</div>)}
-    </div>
-  );
+  return <DecisionRow decision={decision} view={view} />;
 }
 
 function StrategyTab({ view }: { view: RunView }): ReactElement {
@@ -255,40 +202,51 @@ function StrategyTab({ view }: { view: RunView }): ReactElement {
   return <p className="hima-mono">{strategySaid(strategy, view.run.words?.strategy)}</p>;
 }
 
-function GenerationsTab({ view }: { view: RunView }): ReactElement {
-  if (view.generations.length === 0) return <p className="hima-muted">{absentSaid('generation')}</p>;
-  return <div className="hima-run-card-ledger"><GenerationsTable view={view} /></div>;
+/**
+ * The Generations tab: a drill-down explore node (its own `opens:`) shows the rows of the Loop(s)
+ * opened at this node — never the outer graph's — and a top-level chooser explore shows the
+ * top-level rows, since neither is "every generation the Campaign has ever opened" (#41 task 6
+ * review). `markRegions={false}`: a subset's own loop/branch counts are not the whole-run fact the
+ * `run-loops`/`run-branches` regions promise a driver, so this table attaches neither.
+ */
+function GenerationsTab({ node, view, context }: { node: PlacedNode; view: RunView; context?: ExecutionContext }): ReactElement {
+  const packNode = packNodeOf(context, node.id);
+  const opensLoop = packNode?.kind === 'explore' && packNode.parameters.opens !== undefined;
+  const rows = opensLoop ? loopsIn(view).filter((loop) => loop.nodeId === node.id).flatMap((loop) => loop.generations) : view.generations;
+  if (rows.length === 0) return <p className="hima-muted">{absentSaid('generation')}</p>;
+  return <div className="hima-run-card-ledger"><GenerationsTable view={view} rows={rows} markRegions={false} /></div>;
 }
 
 function BlockerTab({ node, view }: { node: PlacedNode; view: RunView }): ReactElement {
   const blocker = view.blockers.filter((candidate) => candidate.nodeId === node.id).at(-1);
   if (blocker === undefined) return <p className="hima-muted">{absentSaid('blocker')}</p>;
+  return <BlockerRow blocker={blocker} latest />;
+}
+
+/**
+ * Who cleared this node's blocker, and — separately, never folded into the same sentence — any
+ * request to cancel the Run while it stood here. A cancel is a request to stop; a resume is a person
+ * carrying a stopped Run on; the two are different facts and this tab keeps them two, exactly as
+ * `RunView` keeps `cancels` and `resumes` two lists (#41 task 6 review).
+ */
+function ClearanceTab({ node, view }: { node: PlacedNode; view: RunView }): ReactElement {
+  const resume = view.resumes.filter((candidate) => candidate.nodeId === node.id).at(-1);
+  const cancels = view.cancels.filter((cancel) => cancel.nodeId === node.id);
   return (
-    <div className="hima-fact-block">
-      <p>
-        <span className="hima-state-word" data-state="blocked">blocked</span>{' '}
-        after {counted(blocker.attempts, 'attempt')}{blocker.lastExitCode === undefined ? '' : `, last exit ${blocker.lastExitCode}`}
-      </p>
-      <p className="hima-muted">{blocker.reason}</p>
-      {blocker.logTail === undefined ? null : <pre className="hima-node-card-tail" data-hima-region="run-blocker-tail">{blocker.logTail}</pre>}
-    </div>
+    <>
+      <h5>Clearance</h5>
+      {resume === undefined ? <p className="hima-muted">{absentSaid('clearance')}</p> : <p>Cleared by <span className="hima-mono">{resume.who}</span> at {resume.at}</p>}
+      {cancels.length === 0 ? null : (
+        <>
+          <h5>Cancel requests</h5>
+          {cancels.map((cancel) => <CancelRow key={cancel.recordId} view={view} cancel={cancel} />)}
+        </>
+      )}
+    </>
   );
 }
 
-/** A resumed fact: whichever cancel requests named this node, since a resumed blocker's own "who
- *  cleared it" is not yet on `RunView` — a known gap, noted in the task 6 report. */
-function ClearanceTab({ node, view }: { node: PlacedNode; view: RunView }): ReactElement {
-  const cancels: readonly CancelView[] = view.cancels.filter((cancel) => cancel.nodeId === node.id);
-  if (cancels.length === 0) return <p className="hima-muted">{absentSaid('clearance')}</p>;
-  return <>{cancels.map((cancel) => (
-    <div key={cancel.recordId} className="hima-fact-block">
-      <p className="hima-muted">{cancelAsked(cancel)}</p>
-      <p className="hima-muted">{cancelObserved(view, cancel).said}</p>
-    </div>
-  ))}</>;
-}
-
-function TabContent({ tab, node, view, context, runId, openFiles }: { tab: TabKey; node: PlacedNode; view: RunView; context?: ExecutionContext; runId: string; openFiles(): void }): ReactElement {
+function TabContent({ tab, node, view, context, runId, openFiles }: { tab: NodeCardTabKey; node: PlacedNode; view: RunView; context?: ExecutionContext; runId: string; openFiles(): void }): ReactElement {
   switch (tab) {
     case 'facts': return <FactsTab node={node} view={view} context={context} />;
     case 'job': return <JobTab node={node} view={view} runId={runId} />;
@@ -299,7 +257,7 @@ function TabContent({ tab, node, view, context, runId, openFiles }: { tab: TabKe
     case 'verdicts': return <VerdictsTab node={node} view={view} context={context} />;
     case 'decision': return <DecisionTab node={node} view={view} />;
     case 'strategy': return <StrategyTab view={view} />;
-    case 'generations': return <GenerationsTab view={view} />;
+    case 'generations': return <GenerationsTab node={node} view={view} context={context} />;
     case 'blocker': return <BlockerTab node={node} view={view} />;
     case 'clearance': return <ClearanceTab node={node} view={view} />;
     default: { const exhaustive: never = tab; void exhaustive; return <></>; }
@@ -308,20 +266,28 @@ function TabContent({ tab, node, view, context, runId, openFiles }: { tab: TabKe
 
 type ConfirmKey = 'node-pause' | 'node-continue' | 'run-pause' | 'run-stop';
 
-/** The footer: node-scoped Pause/Continue for the owner, each behind its own inline confirm naming
- *  the consequence; for a Side Talk, who owns the Run and — under a disclosed "Emergency" — the two
- *  human-origin controls ADR-0008 still allows: Pause and Stop, never Continue. */
-function Footer({ node, view, sessionId, owner, acting }: { node: PlacedNode; view: RunView; sessionId: string; owner: boolean; acting: Acting }): ReactElement {
+/**
+ * The footer: node-scoped Pause/Continue for the owner, each behind its own inline confirm naming
+ * the consequence; for a Side Talk, who owns the Run and — under a disclosed "Emergency" — the two
+ * human-origin controls ADR-0008 still allows: Pause and Stop, never Continue.
+ *
+ * Both branches act through the one `acting` prop the caller already built with `useRunActions`
+ * (`CampaignTab`'s own, keyed to this viewer's session) — there is no second action state here. That
+ * object already fences 'pause'/'cancel' through `controlRun`/`actOnRun` however this Run is owned,
+ * which is exactly the emergency route: `RunControls` already lets any session with an id cancel or
+ * pause a Run it does not own, and this footer is a node-scoped reflection of that same control.
+ */
+function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView; owner: boolean; acting: Acting }): ReactElement {
   const [confirming, setConfirming] = useState<ConfirmKey>();
-  const [emergency, setEmergency] = useState<{ pending?: boolean; notice?: string; error?: string }>({});
   const toggle = (key: ConfirmKey) => setConfirming((current) => (current === key ? undefined : key));
+  const active = view.run.status === 'running' || view.run.status === 'waiting';
 
-  const confirmBlock = (key: ConfirmKey, region: string, sentence: string, confirmLabel: string, onConfirm: () => void): ReactNode => (
+  const confirmBlock = (key: ConfirmKey, sentence: string, confirmLabel: string, onConfirm: () => void): ReactNode => (
     confirming !== key ? null : (
-      <div className="hima-node-card-confirm" data-hima-region={region}>
+      <div className="hima-node-card-confirm" data-hima-region={`${key}-confirm`}>
         <p>{sentence}</p>
         <div className="hima-node-card-footer-row">
-          <button type="button" className="hima-button hima-primary" data-hima-control={region} onClick={() => { onConfirm(); setConfirming(undefined); }}>{confirmLabel}</button>
+          <button type="button" className="hima-button hima-primary" data-hima-control={`${key}-confirm`} disabled={acting.inFlight !== undefined} onClick={() => { onConfirm(); setConfirming(undefined); }}>{confirmLabel}</button>
           <button type="button" className="hima-button" onClick={() => setConfirming(undefined)}>Cancel</button>
         </div>
       </div>
@@ -331,76 +297,85 @@ function Footer({ node, view, sessionId, owner, acting }: { node: PlacedNode; vi
   if (owner) {
     return (
       <footer className="hima-node-card-footer" data-hima-region="node-card-footer">
-        <div className="hima-node-card-footer-row">
-          <button type="button" className="hima-button" data-hima-control="node-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-pause')}>Pause this node</button>
-          <button type="button" className="hima-button" data-hima-control="node-continue" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-continue')}>Continue this node</button>
-        </div>
-        {confirmBlock('node-pause', 'node-pause-confirm', `Jobs already running will continue; no new work starts at ${node.id}.`, 'Confirm pause', () => { acting.act('pause', node.id); })}
-        {confirmBlock('node-continue', 'node-continue-confirm', `New work starts again at ${node.id}.`, 'Confirm continue', () => { acting.act('continue', node.id); })}
+        {!active ? null : (
+          <div className="hima-node-card-footer-row">
+            <button type="button" className="hima-button" data-hima-control="node-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-pause')}>Pause this node</button>
+            <button type="button" className="hima-button" data-hima-control="node-continue" disabled={acting.inFlight !== undefined} onClick={() => toggle('node-continue')}>Continue this node</button>
+          </div>
+        )}
+        {confirmBlock('node-pause', `Jobs already running will continue; no new work starts at ${node.id}.`, 'Confirm pause', () => { acting.act('pause', node.id); })}
+        {confirmBlock('node-continue', `New work starts again at ${node.id}.`, 'Confirm continue', () => { acting.act('continue', node.id); })}
+        {acting.notice === undefined ? null : <p role="status">{acting.notice}</p>}
         {acting.refusal === undefined ? null : <p role="alert" data-hima-region="run-error">{acting.refusal.message}</p>}
       </footer>
     );
   }
-
-  const runEmergency = (action: 'pause' | 'stop') => {
-    setEmergency({ pending: true });
-    const request = action === 'pause' ? controlRun(view, sessionId, 'pause') : actOnRun(view.run.id, 'cancel');
-    void request.then((result) => {
-      setEmergency(result.ok ? { notice: 'notification' in result.value ? result.value.notification.message : 'The run was asked to stop.' } : { error: result.error.message });
-    });
-  };
-
   return (
     <footer className="hima-node-card-footer" data-hima-region="node-card-footer">
       <p className="hima-node-card-owner">Owned by Campaign Agent{view.run.control?.owner === undefined ? '' : ` ${view.run.control.owner.slice(-6)}`}</p>
       <details className="hima-node-card-emergency" data-hima-region="emergency">
         <summary>Emergency</summary>
-        <div className="hima-node-card-footer-row">
-          <button type="button" className="hima-button" data-hima-control="run-pause" disabled={emergency.pending === true} onClick={() => toggle('run-pause')}>Pause run</button>
-          <button type="button" className="hima-button" data-hima-control="run-stop" disabled={emergency.pending === true} onClick={() => toggle('run-stop')}>Stop run</button>
-        </div>
-        {confirmBlock('run-pause', 'run-pause-confirm', 'Jobs already running will continue; no new work starts anywhere in this run.', 'Confirm pause', () => runEmergency('pause'))}
-        {confirmBlock('run-stop', 'run-stop-confirm', 'This asks every Job this run holds to stop; work already running may take a moment to end.', 'Confirm stop', () => runEmergency('stop'))}
-        {emergency.error === undefined ? null : <p role="alert">{emergency.error}</p>}
-        {emergency.notice === undefined ? null : <p role="status">{emergency.notice}</p>}
+        {!active ? null : (
+          <div className="hima-node-card-footer-row">
+            <button type="button" className="hima-button" data-hima-control="run-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('run-pause')}>Pause run</button>
+            <button type="button" className="hima-button" data-hima-control="run-stop" disabled={acting.inFlight !== undefined} onClick={() => toggle('run-stop')}>Stop run</button>
+          </div>
+        )}
+        {confirmBlock('run-pause', 'Jobs already running will continue; no new work starts anywhere in this run.', 'Confirm pause', () => { acting.act('pause'); })}
+        {confirmBlock('run-stop', 'This asks every Job this run holds to stop; work already running may take a moment to end.', 'Confirm stop', () => { acting.act('cancel'); })}
+        {acting.notice === undefined ? null : <p role="status">{acting.notice}</p>}
+        {acting.refusal === undefined ? null : <p role="alert" data-hima-region="run-error">{acting.refusal.message}</p>}
       </details>
     </footer>
   );
 }
 
-export function NodeCard({ node, view, context, runId, sessionId, owner, anchor, canvas, onClose, openFiles, acting }: NodeCardProps): ReactElement {
+export function NodeCard({ node, view, context, runId, owner, anchor, canvas, onClose, openFiles, acting }: NodeCardProps): ReactElement {
   const tabs = TABS_BY_KIND[node.kind];
-  const [tab, setTab] = useState<TabKey>(tabs[0]!);
+  const [tab, setTab] = useState<NodeCardTabKey>(tabs[0]!);
   useEffect(() => { setTab(TABS_BY_KIND[node.kind][0]!); }, [node.id, node.kind]);
+
+  // Escape closes the card. `stopPropagation` while it is open, so an outer Escape handler (a
+  // dialog, a future sheet) does not also react to the same key press this card already handled.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const { x, y } = cardPosition(anchor, canvas);
+  // Position is two numbers applied to the DOM element directly, in a layout effect — see the file
+  // header for why this is not a JSX inline style prop. `useLayoutEffect` so the card never paints one
+  // frame at its stale position when the anchor moves (a follow, a zoom).
+  const hostRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = hostRef.current; if (el === null) return;
+    const { x, y } = cardPosition(anchor, canvas);
+    el.style.setProperty('left', `${String(x)}px`);
+    el.style.setProperty('top', `${String(y)}px`);
+  }, [anchor.x, anchor.y, canvas.width, canvas.height]);
+
   const nodeView = view.nodes.find((candidate) => candidate.nodeId === node.id);
 
   return (
-    <foreignObject x={x} y={y} width={CARD_WIDTH} height={CARD_HEIGHT} className="hima-node-card-anchor">
-      <div className="hima-node-card" data-hima-region="campaign-node-card" data-hima-state-node={node.id} data-hima-state-tab={tab}>
-        <header className="hima-node-card-header">
-          <div>
-            <h4>{node.id}</h4>
-            <p className="hima-muted">{node.kind}{nodeView === undefined ? '' : <> · <span className="hima-state-word" data-state={nodeView.state}>{nodeView.state}</span></>}</p>
-          </div>
-          <button type="button" className="hima-icon-button" data-hima-control="node-card-close" aria-label="Close node" onClick={onClose}><Glyph name="close" /></button>
-        </header>
-        <nav className="hima-node-card-tabs" aria-label={`${node.id} tabs`}>
-          {tabs.map((key) => (
-            <button key={key} type="button" aria-pressed={tab === key} data-hima-control={`node-card-tab-${key}`} onClick={() => setTab(key)}>{TAB_LABEL[key]}</button>
-          ))}
-        </nav>
-        <div className="hima-node-card-content">
-          <TabContent tab={tab} node={node} view={view} context={context} runId={runId} openFiles={openFiles} />
+    <div ref={hostRef} className="hima-node-card" data-hima-region="campaign-node-card" data-hima-state-node={node.id} data-hima-state-tab={tab}>
+      <header className="hima-node-card-header">
+        <div>
+          <h4>{node.id}</h4>
+          <p className="hima-muted">{node.kind}{nodeView === undefined ? '' : <> · <span className="hima-state-word" data-state={nodeView.state}>{nodeView.state}</span></>}</p>
         </div>
-        <Footer node={node} view={view} sessionId={sessionId} owner={owner} acting={acting} />
+        <button type="button" className="hima-icon-button" data-hima-control="node-card-close" aria-label="Close node" onClick={onClose}><Glyph name="close" /></button>
+      </header>
+      <nav className="hima-node-card-tabs" aria-label={`${node.id} tabs`}>
+        {tabs.map((key) => (
+          <button key={key} type="button" aria-pressed={tab === key} data-hima-control={`node-card-tab-${key}`} onClick={() => setTab(key)}>{TAB_LABEL[key]}</button>
+        ))}
+      </nav>
+      <div className="hima-node-card-content">
+        <TabContent tab={tab} node={node} view={view} context={context} runId={runId} openFiles={openFiles} />
       </div>
-    </foreignObject>
+      <Footer node={node} view={view} owner={owner} acting={acting} />
+    </div>
   );
 }
+
+export { NODE_CARD_WIDTH, NODE_CARD_HEIGHT, cardPosition, TABS_BY_KIND } from '../node-card-layout.js';

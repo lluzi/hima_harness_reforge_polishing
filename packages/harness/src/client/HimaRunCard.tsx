@@ -16,10 +16,10 @@
 // `data-hima-state-*`, `data-hima-control`) are the same on both, and are listed there.
 import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import type { BranchView, GenerationJoinView, GenerationVerdictView, GenerationView, LoopView } from '../generations.js';
-import type { BlockerView, Citation, CodeView, DecisionView, ExperienceView, KnowledgeView, NodeView, ObservationView, RunView, RunWords, VerdictView, WorkshopView } from '../remote.js';
+import type { BlockerView, CancelView, Citation, CodeView, DecisionView, ExperienceView, KnowledgeView, NodeView, ObservationView, RunView, RunWords, VerdictView, WorkshopView } from '../remote.js';
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
-import { bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
+import { bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
 import { actOnRun, controlRun, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
 import { Glyph } from './glyphs.js';
 
@@ -173,14 +173,24 @@ function MetersSection({ view }: { view: RunView }): ReactElement | null {
  * wider than a chat's tool view, and a card that made the conversation scroll sideways would be
  * unreadable everywhere else.
  */
-export function GenerationsTable({ view }: { view: RunView }): ReactElement {
+/**
+ * @param rows - the generation rows to walk, oldest first. Defaults to the whole Run
+ *               (`view.generations`); the node card's own Generations tab (explore kind, #41 task 6)
+ *               passes a narrower list — a drill-down Loop's own rows, or the top-level rows for a
+ *               chooser explore — so this one table draws both the whole-run view and a node's own
+ *               slice of it from the one walk (`ledgerRows`).
+ * @param markRegions - whether to attach `run-loops`/`run-branches`: true (the default) for the
+ *                       whole-run mount, false for a narrower slice, whose loop/branch counts would
+ *                       not be the fact those regions promise a driver.
+ */
+export function GenerationsTable({ view, rows = view.generations, markRegions = true }: { view: RunView; rows?: readonly GenerationView[]; markRegions?: boolean }): ReactElement {
   const heads = [generationColumns.generation, generationColumns.period, generationColumns.slack, generationColumns.verdicts, generationColumns.decision, generationColumns.wall];
-  const loops = loopsIn(view);
-  const marked = loops.length === 0 ? {} : { 'data-hima-region': 'run-loops', ...stateAttributes(loopsState(view)) };
+  const loops = loopsIn({ ...view, generations: rows });
+  const marked = !markRegions || loops.length === 0 ? {} : { 'data-hima-region': 'run-loops', ...stateAttributes(loopsState({ ...view, generations: rows })) };
   // The fork's region wraps the same table, exactly as the drill-down's does and for the same
   // reasons: how many branches a Campaign forked into and which fork it is inside are facts about
   // the Campaign, not about one of its rows. Absent on a Run that forked nowhere.
-  const forked = branchesIn(view).length === 0 ? {} : { 'data-hima-region': 'run-branches', ...stateAttributes(branchesState(view)) };
+  const forked = !markRegions || branchesIn({ generations: rows }).length === 0 ? {} : { 'data-hima-region': 'run-branches', ...stateAttributes(branchesState({ ...view, generations: rows })) };
   // Every row from the one walk the workbench page renders from too (`ledgerRows`), in the one
   // order: which rows there are, where a Loop's group hangs and where a fork's branches hang is said
   // once, for both mounts.
@@ -198,7 +208,7 @@ export function GenerationsTable({ view }: { view: RunView }): ReactElement {
             </tr>
           </thead>
           <tbody>
-            {ledgerRows(view.generations).map((entry) => {
+            {ledgerRows(rows).map((entry) => {
               if (entry.kind === 'generation') return <GenerationRow key={`${entry.loop?.id ?? 'g'}-${entry.row.generation}`} row={entry.row} loop={entry.loop} words={view.run.words} />;
               if (entry.kind === 'branch') return <BranchRow key={`b${entry.row.generation}-${entry.branch.id}`} view={view} branch={entry.branch} />;
               if (entry.kind === 'join') return <JoinRow key={`b${entry.row.generation}-join`} join={entry.join} branches={entry.branches} />;
@@ -357,7 +367,19 @@ function PathRow({ node, index, view }: { node: NodeView; index: number; view: R
  * made, what its last Job exited with, and the tail of that Job's own log — so nobody has to log in
  * to the Site to see why.
  */
-function BlockerRow({ blocker, latest }: { blocker: BlockerView; latest: boolean }): ReactElement {
+/** One request to stop this Run: what a person asked for, and what was observed to actually stop —
+ *  read by `RunBody`'s own `run-cancel` section and by the node card's Clearance tab (#41 task 6),
+ *  which shows a node's own cancel requests beside, and never folded into, who cleared its blocker. */
+export function CancelRow({ view, cancel }: { view: RunView; cancel: CancelView }): ReactElement {
+  return (
+    <div className="hima-block">
+      <div className="hima-muted">{cancelAsked(cancel)}</div>
+      <div className="hima-muted">{cancelObserved(view, cancel).said}</div>
+    </div>
+  );
+}
+
+export function BlockerRow({ blocker, latest }: { blocker: BlockerView; latest: boolean }): ReactElement {
   return (
     <div className="hima-block">
       <div>
@@ -813,12 +835,7 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
         ? null
         : (
           <Section title="cancel" region="run-cancel" state={{ observed: cancelObserved(view, latestCancel).key }}>
-            {view.cancels.map((c) => (
-              <div key={c.recordId} className="hima-block">
-                <div className="hima-muted">{cancelAsked(c)}</div>
-                <div className="hima-muted">{cancelObserved(view, c).said}</div>
-              </div>
-            ))}
+            {view.cancels.map((c) => <CancelRow key={c.recordId} view={view} cancel={c} />)}
           </Section>
         )}
       {view.blockers.length === 0
@@ -834,7 +851,7 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
           <Section title="refused" region="run-refusal" state={{ count: String(view.refusals.length) }}>
             {view.refusals.map((r) => (
               <div key={r.recordId} className="hima-block">
-                <div className="hima-state-word" data-state="waiting">refused</div>
+                <div className="hima-state-word" data-state="refused">refused</div>
                 <div className="hima-mono">{r.path}</div>
                 <div className="hima-muted">{r.reason}</div>
               </div>
@@ -942,9 +959,15 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
               </button>
             )}
           </div>
+          {/* The desktop driver's own `read` takes `element.innerText` first (`packages/desktop/src/
+              driver.ts`), which excludes a closed <details>'s content entirely — so this stays open,
+              and the visual fold the compact receipt promises is `.hima-receipt-body`'s own
+              max-height and scroll instead: text a driver reads is still rendered, just clipped. */}
           <details data-hima-control="receipt-details" open>
             <summary>Run detail</summary>
-            <RunBody view={state.view} acting={acting} />
+            <div className="hima-receipt-body">
+              <RunBody view={state.view} acting={acting} />
+            </div>
           </details>
         </>
       )}

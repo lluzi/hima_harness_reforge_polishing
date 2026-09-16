@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutCanvas, fitToWidth, labelsVisibleAt, PITCH, ROW, X0, PAD_Y } from '@hima/harness';
 import type { LayoutGraph } from '@hima/harness';
-import { goalSaid, sceneInputs, jobFolded, absentSaid } from '@hima/harness';
+import { goalSaid, sceneInputs, jobFolded, absentSaid, cardPosition, TABS_BY_KIND } from '@hima/harness';
 import type { RunView } from '@hima/harness';
 import type { ExecutionContext } from '@hima/harness';
 
@@ -236,4 +236,29 @@ test('jobFolded says nothing for a node this run never launched a Job at', () =>
 test('absentSaid states one missing fact as a sentence, never an empty tab', () => {
   assert.equal(absentSaid('observation'), 'No observation has been recorded for this node yet.');
   assert.equal(absentSaid('blocker'), 'No blocker has been recorded for this node yet.');
+});
+
+// #41 task 6 (fix review): the node card's own pure layout and tab sets.
+test('cardPosition anchors the card to the right of its node by default', () => {
+  const pos = cardPosition({ x: 100, y: 100 }, { width: 800, height: 600 });
+  assert.equal(pos.x, 128);
+});
+
+test('cardPosition flips the card to the left when the right side would overflow the canvas', () => {
+  const pos = cardPosition({ x: 700, y: 100 }, { width: 800, height: 600 });
+  assert.equal(pos.x, 700 - 28 - 384);
+});
+
+test('cardPosition clamps the card fully inside the canvas on the vertical axis', () => {
+  const top = cardPosition({ x: 100, y: 0 }, { width: 800, height: 600 });
+  assert.equal(top.y, 8);
+  const bottom = cardPosition({ x: 100, y: 599 }, { width: 800, height: 600 });
+  assert.equal(bottom.y, 600 - 300 - 8);
+});
+
+test('the node card shows exactly the brief\'s own tab set, in order, for every kind', () => {
+  assert.deepEqual(TABS_BY_KIND.act, ['facts', 'job', 'code', 'knowledge', 'evidence']);
+  assert.deepEqual(TABS_BY_KIND.judge, ['rules', 'verdicts', 'evidence']);
+  assert.deepEqual(TABS_BY_KIND.explore, ['decision', 'strategy', 'generations']);
+  assert.deepEqual(TABS_BY_KIND.wait, ['blocker', 'clearance']);
 });

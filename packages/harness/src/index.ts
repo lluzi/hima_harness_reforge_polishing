@@ -227,6 +227,12 @@ export { packAuthorStatusLabel, packOntologyLabel } from './card-labels.js';
 // contract suite asserts on the same three functions the canvas actually renders from.
 export { goalSaid, sealSaid, nodeCaption, jobFolded, absentSaid } from './card-labels.js';
 
+// The node card's own pure layout and tab-set facts (#41 task 6): on the surface so its L1 tests
+// (`test/contract/canvas-layout.test.ts`) can assert on the same functions `client/NodeCard.tsx`
+// renders from, without pulling React/JSX into the host bundle to do it.
+export { cardPosition, TABS_BY_KIND, NODE_CARD_WIDTH, NODE_CARD_HEIGHT } from './node-card-layout.js';
+export type { NodeCardTabKey } from './node-card-layout.js';
+
 // What the ledger holds, for a caller reading records back through the namespace. `hasEnded` is the
 // one predicate over a Run's status every face shares: what counts as an ending is the ledger's to
 // say, not each caller's.

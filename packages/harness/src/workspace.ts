@@ -90,6 +90,10 @@ export const workspaceFile = z.strictObject({
   containerName: z.string(),
   preparedAt: z.string(),
   copied: z.array(z.string()),
+  /** The Site's own resolved value for each of the pack's declared inputs, at the moment this
+   *  workspace was prepared (#41 task 6). Optional so a file this Site wrote before the field
+   *  existed still parses. */
+  bindings: z.record(z.string(), z.string()).optional(),
 });
 export type WorkspaceFile = z.infer<typeof workspaceFile>;
 
@@ -249,6 +253,8 @@ interface PreparationIdentity {
   readonly flowRoot: string;
   /** The contract's copy list with this Site's bindings substituted: what a copy made now would be. */
   readonly copied: readonly string[];
+  /** The Site's own resolved value for each of the pack's declared inputs (#41 task 6). */
+  readonly bindings: Readonly<Record<string, string>>;
 }
 
 /**
@@ -329,6 +335,7 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
       ...(bindings.design === undefined ? {} : { design: bindings.design }),
       flowRoot: flowSource,
       copied: askedCopy,
+      bindings,
     };
     const already = await existingWorkspaceFile(channel, p.join(workspace, workspaceFileName));
     if (already.kind === 'unreadable') {
@@ -414,6 +421,7 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
       containerName,
       preparedAt,
       copied,
+      bindings: identity.bindings,
     };
     const marker = await decideWrite(site, p.join(workspace, workspaceFileName), channel);
     if (!marker.ok) throw new Refusal(marker.refused, marker.reason);
@@ -448,6 +456,7 @@ function recordOf(file: WorkspaceFile): Omit<WorkspaceRecord, 'id' | 'runId' | '
     containerName: file.containerName,
     copied: file.copied,
     preparedAt: file.preparedAt,
+    ...(file.bindings === undefined ? {} : { bindings: file.bindings }),
   };
 }
 

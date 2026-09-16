@@ -88,10 +88,6 @@ export const HIMA_STYLE = `
 .hima-studio-header>div{flex:1;min-width:0}
 .hima-run-picker{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-run-picker select{flex:1;min-width:0}
-.hima-run-controls-interim{padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
-.hima-run-controls-interim button{appearance:none;border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-1) var(--hima-sp-2);font-size:var(--hima-fs-label);cursor:pointer;margin:var(--hima-sp-1) var(--hima-sp-1) 0 0}
-.hima-run-controls-interim button:hover{background:var(--hima-soft)}
-.hima-run-controls-interim button:disabled{opacity:.5;cursor:default}
 .hima-start-form{padding:var(--hima-sp-4);overflow:auto;min-height:0;display:flex;flex-direction:column;gap:var(--hima-sp-4)}
 
 /* The Campaign tab (#41 task 5): masthead, view switch, and the HimaFabric canvas that makes the
@@ -209,12 +205,15 @@ export const HIMA_STYLE = `
   .hima-edge-revisit-pulse .hima-edge-path{animation:none}
 }
 
-/* The node card (#41 task 6): anchored to its node inside the canvas's own <svg> as a <foreignObject>
-   (screen coordinates, computed once per render — never an inline style), kind-specific tabs, a dark
-   glass Job log, and the owner/non-owner footer. Every colour a state or an outcome once carried as a
-   card-labels.ts string is a data-state/data-outcome attribute read by these rules instead. */
-.hima-node-card-anchor{overflow:visible}
-.hima-node-card{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;background:var(--hima-paper);color:var(--hima-ink);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);box-shadow:var(--hima-shadow);overflow:hidden;font-family:var(--hima-font-ui);font-size:var(--hima-fs-body)}
+/* The node card (#41 task 6): a plain HTML overlay anchored to its node, a sibling of the canvas's
+   own <svg> and never a <foreignObject> inside it (so its wheel scroll, text selection and pointer
+   events are its own DOM events, never the canvas's — see client/FabricCanvas.tsx and NodeCard.tsx),
+   kind-specific tabs, a dark glass Job log, and the owner/non-owner footer. Its left/top are set
+   by NodeCard.tsx through the DOM style property directly (never a JSX inline style prop, which
+   this file's own contract test bans) — a canvas-anchored overlay's position is a per-render layout
+   computation no static class can state, exactly as card-labels.ts's own colour strings (good/bad/
+   warn/plain) are read here as data-state/data-outcome attributes instead of client-side colour code. */
+.hima-node-card{position:absolute;left:0;top:0;z-index:5;box-sizing:border-box;width:384px;height:300px;display:flex;flex-direction:column;background:var(--hima-paper);color:var(--hima-ink);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);box-shadow:var(--hima-shadow);overflow:hidden;font-family:var(--hima-font-ui);font-size:var(--hima-fs-body)}
 .hima-node-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--hima-sp-2);padding:var(--hima-sp-3) var(--hima-sp-3) var(--hima-sp-2);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-node-card-header h4{margin:0;font-size:var(--hima-fs-title);font-weight:600}
 .hima-node-card-header p{margin:2px 0 0;font-size:var(--hima-fs-label)}
@@ -222,17 +221,16 @@ export const HIMA_STYLE = `
 .hima-node-card-tabs button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2);white-space:nowrap}
 .hima-node-card-tabs button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
 .hima-node-card-content{flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-3);display:flex;flex-direction:column;gap:var(--hima-sp-2)}
-.hima-node-card-content h5{margin:var(--hima-sp-2) 0 0;font-size:var(--hima-fs-eyebrow);letter-spacing:var(--hima-track);font-weight:600;color:var(--hima-ink-2);text-transform:uppercase}
+.hima-node-card-content h5{margin:var(--hima-sp-2) 0 0;font-size:var(--hima-fs-label);letter-spacing:var(--hima-track);font-weight:600;color:var(--hima-ink-2);text-transform:uppercase}
 .hima-node-card-content ol,.hima-node-card-content ul{margin:0;padding-left:var(--hima-sp-4);display:flex;flex-direction:column;gap:2px}
 .hima-node-card-tail{margin:0;padding:var(--hima-sp-2);background:var(--hima-glass);color:var(--hima-glass-ink);border-radius:var(--hima-r-m);font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow);line-height:var(--hima-lh-body);white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;max-height:160px}
 .hima-node-card-footer{flex:none;padding:var(--hima-sp-2) var(--hima-sp-3);border-top:1px solid var(--hima-line);display:flex;flex-direction:column;gap:var(--hima-sp-2);font-size:var(--hima-fs-label)}
-.hima-node-card-footer-row{display:flex;gap:var(--hima-sp-2);flex-wrap:wrap}
+.hima-node-card-footer-row{display:flex;justify-content:flex-end;gap:var(--hima-sp-2);flex-wrap:wrap}
 .hima-node-card-confirm{display:flex;flex-direction:column;gap:var(--hima-sp-2);padding:var(--hima-sp-2);background:var(--hima-soft);border-radius:var(--hima-r-m)}
 .hima-node-card-confirm p{margin:0}
 .hima-node-card-owner{color:var(--hima-ink-2)}
 .hima-node-card-emergency summary{cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
-.hima-fact-block{display:flex;flex-direction:column;gap:2px;padding-left:var(--hima-sp-3);border-left:2px solid var(--hima-line)}
-.hima-material-row{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;padding:var(--hima-sp-1) var(--hima-sp-2);border-radius:var(--hima-r-s)}
+.hima-material-row{appearance:none;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;padding:var(--hima-sp-1) var(--hima-sp-2);border-radius:var(--hima-r-s)}
 .hima-material-row:hover{background:var(--hima-soft)}
 
 /* One state or outcome word, coloured by its own attribute rather than by a string the client held —
@@ -241,7 +239,7 @@ export const HIMA_STYLE = `
 .hima-state-word,.hima-outcome-word{font-weight:500}
 .hima-state-word[data-state="done"],.hima-state-word[data-state="ended-goal-met"],.hima-state-word[data-state="goal-met"]{color:var(--hima-good)}
 .hima-state-word[data-state="blocked"],.hima-state-word[data-state="ended-goal-not-met"],.hima-state-word[data-state="ended-budget-exhausted"],.hima-state-word[data-state="failed"],.hima-state-word[data-state="not-taken"]{color:var(--hima-bad)}
-.hima-state-word[data-state="waiting"],.hima-state-word[data-state="waiting-for-slot"],.hima-state-word[data-state="retrying"],.hima-state-word[data-state="cancelled"],.hima-state-word[data-state="ended-converged"],.hima-state-word[data-state="converged"],.hima-state-word[data-state="no-entry"],.hima-state-word[data-state="interrupted"],.hima-state-word[data-state="generation-limit"]{color:var(--hima-warn)}
+.hima-state-word[data-state="waiting"],.hima-state-word[data-state="waiting-for-slot"],.hima-state-word[data-state="retrying"],.hima-state-word[data-state="cancelled"],.hima-state-word[data-state="ended-converged"],.hima-state-word[data-state="converged"],.hima-state-word[data-state="no-entry"],.hima-state-word[data-state="interrupted"],.hima-state-word[data-state="generation-limit"],.hima-state-word[data-state="refused"]{color:var(--hima-warn)}
 .hima-state-word[data-state="pending"],.hima-state-word[data-state="running"],.hima-state-word[data-state="reconciled"],.hima-state-word[data-state="writing"],.hima-state-word[data-state="written"],.hima-state-word[data-state="awaiting-completion"]{color:var(--hima-ink)}
 .hima-outcome-word[data-outcome="PASS"],.hima-outcome-word[data-outcome="next-strategy"],.hima-outcome-word[data-outcome="goal-met"]{color:var(--hima-good)}
 .hima-outcome-word[data-outcome="FAIL"]{color:var(--hima-bad)}
@@ -253,10 +251,11 @@ export const HIMA_STYLE = `
 .hima-run-card-receipt{display:flex;flex-direction:column;gap:2px}
 .hima-run-card-receipt-line{display:flex;gap:4px;flex-wrap:wrap;align-items:baseline}
 .hima-run-card-receipt-notice{color:var(--hima-ink-2)}
+.hima-receipt-body{max-height:220px;overflow:auto}
 .hima-run-card details[data-hima-control="receipt-details"]{margin-top:var(--hima-sp-1)}
-.hima-run-card details[data-hima-control="receipt-details"]>summary{cursor:pointer;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
+.hima-run-card details[data-hima-control="receipt-details"]>summary{cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
 .hima-run-card-section{display:flex;flex-direction:column;gap:4px}
-.hima-run-card-heading{color:var(--hima-ink-2);text-transform:uppercase;letter-spacing:var(--hima-track);font-size:var(--hima-fs-eyebrow)}
+.hima-run-card-heading{color:var(--hima-ink-2);text-transform:uppercase;letter-spacing:var(--hima-track);font-size:var(--hima-fs-label)}
 .hima-block{display:flex;flex-direction:column;gap:2px;padding-left:12px;border-left:2px solid var(--hima-line)}
 .hima-path-row{display:flex;gap:8px;align-items:baseline}
 .hima-path-index{min-width:16px;text-align:right}

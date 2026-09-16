@@ -423,6 +423,11 @@ export const workspaceRecord = z.object({
   copied: z.array(z.string()),
   /** When the workspace was prepared — the original preparation's time, carried by a `reused` record too. */
   preparedAt: z.string(),
+  /** The Site's own resolved value for each of the pack's declared inputs (#41 task 6, the node
+   *  card's own Facts tab): what `boundInputs` read off the Site at the moment this workspace was
+   *  prepared. Optional, and absent on every workspace prepared before this field existed — an
+   *  absence this reads honestly rather than guessing at a bound value nobody recorded. */
+  bindings: z.record(z.string(), z.string()).optional(),
 });
 
 /** The four node kinds a HimaFabric graph is built from, and no more (D29, CONTEXT.md). */
