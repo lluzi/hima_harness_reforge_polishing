@@ -3,17 +3,21 @@
 // every node at its own `x`/`y`), the Goal roundel, and the attention strip above it all. Nothing
 // here computes a coordinate; `canvas-layout.ts` already has.
 import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
-import { fitToWidth, labelsVisibleAt } from '../canvas-layout.js';
+import { fitToWidth, labelsVisibleAt, PITCH } from '../canvas-layout.js';
 import type { CanvasScene, Frame, PlacedEdge } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import { goalSaid, sealSaid } from '../card-labels.js';
 import type { RunView } from '../remote.js';
-import { FabricNode, HATCH_PATTERN_ID } from './FabricNode.js';
+import { FabricNode, HATCH_PATTERN_ID, KindOutline } from './FabricNode.js';
 import { Glyph } from './glyphs.js';
 
 export interface FabricCanvasProps {
   readonly runId: string;
   readonly scene: CanvasScene;
+  /** The reference graph's own entry node — where the camera centres if the initial fit-to-width
+   *  would otherwise clamp past readable (rule 1 below) and there is no running node yet to centre on
+   *  instead. */
+  readonly entryNodeId?: string;
   readonly view: RunView | undefined;
   readonly context: ExecutionContext | undefined;
   readonly stale: boolean;
@@ -22,24 +26,31 @@ export interface FabricCanvasProps {
    *  attention strip offers the same link only for the owner, so the page never shows two controls
    *  under the one marker `open-owner` at once. */
   readonly isOwner: boolean;
+  readonly selectedNodeId?: string;
+  onSelectNode(id: string): void;
   openOwner(id: string): void;
 }
 
 interface Transform { readonly scale: number; readonly tx: number; readonly ty: number }
 
+/** The zoom floor and ceiling, everywhere a scale is set: the initial fit, wheel/pinch, the toolbar's
+ *  own zoom-in/out, and the follow effect's recentre. `data-hima-state-scale` reads straight off
+ *  `transform.scale`, so a value only ever reaches it already inside `0.4..2.0`. */
 const clampScale = (scale: number): number => Math.min(2, Math.max(0.4, scale));
 
-/** One edge, drawn verbatim from its own `path`; a newly lit edge animates once, tracked by a ref
- *  so a later re-render (a poll that changes nothing about this edge) never restarts it. */
-function Edge({ edge, litSeen }: { edge: PlacedEdge; litSeen: Set<string> }): ReactElement {
-  const key = `${edge.from}->${edge.to}:${edge.kind}`;
-  const firstLit = edge.lit && !litSeen.has(key);
-  if (edge.lit) litSeen.add(key); else litSeen.delete(key);
+/** One edge, drawn verbatim from its own `path`. `firstLit`/`pulse` are computed by the parent, never
+ *  written here — a component reading its own "have I animated yet" from a ref it also mutates during
+ *  render fires that mutation twice under strict-mode's double render and races a concurrent one; the
+ *  parent tracks "already seen" in an effect, after commit, and only ever hands this component a
+ *  already-decided boolean to render from. */
+function Edge({ edge, firstLit, pulse }: { edge: PlacedEdge; firstLit: boolean; pulse: boolean }): ReactElement {
   const dashed = edge.kind === 'revisit' || edge.kind === 'return';
   const arrowed = edge.kind === 'dependency' || edge.kind === 'outcome';
-  const chipWidth = edge.chip === undefined ? 0 : edge.chip.text.length * 7 + 16;
+  // 6.5 px/char at the 13 px label font, the same estimate `FabricNode`'s own truncation uses — a
+  // pill a hair wider than the shortest possible real text is safer than one that clips it.
+  const chipWidth = edge.chip === undefined ? 0 : edge.chip.text.length * 6.5 + 16;
   return (
-    <g className={`hima-edge hima-edge-${edge.kind}${edge.lit ? ' hima-edge-lit' : ''}${firstLit ? ' hima-edge-lit-enter' : ''}`}>
+    <g className={`hima-edge hima-edge-${edge.kind}${edge.lit ? ' hima-edge-lit' : ''}${firstLit ? ' hima-edge-lit-enter' : ''}${pulse ? ' hima-edge-revisit-pulse' : ''}`}>
       <path d={edge.path} className={`hima-edge-path${dashed ? ' hima-edge-dashed' : ''}`} markerEnd={arrowed ? `url(#${edge.lit ? 'hima-arrow-lit' : 'hima-arrow'})` : undefined} />
       {edge.chip === undefined ? null : (
         <g transform={`translate(${edge.chip.x},${edge.chip.y})`} className={`hima-edge-chip hima-edge-chip-${edge.chip.text.toLowerCase()}`}>
@@ -69,7 +80,13 @@ function FrameBox({ frame }: { frame: Frame }): ReactElement {
   );
 }
 
-export function FabricCanvas({ runId, scene, view, context, stale, reducedMotion, isOwner, openOwner }: FabricCanvasProps): ReactElement {
+/** One edge's own identity for the "lit once" tracking — stable across a poll that changes nothing
+ *  about this particular edge. */
+const edgeKey = (edge: PlacedEdge): string => `${edge.from}->${edge.to}:${edge.kind}`;
+
+export function FabricCanvas({
+  runId, scene, entryNodeId, view, context, stale, reducedMotion, isOwner, selectedNodeId, onSelectNode, openOwner,
+}: FabricCanvasProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [viewport, setViewport] = useState({ width: 760, height: 618 });
@@ -82,7 +99,11 @@ export function FabricCanvas({ runId, scene, view, context, stale, reducedMotion
   // fits until at least one real measurement has actually arrived.
   const measured = useRef(false);
   const dragging = useRef<{ x: number; y: number; tx: number; ty: number } | undefined>();
-  const litSeen = useRef<Set<string>>(new Set()).current;
+  const litSeen = useRef<Set<string>>(new Set());
+  const lastGeneration = useRef<number>();
+  const [revisitPulseKey, setRevisitPulseKey] = useState(0);
+
+  const motionOff = reducedMotion || stale;
 
   useEffect(() => {
     const el = containerRef.current; if (el === null) return;
@@ -117,16 +138,27 @@ export function FabricCanvas({ runId, scene, view, context, stale, reducedMotion
   const currentNode = scene.nodes.find((node) => node.current);
 
   // Fit to width the first time this Run's scene is seen; afterwards follow the running node,
-  // recentring only once it would otherwise leave the viewport, over a 300 ms eased transition
-  // (`.hima-canvas-transform`'s own CSS) unless reduced motion asks for none.
+  // recentring only once it would otherwise leave the viewport. Reduced motion (or stale) drops only
+  // the CSS easing (`.hima-canvas-transform`'s own transition, turned off by the same two states) —
+  // the recentre itself always happens, or a reduced-motion viewer would simply never see the running
+  // node once the Run moved on.
   useEffect(() => {
     if (!measured.current) return;
     if (fittedFor.current !== runId) {
       fittedFor.current = runId;
-      setTransform(fitToWidth(scene, viewport));
+      const fit = fitToWidth(scene, viewport);
+      const scale = clampScale(fit.scale);
+      if (scale === fit.scale) { setTransform(fit); return; }
+      // The fit's own scale fell outside 0.4..2.0 (a wide scene, a narrow pane) and was clamped —
+      // fitting the whole width at that scale is no longer possible, so centre on the node a person
+      // actually wants to see instead: the running one, or the reference graph's own entry node.
+      const target = currentNode ?? scene.nodes.find((node) => node.id === entryNodeId) ?? scene.nodes[0];
+      setTransform(target === undefined
+        ? { scale, tx: 16, ty: 16 }
+        : { scale, tx: viewport.width / 2 - target.x * scale, ty: viewport.height / 2 - target.y * scale });
       return;
     }
-    if (currentNode === undefined || reducedMotion) return;
+    if (currentNode === undefined) return;
     setTransform((previous) => {
       const px = previous.tx + currentNode.x * previous.scale;
       const py = previous.ty + currentNode.y * previous.scale;
@@ -138,6 +170,25 @@ export function FabricCanvas({ runId, scene, view, context, stale, reducedMotion
     // scene's other facts (a lit edge, a fresh log line) must never nudge the camera.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, currentNode?.id, viewport.width, viewport.height]);
+
+  // A newly-lit edge's one-shot animation, tracked here rather than during `Edge`'s own render: the
+  // read (what was already lit, as of the last commit) happens below, in the render body; the write
+  // (what is lit now) happens after commit, in this effect, so no render ever mutates the ref it also
+  // reads from.
+  useEffect(() => {
+    const next = new Set(litSeen.current);
+    for (const edge of scene.edges) if (edge.lit) next.add(edgeKey(edge));
+    litSeen.current = next;
+  }, [scene.edges]);
+
+  // The revisit arc pulses once when a generation opens: a `key` change on that one edge remounts it,
+  // which is the only reliable way to replay a CSS animation from React without a JS timer of its own.
+  useEffect(() => {
+    const generation = view?.run.generation;
+    if (generation === undefined) return;
+    if (lastGeneration.current !== undefined && generation > lastGeneration.current) setRevisitPulseKey((key) => key + 1);
+    lastGeneration.current = generation;
+  }, [view?.run.generation]);
 
   const zoomBy = (factor: number): void => setTransform((previous) => {
     const next = clampScale(previous.scale * factor);
@@ -173,6 +224,12 @@ export function FabricCanvas({ runId, scene, view, context, stale, reducedMotion
   const attention = blocker !== undefined ? { kind: 'waiting' as const, reason: blocker.reason }
     : fenceReason !== undefined ? { kind: 'fence' as const, reason: fenceReason } : undefined;
 
+  // Every branch of the fork the Run is standing inside, labelled at its own first node — the same
+  // rows `scene.ts`'s `forkOf` already fed into `layoutCanvas` as `facts.fork`, read back here off
+  // `view` directly rather than threaded through `CanvasScene` (which carries no branch id of its
+  // own on a `PlacedNode`, only the row/rank its branch put it at).
+  const forkBranches = view?.run.fork === undefined ? [] : (view.generations.at(-1)?.branches ?? []);
+
   return (
     <div className="hima-canvas-wrap">
       {attention === undefined ? null : (
@@ -186,7 +243,10 @@ export function FabricCanvas({ runId, scene, view, context, stale, reducedMotion
       <div className="hima-canvas" ref={containerRef} data-hima-region="campaign-graph"
         data-hima-state-nodes={String(scene.nodes.length)} data-hima-state-current={currentNode?.id ?? ''}
         data-hima-state-scale={transform.scale.toFixed(2)} data-hima-state-stale={String(stale)}>
-        <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${viewport.width} ${viewport.height}`}
+        {/* The viewBox is the container's own measured size, padded 4 px on every side: a scene
+            fitted (or clamp-centred) flush against an edge — the revisit arc's own badge sits close
+            above the spine — still has a hair of room rather than clipping at the pane's own bound. */}
+        <svg ref={svgRef} width="100%" height="100%" viewBox={`-4 -4 ${viewport.width + 8} ${viewport.height + 8}`}
           className={stale ? 'hima-canvas-stale' : ''}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
           <defs>
@@ -200,11 +260,22 @@ export function FabricCanvas({ runId, scene, view, context, stale, reducedMotion
               <line x1={0} y1={0} x2={0} y2={6} className="hima-node-hatch-line" />
             </pattern>
           </defs>
-          <g className="hima-canvas-transform" transform={`translate(${transform.tx},${transform.ty}) scale(${transform.scale})`}>
+          <g className={`hima-canvas-transform${motionOff ? ' hima-canvas-transform-still' : ''}`} transform={`translate(${transform.tx},${transform.ty}) scale(${transform.scale})`}>
             {scene.frames.map((frame) => <FrameBox key={frame.id} frame={frame} />)}
-            {scene.edges.map((edge, index) => <Edge key={`${edge.from}-${edge.to}-${edge.kind}-${String(index)}`} edge={edge} litSeen={litSeen} />)}
+            {scene.edges.map((edge, index) => {
+              const firstLit = edge.lit && !litSeen.current.has(edgeKey(edge));
+              const pulse = edge.kind === 'revisit' && !motionOff;
+              return <Edge key={edge.kind === 'revisit' ? `revisit-${String(revisitPulseKey)}` : `${edge.from}-${edge.to}-${edge.kind}-${String(index)}`} edge={edge} firstLit={firstLit} pulse={pulse} />;
+            })}
+            {forkBranches.map((branch) => {
+              const head = branch.nodes[0]?.nodeId;
+              const node = head === undefined ? undefined : scene.nodes.find((placed) => placed.id === head);
+              if (node === undefined) return null;
+              return <text key={branch.id} className="hima-branch-label" x={node.x - PITCH / 2} y={node.y + 4} textAnchor="middle">{branch.id}</text>;
+            })}
             {scene.nodes.map((node) => (
-              <FabricNode key={`${node.frame ?? ''}/${node.id}`} node={node} runId={runId} labelsVisible={labelsVisible} reducedMotion={reducedMotion} onSelect={() => {}} />
+              <FabricNode key={`${node.frame ?? ''}/${node.id}`} node={node} runId={runId} labelsVisible={labelsVisible}
+                reducedMotion={motionOff} selected={node.id === selectedNodeId} onSelect={onSelectNode} />
             ))}
             <g data-hima-region="campaign-goal" data-hima-state-status={run?.status ?? ''} transform={`translate(${scene.goal.x},${scene.goal.y})`}>
               {ended ? (
@@ -225,10 +296,10 @@ export function FabricCanvas({ runId, scene, view, context, stale, reducedMotion
           </g>
         </svg>
         <div className="hima-canvas-legend">
-          <span><svg width={14} height={14} viewBox="0 0 14 14" aria-hidden="true"><rect x={1.5} y={3.5} width={11} height={7} rx={2.5} fill="none" stroke="currentColor" strokeWidth={1.3} /></svg>act</span>
-          <span><svg width={14} height={14} viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1l6 6-6 6-6-6z" fill="none" stroke="currentColor" strokeWidth={1.3} /></svg>judge</span>
-          <span><Glyph name="circle" />explore</span>
-          <span><Glyph name="octagon" />wait</span>
+          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="act" half={7} /></svg>act</span>
+          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="judge" half={7} /></svg>judge</span>
+          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="explore" half={7} mark /></svg>explore</span>
+          <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="wait" half={7} /></svg>wait</span>
         </div>
         <div className="hima-canvas-tools">
           <button type="button" className="hima-icon-button" data-hima-control="canvas-locate" aria-label="Locate current node" onClick={locate}><Glyph name="locate" /></button>

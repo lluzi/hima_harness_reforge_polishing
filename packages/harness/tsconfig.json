@@ -2,6 +2,5 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "rootDir": "src", "outDir": "lib", "declarationDir": "lib/types" },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "src/client/**"],
-  "files": ["src/client/scene.ts"]
+  "exclude": ["src/**/*.test.ts", "src/client/**"]
 }

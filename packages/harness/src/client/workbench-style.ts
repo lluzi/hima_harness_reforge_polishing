@@ -88,10 +88,10 @@ export const HIMA_STYLE = `
 .hima-studio-header>div{flex:1;min-width:0}
 .hima-run-picker{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-run-picker select{flex:1;min-width:0}
-.hima-run-controls{padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
-.hima-run-controls button{appearance:none;border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-1) var(--hima-sp-2);font-size:var(--hima-fs-eyebrow);cursor:pointer;margin:var(--hima-sp-1) var(--hima-sp-1) 0 0}
-.hima-run-controls button:hover{background:var(--hima-soft)}
-.hima-run-controls button:disabled{opacity:.5;cursor:default}
+.hima-run-controls-interim{padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.hima-run-controls-interim button{appearance:none;border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-1) var(--hima-sp-2);font-size:var(--hima-fs-label);cursor:pointer;margin:var(--hima-sp-1) var(--hima-sp-1) 0 0}
+.hima-run-controls-interim button:hover{background:var(--hima-soft)}
+.hima-run-controls-interim button:disabled{opacity:.5;cursor:default}
 .hima-start-form{padding:var(--hima-sp-4);overflow:auto;min-height:0;display:flex;flex-direction:column;gap:var(--hima-sp-4)}
 
 /* The Campaign tab (#41 task 5): masthead, view switch, and the HimaFabric canvas that makes the
@@ -113,10 +113,10 @@ export const HIMA_STYLE = `
 .hima-campaign-views button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
 .hima-campaign-views button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
 .hima-campaign-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:auto}
-.hima-campaign-stale{flex:none;padding:var(--hima-sp-2) var(--hima-sp-4);font-size:var(--hima-fs-eyebrow);color:var(--hima-warn);background:var(--hima-soft)}
+.hima-campaign-stale{flex:none;padding:var(--hima-sp-2) var(--hima-sp-4);font-size:var(--hima-fs-label);color:var(--hima-warn);background:var(--hima-soft)}
 
 .hima-canvas-wrap{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-.hima-canvas-attention{flex:none;height:32px;box-sizing:border-box;display:flex;align-items:center;gap:var(--hima-sp-3);padding:0 var(--hima-sp-4);font-size:var(--hima-fs-label)}
+.hima-canvas-attention{flex:none;min-height:32px;box-sizing:border-box;display:flex;align-items:center;gap:var(--hima-sp-3);padding:var(--hima-sp-1) var(--hima-sp-4);font-size:var(--hima-fs-label)}
 .hima-canvas-attention span:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
 .hima-canvas-attention-waiting{color:var(--hima-warn);background:var(--hima-soft)}
 .hima-canvas-attention-fence{color:var(--hima-ink-2);background:var(--hima-soft)}
@@ -125,27 +125,39 @@ export const HIMA_STYLE = `
 .hima-canvas-stale{opacity:.6}
 .hima-canvas-legend{position:absolute;left:var(--hima-sp-4);top:var(--hima-sp-3);display:flex;gap:var(--hima-sp-4);font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-3);pointer-events:none}
 .hima-canvas-legend span{display:inline-flex;align-items:center;gap:var(--hima-sp-1)}
+.hima-legend-shape{fill:none;stroke:var(--hima-ink-3);stroke-width:1.3}
 .hima-canvas-tools{position:absolute;right:var(--hima-sp-3);bottom:var(--hima-sp-3);display:flex;gap:var(--hima-sp-1)}
+
+/* The zoom/pan transform: eased on a follow, instant while reduced motion or a stale snapshot ask
+   for none — .hima-canvas-transform-still is set by the same motionOff flag that also gates the
+   running pulse and the lit-edge/revisit animations below, and the media query is a backstop for a
+   viewer whose OS setting this component's own JS check somehow missed. */
+.hima-canvas-transform{transition:transform 300ms ease}
+.hima-canvas-transform-still{transition:none}
+@media (prefers-reduced-motion: reduce){ .hima-canvas-transform{transition:none} }
 
 .hima-frame-box{fill:none;stroke:var(--hima-line-strong);stroke-dasharray:3 3}
 .hima-frame-open .hima-frame-box{stroke:var(--hima-accent)}
-.hima-frame-label{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-2)}
+.hima-frame-label{font-size:var(--hima-fs-label);fill:var(--hima-ink-2)}
+.hima-branch-label{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-ink-2)}
 
 .hima-arrow-fill{fill:var(--hima-line-strong)}
 .hima-arrow-fill-lit{fill:var(--hima-good)}
 .hima-edge-path{fill:none;stroke:var(--hima-line-strong);stroke-width:1.4}
 .hima-edge-lit .hima-edge-path{stroke:var(--hima-good);stroke-width:2}
-.hima-edge-dashed .hima-edge-path{stroke-dasharray:5 4}
+.hima-edge-path.hima-edge-dashed{stroke-dasharray:5 4}
 .hima-edge-revisit .hima-edge-path{stroke:var(--hima-accent)}
 .hima-edge-lit-enter .hima-edge-path{stroke-dasharray:8 4;animation:hima-edge-light .5s ease-out}
 @keyframes hima-edge-light{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
+.hima-edge-revisit-pulse .hima-edge-path{animation:hima-revisit-pulse 900ms ease-out}
+@keyframes hima-revisit-pulse{0%{stroke-width:1.4;opacity:.5}40%{stroke-width:3.5;opacity:1}100%{stroke-width:1.4;opacity:1}}
 .hima-edge-chip rect{fill:var(--hima-paper);stroke:var(--hima-line-strong)}
 .hima-edge-chip text{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-ink-2);text-anchor:middle}
 .hima-edge-chip-pass rect{stroke:var(--hima-good)} .hima-edge-chip-pass text{fill:var(--hima-good)}
 .hima-edge-chip-fail rect{stroke:var(--hima-bad)} .hima-edge-chip-fail text{fill:var(--hima-bad)}
 .hima-edge-chip-undetermined rect{stroke:var(--hima-warn)} .hima-edge-chip-undetermined text{fill:var(--hima-warn)}
 .hima-edge-badge rect{fill:var(--hima-paper);stroke:var(--hima-accent)}
-.hima-edge-badge text{font-size:var(--hima-fs-eyebrow);font-weight:600;fill:var(--hima-accent);text-anchor:middle}
+.hima-edge-badge text{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-accent);text-anchor:middle}
 
 .hima-node{cursor:pointer}
 .hima-node-shape{fill:var(--hima-paper);stroke:var(--hima-line-strong);stroke-width:1.4}
@@ -174,9 +186,10 @@ export const HIMA_STYLE = `
 .hima-node-mark-waited{color:var(--hima-warn)}
 .hima-node-hatch-line{stroke:var(--hima-line-strong);stroke-width:2}
 .hima-node-label{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-ink);text-anchor:middle}
-.hima-node-caption{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-3);text-anchor:middle}
+.hima-node-caption{font-size:var(--hima-fs-label);fill:var(--hima-ink-3);text-anchor:middle}
 .hima-node-log{font-size:var(--hima-fs-eyebrow);font-family:var(--hima-font-mono);fill:var(--hima-live);text-anchor:middle}
 .hima-node-labels-hidden{visibility:hidden}
+.hima-node-current-ring{fill:none;stroke:var(--hima-accent);stroke-width:2}
 
 .hima-goal-roundel{fill:var(--hima-paper);stroke:var(--hima-neutral);stroke-width:1.4;stroke-dasharray:4 3}
 .hima-goal-mark{fill:none;stroke:var(--hima-neutral);stroke-width:1.4}
@@ -189,10 +202,11 @@ export const HIMA_STYLE = `
 [data-hima-region="campaign-goal"][data-hima-state-status="ended-converged"] .hima-goal-seal,
 [data-hima-region="campaign-goal"][data-hima-state-status="cancelled"] .hima-goal-seal{fill:var(--hima-warn)}
 .hima-goal-title{font-size:var(--hima-fs-display);font-weight:650;fill:var(--hima-on-solid);text-anchor:middle}
-.hima-goal-reason{font-size:var(--hima-fs-eyebrow);fill:var(--hima-on-solid);text-anchor:middle}
+.hima-goal-reason{font-size:var(--hima-fs-label);fill:var(--hima-on-solid);text-anchor:middle}
 
 @media (prefers-reduced-motion: reduce){
   .hima-node-running-pulse{animation:none}
   .hima-edge-lit-enter .hima-edge-path{animation:none}
+  .hima-edge-revisit-pulse .hima-edge-path{animation:none}
 }
 `;

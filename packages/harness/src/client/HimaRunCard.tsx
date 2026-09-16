@@ -461,13 +461,13 @@ export function useRunActions(runId: string | undefined, onChanged: (view: RunVi
  * the Run itself, which is what the card then shows. Nothing here holds Run state: HimaGuide never
  * does (CONTEXT.md, *HimaGuide*).
  */
-export function RunControls({ view, acting }: { view: RunView; acting: Acting }): ReactElement {
+export function RunControls({ view, acting, showDiagnostics = true }: { view: RunView; acting: Acting; showDiagnostics?: boolean }): ReactElement {
   const control = view.run.control;
   if (control) {
     const owner = control.owner === acting.sessionId;
     const active = view.run.status === 'running' || view.run.status === 'waiting';
     return <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-hima-region='execution-control' data-hima-state-owner={control.owner} data-hima-state-epoch={control.epoch} data-hima-state-revision={control.revision}>
-      <span style={muted}>Owner {control.owner} · epoch {control.epoch} · revision {control.revision}</span>
+      {showDiagnostics ? <span style={muted}>Owner {control.owner} · epoch {control.epoch} · revision {control.revision}</span> : null}
       <span>{control.paused.length ? `New work paused: ${control.paused.join(', ')}. Existing Jobs may still be running.` : 'New work requires this conversation’s explicit Agent action.'}</span>
       <div style={{ display: 'flex', gap: 8 }}>
         {active && acting.sessionId ? <button type='button' data-hima-control='pause' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause')}>Pause Run</button> : null}
@@ -477,7 +477,7 @@ export function RunControls({ view, acting }: { view: RunView; acting: Acting })
       </div>
       {!owner ? <span style={muted}>Viewing this Run does not transfer execution ownership. You may pause or stop it as a human; enter its owning conversation to continue or perform node work.</span> : null}
       {acting.notice ? <span role='status' data-hima-region='control-notification'>{acting.notice}</span> : null}
-      {Object.values(control.executions).map((execution) => <div key={execution.id} data-hima-region='node-execution' data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>
+      {!showDiagnostics ? null : Object.values(control.executions).map((execution) => <div key={execution.id} data-hima-region='node-execution' data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>
         {execution.nodeId} · {execution.phase} · generation {execution.generation} · attempt {execution.attempt}<br /><span style={mono}>{execution.id}</span>
       </div>)}
       <span data-hima-region='run-error' style={{ color: bad }}>{acting.refusal?.message ?? ''}</span>

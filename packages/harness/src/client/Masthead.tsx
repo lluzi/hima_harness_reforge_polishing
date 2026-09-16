@@ -4,13 +4,23 @@
 // and no business control — Task 6 adds emergency Pause/Stop to the card footer and the Diagnostics
 // sheet, never here.
 import { useEffect, useState, type ReactElement } from 'react';
+import type { ExecutionContext } from '../fabric.js';
 import type { RunView } from '../remote.js';
-import { duration, labelled, meterRows, runPurposeMark, runStatusLabel } from '../card-labels.js';
+import { duration, labelled, runPurposeMark, runStatusLabel } from '../card-labels.js';
+
+/** The Budget standing, in the one word the mockup's own sub-line uses beside the elapsed figure —
+ *  read from `ExecutionContext.budget.phase` (`budgetStanding`'s own live computation), because
+ *  nothing in `RunMeters` states whether a Run is still active, spending its closing reserve, or
+ *  already exhausted; only the execution context knows that right now. */
+const BUDGET_STANDING: Readonly<Record<ExecutionContext['budget']['phase'], string>> = {
+  active: 'budget active', closing: 'budget closing reserve', exhausted: 'budget exhausted',
+};
 
 export interface MastheadProps {
   /** The file's own name (Task 7); the campaign id stands in until then. */
   readonly name?: string;
   readonly view: RunView | undefined;
+  readonly context: ExecutionContext | undefined;
   readonly stale: boolean;
   readonly reducedMotion: boolean;
   /** This session owns the Run's business controls, or is a Side Talk looking in. */
@@ -32,7 +42,7 @@ function useTick(active: boolean): void {
   }, [active]);
 }
 
-export function Masthead({ name, view, stale, reducedMotion, isOwner, ownerId, readAt, openOwner }: MastheadProps): ReactElement {
+export function Masthead({ name, view, context, stale, reducedMotion, isOwner, ownerId, readAt, openOwner }: MastheadProps): ReactElement {
   const run = view?.run;
   const status = run?.status;
   const ticking = status === 'running' && !stale && !reducedMotion;
@@ -40,7 +50,12 @@ export function Masthead({ name, view, stale, reducedMotion, isOwner, ownerId, r
   const said = status === undefined ? undefined : labelled(runStatusLabel, status);
   const elapsedBase = run?.meters?.elapsedMs;
   const elapsedMs = elapsedBase === undefined ? undefined : elapsedBase + (ticking && readAt !== undefined ? Math.max(0, Date.now() - readAt) : 0);
-  const budgetPhrase = view === undefined ? undefined : meterRows(view).find((row) => row.key === 'elapsed')?.said;
+  // One elapsed figure, not two: `elapsed <now> of a time box of <bound>`, both sides through the
+  // same `duration()` a person reads everywhere else on the card — never this ticking value beside a
+  // second, static rendering of the same fact.
+  const elapsedPhrase = elapsedMs === undefined || run?.budget === undefined ? undefined
+    : `elapsed ${duration(elapsedMs)} of a time box of ${duration(run.budget.timeBoxMs)}`;
+  const budgetWord = context === undefined ? undefined : BUDGET_STANDING[context.budget.phase];
   const purposeMark = runPurposeMark(run?.purpose);
 
   return (
@@ -55,8 +70,8 @@ export function Masthead({ name, view, stale, reducedMotion, isOwner, ownerId, r
             : <span className={`hima-masthead-seal hima-masthead-seal-${status ?? 'unknown'}`}>{said.said}</span>}
           {run?.currentNode === undefined ? null : <span> · {run.currentNode}</span>}
           {run?.generation === undefined ? null : <span> · gen {run.generation}</span>}
-          {elapsedMs === undefined ? null : <span> · {duration(elapsedMs)}</span>}
-          {budgetPhrase === undefined ? null : <span> · {budgetPhrase}</span>}
+          {elapsedPhrase === undefined ? null : <span> · {elapsedPhrase}</span>}
+          {budgetWord === undefined ? null : <span> · {budgetWord}</span>}
         </p>
       </div>
       {isOwner || ownerId === undefined ? null : (

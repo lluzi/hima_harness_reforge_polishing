@@ -6,7 +6,7 @@ import type { StartChoices } from '../workbench.js';
 import { runPurposeMark, START_STATIC_LIMIT } from '../card-labels.js';
 import { fetchExecutionContext, fetchRun, fetchRuns, fetchStartChoices, reviewPackTransfer, startCampaign, type HimaResult } from './api.js';
 import { CampaignTab } from './CampaignTab.js';
-import { RunControls, useRunActions } from './HimaRunCard.js';
+import { useRunActions } from './HimaRunCard.js';
 import { Glyph } from './glyphs.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot. */
@@ -88,10 +88,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
     {managingPack ? <PackOwnerPanel key={activeSessionId} sessionId={activeSessionId} initialPack={view?.run.packId ?? ''} /> : null}
     {creating ? <StartRunForm key={activeSessionId} sessionId={activeSessionId} onBusy={startBusy} onClose={() => { if (!startPending.current) setCreating(false); }} onStarted={(run) => { setSelected(run.run.id); setCreating(false); list.refresh(); snapshot.refresh(); setNotice(undefined); }} />
       : selected === undefined ? <div className='hima-empty'><div className='hima-empty-glyph'><Glyph name='ring' size={32} /></div><h3>Complete a chip-design Campaign.</h3><p>Keep coding and conversation available while HimaGuide prepares the inputs and the Campaign Agent executes the method.</p><button className='hima-button hima-primary' onClick={() => setCreating(true)}>Prepare a Campaign</button><p className='hima-small'>Choose an existing Campaign above, install a HimaPack, or connect a Site.</p></div>
-        : <>
-          {view === undefined ? null : <div className='hima-run-controls'><RunControls view={view} acting={acting} /></div>}
-          <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} refresh={() => { snapshot.refresh(); execution.refresh(); }} />
-        </>}
+        : <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} refresh={() => { snapshot.refresh(); execution.refresh(); }} />}
   </div>;
 }
 

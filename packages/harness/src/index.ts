@@ -223,15 +223,9 @@ export { packAuthorStatusLabel, packOntologyLabel } from './card-labels.js';
 
 // The Campaign tab's own words (#41 task 5): the Goal roundel while a Run is open, its seal once one
 // has ended, and a node's own caption. On the surface for the reason every other word of the card is:
-// `client/scene.ts` reads `nodeCaption` off here rather than saying a node's second line twice, and
-// the contract suite asserts on the same three functions the canvas actually renders from.
+// `scene.ts` reads `nodeCaption` off here rather than saying a node's second line twice, and the
+// contract suite asserts on the same three functions the canvas actually renders from.
 export { goalSaid, sealSaid, nodeCaption } from './card-labels.js';
-
-// `scene.ts`'s adapter — a reference graph plus a Run view and execution context, turned into
-// `layoutCanvas`'s own two inputs — is a pure function exactly as `layoutCanvas` itself is (#41 task
-// 5), so it is exported beside it: both are testable at L1 without a window, and the client renders
-// from the very function the contract suite asserts on.
-export { sceneInputs } from './client/scene.js';
 
 // What the ledger holds, for a caller reading records back through the namespace. `hasEnded` is the
 // one predicate over a Run's status every face shares: what counts as an ending is the ledger's to
@@ -918,6 +912,12 @@ export { goalDeclarationOf } from './packs.js';
 // PITCH` and rule 9's Goal placement both need them) and the contract test imports both.
 export { layoutCanvas, fitToWidth, labelsVisibleAt, PITCH, ROW, NODE, X0, PAD_Y } from './canvas-layout.js';
 export type { CanvasScene, LayoutGraph, LayoutFacts, PlacedNode, PlacedEdge, Frame, NodeVisualState } from './canvas-layout.js';
+
+// `scene.ts`'s adapter — a reference graph plus a Run view and execution context, turned into
+// `layoutCanvas`'s own two inputs above — is a pure function exactly as `layoutCanvas` itself is (#41
+// task 5), so it is exported beside it: both are testable at L1 without a window, and the client
+// renders from the very function the contract suite asserts on.
+export { sceneInputs } from './scene.js';
 // The Campaign file (#41 task 3): `hima-campaign/1`'s schema, parse/serialize, read/write under a
 // session workspace, and the overrides it hands Preparation. Exported here for the same reason every
 // other business format is: `test/contract/campaign-file.host.test.ts`, `tools.ts` and `remote.ts`

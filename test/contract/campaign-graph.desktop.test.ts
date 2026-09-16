@@ -124,10 +124,14 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     const graph = await d.read('campaign-graph'); assert.ok(graph.ok); assert.ok(Number(graph.state.nodes) >= 48, graph.text);
     assert.ok(graph.text.includes('pnr-foundry') && graph.text.includes('compare'), graph.text);
     const runningStudio = await d.read('studio'); assert.ok(runningStudio.ok); runId = runningStudio.state.run; assert.ok(runId);
-    await browser.mark('[data-hima-control="node-pnr-foundry"]', 'graph-probe-node'); assert.ok((await d.click('graph-probe-node')).ok);
     // The anchored node card (Facts/Job/Code/Knowledge/Evidence tabs) is a later task's file
-    // (`NodeCard.tsx`); this task's own node is clickable and names itself in its own region.
-    assert.ok((await d.wait('campaign-node-pnr-foundry', 'pnr-foundry', 10_000)).ok);
+    // (`NodeCard.tsx`); this task's own node is clickable and marks itself selected in its own
+    // region — asserted as a state change the click itself caused, not a fact already true of the
+    // page before it (the node's id was already in `graph.text` at the read above).
+    await browser.mark('[data-hima-control="node-pnr-foundry"]', 'graph-probe-node');
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-node-pnr-foundry"]')?.getAttribute('data-hima-state-selected')`), 'false');
+    assert.ok((await d.click('graph-probe-node')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-node-pnr-foundry"]')?.getAttribute('data-hima-state-selected') === 'true'`, 10_000);
 
     await browser.mark('[aria-label="New session"]', 'new-side-talk'); assert.ok((await d.click('new-side-talk')).ok);
     await browser.wait(`document.body.innerText.includes('New session') && [...document.querySelectorAll('[contenteditable="true"]')].some(e=>e.getBoundingClientRect().height>0)`);

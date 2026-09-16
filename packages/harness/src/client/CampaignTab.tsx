@@ -2,26 +2,27 @@
 // HimaFabric canvas that makes the Live view. Everything the four stacked Live sections
 // (`RunSummary`, `CampaignGraph`, `JobActivity`, `EvidenceTrail`) used to say separately is said here
 // instead — the canvas for where the Run stands, and the other three views for what it has recorded.
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { layoutCanvas } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import { cancelAsked, cancelObserved } from '../card-labels.js';
 import { experienceMarkdownPath } from '../paths.js';
 import { reportBlocks } from '../experience-report.js';
 import type { RunView } from '../remote.js';
+import { sceneInputs } from '../scene.js';
 import { FabricCanvas } from './FabricCanvas.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
-  MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection,
+  MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, RunControls, VerdictRow, WorkshopSection, type Acting,
 } from './HimaRunCard.js';
 import { Masthead } from './Masthead.js';
-import { sceneInputs } from './scene.js';
 
 export interface CampaignTabProps {
   readonly sessionId: string;
   readonly runId: string;
   readonly view: RunView | undefined;
   readonly context: ExecutionContext | undefined;
+  readonly acting: Acting;
   readonly stale: boolean;
   /** When `view` was last read successfully — the masthead's elapsed figure ticks forward from
    *  here, and the stale banner names the moment the last good read stopped being current. */
@@ -57,8 +58,16 @@ function useReducedMotion(): boolean {
 
 /** The Evidence view: what a Campaign has read, recorded and concluded — material and archived
  *  knowledge first, since those are what a Run leaves behind, then the observations, verdicts,
- *  decision and blockers that read them, and finally its Workshop, growths and revisions. */
+ *  decision and blockers that read them, and finally its Workshop, growths and revisions. Says so
+ *  plainly when none of that exists yet, rather than an empty pane a person might read as broken. */
 function EvidenceView({ view }: { view: RunView }): ReactElement {
+  const hasMaterial = view.code.length > 0 || view.knowledge.length > 0;
+  const hasGrowth = view.generations.some((generation) => (generation.growths ?? []).length > 0);
+  const empty = !hasMaterial && view.archive === undefined && view.workshop === undefined && !hasGrowth
+    && (view.revisions ?? []).length === 0 && view.observations.length === 0 && view.verdicts.length === 0
+    && (view.decision === null || view.decision === undefined) && view.blockers.length === 0
+    && view.refusals.length === 0 && view.cancels.length === 0;
+  if (empty) return <div className="hima-detail hima-evidence"><p>No verified evidence has been recorded for this Campaign yet.</p></div>;
   return (
     <div className="hima-detail hima-evidence">
       <MaterialSection view={view} />
@@ -149,34 +158,52 @@ function ReportView({ view, runId }: { view: RunView; runId: string }): ReactEle
   );
 }
 
-export function CampaignTab({ sessionId, runId, view, context, stale, readAt, name, openOwner }: CampaignTabProps): ReactElement {
+export function CampaignTab({ sessionId, runId, view, context, acting, stale, readAt, name, openOwner }: CampaignTabProps): ReactElement {
   const [section, setSection] = useState<Section>('live');
+  const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const reducedMotion = useReducedMotion();
   const control = view?.run.control;
   const isOwner = control === undefined || control.owner === sessionId;
   const reference = context?.method?.reference;
-  const built = reference === undefined ? undefined : sceneInputs(reference, view, context);
-  const scene = built === undefined ? undefined : layoutCanvas(built.graph, built.facts);
+  // `sceneInputs`+`layoutCanvas` recompute only when the reference graph, the Run view or the
+  // execution context actually change identity (a fresh poll) — not on every render this component
+  // takes for a reason of its own (switching views, selecting a node, the masthead's own tick).
+  const scene = useMemo(() => {
+    if (reference === undefined) return undefined;
+    const built = sceneInputs(reference, view, context);
+    return layoutCanvas(built.graph, built.facts);
+  }, [reference, view, context]);
+
+  useEffect(() => { setSelectedNodeId(undefined); }, [runId]);
 
   return (
     <div className="hima-campaign" data-hima-region="campaign" data-hima-state-run={runId}
       data-hima-state-status={view?.run.status ?? ''} data-hima-state-owner={isOwner ? 'owner' : 'side-talk'}>
-      <Masthead name={name} view={view} stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} ownerId={control?.owner} readAt={readAt} openOwner={openOwner} />
+      <Masthead name={name} view={view} context={context} stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} ownerId={control?.owner} readAt={readAt} openOwner={openOwner} />
       <nav className="hima-campaign-views" aria-label="Campaign views">
         {SECTIONS.map(({ key, said }) => (
           <button key={key} type="button" aria-pressed={section === key} data-hima-control={`studio-${key}`} onClick={() => setSection(key)}>{said}</button>
         ))}
       </nav>
       <div className="hima-campaign-content">
-        {section === 'live'
-          ? (scene === undefined
-            ? <div className="hima-empty"><p>{context?.reason ?? 'Reading the reference graph…'}</p></div>
-            : <FabricCanvas runId={runId} scene={scene} view={view} context={context} stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} openOwner={openOwner} />)
-          : view === undefined
-            ? <div className="hima-empty"><p>Reading Run records…</p></div>
-            : section === 'generations'
-              ? <div className="hima-detail"><h3>Generations</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>No generation has been recorded.</p>}</div>
-              : section === 'evidence' ? <EvidenceView view={view} /> : <ReportView view={view} runId={runId} />}
+        {section === 'live' ? (
+          <>
+            {/* An interim row only: Task 6 replaces it with node-scoped controls in the anchored
+                card's footer and moves the owner/epoch/revision text this omits into Diagnostics.
+                Hidden entirely for a Side Talk, which never sees a business control here. */}
+            {view === undefined || !isOwner ? null : (
+              <div className="hima-run-controls-interim"><RunControls view={view} acting={acting} showDiagnostics={false} /></div>
+            )}
+            {scene === undefined
+              ? <div className="hima-empty"><p>{context?.reason ?? 'Reading the reference graph…'}</p></div>
+              : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
+                  stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} openOwner={openOwner} />}
+          </>
+        ) : view === undefined
+          ? <div className="hima-empty"><p>Reading Run records…</p></div>
+          : section === 'generations'
+            ? <div className="hima-detail"><h3>Generations</h3>{view.generations.length ? <GenerationsTable view={view} /> : <p>No Generation has opened yet.</p>}</div>
+            : section === 'evidence' ? <EvidenceView view={view} /> : <ReportView view={view} runId={runId} />}
       </div>
       {!stale ? null : (
         <div className="hima-campaign-stale" role="status" data-hima-region="campaign-stale" data-hima-state-at={readAt === undefined ? '' : String(readAt)}>
