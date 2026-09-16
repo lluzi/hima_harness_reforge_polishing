@@ -129,10 +129,10 @@ function hangNodeIds(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[])
  * its own FAIL/UNDETERMINED incoming edges — it never counts as another node's predecessor, so it
  * never joins the main pass. */
 function computeRank(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>): Map<string, number> {
-  const mainIds = nodes.map((node) => node.id).filter((id) => !hang.has(id));
-  const idSet = new Set(mainIds);
+  const ids = nodes.map((node) => node.id);
+  const idSet = new Set(ids);
   const relevant = edges.filter((edge) => !edge.revisit && idSet.has(edge.from) && idSet.has(edge.to));
-  const predecessors = new Map<string, string[]>(mainIds.map((id) => [id, []]));
+  const predecessors = new Map<string, string[]>(ids.map((id) => [id, []]));
   const successors = new Map<string, LayoutEdge[]>();
   for (const edge of relevant) {
     predecessors.get(edge.to)!.push(edge.from);
@@ -140,26 +140,27 @@ function computeRank(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[],
     list.push(edge);
     successors.set(edge.from, list);
   }
-  const indegree = new Map(mainIds.map((id) => [id, predecessors.get(id)!.length]));
+  const indegree = new Map(ids.map((id) => [id, predecessors.get(id)!.length]));
   const rank = new Map<string, number>();
-  const queue = mainIds.filter((id) => indegree.get(id) === 0);
+  const queue = ids.filter((id) => indegree.get(id) === 0);
   for (let i = 0; i < queue.length; i++) {
     const id = queue[i]!;
     const predecessorRanks = predecessors.get(id)!.map((from) => rank.get(from) ?? 0);
-    rank.set(id, predecessorRanks.length > 0 ? Math.max(...predecessorRanks) + 1 : 0);
+    const base = predecessorRanks.length > 0 ? Math.max(...predecessorRanks) : 0;
+    // A hung node (rule 2) never takes the normal `+1` step: it sits at its source's rank plus a half
+    // step, and — critically — that fractional rank still feeds every successor's own `1 + max(...)`
+    // below. A hung node stays out of the *row* pass (it is never a member of `mainIds`-style row-0
+    // spine placement — see `computeRow`), but it must stay IN this rank pass, or its own successors
+    // lose their only predecessor and silently collapse to whatever rank their next real predecessor
+    // (or none at all) gives them.
+    rank.set(id, hang.has(id) ? base + 0.5 : predecessorRanks.length > 0 ? base + 1 : 0);
     for (const edge of successors.get(id) ?? []) {
       const remaining = (indegree.get(edge.to) ?? 0) - 1;
       indegree.set(edge.to, remaining);
       if (remaining === 0) queue.push(edge.to);
     }
   }
-  for (const id of mainIds) if (!rank.has(id)) rank.set(id, 0); // a cycle among non-revisit edges: not a well-formed reference graph, but never left rankless
-
-  for (const node of nodes) {
-    if (!hang.has(node.id)) continue;
-    const sources = edges.filter((edge) => edge.to === node.id && !edge.revisit).map((edge) => rank.get(edge.from) ?? 0);
-    rank.set(node.id, (sources.length > 0 ? Math.max(...sources) : 0) + 0.5);
-  }
+  for (const id of ids) if (!rank.has(id)) rank.set(id, 0); // a cycle among non-revisit edges: not a well-formed reference graph, but never left rankless
   return rank;
 }
 
@@ -215,26 +216,59 @@ function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], 
 // ---------------------------------------------------------------------------------------------------
 // Rule 4 (edge paths and chips) and rule 5 (lit).
 
-/** Rule 4's four edge forms, plus rule 5's lit rule (`state(from)` done/reconciled, except a revisit
- * edge which lights from `generation > 1` instead). The FAIL/UNDETERMINED-to-a-hung-node case is
- * detected geometrically (`ty > sy`, i.e. the target sits a row below) rather than by re-deriving
- * `hangNodeIds` here, since that is exactly what a row-below target means once rows are assigned.
+/** Samples a cubic bezier's `y(t)` across `t ∈ [0, 1]` and returns the smallest value reached — the
+ * highest point the arc draws, since SVG's y-axis grows downward. `t = 0.5` is always sampled, which
+ * is exact (not an approximation) for every arc this module draws: each one is symmetric end-to-end
+ * (`y0 === y3`, `y1 === y2`, the same-row case) or close enough to it that a 100-step scan is well
+ * past the precision anything downstream of the badge's `y` needs. Used by the revisit arc's badge
+ * (rule 4, finding 3): the badge sits 34px above whatever the actual control points draw, rather than
+ * a fixed offset from the top-level spine that put a loop's or growth's own revisit badge miles above
+ * its own arc. */
+function bezierApexY(y0: number, y1: number, y2: number, y3: number): number {
+  let apex = Math.min(y0, y3);
+  for (let i = 1; i < 100; i++) {
+    const t = i / 100;
+    const mt = 1 - t;
+    const y = mt * mt * mt * y0 + 3 * mt * mt * t * y1 + 3 * mt * t * t * y2 + t * t * t * y3;
+    if (y < apex) apex = y;
+  }
+  return apex;
+}
+
+/** Rule 4's edge forms, plus rule 5's lit rule (`state(from)` done/reconciled, except a revisit edge
+ * which lights from `generation > 1` instead). The FAIL/UNDETERMINED-to-a-hung-node case is selected
+ * by `isHungTarget` — the caller's own `hangNodeIds` membership test for `edge.to` — rather than the
+ * geometric `ty > sy` this module used to check (finding 6): a hung node is defined by its edges'
+ * outcomes, not by where rows happened to place it, and the two can disagree once a fork or a shifted
+ * loop is involved.
+ *
+ * The rule 4 text also describes a "vertical" chip placement (`sx === tx`) for a same-rank outcome
+ * edge; that branch is deleted (finding 6) rather than kept dead. Rank strictly increases by at least
+ * 0.5 along every non-revisit edge (rule 1 and the hung-node half-step above), so an outcome edge's
+ * source and target never land at the same x — the branch could never trigger and was never covered
+ * by a test.
  *
  * The revisit arc's and the FAIL/UNDETERMINED cubic's exact control points are this module's own
  * choice — the brief gives the FAIL cubic's control points but the revisit arc's only constraint
- * ("any arc that stays above `PAD_Y - 40`", tested only via the badge's `y`), so the arc below mirrors
- * the FAIL cubic's shape: two control points pulling the curve straight up from each endpoint before
- * the far ends bow into it. */
-function classifyEdge(edge: LayoutEdge, sx: number, sy: number, tx: number, ty: number, generation: number | undefined, litFromSource: boolean): PlacedEdge {
+ * ("any arc that stays above `PAD_Y - 40`", tested via the badge's `y`), so the arc below mirrors the
+ * FAIL cubic's shape: two control points pulling the curve straight up from each endpoint before the
+ * far ends bow into it. */
+function classifyEdge(
+  edge: LayoutEdge, sx: number, sy: number, tx: number, ty: number,
+  generation: number | undefined, litFromSource: boolean, isHungTarget: boolean,
+): PlacedEdge {
   if (edge.revisit) {
     const count = generation ?? 1;
+    const c1y = sy - 90;
+    const c2y = ty - 90;
+    const apex = bezierApexY(sy - 18, c1y, c2y, ty - 18);
     return {
       from: edge.from, to: edge.to, kind: 'revisit', lit: count > 1,
-      path: `M ${sx} ${sy - 18} C ${sx} ${sy - 90}, ${tx} ${ty - 90}, ${tx} ${ty - 18}`,
-      badge: { x: (sx + tx) / 2, y: PAD_Y - 52, count },
+      path: `M ${sx} ${sy - 18} C ${sx} ${c1y}, ${tx} ${c2y}, ${tx} ${ty - 18}`,
+      badge: { x: (sx + tx) / 2, y: apex - 34, count },
     };
   }
-  if ((edge.outcome === 'FAIL' || edge.outcome === 'UNDETERMINED') && ty > sy) {
+  if ((edge.outcome === 'FAIL' || edge.outcome === 'UNDETERMINED') && isHungTarget) {
     const outcome = edge.outcome;
     return {
       from: edge.from, to: edge.to, kind: 'outcome', outcome, lit: litFromSource,
@@ -244,11 +278,10 @@ function classifyEdge(edge: LayoutEdge, sx: number, sy: number, tx: number, ty: 
   }
   if (edge.outcome !== undefined) {
     const outcome = edge.outcome;
-    const vertical = sx === tx;
     return {
       from: edge.from, to: edge.to, kind: 'outcome', outcome, lit: litFromSource,
       path: `M ${sx + 18} ${sy} L ${tx - 18} ${ty}`,
-      chip: vertical ? { x: tx - NODE / 2 - 12, y: sy + 62, text: outcome } : { x: (sx + tx) / 2, y: sy - 24, text: outcome },
+      chip: { x: (sx + tx) / 2, y: sy - 24, text: outcome },
     };
   }
   return { from: edge.from, to: edge.to, kind: 'dependency', lit: litFromSource, path: `M ${sx + 18} ${sy} L ${tx - 18} ${ty}` };
@@ -256,8 +289,17 @@ function classifyEdge(edge: LayoutEdge, sx: number, sy: number, tx: number, ty: 
 
 /** The bounding box of a set of node centres, padded 24px past each node's own half-width — rule 6's
  * "the frame spans them with 24 px padding", reused for a growth's frame (rule 7 does not restate the
- * figure, but a growth frame is "laid out below `parentNode`" the same way an open loop's is). */
-function boundingFrame(points: readonly { x: number; y: number }[]): { x: number; y: number; width: number; height: number } {
+ * figure, but a growth frame is "laid out below `parentNode`" the same way an open loop's is).
+ *
+ * An empty subgraph (finding 4) has no centres to bound — `Math.min`/`Math.max` of an empty spread is
+ * `Infinity`/`-Infinity`, which would otherwise poison every downstream width/height computation. It
+ * instead collapses to the same fixed 120×28 box a closed loop uses, hung at the caller's `anchor`
+ * (the position the subgraph's own base rank/row would have placed its first node at). */
+function boundingFrame(
+  points: readonly { x: number; y: number }[],
+  anchor: { x: number; y: number },
+): { x: number; y: number; width: number; height: number } {
+  if (points.length === 0) return { x: anchor.x, y: anchor.y, width: 120, height: 28 };
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
   const minX = Math.min(...xs) - NODE / 2 - 24;
@@ -318,6 +360,47 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   const loopShift: { exploreRank: number; extra: number }[] = [];
   const shiftBefore = (rank: number) => loopShift.filter((entry) => entry.exploreRank < rank).reduce((sum, entry) => sum + entry.extra, 0);
 
+  /** Rules 6–7's shared body (finding 5): a loop's or a growth's own subgraph, laid out by rules 1–2
+   * exactly as the top-level reference graph is (same `hangNodeIds`/`computeRank`/`computeRow`), then
+   * hung at `baseRank`/`baseRow` — the anchor node's own rank/row plus the fixed 0.5-rank/1.2-row
+   * offset both rules give. Sharing this one function is what makes findings 1–3 apply equally inside
+   * a loop or a growth instead of only on the main spine: a hung node inside a subgraph still
+   * propagates its rank (finding 1, via `computeRank`), the subgraph's own revisit badge follows its
+   * own arc (finding 3, via `classifyEdge`'s apex computation) instead of the top-level spine's, and
+   * every node here is shifted by whatever earlier open loop already pushed the spine down by (finding
+   * 7, via `shiftBefore`) instead of drifting from the main spine's own y. */
+  function placeSubgraph(subgraph: LayoutSubgraph, baseRank: number, baseRow: number, frameId: string, generation: number | undefined) {
+    const localHang = hangNodeIds(subgraph.nodes, subgraph.edges);
+    const localRank = computeRank(subgraph.nodes, subgraph.edges, localHang);
+    const localRow = computeRow(subgraph.nodes, subgraph.edges, localHang, undefined);
+    const rankOf = (id: string) => baseRank + (localRank.get(id) ?? 0);
+    const rowOf = (id: string) => baseRow + (localRow.get(id) ?? 0);
+    const positions = new Map<string, { x: number; y: number }>();
+    for (const node of subgraph.nodes) {
+      positions.set(node.id, {
+        x: X0 + rankOf(node.id) * PITCH,
+        y: PAD_Y + (rowOf(node.id) - minRow) * ROW + shiftBefore(rankOf(node.id)),
+      });
+    }
+    const anchor = { x: X0 + baseRank * PITCH, y: PAD_Y + (baseRow - minRow) * ROW + shiftBefore(baseRank) };
+    const box = boundingFrame([...positions.values()], anchor);
+    const nodes: PlacedNode[] = subgraph.nodes.map((node) => {
+      const p = positions.get(node.id)!;
+      return {
+        id: node.id, kind: node.kind, x: p.x, y: p.y, rank: rankOf(node.id), row: rowOf(node.id),
+        state: stateOf(node.id), caption: node.caption, current: node.id === facts?.currentNode,
+        progress: facts?.progress?.[node.id], waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id),
+        frame: frameId,
+      };
+    });
+    const edges: PlacedEdge[] = subgraph.edges.map((edge) => {
+      const from = positions.get(edge.from)!;
+      const to = positions.get(edge.to)!;
+      return classifyEdge(edge, from.x, from.y, to.x, to.y, generation, litOf(edge.from), localHang.has(edge.to));
+    });
+    return { positions, box, nodes, edges };
+  }
+
   for (const { id: exploreId, loopName } of openExplore) {
     const loop = graph.loops?.[loopName];
     if (!loop) continue;
@@ -335,39 +418,15 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
       continue;
     }
 
-    const localHang = hangNodeIds(loop.nodes, loop.edges);
-    const localRank = computeRank(loop.nodes, loop.edges, localHang);
-    const localRow = computeRow(loop.nodes, loop.edges, localHang, undefined);
     const baseRank = exploreRank + 0.5;
     const baseRow = (rowMap.get(exploreId) ?? 0) + 1.2;
-    const positions = new Map<string, { x: number; y: number }>();
-    for (const node of loop.nodes) {
-      positions.set(node.id, {
-        x: X0 + (baseRank + (localRank.get(node.id) ?? 0)) * PITCH,
-        y: PAD_Y + (baseRow + (localRow.get(node.id) ?? 0) - minRow) * ROW,
-      });
-    }
-    const box = boundingFrame([...positions.values()]);
-    loopFrames.push({ id: loopName, kind: 'loop', label, anchor: exploreId, open: true, ...box });
-    loopShift.push({ exploreRank, extra: box.height + 24 });
-
-    for (const node of loop.nodes) {
-      const p = positions.get(node.id)!;
-      loopNodes.push({
-        id: node.id, kind: node.kind, x: p.x, y: p.y,
-        rank: baseRank + (localRank.get(node.id) ?? 0), row: baseRow + (localRow.get(node.id) ?? 0),
-        state: stateOf(node.id), caption: node.caption, current: node.id === facts?.currentNode,
-        progress: facts?.progress?.[node.id], waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id),
-        frame: loopName,
-      });
-    }
     // A loop's own revisit edge lights from its own generation counter (`facts.openLoop.generation`),
     // not the run row's `facts.generation` — the two count different things once the Run is inside it.
-    for (const edge of loop.edges) {
-      const from = positions.get(edge.from)!;
-      const to = positions.get(edge.to)!;
-      loopEdges.push(classifyEdge(edge, from.x, from.y, to.x, to.y, facts?.openLoop?.generation, litOf(edge.from)));
-    }
+    const placed = placeSubgraph(loop, baseRank, baseRow, loopName, facts?.openLoop?.generation);
+    loopFrames.push({ id: loopName, kind: 'loop', label, anchor: exploreId, open: true, ...placed.box });
+    loopShift.push({ exploreRank, extra: placed.box.height + 24 });
+    loopNodes.push(...placed.nodes);
+    loopEdges.push(...placed.edges);
   }
 
   const mainNodes: PlacedNode[] = graph.nodes.map((node) => {
@@ -386,7 +445,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   const mainEdges: PlacedEdge[] = graph.edges.map((edge) => {
     const from = finalPosition.get(edge.from) ?? { x: pass1X.get(edge.from) ?? X0, y: pass1Y.get(edge.from) ?? PAD_Y };
     const to = finalPosition.get(edge.to) ?? { x: pass1X.get(edge.to) ?? X0, y: pass1Y.get(edge.to) ?? PAD_Y };
-    return classifyEdge(edge, from.x, from.y, to.x, to.y, facts?.generation, litOf(edge.from));
+    return classifyEdge(edge, from.x, from.y, to.x, to.y, facts?.generation, litOf(edge.from), hang.has(edge.to));
   });
 
   // Rule 7: each accepted growth, laid out below its parent node the same way an open loop is below
@@ -398,42 +457,18 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   for (const growth of facts?.growths ?? []) {
     const parentRank = rankMap.get(growth.parentNode) ?? 0;
     const parentRow = rowMap.get(growth.parentNode) ?? 0;
-    const localHang = hangNodeIds(growth.graph.nodes, growth.graph.edges);
-    const localRank = computeRank(growth.graph.nodes, growth.graph.edges, localHang);
-    const localRow = computeRow(growth.graph.nodes, growth.graph.edges, localHang, undefined);
     const baseRank = parentRank + 0.5;
     const baseRow = parentRow + 1.2;
-    const positions = new Map<string, { x: number; y: number }>();
-    for (const node of growth.graph.nodes) {
-      positions.set(node.id, {
-        x: X0 + (baseRank + (localRank.get(node.id) ?? 0)) * PITCH,
-        y: PAD_Y + (baseRow + (localRow.get(node.id) ?? 0) - minRow) * ROW,
-      });
-    }
-    const box = boundingFrame([...positions.values()]);
-    growthFrames.push({ id: growth.proposalId, kind: 'growth', label: growth.proposalId, anchor: growth.parentNode, open: true, ...box });
-
-    for (const node of growth.graph.nodes) {
-      const p = positions.get(node.id)!;
-      growthNodes.push({
-        id: node.id, kind: node.kind, x: p.x, y: p.y,
-        rank: baseRank + (localRank.get(node.id) ?? 0), row: baseRow + (localRow.get(node.id) ?? 0),
-        state: stateOf(node.id), caption: node.caption, current: node.id === facts?.currentNode,
-        progress: facts?.progress?.[node.id], waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id),
-        frame: growth.proposalId,
-      });
-    }
-    for (const edge of growth.graph.edges) {
-      const from = positions.get(edge.from)!;
-      const to = positions.get(edge.to)!;
-      growthEdges.push(classifyEdge(edge, from.x, from.y, to.x, to.y, facts?.generation, litOf(edge.from)));
-    }
+    const placed = placeSubgraph(growth.graph, baseRank, baseRow, growth.proposalId, facts?.generation);
+    growthFrames.push({ id: growth.proposalId, kind: 'growth', label: growth.proposalId, anchor: growth.parentNode, open: true, ...placed.box });
+    growthNodes.push(...placed.nodes);
+    growthEdges.push(...placed.edges);
 
     const hasOutgoing = new Set(growth.graph.edges.filter((edge) => !edge.revisit).map((edge) => edge.from));
     const exit = growth.graph.nodes.find((node) => !hasOutgoing.has(node.id)) ?? growth.graph.nodes[growth.graph.nodes.length - 1];
     const returnTarget = finalPosition.get(growth.returnNode) ?? { x: pass1X.get(growth.returnNode) ?? X0, y: pass1Y.get(growth.returnNode) ?? PAD_Y };
     if (exit) {
-      const from = positions.get(exit.id)!;
+      const from = placed.positions.get(exit.id)!;
       growthEdges.push({
         from: exit.id, to: growth.returnNode, kind: 'return', lit: litOf(exit.id),
         path: `M ${from.x} ${from.y} C ${from.x} ${from.y - 40}, ${returnTarget.x} ${returnTarget.y + 40}, ${returnTarget.x} ${returnTarget.y}`,
@@ -443,15 +478,26 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
 
   // Rule 9.
   const goal = { x: X0 + (maxRank + 1) * PITCH, y: PAD_Y - minRow * ROW + shiftBefore(maxRank + 1) };
-  const width = goal.x + 96;
+  const allFrames = [...loopFrames, ...growthFrames];
+  const allNodes = [...mainNodes, ...loopNodes, ...growthNodes];
+  // Finding 2: the Goal roundel's own column (`goal.x + 96`) is only ever wide enough for the main
+  // spine. An open loop or an accepted growth can lay nodes out to the right of it (a loop or growth
+  // body is its own little rank-1-plus fan-out, not bounded by the top-level `maxRank`), so the scene
+  // must also stretch to contain every frame's own box and every node's own pixels — never just the
+  // Goal's column — or an open frame gets clipped by the canvas the renderer draws into.
+  const width = Math.max(
+    goal.x + 96,
+    ...allFrames.map((frame) => frame.x + frame.width + 24),
+    ...allNodes.map((node) => node.x + NODE + 24),
+  );
   const openFrameExtra = loopShift.reduce((sum, entry) => sum + entry.extra, 0) + growthFrames.reduce((sum, frame) => sum + frame.height + 24, 0);
   const height = (maxRow - minRow + 1) * ROW + 2 * PAD_Y + openFrameExtra;
 
   return {
     width, height, goal,
-    nodes: [...mainNodes, ...loopNodes, ...growthNodes],
+    nodes: allNodes,
     edges: [...mainEdges, ...loopEdges, ...growthEdges],
-    frames: [...loopFrames, ...growthFrames],
+    frames: allFrames,
   };
 }
 

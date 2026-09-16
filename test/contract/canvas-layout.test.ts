@@ -83,3 +83,53 @@ test('a fifty-one node graph fits to width and hides labels below sixty percent'
   assert.equal(labelsVisibleAt(fit.scale), false); assert.equal(labelsVisibleAt(0.6), true);
   assert.equal(fitToWidth(layoutCanvas(linear), { width: 760, height: 618 }).scale, 1);
 });
+
+// --- Fix-report regression tests (code review findings 1-3) -------------------------------------
+
+test('a FAIL-hung wait node still ranks the nodes after it', () => {
+  const graph: LayoutGraph = {
+    entry: 'a',
+    nodes: [node('a'), node('j', 'judge'), node('w', 'wait'), node('recover'), node('done')],
+    edges: [
+      { from: 'a', to: 'j' },
+      { from: 'j', to: 'w', outcome: 'FAIL' },
+      { from: 'w', to: 'recover' },
+      { from: 'recover', to: 'done' },
+    ],
+  };
+  const scene = layoutCanvas(graph);
+  const recover = scene.nodes.find((n) => n.id === 'recover')!;
+  const done = scene.nodes.find((n) => n.id === 'done')!;
+  assert.equal(recover.rank, 2.5);
+  assert.equal(done.rank, 3.5);
+  assert.equal(recover.row, 0);
+  const seen = new Set<string>();
+  for (const placed of scene.nodes) {
+    const key = `${placed.x},${placed.y}`;
+    assert.ok(!seen.has(key), `two nodes share the pixels at ${key}`);
+    seen.add(key);
+  }
+});
+
+const loopGraph: LayoutGraph = {
+  entry: 'a', nodes: [node('a'), node('dig', 'explore')], edges: [{ from: 'a', to: 'dig' }], opens: { dig: 'deeper' },
+  loops: { deeper: { entry: 'd1', nodes: [node('d1'), node('d2', 'judge')], edges: [{ from: 'd1', to: 'd2' }, { from: 'd2', to: 'd1', revisit: true }] } },
+};
+
+test('an open loop widens the scene to contain its frame', () => {
+  const closed = layoutCanvas(loopGraph);
+  const open = layoutCanvas(loopGraph, { openLoop: { id: 'deeper', generation: 2 } });
+  const frame = open.frames.find((f) => f.kind === 'loop')!;
+  assert.ok(open.width >= frame.x + frame.width);
+  assert.ok(open.width > closed.width);
+});
+
+test("a loop's own revisit badge sits on the loop's arc", () => {
+  const open = layoutCanvas(loopGraph, { openLoop: { id: 'deeper', generation: 2 } });
+  const arc = open.edges.find((e) => e.kind === 'revisit')!;
+  const numbers = [...arc.path.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+  const ys = numbers.filter((_, i) => i % 2 === 1);
+  const closestDistance = Math.min(...ys.map((y) => Math.abs(y - arc.badge!.y)));
+  assert.ok(closestDistance <= 60, `badge.y ${arc.badge!.y} is more than 60px from the arc's own path`);
+  assert.ok(arc.badge!.y > PAD_Y, `badge.y ${arc.badge!.y} should sit below the top margin, on the loop's own arc`);
+});
