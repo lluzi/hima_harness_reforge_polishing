@@ -149,7 +149,7 @@ test('conversation draft, native files and verified reports share one workspace 
     assert.ok((await d.click('studio-start')).ok);
     // This start route returns after legacy automatic drive settles. Running interaction itself is
     // held by the controlled Job/replay path below; this case needs a real created Run to inspect.
-    assert.ok((await d.wait('studio-status', 'ended — goal met', 35_000)).ok);
+    assert.ok((await d.wait('campaign-masthead', 'ended — goal met', 35_000)).ok);
     const id = await currentRun(d);
     const started = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
     assert.equal(started.run.status, 'ended-goal-met');
@@ -226,19 +226,19 @@ test('preparation retries preserve drafts, pending starts cannot be replaced, an
     const runs = await (await api(host, cookie, '/hima/api/runs')).json() as { runs: RunView['run'][] };
     assert.equal(runs.runs.length, 2, 'one Probe and exactly one Campaign despite repeated submit');
     await browser.send('Fetch.continueRequest', { requestId: starting.requestId }); await browser.send('Fetch.disable');
-    assert.ok((await d.wait('studio-status', 'waiting', 25_000)).ok);
+    assert.ok((await d.wait('campaign-masthead', 'waiting', 25_000)).ok);
     const id = await currentRun(d);
     await capture(d, browser, 'dark-blocked');
     assert.ok((await d.click('resume')).ok);
-    assert.ok((await d.wait('studio-status', 'running', 10_000)).ok);
+    assert.ok((await d.wait('campaign-masthead', 'running', 10_000)).ok);
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="cancel"]').disabled`), false, 'Cancel does not wait for the resumed continuation to finish');
     assert.ok((await d.fill('studio-run', probe.run.id)).ok);
-    assert.ok((await d.wait('studio-status', 'No Fabric state recorded', 10_000)).ok);
+    assert.ok((await d.wait('campaign-masthead', 'No Fabric state recorded', 10_000)).ok);
     assert.ok((await d.fill('studio-run', id)).ok);
-    assert.ok((await d.wait('studio-status', 'running', 10_000)).ok);
+    assert.ok((await d.wait('campaign-masthead', 'running', 10_000)).ok);
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="cancel"]').disabled`), false);
     assert.ok((await d.click('cancel')).ok);
-    assert.ok((await d.wait('studio-status', 'cancelled', 15_000)).ok);
+    assert.ok((await d.wait('campaign-masthead', 'cancelled', 15_000)).ok);
     const ended = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
     assert.equal(ended.cancels.length, 1);
     assert.equal(ended.jobs.filter((job) => job.event === 'launched').length, 2, 'Run selection never launches another continuation');
@@ -288,12 +288,14 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     assert.ok((await d.fill('studio-pack', pack)).ok);
     await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]').getAttribute('data-hima-state-status')==='ready'`);
     assert.ok((await d.click('studio-start')).ok);
+    // Task 5: the Live view is the HimaFabric canvas alone; the workshop section moved to Evidence.
+    assert.ok((await d.click('studio-evidence')).ok);
     assert.ok((await d.wait('run-workshop', 'miner.sh', 40_000)).ok);
-    assert.ok((await d.wait('studio-status', 'ended', 40_000)).ok);
+    assert.ok((await d.wait('campaign-masthead', 'ended', 40_000)).ok);
     const id = await currentRun(d);
     const view = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
     assert.equal(view.run.purpose, 'test');
-    const status = await d.read('studio-status'); assert.ok(status.ok);
+    const status = await d.read('campaign-masthead'); assert.ok(status.ok);
     assert.equal(status.state.purpose, 'test');
     assert.ok(status.text.includes('test run'));
     const workshop = await d.read('run-workshop'); assert.ok(workshop.ok);
@@ -313,7 +315,7 @@ test('a Pack under authoring and its Workshop code records remain visible beside
     const held = await browser.nextPaused();
     await browser.wait(`[...document.querySelectorAll('[data-hima-control="studio-run"] option')].some((option) => option.value === ${JSON.stringify(probe.run.id)})`);
     assert.ok((await d.fill('studio-run', probe.run.id)).ok);
-    assert.ok((await d.wait('studio-status', 'No Fabric state recorded', 10_000)).ok);
+    assert.ok((await d.wait('campaign-masthead', 'No Fabric state recorded', 10_000)).ok);
     assert.ok((await d.fill('studio-run', id)).ok);
     assert.ok((await d.wait('run-material', view.code[0]!.sha256, 10_000)).ok);
     await browser.send('Fetch.continueRequest', { requestId: held.requestId }).catch(() => undefined);
@@ -373,7 +375,7 @@ test('a native declared improvement Goal shows its units, refuses precision loss
     assert.ok((await d.fill('studio-goal-improvement_pct', '5.25')).ok);
     assert.ok((await d.fill('studio-generations', '1')).ok);
     assert.ok((await d.click('studio-start')).ok);
-    await browser.wait(`!document.querySelector('[data-hima-control="studio-goal-improvement_pct"]') && !!document.querySelector('[data-hima-region="studio-status"]')`);
+    await browser.wait(`!document.querySelector('[data-hima-control="studio-goal-improvement_pct"]') && !!document.querySelector('[data-hima-region="campaign-masthead"]')`);
     const id = await currentRun(d);
     const view = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
     assert.deepEqual(view.run.goal, { improvement_pct: 5.25 });

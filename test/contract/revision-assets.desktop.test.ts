@@ -106,6 +106,9 @@ test('the native workbench keeps a superseded Workshop version readable beside i
       await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
       assert.ok((await driver.click('open-workbench')).ok); assert.ok((await driver.wait('studio', 'Campaign workspace')).ok);
       assert.ok((await driver.fill('studio-run', runId)).ok);
+      // Task 5: the Live view is the HimaFabric canvas alone; material, archive and revision
+      // sections moved to the Evidence view.
+      assert.ok((await driver.click('studio-evidence')).ok);
       assert.ok((await driver.wait('run-revisions', 'audit-analysis-v2')).ok);
       assert.ok((await driver.click('revision-expand-audit-analysis-v2')).ok);
       const revisions = await driver.read('run-revisions'); assert.ok(revisions.ok);
@@ -125,10 +128,8 @@ test('the native workbench keeps a superseded Workshop version readable beside i
         assert.ok((await driver.screenshot(path.join(process.env.HIMA_UI_ARTIFACTS, 'revision-history-archive.png'))).ok);
       }
       await driver.fill('studio-run', expiredId);
-      await browser.wait(`document.querySelector('[data-hima-region="studio-status"]')?.getAttribute('data-hima-state-status') === 'ended-budget-exhausted'`);
-      await browser.markText('summary', 'Budget and resource use', 'budget-details');
-      assert.ok((await driver.click('budget-details')).ok);
-      const stopped = await driver.read('studio-status'); assert.ok(stopped.ok);
+      await browser.wait(`document.querySelector('[data-hima-region="campaign-masthead"]')?.getAttribute('data-hima-state-status') === 'ended-budget-exhausted'`);
+      const stopped = await driver.read('campaign-masthead'); assert.ok(stopped.ok);
       assert.equal(stopped.state.status, 'ended-budget-exhausted');
       assert.match(stopped.text, /time box/i);
       assert.equal(await browser.evaluate<boolean>(`Boolean(document.querySelector('[data-hima-control="cancel"]'))`), false, 'ended Campaign offers no active stop action');

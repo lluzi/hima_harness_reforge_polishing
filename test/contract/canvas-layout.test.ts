@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutCanvas, fitToWidth, labelsVisibleAt, PITCH, ROW, X0, PAD_Y } from '@hima/harness';
 import type { LayoutGraph } from '@hima/harness';
+import { goalSaid, sceneInputs } from '@hima/harness';
+import type { RunView } from '@hima/harness';
+import type { ExecutionContext } from '@hima/harness';
 
 const node = (id: string, kind: 'act' | 'judge' | 'explore' | 'wait' = 'act') => ({ id, kind });
 const linear: LayoutGraph = { entry: 'prepare', nodes: [node('prepare'), node('analyze'), node('check', 'judge'), node('select', 'explore')],
@@ -143,4 +146,20 @@ test("a loop's own revisit badge sits on the loop's arc", () => {
   const loopFrame = open.frames.find((f) => f.kind === 'loop')!;
   assert.ok(arc.badge!.y > PAD_Y, `badge.y ${arc.badge!.y} should sit below the top margin, on the loop's own arc`);
   assert.ok(arc.badge!.y < loopFrame.y + loopFrame.height, `badge.y ${arc.badge!.y} should sit within the loop frame's vertical extent`);
+});
+
+test('sceneInputs projects a RunView and ExecutionContext onto layout facts', () => {
+  const reference: LayoutGraph = { entry: 'a', nodes: [node('a'), node('b')], edges: [{ from: 'a', to: 'b' }] };
+  const view = { run: { currentNode: 'b', generation: 2 }, nodes: [{ nodeId: 'a', state: 'done' }, { nodeId: 'b', state: 'running' }] } as unknown as RunView;
+  const context = { available: ['c'] } as unknown as ExecutionContext;
+  const { facts } = sceneInputs(reference, view, context);
+  assert.deepEqual(facts.states, { a: 'done', b: 'running' });
+  assert.deepEqual(facts.available, ['c']);
+  assert.equal(facts.currentNode, 'b');
+  assert.equal(facts.generation, 2);
+});
+
+test('goalSaid states a goal in the pack\'s own words, falling back to raw names with no words', () => {
+  assert.equal(goalSaid({ target_period_ns: 2.3 }, { goal: { target_period_ns: { label: 'clock period', unit: 'ns' } } } as never), 'clock period 2.3 ns');
+  assert.equal(goalSaid({ target_period_ns: 2.3 }, undefined), 'target_period_ns 2.3');
 });

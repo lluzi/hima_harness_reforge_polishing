@@ -83,28 +83,116 @@ export const HIMA_STYLE = `
 .hima-root svg{vertical-align:-0.15em;flex:none}
 .hima-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
-/* structural retainer, removed by Task 5 — geometry only (position/display/flex/overflow/
-   min-max/inset/width), no colours or font sizes; these rules are dropped once the Live view
-   is rebuilt onto CampaignTab/FabricCanvas. */
 .hima-studio{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--hima-paper);overflow:hidden}
 .hima-studio-header{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-studio-header>div{flex:1;min-width:0}
 .hima-run-picker{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-run-picker select{flex:1;min-width:0}
-.hima-studio-tabs{display:flex;gap:var(--hima-sp-4);border-bottom:1px solid var(--hima-line);padding:0 var(--hima-sp-4);flex:none;overflow-x:auto}
-.hima-studio-tabs button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;white-space:nowrap;color:var(--hima-ink-2)}
-.hima-studio-tabs button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
-.hima-studio-content{flex:1;min-height:0;min-width:0;overflow:auto;display:flex;flex-direction:column}
-.hima-graph-scroll{position:relative;overflow:auto;max-height:520px;border:1px solid var(--hima-line);border-radius:var(--hima-r-m);background:var(--hima-soft)}
-.hima-graph-canvas{position:relative;min-width:100%;min-height:190px}
-.hima-graph-canvas svg{position:absolute;inset:0;overflow:visible;color:var(--hima-ink-2)}
-.hima-graph-node{position:absolute;width:146px;min-height:64px;display:grid;grid-template-columns:18px minmax(0,1fr);gap:2px 5px;text-align:left;border:1px solid var(--hima-line);border-radius:var(--hima-r-m);padding:var(--hima-sp-2);background:var(--hima-paper);color:var(--hima-ink);cursor:pointer}
-.hima-graph-node[data-state=available],.hima-graph-node[data-state=added]{border-color:var(--hima-accent)}
-.hima-graph-node[data-state=running]{border:2px solid var(--hima-live)}
-.hima-graph-node[data-state=done]{border-color:var(--hima-good)}
-.hima-graph-node[data-state=blocked],.hima-graph-node[data-state=cancelled]{border-color:var(--hima-bad)}
+.hima-run-controls{padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
+.hima-run-controls button{appearance:none;border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-1) var(--hima-sp-2);font-size:var(--hima-fs-eyebrow);cursor:pointer;margin:var(--hima-sp-1) var(--hima-sp-1) 0 0}
+.hima-run-controls button:hover{background:var(--hima-soft)}
+.hima-run-controls button:disabled{opacity:.5;cursor:default}
 .hima-start-form{padding:var(--hima-sp-4);overflow:auto;min-height:0;display:flex;flex-direction:column;gap:var(--hima-sp-4)}
-`;
 
-/** @deprecated Use `HIMA_STYLE`. Kept until the last import is removed (Task 5). */
-export const STUDIO_STYLE = HIMA_STYLE;
+/* The Campaign tab (#41 task 5): masthead, view switch, and the HimaFabric canvas that makes the
+   Live view. Every colour and every font-size is a token, SVG text included — an SVG user unit at
+   scale 1 is a CSS pixel, so the same --hima-fs-* steps that size the rest of the sheet size the
+   canvas's own labels, chips and badges too. */
+.hima-campaign{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.hima-masthead{display:flex;align-items:flex-start;gap:var(--hima-sp-3);height:66px;box-sizing:border-box;padding:var(--hima-sp-3) var(--hima-sp-4) 0;border-bottom:1px solid var(--hima-line);flex:none}
+.hima-masthead-id{flex:1;min-width:0}
+.hima-masthead h2{margin:0;font-size:var(--hima-fs-title);font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hima-masthead-sub{margin:3px 0 0;font-size:var(--hima-fs-label);color:var(--hima-ink-2);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hima-masthead-seal{font-weight:600;color:var(--hima-ink)}
+.hima-masthead-seal-running{color:var(--hima-live)}
+.hima-masthead-seal-waiting,.hima-masthead-seal-cancelled,.hima-masthead-seal-ended-converged{color:var(--hima-warn)}
+.hima-masthead-seal-ended-goal-met{color:var(--hima-good)}
+.hima-masthead-seal-ended-goal-not-met,.hima-masthead-seal-ended-budget-exhausted{color:var(--hima-bad)}
+.hima-masthead-owner{display:flex;align-items:center;gap:var(--hima-sp-2);font-size:var(--hima-fs-label);color:var(--hima-ink-2);flex:none;white-space:nowrap}
+.hima-campaign-views{height:36px;box-sizing:border-box;display:flex;gap:var(--hima-sp-5);padding:0 var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
+.hima-campaign-views button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.hima-campaign-views button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
+.hima-campaign-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:auto}
+.hima-campaign-stale{flex:none;padding:var(--hima-sp-2) var(--hima-sp-4);font-size:var(--hima-fs-eyebrow);color:var(--hima-warn);background:var(--hima-soft)}
+
+.hima-canvas-wrap{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.hima-canvas-attention{flex:none;height:32px;box-sizing:border-box;display:flex;align-items:center;gap:var(--hima-sp-3);padding:0 var(--hima-sp-4);font-size:var(--hima-fs-label)}
+.hima-canvas-attention span:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
+.hima-canvas-attention-waiting{color:var(--hima-warn);background:var(--hima-soft)}
+.hima-canvas-attention-fence{color:var(--hima-ink-2);background:var(--hima-soft)}
+.hima-canvas{position:relative;flex:1;min-height:0;min-width:0;background:var(--hima-soft);overflow:hidden}
+.hima-canvas svg{display:block;cursor:grab;touch-action:none}
+.hima-canvas-stale{opacity:.6}
+.hima-canvas-legend{position:absolute;left:var(--hima-sp-4);top:var(--hima-sp-3);display:flex;gap:var(--hima-sp-4);font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-3);pointer-events:none}
+.hima-canvas-legend span{display:inline-flex;align-items:center;gap:var(--hima-sp-1)}
+.hima-canvas-tools{position:absolute;right:var(--hima-sp-3);bottom:var(--hima-sp-3);display:flex;gap:var(--hima-sp-1)}
+
+.hima-frame-box{fill:none;stroke:var(--hima-line-strong);stroke-dasharray:3 3}
+.hima-frame-open .hima-frame-box{stroke:var(--hima-accent)}
+.hima-frame-label{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-2)}
+
+.hima-arrow-fill{fill:var(--hima-line-strong)}
+.hima-arrow-fill-lit{fill:var(--hima-good)}
+.hima-edge-path{fill:none;stroke:var(--hima-line-strong);stroke-width:1.4}
+.hima-edge-lit .hima-edge-path{stroke:var(--hima-good);stroke-width:2}
+.hima-edge-dashed .hima-edge-path{stroke-dasharray:5 4}
+.hima-edge-revisit .hima-edge-path{stroke:var(--hima-accent)}
+.hima-edge-lit-enter .hima-edge-path{stroke-dasharray:8 4;animation:hima-edge-light .5s ease-out}
+@keyframes hima-edge-light{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
+.hima-edge-chip rect{fill:var(--hima-paper);stroke:var(--hima-line-strong)}
+.hima-edge-chip text{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-ink-2);text-anchor:middle}
+.hima-edge-chip-pass rect{stroke:var(--hima-good)} .hima-edge-chip-pass text{fill:var(--hima-good)}
+.hima-edge-chip-fail rect{stroke:var(--hima-bad)} .hima-edge-chip-fail text{fill:var(--hima-bad)}
+.hima-edge-chip-undetermined rect{stroke:var(--hima-warn)} .hima-edge-chip-undetermined text{fill:var(--hima-warn)}
+.hima-edge-badge rect{fill:var(--hima-paper);stroke:var(--hima-accent)}
+.hima-edge-badge text{font-size:var(--hima-fs-eyebrow);font-weight:600;fill:var(--hima-accent);text-anchor:middle}
+
+.hima-node{cursor:pointer}
+.hima-node-shape{fill:var(--hima-paper);stroke:var(--hima-line-strong);stroke-width:1.4}
+.hima-node-state-available .hima-node-shape{stroke:var(--hima-accent)}
+.hima-node-state-running .hima-node-shape{stroke:var(--hima-live);stroke-width:2;fill:var(--hima-soft)}
+.hima-node-state-waiting-for-slot .hima-node-shape{stroke:var(--hima-warn)}
+.hima-node-state-retrying .hima-node-shape{stroke:var(--hima-warn)}
+.hima-node-state-blocked .hima-node-shape{stroke:var(--hima-bad)}
+.hima-node-state-cancelled .hima-node-shape{stroke:var(--hima-neutral)}
+.hima-node-state-done .hima-node-shape{fill:var(--hima-good);stroke:var(--hima-good)}
+.hima-node-state-reconciled .hima-node-shape{stroke:var(--hima-ink-2);stroke-dasharray:4 2}
+.hima-node-faded{opacity:.55}
+.hima-node-mark-chooser{fill:none;stroke:var(--hima-line-strong);stroke-width:1.4}
+.hima-node-running-dot{fill:var(--hima-live)}
+.hima-node-running-pulse{fill:none;stroke:var(--hima-live);stroke-width:1.5;animation:hima-node-pulse 1.6s ease-out infinite}
+@keyframes hima-node-pulse{0%{opacity:.9;r:8}100%{opacity:0;r:15}}
+.hima-node-glyph-waiting,.hima-node-glyph-retrying,.hima-node-glyph-cancelled,.hima-node-glyph-reconciled{color:var(--hima-ink-2)}
+.hima-node-glyph-blocked{color:var(--hima-bad)}
+.hima-node-glyph-done{color:var(--hima-on-solid)}
+.hima-node-badge-blocked{fill:var(--hima-bad)}
+.hima-node-dashed-segment{stroke:var(--hima-ink-2);stroke-width:1.4;stroke-dasharray:2 2}
+.hima-node-bar-track{fill:var(--hima-line-strong)}
+.hima-node-bar-fill{fill:var(--hima-live)}
+.hima-node-bar-blocked .hima-node-bar-fill,.hima-node-bar-cancelled .hima-node-bar-fill{fill:var(--hima-bad)}
+.hima-node-mark-changed{fill:var(--hima-accent)}
+.hima-node-mark-waited{color:var(--hima-warn)}
+.hima-node-hatch-line{stroke:var(--hima-line-strong);stroke-width:2}
+.hima-node-label{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-ink);text-anchor:middle}
+.hima-node-caption{font-size:var(--hima-fs-eyebrow);fill:var(--hima-ink-3);text-anchor:middle}
+.hima-node-log{font-size:var(--hima-fs-eyebrow);font-family:var(--hima-font-mono);fill:var(--hima-live);text-anchor:middle}
+.hima-node-labels-hidden{visibility:hidden}
+
+.hima-goal-roundel{fill:var(--hima-paper);stroke:var(--hima-neutral);stroke-width:1.4;stroke-dasharray:4 3}
+.hima-goal-mark{fill:none;stroke:var(--hima-neutral);stroke-width:1.4}
+.hima-goal-mark-dot{fill:var(--hima-neutral)}
+.hima-goal-label{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-ink-2);text-anchor:middle}
+.hima-goal-seal{stroke:none;fill:var(--hima-neutral)}
+[data-hima-region="campaign-goal"][data-hima-state-status="ended-goal-met"] .hima-goal-seal{fill:var(--hima-good)}
+[data-hima-region="campaign-goal"][data-hima-state-status="ended-goal-not-met"] .hima-goal-seal,
+[data-hima-region="campaign-goal"][data-hima-state-status="ended-budget-exhausted"] .hima-goal-seal{fill:var(--hima-bad)}
+[data-hima-region="campaign-goal"][data-hima-state-status="ended-converged"] .hima-goal-seal,
+[data-hima-region="campaign-goal"][data-hima-state-status="cancelled"] .hima-goal-seal{fill:var(--hima-warn)}
+.hima-goal-title{font-size:var(--hima-fs-display);font-weight:650;fill:var(--hima-on-solid);text-anchor:middle}
+.hima-goal-reason{font-size:var(--hima-fs-eyebrow);fill:var(--hima-on-solid);text-anchor:middle}
+
+@media (prefers-reduced-motion: reduce){
+  .hima-node-running-pulse{animation:none}
+  .hima-edge-lit-enter .hima-edge-path{animation:none}
+}
+`;

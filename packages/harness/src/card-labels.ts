@@ -16,7 +16,7 @@
 // the run row (`attemptsAt`, `seatsHeld`), which are pairings a face would otherwise make twice.
 import type { BranchState, BranchView, GenerationJoinView, GenerationState, GenerationView, LoopView } from './generations.js';
 import type { DecisionChoice, LoopOutcome, NodeKind, NodeState, ReaderRef, RunBudget, RunMeters, RunPurpose, RunStatus, RunStrategy } from './ledger.js';
-import type { PackStageOrRefusal } from './packs.js';
+import type { PackNode, PackStageOrRefusal } from './packs.js';
 import type { CancelView, DecisionView, ExperienceFileView, ExperienceView, RunHeadView, RunView, RunWord, RunWords } from './remote.js';
 import type { SemanticValue } from './semantics.js';
 import { legacyPeriodGoal, type GoalParameter } from './run-arguments.js';
@@ -313,6 +313,62 @@ const valueSaid = (word: RunWord | undefined, name: string, value: number | stri
   // (#58): `mining profile dense`, where a number reads `clock period 2.25 ns`.
   return word.unit === undefined ? `${word.label} ${String(value)}` : `${word.label} ${String(value)} ${word.unit}`;
 };
+
+// ---------------------------------------------------------------------------------------------
+// The HimaFabric canvas (#41 task 5): the Goal roundel, its seal, and a node's own caption
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The Goal roundel's own words while the Run is still open: every declared parameter, in the pack's
+ * words where it declares them — exactly as `bannerLines`' own goal line reads a Goal — and under the
+ * wire's own name where the pack declares none. Several parameters read one after another, separated
+ * the way a line of facts is.
+ *
+ * Empty for a Goal not yet declared at all, which is a roundel with nothing to say and not a Goal of
+ * zero — the one thing a face may never do with a fact it does not hold is show a number nobody set.
+ */
+export function goalSaid(goal: Readonly<Record<string, number>> | undefined, words: RunWords | undefined): string {
+  if (goal === undefined) return '';
+  return Object.entries(goal).map(([name, value]) => valueSaid(words?.goal?.[name], name, value, ' ')).join(', ');
+}
+
+/**
+ * The Goal roundel's seal, once the Run has ended: the display-size word the ending is called, and
+ * the sentence under it saying why — the meter that ran out, or nothing further where the graph
+ * itself closed the Goal.
+ *
+ * Both reuse the one table each already has: `runStatusLabel` for the title, so the roundel's seal
+ * says an ending in the same word the masthead's status and `/hima status` do, and `endedByLabel`
+ * for the reason, so a Run the time box closed reads the same meter name here as it does on the
+ * Budget's own meters. Never a third wording of either.
+ */
+export function sealSaid(status: RunStatus, endedBy: RunMeters['endedBy'] | undefined): { readonly title: string; readonly reason: string } {
+  return { title: labelled(runStatusLabel, status).said, reason: endedBy === undefined ? '' : `ended: ${endedByLabel[endedBy]}` };
+}
+
+/**
+ * What a node's own second line says, in HimaFabric's own vocabulary and never a Pack's business
+ * words: an act names the tool it runs, the workshop it opens, or the contract output it observes,
+ * in that order, since a node declares exactly one of the three; a judge names how many rules it
+ * applies; an explore names the chooser it applies, the Loop it opens instead, or that it is a
+ * declared growth point; a wait names the blocker word its Pack gave it.
+ *
+ * Pure and pack-agnostic: every word here is read off the node's own declared parameters, and a node
+ * this cannot name — a kind added to the ledger this build does not know — says nothing rather than
+ * guessing at one of the others.
+ */
+export function nodeCaption(node: PackNode): string | undefined {
+  switch (node.kind) {
+    case 'act': return node.parameters.tool ?? node.parameters.workshop ?? node.parameters.observes;
+    case 'judge': return `${String(node.parameters.rules.length)} rules`;
+    case 'explore':
+      if (node.parameters.chooser !== undefined) return node.parameters.chooser;
+      if (node.parameters.opens !== undefined) return `opens ${node.parameters.opens}`;
+      return node.parameters.growth === true ? 'growth' : undefined;
+    case 'wait': return node.parameters.blocker;
+    default: { const exhaustive: never = node; void exhaustive; return undefined; }
+  }
+}
 
 /**
  * Which Generation of its Loop the Run is in, against what the Budget allows it, in the words

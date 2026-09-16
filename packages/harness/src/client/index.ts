@@ -4,7 +4,7 @@
 import { createElement, useState, type ReactElement } from 'react';
 import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
 import { HimaWorkbench } from './HimaWorkbench.js';
-import { STUDIO_STYLE } from './workbench-style.js';
+import { HIMA_STYLE } from './workbench-style.js';
 
 const HIMA_RUN_TOOLS = ['hima_observe', 'hima_run', 'hima_context', 'hima_execute'] as const;
 const WORKBENCH_KIND = 'hima-workbench';
@@ -72,7 +72,7 @@ function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
   const current = useSessions((state) => state.current);
   const [error, setError] = useState<string>();
   return createElement('div', { className: 'hima-entry hima-root', 'data-wide': wide },
-    createElement('style', null, STUDIO_STYLE),
+    createElement('style', null, HIMA_STYLE),
     createElement('button', {
       type: 'button', disabled: current === undefined,
       title: current === undefined ? 'Choose a workspace and session to open Campaign' : 'Campaign — beside the conversation',

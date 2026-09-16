@@ -2,10 +2,10 @@
 // and the only place the HimaGuide module talks to the host. The wire contract lives in
 // `../remote.ts`; this file imports it as types alone, so nothing host-side reaches the bundle.
 import type { ExecutionContext } from '../fabric.js';
-import type { HimaErrorBody, HimaErrorCode, MaterialAnswer, RunHeadView, RunView } from '../remote.js';
+import type { HimaErrorBody, HimaErrorCode, LogTailView, MaterialAnswer, RunHeadView, RunView } from '../remote.js';
 import type { StartChoices } from '../workbench.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
-import { HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runPath } from '../paths.js';
+import { HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath } from '../paths.js';
 
 /**
  * Why a Hima request did not answer. `hima/unreachable` is the one code minted here rather than by
@@ -61,6 +61,12 @@ export const reviewPackTransfer = (body: import('../remote.js').PackTransferBody
 
 export const fetchExecutionContext = (runId: string, signal?: AbortSignal): Promise<HimaResult<ExecutionContext>> =>
   runRequest(`${runPath(runId)}/context`, { signal });
+
+/** The bounded tail of the running node's own Job log, for the one line the canvas draws under it. */
+export function fetchLogTail(runId: string, nodeId: string, lines = 1, signal?: AbortSignal): Promise<HimaResult<LogTailView>> {
+  const query = new URLSearchParams({ node: nodeId, lines: String(lines) });
+  return runRequest(`${runLogTailPath(runId)}?${query}`, { signal });
+}
 
 export interface ControlRunResult {
   readonly run: RunView;

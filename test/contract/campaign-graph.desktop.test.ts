@@ -111,6 +111,9 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     assert.ok((await d.click('studio-pack-owner')).ok);
 
     assert.ok((await d.click('studio-new')).ok);
+    // Pre-existing race, unrelated to the canvas: the freshly-installed pack reaches the select's
+    // own option list asynchronously, after `fetchStartChoices`'s own read settles.
+    await browser.wait(`!!document.querySelector('[data-hima-control="studio-pack"] option[value="custom-cell-fmax-dtco"]')`, 10_000);
     assert.ok((await d.fill('studio-pack', 'custom-cell-fmax-dtco')).ok);
     assert.ok((await d.fill('studio-site', 'local')).ok);
     await browser.wait(`document.querySelector('[data-hima-region="studio-preflight"]')?.getAttribute('data-hima-state-status')==='ready'`, 15_000);
@@ -121,8 +124,10 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     const graph = await d.read('campaign-graph'); assert.ok(graph.ok); assert.ok(Number(graph.state.nodes) >= 48, graph.text);
     assert.ok(graph.text.includes('pnr-foundry') && graph.text.includes('compare'), graph.text);
     const runningStudio = await d.read('studio'); assert.ok(runningStudio.ok); runId = runningStudio.state.run; assert.ok(runId);
-    await browser.mark('[data-hima-node="pnr-foundry"]', 'graph-probe-node'); assert.ok((await d.click('graph-probe-node')).ok);
-    assert.ok((await d.wait('campaign-node-inspector', 'pnr-foundry', 10_000)).ok);
+    await browser.mark('[data-hima-control="node-pnr-foundry"]', 'graph-probe-node'); assert.ok((await d.click('graph-probe-node')).ok);
+    // The anchored node card (Facts/Job/Code/Knowledge/Evidence tabs) is a later task's file
+    // (`NodeCard.tsx`); this task's own node is clickable and names itself in its own region.
+    assert.ok((await d.wait('campaign-node-pnr-foundry', 'pnr-foundry', 10_000)).ok);
 
     await browser.mark('[aria-label="New session"]', 'new-side-talk'); assert.ok((await d.click('new-side-talk')).ok);
     await browser.wait(`document.body.innerText.includes('New session') && [...document.querySelectorAll('[contenteditable="true"]')].some(e=>e.getBoundingClientRect().height>0)`);

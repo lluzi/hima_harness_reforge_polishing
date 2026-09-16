@@ -221,6 +221,18 @@ export { metersState, meterLines, endedByLabel } from './card-labels.js';
 export type { MeteredRun } from './card-labels.js';
 export { packAuthorStatusLabel, packOntologyLabel } from './card-labels.js';
 
+// The Campaign tab's own words (#41 task 5): the Goal roundel while a Run is open, its seal once one
+// has ended, and a node's own caption. On the surface for the reason every other word of the card is:
+// `client/scene.ts` reads `nodeCaption` off here rather than saying a node's second line twice, and
+// the contract suite asserts on the same three functions the canvas actually renders from.
+export { goalSaid, sealSaid, nodeCaption } from './card-labels.js';
+
+// `scene.ts`'s adapter — a reference graph plus a Run view and execution context, turned into
+// `layoutCanvas`'s own two inputs — is a pure function exactly as `layoutCanvas` itself is (#41 task
+// 5), so it is exported beside it: both are testable at L1 without a window, and the client renders
+// from the very function the contract suite asserts on.
+export { sceneInputs } from './client/scene.js';
+
 // What the ledger holds, for a caller reading records back through the namespace. `hasEnded` is the
 // one predicate over a Run's status every face shares: what counts as an ending is the ledger's to
 // say, not each caller's.
