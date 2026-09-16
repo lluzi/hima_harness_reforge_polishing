@@ -8,10 +8,16 @@ import { fetchRuns } from './api.js';
 import { labelled, runStatusLabel } from '../card-labels.js';
 import type { RunStatus } from '../ledger.js';
 import type { RunHeadView } from '../remote.js';
-import { isOwner, pickOwnedRun } from '../run-ownership.js';
+import { isOwner, pickOwnedRun, recordEndedSeenAt } from '../run-ownership.js';
 import type { GlyphName } from './glyphs.js';
 
 export { isOwner, pickOwnedRun };
+
+/** This module's own instance of the recently-ended bookkeeping `pickOwnedRun` reads: written only
+ *  from `poll`'s own notify path below (never from render, which is what keeps `pickOwnedRun` a pure
+ *  function of its arguments), and shared by every session's own `useOwnedRun` call, since a Run's
+ *  ended-ness is a fact about the Run, not about any one session reading it. */
+const endedSeenAt = new Map<string, number>();
 
 /** How often the one shared read of `/hima/api/runs` repeats while anything is subscribed. */
 const OWNED_RUN_POLL_MS = 5000;
@@ -75,8 +81,19 @@ function poll(): void {
   inFlight = own;
   void fetchRuns(own.signal).then((result) => {
     if (own.signal.aborted) return;
-    snapshot = result.ok ? { runs: result.value.runs, readAt: Date.now() } : { ...snapshot, error: result.error.message };
+    inFlight = undefined;
+    if (result.ok) {
+      const readAt = Date.now();
+      // The one place `endedSeenAt` is written: once per fresh read, here, never from a render.
+      recordEndedSeenAt(result.value.runs, readAt, endedSeenAt);
+      snapshot = { runs: result.value.runs, readAt };
+    } else {
+      snapshot = { ...snapshot, error: result.error.message };
+    }
     notify();
+    // Nobody subscribed any more (the last unmount raced this in-flight read) — `stopPolling` already
+    // ran and cleared `timer`; re-arming here would restart a poll nothing is listening to.
+    if (listeners.size === 0) return;
     timer = setTimeout(poll, OWNED_RUN_POLL_MS);
   });
 }
@@ -132,7 +149,7 @@ export function useRunsList(): { readonly runs: readonly RunHeadView[]; readonly
 export function useOwnedRun(sessionId: string): OwnedRun {
   const shared = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   return {
-    run: shared.runs === undefined ? undefined : pickOwnedRun(shared.runs, sessionId),
+    run: shared.runs === undefined ? undefined : pickOwnedRun(shared.runs, sessionId, endedSeenAt),
     readAt: shared.readAt,
     stale: shared.error !== undefined,
   };

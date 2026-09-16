@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutCanvas, fitToWidth, labelsVisibleAt, PITCH, ROW, X0, PAD_Y } from '@hima/harness';
 import type { LayoutGraph } from '@hima/harness';
-import { goalSaid, sceneInputs, jobFolded, absentSaid, cardPosition, TABS_BY_KIND, pickOwnedRun } from '@hima/harness';
+import { goalSaid, sceneInputs, jobFolded, absentSaid, cardPosition, TABS_BY_KIND, pickOwnedRun, recordEndedSeenAt } from '@hima/harness';
 import type { RunView, RunHeadView } from '@hima/harness';
 import type { ExecutionContext } from '@hima/harness';
 
@@ -264,9 +264,10 @@ test('the node card shows exactly the brief\'s own tab set, in order, for every 
 });
 
 // #41 task 8: which Run the session-header chip and the tab title show — the one pure decision
-// `useOwnedRun` makes every poll. Every test below uses run ids no other test in this file (or this
-// module's own long-lived `endedSeenAt` map) has ever named, since that map persists for the life of
-// the process, not the life of one test.
+// `useOwnedRun` makes every poll. `pickOwnedRun` itself is a pure read of the `endedSeenAt` map;
+// `recordEndedSeenAt` is the one place that writes it, called once per fresh read (in production,
+// the shared poll's own notify path). Each test below builds its own fresh map, so none of this
+// state crosses test boundaries.
 const control = (owner: string) => ({ mode: 'agent' as const, owner, epoch: 1, revision: 0, paused: [], executions: {}, requests: {} });
 const runHead = (overrides: Partial<RunHeadView> & { id: string }): RunHeadView =>
   ({ campaignId: 'c', siteId: 'local', createdAt: '2026-01-01T00:00:00Z', ...overrides });
@@ -276,7 +277,9 @@ test('pickOwnedRun: an active owned Run wins over an ended one', () => {
     runHead({ id: 'por-a-ended', status: 'ended-goal-met', control: control('s-a') }),
     runHead({ id: 'por-a-active', status: 'running', control: control('s-a') }),
   ];
-  assert.equal(pickOwnedRun(runs, 's-a', Date.now())?.id, 'por-a-active');
+  const endedSeenAt = new Map<string, number>();
+  recordEndedSeenAt(runs, Date.now(), endedSeenAt);
+  assert.equal(pickOwnedRun(runs, 's-a', endedSeenAt)?.id, 'por-a-active');
 });
 
 test('pickOwnedRun: the newest active owned Run wins', () => {
@@ -284,7 +287,9 @@ test('pickOwnedRun: the newest active owned Run wins', () => {
     runHead({ id: 'por-b-older', status: 'waiting', control: control('s-b'), createdAt: '2026-01-01T00:00:00Z' }),
     runHead({ id: 'por-b-newer', status: 'running', control: control('s-b'), createdAt: '2026-01-01T01:00:00Z' }),
   ];
-  assert.equal(pickOwnedRun(runs, 's-b', Date.now())?.id, 'por-b-newer');
+  const endedSeenAt = new Map<string, number>();
+  recordEndedSeenAt(runs, Date.now(), endedSeenAt);
+  assert.equal(pickOwnedRun(runs, 's-b', endedSeenAt)?.id, 'por-b-newer');
 });
 
 test('pickOwnedRun: an ended Run is kept only within its own recently-ended window, measured from when it was first seen ended, not from createdAt', () => {
@@ -292,13 +297,24 @@ test('pickOwnedRun: an ended Run is kept only within its own recently-ended wind
   // read would already be outside it. It is not: the window starts at the first read that observed
   // the ended status.
   const runs = [runHead({ id: 'por-c-ended', status: 'ended-goal-met', control: control('s-c'), createdAt: '2020-01-01T00:00:00Z' })];
+  const endedSeenAt = new Map<string, number>();
   const firstSeen = Date.parse('2026-06-01T00:00:00Z');
-  assert.equal(pickOwnedRun(runs, 's-c', firstSeen)?.id, 'por-c-ended', 'seen for the first time, inside its own window');
-  assert.equal(pickOwnedRun(runs, 's-c', firstSeen + 59 * 60 * 1000)?.id, 'por-c-ended', 'still within the hour from first sight');
-  assert.equal(pickOwnedRun(runs, 's-c', firstSeen + 61 * 60 * 1000), undefined, 'outside the hour from first sight');
+  recordEndedSeenAt(runs, firstSeen, endedSeenAt);
+  assert.equal(pickOwnedRun(runs, 's-c', endedSeenAt, firstSeen)?.id, 'por-c-ended', 'seen for the first time, inside its own window');
+  assert.equal(pickOwnedRun(runs, 's-c', endedSeenAt, firstSeen + 59 * 60 * 1000)?.id, 'por-c-ended', 'still within the hour from first sight');
+  assert.equal(pickOwnedRun(runs, 's-c', endedSeenAt, firstSeen + 61 * 60 * 1000), undefined, 'outside the hour from first sight');
 });
 
 test('pickOwnedRun: a Run with no control is never picked', () => {
   const runs = [runHead({ id: 'por-d-uncontrolled', status: 'running' })];
-  assert.equal(pickOwnedRun(runs, 's-d', Date.now()), undefined);
+  const endedSeenAt = new Map<string, number>();
+  recordEndedSeenAt(runs, Date.now(), endedSeenAt);
+  assert.equal(pickOwnedRun(runs, 's-d', endedSeenAt), undefined);
+});
+
+test('pickOwnedRun: a Run this map has no entry for yet is never treated as recently ended', () => {
+  // `recordEndedSeenAt` always runs before `pickOwnedRun` in production; this is the defensive edge
+  // that keeps `pickOwnedRun` honest if it is ever called on stale bookkeeping.
+  const runs = [runHead({ id: 'por-e-unrecorded', status: 'ended-goal-met', control: control('s-e') })];
+  assert.equal(pickOwnedRun(runs, 's-e', new Map()), undefined);
 });

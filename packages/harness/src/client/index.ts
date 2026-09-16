@@ -91,7 +91,13 @@ function CampaignTabTitle({ sessionId }: { sessionId: string }): ReactElement {
       : status === 'waiting'
         ? createElement('span', null, 'Campaign · waiting', createElement('span', { className: 'hima-campaign-chip-badge', 'aria-hidden': true }))
         : `Campaign · ${statusSaid(status)}`;
-  return createElement('span', { className: 'hima-tab-title', 'data-hima-state-stale': String(stale) }, body);
+  // The shell mounts this outside `HimaWorkbench`'s own `.hima-root` tree (it is the tab strip's own
+  // chip, not the tab body), so the token sheet's own `--hima-*` custom properties — the waiting
+  // badge's `--hima-live` colour included — resolve only if this carries its own `.hima-root` scope
+  // and copy of the sheet, exactly as `CampaignChip` already does.
+  return createElement('span', { className: 'hima-root' },
+    createElement('style', null, HIMA_STYLE),
+    createElement('span', { className: 'hima-tab-title', 'data-hima-state-stale': String(stale) }, body));
 }
 
 /**

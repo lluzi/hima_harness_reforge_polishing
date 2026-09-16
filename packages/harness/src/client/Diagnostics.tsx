@@ -5,6 +5,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { meterRows } from '../card-labels.js';
 import type { RunView } from '../remote.js';
+import { pushEscape } from './escape-stack.js';
 import type { Acting } from './HimaRunCard.js';
 import { useLastLogLine } from './FabricNode.js';
 import { Glyph } from './glyphs.js';
@@ -30,17 +31,11 @@ const shortTime = (at: number): string => new Date(at).toLocaleTimeString([], { 
 export function Diagnostics({ view, isOwner, acting, readAt, openOwner, onClose }: DiagnosticsProps): ReactElement {
   const [confirming, setConfirming] = useState<ConfirmKey>();
 
-  // Escape closes the sheet. Bound to `document` — one step further in than `window`, which is where
-  // the node card's own Escape handler binds — with `stopImmediatePropagation`: a plain
-  // `stopPropagation` call from a listener does not stop *other* listeners already bound to that
-  // same target from also firing (it only stops the event walking further up the tree), so if this
-  // sheet's own handler were on `window` beside the node card's, both would react to one key press.
-  // The sheet is the topmost surface open; only it should close on this Escape.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopImmediatePropagation(); onClose(); } };
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('keydown', onKey); };
-  }, [onClose]);
+  // Escape closes the sheet, through the one shared stack (`escape-stack.ts`) every dismissible
+  // surface registers on: only the topmost registrant reacts to a given Escape press. The sheet is
+  // opened after the node card (if one is open underneath it), so it lands on top of the stack and
+  // Escape closes it alone, leaving the node card for a second press.
+  useEffect(() => pushEscape(onClose), [onClose]);
 
   const run = view?.run;
   const control = run?.control;
@@ -87,11 +82,11 @@ export function Diagnostics({ view, isOwner, acting, readAt, openOwner, onClose 
             // Same shape as the node card's own non-owner footer (`NodeCard.tsx`): a disclosed
             // "Emergency" carrying only the human-origin Pause/Stop ADR-0008 allows, behind the same
             // confirms, through the same `acting` the caller built with `useRunActions`.
-            <details className="hima-node-card-emergency" data-hima-region="emergency">
+            <details className="hima-node-card-emergency" data-hima-region="diagnostics-emergency">
               <summary>Emergency</summary>
               <p className="hima-node-card-owner">Owned by Campaign Agent{control?.owner === undefined ? '' : ` ${control.owner.slice(-6)}`}</p>
               {control?.owner === undefined ? null : (
-                <button type="button" className="hima-button" data-hima-control="open-owner" onClick={() => openOwner(control.owner)}>Open Campaign Agent</button>
+                <button type="button" className="hima-button" data-hima-control="diagnostics-open-owner" onClick={() => openOwner(control.owner)}>Open Campaign Agent</button>
               )}
               {!active ? null : (
                 <div className="hima-node-card-footer-row">

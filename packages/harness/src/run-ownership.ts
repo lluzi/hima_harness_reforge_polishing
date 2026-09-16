@@ -8,9 +8,9 @@ import type { RunHeadView } from './remote.js';
 
 /** How long a Run this session owns keeps showing in the chip and tab title after it ends, so a
  *  person who just watched it end still sees the seal for a while rather than the chip vanishing out
- *  from under them. Measured from the moment this module first observed the Run in an ended state
- *  (`endedSeenAt`), never from `createdAt`: a Run started an hour ago and only just now read as
- *  ended must still get its own full window, not one already spent before anyone saw the ending. */
+ *  from under them. Measured from the moment `recordEndedSeenAt` first observed the Run in an ended
+ *  state, never from `createdAt`: a Run started an hour ago and only just now read as ended must
+ *  still get its own full window, not one already spent before anyone saw the ending. */
 const RECENTLY_ENDED_WINDOW_MS = 60 * 60 * 1000;
 
 const active = (run: RunHeadView): boolean => run.status === 'running' || run.status === 'waiting';
@@ -20,22 +20,43 @@ function newest(runs: readonly RunHeadView[]): RunHeadView | undefined {
   return runs.reduce<RunHeadView | undefined>((found, run) => (found === undefined || run.createdAt > found.createdAt ? run : found), undefined);
 }
 
-/** The moment this module first read each ended Run's id as no longer active — the recently-ended
- *  window's own clock. Pruned to the runs a read still names, so a Run that scrolls out of the
- *  Host's own list does not hold its entry forever. */
-const endedSeenAt = new Map<string, number>();
-
-/** The one Run this session owns and should be shown for: the running-or-waiting one first, else the
- *  most recently ended one still inside its own recently-ended window, else none. A Run with no
- *  `control` at all (no conversational owner ever recorded) is never owned by any session. */
-export function pickOwnedRun(runs: readonly RunHeadView[], sessionId: string, now = Date.now()): RunHeadView | undefined {
+/**
+ * Record which Runs this read newly finds ended, and forget ones it no longer lists — the one place
+ * `endedSeenAt` is mutated, called once per fresh read (the poll's own notify path, `client/owned-
+ * run.ts`), never from render. `pickOwnedRun` below only ever reads the map this builds, which keeps
+ * it a pure function of its own arguments — safe to call from render as often as React likes.
+ *
+ * @param runs - every Run a fresh read named.
+ * @param now - when this read landed.
+ * @param endedSeenAt - the caller's own map, mutated in place.
+ */
+export function recordEndedSeenAt(runs: readonly RunHeadView[], now: number, endedSeenAt: Map<string, number>): void {
   for (const id of [...endedSeenAt.keys()]) if (!runs.some((run) => run.id === id)) endedSeenAt.delete(id);
+  for (const run of runs) if (!active(run) && !endedSeenAt.has(run.id)) endedSeenAt.set(run.id, now);
+}
+
+/**
+ * The one Run this session owns and should be shown for: the running-or-waiting one first, else the
+ * most recently ended one still inside its own recently-ended window (`endedSeenAt`, built by
+ * `recordEndedSeenAt`), else none. A Run with no `control` at all (no conversational owner ever
+ * recorded) is never owned by any session. A Run this map has no entry for yet is never "recently"
+ * ended — `recordEndedSeenAt` runs first on every fresh read, so a genuinely fresh ended Run always
+ * has one by the time anything calls this.
+ *
+ * @param runs - every Run a read named.
+ * @param sessionId - the session asking which Run is its own.
+ * @param endedSeenAt - read-only here; `recordEndedSeenAt` is what writes it.
+ * @param now - defaults to the actual clock; a fixed value makes the window's edge testable.
+ */
+export function pickOwnedRun(runs: readonly RunHeadView[], sessionId: string, endedSeenAt: ReadonlyMap<string, number>, now = Date.now()): RunHeadView | undefined {
   const owned = runs.filter((run) => run.control?.owner === sessionId);
   const live = newest(owned.filter(active));
   if (live !== undefined) return live;
   const ended = owned.filter((run) => !active(run));
-  for (const run of ended) if (!endedSeenAt.has(run.id)) endedSeenAt.set(run.id, now);
-  const recentlyEnded = ended.filter((run) => now - endedSeenAt.get(run.id)! < RECENTLY_ENDED_WINDOW_MS);
+  const recentlyEnded = ended.filter((run) => {
+    const seenAt = endedSeenAt.get(run.id);
+    return seenAt !== undefined && now - seenAt < RECENTLY_ENDED_WINDOW_MS;
+  });
   return newest(recentlyEnded);
 }
 

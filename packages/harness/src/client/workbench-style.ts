@@ -337,6 +337,7 @@ export const HIMA_STYLE = `
 .hima-campaign-chip:hover{background:var(--hima-soft);color:var(--hima-ink)}
 .hima-campaign-chip-badge{width:6px;height:6px;border-radius:50%;background:var(--hima-live);display:inline-block}
 .hima-tab-title{display:inline-flex;align-items:center;gap:var(--hima-sp-1)}
+.hima-campaign-chip[data-hima-state-stale="true"],.hima-tab-title[data-hima-state-stale="true"]{opacity:.55}
 .hima-tab-menu-item{appearance:none;display:block;width:100%;text-align:left;border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink);padding:var(--hima-sp-2) var(--hima-sp-3);font-size:var(--hima-fs-body);cursor:pointer}
 .hima-tab-menu-item:hover{background:var(--hima-soft)}
 .hima-diagnostics{position:absolute;right:var(--hima-sp-4);bottom:var(--hima-sp-4);width:320px;max-width:calc(100% - var(--hima-sp-8));max-height:70%;overflow:auto;background:var(--hima-paper);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);box-shadow:var(--hima-shadow);padding:var(--hima-sp-3);display:flex;flex-direction:column;gap:var(--hima-sp-2);z-index:20}
