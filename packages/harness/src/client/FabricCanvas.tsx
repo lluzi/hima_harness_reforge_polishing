@@ -279,25 +279,33 @@ export function FabricCanvas({
     if (selectedNodeId !== undefined && selectedPlaced === undefined) onSelectNode(undefined);
   }, [selectedNodeId, selectedPlaced, onSelectNode]);
 
-  // The selected node's own screen position, mapped through the svg's real geometry rather than
-  // approximated from `transform` and the viewBox's own numbers — the viewBox carries an 8-unit pad
-  // (`-4 -4 ${width+8} ${height+8}`) that a `translate/scale` arithmetic guess ignores, so it is
-  // always a few pixels off, worse at some zoom levels than others. `getScreenCTM` is the browser's
-  // own answer to "where does this user-space point actually land on screen", already correct for
-  // the viewBox, the `width="100%"` stretch and the pan/zoom transform together; subtracting the
-  // canvas container's own `getBoundingClientRect` turns that into the container-relative point the
-  // overlay card is positioned from. A `useLayoutEffect`, not read during render: the transform's own
-  // `translate(...)scale(...)` is written to the DOM by this same render, so a read during the render
-  // function itself would see last render's geometry, not this one's — a `useLayoutEffect` runs after
-  // the DOM update and before the browser paints, so the corrected position never flashes.
+  // The selected node's own screen position: the outer `<svg>`'s own CTM (`getScreenCTM`) correctly
+  // folds the viewBox's 8-unit pad (`-4 -4 ${width+8} ${height+8}`) and the `width="100%"` stretch
+  // into "user unit → real screen pixel" — but that CTM stops at the svg's own boundary and knows
+  // nothing of the pan/zoom `<g transform="translate(tx,ty) scale(scale)">` one level inside it. The
+  // inner transform is composed *arithmetically* instead, from `transform`'s own destination values
+  // (`tx`/`ty`/`scale`, the numbers the `<g>` is being set to this render) rather than read off that
+  // `<g>`'s live CTM: a CSS transition eases that attribute over 300 ms, so a `<g>`-level CTM read
+  // mid-transition would sample an in-between frame and (with no `transitionend` listener) never
+  // correct itself. Composing from state is immune to the transition entirely — the destination is
+  // known the instant `transform` changes, not 300 ms later. Subtracting the canvas container's own
+  // `getBoundingClientRect` turns the outer CTM's screen-pixel answer into the container-relative
+  // point the overlay card is positioned from. A `useLayoutEffect`, not read during render: this
+  // render's own `<g transform>` update has not reached the DOM yet when the render function body
+  // runs, so `getScreenCTM` would still answer for last render's viewBox/stretch geometry — a
+  // `useLayoutEffect` runs after the DOM update and before the browser paints, so the corrected
+  // position never flashes. (The outer svg's own CTM does not itself change with `transform` — only
+  // the inner `<g>` does — so this ordering matters for correctness on the viewBox/resize axis, not
+  // because the pan/zoom numbers themselves need the DOM to have committed.)
   const [anchorScreen, setAnchorScreen] = useState<{ x: number; y: number }>();
   useLayoutEffect(() => {
     const svg = svgRef.current, container = containerRef.current;
     if (selectedPlaced === undefined || svg === null || container === null) { setAnchorScreen(undefined); return; }
     const ctm = svg.getScreenCTM();
-    if (ctm === null) return;
+    if (ctm === null) { setAnchorScreen(undefined); return; }
     const point = svg.createSVGPoint();
-    point.x = selectedPlaced.x; point.y = selectedPlaced.y;
+    point.x = transform.tx + selectedPlaced.x * transform.scale;
+    point.y = transform.ty + selectedPlaced.y * transform.scale;
     const screen = point.matrixTransform(ctm);
     const rect = container.getBoundingClientRect();
     const next = { x: screen.x - rect.left, y: screen.y - rect.top };
@@ -407,7 +415,10 @@ export function FabricCanvas({
           where a person *reads* an execution's own row (#41 task 6 review), but a driver polls the
           `node-execution` marker under `.hima-studio` without opening any node, so this visually-
           hidden list is the one place that marker is always reachable. The Job tab's own copy is
-          additional, for the node the card happens to have open, not a replacement for this. */}
+          additional, for the node the card happens to have open, not a replacement for this — so
+          while an act node's card sits open on its own Job tab, `node-execution` legitimately
+          appears twice in the DOM (this hidden list, and the card's own visible one); a driver
+          reading it by `data-hima-state-execution` finds either, and both say the same thing. */}
       {view === undefined ? null : (
         <div className="hima-visually-hidden" aria-hidden="true">
           {Object.values(view.run.control?.executions ?? {}).map((execution) => (
