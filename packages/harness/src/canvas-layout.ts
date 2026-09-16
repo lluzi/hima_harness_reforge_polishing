@@ -125,9 +125,11 @@ function hangNodeIds(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[])
 
 /** Rule 1: `rank(entry) = 0`; every other (non-hung) node is `1 + max(rank of predecessors)` over
  * non-revisit edges, by Kahn order (ties by declaration order, which is what seeds and grows the
- * ready queue below). A hung node's rank is computed after, per rule 2: `rank(source) + 0.5`, over
- * its own FAIL/UNDETERMINED incoming edges — it never counts as another node's predecessor, so it
- * never joins the main pass. */
+ * ready queue below). A hung node (rule 2) takes a half step instead of a full one — `rank(source) +
+ * 0.5` over its own FAIL/UNDETERMINED incoming edges — but it is a full member of this same Kahn pass:
+ * it still counts as a predecessor for whatever comes after it, so its fractional rank propagates to
+ * its own successors exactly like any other node's integer rank does (finding 1). Only `computeRow`
+ * treats a hung node specially by excluding it from the row-0 spine — this pass never excludes it. */
 function computeRank(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>): Map<string, number> {
   const ids = nodes.map((node) => node.id);
   const idSet = new Set(ids);
@@ -262,10 +264,17 @@ function classifyEdge(
     const c1y = sy - 90;
     const c2y = ty - 90;
     const apex = bezierApexY(sy - 18, c1y, c2y, ty - 18);
+    // 34px above the apex is right for a loop's or a growth's own revisit arc, which sits well down
+    // the canvas — but on the main spine (`PAD_Y = 72`, so the arc's own endpoints are already close
+    // to the top) that same 34px overshoots above y = 0 and off the canvas entirely. Below 12px there
+    // is no longer room for the badge, so fall back to the brief's own fixed spine offset (`PAD_Y -
+    // 52`), which sits safely inside the scene for every spine-level arc; a subgraph's own arc is far
+    // enough down that `apex - 34` never needs the fallback.
+    const badgeY = apex - 34 >= 12 ? apex - 34 : PAD_Y - 52;
     return {
       from: edge.from, to: edge.to, kind: 'revisit', lit: count > 1,
       path: `M ${sx} ${sy - 18} C ${sx} ${c1y}, ${tx} ${c2y}, ${tx} ${ty - 18}`,
-      badge: { x: (sx + tx) / 2, y: apex - 34, count },
+      badge: { x: (sx + tx) / 2, y: badgeY, count },
     };
   }
   if ((edge.outcome === 'FAIL' || edge.outcome === 'UNDETERMINED') && isHungTarget) {
@@ -488,7 +497,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   const width = Math.max(
     goal.x + 96,
     ...allFrames.map((frame) => frame.x + frame.width + 24),
-    ...allNodes.map((node) => node.x + NODE + 24),
+    ...allNodes.map((node) => node.x + NODE / 2 + 24),
   );
   const openFrameExtra = loopShift.reduce((sum, entry) => sum + entry.extra, 0) + growthFrames.reduce((sum, frame) => sum + frame.height + 24, 0);
   const height = (maxRow - minRow + 1) * ROW + 2 * PAD_Y + openFrameExtra;

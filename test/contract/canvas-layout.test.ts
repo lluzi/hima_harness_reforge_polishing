@@ -24,6 +24,7 @@ test('the revisit edge is one arc above the spine carrying the generation count,
   assert.equal(arc(first).badge?.count, 1); assert.equal(arc(first).lit, false);
   assert.equal(arc(third).badge?.count, 3); assert.equal(arc(third).lit, true);
   assert.ok(arc(third).badge!.y < PAD_Y - 18, 'the badge sits above the spine');
+  assert.ok(arc(third).badge!.y >= 12, 'the badge stays on-canvas even when the spine arc apex is above y = 0');
   assert.equal(third.edges.find((e) => e.from === 'prepare')!.lit, true, 'a traversed edge lights once its source is done');
   assert.equal(third.nodes.find((n) => n.id === 'analyze')!.current, true);
   assert.equal(third.nodes.find((n) => n.id === 'analyze')!.progress, 0.62);
@@ -122,14 +123,24 @@ test('an open loop widens the scene to contain its frame', () => {
   const frame = open.frames.find((f) => f.kind === 'loop')!;
   assert.ok(open.width >= frame.x + frame.width);
   assert.ok(open.width > closed.width);
+  // Pinned by hand from rules 1, 6 and 9 (X0 = 64, PITCH = 90, NODE = 36, PAD_Y = 72):
+  //   Main graph is a (rank 0) -> dig (rank 1, explore), so maxRank = 1 and the goal-based floor is
+  //   goal.x + 96 = X0 + (maxRank + 1) * PITCH + 96 = 64 + 2*90 + 96 = 340 for both scenes.
+  //   Closed: the collapsed frame hangs at x = dig.x (154) + PITCH/2 (45) = 199, with the fixed 120px
+  //     width rule 6 gives a closed loop, so frame.x + width + 24 = 199 + 120 + 24 = 343 - wider than
+  //     the 340 floor, and wider than any node's own x + NODE/2 + 24 (dig: 154+18+24=196). closed.width
+  //     = max(340, 343, 106, 196) = 343.
+  //   Open: the loop's own d1 (rank 1.5, x = 199) and d2 (rank 2.5, x = 289) bound a frame from
+  //     199-18-24=157 to 289+18+24=331 (width 174), so frame.x + width + 24 = 157 + 174 + 24 = 355,
+  //     wider than the 340 floor and every node's own x + NODE/2 + 24 (<= 331). open.width = 355.
+  assert.equal(closed.width, 343);
+  assert.equal(open.width, 355);
 });
 
 test("a loop's own revisit badge sits on the loop's arc", () => {
   const open = layoutCanvas(loopGraph, { openLoop: { id: 'deeper', generation: 2 } });
   const arc = open.edges.find((e) => e.kind === 'revisit')!;
-  const numbers = [...arc.path.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
-  const ys = numbers.filter((_, i) => i % 2 === 1);
-  const closestDistance = Math.min(...ys.map((y) => Math.abs(y - arc.badge!.y)));
-  assert.ok(closestDistance <= 60, `badge.y ${arc.badge!.y} is more than 60px from the arc's own path`);
+  const loopFrame = open.frames.find((f) => f.kind === 'loop')!;
   assert.ok(arc.badge!.y > PAD_Y, `badge.y ${arc.badge!.y} should sit below the top margin, on the loop's own arc`);
+  assert.ok(arc.badge!.y < loopFrame.y + loopFrame.height, `badge.y ${arc.badge!.y} should sit within the loop frame's vertical extent`);
 });
