@@ -108,6 +108,38 @@ _Avoid_: 一台服务器（作为完整定义）
 在流程、设置和工具完全一致、唯一变量为新增 Cell 时，对原方案和采用新 Cell 的方案进行的可比物理实现；最终数据库中的实际采用和更高 Fmax 构成足够的业务证据链。
 _Avoid_: 重复性统计试验、噪声估计、仅 Cell 级指标、改变其他设置的对比
 
+**Design State**:
+某一优化迭代中，目标设计的网表、Library、约束、timing endpoint、可用物理上下文和已接受修改共同构成的事实快照；所有边际收益都以它为条件。
+_Avoid_: 跨设计通用状态、只有网表文件、商业 EDA 的 session
+
+**Endpoint Frontier**:
+同一 timing path group 内，slack 接近当前最差值的一组唯一寄存器 endpoint；它们共同决定当前瓶颈，不能用一条 timing path 代替。
+_Avoid_: top-N path 行、单个 endpoint、所有寄存器的无差别集合
+
+**Opportunity**:
+从当前 Design State 的逻辑或物理结构中识别出的可评估改造位置，尚未授权修改设计，也不自带收益结论。
+_Avoid_: Cell、已接受 Action、实验结果
+
+**Optimization Action**:
+绑定具体位置、实现方式、影响 endpoint、成本、冲突和回滚的候选设计修改；可以采用单输出、多输出或物理合并实现。
+_Avoid_: 抽象算法名称、Cell 类型、没有位置的策略建议
+
+**Action Portfolio**:
+在同一 Design State 上共同评估、互不冲突，并以推动整个 Endpoint Frontier 为目标的一组 Optimization Actions。
+_Avoid_: 独立 gain 的简单相加、Cell 清单、并行商业试验分支
+
+**Cell Demand**:
+由已选择 Action Portfolio 反向归纳的 Standard Cell 功能、电气、接口、物理和应用方式需求；它决定要生成什么 Cell，而不是由预先枚举的 Cell 反向寻找用途。
+_Avoid_: 候选 Cell 目录、Library 本身、一个设计位置
+
+**Marginal Gain**:
+一个 Optimization Action 在当前 Design State 和已接受 Actions 条件下，对 endpoint frontier、WNS/TNS 及成本产生的增量关系；每次接受 Action 后必须重新计算。
+_Avoid_: 单条 path 的局部 delay、从初始 baseline 独立计算后直接累加的收益
+
+**Commercial Label**:
+Matched commercial flow 对一个 Action Portfolio 在明确 Design State 下产生的采用、route survival、WNS/TNS、PPA、DRC 和限制条件记录；用于改善后续因子和选择，不变成跨设计收益承诺。
+_Avoid_: 通用 QoR 预测、单颗 Cell 的固定收益、没有条件身份的成功或失败标签
+
 **试用版**:
 已经接近正式产品、主业务路径和跨同等环境迁移可用的候选版本，只允许少量可快速修复且不破坏任务、控制、数据或证据的缺陷。
 _Avoid_: 工程演示、机制验证包、需要开发者预配置才能运行的版本
