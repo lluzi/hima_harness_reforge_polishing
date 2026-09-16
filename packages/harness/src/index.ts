@@ -633,3 +633,10 @@ declare module '@deepseek-ai/cordis' {
 export { goalFrom, numericValue, strategyFrom, strategyValue, literalArgument } from './run-arguments.js';
 export type { GoalDeclaration, GoalParameter } from './run-arguments.js';
 export { goalDeclarationOf } from './packs.js';
+// The pure canvas scene layout (#41 task 2): a reference graph plus execution facts, turned into
+// positioned nodes, edges, frames and a Goal roundel, with no DOM and no dependency on the rest of
+// this bundle. `X0` and `PAD_Y` are re-exported alongside the plan's own `PITCH, ROW, NODE` list
+// because `canvas-layout.ts` declares all five as one constant statement (rule 1's `x = X0 + rank *
+// PITCH` and rule 9's Goal placement both need them) and the contract test imports both.
+export { layoutCanvas, fitToWidth, labelsVisibleAt, PITCH, ROW, NODE, X0, PAD_Y } from './canvas-layout.js';
+export type { CanvasScene, LayoutGraph, LayoutFacts, PlacedNode, PlacedEdge, Frame, NodeVisualState } from './canvas-layout.js';

@@ -19,6 +19,7 @@
     "test/contract/agent-controls.host.test.ts",
     "test/contract/agent-recovery.host.test.ts",
     "test/contract/boot.test.ts",
+    "test/contract/canvas-layout.test.ts",
     "test/contract/client-style.test.ts",
     "test/contract/command.test.ts",
     "test/contract/dc-reader.test.ts",
