@@ -423,7 +423,9 @@ Phase 2 继续使用仓库 L0～L5：
 ## 10. 当前开发前沿
 
 当前前沿是 **LFR-PACK-07**。PACK-01 至 PACK-06 已在现有 HimaPack 文件中接入冻结的
-Framework。本地合同和一次真实 Yosys/ABC 集成 pilot 已通过。按当前并列因子规则，保留 Library
-已经具备 E0 资格：F1 positive、F2 positive、F3 mixed。下一项必须取得的事实，是一条由 Harness
-持有、带 Ledger、CodeRecord 和 refusal 证据的 test Campaign。随后 PACK-08 还需要 matched E0
-observation，以及 Harness 从已测试目录生成的 release seal。
+Framework。本地合同和真实 Yosys/ABC 集成 pilot 已通过。一次不复用旧候选的 AES 50-Cell
+standalone Framework 运行已经从 F0 走到 E0；F1 positive、F2 positive、F3 mixed 的 Library 在
+matched final database 中得到 -2.792% Fmax，成为负向因子关系证据，不是发布出口。下一项必须取得的
+产品事实仍是一条由 Harness 持有、带 Ledger、CodeRecord 和 refusal 证据的 test Campaign。
+PACK-08 还需要一份产生正向业务收益的 matched E0 observation，以及 Harness 从已测试目录生成的
+release seal。

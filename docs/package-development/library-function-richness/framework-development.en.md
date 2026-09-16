@@ -490,8 +490,10 @@ Report pass, failure, skip and not-run separately.
 ## 10. Current development frontier
 
 The current frontier is **LFR-PACK-07**. PACK-01 through PACK-06 now wrap the frozen Framework in the
-existing HimaPack files. Local contracts and one real Yosys/ABC integration pilot pass. Under the
-current parallel-factor rule the retained Library is E0-eligible: F1 is positive, F2 is positive and
-F3 is mixed. The next required fact is one Harness-owned test Campaign with Ledger/CodeRecord/refusal
-evidence. PACK-08 then requires the matched E0 observation and a release seal generated from that
-tested folder.
+existing HimaPack files. Local contracts and one real Yosys/ABC integration pilot pass. A fresh AES
+50-Cell standalone Framework run, with no reuse of the old candidate Library, has now reached E0.
+Its F1-positive, F2-positive and F3-mixed Library produced -2.792% Fmax in the matched final
+databases. It is negative factor-relationship evidence rather than a release exit. The next required
+product fact remains one Harness-owned test Campaign with Ledger/CodeRecord/refusal evidence.
+PACK-08 also requires a matched E0 observation with positive business benefit and a release seal
+generated from that tested folder.

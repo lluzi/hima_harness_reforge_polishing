@@ -1,0 +1,274 @@
+{
+  "claim": {
+    "deepseek_used": false,
+    "fmax_improved": false,
+    "framework_produced_positive_frequency_benefit": false,
+    "harness_campaign_executed": false
+  },
+  "commercial_e0": {
+    "comparison_valid": true,
+    "dc": {
+      "adopted_candidate_count": 10,
+      "adopted_instance_count": 279,
+      "clock_period_ns": 0.5,
+      "common_condition_sha256": "2d6b7b6f6544bc4c0723261f7ed9a657a45c8579d1ed7bd738804381be2b8023",
+      "dc_uncertainty_ns": 0.25,
+      "foundry_reg2reg_wns_ns": -0.1,
+      "generated_reg2reg_wns_ns": -0.09,
+      "method_rows": [
+        {
+          "adopted_candidate_count": 5,
+          "adopted_instance_count": 170,
+          "adopted_master_count": 5,
+          "exclusive_adopted_candidate_count": 0,
+          "method": "functional_diversity",
+          "offered_candidate_count": 7,
+          "shared_adopted_candidate_count": 5
+        },
+        {
+          "adopted_candidate_count": 5,
+          "adopted_instance_count": 170,
+          "adopted_master_count": 5,
+          "exclusive_adopted_candidate_count": 0,
+          "method": "mapper_compatibility",
+          "offered_candidate_count": 7,
+          "shared_adopted_candidate_count": 5
+        },
+        {
+          "adopted_candidate_count": 5,
+          "adopted_instance_count": 170,
+          "adopted_master_count": 5,
+          "exclusive_adopted_candidate_count": 0,
+          "method": "structure_compaction",
+          "offered_candidate_count": 7,
+          "shared_adopted_candidate_count": 5
+        },
+        {
+          "adopted_candidate_count": 5,
+          "adopted_instance_count": 170,
+          "adopted_master_count": 5,
+          "exclusive_adopted_candidate_count": 0,
+          "method": "structure_frequency",
+          "offered_candidate_count": 7,
+          "shared_adopted_candidate_count": 5
+        },
+        {
+          "adopted_candidate_count": 5,
+          "adopted_instance_count": 109,
+          "adopted_master_count": 5,
+          "exclusive_adopted_candidate_count": 0,
+          "method": "timing_context",
+          "offered_candidate_count": 40,
+          "shared_adopted_candidate_count": 5
+        },
+        {
+          "adopted_candidate_count": 5,
+          "adopted_instance_count": 109,
+          "adopted_master_count": 5,
+          "exclusive_adopted_candidate_count": 0,
+          "method": "timing_criticality",
+          "offered_candidate_count": 40,
+          "shared_adopted_candidate_count": 5
+        }
+      ],
+      "route_uncertainty_ns": 0.175,
+      "tool": {
+        "build": "Oct 16, 2025",
+        "platform": "linux64",
+        "version": "X-2025.06-SP3"
+      }
+    },
+    "innovus": {
+      "common_condition_sha256": "3fb0046b3943eaa8db976af1b63960f403b34fa968796629bbb9673db9cea13e",
+      "final_database_custom_instances": 175,
+      "floorplan_core_box": [
+        2.1,
+        2.0,
+        187.6,
+        187.4
+      ],
+      "floorplan_utilization": 0.25,
+      "foundry": {
+        "clock_tree_cell_count": 10,
+        "connectivity_violations": 2,
+        "hold_violating_paths": 52,
+        "hold_wns_ns": -0.026,
+        "postroute_cell_area_um2": 23766.0,
+        "postroute_power_mw": 28.57066342,
+        "route_drc_violations": 2
+      },
+      "generated": {
+        "clock_tree_cell_count": 13,
+        "connectivity_violations": 2,
+        "hold_violating_paths": 26,
+        "hold_wns_ns": -0.031,
+        "postroute_cell_area_um2": 22640.1,
+        "postroute_power_mw": 28.42752265,
+        "route_drc_violations": 2
+      },
+      "pin_plan_sha256": "0c8708439d6fd15a0dd60edb4c34ff409d6cd79975a06d4240104d525be893ac",
+      "tool": {
+        "build": "Fri Feb 28 12:25:44 PST 2025",
+        "version": "v23.14-s088_1"
+      },
+      "verification_error_count": 0
+    },
+    "matched_conditions": true,
+    "result": {
+      "adopted_instance_count": 175,
+      "fmax_delta_mhz": -50.13143836496283,
+      "fmax_improved": false,
+      "fmax_improvement_pct": -2.7923211169284303,
+      "foundry_fmax_mhz": 1795.3321364452422,
+      "foundry_setup_wns": -0.057,
+      "full_constraint_failures": 90,
+      "generated_fmax_mhz": 1745.2006980802794,
+      "setup_wns": -0.073,
+      "setup_wns_delta": -0.015999999999999993
+    }
+  },
+  "date": "2026-09-16",
+  "free_factors": {
+    "augmented_mapped_instances": 11383,
+    "candidate_adoption_fraction": 0.44,
+    "e0_gate": true,
+    "factor_status": {
+      "F1": "positive",
+      "F2": "positive",
+      "F3": "mixed"
+    },
+    "reference_mapped_instances": 13450,
+    "scenarios": {
+      "conservative": {
+        "f2_mapped_instance_change": -2067.0,
+        "f2_max_logic_level_change": -3.0,
+        "f3_negative_slack_mass_change_ps": -693418.0573425244,
+        "f3_worst_delay_indicator_change_ps": -2604.953933054795,
+        "relation": "augmented-dominates"
+      },
+      "nominal": {
+        "f2_mapped_instance_change": -2067.0,
+        "f2_max_logic_level_change": -3.0,
+        "f3_negative_slack_mass_change_ps": -46053.28283315766,
+        "f3_worst_delay_indicator_change_ps": -90.94789977783807,
+        "relation": "augmented-dominates"
+      },
+      "optimistic": {
+        "f2_mapped_instance_change": -2067.0,
+        "f2_max_logic_level_change": -3.0,
+        "f3_negative_slack_mass_change_ps": -6335.271689356407,
+        "f3_worst_delay_indicator_change_ps": 33.898030663000554,
+        "relation": "tradeoff"
+      }
+    },
+    "yosys_abc_adopted_cells": 22,
+    "yosys_abc_adopted_instances": 1671
+  },
+  "fresh_mining": {
+    "deduplicated_candidates": 66,
+    "generation_jobs": 50,
+    "layout_admitted_cells": 50,
+    "predicted_liberty_cells": 50,
+    "route_candidate_counts": {
+      "functional_diversity": 23,
+      "mapper_compatibility": 23,
+      "structure_compaction": 23,
+      "structure_frequency": 23,
+      "timing_context": 40,
+      "timing_criticality": 40
+    },
+    "selected_library_cells": 50
+  },
+  "interpretation": {
+    "factor_to_e0_observation": "F1 positive, F2 positive and F3 mixed admitted the Library to E0; E0 was negative for Fmax.",
+    "next_method_question": "Identify free factors that preserve local critical-path worst delay under optimistic loading and distinguish globally frequent structural compression from route-critical benefit.",
+    "strongest_free_warning": "optimistic F3 worst-delay indicator regressed by 33.898030663 ps while nominal and conservative aggregate indicators improved."
+  },
+  "record_evidence": {
+    "adoption": {
+      "bytes": 58230,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/adoption.json",
+      "sha256": "3e35a0e88022eaa3fe8ca6064ec445a1860cf5d13ebd87c0cc7c0a14ed393d17"
+    },
+    "characterize": {
+      "bytes": 111481,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/characterize.json",
+      "sha256": "7d282b1e7f8551b967d545f24889691b4746067db1fc31175a4178aa7f61bc76"
+    },
+    "compare": {
+      "bytes": 21534,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/compare.json",
+      "sha256": "95fef5ce62e4008b6208da564e3a72f653c4cd672e71a16c00b82a8203ea6049"
+    },
+    "compile": {
+      "bytes": 9421,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/compile.json",
+      "sha256": "9dea6c6ba88faf5ecbe963c926e1bed5a386fd98af360ba6716671cba15cbf87"
+    },
+    "custom-synth": {
+      "bytes": 16314,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/custom-synth.json",
+      "sha256": "86978f00543d1ad9faea9aa5c7f0870fba3601e0e091674444415fa1f86ac372"
+    },
+    "foundry-synth": {
+      "bytes": 15938,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/foundry-synth.json",
+      "sha256": "254152ddb3e61223011942d327aa0a1004e7a4a7d68f515bf236e31af7498e9e"
+    },
+    "generate": {
+      "bytes": 79018,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/generate.json",
+      "sha256": "08b3210f83aad4a6017cd5bd21dba5a508245f569d1f691a99cf6e68b2f77ac7"
+    },
+    "layout": {
+      "bytes": 121234,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/layout.json",
+      "sha256": "1fc7a5b4166c190a0f81cf24549a522c105ebd018f77b459ab8aaec136620728"
+    },
+    "pnr-foundry": {
+      "bytes": 23623,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/pnr-foundry.json",
+      "sha256": "32ad158b5ddeec86a75c048d4e8dfec227452e4abfb49718eb1d5318934ac1bd"
+    },
+    "pnr-generated": {
+      "bytes": 24343,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/pnr-generated.json",
+      "sha256": "a54f3851c3cefea524dcec944db28a34cbff1e4c5f7e67a226cd892086c21687"
+    },
+    "verify": {
+      "bytes": 14558,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/e0-site-records/verify.json",
+      "sha256": "39fa65e85973fcf2811edd1117a052f42c1a74433587f460ac80e7b10338d969"
+    }
+  },
+  "schema": "hima.lfr.fresh-aes-50cell-e0-summary/1",
+  "scope": {
+    "candidate_library_cell_budget": 50,
+    "commercial_e0_budget": 1,
+    "design_top": "aes_cipher_top",
+    "site": "linglong",
+    "site_workspace": "/data/eda/project/hima_harness/polishing-runs/lfr-aes-fresh-50-20260915-framework-e0",
+    "workflow": "standalone Framework execution without DeepSeek Harness"
+  },
+  "source": {
+    "framework_fix_commit": "b206d84f0f18bcd392a7aa2ffd9315a0d52e1dd5",
+    "free_evaluation": {
+      "bytes": 537733,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/workspace/flow/artifacts/design-mapping-timing-evaluation/run-8b7de7a22cbe48a8875c1b2275f5d830/evaluation.json",
+      "sha256": "adbb4d1b77cd5080588abb9156e94ee3d131409105e3b8fec75a6cdde52c12de"
+    },
+    "fresh_inputs": {
+      "bytes": 1139,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/inputs/SHA256SUMS.txt",
+      "sha256": "53a9114575f6bc9ed915d0dae0b40d24aee687339b9e4aec0364de44ac03fe02"
+    },
+    "frontier": {
+      "bytes": 43390,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/workspace/flow/artifacts/design-mapping-timing-evaluation/run-8b7de7a22cbe48a8875c1b2275f5d830/frontier.json",
+      "sha256": "9c7e9fd1978f3298412a900dac082019fd5e63fe7af8b88f9539fb5029af28cb"
+    },
+    "research_program_sha256": "98879fb33266327ffcb9f19165859d021b82d1d211c19aac985ced274e836285",
+    "starting_commit": "0f767eb508de3656785bda5de9a2529990cac8c0"
+  },
+  "status": "complete-negative-e0"
+}

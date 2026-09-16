@@ -41,7 +41,8 @@ of fitting a portable benefit forecast.
 | LFR-FW-08 | complete | Independent assessment approved Phase 2; no commercial EDA search loop |
 | LFR-PACK-01 through LFR-PACK-06 | complete | Intent/Spec, contract, graph, stage dispatch, Readers/Judges and residual Workshop wrap the assessed Framework |
 | LFR-PACK-07 | in progress | Local contracts and real Yosys/ABC integration pass; Harness-owned test Campaign and Ledger evidence remain |
-| LFR-PACK-08 | blocked by PACK-07 and E0 execution | The retained Library is E0-eligible; one matched expensive observation and Harness-generated release seal remain |
+| Fresh AES 50-Cell standalone E0 | complete, negative | Fresh F0-F3 admitted one Library; matched E0 observed -2.792% Fmax, so it is relationship evidence rather than a release candidate |
+| LFR-PACK-08 | blocked by PACK-07 and business exit | A Harness-owned positive matched E0 benefit observation and Harness-generated release seal remain |
 
 No item is complete merely because code exists. Each item closes only with the evidence named in
 the development document.
