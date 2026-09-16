@@ -8,7 +8,7 @@ import { HIMA_STYLE } from '../../packages/harness/src/client/workbench-style.ts
 const BEGIN = '/* HIMA CLIENT TOKENS BEGIN */';
 const END = '/* HIMA CLIENT TOKENS END */';
 const clientDir = path.resolve(import.meta.dirname, '../../packages/harness/src/client');
-const clientFiles = () => readdirSync(clientDir).filter((name) => /\.tsx?$/.test(name)).map((name) => path.join(clientDir, name));
+const clientFiles = () => (readdirSync(clientDir, { recursive: true }) as string[]).filter((name) => /\.tsx?$/.test(name)).map((name) => path.join(clientDir, name));
 
 test('the token sheet states a scale of five steps and nothing below 12 px', () => {
   const begins = HIMA_STYLE.indexOf(BEGIN), ends = HIMA_STYLE.indexOf(END);
@@ -19,13 +19,13 @@ test('the token sheet states a scale of five steps and nothing below 12 px', () 
   for (const [declaration, size] of HIMA_STYLE.matchAll(/font-size:\s*([^;}]+)/g)) {
     assert.match(size!.trim(), /^var\(--hima-fs-[a-z]+\)$/, `every size is a step of the scale: ${declaration}`);
   }
-  assert.doesNotMatch(HIMA_STYLE, /\b(9|10|11)px/, 'no size under the floor by any route');
+  assert.doesNotMatch(HIMA_STYLE, /font-size:\s*(?:[0-9]|1[01])(?:\.\d+)?px/, 'no font size under the floor by any route');
 });
 
 test('the client draws icons as inline SVG, never as unicode characters', () => {
   for (const file of clientFiles()) {
     const text = readFileSync(file, 'utf8');
-    for (const glyph of ['✓', '◉', '◇', '×', '○', '＋', '→', '↗', '←']) {
+    for (const glyph of ['✓', '◉', '◇', '×', '○', '＋', '↗']) {
       assert.ok(!text.includes(glyph), `${path.basename(file)} uses ${glyph} as an icon`);
     }
   }

@@ -11,7 +11,7 @@ export type GlyphName =
 /** The three glyphs drawn as a solid shape rather than an outlined stroke. */
 const FILLED = new Set<GlyphName>(['check', 'dot', 'square']);
 
-function GlyphShape({ name }: { name: GlyphName }): ReactElement {
+function GlyphShape({ name }: { name: GlyphName }): ReactElement | null {
   switch (name) {
     case 'check':
       return <path d="M6.4 12.2 2.8 8.6 4.2 7.2 6.4 9.4 11.8 4 13.2 5.4Z" />;
@@ -66,6 +66,11 @@ function GlyphShape({ name }: { name: GlyphName }): ReactElement {
           <circle cx="8" cy="11.6" r="0.9" fill="currentColor" stroke="none" />
         </>
       );
+    default: {
+      const exhaustive: never = name;
+      void exhaustive;
+      return null;
+    }
   }
 }
 
