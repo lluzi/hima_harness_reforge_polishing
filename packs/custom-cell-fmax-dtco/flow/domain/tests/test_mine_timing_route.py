@@ -184,6 +184,28 @@ class TimingInfluenceTests(unittest.TestCase):
         self.assertIn("@candidate:OCC_CONE", counterfactual["proposed_cell_path"])
         self.assertEqual(counterfactual["covered_instance_keys"], ["top/A1", "top/A2"])
 
+    def test_reconvergent_bypass_is_not_a_timing_route_candidate(self):
+        cells = {"A": _cell(), "B": _cell(), "C": _cell(("A", "B"))}
+        instances = [
+            _instance("A", "A1", "a1", A="ia"),
+            _instance("B", "B1", "b1", A="ib"),
+            _instance("C", "C1", "o", A="a1", B="b1"),
+        ]
+        (eligible, _drivers, _loads, predecessors, successors,
+         order, _edges) = _mapped_graph(instances, cells)
+        counterfactual = _candidate_counterfactual(
+            "top", "OCC_BYPASSED", ["A1"], "A1", eligible,
+            predecessors, successors, order,
+            {"A1": 1.0, "B1": 10.0, "C1": 1.0},
+            cut_boundary_input_count=1,
+            cut_boundary_output_count=1,
+        )
+
+        self.assertTrue(counterfactual["mapping_feasible"])
+        self.assertFalse(counterfactual["timing_path_active"])
+        self.assertIsNone(counterfactual["proposed_cell_endpoint"])
+        self.assertEqual(counterfactual["proposed_cell_path"], [])
+
     @staticmethod
     def _candidate_occurrence(occurrence_id, region, before, after):
         vector = {

@@ -40,7 +40,11 @@ RESIDUAL_FILE_BYTES = 1024 * 1024
 RESIDUAL_OUTPUT_BYTES = 256 * 1024
 RESIDUAL_STDERR_BYTES = 16 * 1024
 RESIDUAL_CONTEXT_BYTES = 512 * 1024
-RESIDUAL_DOCUMENT_BYTES = 1024 * 1024
+RESIDUAL_CANDIDATE_POOL_BYTES = 8 * 1024 * 1024
+# The final document reattaches runner-owned, hash-bound generation requests.
+# A 50-Cell real-design portfolio can legitimately exceed 1 MiB even though
+# the model context and executable proposal envelope remain tightly bounded.
+RESIDUAL_DOCUMENT_BYTES = 8 * 1024 * 1024
 RESIDUAL_TEXT_BYTES = 8192
 RESIDUAL_NAME_BYTES = 256
 RESIDUAL_MAX_STATIC_ITERATIONS = 128
@@ -92,7 +96,7 @@ def _canonical_json(value):
                        ensure_ascii=False) + "\n").encode()
 
 
-def _bound_json_reference(base, reference, name):
+def _bound_json_reference(base, reference, name, maximum_bytes=RESIDUAL_CONTEXT_BYTES):
     """Load one regular JSON file whose bytes are explicitly SHA-bound."""
     if not isinstance(reference, dict) or set(reference) != {"path", "sha256"}:
         raise ValueError("%s must contain exactly path and sha256" % name)
@@ -105,7 +109,7 @@ def _bound_json_reference(base, reference, name):
     if (not path.is_relative_to(root) or not path.is_file() or path.is_symlink()):
         raise ValueError("%s is outside the residual evidence root" % name)
     size = path.stat().st_size
-    if size > RESIDUAL_CONTEXT_BYTES:
+    if size > maximum_bytes:
         raise ValueError("%s exceeds the bound evidence file byte limit" % name)
     raw = path.read_bytes()
     if _sha(raw) != digest:
@@ -661,7 +665,8 @@ def load_residual_research_context(request, *, evidence_root):
     candidate_pool_ref = None
     if "candidate_pool" in request:
         candidate_pool, candidate_pool_ref = _bound_json_reference(
-            evidence_root, request.get("candidate_pool"), "candidate_pool")
+            evidence_root, request.get("candidate_pool"), "candidate_pool",
+            RESIDUAL_CANDIDATE_POOL_BYTES)
     history_documents = []
     history_evidence = []
     for index, reference in enumerate(history_refs):
@@ -690,7 +695,9 @@ def load_candidate_pool_registry(workspace):
     request = json.loads(request_path.read_text())
     if "candidate_pool" not in request:
         return {}
-    document, held = _bound_json_reference(root, request["candidate_pool"], "candidate_pool")
+    document, held = _bound_json_reference(
+        root, request["candidate_pool"], "candidate_pool",
+        RESIDUAL_CANDIDATE_POOL_BYTES)
     _compact, registry = _compact_candidate_pool(document, held["sha256"])
     return registry
 

@@ -608,6 +608,27 @@ class ResidualResearchContextTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "evidence file byte limit"):
                 load_residual_research_context(request, evidence_root=root)
 
+    def test_large_candidate_pool_is_compacted_before_context_limit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request = _request(root)
+            payload = json.dumps(_candidate_pool(), sort_keys=True).encode()
+            payload += b" " * (600 * 1024)
+            path = root / "candidate-pool-large.json"
+            path.write_bytes(payload)
+            request["candidate_pool"] = {
+                "path": path.name,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+
+            context = load_residual_research_context(request, evidence_root=root)
+
+        self.assertEqual(1, context["candidate_pool"]["count"])
+        self.assertLess(
+            len(json.dumps(context, sort_keys=True).encode()),
+            512 * 1024,
+        )
+
     def test_candidate_program_malformed_output_is_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

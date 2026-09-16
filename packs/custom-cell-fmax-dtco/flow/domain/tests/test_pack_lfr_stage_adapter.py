@@ -37,6 +37,67 @@ class _Context:
 
 
 class PackLfrStageAdapterTests(unittest.TestCase):
+    def test_cumulative_library_paths_are_declared_arm_only_script_inputs(self):
+        liberty = "/workspace/flow/library/cumulative-custom.lib"
+        lef = "/workspace/flow/library/cumulative-custom.lef"
+        foundry = "set libs [list /foundry.lib]\nset lefs [list /tech.lef /foundry.lef]\n"
+        generated = (
+            "set libs [list /foundry.lib %s]\n"
+            "set lefs [list /tech.lef /foundry.lef %s]\n" % (liberty, lef)
+        )
+
+        self.assertEqual(
+            stages.normalized_arm_script(foundry, (liberty, lef)),
+            stages.normalized_arm_script(generated, (liberty, lef)),
+        )
+
+    def test_frozen_patterns_only_accept_method_metadata_from_same_function(self):
+        fixture = (FLOW / "domain/tests/fixtures/lfr-pre-mapping-portfolio.production.json")
+        portfolio = json.loads(fixture.read_text())
+        current = json.loads(json.dumps(
+            portfolio["candidate_evaluations"][0]["candidate"]["source_generation_request"]))
+        current["discovery_evidence"]["strategy_ids"] = ["timing_criticality"]
+        current["discovery_evidence"]["strategy_rankings"] = {
+            "timing_criticality": {
+                "candidate_id": current["candidate_id"], "local_rank": 1,
+                "search_objective": "critical_impact",
+            }
+        }
+        frozen = json.loads(json.dumps(current))
+        frozen["discovery_evidence"].pop("strategy_ids")
+        frozen["discovery_evidence"].pop("strategy_rankings")
+
+        enriched = stages._overlay_current_method_provenance(
+            {"generation_requests": [frozen]},
+            {"generation_requests": [current]},
+        )
+
+        evidence = enriched["generation_requests"][0]["discovery_evidence"]
+        self.assertEqual(["timing_criticality"], evidence["strategy_ids"])
+        self.assertEqual(
+            current["generator_contract"],
+            enriched["generation_requests"][0]["generator_contract"],
+        )
+
+    def test_function_deduplication_retains_every_contributing_method(self):
+        fixture = (FLOW / "domain/tests/fixtures/lfr-pre-mapping-portfolio.production.json")
+        portfolio = json.loads(fixture.read_text())
+        request = portfolio["candidate_evaluations"][0]["candidate"]["source_generation_request"]
+        duplicate = json.loads(json.dumps(request))
+        duplicate["candidate_id"] += "_SECOND_VIEW"
+
+        result = stages._deduplicated_mined_requests([
+            ("timing_criticality", [request]),
+            ("timing_context", [duplicate]),
+        ])
+
+        self.assertEqual(1, len(result))
+        evidence = result[0]["discovery_evidence"]
+        self.assertEqual(
+            ["timing_criticality", "timing_context"], evidence["strategy_ids"])
+        self.assertEqual(1, evidence["strategy_rankings"]["timing_criticality"]["local_rank"])
+        self.assertEqual(1, evidence["strategy_rankings"]["timing_context"]["local_rank"])
+
     def test_residual_research_can_only_materialize_a_hash_bound_pool_request(self):
         fixture = (FLOW / "domain/tests/fixtures/lfr-pre-mapping-portfolio.production.json")
         portfolio = json.loads(fixture.read_text())

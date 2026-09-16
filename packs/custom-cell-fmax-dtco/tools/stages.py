@@ -605,8 +605,46 @@ def stage_evaluation_baseline(ctx):
     })
 
 
-def _all_mined_requests(ctx):
+def _deduplicated_mined_requests(route_requests):
     rows = []
+    for route, requests in route_requests:
+        for rank, item in enumerate(requests, 1):
+            rows.append({"route": route, "rank": rank,
+                         "request": json.loads(json.dumps(item))})
+    deduplicated = {}
+    members = {}
+    for row in rows:
+        request = row["request"]
+        errors = validate_generation_request(request)
+        if errors:
+            raise Rejected("candidate pool contains an invalid request: " + "; ".join(errors))
+        try:
+            key = function_identity(request)["key"]
+        except ValueError as exc:
+            raise Rejected(str(exc)) from exc
+        members.setdefault(key, []).append({
+            "route": row["route"], "rank": row["rank"],
+            "candidateId": request.get("candidate_id"),
+        })
+        current = deduplicated.get(key)
+        if current is None or candidate_rank(request) < candidate_rank(current):
+            deduplicated[key] = request
+    result, used = [], set()
+    for key in sorted(deduplicated):
+        request = deduplicated[key]
+        request["candidate_id"] = collision_safe_candidate_id(
+            request["candidate_id"], key, used)
+        used.add(request["candidate_id"])
+        evidence = request.setdefault("discovery_evidence", {})
+        evidence["strategy_ids"] = sorted(
+            {row["route"] for row in members[key]}, key=ROUTES.index)
+        evidence["strategy_rankings"] = method_rankings(members[key])
+        result.append(request)
+    return result
+
+
+def _all_mined_requests(ctx):
+    route_requests = []
     for route in ROUTES:
         record = prior(ctx, "mine-" + route)
         raw = artifact(record, ctx.workspace, "mining_raw")
@@ -617,27 +655,8 @@ def _all_mined_requests(ctx):
             raise Rejected("mining candidate pool has invalid route %s" % route)
         ctx.inputs.append(file_ref(raw, ctx.workspace, "candidate_pool:" + route,
                                    "algorithm-output"))
-        rows.extend(json.loads(json.dumps(item)) for item in document["generation_requests"])
-    deduplicated = {}
-    for request in rows:
-        errors = validate_generation_request(request)
-        if errors:
-            raise Rejected("candidate pool contains an invalid request: " + "; ".join(errors))
-        try:
-            key = function_identity(request)["key"]
-        except ValueError as exc:
-            raise Rejected(str(exc)) from exc
-        current = deduplicated.get(key)
-        if current is None or candidate_rank(request) < candidate_rank(current):
-            deduplicated[key] = request
-    result, used = [], set()
-    for key in sorted(deduplicated):
-        request = deduplicated[key]
-        request["candidate_id"] = collision_safe_candidate_id(
-            request["candidate_id"], key, used)
-        used.add(request["candidate_id"])
-        result.append(request)
-    return result
+        route_requests.append((route, document["generation_requests"]))
+    return _deduplicated_mined_requests(route_requests)
 
 
 def _baseline_family_slacks(timing_document):
@@ -2104,15 +2123,27 @@ def stage_adoption(ctx):
         frozen = prior(ctx, "freeze-cumulative-library")
         liberty = artifact(frozen, ctx.workspace, "cumulative_custom_liberty")
         patterns = artifact(frozen, ctx.workspace, "cumulative_patterns")
+        pattern_document = read_json(patterns)
+        characterize_path = ctx.flow / "records" / "characterize.json"
+        if characterize_path.is_file():
+            characterize = prior(ctx, "characterize")
+            current_patterns = artifact(
+                characterize, ctx.workspace, "characterized_patterns")
+            pattern_document = _overlay_current_method_provenance(
+                pattern_document, read_json(current_patterns))
+            ctx.inputs.append(file_ref(
+                current_patterns, ctx.workspace, "current_characterized_patterns",
+                "layout-admitted-algorithm-output"))
     elif ctx.evidence_class == "synthetic-fixture":
         characterize = prior(ctx, "characterize")
         liberty = artifact(characterize, ctx.workspace, "generated_liberty")
         patterns = artifact(characterize, ctx.workspace, "characterized_patterns")
+        pattern_document = read_json(patterns)
     else:
         raise Rejected("cumulative Library must be frozen before adoption")
     synth_log = execution_log(synth, ctx.workspace, "custom-dc_log")
     projection = project_attributed_texts(netlist.read_text(errors="replace"), liberty.read_text(errors="replace"),
-                                          read_json(patterns))
+                                          pattern_document)
     evidence = ctx.run_dir / "adoption.json"
     atomic_json(evidence, projection)
     ctx.add_artifact(evidence, "adoption_projection", "derived-from-netlist-master-relation")
@@ -2121,6 +2152,46 @@ def stage_adoption(ctx):
                        file_ref(patterns, ctx.workspace, "characterized_patterns", "layout-admitted-algorithm-output"),
                        file_ref(synth_log, ctx.workspace, "custom_synth_log", "tool-log")])
     ctx.facts.update({"library_visible": visible, **projection})
+
+
+def _overlay_current_method_provenance(frozen_patterns, current_patterns):
+    """Enrich frozen function identities without changing Library authority."""
+    frozen_requests = frozen_patterns.get("generation_requests") if isinstance(frozen_patterns, dict) else None
+    current_requests = current_patterns.get("generation_requests") if isinstance(current_patterns, dict) else None
+    if not isinstance(frozen_requests, list) or not isinstance(current_requests, list):
+        raise Rejected("method provenance overlay requires two generation request arrays")
+    current_by_key = {}
+    for request in current_requests:
+        try:
+            key = function_identity(request)["key"]
+        except (TypeError, ValueError) as exc:
+            raise Rejected("current characterized pattern identity is invalid: %s" % exc) from exc
+        if key in current_by_key:
+            raise Rejected("current characterized patterns repeat one function identity")
+        current_by_key[key] = request
+    result = json.loads(json.dumps(frozen_patterns))
+    for request in result["generation_requests"]:
+        try:
+            key = function_identity(request)["key"]
+        except (TypeError, ValueError) as exc:
+            raise Rejected("frozen cumulative pattern identity is invalid: %s" % exc) from exc
+        evidence = request.setdefault("discovery_evidence", {})
+        methods = evidence.get("strategy_ids")
+        rankings = evidence.get("strategy_rankings")
+        if (isinstance(methods, list) and methods and isinstance(rankings, dict)
+                and set(rankings) == set(methods)):
+            continue
+        current = current_by_key.get(key)
+        current_evidence = (current or {}).get("discovery_evidence") or {}
+        methods = current_evidence.get("strategy_ids")
+        rankings = current_evidence.get("strategy_rankings")
+        if (not isinstance(methods, list) or not methods
+                or len(methods) != len(set(methods))
+                or not isinstance(rankings, dict) or set(rankings) != set(methods)):
+            raise Rejected("current matching function has no exact contributing-method provenance")
+        evidence["strategy_ids"] = json.loads(json.dumps(methods))
+        evidence["strategy_rankings"] = json.loads(json.dumps(rankings))
+    return result
 
 
 def fill_template(path, mapping):
@@ -2383,14 +2454,17 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
                         "pin_plan": pin_plan,
                         "floorplan": floorplan,
                         "input_sdc": sdc, "input_netlist": netlist}
-    matched = all(normalized_arm_script(texts["foundry"][kind]) == normalized_arm_script(texts["generated"][kind])
-                  for kind in ("init", "pnr"))
+    arm_only_paths = (str(generated_lib), str(generated_lef))
+    matched = all(
+        normalized_arm_script(texts["foundry"][kind], arm_only_paths)
+        == normalized_arm_script(texts["generated"][kind], arm_only_paths)
+        for kind in ("init", "pnr"))
     if not matched:
         differences = []
         for kind in ("init", "pnr"):
             differences.extend(difflib.unified_diff(
-                normalized_arm_script(texts["foundry"][kind]).splitlines(),
-                normalized_arm_script(texts["generated"][kind]).splitlines(), lineterm=""))
+                normalized_arm_script(texts["foundry"][kind], arm_only_paths).splitlines(),
+                normalized_arm_script(texts["generated"][kind], arm_only_paths).splitlines(), lineterm=""))
         raise Rejected("paired P&R scripts differ outside the declared arm inputs: "
                        + " | ".join(differences[:8]))
     return outputs, generated_lef, generated_lib

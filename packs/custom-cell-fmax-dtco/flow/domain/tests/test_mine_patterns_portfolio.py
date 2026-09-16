@@ -154,13 +154,51 @@ class PortfolioSelectionTests(unittest.TestCase):
         self.assertFalse(result["evidence_layers"]["F2_whole_design_mapping"])
         self.assertFalse(result["claims"]["commercial_qor_prediction"])
 
-    def test_rejected_candidate_cannot_poison_design_family_baseline(self):
-        requests = _production_requests()
-        good_request = _ready_request()
-        bad_request = next(
-            request for request in requests
-            if not request["discovery_evidence"]["influence_vector"]["mapping_feasible"]
+    def test_structure_candidate_without_timing_counterfactual_enters_f1_portfolio(self):
+        request = copy.deepcopy(_ready_request())
+        request.pop("mapping_feasibility", None)
+        evidence = request["discovery_evidence"]
+        evidence.pop("influence_vector", None)
+        evidence.pop("counterfactual", None)
+        request.pop("counterfactual", None)
+        evidence.update({
+            "raw_support": 4,
+            "non_overlapping_support": 3,
+            "current_cells_per_site": {"min": 3, "max": 3},
+            "current_logic_levels_per_site": {"min": 2, "max": 2},
+            "occurrence_alignments": [{
+                "module": "top", "instances": ["U0", "U1", "U2"],
+                "contract_pin_mapping": {},
+            }],
+            "representative_occurrence": {
+                "module": "top", "instances": ["U0", "U1", "U2"],
+                "internal_nets": 2,
+            },
+        })
+
+        candidate = portfolio_candidate_from_generation_request(
+            request, stage="pre_mapping"
         )
+        result = select_candidate_portfolio(
+            [candidate], 1, stage="pre_mapping", design_proxy_evidence=_proxy()
+        )
+
+        self.assertEqual("ready", candidate["generation_feasibility"]["status"])
+        self.assertEqual("missing", candidate["local_break_even"]["status"])
+        self.assertEqual(1.0, candidate["structural_metrics"]["levels_removed"])
+        self.assertEqual([request["candidate_id"]], [
+            row["candidate_id"] for row in result["selected"]
+        ])
+
+    def test_nonreplaceable_occurrence_still_enters_whole_library_screen(self):
+        good_request = _ready_request()
+        bad_request = copy.deepcopy(good_request)
+        bad_request["candidate_id"] += "_LOCAL_BYPASS"
+        bad_request["discovery_evidence"]["influence_vector"]["mapping_feasible"] = False
+        bad_request["mapping_feasibility"] = {
+            "status": "INFEASIBLE",
+            "reasons": ["original occurrence has a side output"],
+        }
         good = portfolio_candidate_from_generation_request(
             good_request, stage="pre_mapping"
         )
@@ -176,15 +214,16 @@ class PortfolioSelectionTests(unittest.TestCase):
             [bad, good], 2, stage="pre_mapping", design_proxy_evidence=_proxy()
         )
 
-        self.assertEqual(
-            -20.0,
-            result["baseline"]["proxy_worst_frontier_indicator_ps"],
-        )
-        rejected = next(
+        self.assertEqual(-20.0, result["baseline"]["proxy_worst_frontier_indicator_ps"])
+        self.assertEqual(2, len(result["selected"]))
+        observed = next(
             row for row in result["candidate_evaluations"]
             if row["candidate_id"] == bad["candidate_id"]
         )
-        self.assertIn("generator_not_ready", rejected["rejection_reasons"])
+        self.assertEqual([], observed["rejection_reasons"])
+        self.assertFalse(
+            observed["candidate"]["raw_metrics"]["influence_vector"]["mapping_feasible"]
+        )
 
     def test_same_family_delta_is_applied_once_for_multiple_candidates(self):
         first = portfolio_candidate_from_generation_request(

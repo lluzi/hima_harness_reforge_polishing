@@ -569,7 +569,71 @@ def _request_occurrence_keys(request):
                 "%s/%s" % (module, name)
                 for name in roots if isinstance(name, str) and name
             )
+    for occurrence in evidence.get("occurrence_alignments") or []:
+        if not isinstance(occurrence, dict):
+            continue
+        module = occurrence.get("module")
+        instances = occurrence.get("instances")
+        if isinstance(module, str) and module and isinstance(instances, list):
+            keys.update(
+                "%s/%s" % (module, name)
+                for name in instances if isinstance(name, str) and name
+            )
     return sorted(keys)
+
+
+def _structural_influence_from_discovery(request, evidence):
+    """Project mapped-cluster evidence into F1 without inventing timing.
+
+    Structure miners already prove the exact boundary, function, occurrence
+    set and build route.  They intentionally do not carry a timing
+    counterfactual; F3 is measured later by the paired mapper/STA round.
+    """
+    levels = evidence.get("current_logic_levels_per_site") or {}
+    cells = evidence.get("current_cells_per_site") or {}
+    representative = evidence.get("representative_occurrence") or {}
+    contract = request.get("generator_contract") or {}
+    interface = contract.get("interface") or {}
+    raw_support = _number_or_none(evidence.get("raw_support"))
+    nonoverlap = _number_or_none(evidence.get("non_overlapping_support"))
+    before = _number_or_none(levels.get("max"))
+    cell_count = _number_or_none(cells.get("max"))
+    internal_nets = _number_or_none(representative.get("internal_nets"))
+    inputs = interface.get("inputs") or []
+    outputs = interface.get("outputs") or []
+    overlap_ratio = None
+    if raw_support is not None and raw_support > 0 and nonoverlap is not None:
+        overlap_ratio = max(0.0, 1.0 - nonoverlap / raw_support)
+    shared = evidence.get("shared_logic_audit") or {}
+    shared_instances = shared.get("shared_instances") or []
+    return {
+        "mapping_feasible": True,
+        "logic_depth_before": before,
+        "logic_depth_after": 1.0 if before is not None else None,
+        "removable_node_count": (
+            max(0.0, cell_count - 1.0) if cell_count is not None else None
+        ),
+        "removable_edge_count": internal_nets,
+        "cut_boundary_input_count": len(inputs),
+        "cut_boundary_output_count": len(outputs),
+        "reconvergence_node_count": len(shared_instances),
+        "dominator_endpoint_coverage": 0.0,
+        "overlap_ratio": overlap_ratio,
+        "path_family_count": 0,
+        "structural_metrics": {
+            "levels_removed": (
+                max(0.0, before - 1.0) if before is not None else None
+            ),
+            "nodes_removed": (
+                max(0.0, cell_count - 1.0) if cell_count is not None else None
+            ),
+            "edges_removed": internal_nets,
+            "cut_width": len(inputs) + len(outputs),
+            "reconvergence_coverage": len(shared_instances),
+            "dominator_endpoint_coverage": 0.0,
+            "overlap_ratio": overlap_ratio,
+        },
+    }
 
 
 def _number_or_none(value):
@@ -869,8 +933,14 @@ def portfolio_candidate_from_generation_request(
         and generation_route in BUILDABLE_ROUTES
     )
     evidence = request.get("discovery_evidence") or {}
-    influence = evidence.get("influence_vector") or {}
-    generation_ready = generation_ready and influence.get("mapping_feasible") is True
+    influence = evidence.get("influence_vector")
+    if not isinstance(influence, dict) or not influence:
+        influence = _structural_influence_from_discovery(request, evidence)
+    # Exact function generation and original-cone substitution are different
+    # questions.  Side outputs can make the mined occurrence unsuitable for a
+    # literal local replacement while the new Boolean function remains fully
+    # buildable and useful to the whole-design mapper.  Preserve the negative
+    # F1 factor in raw_metrics; let F2 adoption decide actual Library use.
     counterfactual = evidence.get("counterfactual")
     if counterfactual is None:
         counterfactual = request.get("counterfactual")
@@ -1027,10 +1097,10 @@ def _normalize_portfolio_candidate(candidate, stage):
         reasons.append("functional_equivalence_unverified")
     if candidate.get("generation_feasibility", {}).get("status") != "ready":
         reasons.append("generator_not_ready")
-    local = candidate.get("local_break_even") or {}
-    if local.get("status") != "pass":
-        reasons.append("local_break_even_not_satisfied")
-        reasons.extend(str(row) for row in (local.get("reasons") or []))
+    # F1 structure and F3 timing are parallel free factors.  A missing or
+    # negative local timing counterfactual remains visible in the DTO, but it
+    # cannot veto an exact, buildable function before the one paired F2/F3
+    # Library evaluation observes the complete portfolio.
     covered = candidate.get("covered_instance_keys")
     if not isinstance(covered, list) or not covered:
         reasons.append("covered_instance_keys_missing")

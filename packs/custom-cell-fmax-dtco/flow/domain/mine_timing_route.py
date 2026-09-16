@@ -1090,7 +1090,7 @@ def _candidate_counterfactual(module, occurrence_id, cone_names, root_instance,
     proposed_endpoint = min(
         proposed_paths,
         key=lambda endpoint: (-collapsed_arrival[endpoint], endpoint),
-    )
+    ) if proposed_paths else None
 
     cone_depth_before = _cone_depth(cone, order, predecessors)
     cone_depth_after = 1
@@ -1117,6 +1117,11 @@ def _candidate_counterfactual(module, occurrence_id, cone_names, root_instance,
         "cut_boundary_output_count": cut_boundary_output_count,
         "side_output_instance_keys": qualified(side_output_nodes),
         "mapping_feasible": not side_output_nodes,
+        # A structurally legal cut can be hidden by a reconvergent predecessor
+        # at every endpoint.  Keep the exact buildable function in the broad
+        # Library screen, but expose that its local timing factor is inactive;
+        # the paired mapper/STA stage, rather than F0, decides actual use.
+        "timing_path_active": proposed_endpoint is not None,
         "logic_depth_before": cone_depth_before,
         "logic_depth_after": cone_depth_after,
         "logic_depth_delta": cone_depth_before - cone_depth_after,
@@ -1143,7 +1148,9 @@ def _candidate_counterfactual(module, occurrence_id, cone_names, root_instance,
         "path_migrated": new_worst != baseline_worst,
         "proposed_cell_node": replacement,
         "proposed_cell_endpoint": proposed_endpoint,
-        "proposed_cell_path": proposed_paths[proposed_endpoint],
+        "proposed_cell_path": (
+            proposed_paths[proposed_endpoint] if proposed_endpoint is not None else []
+        ),
         "worst_endpoint_relief_du": round(max(0.0, baseline_delay - new_delay), 6),
         "scope": "license_free_structural_proxy_not_commercial_qor_prediction",
     }
