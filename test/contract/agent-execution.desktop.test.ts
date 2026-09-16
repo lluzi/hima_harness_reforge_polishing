@@ -51,7 +51,7 @@ test('native selected conversation runs one explicit Job, accepts typed steering
     await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
     await browser.send('Input.insertText', { text: initialDraft });
     assert.ok((await d.click('open-workbench')).ok);
-    assert.ok((await d.wait('studio', 'Campaign workspace', 12_000)).ok);
+    assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
     const studio = await d.read('studio'); assert.ok(studio.ok);
     const selectedSession = studio.state.session;
     const url = await browser.evaluate<string>('location.href');

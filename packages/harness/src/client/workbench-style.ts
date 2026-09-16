@@ -83,9 +83,9 @@ export const HIMA_STYLE = `
 .hima-root svg{vertical-align:-0.15em;flex:none}
 .hima-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
-.hima-studio{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--hima-paper);overflow:hidden}
+.hima-studio{position:relative;height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--hima-paper);overflow:hidden}
 .hima-studio-header{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
-.hima-studio-header>div{flex:1;min-width:0}
+.hima-studio-header-actions{display:flex;gap:var(--hima-sp-2);margin-inline-start:auto}
 .hima-run-picker{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
 .hima-run-picker select{flex:1;min-width:0}
 
@@ -330,4 +330,26 @@ export const HIMA_STYLE = `
 .hima-config-readiness-row{padding:2px 0}
 .hima-config-confirm-row{display:flex;align-items:center;gap:var(--hima-sp-3);margin-top:var(--hima-sp-2)}
 .hima-pill{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;background:var(--hima-soft);color:var(--hima-ink-2);font-size:var(--hima-fs-eyebrow);font-weight:600;margin-left:6px}
+
+/* Shell integration (#41 task 8): the session-header Campaign chip, the tab title, the tab's own
+   Diagnostics sheet and the HimaHarness settings section. */
+.hima-campaign-chip{display:inline-flex;align-items:center;gap:var(--hima-sp-1);border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink-2);font-size:var(--hima-fs-label);line-height:1;padding:var(--hima-sp-1) var(--hima-sp-2);cursor:pointer}
+.hima-campaign-chip:hover{background:var(--hima-soft);color:var(--hima-ink)}
+.hima-campaign-chip-badge{width:6px;height:6px;border-radius:50%;background:var(--hima-live);display:inline-block}
+.hima-tab-title{display:inline-flex;align-items:center;gap:var(--hima-sp-1)}
+.hima-tab-menu-item{appearance:none;display:block;width:100%;text-align:left;border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink);padding:var(--hima-sp-2) var(--hima-sp-3);font-size:var(--hima-fs-body);cursor:pointer}
+.hima-tab-menu-item:hover{background:var(--hima-soft)}
+.hima-diagnostics{position:absolute;right:var(--hima-sp-4);bottom:var(--hima-sp-4);width:320px;max-width:calc(100% - var(--hima-sp-8));max-height:70%;overflow:auto;background:var(--hima-paper);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);box-shadow:var(--hima-shadow);padding:var(--hima-sp-3);display:flex;flex-direction:column;gap:var(--hima-sp-2);z-index:20}
+.hima-diagnostics-header{display:flex;align-items:center;justify-content:space-between;gap:var(--hima-sp-2)}
+.hima-diagnostics-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px var(--hima-sp-2);font-size:var(--hima-fs-label);margin:0}
+.hima-diagnostics-facts dt{color:var(--hima-ink-2)}
+.hima-diagnostics-facts dd{margin:0;overflow-wrap:anywhere}
+.hima-diagnostics-meters{display:flex;flex-direction:column;gap:2px}
+.hima-diagnostics-line{margin:0;background:var(--hima-glass);color:var(--hima-glass-ink);padding:var(--hima-sp-2);border-radius:var(--hima-r-s);font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow);white-space:pre-wrap;overflow-wrap:anywhere}
+.hima-owner-location-row{display:flex;align-items:center;gap:var(--hima-sp-1)}
+.hima-owner-location-row input{flex:1;min-width:0}
+.hima-settings{display:flex;flex-direction:column;gap:var(--hima-sp-5);padding:var(--hima-sp-2) 0}
+.hima-settings h3{margin:0 0 var(--hima-sp-2);font-size:var(--hima-fs-title);font-weight:600}
+.hima-settings-sites{display:flex;flex-direction:column;gap:var(--hima-sp-2)}
+.hima-settings-row{display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap;padding:var(--hima-sp-1) 0}
 `;

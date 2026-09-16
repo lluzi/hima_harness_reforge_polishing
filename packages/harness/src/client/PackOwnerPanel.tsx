@@ -5,8 +5,19 @@
 // themselves; nothing here is reachable by HimaGuide.
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { reviewPackTransfer } from './api.js';
+import { Glyph } from './glyphs.js';
 
-export function PackOwnerPanel({ sessionId, initialPack, initialLocation }: { sessionId: string; initialPack: string; initialLocation?: string }): ReactElement {
+export interface PackOwnerPanelProps {
+  readonly sessionId: string;
+  readonly initialPack: string;
+  readonly initialLocation?: string;
+  /** The native folder picker (#41 task 8), when the shell's own `uiWorkspace` service is present.
+   *  Absent, the location fields stay the plain text inputs they always were — `owner-location`
+   *  keeps taking a typed or filled path either way, which is what the pack-owner desktop test does. */
+  readonly pickFolder?: () => Promise<string | null>;
+}
+
+export function PackOwnerPanel({ sessionId, initialPack, initialLocation, pickFolder }: PackOwnerPanelProps): ReactElement {
   const [pack, setPack] = useState(initialPack);
   const [mode, setMode] = useState<'install' | 'share' | 'migrate' | 'upgrade'>(initialPack ? 'share' : 'install');
   const [location, setLocation] = useState(initialLocation ?? '');
@@ -43,7 +54,13 @@ export function PackOwnerPanel({ sessionId, initialPack, initialLocation }: { se
         <label>Action<select data-hima-control='owner-mode' value={mode} onChange={event => { invalidate(); setMode(event.target.value as typeof mode); }}>
           <option value='install'>Install Pack from folder</option><option value='share'>Share method / selected materials</option><option value='migrate'>Migrate my Pack with all assets</option><option value='upgrade'>Install tested method upgrade</option>
         </select></label>
-        <label>{fromSource ? (mode === 'install' ? 'Pack source folder' : 'Tested release source folder') : 'New destination Pack folder'}<input data-hima-control='owner-location' value={location} onChange={event => { invalidate(); setLocation(event.target.value); }} /></label>
+        <label>{fromSource ? (mode === 'install' ? 'Pack source folder' : 'Tested release source folder') : 'New destination Pack folder'}
+          <span className='hima-owner-location-row'>
+            <input data-hima-control='owner-location' value={location} onChange={event => { invalidate(); setLocation(event.target.value); }} />
+            {pickFolder ? <button type='button' className='hima-icon-button' data-hima-control='owner-location-pick' aria-label='Choose a folder'
+              onClick={() => { void pickFolder().then((picked) => { if (picked !== null) { invalidate(); setLocation(picked); } }); }}><Glyph name='locate' /></button> : null}
+          </span>
+        </label>
       </div>
       {mode === 'share' ? <label className='hima-owner-assets-label'>Optional material paths, one per line<textarea className='hima-run-card-owner-textarea' data-hima-control='owner-assets' value={assets} placeholder='Empty shares only the method. Select paths inside run-assets/ to include research.' onChange={event => { invalidate(); setAssets(event.target.value); }} /></label>
         : <p className='hima-small'>{mode === 'install' ? 'Review shows every method and knowledge file before this fixed Pack is installed. Author status is displayed and does not change execution.' : mode === 'migrate' ? 'Migration includes your private run-assets and historical methods. Use only your own destination.' : 'The current method remains unchanged until you confirm a tested release. Old methods and run-assets are retained.'}</p>}

@@ -38,7 +38,7 @@ test('added research is distinguishable from the reference and can be expanded a
     await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
     await browser.markText('button', 'New Session', 'growth-new-session'); assert.ok((await driver.click('growth-new-session')).ok);
     await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
-    assert.ok((await driver.click('open-workbench')).ok); assert.ok((await driver.wait('studio', 'Campaign workspace')).ok);
+    assert.ok((await driver.click('open-workbench')).ok); assert.ok((await driver.wait('studio', 'Campaign configuration')).ok);
     assert.ok((await driver.fill('studio-run', f.runId)).ok);
     assert.ok((await driver.wait('run-growth', 'critical-cell-probe')).ok);
     assert.ok((await driver.click('growth-expand-critical-cell-probe')).ok);

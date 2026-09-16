@@ -104,7 +104,7 @@ test('the native workbench keeps a superseded Workshop version readable beside i
       await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
       await browser.markText('button', 'New Session', 'revision-assets-session'); assert.ok((await driver.click('revision-assets-session')).ok);
       await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
-      assert.ok((await driver.click('open-workbench')).ok); assert.ok((await driver.wait('studio', 'Campaign workspace')).ok);
+      assert.ok((await driver.click('open-workbench')).ok); assert.ok((await driver.wait('studio', 'Campaign configuration')).ok);
       assert.ok((await driver.fill('studio-run', runId)).ok);
       // Task 5: the Live view is the HimaFabric canvas alone; material, archive and revision
       // sections moved to the Evidence view.

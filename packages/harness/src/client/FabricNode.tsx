@@ -33,8 +33,10 @@ export function truncate(text: string, max = LABEL_MAX_CHARS): string {
 }
 
 /** The running node's own last log line, polled every 2 s while it stays the running node — the one
- *  place raw output reaches the canvas, and only ever the bounded tail the Host already caps. */
-function useLastLogLine(runId: string, nodeId: string, active: boolean): string | undefined {
+ *  place raw output reaches the canvas, and only ever the bounded tail the Host already caps.
+ *  Exported for the Diagnostics sheet (#41 task 8), which reads the same current node's own line
+ *  rather than a second poll of its own. */
+export function useLastLogLine(runId: string, nodeId: string, active: boolean): string | undefined {
   const [line, setLine] = useState<string>();
   useEffect(() => {
     if (!active) { setLine(undefined); return; }

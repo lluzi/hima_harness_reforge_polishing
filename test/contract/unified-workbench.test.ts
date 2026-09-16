@@ -49,7 +49,7 @@ async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = 
   await browser.send('Input.insertText', { text: draft });
   assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
   assert.ok((await d.click('open-workbench')).ok);
-  assert.ok((await d.wait('studio', 'Campaign workspace', 12_000)).ok);
+  assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
   return { host, cookie };
 }
 
@@ -184,6 +184,12 @@ test('conversation draft, native files and verified reports share one workspace 
     const started = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
     assert.equal(started.run.status, 'ended-goal-met');
     assert.equal(started.jobs.filter((job) => job.event === 'launched').length, 2, 'the completed Run still proves two actual local Jobs');
+    // Task 8: this Run has no conversational owner (the legacy automatic-drive path this file boots
+    // under) — the session-header chip and the tab title both read `RunHeadView.control.owner`
+    // alone, so neither claims identity for a Run this session merely happened to start. The
+    // positive case (an agent-owned Run genuinely claiming both) is `campaign-graph.desktop.test.ts`.
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-chip"]') === null`), true);
+    assert.equal(await browser.evaluate('document.body.innerText.includes(\'Campaign · configure\')'), true);
     await capture(d, browser, 'light-complete');
     assert.equal(await browser.evaluate('location.href'), url, 'opening and running did not navigate the document');
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);

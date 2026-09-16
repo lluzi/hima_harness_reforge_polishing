@@ -95,7 +95,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     assert.ok((await d.click('start-owner-session')).ok);
     await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready')`, 15_000);
     assert.ok((await d.click('open-workbench')).ok);
-    assert.ok((await d.wait('studio', 'Campaign workspace', 12_000)).ok);
+    assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
     const owner = (await d.read('studio')); assert.ok(owner.ok); const ownerSession = owner.state.session; assert.ok(ownerSession);
 
     assert.ok((await d.wait('config-empty-pack', 'No HimaPack is installed', 10_000)).ok);
@@ -125,6 +125,12 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     const graph = await d.read('campaign-graph'); assert.ok(graph.ok); assert.ok(Number(graph.state.nodes) >= 48, graph.text);
     assert.ok(graph.text.includes('pnr-foundry') && graph.text.includes('compare'), graph.text);
     const runningStudio = await d.read('studio'); assert.ok(runningStudio.ok); runId = runningStudio.state.run; assert.ok(runId);
+    // Task 8: the owner session's own session-header chip carries Campaign identity once its Run is
+    // running — the conversation in front right now is still the owner's own.
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]')?.getAttribute('data-hima-state-status') === 'running'`, 10_000);
+    // The Campaign tab's own dock chip title carries the same identity, short: the running glyph and
+    // the current node rather than "configure".
+    await browser.wait(`document.body.innerText.includes('Campaign · bind-inputs')`, 10_000);
     // The anchored node card (Facts/Job/Code/Knowledge/Evidence tabs) is a later task's file
     // (`NodeCard.tsx`); this task's own node is clickable and marks itself selected in its own
     // region — asserted as a state change the click itself caused, not a fact already true of the
@@ -142,6 +148,9 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     await browser.mark('[aria-label="Send message"]', 'send-side-talk');
     assert.ok((await d.click('send-side-talk')).ok);
     await browser.wait(`document.body.innerText.includes('Side Talk completed ordinary conversation and coding')`, 15_000);
+    // Task 8: the Side Talk conversation owns no Run of its own — no session-header chip for it,
+    // even though the owner's own Run is still running elsewhere on this same Host.
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-chip"]') === null`), true);
     assert.equal(await readFile(path.join(h.workspace, 'side-talk-note.txt'), 'utf8'), 'Side Talk ordinary coding completed.\n');
     await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]')?.disabled`);
     await browser.mark('[data-hima-control="open-workbench"]', 'open-workbench');
@@ -157,6 +166,9 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     await browser.wait(`document.querySelector('[data-hima-control="open-owner"]') !== null`);
     assert.ok((await d.click('open-owner')).ok);
     await browser.wait(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session')===${JSON.stringify(ownerSession)}`);
+    // Task 8: back on the owner conversation, the chip is there again — scoped to the session that
+    // owns the Run, not to whichever conversation happened to be open last.
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]') !== null`, 10_000);
     assert.ok((await d.click('open-workbench')).ok);
     await browser.mark('[contenteditable="true"]', 'owner-composer'); assert.ok((await d.click('owner-composer')).ok);
     await browser.send('Input.insertText', { text: `For Run ${runId}, hand off Campaign ownership to target ${sideSession} now.` });
