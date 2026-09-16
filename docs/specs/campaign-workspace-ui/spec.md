@@ -1,6 +1,6 @@
 # Campaign Workspace UI
 
-Status: ready-for-agent. Design authored 2026-09-15 against working tree `939770c`, within [Product Upgrade v2](../product-upgrade-v2/spec.md) and its fixed architecture. Product decisions come from the [upgrade interview](../../product-upgrade-interview.md) (Q47, Q48, Q49, Q63, Q74) and ADR-0008 through ADR-0011. This spec describes the target behaviour of the Campaign workspace; it does not claim any of it is implemented.
+Status: ready-for-agent, published as [GitHub #41](https://github.com/lluzi/hima_harness_reforge_polishing/issues/41). Design authored 2026-09-15 against working tree `939770c`, within [Product Upgrade v2](../product-upgrade-v2/spec.md) and its fixed architecture. Product decisions come from the [upgrade interview](../../product-upgrade-interview.md) (Q47, Q48, Q49, Q63, Q74) and ADR-0008 through ADR-0011. This spec describes the target behaviour of the Campaign workspace; it does not claim any of it is implemented.
 
 ## Key references
 
