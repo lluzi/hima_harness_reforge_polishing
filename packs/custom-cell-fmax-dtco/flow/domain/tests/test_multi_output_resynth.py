@@ -155,6 +155,27 @@ cell (MO_FA) {
     function : "A * B + A * CI + B * CI";
   }
 }
+cell (MO_THREE) {
+  area : 2.0;
+  pin(A) {
+    direction : input;
+  }
+  pin(B) {
+    direction : input;
+  }
+  pin(P) {
+    direction : output;
+    function : "A * B";
+  }
+  pin(Q) {
+    direction : output;
+    function : "A + B";
+  }
+  pin(R) {
+    direction : output;
+    function : "A ^ B";
+  }
+}
 cell (MO_DEEP) {
   area : 2.5;
   pin(A) {
@@ -397,6 +418,28 @@ endmodule
         self.assertEqual(result["mapping"]["pairChecks"], 0)
         self.assertTrue(result["mapping"]["bucketOverflows"])
         self.assertEqual(result["selectedReplacements"], [])
+
+    def test_directed_three_output_window_is_exactly_matched(self):
+        netlist = '''module top(input a, input b, output p, output q, output r);
+  AND2 u0 (.A(a), .B(b), .Y(p));
+  OR2 u1 (.A(a), .B(b), .Y(q));
+  XOR2 u2 (.A(a), .B(b), .Y(r));
+endmodule
+'''
+        work = Workspace(self, netlist, allowed=("MO_THREE",))
+        self.addCleanup(work.close)
+        work.data["scope"]["maxOutputs"] = 3
+        work.data["targets"] = [{
+            "module": "top", "instances": ["u0", "u1", "u2"],
+            "expectedBoundaryInputs": ["a", "b"],
+            "expectedBoundaryOutputs": ["p", "q", "r"],
+        }]
+        result = work.write()
+        self.assertEqual(result["status"], "succeeded")
+        row = result["selectedReplacements"][0]
+        self.assertEqual(row["master"], "MO_THREE")
+        self.assertEqual(len(row["outputPinToNet"]), 3)
+        self.assertEqual(row["windowProof"]["assignments"], 4)
 
     def test_input_hash_drift_refuses_before_parsing(self):
         work = Workspace(self, HA, operation="discover")

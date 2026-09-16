@@ -88,8 +88,13 @@ def _validate_request(request, request_path):
     if request.get("action") not in ("analyze", "rewrite"):
         raise ResynthesisError("invalid-request", "action must be analyze or rewrite")
     scope = request.get("scope") or {}
-    if int(scope.get("maxInputs", 3)) > 3 or int(scope.get("maxOutputs", 2)) > 2:
-        raise ResynthesisError("unsupported-scope", "POC supports at most 3 inputs and 2 outputs")
+    max_inputs = int(scope.get("maxInputs", 3))
+    max_outputs = int(scope.get("maxOutputs", 2))
+    if max_inputs > 3 or max_outputs > (3 if request.get("operation") == "directed" else 2):
+        raise ResynthesisError(
+            "unsupported-scope",
+            "POC supports at most 3 inputs and 2 discovered or 3 directed outputs",
+        )
     for required in ("preserveRegisters", "preservePorts", "preserveHierarchy"):
         if scope.get(required) is not True:
             raise ResynthesisError("unsupported-scope", "%s must be true" % required)
@@ -245,7 +250,7 @@ def _match_master(cells, allowed, boundary_inputs, boundary_outputs, observed_ta
         cell = cells.get(name)
         if cell is None or cell.is_seq or len(cell.outputs) != len(boundary_outputs):
             continue
-        if len(cell.inputs) != len(boundary_inputs) or len(cell.outputs) > 2:
+        if len(cell.inputs) != len(boundary_inputs) or len(cell.outputs) > 3:
             continue
         for input_nets in itertools.permutations(boundary_inputs):
             pin_to_net = dict(zip(cell.inputs, input_nets))
@@ -272,7 +277,10 @@ def _opportunity_id(module, instances, master, inputs, outputs):
     return "mo-" + hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
-def _make_opportunity(module, instances, graph, cells, allowed, expected_inputs=None, expected_outputs=None, top_outputs=()):
+def _make_opportunity(
+    module, instances, graph, cells, allowed, expected_inputs=None,
+    expected_outputs=None, top_outputs=(), maximum_outputs=2,
+):
     missing = sorted(set(instances) - set(graph.instances))
     if missing:
         raise ResynthesisError("target-instance-missing", "target instances absent", {"instances": missing})
@@ -287,9 +295,10 @@ def _make_opportunity(module, instances, graph, cells, allowed, expected_inputs=
             "target-boundary-mismatch", "target output boundary differs from request",
             {"expected": list(expected_outputs), "actual": list(boundary_outputs)},
         )
-    if len(boundary_inputs) > 3 or not (1 <= len(boundary_outputs) <= 2):
+    if len(boundary_inputs) > 3 or not (1 <= len(boundary_outputs) <= maximum_outputs):
         raise ResynthesisError(
-            "target-boundary-unsupported", "target must have <=3 inputs and 1 or 2 outputs",
+            "target-boundary-unsupported",
+            "target must have <=3 inputs and no more than %d outputs" % maximum_outputs,
             {"inputs": list(boundary_inputs), "outputs": list(boundary_outputs)},
         )
     source = [graph.instances[name] for name in sorted(instances)]
@@ -330,6 +339,7 @@ def _make_opportunity(module, instances, graph, cells, allowed, expected_inputs=
 
 def _directed(request, graphs, cells, allowed, module_outputs):
     opportunities = []
+    maximum_outputs = int((request.get("scope") or {}).get("maxOutputs", 2))
     for target in request.get("targets", ()):
         module = target.get("module")
         if module not in graphs:
@@ -339,6 +349,7 @@ def _directed(request, graphs, cells, allowed, module_outputs):
             tuple(sorted(target.get("expectedBoundaryInputs") or ())),
             tuple(sorted(target.get("expectedBoundaryOutputs") or ())),
             module_outputs[module],
+            maximum_outputs,
         ))
     return opportunities, {"cuts": 0, "leafBuckets": 0, "hashHits": 0, "pairChecks": 0, "bucketOverflows": []}
 

@@ -8,11 +8,15 @@ This directory is the isolated logical-ECO POC owned by the
 ```
 
 The Python service reads a hash-bound structural netlist and Liberty, builds a
-bounded three-input/two-output cut index, joins only vector functions admitted
+bounded three-input/two-output discovery index, joins only vector functions admitted
 by the allowed Library masters, selects disjoint windows, emits a reversible
 structural ECO, proves each window exhaustively, and requires Yosys top
 equivalence before publishing a changed netlist. Analysis may run without
 Yosys. A changed rewrite fails closed when Yosys is absent or inconclusive.
+Directed targets may carry three outputs; all outputs share one input
+permutation and are proved as one vector before rewrite. Whole-network
+three-output discovery remains outside pinned mockturtle and is supplied by the
+Pack's bounded research miner.
 The proof top and ECO subject module are independent: a leaf such as
 `aes_sbox_0` can be rewritten while equivalence is checked from
 `aes_cipher_top` without flattening or renaming the delivered hierarchy.
