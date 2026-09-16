@@ -246,7 +246,13 @@ export function FabricCanvas({
   const onPointerDown = (event: PointerEvent<SVGSVGElement>): void => {
     if (insideCard(event.target)) return;
     pressTarget.current = event.target;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // Capture only a press that began on the canvas background itself. Capturing a press that began
+    // on a node's own hit rect would retarget its `pointerup` to this `<svg>` — the browser then
+    // synthesises the resulting `click` against the nearest common ancestor of the (uncaptured)
+    // pointerdown target and the (retargeted) pointerup target, which is the `<svg>`, and the node's
+    // own `onClick` never fires. A background press still needs capture: dragging to pan must keep
+    // tracking this pointer even once it leaves the svg's own bounds.
+    if (event.target === event.currentTarget) event.currentTarget.setPointerCapture(event.pointerId);
     moved.current = false;
     dragging.current = { x: event.clientX, y: event.clientY, tx: transform.tx, ty: transform.ty };
   };
