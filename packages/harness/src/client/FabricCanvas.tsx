@@ -3,12 +3,12 @@
 // every node at its own `x`/`y`), the Goal roundel, and the attention strip above it all. Nothing
 // here computes a coordinate; `canvas-layout.ts` already has.
 import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
-import { fitToWidth, labelsVisibleAt, PITCH } from '../canvas-layout.js';
+import { fitToWidth, labelsVisibleAt } from '../canvas-layout.js';
 import type { CanvasScene, Frame, PlacedEdge } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import { goalSaid, sealSaid } from '../card-labels.js';
 import type { RunView } from '../remote.js';
-import { FabricNode, HATCH_PATTERN_ID, KindOutline } from './FabricNode.js';
+import { FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
 import { Glyph } from './glyphs.js';
 
 export interface FabricCanvasProps {
@@ -102,6 +102,9 @@ export function FabricCanvas({
   const litSeen = useRef<Set<string>>(new Set());
   const lastGeneration = useRef<number>();
   const [revisitPulseKey, setRevisitPulseKey] = useState(0);
+  // True while the camera is jumping to its initial fit — suppresses `.hima-canvas-transform`'s own
+  // eased transition for that one jump, which has nothing sensible to ease from.
+  const [suppressTransition, setSuppressTransition] = useState(true);
 
   const motionOff = reducedMotion || stale;
 
@@ -146,16 +149,24 @@ export function FabricCanvas({
     if (!measured.current) return;
     if (fittedFor.current !== runId) {
       fittedFor.current = runId;
+      setSuppressTransition(true);
+      // Labels must be visible the moment the canvas opens (`labelsVisibleAt(0.6) === true`, the
+      // floor below which Task 5's own labels-hidden rule kicks in) — a wide scene fitted any
+      // smaller would open with a screen of unreadable shapes, which is worse than a scene that
+      // does not fully fit. So the initial view floors at 0.6 rather than the user's own 0.4 zoom
+      // floor, and always centres on the node a person actually wants to see — the running one, or
+      // the reference graph's own entry node — rather than `fitToWidth`'s own left-anchored corner.
       const fit = fitToWidth(scene, viewport);
-      const scale = clampScale(fit.scale);
-      if (scale === fit.scale) { setTransform(fit); return; }
-      // The fit's own scale fell outside 0.4..2.0 (a wide scene, a narrow pane) and was clamped —
-      // fitting the whole width at that scale is no longer possible, so centre on the node a person
-      // actually wants to see instead: the running one, or the reference graph's own entry node.
+      const scale = Math.min(2, Math.max(0.6, fit.scale));
       const target = currentNode ?? scene.nodes.find((node) => node.id === entryNodeId) ?? scene.nodes[0];
       setTransform(target === undefined
-        ? { scale, tx: 16, ty: 16 }
+        ? { scale, tx: fit.tx, ty: fit.ty }
         : { scale, tx: viewport.width / 2 - target.x * scale, ty: viewport.height / 2 - target.y * scale });
+      // This first jump must not animate (there is nothing to ease from — the placeholder transform
+      // was never on screen); the *next* transform change (a follow, a manual zoom) should. Waiting
+      // two frames lets the browser actually paint the fitted transform before the transition comes
+      // back on, so re-enabling it never catches this jump mid-flight.
+      requestAnimationFrame(() => requestAnimationFrame(() => setSuppressTransition(false)));
       return;
     }
     if (currentNode === undefined) return;
@@ -260,18 +271,27 @@ export function FabricCanvas({
               <line x1={0} y1={0} x2={0} y2={6} className="hima-node-hatch-line" />
             </pattern>
           </defs>
-          <g className={`hima-canvas-transform${motionOff ? ' hima-canvas-transform-still' : ''}`} transform={`translate(${transform.tx},${transform.ty}) scale(${transform.scale})`}>
+          <g className={`hima-canvas-transform${motionOff || suppressTransition ? ' hima-canvas-transform-still' : ''}`} transform={`translate(${transform.tx},${transform.ty}) scale(${transform.scale})`}>
             {scene.frames.map((frame) => <FrameBox key={frame.id} frame={frame} />)}
             {scene.edges.map((edge, index) => {
-              const firstLit = edge.lit && !litSeen.current.has(edgeKey(edge));
+              // A stale/reduced-motion canvas plays no animation at all — including the "first
+              // time lit" one-shot, which would otherwise still fire from a poll that only just
+              // caught up with a state the Run reached while motion was off.
+              const firstLit = !motionOff && edge.lit && !litSeen.current.has(edgeKey(edge));
               const pulse = edge.kind === 'revisit' && !motionOff;
-              return <Edge key={edge.kind === 'revisit' ? `revisit-${String(revisitPulseKey)}` : `${edge.from}-${edge.to}-${edge.kind}-${String(index)}`} edge={edge} firstLit={firstLit} pulse={pulse} />;
+              // A scene can hold more than one revisit edge at once (an open Loop's own revisit,
+              // beside the main spine's) — the pulse-driven remount key must still be unique per
+              // edge, or two revisit edges collide on the same key and React drops one.
+              const key = edge.kind === 'revisit' ? `revisit-${edge.from}-${edge.to}-${String(revisitPulseKey)}` : `${edge.from}-${edge.to}-${edge.kind}-${String(index)}`;
+              return <Edge key={key} edge={edge} firstLit={firstLit} pulse={pulse} />;
             })}
             {forkBranches.map((branch) => {
               const head = branch.nodes[0]?.nodeId;
               const node = head === undefined ? undefined : scene.nodes.find((placed) => placed.id === head);
               if (node === undefined) return null;
-              return <text key={branch.id} className="hima-branch-label" x={node.x - PITCH / 2} y={node.y + 4} textAnchor="middle">{branch.id}</text>;
+              // Under the branch's own first node — the mockup's own placement — not on the fork's
+              // incoming edge, which the node's own id/caption already sit close beside.
+              return <text key={branch.id} className="hima-branch-label" x={node.x} y={node.y + 46} textAnchor="middle">{branch.id}</text>;
             })}
             {scene.nodes.map((node) => (
               <FabricNode key={`${node.frame ?? ''}/${node.id}`} node={node} runId={runId} labelsVisible={labelsVisible}
@@ -289,7 +309,7 @@ export function FabricCanvas({
                   <circle r={22} className="hima-goal-roundel" />
                   <circle r={5} className="hima-goal-mark" />
                   <circle r={1.5} className="hima-goal-mark-dot" />
-                  {goalText === '' ? null : <text className="hima-goal-label" y={40} textAnchor="middle">{goalText}</text>}
+                  {goalText === '' ? null : <text className="hima-goal-label" y={40} textAnchor="middle">{truncate(goalText, 18)}<title>{goalText}</title></text>}
                 </>
               )}
             </g>

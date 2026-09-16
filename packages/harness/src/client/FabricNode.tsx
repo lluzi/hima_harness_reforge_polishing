@@ -24,9 +24,11 @@ const LABEL_CHAR_WIDTH_PX = 6.5;
 const LABEL_PADDING_PX = 8;
 const LABEL_MAX_CHARS = Math.floor((PITCH - LABEL_PADDING_PX) / LABEL_CHAR_WIDTH_PX);
 
-/** A caption or id shown at a glance, one line, ellipsized rather than wrapped; the full text always
- *  travels in a `<title>` so a person can still read it by hovering. */
-function truncate(text: string, max = LABEL_MAX_CHARS): string {
+/** A caption, id or goal word shown at a glance, one line, ellipsized rather than wrapped; the full
+ *  text always travels in a `<title>` so a person can still read it by hovering. Exported for
+ *  `FabricCanvas`'s own Goal roundel label, which reads at the same 13 px font and must fit inside
+ *  one node's own pitch exactly as a node's id or caption does. */
+export function truncate(text: string, max = LABEL_MAX_CHARS): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
@@ -155,7 +157,6 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
       data-hima-state-state={node.state}
       data-hima-state-current={String(node.current)}
       data-hima-state-selected={String(selected)}
-      data-hima-control={`node-${node.id}`}
       className={`hima-node hima-node-${node.kind} hima-node-state-${node.state}${node.current ? ' hima-node-current' : ''}${node.state === 'cancelled' ? ' hima-node-faded' : ''}${selected ? ' hima-node-selected' : ''}`}
       transform={`translate(${node.x},${node.y})`}
       role="button"
@@ -163,6 +164,14 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
       onClick={() => onSelect(node.id)}
       onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(node.id); } }}
     >
+      {/* A driver's own click lands at the centre of the marked element's bounding box — which for
+          this `<g>` includes the label text below the shape, so that centre can fall in the empty
+          gap where an SVG group paints nothing. This transparent rect is the node's own square hit
+          area (NODE units on each side), first so later siblings (the ring, the shape itself) still
+          paint over it, and it is what actually carries `data-hima-control`: the click marker and
+          the node's own paint area are the same rectangle, so a driver's centre-of-bounding-box
+          click always lands on it. */}
+      <rect data-hima-control={`node-${node.id}`} x={-HALF} y={-HALF} width={NODE} height={NODE} fill="transparent" pointerEvents="all" />
       {node.current ? <CurrentRing node={node} /> : null}
       <NodeShape node={node} />
       <StateGlyph node={node} motionOff={reducedMotion} />

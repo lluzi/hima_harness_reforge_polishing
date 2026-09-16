@@ -357,7 +357,7 @@ export function sealSaid(status: RunStatus, endedBy: RunMeters['endedBy'] | unde
  * this cannot name — a kind added to the ledger this build does not know — says nothing rather than
  * guessing at one of the others.
  */
-export function nodeCaption(node: PackNode): string | undefined {
+function nodeCaptionOf(node: PackNode): string | undefined {
   switch (node.kind) {
     case 'act': return node.parameters.tool ?? node.parameters.workshop ?? node.parameters.observes;
     case 'judge': return `${String(node.parameters.rules.length)} rules`;
@@ -368,6 +368,14 @@ export function nodeCaption(node: PackNode): string | undefined {
     case 'wait': return node.parameters.blocker;
     default: { const exhaustive: never = node; void exhaustive; return undefined; }
   }
+}
+
+export function nodeCaption(node: PackNode): string | undefined {
+  const caption = nodeCaptionOf(node);
+  // A pack author sometimes names a tool, workshop or output after the node itself (`bind-inputs`
+  // binding its own id) — a caption that only repeats the id a person just read above it says
+  // nothing a second line should, so it says nothing at all rather than an echo.
+  return caption === node.id ? undefined : caption;
 }
 
 /**

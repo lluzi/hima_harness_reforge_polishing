@@ -163,3 +163,25 @@ test('goalSaid states a goal in the pack\'s own words, falling back to raw names
   assert.equal(goalSaid({ target_period_ns: 2.3 }, { goal: { target_period_ns: { label: 'clock period', unit: 'ns' } } } as never), 'clock period 2.3 ns');
   assert.equal(goalSaid({ target_period_ns: 2.3 }, undefined), 'target_period_ns 2.3');
 });
+
+test('a node reached only by dynamic routing (no static incoming edge, not the entry) hangs at rank 0.5 rather than landing on the entry node', () => {
+  const graph: LayoutGraph = {
+    entry: 'a',
+    nodes: [node('a'), node('b'), node('w', 'wait')],
+    edges: [{ from: 'a', to: 'b' }, { from: 'w', to: 'b' }],
+  };
+  const scene = layoutCanvas(graph);
+  const a = scene.nodes.find((n) => n.id === 'a')!;
+  const w = scene.nodes.find((n) => n.id === 'w')!;
+  const b = scene.nodes.find((n) => n.id === 'b')!;
+  assert.equal(w.rank, 0.5);
+  assert.equal(w.row, 1);
+  assert.equal(b.rank, 1.5);
+  const seen = new Set<string>();
+  for (const placed of scene.nodes) {
+    const key = `${placed.x},${placed.y}`;
+    assert.ok(!seen.has(key), `two nodes share the pixels at ${key}`);
+    seen.add(key);
+  }
+  assert.notEqual(`${a.x},${a.y}`, `${w.x},${w.y}`, 'the entry and the dynamically-routed node must not share pixels');
+});

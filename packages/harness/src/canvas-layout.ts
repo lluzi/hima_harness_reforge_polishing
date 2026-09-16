@@ -104,10 +104,21 @@ export const PITCH = 90, ROW = 96, NODE = 36, X0 = 64, PAD_Y = 72;
 // own subgraph — "laid out by the same rules" (rules 6–7) means this pair of functions, run again on
 // the nested subgraph's own nodes and edges.
 
-/** A node whose only (non-revisit) incoming edges are all outcome `FAIL` or `UNDETERMINED` — rule 2's
- * "hangs one row down at a half rank" case. A node with no incoming edges (the entry) is never one:
- * `every` on an empty list would otherwise vacuously call it one. */
-function hangNodeIds(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[]): Set<string> {
+/** A node that hangs one row down at a half rank (rule 2) — two cases, both places a node the main
+ * spine's own Kahn walk would otherwise never reach in a sensible place:
+ *
+ * - whose only (non-revisit) incoming edges are all outcome `FAIL` or `UNDETERMINED`; or
+ * - that has *no* non-revisit incoming edge at all, and is not the entry — a node HimaFabric reaches
+ *   only through its own dynamic routing (a Hard blocker's `wait` node, routed to by the engine
+ *   itself rather than a static edge a pack author drew) and never through a graph edge. Without this
+ *   case such a node has no predecessor at all, so the ordinary Kahn pass (rule 1) gives it rank 0 —
+ *   the entry node's own rank — and the two land on the same pixels.
+ *
+ * `entry` is excluded explicitly (rather than by the vacuous truth of `every` on an empty incoming
+ * list, which the first case alone used to rely on): the entry has no incoming edge either, and is
+ * never hung.
+ */
+function hangNodeIds(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], entry: string): Set<string> {
   const incomingByTarget = new Map<string, LayoutEdge[]>();
   for (const edge of edges) {
     if (edge.revisit) continue;
@@ -117,8 +128,9 @@ function hangNodeIds(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[])
   }
   const hang = new Set<string>();
   for (const node of nodes) {
+    if (node.id === entry) continue;
     const incoming = incomingByTarget.get(node.id) ?? [];
-    if (incoming.length > 0 && incoming.every((edge) => edge.outcome === 'FAIL' || edge.outcome === 'UNDETERMINED')) hang.add(node.id);
+    if (incoming.length === 0 || incoming.every((edge) => edge.outcome === 'FAIL' || edge.outcome === 'UNDETERMINED')) hang.add(node.id);
   }
   return hang;
 }
@@ -325,7 +337,7 @@ function boundingFrame(
  * accepted growth's Frame under its parent node; rule 8 marks a revision's nodes; rule 9 places the
  * Goal and sizes the scene, including the extra height an open loop or a growth adds below the spine. */
 export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasScene {
-  const hang = hangNodeIds(graph.nodes, graph.edges);
+  const hang = hangNodeIds(graph.nodes, graph.edges, graph.entry);
   const rankMap = computeRank(graph.nodes, graph.edges, hang);
   const rowMap = computeRow(graph.nodes, graph.edges, hang, facts?.fork);
 
@@ -379,7 +391,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
    * every node here is shifted by whatever earlier open loop already pushed the spine down by (finding
    * 7, via `shiftBefore`) instead of drifting from the main spine's own y. */
   function placeSubgraph(subgraph: LayoutSubgraph, baseRank: number, baseRow: number, frameId: string, generation: number | undefined) {
-    const localHang = hangNodeIds(subgraph.nodes, subgraph.edges);
+    const localHang = hangNodeIds(subgraph.nodes, subgraph.edges, subgraph.entry);
     const localRank = computeRank(subgraph.nodes, subgraph.edges, localHang);
     const localRow = computeRow(subgraph.nodes, subgraph.edges, localHang, undefined);
     const rankOf = (id: string) => baseRank + (localRank.get(id) ?? 0);

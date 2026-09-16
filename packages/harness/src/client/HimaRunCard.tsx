@@ -477,7 +477,7 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
       </div>
       {!owner ? <span style={muted}>Viewing this Run does not transfer execution ownership. You may pause or stop it as a human; enter its owning conversation to continue or perform node work.</span> : null}
       {acting.notice ? <span role='status' data-hima-region='control-notification'>{acting.notice}</span> : null}
-      {!showDiagnostics ? null : Object.values(control.executions).map((execution) => <div key={execution.id} data-hima-region='node-execution' data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>
+      {Object.values(control.executions).map((execution) => <div key={execution.id} data-hima-region='node-execution' data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>
         {execution.nodeId} · {execution.phase} · generation {execution.generation} · attempt {execution.attempt}<br /><span style={mono}>{execution.id}</span>
       </div>)}
       <span data-hima-region='run-error' style={{ color: bad }}>{acting.refusal?.message ?? ''}</span>
