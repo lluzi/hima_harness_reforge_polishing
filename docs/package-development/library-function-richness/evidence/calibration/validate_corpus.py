@@ -129,7 +129,31 @@ def validate_manifest(document: Mapping[str, Any]) -> None:
     _require({trial.get("id") for trial in trials} == REQUIRED_TRIALS, "trial identities")
     shared = document.get("sharedIdentity")
     _require(isinstance(shared, dict), "sharedIdentity")
+    _require(shared.get("designTop") == design["top"], "shared design top")
     _require(shared.get("rtlSetSha256") == rtl_set_identity(rtl), "RTL set identity")
+    _require(
+        constraints["source"]["sha256"] == constraints["equivalentSource"]["sha256"]
+        == shared.get("constraintsSha256"),
+        "shared constraints identity",
+    )
+    _require(
+        shared.get("foundryLibertySha256") == libraries["foundryLiberty"]["sha256"],
+        "shared foundry Liberty identity",
+    )
+    _require(
+        shared.get("foundryDbSha256") == libraries["foundryDb"]["sha256"],
+        "shared foundry DB identity",
+    )
+    _require(
+        shared.get("predicted47CellLibertySha256")
+        == libraries["predicted47CellLiberty"]["sha256"],
+        "shared predicted Liberty identity",
+    )
+    _require(shared.get("clockPeriodNs") == summary["clockPeriodNs"], "shared clock period")
+    _require(
+        shared.get("dcUncertaintyNs") == summary["dcUncertaintyNs"],
+        "shared DC uncertainty",
+    )
     for trial in trials:
         for key, expected in shared.items():
             _require(trial.get("sharedIdentity", {}).get(key) == expected, f"{trial['id']}: {key}")

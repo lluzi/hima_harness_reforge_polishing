@@ -55,6 +55,25 @@ class CalibrationCorpusTest(unittest.TestCase):
         with self.assertRaisesRegex(CorpusError, "evidence kinds"):
             validate_manifest(damaged)
 
+    def test_shared_identity_is_derived_from_constraints_and_libraries(self) -> None:
+        mutations = (
+            ("constraints source", ("constraints", "source", "sha256"), "shared constraints identity"),
+            ("constraints equivalent", ("constraints", "equivalentSource", "sha256"), "shared constraints identity"),
+            ("foundry Liberty", ("libraries", "foundryLiberty", "sha256"), "shared foundry Liberty identity"),
+            ("foundry DB", ("libraries", "foundryDb", "sha256"), "shared foundry DB identity"),
+            ("predicted Liberty", ("libraries", "predicted47CellLiberty", "sha256"), "shared predicted Liberty identity"),
+        )
+        for label, path, message in mutations:
+            with self.subTest(label=label):
+                damaged = copy.deepcopy(self.document)
+                target = damaged
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = "f" * 64
+                damaged["corpusIdentitySha256"] = canonical_identity(damaged)
+                with self.assertRaisesRegex(CorpusError, message):
+                    validate_manifest(damaged)
+
     def test_local_verifier_fails_closed_when_retained_index_is_absent(self) -> None:
         with self.assertRaisesRegex(CorpusError, "retained index is unavailable"):
             verify_local_retained(self.document, Path("/definitely-not-the-repository"))

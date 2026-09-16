@@ -40,12 +40,12 @@ test('LFR cumulative Library appends immutable shards and projects only new func
   t.after(() => rm(root, { recursive: true, force: true }));
   const first = request('CAND_FIRST', 'sha256:function-a');
   const firstAlias = request('CAND_ALIAS', 'sha256:function-a');
-  const second = request('CAND_SECOND', 'sha256:function-b');
+  const second = request('CAND_FIRST', 'sha256:function-b');
   const code = `import hashlib,json,sys\nfrom pathlib import Path\nsys.path.insert(0,sys.argv[1])\nfrom _generation_projection import empty_cumulative_manifest,append_cumulative_shard,delta_generation_requests,validate_cumulative_manifest\nd=json.load(sys.stdin); root=Path(sys.argv[2])\nmanifest=empty_cumulative_manifest({'source':'fixture://foundry.lib','bytes':17,'sha256':'a'*64})\nmanifest=append_cumulative_shard(root,manifest,'0001',[d['first']])\nold=(root/'shards'/'0001'/'manifest.json').read_bytes(); old_sha=hashlib.sha256(old).hexdigest()\ndelta=delta_generation_requests({'generation_requests':[d['firstAlias'],d['second']]},manifest)\nmanifest=append_cumulative_shard(root,manifest,'0002',delta)\nvalidate_cumulative_manifest(manifest)\nprint(json.dumps({'manifest':manifest,'delta':[r['candidate_id'] for r in delta],'oldSha':old_sha,'oldShaAfter':hashlib.sha256((root/'shards'/'0001'/'manifest.json').read_bytes()).hexdigest()},sort_keys=True))`;
   const ran = runPython(code, { first, firstAlias, second }, [root]);
   assert.equal(ran.status, 0, ran.stderr);
   const result = JSON.parse(ran.stdout);
-  assert.deepEqual(result.delta, ['CAND_SECOND']);
+  assert.deepEqual(result.delta, ['CAND_FIRST']);
   assert.equal(result.oldShaAfter, result.oldSha, 'adding round 2 must not rewrite shard 0001');
   assert.deepEqual(result.manifest.shards.map((row: { id: string }) => row.id), ['0001', '0002']);
   assert.equal(result.manifest.functions.length, 2);
@@ -54,6 +54,25 @@ test('LFR cumulative Library appends immutable shards and projects only new func
   const shard = JSON.parse(await readFile(path.join(root, 'shards/0002/manifest.json'), 'utf8'));
   assert.equal(shard.schema, 'custom-cell-library-shard/1');
   assert.equal(shard.functionKeys.length, 1);
+});
+
+test('LFR cumulative Library refuses to append after a retained shard artifact changes', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lfr-library-tamper-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const first = request('CAND_FIRST', 'sha256:function-a');
+  const second = request('CAND_SECOND', 'sha256:function-b');
+  const code = `import json,sys\nfrom pathlib import Path\nsys.path.insert(0,sys.argv[1])\nfrom _generation_projection import empty_cumulative_manifest,append_cumulative_shard\nd=json.load(sys.stdin); root=Path(sys.argv[2])\nmanifest=empty_cumulative_manifest({'source':'fixture://foundry.lib','bytes':17,'sha256':'a'*64})\nmanifest=append_cumulative_shard(root,manifest,'0001',[d['first']])\n(root/'shards'/'0001'/'functions.json').write_text('tampered\\n')\nappend_cumulative_shard(root,manifest,'0002',[d['second']])`;
+  const rejected = runPython(code, { first, second }, [root]);
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /shard 0001 artifact functions\.json hash mismatch/);
+  await assert.rejects(readFile(path.join(root, 'shards/0002/manifest.json')));
+
+  const manifestCode = `import json,sys\nfrom pathlib import Path\nsys.path.insert(0,sys.argv[1])\nfrom _generation_projection import empty_cumulative_manifest,append_cumulative_shard\nd=json.load(sys.stdin); root=Path(sys.argv[2])\nmanifest=empty_cumulative_manifest({'source':'fixture://foundry.lib','bytes':17,'sha256':'a'*64})\nmanifest=append_cumulative_shard(root,manifest,'0001',[d['first']])\npath=root/'shards'/'0001'/'manifest.json'; path.write_text(path.read_text()+' ')\nappend_cumulative_shard(root,manifest,'0002',[d['second']])`;
+  const secondRoot = await mkdtemp(path.join(os.tmpdir(), 'lfr-library-manifest-tamper-'));
+  t.after(() => rm(secondRoot, { recursive: true, force: true }));
+  const manifestRejected = runPython(manifestCode, { first, second }, [secondRoot]);
+  assert.notEqual(manifestRejected.status, 0);
+  assert.match(manifestRejected.stderr, /shard 0001 manifest hash mismatch/);
 });
 
 test('LFR function identity keeps physical drive variants distinct and rejects duplicates in one delta', () => {

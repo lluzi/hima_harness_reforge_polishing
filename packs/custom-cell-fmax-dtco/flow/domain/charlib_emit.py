@@ -75,6 +75,7 @@ for _p in _os.environ.get("CCFMAX_CHARMODEL_HELPER_DIR", "").split(":"):
         sys.path.insert(0, _p)
 import estimate_lib as EL  # noqa: E402
 import mock_char as MC    # noqa: E402  parse_netlist, for the ports the model produces no arc for
+from cell_need_miner.liberty_timing import derive_timing_sense  # noqa: E402
 
 # .subckt ports that are supply nets, not signal pins. bool2cmos writes `vdd`/`gnd`; the wider set
 # is here so a netlist from another generator does not silently get its rails declared as pins.
@@ -384,10 +385,19 @@ def main():
                                          "rise_transition") if k in t)
                 if not body:
                     continue
+                if not fns.get(o):
+                    raise ValueError(
+                        "%s/%s has timing arc %s without an output Boolean function"
+                        % (name, o, arc["in_pin"])
+                    )
+                sense = derive_timing_sense(
+                    fns[o], arc["in_pin"], sorted(caps)
+                )
                 timings += ('            timing () {\n'
                             '                related_pin : "%s";\n'
+                            '                timing_sense : %s;\n'
                             '%s'
-                            '            }\n' % (arc["in_pin"], body))
+                            '            }\n' % (arc["in_pin"], sense, body))
                 pt = arc.get("power_tables") or {}
                 # %.9f, not %.6f: these entries are ~1e-3 pJ and the passive ones ~1e-4, so the
                 # delay format would round the small end of every table to zero.

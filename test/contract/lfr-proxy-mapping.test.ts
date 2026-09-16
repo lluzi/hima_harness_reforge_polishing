@@ -23,7 +23,7 @@ async function executable(file: string, source: string): Promise<string> {
   return file;
 }
 
-async function fixture(failMapping = false) {
+async function fixture(failMapping = false, hangMapping = false) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lfr-proxy-mapping-'));
   const rtl = path.join(root, 'design.sv');
   const reference = path.join(root, 'reference.lib');
@@ -32,6 +32,12 @@ async function fixture(failMapping = false) {
   const marker = path.join(root, 'mapping-invoked');
   await writeFile(rtl, 'module top(input a, input b, output y); assign y = a & b; endmodule\n');
   await writeFile(reference, `library (reference) {
+cell (BUF_X1)
+  pin (A)
+    direction : input;
+  pin (Y)
+    direction : output;
+    function : "A";
 cell (NAND2_X1)
   area : 1.0;
   pin (A)
@@ -44,6 +50,12 @@ cell (NAND2_X1)
 }
 `);
   await writeFile(augmented, `library (augmented) {
+cell (BUF_X1)
+  pin (A)
+    direction : input;
+  pin (Y)
+    direction : output;
+    function : "A";
 cell (AOI21_X2)
   area : 1.5;
   pin (A)
@@ -72,14 +84,15 @@ script=Path(sys.argv[sys.argv.index('-s')+1]).read_text()
 log=Path(sys.argv[sys.argv.index('-l')+1])
 log.write_text('complete fake mapping log\\n')
 Path(${JSON.stringify(marker)}).write_text('yes')
+${hangMapping ? "import time; time.sleep(30)" : ""}
 ${failMapping ? "raise SystemExit(9)" : ""}
 def target(prefix):
- match=re.search(prefix+r' \\{([^}]+)\\}',script,re.M)
+ match=re.search(prefix+r' "([^"]+)"',script,re.M)
  if not match: raise SystemExit('missing '+prefix)
  return Path(match.group(1))
 mapped=target(r'write_verilog -noattr -noexpr -simple-lhs')
 stat_text=target(r'tee -o')
-stat_json_matches=re.findall(r'tee -o \\{([^}]+)\\} stat(?: -json)? -liberty',script)
+stat_json_matches=re.findall(r'tee -o "([^"]+)" stat(?: -json)? -liberty',script)
 stat_text=Path(stat_json_matches[0]); stat_json=Path(stat_json_matches[1])
 augmented='augmented.lib' in script
 cell='AOI21_X2' if augmented else 'NAND2_X1'
@@ -98,6 +111,7 @@ print('UC Berkeley ABC fake')
     output_dir: outputDir,
     tools: {
       container_digest: 'sha256:' + '1'.repeat(64),
+      timeout_seconds: hangMapping ? 0.1 : 30,
       yosys: { path: yosys, sha256: await fileSha256(yosys), commit: 'fake-yosys-commit', build_flags: ['--fake'] },
       abc: { path: abc, sha256: await fileSha256(abc), commit: 'fake-abc-commit', build_flags: ['--fake'] },
     },
@@ -141,7 +155,13 @@ test('LFR mapping adapter produces repeatable paired evidence with an audited in
     profile_drift: false,
   });
   assert.equal(first.result.arms.reference.plan_sha256, first.result.arms.augmented.plan_sha256);
-  assert.equal(first.result.constraints.unsupported_constraints[0].command, 'set_false_path');
+  const referenceScript = first.result.arms.reference.artifacts
+    .find((item: any) => item.role === 'yosys_script').path;
+  assert.match(await readFile(referenceScript, 'utf8'), /^flatten$/m);
+  assert.deepEqual(first.result.constraints.unsupported_constraints.map((item: any) => item.command),
+    ['create_clock', 'set_false_path']);
+  assert.equal(first.result.constraints.sdc_coverage_complete, false);
+  assert.deepEqual(first.result.constraints.represented_sdc.map((item: any) => item.command), ['set_load']);
   assert.deepEqual(first.result.arms.reference.adoption.cell_census, { NAND2_X1: 1 });
   assert.deepEqual(first.result.arms.augmented.adoption.cell_census, { AOI21_X2: 1 });
   assert.deepEqual(first.result.arms.reference.adoption.cell_census, second.result.arms.reference.adoption.cell_census);
@@ -178,4 +198,32 @@ test('LFR mapping adapter preserves a reference tool failure and does not run an
   assert.equal(result.arms.reference.return_code, 9);
   assert.equal(result.arms.augmented, undefined);
   assert.equal(await readFile(held.marker, 'utf8'), 'yes');
+});
+
+test('LFR mapping adapter rejects a Library without the baseline buffer ABC requires', async (t) => {
+  const held = await fixture();
+  t.after(() => rm(held.root, { recursive: true, force: true }));
+  const request: any = await held.request(path.join(held.root, 'missing-buffer-run'));
+  const reference = request.libraries.reference.mapping;
+  const text = await readFile(reference, 'utf8');
+  await writeFile(reference, text.replace(/cell \(BUF_X1\)[\s\S]*?(?=cell \(NAND2_X1\))/, ''));
+  const { completed, result } = await run(request, held.root, 'missing-buffer');
+  assert.equal(completed.status, 2);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.error.code, 'invalid-request');
+  assert.match(result.error.message, /baseline buffer/);
+  await assert.rejects(readFile(held.marker));
+});
+
+test('LFR mapping adapter terminates a hung mapper and returns a structured timeout', async (t) => {
+  const held = await fixture(false, true);
+  t.after(() => rm(held.root, { recursive: true, force: true }));
+  const started = Date.now();
+  const { completed, result } = await run(
+    await held.request(path.join(held.root, 'timeout-run')), held.root, 'timeout',
+  );
+  assert.equal(completed.status, 2);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.error.code, 'mapping-timeout');
+  assert.ok(Date.now() - started < 5_000, 'the timeout must bound the whole mapper process group');
 });

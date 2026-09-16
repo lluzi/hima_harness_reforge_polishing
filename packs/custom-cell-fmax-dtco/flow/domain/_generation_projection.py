@@ -220,15 +220,17 @@ def validate_cumulative_manifest(manifest):
         if (not isinstance(key, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", key)
                 or key in keys):
             raise ValueError("Library function identities must be unique SHA-256 keys")
+        scoped_candidate_id = (row.get("shardId"), candidate_id)
         if (not isinstance(candidate_id, str) or not IDENTIFIER.fullmatch(candidate_id)
-                or candidate_id in candidate_ids):
-            raise ValueError("Library function candidate ids must be unique identifiers")
+                or scoped_candidate_id in candidate_ids):
+            raise ValueError(
+                "Library function candidate ids must be unique identifiers within a shard")
         if state not in EVIDENCE_STATES:
             raise ValueError("Library function %s has an invalid evidence state" % candidate_id)
         if row.get("shardId") not in shard_ids:
             raise ValueError("Library function %s refers to an unknown shard" % candidate_id)
         keys.add(key)
-        candidate_ids.add(candidate_id)
+        candidate_ids.add(scoped_candidate_id)
     declared = {key for shard in shards for key in shard["functionKeys"]}
     if declared != keys:
         raise ValueError("Library shard function keys disagree with function rows")
@@ -262,6 +264,52 @@ def _file_reference(path):
     return {"path": path.name, "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
 
 
+def _verify_existing_shards(root, manifest):
+    """Verify every retained shard before extending the cumulative Library."""
+    root = Path(root)
+    for shard in manifest["shards"]:
+        shard_id = shard["id"]
+        directory = root / "shards" / shard_id
+        manifest_path = directory / "manifest.json"
+        if (directory.is_symlink() or not directory.is_dir()
+                or manifest_path.is_symlink() or not manifest_path.is_file()):
+            raise ValueError("Library shard %s is unavailable or unsafe" % shard_id)
+        manifest_bytes = manifest_path.read_bytes()
+        if hashlib.sha256(manifest_bytes).hexdigest() != shard["manifestSha256"]:
+            raise ValueError("Library shard %s manifest hash mismatch" % shard_id)
+        try:
+            retained = json.loads(manifest_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("Library shard %s manifest is invalid" % shard_id) from error
+        if (not isinstance(retained, dict) or retained.get("schema") != SHARD_SCHEMA
+                or retained.get("id") != shard_id
+                or retained.get("functionKeys") != shard["functionKeys"]):
+            raise ValueError("Library shard %s manifest disagrees with cumulative state" % shard_id)
+        artifacts = retained.get("artifacts")
+        if not isinstance(artifacts, list) or not artifacts:
+            raise ValueError("Library shard %s has no artifact inventory" % shard_id)
+        names = set()
+        for reference in artifacts:
+            if not isinstance(reference, dict):
+                raise ValueError("Library shard %s has an invalid artifact reference" % shard_id)
+            name = reference.get("path")
+            size = reference.get("bytes")
+            digest = reference.get("sha256")
+            if (not isinstance(name, str) or not name or Path(name).name != name
+                    or name == "manifest.json" or name in names
+                    or isinstance(size, bool) or not isinstance(size, int) or size < 0
+                    or not isinstance(digest, str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+                raise ValueError("Library shard %s has an invalid artifact reference" % shard_id)
+            names.add(name)
+            artifact = directory / name
+            if artifact.is_symlink() or not artifact.is_file():
+                raise ValueError("Library shard %s artifact %s is unavailable or unsafe" % (shard_id, name))
+            raw = artifact.read_bytes()
+            if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
+                raise ValueError("Library shard %s artifact %s hash mismatch" % (shard_id, name))
+
+
 def append_cumulative_shard(root, manifest, shard_id, requests, artifacts=None):
     """Atomically append one immutable shard and return the updated manifest.
 
@@ -280,6 +328,7 @@ def append_cumulative_shard(root, manifest, shard_id, requests, artifacts=None):
     if not isinstance(requests, list) or not requests:
         raise ValueError("a Library shard must add at least one function")
     root = Path(root)
+    _verify_existing_shards(root, manifest)
     shards_root = root / "shards"
     final = shards_root / shard_id
     temporary = shards_root / (".%s.tmp" % shard_id)

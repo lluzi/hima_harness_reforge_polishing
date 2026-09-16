@@ -15,8 +15,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -28,7 +30,6 @@ RESULT_SCHEMA = "lfr-proxy-mapping-result/1"
 PROFILE = "lfr-yosys-abc-deterministic/1"
 _SIMPLE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 _SDC_COMMAND = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\b")
-_SUPPORTED_SDC_COMMANDS = frozenset({"create_clock", "set_driving_cell", "set_load"})
 
 
 class RequestError(ValueError):
@@ -127,6 +128,24 @@ def _library_arm(value: object, name: str) -> dict[str, object]:
         for cell, drive in variants.items()
     ):
         raise RequestError(f"libraries.{name}.drive_variants must map Cell names to strings")
+    try:
+        directory = str(Path(__file__).resolve().parent)
+        if directory not in sys.path:
+            sys.path.insert(0, directory)
+        from cell_need_miner.liberty import parse_skeleton  # type: ignore
+        cells = parse_skeleton(mapping)
+    except (OSError, ValueError, TypeError) as error:
+        raise RequestError(f"libraries.{name}.mapping cannot be parsed: {error}") from error
+    buffers = sorted(
+        cell_name for cell_name, cell in cells.items()
+        if (not cell.is_seq and len(cell.inputs) == 1 and len(cell.outputs) == 1
+            and next(iter(cell.outputs.values())) == ("var", cell.inputs[0]))
+    )
+    if not buffers:
+        raise RequestError(
+            f"libraries.{name}.mapping has no one-input non-inverting buffer; "
+            "ABC requires a baseline buffer"
+        )
     return {
         "mapping": mapping,
         "support": support,
@@ -134,6 +153,7 @@ def _library_arm(value: object, name: str) -> dict[str, object]:
             {"path": str(path), "sha256": _sha256_file(path)} for path in all_paths
         ],
         "drive_variants": dict(sorted(variants.items())),
+        "baseline_buffers": buffers,
     }
 
 
@@ -174,10 +194,38 @@ def _constraint_summary(source: Mapping[str, Any]) -> dict[str, object]:
             match = _SDC_COMMAND.match(statement)
             command = match.group(1) if match else "unparsed"
             item = {"path": str(path), "line": line, "command": command, "text": statement}
-            if command in _SUPPORTED_SDC_COMMANDS:
+            represented = False
+            reason = "the proxy does not model this SDC command"
+            if command == "set_load":
+                value = re.match(r"^\s*set_load\s+([-+0-9.eE]+)\b", statement)
+                if value:
+                    try:
+                        represented = math.isclose(float(value.group(1)), load, rel_tol=0.0, abs_tol=1e-12)
+                        reason = "SDC load disagrees with constraints.output_load"
+                    except ValueError:
+                        represented = False
+                        reason = "SDC load is not numeric"
+                else:
+                    reason = "set_load syntax is not represented by the proxy"
+            elif command == "set_driving_cell":
+                value = re.match(
+                    r"^\s*(?:-lib_cell\s+)?([A-Za-z_][A-Za-z0-9_$]*)\b",
+                    statement[len("set_driving_cell"):],
+                )
+                if value:
+                    represented = value.group(1) == driver
+                    reason = "SDC driving Cell disagrees with constraints.driving_cell"
+                else:
+                    reason = "set_driving_cell syntax is not represented by the proxy"
+            elif command == "create_clock":
+                reason = (
+                    "clock period is recorded but is not silently equated to the independent "
+                    "ABC delay target"
+                )
+            if represented:
                 observed.append(item)
             else:
-                unsupported.append(item)
+                unsupported.append({**item, "reason": reason})
     return {
         "delay_target_ps": delay,
         "output_load": load,
@@ -185,6 +233,7 @@ def _constraint_summary(source: Mapping[str, Any]) -> dict[str, object]:
         "sdc_files": [{"path": str(path), "sha256": _sha256_file(path)} for path in sdc_files],
         "represented_sdc": observed,
         "unsupported_constraints": unsupported,
+        "sdc_coverage_complete": not unsupported,
     }
 
 
@@ -216,6 +265,9 @@ def _validated_request(request: Mapping[str, object]) -> dict[str, object]:
             "yosys": _tool(tools.get("yosys"), "yosys"),
             "abc": _tool(tools.get("abc"), "abc"),
             "container_digest": container_digest,
+            "timeout_seconds": _number(
+                tools.get("timeout_seconds"), "tools.timeout_seconds", positive=True
+            ),
         },
         "libraries": {
             "reference": _library_arm(libraries.get("reference"), "reference"),
@@ -226,7 +278,11 @@ def _validated_request(request: Mapping[str, object]) -> dict[str, object]:
 
 
 def _tcl(path: object) -> str:
-    return "{" + str(path) + "}"
+    # Yosys command files do not implement Tcl brace grouping: ``{path}``
+    # reaches read_liberty as a literal filename.  Its lexer does accept
+    # double-quoted strings and backslash escapes, which JSON string encoding
+    # supplies deterministically for whitespace and other path characters.
+    return json.dumps(str(path), ensure_ascii=False)
 
 
 def _abc_script() -> str:
@@ -280,6 +336,7 @@ def _write_arm_inputs(validated: Mapping[str, object], arm: str, directory: Path
     lines.extend((
         f"hierarchy -check -top {validated['top']}",
         "proc",
+        "flatten",
         "opt_clean -purge",
         "memory_dff",
         "memory_map",
@@ -425,11 +482,26 @@ def _run_arm(validated: Mapping[str, object], arm: str, directory: Path) -> dict
     paths = _write_arm_inputs(validated, arm, directory)
     yosys = validated["tools"]["yosys"]["path"]  # type: ignore[index]
     command = [yosys, "-Q", "-T", "-l", str(paths["log"]), "-s", str(paths["yosys_script"])]
+    timed_out = False
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, check=False)
-        return_code: int | None = completed.returncode
-        stderr = completed.stderr
-        stdout = completed.stdout
+        process = subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            start_new_session=True,
+        )
+        try:
+            stdout, stderr = process.communicate(
+                timeout=float(validated["tools"]["timeout_seconds"])  # type: ignore[index]
+            )
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                stdout, stderr = process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                stdout, stderr = process.communicate()
+            stderr = (stderr or "") + "\nmapping exceeded tools.timeout_seconds"
+        return_code: int | None = process.returncode
     except OSError as error:
         return_code = None
         stderr = str(error)
@@ -454,12 +526,16 @@ def _run_arm(validated: Mapping[str, object], arm: str, directory: Path) -> dict
             _artifact(paths["log"], "yosys_log"),
         ],
     }
-    if return_code != 0 or missing:
+    if timed_out or return_code != 0 or missing:
         return {
             **base,
             "status": "failed",
             "error": {
-                "code": "mapping-tool-failed" if return_code != 0 else "mapping-artifact-missing",
+                "code": (
+                    "mapping-timeout" if timed_out else
+                    "mapping-tool-failed" if return_code != 0 else
+                    "mapping-artifact-missing"
+                ),
                 "message": f"{arm} mapping did not produce complete evidence",
                 "missing_artifacts": missing,
             },
@@ -534,7 +610,10 @@ def map_reference_and_augmented(request: Mapping[str, object]) -> dict[str, obje
             "top": validated["top"],
             "rtl": validated["rtl"],
             "libraries": {
-                arm: validated["libraries"][arm]["files"] for arm in ("reference", "augmented")  # type: ignore[index]
+                arm: {
+                    "files": validated["libraries"][arm]["files"],
+                    "baseline_buffers": validated["libraries"][arm]["baseline_buffers"],
+                } for arm in ("reference", "augmented")  # type: ignore[index]
             },
         },
         "constraints": validated["constraints"],
