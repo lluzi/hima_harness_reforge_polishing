@@ -13,6 +13,9 @@ by the allowed Library masters, selects disjoint windows, emits a reversible
 structural ECO, proves each window exhaustively, and requires Yosys top
 equivalence before publishing a changed netlist. Analysis may run without
 Yosys. A changed rewrite fails closed when Yosys is absent or inconclusive.
+The proof top and ECO subject module are independent: a leaf such as
+`aes_sbox_0` can be rewritten while equivalence is checked from
+`aes_cipher_top` without flattening or renaming the delivered hierarchy.
 
 `main.cpp` is a diagnostic against mockturtle commit
 `0886ebfdd101ce1110daf3d60b96d72edd3143ea`. It intentionally contains only the

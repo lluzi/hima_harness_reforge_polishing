@@ -1,0 +1,375 @@
+{
+  "artifacts": {
+    "cellManifestSha256": "3440e6ad8a234b29259c7ac20e41c5152855f9e3419c07ac22ff784f42699788",
+    "logicalCellFunctions": {
+      "path": "docs/package-development/library-function-richness/evidence/aes-10mo-logical-cells.lib",
+      "sha256": "12f2f2c7abbfcf9a0d3f16d118e5db3c8f1e0766b7cfb1e81fff2a5360093048"
+    },
+    "miningSha256": "0975e1b829b4331d9a51e7d1ae3628459343a8fbd5f85b0ac4b5e539bfe0ecc8",
+    "proofArtifactSha256": "6b33a9c1e85dca16ec146e6a2c5aebbd0bdbbb560c2ab0320f8c913e5365fde4",
+    "requestSha256": "f384c57f205b65f6f00429c5a3dc1e1dc91cfa982243a185334a2b15f092f66c"
+  },
+  "cells": [
+    {
+      "functions": [
+        "!A*!B + A*!B + !A*B",
+        "A*B"
+      ],
+      "inputCount": 2,
+      "name": "HMO_AES_VEC_01_D1",
+      "observedWindowCount": 41,
+      "pCanonicalTruthTables": [
+        7,
+        8
+      ],
+      "removedInstanceCount": 3,
+      "selectedBoundaryInputs": [
+        "n16",
+        "n347"
+      ],
+      "selectedBoundaryOutputs": [
+        "n101",
+        "n279"
+      ],
+      "selectedSourceInstances": [
+        "U121",
+        "U122",
+        "U224"
+      ],
+      "windowProofStatus": "proved"
+    },
+    {
+      "functions": [
+        "!A*!B",
+        "A*!B + !A*B + A*B"
+      ],
+      "inputCount": 2,
+      "name": "HMO_AES_VEC_02_D1",
+      "observedWindowCount": 25,
+      "pCanonicalTruthTables": [
+        1,
+        14
+      ],
+      "removedInstanceCount": 2,
+      "selectedBoundaryInputs": [
+        "n143",
+        "n30"
+      ],
+      "selectedBoundaryOutputs": [
+        "n210",
+        "n211"
+      ],
+      "selectedSourceInstances": [
+        "U106",
+        "U385"
+      ],
+      "windowProofStatus": "proved"
+    },
+    {
+      "functions": [
+        "A*!B",
+        "!A*!B + !A*B + A*B"
+      ],
+      "inputCount": 2,
+      "name": "HMO_AES_VEC_03_D1",
+      "observedWindowCount": 18,
+      "pCanonicalTruthTables": [
+        2,
+        13
+      ],
+      "removedInstanceCount": 3,
+      "selectedBoundaryInputs": [
+        "a[2]",
+        "n12"
+      ],
+      "selectedBoundaryOutputs": [
+        "n103",
+        "n348"
+      ],
+      "selectedSourceInstances": [
+        "U111",
+        "U25",
+        "U66"
+      ],
+      "windowProofStatus": "proved"
+    },
+    {
+      "functions": [
+        "!A*!B",
+        "!A*!B + A*!B + A*B"
+      ],
+      "inputCount": 2,
+      "name": "HMO_AES_VEC_04_D1",
+      "observedWindowCount": 6,
+      "pCanonicalTruthTables": [
+        1,
+        11
+      ],
+      "removedInstanceCount": 2,
+      "selectedBoundaryInputs": [
+        "a[1]",
+        "a[2]"
+      ],
+      "selectedBoundaryOutputs": [
+        "n14",
+        "n3"
+      ],
+      "selectedSourceInstances": [
+        "U103",
+        "U125"
+      ],
+      "windowProofStatus": "proved"
+    },
+    {
+      "functions": [
+        "!A*!B + A*!B + !A*B",
+        "!A*!B + A*!B + A*B"
+      ],
+      "inputCount": 2,
+      "name": "HMO_AES_VEC_05_D1",
+      "observedWindowCount": 6,
+      "pCanonicalTruthTables": [
+        7,
+        11
+      ],
+      "removedInstanceCount": 2,
+      "selectedBoundaryInputs": [
+        "a[0]",
+        "a[1]"
+      ],
+      "selectedBoundaryOutputs": [
+        "n12",
+        "n124"
+      ],
+      "selectedSourceInstances": [
+        "U117",
+        "U27"
+      ],
+      "windowProofStatus": "proved"
+    },
+    {
+      "functions": [
+        "A*!B*!C",
+        "!A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C"
+      ],
+      "inputCount": 3,
+      "name": "HMO_AES_VEC_06_D1",
+      "observedWindowCount": 2,
+      "pCanonicalTruthTables": [
+        2,
+        253
+      ],
+      "removedInstanceCount": 3,
+      "selectedBoundaryInputs": [
+        "n445",
+        "n64",
+        "n65"
+      ],
+      "selectedBoundaryOutputs": [
+        "n416",
+        "n461"
+      ],
+      "selectedSourceInstances": [
+        "U242",
+        "U243",
+        "U63"
+      ],
+      "windowProofStatus": "proved"
+    },
+    {
+      "functions": [
+        "!A*!B",
+        "!A*!B + A*!B + !A*B"
+      ],
+      "inputCount": 2,
+      "name": "HMO_AES_VEC_07_D1",
+      "observedWindowCount": 3,
+      "pCanonicalTruthTables": [
+        1,
+        7
+      ],
+      "removedInstanceCount": 2,
+      "selectedBoundaryInputs": [
+        "a[6]",
+        "a[7]"
+      ],
+      "selectedBoundaryOutputs": [
+        "n472",
+        "n484"
+      ],
+      "selectedSourceInstances": [
+        "U163",
+        "U266"
+      ],
+      "windowProofStatus": "proved"
+    },
+    {
+      "functions": [
+        "!A*!B*!C",
+        "A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C"
+      ],
+      "inputCount": 3,
+      "name": "HMO_AES_VEC_08_D1",
+      "observedWindowCount": 3,
+      "pCanonicalTruthTables": [
+        1,
+        254
+      ],
+      "removedInstanceCount": 2,
+      "selectedBoundaryInputs": [
+        "n279",
+        "n383",
+        "n394"
+      ],
+      "selectedBoundaryOutputs": [
+        "n175",
+        "n9"
+      ],
+      "selectedSourceInstances": [
+        "U123",
+        "U124"
+      ],
+      "windowProofStatus": "proved"
+    },
+    {
+      "functions": [
+        "A*!B",
+        "!A*!B + A*!B + !A*B"
+      ],
+      "inputCount": 2,
+      "name": "HMO_AES_VEC_09_D1",
+      "observedWindowCount": 2,
+      "pCanonicalTruthTables": [
+        2,
+        7
+      ],
+      "removedInstanceCount": 2,
+      "selectedBoundaryInputs": [
+        "a[0]",
+        "n3"
+      ],
+      "selectedBoundaryOutputs": [
+        "n351",
+        "n424"
+      ],
+      "selectedSourceInstances": [
+        "U16",
+        "U57"
+      ],
+      "windowProofStatus": "proved"
+    },
+    {
+      "functions": [
+        "!A*!B + A*!B + A*B",
+        "!A*!B + !A*B + A*B"
+      ],
+      "inputCount": 2,
+      "name": "HMO_AES_VEC_10_D1",
+      "observedWindowCount": 2,
+      "pCanonicalTruthTables": [
+        11,
+        13
+      ],
+      "removedInstanceCount": 2,
+      "selectedBoundaryInputs": [
+        "a[6]",
+        "a[7]"
+      ],
+      "selectedBoundaryOutputs": [
+        "n458",
+        "n490"
+      ],
+      "selectedSourceInstances": [
+        "U205",
+        "U244"
+      ],
+      "windowProofStatus": "proved"
+    }
+  ],
+  "claimLimits": {
+    "commercialTiming": false,
+    "fmaxImprovement": false,
+    "physicalBenefit": false,
+    "physicalImplementation": false
+  },
+  "commercialJobs": {
+    "DesignCompiler": 0,
+    "Innovus": 0,
+    "LibraryCompiler": 0
+  },
+  "date": "2026-09-16",
+  "eco": {
+    "inputBytes": 921076,
+    "inputNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+    "insertedInstances": 10,
+    "netInstanceReduction": 13,
+    "patchManifestSha256": "c43cf12755fb089356c9b83aaf38a906deabdb8bbad022bb2a684ce543f15758",
+    "removedInstances": 23,
+    "rewrittenBytes": 920724,
+    "rewrittenNetlistSha256": "4382ae2a07051e533752c071148fa7e4e9000c4f0894cee6257d8869dc54c63c",
+    "rollbackMatchesInput": true,
+    "rollbackNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+    "selectedReplacements": 10,
+    "uniqueAdoptedMasters": 10
+  },
+  "equivalence": {
+    "backend": "yosys-equiv",
+    "cellModelsSha256": "186fb7daf36f17bb8d50c048e3a7690221b78676b275ec1097b956b166056193",
+    "originalNetlistSha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+    "returnCode": 0,
+    "rewrittenNetlistSha256": "4382ae2a07051e533752c071148fa7e4e9000c4f0894cee6257d8869dc54c63c",
+    "schema": "hima.multi-output-equivalence-proof/1",
+    "scriptSha256": "306c5c436d86255d939055c9ce9f5c2768a4c3d51434f09550a73dae6c9df5c5",
+    "status": "proved",
+    "stderrTail": "",
+    "stdoutTail": "",
+    "tool": "Yosys 0.69 (git sha1 9f75ca1f9, Release, Clang /workspace/YoWASP/yosys/wasi-sdk-33.0-x86_64-linux/share/cmake/../..//bin/clang++ 22.1.0)"
+  },
+  "foundryExistingCombinationalMultioutputSignatures": [
+    {
+      "kind": "HA",
+      "pCanonicalIdentity": [
+        2,
+        6,
+        8
+      ]
+    },
+    {
+      "kind": "FA",
+      "pCanonicalIdentity": [
+        3,
+        150,
+        232
+      ]
+    }
+  ],
+  "inputs": {
+    "dcNetlist": {
+      "bytes": 921076,
+      "producer": "Design Compiler X-2025.06-SP3",
+      "sha256": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762"
+    },
+    "design": "AES",
+    "ecoModule": "aes_sbox_0",
+    "foundryLiberty": {
+      "bytes": 87283165,
+      "published": false,
+      "sha256": "a07fbf556c5aed51e08cbf19d916371dbb1b631ca926e46893ac8781fcb707b5"
+    },
+    "proofTop": "aes_cipher_top"
+  },
+  "mining": {
+    "bucketOverflowCount": 0,
+    "cuts": 1399,
+    "leafBuckets": 1005,
+    "maxInputs": 3,
+    "maxOutputs": 2,
+    "pCanonicalVectorFamilies": 14,
+    "pairChecks": 692,
+    "selectedCellTypes": 10,
+    "selectedSourceInstances": 23,
+    "validWindows": 113
+  },
+  "schema": "hima.aes-10-multi-output-logical-eco-evidence/1",
+  "status": "succeeded"
+}

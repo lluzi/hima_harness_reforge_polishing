@@ -324,16 +324,17 @@ def _make_opportunity(module, instances, graph, cells, allowed, expected_inputs=
     }
 
 
-def _directed(request, graph, cells, allowed, top_outputs):
+def _directed(request, graphs, cells, allowed, module_outputs):
     opportunities = []
     for target in request.get("targets", ()):
-        if target.get("module") != request["top"]:
-            raise ResynthesisError("hierarchy-not-supported", "POC targets must be in the selected top module")
+        module = target.get("module")
+        if module not in graphs:
+            raise ResynthesisError("target-module-missing", "target module %s is not available" % module)
         opportunities.append(_make_opportunity(
-            target["module"], target.get("instances") or (), graph, cells, allowed,
+            module, target.get("instances") or (), graphs[module], cells, allowed,
             tuple(sorted(target.get("expectedBoundaryInputs") or ())),
             tuple(sorted(target.get("expectedBoundaryOutputs") or ())),
-            top_outputs,
+            module_outputs[module],
         ))
     return opportunities, {"cuts": 0, "leafBuckets": 0, "hashHits": 0, "pairChecks": 0, "bucketOverflows": []}
 
@@ -428,7 +429,7 @@ def _bounded_cuts(net, graph, cells, maximum_inputs, maximum_cuts, cache, active
     return cache[net]
 
 
-def _discover(request, graph, cells, allowed, top_outputs):
+def _discover_module(request, module, graph, cells, allowed, top_outputs):
     """Bounded multi-level cut index; never enumerates all root pairs."""
     scope = request.get("scope") or {}
     max_bucket = int(scope.get("maxBucketSize", 256))
@@ -491,7 +492,7 @@ def _discover(request, graph, cells, allowed, top_outputs):
     refusals = []
     for cluster in sorted(candidates):
         try:
-            opportunities.append(_make_opportunity(request["top"], cluster, graph, cells, allowed, top_outputs=top_outputs))
+            opportunities.append(_make_opportunity(module, cluster, graph, cells, allowed, top_outputs=top_outputs))
         except ResynthesisError as error:
             refusals.append({"instances": list(cluster), "code": error.code})
     stats = {
@@ -505,6 +506,39 @@ def _discover(request, graph, cells, allowed, top_outputs):
         "parallelWorkers": 1,
     }
     return opportunities, stats
+
+
+def _discover(request, graphs, cells, allowed, module_outputs):
+    opportunities = []
+    totals = {
+        "cuts": 0,
+        "leafBuckets": 0,
+        "hashHits": 0,
+        "pairChecks": 0,
+        "bucketOverflows": [],
+        "candidateRefusals": [],
+        "maxCutsPerRoot": int((request.get("scope") or {}).get("maxCutsPerRoot", 32)),
+        "parallelWorkers": 1,
+        "modules": [],
+    }
+    for module in sorted(graphs):
+        found, stats = _discover_module(
+            request, module, graphs[module], cells, allowed, module_outputs[module]
+        )
+        opportunities.extend(found)
+        totals["modules"].append({
+            "module": module,
+            "cuts": stats["cuts"],
+            "leafBuckets": stats["leafBuckets"],
+            "hashHits": stats["hashHits"],
+            "pairChecks": stats["pairChecks"],
+        })
+        for key in ("cuts", "leafBuckets", "hashHits", "pairChecks"):
+            totals[key] += stats[key]
+        totals["bucketOverflows"].extend(stats["bucketOverflows"])
+        totals["candidateRefusals"].extend(stats["candidateRefusals"])
+    totals["candidateRefusals"] = totals["candidateRefusals"][:100]
+    return opportunities, totals
 
 
 def _select(opportunities, maximum):
@@ -568,14 +602,30 @@ def run_request(request_path, result_path):
         modules = parse_modules(text)
         if request["top"] not in modules:
             raise ResynthesisError("missing-top", "netlist has no top module %s" % request["top"])
-        graph = build_named_net_graph(
-            modules[request["top"]], _directions(cells), top_assign_aliases(text, request["top"])
-        )
-        top_outputs = _top_output_nets(text, request["top"])
         if request["operation"] == "directed":
-            opportunities, stats = _directed(request, graph, cells, allowed, top_outputs)
+            subject_modules = sorted({target.get("module") for target in request.get("targets", ())})
         else:
-            opportunities, stats = _discover(request, graph, cells, allowed, top_outputs)
+            subject_modules = list((request.get("scope") or {}).get("modules") or [request["top"]])
+        missing_modules = sorted(set(subject_modules) - set(modules))
+        if missing_modules:
+            raise ResynthesisError(
+                "target-module-missing", "netlist is missing subject modules",
+                {"modules": missing_modules},
+            )
+        directions = _directions(cells)
+        graphs = {
+            module: build_named_net_graph(
+                modules[module], directions, top_assign_aliases(text, module)
+            )
+            for module in subject_modules
+        }
+        module_outputs = {
+            module: _top_output_nets(text, module) for module in subject_modules
+        }
+        if request["operation"] == "directed":
+            opportunities, stats = _directed(request, graphs, cells, allowed, module_outputs)
+        else:
+            opportunities, stats = _discover(request, graphs, cells, allowed, module_outputs)
         maximum = int((request.get("scope") or {}).get("maxReplacements", 50))
         selected = _select(opportunities, maximum)
         result = _result_base(
@@ -590,8 +640,16 @@ def run_request(request_path, result_path):
                 }
                 proof = {"schema": "hima.multi-output-equivalence-proof/1", "backend": "identity-sha256", "status": "proved"}
             else:
-                rewritten, manifest = apply_replacements(text, request["top"], selected)
-                assert_only_allowed_masters(rewritten, request["top"], set(allowed))
+                selected_modules = sorted({row["module"] for row in selected})
+                if len(selected_modules) != 1:
+                    raise ResynthesisError(
+                        "multi-module-rewrite-not-implemented",
+                        "one rewrite request may currently modify one subject module",
+                        {"modules": selected_modules},
+                    )
+                subject_module = selected_modules[0]
+                rewritten, manifest = apply_replacements(text, subject_module, selected)
+                assert_only_allowed_masters(rewritten, subject_module, set(allowed))
                 if sha256_text(rollback_text(rewritten, manifest)) != netlist_hash:
                     raise ResynthesisError("rollback-proof-failed", "patch rollback did not reconstruct input")
                 candidate = output / "rewritten.candidate.v"

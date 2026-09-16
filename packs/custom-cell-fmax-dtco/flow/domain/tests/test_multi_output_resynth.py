@@ -417,6 +417,26 @@ endmodule
         self.assertIn("input D, CK;", text)
         self.assertIn("output Q;", text)
 
+    def test_hierarchical_target_module_is_distinct_from_proof_top(self):
+        netlist = '''module leaf(input a, input b, output sum, output carry);
+  XOR2 u_sum (.A(a), .B(b), .Y(sum));
+  AND2 u_carry (.A(a), .B(b), .Y(carry));
+endmodule
+module top(input a, input b, output sum, output carry);
+  leaf child (.a(a), .b(b), .sum(sum), .carry(carry));
+endmodule
+'''
+        work = Workspace(self, netlist)
+        self.addCleanup(work.close)
+        work.data["targets"] = [{
+            "module": "leaf", "instances": ["u_sum", "u_carry"],
+            "expectedBoundaryInputs": ["a", "b"],
+            "expectedBoundaryOutputs": ["carry", "sum"],
+        }]
+        result = work.write()
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(result["selectedReplacements"][0]["module"], "leaf")
+
 
 if __name__ == "__main__":
     unittest.main()

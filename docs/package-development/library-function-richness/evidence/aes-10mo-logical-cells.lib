@@ -1,0 +1,179 @@
+/* Function-only evidence. No timing, power, layout, or physical usability claim. */
+library (hima_aes_10mo_logical_poc) {
+  cell (HMO_AES_VEC_01_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*B";
+    }
+  }
+  cell (HMO_AES_VEC_02_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AES_VEC_03_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + !A*B + A*B";
+    }
+  }
+  cell (HMO_AES_VEC_04_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+  }
+  cell (HMO_AES_VEC_05_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+  }
+  cell (HMO_AES_VEC_06_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AES_VEC_07_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+  }
+  cell (HMO_AES_VEC_08_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(C) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B*!C";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "A*!B*!C + !A*B*!C + A*B*!C + !A*!B*C + A*!B*C + !A*B*C + A*B*C";
+    }
+  }
+  cell (HMO_AES_VEC_09_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "A*!B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + A*!B + !A*B";
+    }
+  }
+  cell (HMO_AES_VEC_10_D1) {
+    area : 0.0;
+    pin(A) {
+      direction : input;
+    }
+    pin(B) {
+      direction : input;
+    }
+    pin(Y0) {
+      direction : output;
+      function : "!A*!B + A*!B + A*B";
+    }
+    pin(Y1) {
+      direction : output;
+      function : "!A*!B + !A*B + A*B";
+    }
+  }
+}

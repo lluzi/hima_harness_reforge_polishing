@@ -8,9 +8,15 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from verilog_netlist import parse_modules
+
 
 class ProofError(RuntimeError):
     pass
+
+
+def _sha256(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def _expr(ast):
@@ -66,7 +72,14 @@ def prove_top_equivalence(original, rewritten, top, cells, workdir, yosys="yosys
     workdir.mkdir(parents=True, exist_ok=True)
     models = workdir / "cell-models.v"
     script = workdir / "equivalence.ys"
-    write_cell_models(cells, models)
+    used_types = set()
+    for netlist in (original, rewritten):
+        for instances in parse_modules(Path(netlist).read_text()).values():
+            used_types.update(instance.cell_type for instance in instances)
+    write_cell_models(
+        {name: cells[name] for name in sorted(used_types) if name in cells},
+        models,
+    )
     script.write_text("\n".join([
         "read_verilog -sv %s" % _q(models),
         "read_verilog -sv %s" % _q(original),
@@ -103,6 +116,9 @@ def prove_top_equivalence(original, rewritten, top, cells, workdir, yosys="yosys
             "backend": "yosys-equiv",
             "tool": (version.stdout or version.stderr).strip(),
             "scriptSha256": hashlib.sha256(script.read_bytes()).hexdigest(),
+            "originalNetlistSha256": _sha256(original),
+            "rewrittenNetlistSha256": _sha256(rewritten),
+            "cellModelsSha256": _sha256(models),
             "returnCode": None,
             "status": "timeout",
             "stdoutTail": (error.stdout or "")[-8000:],
@@ -117,6 +133,9 @@ def prove_top_equivalence(original, rewritten, top, cells, workdir, yosys="yosys
         "backend": "yosys-equiv",
         "tool": (version.stdout or version.stderr).strip(),
         "scriptSha256": hashlib.sha256(script.read_bytes()).hexdigest(),
+        "originalNetlistSha256": _sha256(original),
+        "rewrittenNetlistSha256": _sha256(rewritten),
+        "cellModelsSha256": _sha256(models),
         "returnCode": proc.returncode,
         "status": "proved" if proc.returncode == 0 else "failed",
         "stdoutTail": proc.stdout[-8000:],
