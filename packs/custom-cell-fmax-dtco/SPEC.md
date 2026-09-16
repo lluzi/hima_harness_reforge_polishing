@@ -116,7 +116,9 @@ E0 retains the existing independently read `comparison_valid`, `matched_conditio
 `foundry_setup_wns`, `setup_wns_delta`, `foundry_fmax_mhz`, `generated_fmax_mhz`, `fmax_delta_mhz`,
 `fmax_improvement_pct`, `fmax_improved`, adoption, route-retention and verification values. Fmax is
 derived only from each restored final database's common requested clock and setup slack. Area, power,
-congestion, hold, DRC and connectivity remain labelled secondary observations. Every absent value is
+congestion, hold, DRC and connectivity remain labelled secondary observations. Post-route hold is
+reported but never repaired by `optDesign -postRoute -hold`, because this Campaign spends physical
+optimization effort on the primary Fmax/setup objective. Every absent value is
 null with an `unknownReason`; no zero stands in for missing evidence.
 
 Workshop-selection values remain `research_hypothesis_count` and `selected_count`, both count. They

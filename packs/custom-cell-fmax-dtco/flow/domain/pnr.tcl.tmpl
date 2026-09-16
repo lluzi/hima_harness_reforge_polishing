@@ -56,7 +56,9 @@ puts "=== CCFMAX PRE-OPT TIMING @@ARM@@ ==="
 timeDesign -postRoute -outDir @@RPT_DIR@@/preopt -prefix pre
 setOptMode -fixFanoutLoad true
 optDesign -postRoute -setup
-optDesign -postRoute -hold
+# Fmax is the primary objective. Hold remains an observed secondary result,
+# but this Campaign never spends post-route optimization effort repairing it
+# at the expense of setup timing.
 
 # --- profile-declared fillers close rows after cell movement ---
 addFiller -cell {@@FILLER_CELLS@@} -prefix FILLER
