@@ -102,7 +102,7 @@ export function apply(ctx: ClientContext): void {
   }
   ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name', priority: -10 }, HimaName));
   ctx.slots.inject('tool.call.toolview', () => {
-    const claimed = HIMA_RUN_TOOLS.map((key) => ctx.slots.register({ name: 'tool.call.toolview', key, inject: () => ({ openRun }) }, HimaRunCard));
+    const claimed = HIMA_RUN_TOOLS.map((key) => ctx.slots.register({ name: 'tool.call.toolview', key, inject: () => ({ openRun, toolName: key }) }, HimaRunCard));
     claimed.push(ctx.slots.register({ name: 'tool.call.toolview', key: 'hima_author', inject: () => ({ openAuthor: (id: string) => { ctx.sessions.open(id); } }) }, AuthoringCard));
     return () => { for (const dispose of claimed) if (typeof dispose === 'function') (dispose as () => void)(); };
   });

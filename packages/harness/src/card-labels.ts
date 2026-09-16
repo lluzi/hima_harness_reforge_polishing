@@ -400,6 +400,44 @@ export function jobEnding(view: RunView, jobSession: string | undefined): string
 }
 
 /**
+ * What a node's Job tab folds one node's own Job history into: its latest launch, that launch's own
+ * settling event, and what it held — the whole of what a person opening the card's Job tab wants,
+ * without opening a second surface. Each key is absent, never a synthesized zero or empty string,
+ * when this Run has not written that fact yet: a node nothing has launched a Job at holds none of
+ * these, and a launch still open holds a launch time and no `finished`/`exit`.
+ *
+ * The *latest* launch and its own settlement, not every Job the node ever launched (a retried node
+ * launches more than one): the card's own Job tab reads as "the Job at this node stands like this",
+ * exactly as `PathRow`'s `jobEnding` already does for the node's current attempt.
+ *
+ * @param view - the Run the card is showing.
+ * @param nodeId - the node this tab is open on.
+ */
+export function jobFolded(view: RunView, nodeId: string): { readonly launched?: string; readonly finished?: string; readonly exit?: number; readonly licences?: Readonly<Record<string, number>> } {
+  const launched = view.jobs.filter((j) => j.event === 'launched' && j.nodeId === nodeId).at(-1);
+  if (launched === undefined) return {};
+  const settled = view.jobs.find((j) => j.job.session === launched.job.session && j.event !== 'launched');
+  return {
+    launched: launched.at,
+    ...(settled === undefined ? {} : { finished: settled.at }),
+    ...(settled?.exitCode === undefined ? {} : { exit: settled.exitCode }),
+    ...(launched.licences === undefined ? {} : { licences: launched.licences }),
+  };
+}
+
+/**
+ * One missing fact, said as a sentence rather than an empty tab or a blank JSON value (#41 task 6):
+ * `absentSaid('observation')` reads "No observation has been recorded for this node yet." The node
+ * card's every tab renders this for a fact this Run has not written, so a person reads a sentence
+ * about what is not yet known rather than nothing at all.
+ *
+ * @param what - the missing fact, in a person's own words: `'observation'`, `'blocker'`, `'code'`.
+ */
+export function absentSaid(what: string): string {
+  return `No ${what} has been recorded for this node yet.`;
+}
+
+/**
  * What the decision chose, in the card's words — including the whole of the convergence rule, since
  * "converged" on its own is a verdict a person cannot check and this card is where they read it.
  *

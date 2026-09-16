@@ -14,13 +14,12 @@
 // which the workbench page the host serves at `/hima/` (`../workbench.ts`) reads too, so the two
 // mounts of the card say the same thing. The markers a driver reads and clicks (`data-hima-region`,
 // `data-hima-state-*`, `data-hima-control`) are the same on both, and are listed there.
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
-import { runCardPath } from '../paths.js';
+import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import type { BranchView, GenerationJoinView, GenerationVerdictView, GenerationView, LoopView } from '../generations.js';
 import type { BlockerView, Citation, CodeView, DecisionView, ExperienceView, KnowledgeView, NodeView, ObservationView, RunView, RunWords, VerdictView, WorkshopView } from '../remote.js';
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
-import { bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, good, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, outcomeColour, askedObservedSaid, plain, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, warn, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
+import { bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
 import { actOnRun, controlRun, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
 import { Glyph } from './glyphs.js';
 
@@ -60,22 +59,6 @@ function runIdOf(block: ToolBlock): string | undefined {
   return undefined;
 }
 
-const card: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, lineHeight: '20px' };
-const muted: CSSProperties = { color: 'var(--dsw-alias-label-tertiary, #6b7280)' };
-const mono: CSSProperties = { fontFamily: 'var(--ds-font-family-code, monospace)', overflowWrap: 'anywhere' };
-const block: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 12, borderLeft: '2px solid var(--dsw-alias-border-l2, #e5e7eb)' };
-const heading: CSSProperties = { ...muted, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 11 };
-const logTail: CSSProperties = {
-  ...mono,
-  whiteSpace: 'pre-wrap',
-  maxHeight: 180,
-  overflow: 'auto',
-  margin: 0,
-  padding: 6,
-  background: 'var(--dsw-alias-fill-secondary, #f3f4f6)',
-  borderRadius: 4,
-};
-
 /** The `data-hima-state-*` attributes of a region, from the state it carries. */
 const stateAttributes = (state: Readonly<Record<string, string>>): Record<string, string> =>
   Object.fromEntries(Object.entries(state).map(([key, value]) => [`data-hima-state-${key}`, value]));
@@ -84,8 +67,8 @@ const stateAttributes = (state: Readonly<Record<string, string>>): Record<string
 function Section({ title, region, state, children }: { title: string; region?: string; state?: Readonly<Record<string, string>>; children: ReactNode }): ReactElement {
   const marked = region === undefined ? {} : { 'data-hima-region': region, ...stateAttributes(state ?? {}) };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} {...marked}>
-      <div style={heading}>{title}</div>
+    <div className="hima-run-card-section" {...marked}>
+      <div className="hima-run-card-heading">{title}</div>
       {children}
     </div>
   );
@@ -104,15 +87,15 @@ function StatusBanner({ view }: { view: RunView }): ReactElement {
   const status = run.status === undefined ? undefined : labelled(runStatusLabel, run.status);
   const lines = bannerLines(view.run);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }} data-hima-region="run-status" {...(run.status === undefined ? {} : { 'data-hima-state-status': run.status })}>
+    <div className="hima-run-card-section" data-hima-region="run-status" {...(run.status === undefined ? {} : { 'data-hima-state-status': run.status })}>
       <div>
         {status === undefined
-          ? <span style={muted}>{NO_FABRIC_STATE}</span>
-          : <span style={{ color: status.colour, fontWeight: 500 }}>{status.said}</span>}
-        {run.packId === undefined ? null : <span style={{ ...muted, ...mono }}> · {run.packId}</span>}
-        {runPurposeMark(run.purpose) === undefined ? null : <span style={muted} data-hima-state-purpose={run.purpose}> · {runPurposeMark(run.purpose)}</span>}
+          ? <span className="hima-muted">{NO_FABRIC_STATE}</span>
+          : <span className="hima-state-word" data-state={run.status}>{status.said}</span>}
+        {run.packId === undefined ? null : <span className="hima-muted hima-mono"> · {run.packId}</span>}
+        {runPurposeMark(run.purpose) === undefined ? null : <span className="hima-muted" data-hima-state-purpose={run.purpose}> · {runPurposeMark(run.purpose)}</span>}
       </div>
-      {[lines.goal, lines.strategy, lines.generation].filter((l): l is string => l !== undefined).map((line) => <div key={line} style={muted}>{line}</div>)}
+      {[lines.goal, lines.strategy, lines.generation].filter((l): l is string => l !== undefined).map((line) => <div key={line} className="hima-muted">{line}</div>)}
     </div>
   );
 }
@@ -127,13 +110,14 @@ function StatusBanner({ view }: { view: RunView }): ReactElement {
  */
 function MeterBar({ bar, spent }: { bar: { readonly now: number; readonly bound: number }; spent: boolean }): ReactElement {
   const scale = Math.max(bar.bound, bar.now, 1);
-  const filled = Math.min(100, (bar.now / scale) * 100);
-  const tick = Math.min(100, (bar.bound / scale) * 100);
+  const filled = Math.min(96, (bar.now / scale) * 96);
+  const tick = Math.min(96, (bar.bound / scale) * 96);
   return (
-    <span style={{ position: 'relative', width: 96, height: 6, borderRadius: 3, background: 'var(--dsw-alias-fill-secondary, #f3f4f6)', color: spent ? bad : plain }}>
-      <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${filled.toFixed(1)}%`, borderRadius: 3, background: 'currentColor' }} />
-      <span style={{ position: 'absolute', top: -2, bottom: -2, left: `calc(${tick.toFixed(1)}% - 1px)`, width: 2, background: 'var(--dsw-alias-label-tertiary, #6b7280)' }} />
-    </span>
+    <svg className="hima-meter-bar" width={96} height={10} viewBox="0 0 96 10" aria-hidden="true">
+      <rect className="hima-meter-track" y={2} width={96} height={6} rx={3} />
+      <rect className="hima-meter-fill" data-hima-spent={spent} y={2} width={filled} height={6} rx={3} />
+      <rect className="hima-meter-tick" x={Math.max(0, tick - 1)} width={2} height={10} />
+    </svg>
   );
 }
 
@@ -156,12 +140,12 @@ function MetersSection({ view }: { view: RunView }): ReactElement | null {
   if (rows.length === 0) return null;
   return (
     <Section title={factQuestions.spent} region="run-meters" state={metersState(view)}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'max-content 96px minmax(0, max-content)', gap: '2px 8px', alignItems: 'center' }}>
+      <div className="hima-meter-grid">
         {rows.map((row) => (
           <Fragment key={row.key}>
-            <span style={muted}>{row.label}</span>
+            <span className="hima-muted">{row.label}</span>
             {row.bar === undefined ? <span /> : <MeterBar bar={row.bar} spent={row.spent === true} />}
-            <span style={muted}>{row.detail}</span>
+            <span className="hima-muted">{row.detail}</span>
           </Fragment>
         ))}
       </div>
@@ -206,11 +190,11 @@ export function GenerationsTable({ view }: { view: RunView }): ReactElement {
     <>
     <div {...marked}>
     <div {...forked}>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', font: 'inherit' }}>
+      <div className="hima-run-card-ledger">
+        <table>
           <thead>
             <tr>
-              {heads.map((head) => <th key={head} style={{ ...muted, textAlign: 'left', fontWeight: 500, padding: '2px 12px 2px 0', whiteSpace: 'nowrap' }}>{head}</th>)}
+              {heads.map((head) => <th key={head}>{head}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -227,24 +211,19 @@ export function GenerationsTable({ view }: { view: RunView }): ReactElement {
       </div>
     </div>
     </div>
-    {loops.length === 0 ? null : <div style={muted}>{LEDGER_ORDER}</div>}
+    {loops.length === 0 ? null : <div className="hima-muted">{LEDGER_ORDER}</div>}
     </>
   );
 }
 
-/** What a nested row and the head and foot around it are stepped in by, and the rule that says they
- *  belong to the row above rather than beside it. */
-const nested: CSSProperties = { paddingLeft: 12, borderLeft: '2px solid var(--dsw-alias-border-l2, #e5e7eb)' };
-
 /** The head of a drill-down Loop's group of rows: what the Loop is, what it came to and in how many
  *  Generations, and the Explore node it was opened at — which is the row directly above it. */
 function LoopHeadRow({ loop }: { loop: LoopView }): ReactElement {
-  const outcome = loop.outcome === undefined ? undefined : labelled(loopOutcomeLabel, loop.outcome);
   return (
     <tr data-hima-loop={loop.id}>
-      <td colSpan={6} style={{ ...nested, paddingTop: 6, borderTop: '1px solid var(--dsw-alias-border-l2, #e5e7eb)' }}>
-        <span style={{ color: outcome?.colour ?? plain, fontWeight: 500 }}>{loopSaid(loop)}</span>{' '}
-        <span style={muted}>{loopOpenedSaid(loop)}</span>
+      <td colSpan={6} className="hima-run-card-cell hima-run-card-cell-nested">
+        <span className="hima-outcome-word" data-outcome={loop.outcome ?? 'open'}>{loopSaid(loop)}</span>{' '}
+        <span className="hima-muted">{loopOpenedSaid(loop)}</span>
       </td>
     </tr>
   );
@@ -254,7 +233,7 @@ function LoopHeadRow({ loop }: { loop: LoopView }): ReactElement {
 function LoopFootRow({ loop }: { loop: LoopView }): ReactElement {
   return (
     <tr data-hima-loop={loop.id}>
-      <td colSpan={6} style={{ ...nested, ...muted }}>{loopClosedSaid(loop)}</td>
+      <td colSpan={6} className="hima-run-card-cell hima-run-card-cell-nested hima-muted">{loopClosedSaid(loop)}</td>
     </tr>
   );
 }
@@ -264,21 +243,18 @@ function LoopFootRow({ loop }: { loop: LoopView }): ReactElement {
  *  level apart. Keyed by position as well as by rule, because a forked generation carries one
  *  verdict per rule *per branch* and two of them name the same rule. */
 function VerdictCell({ verdicts }: { verdicts: readonly GenerationVerdictView[] }): ReactElement {
-  if (verdicts.length === 0) return <div style={muted}>{NOTHING_JUDGED}</div>;
+  if (verdicts.length === 0) return <div className="hima-muted">{NOTHING_JUDGED}</div>;
   return (
     <>
       {verdicts.map((v, index) => (
         <div key={`${String(index)}-${v.ruleId}`}>
-          <span style={{ color: outcomeColour[v.outcome] ?? plain, fontWeight: 500 }}>{v.outcome}</span>{' '}
-          <span style={mono}>{v.ruleId}</span>
+          <span className="hima-outcome-word" data-outcome={v.outcome}>{v.outcome}</span>{' '}
+          <span className="hima-mono">{v.ruleId}</span>
         </div>
       ))}
     </>
   );
 }
-
-/** The six columns of one row of the ledger, at either depth and for a branch too. */
-const ledgerCell: CSSProperties = { textAlign: 'left', verticalAlign: 'top', padding: '2px 12px 2px 0', borderTop: '1px solid var(--dsw-alias-border-l2, #e5e7eb)' };
 
 /** One generation's row, at either depth: what it asked for and measured, what was concluded,
  *  decided, and spent. One component for both, because a Loop's turn is a Generation in exactly the
@@ -286,18 +262,18 @@ const ledgerCell: CSSProperties = { textAlign: 'left', verticalAlign: 'top', pad
  *  and says everything else the same way. */
 function GenerationRow({ row, loop, words }: { row: GenerationView; loop?: LoopView; words?: RunWords }): ReactElement {
   const state = labelled(generationStateLabel, row.state);
-  const cell = ledgerCell;
+  const cell = loop === undefined ? 'hima-run-card-cell' : 'hima-run-card-cell hima-run-card-cell-nested';
   return (
     <tr {...(loop === undefined ? {} : { 'data-hima-loop': loop.id })}>
-      <td style={loop === undefined ? cell : { ...cell, ...nested }}>
-        <span style={mono}>{row.generation}</span>{' '}
-        <span style={{ color: state.colour, fontWeight: 500 }}>{state.said}</span>
+      <td className={cell}>
+        <span className="hima-mono">{row.generation}</span>{' '}
+        <span className="hima-state-word" data-state={row.state}>{state.said}</span>
       </td>
-      <td style={{ ...cell, ...mono }}>{askedObservedSaid(row, words?.strategy)}</td>
-      <td style={{ ...cell, ...mono }}>{slackSaid(row)}</td>
-      <td style={cell}><VerdictCell verdicts={row.verdicts} /></td>
-      <td style={cell}>{generationDecisionSaid(row)}</td>
-      <td style={{ ...cell, ...mono }}>{duration(row.wallMs)}</td>
+      <td className="hima-run-card-cell hima-mono">{askedObservedSaid(row, words?.strategy)}</td>
+      <td className="hima-run-card-cell hima-mono">{slackSaid(row)}</td>
+      <td className="hima-run-card-cell"><VerdictCell verdicts={row.verdicts} /></td>
+      <td className="hima-run-card-cell">{generationDecisionSaid(row)}</td>
+      <td className="hima-run-card-cell hima-mono">{duration(row.wallMs)}</td>
     </tr>
   );
 }
@@ -315,23 +291,22 @@ function GenerationRow({ row, loop, words }: { row: GenerationView; loop?: LoopV
  */
 function BranchRow({ view, branch }: { view: RunView; branch: BranchView }): ReactElement {
   const state = labelled(branchStateLabel, branch.state);
-  const cell = ledgerCell;
   return (
     <tr data-hima-branch={branch.id}>
-      <td style={{ ...cell, ...nested }}>
-        <div style={mono}>{branch.id}</div>
-        <div style={{ color: state.colour, fontWeight: 500 }}>{state.said}</div>
+      <td className="hima-run-card-cell hima-run-card-cell-nested">
+        <div className="hima-mono">{branch.id}</div>
+        <div className="hima-state-word" data-state={branch.state}>{state.said}</div>
       </td>
-      <td style={{ ...cell, ...mono }}>{askedObservedSaid(branch, view.run.words?.strategy)}</td>
-      <td style={{ ...cell, ...mono }}>{slackSaid(branch)}</td>
-      <td style={cell}><VerdictCell verdicts={branch.verdicts} /></td>
-      <td style={cell}>
+      <td className="hima-run-card-cell hima-mono">{askedObservedSaid(branch, view.run.words?.strategy)}</td>
+      <td className="hima-run-card-cell hima-mono">{slackSaid(branch)}</td>
+      <td className="hima-run-card-cell"><VerdictCell verdicts={branch.verdicts} /></td>
+      <td className="hima-run-card-cell">
         {/* Keyed by position as well as by text, for the reason the verdict cell is: two lines of one
             branch can read alike — two Jobs that ended the same way — and React would take them for
             one line and drop the other. */}
-        {branchLines(view, branch).map((line, at) => <div key={`${String(at)}-${line}`} style={muted}>{line}</div>)}
+        {branchLines(view, branch).map((line, at) => <div key={`${String(at)}-${line}`} className="hima-muted">{line}</div>)}
       </td>
-      <td style={{ ...cell, ...mono, ...muted }}>{NOT_HELD}</td>
+      <td className="hima-run-card-cell hima-mono hima-muted">{NOT_HELD}</td>
     </tr>
   );
 }
@@ -341,7 +316,7 @@ function BranchRow({ view, branch }: { view: RunView; branch: BranchView }): Rea
 function JoinRow({ join, branches }: { join?: GenerationJoinView; branches: readonly BranchView[] }): ReactElement {
   return (
     <tr>
-      <td colSpan={6} style={{ ...ledgerCell, ...nested, ...muted }}>{joinSaid(join, branches)}</td>
+      <td colSpan={6} className="hima-run-card-cell hima-run-card-cell-nested hima-muted">{joinSaid(join, branches)}</td>
     </tr>
   );
 }
@@ -356,22 +331,22 @@ function PathRow({ node, index, view }: { node: NodeView; index: number; view: R
   const state = labelled(nodeStateLabel, node.state);
   const exit = jobEnding(view, node.jobSession);
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-      <span style={{ ...muted, ...mono, minWidth: 16, textAlign: 'right' }}>{index + 1}</span>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+    <div className="hima-path-row">
+      <span className="hima-muted hima-mono hima-path-index">{index + 1}</span>
+      <div className="hima-path-body">
         <div>
-          <span style={mono}>{node.nodeId}</span>{' '}
-          <span style={muted}>({node.kind})</span>{' '}
-          <span style={{ color: state.colour, fontWeight: 500 }}>{state.said}</span>
-          <span style={muted}>
+          <span className="hima-mono">{node.nodeId}</span>{' '}
+          <span className="hima-muted">({node.kind})</span>{' '}
+          <span className="hima-state-word" data-state={node.state}>{state.said}</span>
+          <span className="hima-muted">
             {', '}attempt {node.attempt}
             {node.outcome === undefined ? '' : `, ${node.outcome}`}
             {exit === undefined ? '' : `, ${exit}`}
             {node.waitedForSlot === true ? ', waited for a slot' : ''}
           </span>
         </div>
-        {node.jobSession === undefined ? null : <div style={{ ...muted, ...mono }}>{node.jobSession}</div>}
-        {node.reason === undefined ? null : <div style={muted}>{node.reason}</div>}
+        {node.jobSession === undefined ? null : <div className="hima-muted hima-mono">{node.jobSession}</div>}
+        {node.reason === undefined ? null : <div className="hima-muted">{node.reason}</div>}
       </div>
     </div>
   );
@@ -384,19 +359,19 @@ function PathRow({ node, index, view }: { node: NodeView; index: number; view: R
  */
 function BlockerRow({ blocker, latest }: { blocker: BlockerView; latest: boolean }): ReactElement {
   return (
-    <div style={block}>
+    <div className="hima-block">
       <div>
-        <span style={{ color: bad, fontWeight: 500 }}>blocked</span>{' '}
-        <span style={mono}>{blocker.nodeId}</span>{' '}
-        <span style={muted}>
+        <span className="hima-state-word" data-state="blocked">blocked</span>{' '}
+        <span className="hima-mono">{blocker.nodeId}</span>{' '}
+        <span className="hima-muted">
           after {counted(blocker.attempts, 'attempt')}
           {blocker.lastExitCode === undefined ? '' : `, last exit ${blocker.lastExitCode}`}
         </span>
       </div>
-      <div style={muted}>{blocker.reason}</div>
+      <div className="hima-muted">{blocker.reason}</div>
       {blocker.logTail === undefined
         ? null
-        : <pre style={logTail} {...(latest ? { 'data-hima-region': 'run-blocker-tail' } : {})}>{blocker.logTail}</pre>}
+        : <pre className="hima-logtail" {...(latest ? { 'data-hima-region': 'run-blocker-tail' } : {})}>{blocker.logTail}</pre>}
     </div>
   );
 }
@@ -466,21 +441,21 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
   if (control) {
     const owner = control.owner === acting.sessionId;
     const active = view.run.status === 'running' || view.run.status === 'waiting';
-    return <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-hima-region='execution-control' data-hima-state-owner={control.owner} data-hima-state-epoch={control.epoch} data-hima-state-revision={control.revision}>
-      {showDiagnostics ? <span style={muted}>Owner {control.owner} · epoch {control.epoch} · revision {control.revision}</span> : null}
+    return <div className="hima-run-card-control-row" data-hima-region='execution-control' data-hima-state-owner={control.owner} data-hima-state-epoch={control.epoch} data-hima-state-revision={control.revision}>
+      {showDiagnostics ? <span className="hima-muted">Owner {control.owner} · epoch {control.epoch} · revision {control.revision}</span> : null}
       <span>{control.paused.length ? `New work paused: ${control.paused.join(', ')}. Existing Jobs may still be running.` : 'New work requires this conversation’s explicit Agent action.'}</span>
-      <div style={{ display: 'flex', gap: 8 }}>
-        {active && acting.sessionId ? <button type='button' data-hima-control='pause' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause')}>Pause Run</button> : null}
-        {active && owner && view.run.currentNode ? <button type='button' data-hima-control='pause-node' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause', view.run.currentNode)}>Pause {view.run.currentNode}</button> : null}
-        {active && owner ? control.paused.map((scope) => <button key={scope} type='button' data-hima-control={scope === '*' ? 'continue' : `continue-node-${scope}`} disabled={acting.inFlight !== undefined} onClick={() => acting.act('continue', scope === '*' ? undefined : scope)}>Continue {scope === '*' ? 'Run' : scope}</button>) : null}
-        {active && acting.sessionId ? <button type='button' data-hima-control='cancel' disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>Stop Run</button> : null}
+      <div className="hima-run-card-control-buttons">
+        {active && acting.sessionId ? <button type='button' className="hima-button" data-hima-control='pause' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause')}>Pause Run</button> : null}
+        {active && owner && view.run.currentNode ? <button type='button' className="hima-button" data-hima-control='pause-node' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause', view.run.currentNode)}>Pause {view.run.currentNode}</button> : null}
+        {active && owner ? control.paused.map((scope) => <button key={scope} type='button' className="hima-button" data-hima-control={scope === '*' ? 'continue' : `continue-node-${scope}`} disabled={acting.inFlight !== undefined} onClick={() => acting.act('continue', scope === '*' ? undefined : scope)}>Continue {scope === '*' ? 'Run' : scope}</button>) : null}
+        {active && acting.sessionId ? <button type='button' className="hima-button" data-hima-control='cancel' disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>Stop Run</button> : null}
       </div>
-      {!owner ? <span style={muted}>Viewing this Run does not transfer execution ownership. You may pause or stop it as a human; enter its owning conversation to continue or perform node work.</span> : null}
+      {!owner ? <span className="hima-muted">Viewing this Run does not transfer execution ownership. You may pause or stop it as a human; enter its owning conversation to continue or perform node work.</span> : null}
       {acting.notice ? <span role='status' data-hima-region='control-notification'>{acting.notice}</span> : null}
       {Object.values(control.executions).map((execution) => <div key={execution.id} data-hima-region='node-execution' data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>
-        {execution.nodeId} · {execution.phase} · generation {execution.generation} · attempt {execution.attempt}<br /><span style={mono}>{execution.id}</span>
+        {execution.nodeId} · {execution.phase} · generation {execution.generation} · attempt {execution.attempt}<br /><span className="hima-mono">{execution.id}</span>
       </div>)}
-      <span data-hima-region='run-error' style={{ color: bad }}>{acting.refusal?.message ?? ''}</span>
+      <span data-hima-region='run-error' className="hima-run-card-error">{acting.refusal?.message ?? ''}</span>
     </div>;
   }
   const shown: ('cancel' | 'resume')[] = [
@@ -488,11 +463,12 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
     ...(showsResume(view.run.status) ? ['resume' as const] : []),
   ];
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <div className="hima-run-card-control-buttons">
       {shown.map((name) => (
         <button
           key={name}
           type="button"
+          className="hima-button"
           data-hima-control={runControls[name].control}
           disabled={acting.inFlight === 'cancel' || acting.inFlight === name}
           onClick={() => { acting.act(name); }}
@@ -500,7 +476,7 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
           {runControls[name].said}
         </button>
       ))}
-      <span data-hima-region="run-error" style={{ color: bad }}>{acting.refusal === undefined ? '' : acting.refusal.message}</span>
+      <span data-hima-region="run-error" className="hima-run-card-error">{acting.refusal === undefined ? '' : acting.refusal.message}</span>
     </div>
   );
 }
@@ -511,15 +487,16 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
  * observation, and the view already holds both, so nothing has to be fetched again to resolve them.
  */
 export function DecisionRow({ decision, view }: { decision: DecisionView; view: RunView }): ReactElement {
+  const state = decisionState(decision);
   return (
-    <div style={block}>
+    <div className="hima-block">
       <div>
-        <span style={{ color: decisionColour(decision), fontWeight: 500 }}>{chosenSaid(decision, view.run.words)}</span>{' '}
-        <span style={muted}>{decision.agent ? `by the conversational Agent at ${decision.nodeId}` : `by ${decision.chooser} at ${decision.nodeId}`}</span>
+        <span className="hima-outcome-word" data-outcome={state.chosen}>{chosenSaid(decision, view.run.words)}</span>{' '}
+        <span className="hima-muted">{decision.agent ? `by the conversational Agent at ${decision.nodeId}` : `by ${decision.chooser} at ${decision.nodeId}`}</span>
       </div>
-      {decision.agent ? <div data-hima-region='decision-agent-rationale'><p>{decision.agent.rationale}</p><div style={muted}>session {decision.agent.sessionId} · execution {decision.agent.executionId} · Pack reference {decision.chooser}</div></div> : null}
-      {Object.keys(decision.rationale).length ? <div style={muted}>from {Object.entries(decision.rationale).map(([name, value]) => `${name} ${value}`).join(', ')}</div> : null}
-      {decision.cites.map((recordId) => <div key={recordId} style={muted}>cites {citedSaid(view, recordId)}</div>)}
+      {decision.agent ? <div data-hima-region='decision-agent-rationale'><p>{decision.agent.rationale}</p><div className="hima-muted">session {decision.agent.sessionId} · execution {decision.agent.executionId} · Pack reference {decision.chooser}</div></div> : null}
+      {Object.keys(decision.rationale).length ? <div className="hima-muted">from {Object.entries(decision.rationale).map(([name, value]) => `${name} ${value}`).join(', ')}</div> : null}
+      {decision.cites.map((recordId) => <div key={recordId} className="hima-muted">cites {citedSaid(view, recordId)}</div>)}
     </div>
   );
 }
@@ -534,14 +511,14 @@ export function DecisionRow({ decision, view }: { decision: DecisionView; view: 
 function ValueRows({ values }: { values: readonly SemanticValue[] }): ReactElement | null {
   if (values.length === 0) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div className="hima-run-card-section">
       {values.map((v) => (
-        <div key={nameOf(v)} style={mono}>
+        <div key={nameOf(v)} className="hima-mono">
           {nameOf(v)}:{' '}
           {v.value === null
-            ? <span style={muted}>unknown — {v.unknownReason}</span>
+            ? <span className="hima-muted">unknown — {v.unknownReason}</span>
             : <span>{v.value} {v.unit}</span>}
-          {v.group ? <span style={muted}>{groupSaid(v)}</span> : null}
+          {v.group ? <span className="hima-muted">{groupSaid(v)}</span> : null}
         </div>
       ))}
     </div>
@@ -551,10 +528,10 @@ function ValueRows({ values }: { values: readonly SemanticValue[] }): ReactEleme
 /** One observation: the declared path, the content hash, the reader, the time, and what was read. */
 export function ObservationRow({ observation }: { observation: ObservationView }): ReactElement {
   return (
-    <div style={block}>
-      <div style={mono}>{observation.path}</div>
-      <div style={{ ...muted, ...mono }}>sha256 {observation.contentSha256}</div>
-      <div style={muted}>
+    <div className="hima-block">
+      <div className="hima-mono">{observation.path}</div>
+      <div className="hima-muted hima-mono">sha256 {observation.contentSha256}</div>
+      <div className="hima-muted">
         read by {readerSaid(observation.reader)} · {observation.bytes} bytes · {observation.at}
       </div>
       <ValueRows values={observation.values} />
@@ -577,17 +554,17 @@ export function WorkshopSection({ view, workshop }: { view: RunView; workshop: W
   const job = workshop.jobSession === undefined ? undefined : view.jobs.findLast((record) => record.job.session === workshop.jobSession);
   return (
     <Section title="workshop" region="run-workshop" state={workshopState(workshop)}>
-      <div style={block}>
-        <div style={{ color: label.colour, fontWeight: 500 }}>{workshopSaid(workshop)}</div>
-        <div style={muted}>
+      <div className="hima-block">
+        <div className="hima-state-word" data-state={workshop.state}>{workshopSaid(workshop)}</div>
+        <div className="hima-muted">
           node {workshop.nodeId}, attempt {workshop.attempt}, entry {workshop.entry}
           {workshop.sessionId === undefined ? '' : `, session ${workshop.sessionId}`}
         </div>
-        {workshop.executionId ? <div style={muted}>Conversational Agent · execution {workshop.executionId}<br />Model identity not recorded for this execution.</div> : null}
-        {job ? <div style={muted}>Job {job.job.session} · {job.event}{job.exitCode === undefined ? '' : ` · exit ${job.exitCode}`}</div> : null}
+        {workshop.executionId ? <div className="hima-muted">Conversational Agent · execution {workshop.executionId}<br />Model identity not recorded for this execution.</div> : null}
+        {job ? <div className="hima-muted">Job {job.job.session} · {job.event}{job.exitCode === undefined ? '' : ` · exit ${job.exitCode}`}</div> : null}
         {files.length === 0
-          ? <div style={muted}>nothing written yet — {label.said}</div>
-          : files.map((code) => <div key={code.recordId} style={mono}>{codeSaid(code)}{workshop.executionId ? <span style={muted}> · author session {code.sessionId}</span> : null}</div>)}
+          ? <div className="hima-muted">nothing written yet — {label.said}</div>
+          : files.map((code) => <div key={code.recordId} className="hima-mono">{codeSaid(code)}{workshop.executionId ? <span className="hima-muted"> · author session {code.sessionId}</span> : null}</div>)}
       </div>
     </Section>
   );
@@ -628,24 +605,25 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
       : (record as KnowledgeView).origin === 'history' ? 'history read' : 'method knowledge';
     const superseded = view.revisions?.some(revision => revision.invalidatedRecordIds.includes(record.recordId));
     return <button type="button" key={record.recordId} onClick={() => open(record)} data-hima-control={`material-${record.recordId}`}
+      data-selected={selected === record.recordId}
       title={`${location}${kind === 'knowledge' ? `\n${(record as KnowledgeView).purpose}` : ''}\nsource ${record.sessionId}\nsha256 ${record.sha256}`}
-      style={{ ...mono, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 104px', gap: 12, alignItems: 'center', width: '100%', textAlign: 'left', border: 0, borderRadius: 5, background: selected === record.recordId ? 'var(--dsw-alias-fill-secondary, #f0f2f5)' : 'transparent', color: plain, cursor: 'pointer', padding: '7px 8px' }}>
-      <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}><strong>{location.split(/[\\/]/).at(-1)}</strong> · {provenance}{superseded ? ' · superseded' : ''} · {record.nodeId} · g{record.generation ?? '?'} / a{record.attempt}</span>
-      <span style={{ ...muted, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{record.sha256}</span>
+      className="hima-run-card-material-row">
+      <span><strong>{location.split(/[\\/]/).at(-1)}</strong> · {provenance}{superseded ? ' · superseded' : ''} · {record.nodeId} · g{record.generation ?? '?'} / a{record.attempt}</span>
+      <span>{record.sha256}</span>
     </button>;
   };
   const chosen = [...view.code, ...view.knowledge].find(record => record.recordId === selected);
   return <Section title="Code, inputs & knowledge" region="run-material" state={{ code: String(view.code.length), knowledge: String(view.knowledge.length) }}>
-    <div style={block}>{view.code.map((record) => row(record, 'code'))}{view.knowledge.map((record) => row(record, 'knowledge'))}</div>
-    {selected === undefined || chosen === undefined ? <div style={muted}>Choose a recorded version to verify and read its contents.</div>
-      : <div ref={content}>{answer?.loading ? <div style={muted}>Reading the recorded version and verifying its hash…</div>
-        : answer?.error ? <div role="alert" style={{ ...muted, color: bad }}>Historical content unavailable: {answer.error}</div>
-          : <><details style={muted}><summary>Verified source · {chosen.nodeId}</summary>
+    <div className="hima-block">{view.code.map((record) => row(record, 'code'))}{view.knowledge.map((record) => row(record, 'knowledge'))}</div>
+    {selected === undefined || chosen === undefined ? <div className="hima-muted">Choose a recorded version to verify and read its contents.</div>
+      : <div ref={content}>{answer?.loading ? <div className="hima-muted">Reading the recorded version and verifying its hash…</div>
+        : answer?.error ? <div role="alert" className="hima-run-card-error">Historical content unavailable: {answer.error}</div>
+          : <><details className="hima-muted"><summary>Verified source · {chosen.nodeId}</summary>
             {'purpose' in chosen ? <div>{chosen.purpose}</div> : null}
             {'purpose' in chosen && chosen.origin === 'input' ? <div>Captured input · {chosen.exposedBytes ?? 0} bytes returned through the read interface.</div> : null}
             {'purpose' in chosen && chosen.sourceRun ? <div>Historical source: {chosen.sourceRun} · {chosen.sourcePurpose}<br />{chosen.sourceMaterialPath}<br />{chosen.conditions?.join(' ')}</div> : null}
-            <div style={{ ...mono, overflowWrap: 'anywhere' }}>{chosen.path}<br />sha256 {chosen.sha256}<br />source {chosen.sessionId}</div>
-          </details><pre data-hima-region="material-content" data-hima-state-record={selected} style={logTail}>{answer?.text}</pre></>}</div>}
+            <div className="hima-mono">{chosen.path}<br />sha256 {chosen.sha256}<br />source {chosen.sessionId}</div>
+          </details><pre data-hima-region="material-content" data-hima-state-record={selected} className="hima-logtail">{answer?.text}</pre></>}</div>}
   </Section>;
 }
 
@@ -666,13 +644,13 @@ export function ArchiveSection({ view }: { view: RunView }): ReactElement | null
   };
   if (!view.archive) return null;
   return <Section title='Knowledge archived in this Pack' region='run-archive' state={{ delivery: view.archive.delivery }}>
-    <p style={muted}>Recorded delivery: {view.archive.delivery}{view.archive.reason ? ` · ${view.archive.reason}` : ''}</p>
+    <p className="hima-muted">Recorded delivery: {view.archive.delivery}{view.archive.reason ? ` · ${view.archive.reason}` : ''}</p>
     <button className='hima-button' data-hima-control='archive-verify' onClick={() => read()} disabled={reading.loading}>Verify archived materials</button>
-    {reading.loading ? <p style={muted}>Reading and checking recorded content hashes…</p> : null}
-    {reading.error ? <p role='alert' style={{ ...muted, color: bad }}>{reading.error}</p> : null}
-    {manifest ? <><p style={{ ...muted, overflowWrap: 'anywhere' }}>Run {manifest.runId} · Site {manifest.siteId} · Pack {manifest.pack.id}@{manifest.pack.version}</p>
-      {manifest.materials.map(material => <button className='hima-button' key={material.path} data-hima-control={`archive-material-${material.path}`} onClick={() => read(material.path)} style={{ ...mono, display: 'block', width: '100%', textAlign: 'left', margin: '5px 0' }} title={`${material.source}\nsha256 ${material.sha256}`}>{material.path} · {material.bytes} bytes · {material.sha256.slice(0, 12)}</button>)}
-      {reading.text !== undefined ? <div data-hima-region='archive-content'>{reading.path?.endsWith('.md') ? reportBlocks(reading.text).map((block, index) => <ReportBlockRow key={index} block={block} />) : <pre style={logTail}>{reading.text}</pre>}</div> : null}
+    {reading.loading ? <p className="hima-muted">Reading and checking recorded content hashes…</p> : null}
+    {reading.error ? <p role='alert' className="hima-run-card-error">{reading.error}</p> : null}
+    {manifest ? <><p className="hima-muted hima-wrap">Run {manifest.runId} · Site {manifest.siteId} · Pack {manifest.pack.id}@{manifest.pack.version}</p>
+      {manifest.materials.map(material => <button className='hima-button hima-run-card-archive-row' key={material.path} data-hima-control={`archive-material-${material.path}`} onClick={() => read(material.path)} title={`${material.source}\nsha256 ${material.sha256}`}>{material.path} · {material.bytes} bytes · {material.sha256.slice(0, 12)}</button>)}
+      {reading.text !== undefined ? <div data-hima-region='archive-content'>{reading.path?.endsWith('.md') ? reportBlocks(reading.text).map((block, index) => <ReportBlockRow key={index} block={block} />) : <pre className="hima-logtail">{reading.text}</pre>}</div> : null}
     </> : null}
   </Section>;
 }
@@ -681,12 +659,12 @@ export function GrowthSection({ view }: { view: RunView }): ReactElement | null 
   const branches = view.generations.flatMap(generation => (generation.growths ?? []).map(growth => ({ generation: generation.generation, growth })));
   if (!branches.length) return null;
   return <Section title='Additional research · Pack reference preserved' region='run-growth'>
-    {branches.map(({ generation, growth }) => <details key={growth.recordId} data-hima-region={`growth-${growth.proposalId}`} data-hima-state-event={growth.event} style={block}>
+    {branches.map(({ generation, growth }) => <details key={growth.recordId} data-hima-region={`growth-${growth.proposalId}`} data-hima-state-event={growth.event} className="hima-block">
       <summary data-hima-control={`growth-expand-${growth.proposalId}`}>{growth.proposalId} · generation {generation} · {growth.event}</summary>
-      <p style={muted}>From {growth.parentNode ?? 'not admitted'} · Return to {growth.returnNode ?? 'not admitted'}</p>
-      {growth.reason ? <p style={muted}>{growth.reason}</p> : null}
-      {growth.nodes.map(node => <div key={node.recordId} style={mono}>{node.nodeId} · {node.kind} · {node.state}</div>)}
-      <details><summary>{growth.evidence.length} evidence references</summary><pre style={logTail}>{growth.evidence.join('\n')}</pre></details>
+      <p className="hima-muted">From {growth.parentNode ?? 'not admitted'} · Return to {growth.returnNode ?? 'not admitted'}</p>
+      {growth.reason ? <p className="hima-muted">{growth.reason}</p> : null}
+      {growth.nodes.map(node => <div key={node.recordId} className="hima-mono">{node.nodeId} · {node.kind} · {node.state}</div>)}
+      <details><summary>{growth.evidence.length} evidence references</summary><pre className="hima-logtail">{growth.evidence.join('\n')}</pre></details>
     </details>)}
   </Section>;
 }
@@ -694,12 +672,12 @@ export function GrowthSection({ view }: { view: RunView }): ReactElement | null 
 export function RevisionSection({ view }: { view: RunView }): ReactElement | null {
   if (!view.revisions?.length) return null;
   return <Section title='Revisions · history retained' region='run-revisions'>
-    {view.revisions.map(revision => <details key={revision.recordId} style={block} data-hima-region={`revision-${revision.revisionId}`}>
+    {view.revisions.map(revision => <details key={revision.recordId} className="hima-block" data-hima-region={`revision-${revision.revisionId}`}>
       <summary data-hima-control={`revision-expand-${revision.revisionId}`}>Version {revision.version} · {revision.revisionId}</summary>
-      <p style={muted}>Changed: {revision.changedNodes.join(', ')}<br />Rerun affected nodes: {revision.affectedNodes.join(', ')}</p>
+      <p className="hima-muted">Changed: {revision.changedNodes.join(', ')}<br />Rerun affected nodes: {revision.affectedNodes.join(', ')}</p>
       <p>{revision.invalidatedRecordIds.length} earlier records excluded from current evidence · {revision.reusedRecordIds.length} records reused</p>
-      <p style={muted}>Superseded code remains readable under Code, inputs & knowledge. A new result requires the affected nodes to execute again.</p>
-      <details><summary>Evidence identities</summary><pre style={logTail}>{JSON.stringify({ superseded: revision.invalidatedRecordIds, reused: revision.reusedRecordIds }, null, 2)}</pre></details>
+      <p className="hima-muted">Superseded code remains readable under Code, inputs & knowledge. A new result requires the affected nodes to execute again.</p>
+      <details><summary>Evidence identities</summary><pre className="hima-logtail">{JSON.stringify({ superseded: revision.invalidatedRecordIds, reused: revision.reusedRecordIds }, null, 2)}</pre></details>
     </details>)}
   </Section>;
 }
@@ -707,23 +685,23 @@ export function RevisionSection({ view }: { view: RunView }): ReactElement | nul
 /** One record a verdict cited. A citation that did not resolve is shown as such, never dropped. */
 function CitationRow({ citation }: { citation: Citation }): ReactElement {
   return citation.observation === null
-    ? <div style={{ ...muted, ...mono }}>cited record {citation.recordId} is not an observation of this run</div>
+    ? <div className="hima-muted hima-mono">cited record {citation.recordId} is not an observation of this run</div>
     : <ObservationRow observation={citation.observation} />;
 }
 
 /** One verdict: the outcome, the rule that produced it, and every observation it cited. */
 export function VerdictRow({ verdict }: { verdict: VerdictView }): ReactElement {
   return (
-    <div style={block}>
+    <div className="hima-block">
       <div>
-        <span style={{ color: outcomeColour[verdict.outcome], fontWeight: 500 }}>{verdict.outcome}</span>{' '}
-        <span style={mono}>
+        <span className="hima-outcome-word" data-outcome={verdict.outcome}>{verdict.outcome}</span>{' '}
+        <span className="hima-mono">
           {verdict.ruleId}@{verdict.ruleVersion}
         </span>
       </div>
-      {verdict.reason === undefined ? null : <div style={muted}>{verdict.reason}</div>}
+      {verdict.reason === undefined ? null : <div className="hima-muted">{verdict.reason}</div>}
       {verdict.cites.length === 0
-        ? <div style={muted}>cites nothing</div>
+        ? <div className="hima-muted">cites nothing</div>
         : verdict.cites.map((c) => <CitationRow key={c.recordId} citation={c} />)}
     </div>
   );
@@ -740,13 +718,13 @@ export function VerdictRow({ verdict }: { verdict: VerdictView }): ReactElement 
 export function ExperienceSection({ view, experience, onOpenSaved }: { view: RunView; experience: ExperienceView; onOpenSaved?: () => void }): ReactElement {
   return (
     <Section title={EXPERIENCE_HEADING} region="run-experience" state={experienceState(experience)}>
-      <div style={block}>
-        <div style={muted}>{experienceWrittenSaid(experience)}</div>
-        <div style={{ ...muted, ...mono }}>{experienceFileSaid('markdown', experience.markdown)}</div>
-        <div style={{ ...muted, ...mono }}>{experienceFileSaid('json', experience.json)}</div>
+      <div className="hima-block">
+        <div className="hima-muted">{experienceWrittenSaid(experience)}</div>
+        <div className="hima-muted hima-mono">{experienceFileSaid('markdown', experience.markdown)}</div>
+        <div className="hima-muted hima-mono">{experienceFileSaid('json', experience.json)}</div>
         <div><a href={experienceMarkdownHref(view.run.id)} onClick={onOpenSaved === undefined ? undefined : (event) => { event.preventDefault(); onOpenSaved(); }}>{EXPERIENCE_MARKDOWN_LINK}</a></div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="hima-run-card-section">
         {reportBlocks(experienceReport(view, experience.writtenAt).markdown).map((entry, index) => (
           <ReportBlockRow key={index} block={entry} />
         ))}
@@ -766,25 +744,25 @@ export function ReportBlockRow({ block: entry }: { block: ReportBlock }): ReactE
   if (entry.kind === 'heading') {
     // The report's own levels, stepped down under the section's heading: its title is the largest
     // thing in the section and never larger than the section itself.
-    const size = entry.level <= 1 ? 14 : entry.level === 2 ? 13 : 12;
-    return <div style={{ fontWeight: 600, fontSize: size, marginTop: 4 }}>{entry.text}</div>;
+    const level = entry.level <= 1 ? 1 : entry.level === 2 ? 2 : 3;
+    return <div className="hima-run-card-report-heading" data-level={level}>{entry.text}</div>;
   }
-  if (entry.kind === 'paragraph') return <div style={{ lineHeight: '20px' }}>{entry.text}</div>;
+  if (entry.kind === 'paragraph') return <div className="hima-run-card-report-paragraph">{entry.text}</div>;
   if (entry.kind === 'code') {
-    return <pre style={{ ...mono, margin: 0, padding: 8, overflowX: 'auto', whiteSpace: 'pre-wrap', background: 'var(--dsw-alias-fill-l2, #f3f4f6)' }}>{entry.text}</pre>;
+    return <pre className="hima-run-card-report-code">{entry.text}</pre>;
   }
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ borderCollapse: 'collapse', font: 'inherit' }}>
+    <div className="hima-run-card-ledger">
+      <table>
         <thead>
           <tr>
-            {entry.head.map((head) => <th key={head} style={{ ...muted, textAlign: 'left', fontWeight: 500, padding: '2px 12px 2px 0', whiteSpace: 'nowrap' }}>{head}</th>)}
+            {entry.head.map((head) => <th key={head}>{head}</th>)}
           </tr>
         </thead>
         <tbody>
           {entry.rows.map((cells, row) => (
             <tr key={row}>
-              {cells.map((value, column) => <td key={column} style={{ padding: '2px 12px 2px 0', verticalAlign: 'top' }}>{value}</td>)}
+              {cells.map((value, column) => <td key={column} className="hima-run-card-cell">{value}</td>)}
             </tr>
           ))}
         </tbody>
@@ -796,10 +774,10 @@ export function ReportBlockRow({ block: entry }: { block: ReportBlock }): ReactE
 /** The coded reason there is nothing to show. Rendered, never swallowed. */
 function FailureRow({ error }: { error: HimaFailure }): ReactElement {
   return (
-    <div style={block}>
-      <div style={{ color: bad }}>HimaHarness could not read this run</div>
-      <div style={mono}>{error.code}</div>
-      <div style={muted}>{error.message}</div>
+    <div className="hima-block">
+      <div className="hima-run-card-error">HimaHarness could not read this run</div>
+      <div className="hima-mono">{error.code}</div>
+      <div className="hima-muted">{error.message}</div>
     </div>
   );
 }
@@ -836,9 +814,9 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
         : (
           <Section title="cancel" region="run-cancel" state={{ observed: cancelObserved(view, latestCancel).key }}>
             {view.cancels.map((c) => (
-              <div key={c.recordId} style={block}>
-                <div style={muted}>{cancelAsked(c)}</div>
-                <div style={muted}>{cancelObserved(view, c).said}</div>
+              <div key={c.recordId} className="hima-block">
+                <div className="hima-muted">{cancelAsked(c)}</div>
+                <div className="hima-muted">{cancelObserved(view, c).said}</div>
               </div>
             ))}
           </Section>
@@ -855,10 +833,10 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
         : (
           <Section title="refused" region="run-refusal" state={{ count: String(view.refusals.length) }}>
             {view.refusals.map((r) => (
-              <div key={r.recordId} style={block}>
-                <div style={{ color: warn }}>refused</div>
-                <div style={mono}>{r.path}</div>
-                <div style={muted}>{r.reason}</div>
+              <div key={r.recordId} className="hima-block">
+                <div className="hima-state-word" data-state="waiting">refused</div>
+                <div className="hima-mono">{r.path}</div>
+                <div className="hima-muted">{r.reason}</div>
               </div>
             ))}
           </Section>
@@ -902,13 +880,17 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
 }
 
 /**
- * Render one Hima tool call: the Run it reported, where that Run stands, the path it took, and
- * everything it wrote down on the way.
+ * Render one Hima tool call: the compact receipt a transcript reads at a glance — the tool, where
+ * the Run stands and its current node, and one sentence of notice or refusal — with the whole of
+ * `RunBody` (every region the contract suite and the Diagnostics sheet read) kept reachable under
+ * `receipt-details`, open by default so nothing that used to be on the card stops being on the page.
  *
- * @param props - the keyed toolview payload; only the frozen call/result block is read.
+ * @param props - the keyed toolview payload; only the frozen call/result block is read. `toolName`
+ *                is the slot's own registration key (`hima_run`, `hima_observe`, …), passed by
+ *                `client/index.ts` since the tool block itself carries no name of its own.
  * @returns the Hima run card.
  */
-export function HimaRunCard({ block: toolBlock, openRun, sessionId }: { block: ToolBlock; openRun?: (runId: string) => void; sessionId?: string }): ReactElement {
+export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: { block: ToolBlock; openRun?: (runId: string) => void; sessionId?: string; toolName?: string }): ReactElement {
   const runId = runIdOf(toolBlock);
   const [state, setState] = useState<{ view?: RunView; error?: HimaFailure }>({});
   const acting = useRunActions(runId, (view) => setState({ view }), sessionId, state.view);
@@ -930,27 +912,42 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId }: { block: T
     if (toolBlock.kind !== undefined && toolBlock.isError === true) {
       const said = toolText(toolBlock);
       return (
-        <div style={card}>
-          <div style={{ color: bad }}>this HimaHarness call failed</div>
-          <div style={{ ...muted, ...mono }}>{said === '' ? 'the tool reported an error with no text' : said}</div>
+        <div className="hima-run-card">
+          <div className="hima-run-card-error">this HimaHarness call failed</div>
+          <div className="hima-muted hima-mono">{said === '' ? 'the tool reported an error with no text' : said}</div>
         </div>
       );
     }
-    return <div style={{ ...card, ...muted }}>{toolBlock.kind === undefined ? 'working…' : 'this call reported no run'}</div>;
+    return <div className="hima-run-card hima-muted">{toolBlock.kind === undefined ? 'working…' : 'this call reported no run'}</div>;
   }
+  const status = state.view?.run.status;
+  const statusWord = status === undefined ? NO_FABRIC_STATE : labelled(runStatusLabel, status).said;
+  const notice = acting.refusal?.message ?? acting.notice ?? 'Nothing further to report for this run.';
   return (
-    <div style={card}>
-      <a href={runCardPath(runId)} onClick={openRun === undefined ? undefined : (event) => { event.preventDefault(); openRun(runId); }} style={{ ...mono, color: 'inherit' }} title="Open this Run beside the conversation">{runId} <Glyph name="arrow-right" size={12} /></a>
+    <div className="hima-run-card" title={runId}>
       {state.error !== undefined ? <FailureRow error={state.error} /> : null}
-      {state.view !== undefined ? (openRun === undefined
-        ? <RunBody view={state.view} acting={acting} />
-        : <>
-          <StatusBanner view={state.view} />
-          <RunControls view={state.view} acting={acting} />
-          <MaterialSection view={state.view} />
-          <div style={muted}>Snapshot from this card's last read. Open Live Run for updates, experiments and evidence.</div>
-        </>) : null}
-      {state.error === undefined && state.view === undefined ? <div style={muted}>reading the run…</div> : null}
+      {state.view === undefined ? (state.error === undefined ? <div className="hima-muted">reading the run…</div> : null) : (
+        <>
+          <div className="hima-run-card-receipt" data-hima-region="run-receipt">
+            <div className="hima-run-card-receipt-line">
+              <span className="hima-mono">{toolName ?? 'hima'}</span>
+              <span className="hima-muted">·</span>
+              <span className="hima-state-word" data-state={status ?? ''}>{statusWord}</span>
+              {state.view.run.currentNode === undefined ? null : <><span className="hima-muted">·</span><span className="hima-mono">{state.view.run.currentNode}</span></>}
+            </div>
+            <div className="hima-run-card-receipt-notice">{notice}</div>
+            {openRun === undefined ? null : (
+              <button type="button" className="hima-button" data-hima-control="open-run" onClick={() => { openRun(runId); }}>
+                Open Campaign <Glyph name="arrow-right" size={12} />
+              </button>
+            )}
+          </div>
+          <details data-hima-control="receipt-details" open>
+            <summary>Run detail</summary>
+            <RunBody view={state.view} acting={acting} />
+          </details>
+        </>
+      )}
     </div>
   );
 }

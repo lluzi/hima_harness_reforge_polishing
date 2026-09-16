@@ -225,7 +225,7 @@ export { packAuthorStatusLabel, packOntologyLabel } from './card-labels.js';
 // has ended, and a node's own caption. On the surface for the reason every other word of the card is:
 // `scene.ts` reads `nodeCaption` off here rather than saying a node's second line twice, and the
 // contract suite asserts on the same three functions the canvas actually renders from.
-export { goalSaid, sealSaid, nodeCaption } from './card-labels.js';
+export { goalSaid, sealSaid, nodeCaption, jobFolded, absentSaid } from './card-labels.js';
 
 // What the ledger holds, for a caller reading records back through the namespace. `hasEnded` is the
 // one predicate over a Run's status every face shares: what counts as an ending is the ledger's to

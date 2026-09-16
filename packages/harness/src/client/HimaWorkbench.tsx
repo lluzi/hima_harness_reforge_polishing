@@ -124,7 +124,7 @@ function PackOwnerPanel({ sessionId, initialPack }: { sessionId: string; initial
   return <section className='hima-detail' data-hima-region='pack-owner'>
     <h3>Pack & knowledge assets</h3>
     <p className='hima-small'>Install a transparent Pack folder, then inspect or move its method and local research assets.</p>
-    <fieldset disabled={busy} style={{ border: 0, padding: 0, minWidth: 0, display: 'grid', gap: 14 }}>
+    <fieldset disabled={busy} className='hima-owner-fieldset'>
       <div className='hima-fields'>
         <label>Installed Pack<input data-hima-control='owner-pack' value={pack} onChange={event => { invalidate(); setPack(event.target.value); }} /></label>
         <label>Action<select data-hima-control='owner-mode' value={mode} onChange={event => { invalidate(); setMode(event.target.value as typeof mode); }}>
@@ -132,14 +132,14 @@ function PackOwnerPanel({ sessionId, initialPack }: { sessionId: string; initial
         </select></label>
         <label>{fromSource ? (mode === 'install' ? 'Pack source folder' : 'Tested release source folder') : 'New destination Pack folder'}<input data-hima-control='owner-location' value={location} onChange={event => { invalidate(); setLocation(event.target.value); }} /></label>
       </div>
-      {mode === 'share' ? <label style={{ display: 'grid', gap: 8 }}>Optional material paths, one per line<textarea style={{ boxSizing: 'border-box', width: '100%', minHeight: 72, resize: 'vertical', padding: 10, font: 'inherit', color: 'inherit', background: 'transparent', border: '1px solid var(--dsw-alias-border-primary, #ddd)', borderRadius: 6 }} data-hima-control='owner-assets' value={assets} placeholder='Empty shares only the method. Select paths inside run-assets/ to include research.' onChange={event => { invalidate(); setAssets(event.target.value); }} /></label>
+      {mode === 'share' ? <label className='hima-owner-assets-label'>Optional material paths, one per line<textarea className='hima-run-card-owner-textarea' data-hima-control='owner-assets' value={assets} placeholder='Empty shares only the method. Select paths inside run-assets/ to include research.' onChange={event => { invalidate(); setAssets(event.target.value); }} /></label>
         : <p className='hima-small'>{mode === 'install' ? 'Review shows every method and knowledge file before this fixed Pack is installed. Author status is displayed and does not change execution.' : mode === 'migrate' ? 'Migration includes your private run-assets and historical methods. Use only your own destination.' : 'The current method remains unchanged until you confirm a tested release. Old methods and run-assets are retained.'}</p>}
-      <button style={{ justifySelf: 'start' }} className='hima-button' data-hima-control='owner-review' disabled={!pack || !location} onClick={() => { void submit(false); }}>Review files</button>
+      <button className='hima-button hima-owner-review-button' data-hima-control='owner-review' disabled={!pack || !location} onClick={() => { void submit(false); }}>Review files</button>
       {review ? <div data-hima-region='pack-review'>
-        <p style={{ overflowWrap: 'anywhere' }}>Destination: <code>{review.to}</code></p>
+        <p className='hima-wrap'>Destination: <code>{review.to}</code></p>
         <p className='hima-small'>{review.files.length} files · {review.changes.length} changes · review <code title={review.reviewSha256}>{review.reviewSha256.slice(0, 12)}</code></p>
-        <div style={{ maxHeight: 240, overflow: 'auto' }}><table style={{ width: '100%', tableLayout: 'fixed', fontSize: 12, textAlign: 'left' }}><thead><tr><th style={{ width: '56%' }}>File</th><th style={{ width: '16%' }}>Bytes</th><th>SHA-256</th></tr></thead><tbody>{review.files.map(file => <tr key={file.path}><td style={{ padding: '8px 6px 8px 0', overflowWrap: 'anywhere' }}>{file.path}</td><td>{file.bytes}</td><td><code title={file.sha256}>{file.sha256.slice(0, 12)}</code></td></tr>)}</tbody></table></div>
-        <details style={{ margin: '12px 0' }}><summary>Full manifest and changes</summary><pre style={{ maxHeight: 220, overflow: 'auto', fontSize: 11 }}>{JSON.stringify(review, null, 2)}</pre></details>
+        <div className='hima-run-card-material-panel'><table><thead><tr><th className='hima-owner-file-column'>File</th><th className='hima-owner-bytes-column'>Bytes</th><th>SHA-256</th></tr></thead><tbody>{review.files.map(file => <tr key={file.path}><td className='hima-owner-file-cell'>{file.path}</td><td>{file.bytes}</td><td><code title={file.sha256}>{file.sha256.slice(0, 12)}</code></td></tr>)}</tbody></table></div>
+        <details className='hima-owner-manifest'><summary>Full manifest and changes</summary><pre className='hima-owner-manifest-json'>{JSON.stringify(review, null, 2)}</pre></details>
         <button className='hima-button hima-primary' data-hima-control='owner-confirm' onClick={() => { void submit(true); }}>Confirm these exact files</button>
       </div> : null}
     </fieldset>

@@ -13,7 +13,7 @@ import { sceneInputs } from '../scene.js';
 import { FabricCanvas } from './FabricCanvas.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
-  MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, RunControls, VerdictRow, WorkshopSection, type Acting,
+  MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
 } from './HimaRunCard.js';
 import { Masthead } from './Masthead.js';
 
@@ -158,7 +158,7 @@ function ReportView({ view, runId }: { view: RunView; runId: string }): ReactEle
   );
 }
 
-export function CampaignTab({ sessionId, runId, view, context, acting, stale, readAt, name, openOwner }: CampaignTabProps): ReactElement {
+export function CampaignTab({ sessionId, runId, view, context, acting, stale, readAt, name, openOwner, openFiles }: CampaignTabProps): ReactElement {
   const [section, setSection] = useState<Section>('live');
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const reducedMotion = useReducedMotion();
@@ -187,18 +187,11 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
       </nav>
       <div className="hima-campaign-content">
         {section === 'live' ? (
-          <>
-            {/* An interim row only: Task 6 replaces it with node-scoped controls in the anchored
-                card's footer and moves the owner/epoch/revision text this omits into Diagnostics.
-                Hidden entirely for a Side Talk, which never sees a business control here. */}
-            {view === undefined || !isOwner ? null : (
-              <div className="hima-run-controls-interim"><RunControls view={view} acting={acting} showDiagnostics={false} /></div>
-            )}
-            {scene === undefined
-              ? <div className="hima-empty"><p>{context?.reason ?? 'Reading the reference graph…'}</p></div>
-              : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
-                  stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} openOwner={openOwner} />}
-          </>
+          scene === undefined
+            ? <div className="hima-empty"><p>{context?.reason ?? 'Reading the reference graph…'}</p></div>
+            : <FabricCanvas runId={runId} sessionId={sessionId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
+                stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
+                openOwner={openOwner} openFiles={openFiles} acting={acting} />
         ) : view === undefined
           ? <div className="hima-empty"><p>Reading Run records…</p></div>
           : section === 'generations'

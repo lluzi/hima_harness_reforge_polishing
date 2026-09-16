@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutCanvas, fitToWidth, labelsVisibleAt, PITCH, ROW, X0, PAD_Y } from '@hima/harness';
 import type { LayoutGraph } from '@hima/harness';
-import { goalSaid, sceneInputs } from '@hima/harness';
+import { goalSaid, sceneInputs, jobFolded, absentSaid } from '@hima/harness';
 import type { RunView } from '@hima/harness';
 import type { ExecutionContext } from '@hima/harness';
 
@@ -212,4 +212,28 @@ test('two nodes hung at the same rank stack onto rows 1 and 2, in declaration or
     assert.ok(!seen.has(key), `two nodes share the pixels at ${key}`);
     seen.add(key);
   }
+});
+
+// #41 task 6: the node card's own words — a Job folded to what a person reads on its Job tab, and
+// one missing fact said as a sentence rather than an empty tab.
+test('jobFolded pairs a node\'s latest launch with its own settling event and what it held', () => {
+  const view = {
+    jobs: [
+      { recordId: 'j0', at: '2026-01-01T00:00:00Z', event: 'launched', job: { session: 'old' }, nodeId: 'synthesize' },
+      { recordId: 'j0f', at: '2026-01-01T00:01:00Z', event: 'finished', job: { session: 'old' }, exitCode: 1 },
+      { recordId: 'j1', at: '2026-01-01T00:05:00Z', event: 'launched', job: { session: 's1' }, nodeId: 'synthesize', licences: { EDA: 1 } },
+      { recordId: 'j1f', at: '2026-01-01T00:06:00Z', event: 'finished', job: { session: 's1' }, exitCode: 0 },
+    ],
+  } as unknown as RunView;
+  assert.deepEqual(jobFolded(view, 'synthesize'), { launched: '2026-01-01T00:05:00Z', finished: '2026-01-01T00:06:00Z', exit: 0, licences: { EDA: 1 } });
+});
+
+test('jobFolded says nothing for a node this run never launched a Job at', () => {
+  const view = { jobs: [] } as unknown as RunView;
+  assert.deepEqual(jobFolded(view, 'read-qor'), {});
+});
+
+test('absentSaid states one missing fact as a sentence, never an empty tab', () => {
+  assert.equal(absentSaid('observation'), 'No observation has been recorded for this node yet.');
+  assert.equal(absentSaid('blocker'), 'No blocker has been recorded for this node yet.');
 });

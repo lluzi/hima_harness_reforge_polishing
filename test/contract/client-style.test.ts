@@ -30,3 +30,7 @@ test('the client draws icons as inline SVG, never as unicode characters', () => 
     }
   }
 });
+
+test('client components carry no inline styles', () => {
+  for (const file of clientFiles()) assert.ok(!readFileSync(file, 'utf8').includes('style={{'), `${path.basename(file)} sets an inline style`);
+});

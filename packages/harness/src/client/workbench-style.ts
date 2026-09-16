@@ -208,4 +208,95 @@ export const HIMA_STYLE = `
   .hima-edge-lit-enter .hima-edge-path{animation:none}
   .hima-edge-revisit-pulse .hima-edge-path{animation:none}
 }
+
+/* The node card (#41 task 6): anchored to its node inside the canvas's own <svg> as a <foreignObject>
+   (screen coordinates, computed once per render — never an inline style), kind-specific tabs, a dark
+   glass Job log, and the owner/non-owner footer. Every colour a state or an outcome once carried as a
+   card-labels.ts string is a data-state/data-outcome attribute read by these rules instead. */
+.hima-node-card-anchor{overflow:visible}
+.hima-node-card{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;background:var(--hima-paper);color:var(--hima-ink);border:1px solid var(--hima-line);border-radius:var(--hima-r-l);box-shadow:var(--hima-shadow);overflow:hidden;font-family:var(--hima-font-ui);font-size:var(--hima-fs-body)}
+.hima-node-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--hima-sp-2);padding:var(--hima-sp-3) var(--hima-sp-3) var(--hima-sp-2);border-bottom:1px solid var(--hima-line);flex:none}
+.hima-node-card-header h4{margin:0;font-size:var(--hima-fs-title);font-weight:600}
+.hima-node-card-header p{margin:2px 0 0;font-size:var(--hima-fs-label)}
+.hima-node-card-tabs{display:flex;gap:var(--hima-sp-4);padding:0 var(--hima-sp-3);border-bottom:1px solid var(--hima-line);flex:none;overflow-x:auto}
+.hima-node-card-tabs button{appearance:none;border:0;border-bottom:2px solid transparent;padding:var(--hima-sp-2) 0;background:none;cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2);white-space:nowrap}
+.hima-node-card-tabs button[aria-pressed=true]{color:var(--hima-ink);border-bottom-color:var(--hima-live);font-weight:650}
+.hima-node-card-content{flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-3);display:flex;flex-direction:column;gap:var(--hima-sp-2)}
+.hima-node-card-content h5{margin:var(--hima-sp-2) 0 0;font-size:var(--hima-fs-eyebrow);letter-spacing:var(--hima-track);font-weight:600;color:var(--hima-ink-2);text-transform:uppercase}
+.hima-node-card-content ol,.hima-node-card-content ul{margin:0;padding-left:var(--hima-sp-4);display:flex;flex-direction:column;gap:2px}
+.hima-node-card-tail{margin:0;padding:var(--hima-sp-2);background:var(--hima-glass);color:var(--hima-glass-ink);border-radius:var(--hima-r-m);font-family:var(--hima-font-mono);font-size:var(--hima-fs-eyebrow);line-height:var(--hima-lh-body);white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;max-height:160px}
+.hima-node-card-footer{flex:none;padding:var(--hima-sp-2) var(--hima-sp-3);border-top:1px solid var(--hima-line);display:flex;flex-direction:column;gap:var(--hima-sp-2);font-size:var(--hima-fs-label)}
+.hima-node-card-footer-row{display:flex;gap:var(--hima-sp-2);flex-wrap:wrap}
+.hima-node-card-confirm{display:flex;flex-direction:column;gap:var(--hima-sp-2);padding:var(--hima-sp-2);background:var(--hima-soft);border-radius:var(--hima-r-m)}
+.hima-node-card-confirm p{margin:0}
+.hima-node-card-owner{color:var(--hima-ink-2)}
+.hima-node-card-emergency summary{cursor:pointer;font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
+.hima-fact-block{display:flex;flex-direction:column;gap:2px;padding-left:var(--hima-sp-3);border-left:2px solid var(--hima-line)}
+.hima-material-row{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;padding:var(--hima-sp-1) var(--hima-sp-2);border-radius:var(--hima-r-s)}
+.hima-material-row:hover{background:var(--hima-soft)}
+
+/* One state or outcome word, coloured by its own attribute rather than by a string the client held —
+   the same four tones (good/bad/warn/plain) card-labels.ts states, applied here through
+   CSS attribute selectors so no colour string travels through client code. */
+.hima-state-word,.hima-outcome-word{font-weight:500}
+.hima-state-word[data-state="done"],.hima-state-word[data-state="ended-goal-met"],.hima-state-word[data-state="goal-met"]{color:var(--hima-good)}
+.hima-state-word[data-state="blocked"],.hima-state-word[data-state="ended-goal-not-met"],.hima-state-word[data-state="ended-budget-exhausted"],.hima-state-word[data-state="failed"],.hima-state-word[data-state="not-taken"]{color:var(--hima-bad)}
+.hima-state-word[data-state="waiting"],.hima-state-word[data-state="waiting-for-slot"],.hima-state-word[data-state="retrying"],.hima-state-word[data-state="cancelled"],.hima-state-word[data-state="ended-converged"],.hima-state-word[data-state="converged"],.hima-state-word[data-state="no-entry"],.hima-state-word[data-state="interrupted"],.hima-state-word[data-state="generation-limit"]{color:var(--hima-warn)}
+.hima-state-word[data-state="pending"],.hima-state-word[data-state="running"],.hima-state-word[data-state="reconciled"],.hima-state-word[data-state="writing"],.hima-state-word[data-state="written"],.hima-state-word[data-state="awaiting-completion"]{color:var(--hima-ink)}
+.hima-outcome-word[data-outcome="PASS"],.hima-outcome-word[data-outcome="next-strategy"],.hima-outcome-word[data-outcome="goal-met"]{color:var(--hima-good)}
+.hima-outcome-word[data-outcome="FAIL"]{color:var(--hima-bad)}
+.hima-outcome-word[data-outcome="UNDETERMINED"]{color:var(--hima-warn)}
+.hima-outcome-word[data-outcome="converged"],.hima-outcome-word[data-outcome="open"]{color:var(--hima-ink-2)}
+
+/* The restyled tool receipt and its shared row/section components (#41 task 6): no inline style. */
+.hima-run-card{display:flex;flex-direction:column;gap:var(--hima-sp-2);font-size:var(--hima-fs-label);line-height:var(--hima-lh-body)}
+.hima-run-card-receipt{display:flex;flex-direction:column;gap:2px}
+.hima-run-card-receipt-line{display:flex;gap:4px;flex-wrap:wrap;align-items:baseline}
+.hima-run-card-receipt-notice{color:var(--hima-ink-2)}
+.hima-run-card details[data-hima-control="receipt-details"]{margin-top:var(--hima-sp-1)}
+.hima-run-card details[data-hima-control="receipt-details"]>summary{cursor:pointer;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
+.hima-run-card-section{display:flex;flex-direction:column;gap:4px}
+.hima-run-card-heading{color:var(--hima-ink-2);text-transform:uppercase;letter-spacing:var(--hima-track);font-size:var(--hima-fs-eyebrow)}
+.hima-block{display:flex;flex-direction:column;gap:2px;padding-left:12px;border-left:2px solid var(--hima-line)}
+.hima-path-row{display:flex;gap:8px;align-items:baseline}
+.hima-path-index{min-width:16px;text-align:right}
+.hima-path-body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.hima-run-card-control-row{display:flex;flex-direction:column;gap:6px}
+.hima-run-card-control-buttons{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hima-run-card-error{color:var(--hima-bad)}
+.hima-wrap{overflow-wrap:anywhere}
+.hima-run-card-archive-row{font-family:var(--hima-font-mono);overflow-wrap:anywhere;display:block;width:100%;text-align:left;margin:5px 0}
+.hima-logtail{font-family:var(--hima-font-mono);overflow-wrap:anywhere;white-space:pre-wrap;max-height:180px;overflow:auto;margin:0;padding:6px;background:var(--hima-glass);color:var(--hima-glass-ink);border-radius:var(--hima-r-m);font-size:var(--hima-fs-eyebrow)}
+.hima-run-card .hima-meter-grid{display:grid;grid-template-columns:max-content 96px minmax(0,max-content);gap:2px 8px;align-items:center}
+.hima-meter-bar{overflow:visible}
+.hima-meter-track{fill:var(--hima-line)}
+.hima-meter-fill{fill:var(--hima-ink)}
+.hima-meter-fill[data-hima-spent=true]{fill:var(--hima-bad)}
+.hima-meter-tick{fill:var(--hima-ink-3)}
+.hima-run-card-ledger{overflow-x:auto}
+.hima-run-card-ledger table{border-collapse:collapse;font:inherit}
+.hima-run-card-ledger th{color:var(--hima-ink-2);text-align:left;font-weight:500;padding:2px 12px 2px 0;white-space:nowrap}
+.hima-run-card-cell{text-align:left;vertical-align:top;padding:2px 12px 2px 0;border-top:1px solid var(--hima-line)}
+.hima-run-card-cell-nested{padding-left:12px;border-left:2px solid var(--hima-line)}
+.hima-run-card-material-row{display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:12px;align-items:center;width:100%;text-align:left;border:0;border-radius:5px;background:transparent;color:var(--hima-ink);cursor:pointer;padding:7px 8px;font-family:var(--hima-font-mono)}
+.hima-run-card-material-row[data-selected=true]{background:var(--hima-soft)}
+.hima-run-card-material-row span:first-child{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.hima-run-card-material-row span:last-child{color:var(--hima-ink-2);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.hima-run-card-report-code{font-family:var(--hima-font-mono);overflow-wrap:anywhere;margin:0;padding:8px;overflow-x:auto;white-space:pre-wrap;background:var(--hima-soft)}
+.hima-run-card-report-heading{font-weight:600;margin-top:4px}
+.hima-run-card-report-heading[data-level="1"]{font-size:var(--hima-fs-body)}
+.hima-run-card-report-heading[data-level="2"]{font-size:var(--hima-fs-label)}
+.hima-run-card-report-heading[data-level="3"]{font-size:var(--hima-fs-eyebrow)}
+.hima-run-card-report-paragraph{line-height:20px}
+.hima-run-card-material-panel{max-height:240px;overflow:auto}
+.hima-run-card-material-panel table{width:100%;table-layout:fixed;font-size:var(--hima-fs-eyebrow);text-align:left}
+.hima-run-card-owner-textarea{box-sizing:border-box;width:100%;min-height:72px;resize:vertical;padding:10px;font:inherit;color:inherit;background:transparent;border:1px solid var(--hima-line);border-radius:6px}
+.hima-owner-fieldset{border:0;padding:0;min-width:0;display:grid;gap:14px}
+.hima-owner-assets-label{display:grid;gap:8px}
+.hima-owner-review-button{justify-self:start}
+.hima-owner-file-column{width:56%}
+.hima-owner-bytes-column{width:16%}
+.hima-owner-file-cell{padding:8px 6px 8px 0;overflow-wrap:anywhere}
+.hima-owner-manifest{margin:12px 0}
+.hima-owner-manifest-json{max-height:220px;overflow:auto;font-size:var(--hima-fs-eyebrow)}
 `;

@@ -10,9 +10,12 @@ import { goalSaid, sealSaid } from '../card-labels.js';
 import type { RunView } from '../remote.js';
 import { FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
 import { Glyph } from './glyphs.js';
+import { NodeCard } from './NodeCard.js';
+import type { Acting } from './HimaRunCard.js';
 
 export interface FabricCanvasProps {
   readonly runId: string;
+  readonly sessionId: string;
   readonly scene: CanvasScene;
   /** The reference graph's own entry node — where the camera centres if the initial fit-to-width
    *  would otherwise clamp past readable (rule 1 below) and there is no running node yet to centre on
@@ -27,8 +30,11 @@ export interface FabricCanvasProps {
    *  under the one marker `open-owner` at once. */
   readonly isOwner: boolean;
   readonly selectedNodeId?: string;
-  onSelectNode(id: string): void;
+  /** `undefined` closes the open card (Escape, `node-card-close`, or a click off any node). */
+  onSelectNode(id: string | undefined): void;
   openOwner(id: string): void;
+  openFiles(): void;
+  readonly acting: Acting;
 }
 
 interface Transform { readonly scale: number; readonly tx: number; readonly ty: number }
@@ -85,7 +91,7 @@ function FrameBox({ frame }: { frame: Frame }): ReactElement {
 const edgeKey = (edge: PlacedEdge): string => `${edge.from}->${edge.to}:${edge.kind}`;
 
 export function FabricCanvas({
-  runId, scene, entryNodeId, view, context, stale, reducedMotion, isOwner, selectedNodeId, onSelectNode, openOwner,
+  runId, sessionId, scene, entryNodeId, view, context, stale, reducedMotion, isOwner, selectedNodeId, onSelectNode, openOwner, openFiles, acting,
 }: FabricCanvasProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -307,6 +313,21 @@ export function FabricCanvas({
               )}
             </g>
           </g>
+          {/* The node card: one at a time, anchored to its own node's current screen position — the
+              transform is applied here, once, rather than inside the pan/zoom group, so the card's
+              own type stays a fixed size at any zoom. */}
+          {(() => {
+            const selected = selectedNodeId === undefined ? undefined : scene.nodes.find((candidate) => candidate.id === selectedNodeId);
+            if (selected === undefined || view === undefined) return null;
+            return (
+              <NodeCard
+                node={selected} view={view} context={context} runId={runId} sessionId={sessionId} owner={isOwner}
+                anchor={{ x: transform.tx + selected.x * transform.scale, y: transform.ty + selected.y * transform.scale }}
+                canvas={viewport}
+                onClose={() => onSelectNode(undefined)} openFiles={openFiles} acting={acting}
+              />
+            );
+          })()}
         </svg>
         <div className="hima-canvas-legend">
           <span><svg width={12} height={12} viewBox="-9 -9 18 18" aria-hidden="true" className="hima-legend-shape"><KindOutline kind="act" half={7} /></svg>act</span>
@@ -320,6 +341,18 @@ export function FabricCanvas({
           <button type="button" className="hima-icon-button" data-hima-control="canvas-zoom-out" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.2)}><Glyph name="zoom-out" /></button>
         </div>
       </div>
+      {/* The node card's own Job tab is where a person reads an execution's own row (#41 task 6); while
+          no card is open at all, this visually-hidden list keeps the same `node-execution` marker
+          reachable under `.hima-studio`, since a driver polls it without opening a node. */}
+      {selectedNodeId !== undefined || view === undefined ? null : (
+        <div className="hima-visually-hidden" aria-hidden="true">
+          {Object.values(view.run.control?.executions ?? {}).map((execution) => (
+            <div key={execution.id} data-hima-region="node-execution" data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>
+              {execution.nodeId} · {execution.phase} · generation {execution.generation} · attempt {execution.attempt}<br />{execution.id}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
