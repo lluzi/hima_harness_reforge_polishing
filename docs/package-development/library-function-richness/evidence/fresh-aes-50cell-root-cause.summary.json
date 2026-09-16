@@ -1,0 +1,637 @@
+{
+  "date": "2026-09-16",
+  "dc_top20": {
+    "foundry": {
+      "cell_delay_ns": {
+        "count": 20,
+        "max": 0.35,
+        "mean": 0.3315,
+        "median": 0.33000000000000007,
+        "min": 0.32,
+        "p90": 0.3400000000000001
+      },
+      "logic_stages": {
+        "count": 20,
+        "max": 22,
+        "mean": 17.95,
+        "median": 18.0,
+        "min": 14,
+        "p90": 20
+      },
+      "slack_ns": {
+        "count": 20,
+        "max": -0.1,
+        "mean": -0.1,
+        "median": -0.1,
+        "min": -0.1,
+        "p90": -0.1
+      }
+    },
+    "generated": {
+      "cell_delay_ns": {
+        "count": 20,
+        "max": 0.32999999999999996,
+        "mean": 0.3115,
+        "median": 0.31000000000000005,
+        "min": 0.28,
+        "p90": 0.3200000000000001
+      },
+      "logic_stages": {
+        "count": 20,
+        "max": 21,
+        "mean": 17.7,
+        "median": 18.0,
+        "min": 15,
+        "p90": 19
+      },
+      "slack_ns": {
+        "count": 20,
+        "max": -0.09,
+        "mean": -0.09,
+        "median": -0.09,
+        "min": -0.09,
+        "p90": -0.09
+      }
+    },
+    "paths_with_xs": 14
+  },
+  "evidence": {
+    "charmodel_diagnosis.json": {
+      "bytes": 24355,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/diagnosis/charmodel_diagnosis.json",
+      "sha256": "673ea6836cd52c1ddb44e3c5bb45945b4de49e59e193f84bad619ba91c1bd5c0"
+    },
+    "netlist_depth.json": {
+      "bytes": 62865,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/diagnosis/netlist_depth.json",
+      "sha256": "840f92fb8428cfd3cdf5933587390e99b63df841771f0b8ef8cd94ef8d76929d"
+    },
+    "timing_diagnosis.json": {
+      "bytes": 26208,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/diagnosis/timing_diagnosis.json",
+      "sha256": "e63f2406c4ab7a1a3cdd6612c70a93616e45d0fdaa9ed2168674ebf6575e3e66"
+    },
+    "xs_fanout.json": {
+      "bytes": 5748,
+      "path": ".hima-tmp/lfr-aes-fresh-50-20260915/diagnosis/xs_fanout.json",
+      "sha256": "331555a9ac2d3482361aad5d1b335a45bed78a0f490bde24eb621a370e9e7d3a"
+    }
+  },
+  "final_top100": {
+    "common_beginpoint_endpoint_pairs": 6,
+    "common_pair_deltas": {
+      "cell_delay_delta_ns": {
+        "count": 6,
+        "max": 0.009000000000000008,
+        "mean": -0.0031666666666666696,
+        "median": -0.005500000000000005,
+        "min": -0.010000000000000009,
+        "p90": 0.0010000000000000009
+      },
+      "net_delay_delta_ns": {
+        "count": 6,
+        "max": 0.018000000000000002,
+        "mean": 0.013166666666666669,
+        "median": 0.014500000000000002,
+        "min": 0.0020000000000000018,
+        "p90": 0.018000000000000002
+      },
+      "slack_delta_ns": {
+        "count": 6,
+        "max": 0.0010000000000000009,
+        "mean": -0.007500000000000002,
+        "median": -0.009000000000000001,
+        "min": -0.014000000000000005,
+        "p90": -0.0020000000000000018
+      },
+      "stage_delta": {
+        "count": 6,
+        "max": 3,
+        "mean": -2,
+        "median": -2.5,
+        "min": -5,
+        "p90": 0
+      }
+    },
+    "foundry": {
+      "arrival_ns": {
+        "count": 100,
+        "max": 0.431,
+        "mean": 0.41087,
+        "median": 0.41,
+        "min": 0.402,
+        "p90": 0.42
+      },
+      "c2q_ns": {
+        "count": 100,
+        "max": 0.075,
+        "mean": 0.06453,
+        "median": 0.062,
+        "min": 0.054,
+        "p90": 0.073
+      },
+      "capture_clock_ns": {
+        "count": 100,
+        "max": 0.056,
+        "mean": 0.05203,
+        "median": 0.052,
+        "min": 0.048,
+        "p90": 0.055
+      },
+      "cell_delay_ns": {
+        "count": 100,
+        "max": 0.304,
+        "mean": 0.27695000000000003,
+        "median": 0.276,
+        "min": 0.256,
+        "p90": 0.28800000000000003
+      },
+      "launch_clock_ns": {
+        "count": 100,
+        "max": 0.05600000000000001,
+        "mean": 0.052840000000000005,
+        "median": 0.053000000000000005,
+        "min": 0.049,
+        "p90": 0.05500000000000001
+      },
+      "logic_stages": {
+        "count": 100,
+        "max": 19,
+        "mean": 15.92,
+        "median": 16.0,
+        "min": 12,
+        "p90": 18
+      },
+      "net_delay_ns": {
+        "count": 100,
+        "max": 0.030000000000000002,
+        "mean": 0.01481,
+        "median": 0.013000000000000001,
+        "min": 0.004,
+        "p90": 0.026
+      },
+      "required_ns": {
+        "count": 100,
+        "max": 0.383,
+        "mean": 0.36266,
+        "median": 0.361,
+        "min": 0.357,
+        "p90": 0.372
+      },
+      "setup_ns": {
+        "count": 100,
+        "max": 0.019,
+        "mean": 0.01437,
+        "median": 0.016,
+        "min": -0.002,
+        "p90": 0.017
+      },
+      "slack_ns": {
+        "count": 100,
+        "max": -0.042,
+        "mean": -0.04817,
+        "median": -0.048,
+        "min": -0.057,
+        "p90": -0.044
+      }
+    },
+    "generated": {
+      "arrival_ns": {
+        "count": 100,
+        "max": 0.437,
+        "mean": 0.41533,
+        "median": 0.415,
+        "min": 0.401,
+        "p90": 0.425
+      },
+      "c2q_ns": {
+        "count": 100,
+        "max": 0.08,
+        "mean": 0.06512,
+        "median": 0.0635,
+        "min": 0.0,
+        "p90": 0.076
+      },
+      "capture_clock_ns": {
+        "count": 100,
+        "max": 0.063,
+        "mean": 0.05093,
+        "median": 0.049,
+        "min": 0.044,
+        "p90": 0.057
+      },
+      "cell_delay_ns": {
+        "count": 100,
+        "max": 0.32100000000000006,
+        "mean": 0.27753,
+        "median": 0.277,
+        "min": 0.258,
+        "p90": 0.291
+      },
+      "launch_clock_ns": {
+        "count": 100,
+        "max": 0.1,
+        "mean": 0.05762,
+        "median": 0.05700000000000001,
+        "min": 0.046000000000000006,
+        "p90": 0.061
+      },
+      "logic_stages": {
+        "count": 100,
+        "max": 19,
+        "mean": 15.15,
+        "median": 16.0,
+        "min": 8,
+        "p90": 17
+      },
+      "net_delay_ns": {
+        "count": 100,
+        "max": 0.030000000000000002,
+        "mean": 0.013300000000000001,
+        "median": 0.012,
+        "min": 0.0,
+        "p90": 0.024
+      },
+      "required_ns": {
+        "count": 100,
+        "max": 0.374,
+        "mean": 0.35928,
+        "median": 0.358,
+        "min": 0.348,
+        "p90": 0.366
+      },
+      "setup_ns": {
+        "count": 100,
+        "max": 0.022,
+        "mean": 0.016730000000000002,
+        "median": 0.017,
+        "min": 0.002,
+        "p90": 0.02
+      },
+      "slack_ns": {
+        "count": 100,
+        "max": -0.047,
+        "mean": -0.05606,
+        "median": -0.056,
+        "min": -0.073,
+        "p90": -0.049
+      }
+    },
+    "generated_minus_foundry_mean_ns": {
+      "arrival_ns": 0.004459999999999964,
+      "c2q_ns": 0.0005899999999999933,
+      "capture_clock_ns": -0.0010999999999999968,
+      "cell_delay_ns": 0.0005799999999999694,
+      "launch_clock_ns": 0.004779999999999993,
+      "net_delay_ns": -0.0015099999999999992,
+      "required_ns": -0.003379999999999994,
+      "setup_ns": 0.002360000000000001,
+      "slack_ns": -0.007890000000000001
+    },
+    "generated_stage_mean_delta": -0.7699999999999996,
+    "ordinary_output_arc_delay_ns": {
+      "count": 1442,
+      "max": 0.088,
+      "mean": 0.017729542302357838,
+      "median": 0.017,
+      "min": 0.006,
+      "p90": 0.028
+    },
+    "paths_with_xs": 61,
+    "paths_without_xs": 39,
+    "with_xs_slack_median_ns": -0.055,
+    "without_xs_slack_median_ns": -0.056,
+    "xs_output_arc_delay_ns": {
+      "count": 73,
+      "max": 0.054,
+      "mean": 0.02995890410958904,
+      "median": 0.029,
+      "min": 0.017,
+      "p90": 0.038
+    }
+  },
+  "hypotheses": [
+    {
+      "evidence": "Only 6/100 endpoint pairs overlap; launch/capture/setup shifts explain most mean slack loss, and no-XS generated paths are equally poor.",
+      "name": "physical_clock_and_path_migration",
+      "rank": 1,
+      "status": "supported"
+    },
+    {
+      "evidence": "DC aes_cipher_top depth improves 9->6, while route module-local depth changes 11->12 and 9/23 route modules worsen.",
+      "name": "structural_gain_not_preserved",
+      "rank": 2,
+      "status": "supported"
+    },
+    {
+      "evidence": "Final stage count falls but total cell delay is flat; XS arc median is 29 ps versus 17 ps ordinary, while matched XS paths often still reduce cell delay.",
+      "name": "xs_delay_cancels_compression",
+      "rank": 3,
+      "status": "partially-supported"
+    },
+    {
+      "evidence": "Features remain inside training maxima and paths without XS are no better; model uncertainty and nearest-neighbor pessimism remain material risks.",
+      "name": "systematic_mock_delay_bug_is_primary",
+      "rank": 4,
+      "status": "not-proven"
+    }
+  ],
+  "mock_characterization": {
+    "all_route_xs_fanout": {
+      "count": 175,
+      "max": 1,
+      "mean": 1,
+      "median": 1,
+      "min": 1
+    },
+    "device_and_stack_support": {
+      "n_dev_total": {
+        "training": {
+          "count": 1750,
+          "max": 192.0,
+          "mean": 30.042285714285715,
+          "median": 20.0,
+          "min": 2.0,
+          "p90": 64.0,
+          "p95": 92.0
+        },
+        "xs": {
+          "count": 194,
+          "max": 30.0,
+          "mean": 17.298969072164947,
+          "median": 16.0,
+          "min": 8.0,
+          "p90": 28.0,
+          "p95": 28.0
+        },
+        "xs_above_training_max": 0,
+        "xs_above_training_p95": 0
+      },
+      "series_n": {
+        "training": {
+          "count": 1750,
+          "max": 4.0,
+          "mean": 1.6594285714285715,
+          "median": 1.0,
+          "min": 1.0,
+          "p90": 3.0,
+          "p95": 3.0
+        },
+        "xs": {
+          "count": 194,
+          "max": 4.0,
+          "mean": 2.015463917525773,
+          "median": 2.0,
+          "min": 1.0,
+          "p90": 3.0,
+          "p95": 3.0
+        },
+        "xs_above_training_max": 0,
+        "xs_above_training_p95": 4
+      },
+      "series_p": {
+        "training": {
+          "count": 1750,
+          "max": 4.0,
+          "mean": 1.6548571428571428,
+          "median": 1.0,
+          "min": 1.0,
+          "p90": 3.0,
+          "p95": 3.0
+        },
+        "xs": {
+          "count": 194,
+          "max": 4.0,
+          "mean": 2.5412371134020617,
+          "median": 3.0,
+          "min": 1.0,
+          "p90": 4.0,
+          "p95": 4.0
+        },
+        "xs_above_training_max": 0,
+        "xs_above_training_p95": 30
+      },
+      "wn_out_sum": {
+        "training": {
+          "count": 1750,
+          "max": 13.44,
+          "mean": 1.839357142857143,
+          "median": 1.12,
+          "min": 0.12,
+          "p90": 4.48,
+          "p95": 6.72
+        },
+        "xs": {
+          "count": 194,
+          "max": 1.12,
+          "mean": 0.6364948453608248,
+          "median": 0.56,
+          "min": 0.28,
+          "p90": 0.84,
+          "p95": 0.84
+        },
+        "xs_above_training_max": 0,
+        "xs_above_training_p95": 0
+      },
+      "wp_out_sum": {
+        "training": {
+          "count": 1750,
+          "max": 16.32,
+          "mean": 2.2419228571428573,
+          "median": 1.36,
+          "min": 0.17,
+          "p90": 5.44,
+          "p95": 8.16
+        },
+        "xs": {
+          "count": 194,
+          "max": 1.02,
+          "mean": 0.6081443298969073,
+          "median": 0.68,
+          "min": 0.34,
+          "p90": 1.02,
+          "p95": 1.02
+        },
+        "xs_above_training_max": 0,
+        "xs_above_training_p95": 0
+      }
+    },
+    "drive_strength": "D1 only",
+    "heldout_model_error": {
+      "cf_d0": {
+        "cell_hgb": {
+          "med_abs": 0.0019248194661550116,
+          "med_pct": 14.56107279516726,
+          "n": 357,
+          "p90_abs": 0.009966776111794093,
+          "p90_pct": 40.5265958425888
+        },
+        "family_hgb": {
+          "med_abs": 0.0017062105463148524,
+          "med_pct": 13.850783799558249,
+          "n": 294,
+          "p90_abs": 0.005880995858556349,
+          "p90_pct": 36.07543699101126
+        }
+      },
+      "cf_dR_load": {
+        "cell_hgb": {
+          "med_abs": 0.0553659508764317,
+          "med_pct": 4.4278008022377175,
+          "n": 357,
+          "p90_abs": 0.3719937985164413,
+          "p90_pct": 15.082891549285732
+        },
+        "family_hgb": {
+          "med_abs": 0.07010106064834831,
+          "med_pct": 5.612807886531041,
+          "n": 294,
+          "p90_abs": 0.4041481642655053,
+          "p90_pct": 20.791635706226884
+        }
+      },
+      "cf_d_max": {
+        "cell_hgb": {
+          "med_abs": 0.022935214882869093,
+          "med_pct": 3.823956333907766,
+          "n": 357,
+          "p90_abs": 0.08230027042253632,
+          "p90_pct": 11.096475168086783
+        },
+        "family_hgb": {
+          "med_abs": 0.02242780106969311,
+          "med_pct": 3.937616843444072,
+          "n": 294,
+          "p90_abs": 0.09345312764593704,
+          "p90_pct": 14.94622259945651
+        }
+      },
+      "cr_d0": {
+        "cell_hgb": {
+          "med_abs": 0.0023708511479579343,
+          "med_pct": 15.701535714839881,
+          "n": 357,
+          "p90_abs": 0.009936081170012281,
+          "p90_pct": 42.946375304141505
+        },
+        "family_hgb": {
+          "med_abs": 0.001310597166156464,
+          "med_pct": 12.59809066949676,
+          "n": 294,
+          "p90_abs": 0.0065588293386568,
+          "p90_pct": 40.3489783160271
+        }
+      },
+      "cr_dR_load": {
+        "cell_hgb": {
+          "med_abs": 0.05615099669563861,
+          "med_pct": 4.933717876282858,
+          "n": 357,
+          "p90_abs": 0.6334654567203155,
+          "p90_pct": 17.829113792188906
+        },
+        "family_hgb": {
+          "med_abs": 0.04725964708881056,
+          "med_pct": 5.215703844326941,
+          "n": 294,
+          "p90_abs": 0.38361347650088506,
+          "p90_pct": 14.79256222423456
+        }
+      },
+      "cr_d_max": {
+        "cell_hgb": {
+          "med_abs": 0.01949262981861022,
+          "med_pct": 3.5168683740350155,
+          "n": 357,
+          "p90_abs": 0.11035751491286577,
+          "p90_pct": 15.093551903502613
+        },
+        "family_hgb": {
+          "med_abs": 0.02096313613308523,
+          "med_pct": 3.956513345195039,
+          "n": 294,
+          "p90_abs": 0.08264408133553067,
+          "p90_pct": 15.149449480734418
+        }
+      }
+    },
+    "nearest_neighbor_intrinsic_delay_ratio": {
+      "count": 194,
+      "max": 2.2111631801616727,
+      "mean": 1.1607148900847857,
+      "median": 1.110575034266695,
+      "min": 0.9159504489004385,
+      "p90": 1.4315965077066324,
+      "p95": 1.4642632707427434
+    },
+    "table_hgb_v2_error_pct": {
+      "cell_fall": {
+        "med": 11.702220275306882,
+        "n": 17703,
+        "p90": 42.3861899233916
+      },
+      "cell_rise": {
+        "med": 9.829023165885943,
+        "n": 17703,
+        "p90": 41.43346006053696
+      },
+      "fall_transition": {
+        "med": 5.716413260471374,
+        "n": 17607,
+        "p90": 27.519225212355746
+      },
+      "rise_transition": {
+        "med": 5.1795443808553845,
+        "n": 17607,
+        "p90": 19.787872324839743
+      }
+    },
+    "training_arcs": 1750,
+    "xs_arcs": 194
+  },
+  "netlist_depth": {
+    "dc_modules": {
+      "aes_cipher_top": {
+        "comb_delta": -320,
+        "depth_delta": -3,
+        "foundry_comb": 1486,
+        "foundry_depth": 9,
+        "generated_comb": 1166,
+        "generated_depth": 6,
+        "module": "aes_cipher_top",
+        "xs_cells": 146
+      },
+      "equal": 5,
+      "improved": 8,
+      "worse": 10
+    },
+    "route_modules": {
+      "aes_cipher_top": {
+        "comb_delta": -390,
+        "depth_delta": 1,
+        "foundry_comb": 3459,
+        "foundry_depth": 11,
+        "generated_comb": 3069,
+        "generated_depth": 12,
+        "module": "aes_cipher_top",
+        "xs_cells": 104
+      },
+      "equal": 6,
+      "improved": 8,
+      "worse": 9
+    }
+  },
+  "schema": "hima.lfr.fresh-aes-50cell-root-cause/1",
+  "scope": {
+    "characterization_comparison": "feature-space nearest-neighbor diagnostic; not measured generated-cell SPICE characterization",
+    "dc_timing_paths_per_arm": 20,
+    "final_timing_paths_per_arm": 100,
+    "netlist_depth": "module-local combinational depth; hierarchy crossings excluded"
+  },
+  "status": "diagnosis-complete-no-fix-applied",
+  "verdict": {
+    "characterization": "XS delays are higher per stage and the learned model is too uncertain for a 5% target, but a universal XS-delay inflation is not the primary cause demonstrated by this sample.",
+    "primary": "Path migration plus launch/capture clock and setup changes dominate the observed top-100 slack regression.",
+    "secondary": "Some logic compression is real, but it is not preserved consistently through placement/CTS/route."
+  }
+}
