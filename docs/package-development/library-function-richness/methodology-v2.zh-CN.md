@@ -132,6 +132,9 @@ Bubble pushing 能吸收的大量相位差不会形成候选。P identity 只负
 
 ## 6. M2-04：multi-output mapping POC
 
+详细工具接口与商业链插入方式见
+[Multi-output Netlist Resynthesizer 规格](multi-output-resynthesizer.zh-CN.md)。
+
 ### 已核实基础
 
 Site 的 bool2cmos CLI 已支持重复 `--function/--output` 生成真正的 multi-output subckt，
