@@ -116,6 +116,29 @@ function forkOf(view: RunView): LayoutFacts['fork'] {
 }
 
 /**
+ * The mockup's own placement for a branch's name: not a separate label floating near the fork's
+ * incoming edge, but riding the branch's own first node's second caption line — "the branch id sits
+ * under the branch's first node name". A node the branch's own reference graph already captions
+ * (a tool, a chooser) keeps that caption and appends the branch id (`‹caption› · ‹id›`); a bare node
+ * (no caption of its own) gets `branch ‹id›` instead, so a fork branch is never unlabelled. Every
+ * other node keeps its own caption untouched.
+ */
+function withBranchCaptions(nodes: readonly LayoutNode[], fork: LayoutFacts['fork']): readonly LayoutNode[] {
+  if (fork === undefined) return nodes;
+  const headBranch = new Map<string, string>();
+  for (const branch of fork.branches) {
+    const head = branch.nodes[0];
+    if (head !== undefined && !headBranch.has(head)) headBranch.set(head, branch.id);
+  }
+  if (headBranch.size === 0) return nodes;
+  return nodes.map((node) => {
+    const branchId = headBranch.get(node.id);
+    if (branchId === undefined) return node;
+    return { ...node, caption: node.caption === undefined ? `branch ${branchId}` : `${node.caption} · ${branchId}` };
+  });
+}
+
+/**
  * The one adapter this module exists for: a HimaFabric reference graph, plus what a `RunView` and an
  * `ExecutionContext` know so far, turned into `layoutCanvas`'s own two inputs.
  *
@@ -161,5 +184,6 @@ export function sceneInputs(
     ...(growths.length === 0 ? {} : { growths }),
     ...(revisions.length === 0 ? {} : { revisions }),
   };
-  return { graph, facts };
+  const labelledGraph: LayoutGraph = fork === undefined ? graph : { ...graph, nodes: withBranchCaptions(graph.nodes, fork) };
+  return { graph: labelledGraph, facts };
 }

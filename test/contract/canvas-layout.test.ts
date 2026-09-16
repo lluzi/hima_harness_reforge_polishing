@@ -149,14 +149,21 @@ test("a loop's own revisit badge sits on the loop's arc", () => {
 });
 
 test('sceneInputs projects a RunView and ExecutionContext onto layout facts', () => {
-  const reference: LayoutGraph = { entry: 'a', nodes: [node('a'), node('b')], edges: [{ from: 'a', to: 'b' }] };
-  const view = { run: { currentNode: 'b', generation: 2 }, nodes: [{ nodeId: 'a', state: 'done' }, { nodeId: 'b', state: 'running' }] } as unknown as RunView;
+  const reference: LayoutGraph = { entry: 'a', nodes: [node('a'), node('b'), node('route-x'), node('route-y')],
+    edges: [{ from: 'a', to: 'b' }, { from: 'a', to: 'route-x' }, { from: 'a', to: 'route-y' }] };
+  const view = {
+    run: { currentNode: 'b', generation: 2, fork: { from: 'a', join: 'b', branches: { x: 'route-x', y: 'route-y' } } },
+    nodes: [{ nodeId: 'a', state: 'done' }, { nodeId: 'b', state: 'running' }],
+    generations: [{ branches: [{ id: 'x', nodes: [{ nodeId: 'route-x' }] }, { id: 'y', nodes: [{ nodeId: 'route-y' }] }] }],
+  } as unknown as RunView;
   const context = { available: ['c'] } as unknown as ExecutionContext;
-  const { facts } = sceneInputs(reference, view, context);
+  const { facts, graph } = sceneInputs(reference, view, context);
   assert.deepEqual(facts.states, { a: 'done', b: 'running' });
   assert.deepEqual(facts.available, ['c']);
   assert.equal(facts.currentNode, 'b');
   assert.equal(facts.generation, 2);
+  // A fork's branch id rides the caption of its own first (bare, no caption of its own) node.
+  assert.deepEqual([graph.nodes.find((n) => n.id === 'route-x')?.caption, graph.nodes.find((n) => n.id === 'route-y')?.caption], ['branch x', 'branch y']);
 });
 
 test('goalSaid states a goal in the pack\'s own words, falling back to raw names with no words', () => {
@@ -184,4 +191,25 @@ test('a node reached only by dynamic routing (no static incoming edge, not the e
     seen.add(key);
   }
   assert.notEqual(`${a.x},${a.y}`, `${w.x},${w.y}`, 'the entry and the dynamically-routed node must not share pixels');
+});
+
+test('two nodes hung at the same rank stack onto rows 1 and 2, in declaration order, rather than sharing pixels', () => {
+  const graph: LayoutGraph = {
+    entry: 'a',
+    nodes: [node('a'), node('b'), node('w1', 'wait'), node('w2', 'wait')],
+    edges: [{ from: 'a', to: 'b' }, { from: 'w1', to: 'b' }, { from: 'w2', to: 'b' }],
+  };
+  const scene = layoutCanvas(graph);
+  const w1 = scene.nodes.find((n) => n.id === 'w1')!;
+  const w2 = scene.nodes.find((n) => n.id === 'w2')!;
+  assert.equal(w1.rank, 0.5);
+  assert.equal(w2.rank, 0.5);
+  assert.equal(w1.row, 1);
+  assert.equal(w2.row, 2);
+  const seen = new Set<string>();
+  for (const placed of scene.nodes) {
+    const key = `${placed.x},${placed.y}`;
+    assert.ok(!seen.has(key), `two nodes share the pixels at ${key}`);
+    seen.add(key);
+  }
 });

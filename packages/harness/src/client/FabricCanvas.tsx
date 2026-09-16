@@ -153,15 +153,22 @@ export function FabricCanvas({
       // Labels must be visible the moment the canvas opens (`labelsVisibleAt(0.6) === true`, the
       // floor below which Task 5's own labels-hidden rule kicks in) — a wide scene fitted any
       // smaller would open with a screen of unreadable shapes, which is worse than a scene that
-      // does not fully fit. So the initial view floors at 0.6 rather than the user's own 0.4 zoom
-      // floor, and always centres on the node a person actually wants to see — the running one, or
-      // the reference graph's own entry node — rather than `fitToWidth`'s own left-anchored corner.
+      // does not fully fit. A scene that already fits within [0.6, 2] at its own natural
+      // `fitToWidth` scale opens exactly as `fitToWidth` drew it — that transform is already
+      // centred and already readable, and re-centring it on one node would only crop the rest of a
+      // scene that was never too small to read. The clamp — and the "centre on the node a person
+      // actually wants to see" behaviour — only kicks in once the natural scale would have opened
+      // outside that readable range.
       const fit = fitToWidth(scene, viewport);
-      const scale = Math.min(2, Math.max(0.6, fit.scale));
-      const target = currentNode ?? scene.nodes.find((node) => node.id === entryNodeId) ?? scene.nodes[0];
-      setTransform(target === undefined
-        ? { scale, tx: fit.tx, ty: fit.ty }
-        : { scale, tx: viewport.width / 2 - target.x * scale, ty: viewport.height / 2 - target.y * scale });
+      if (fit.scale >= 0.6 && fit.scale <= 2) {
+        setTransform(fit);
+      } else {
+        const scale = Math.min(2, Math.max(0.6, fit.scale));
+        const target = currentNode ?? scene.nodes.find((node) => node.id === entryNodeId) ?? scene.nodes[0];
+        setTransform(target === undefined
+          ? { scale, tx: fit.tx, ty: fit.ty }
+          : { scale, tx: viewport.width / 2 - target.x * scale, ty: viewport.height / 2 - target.y * scale });
+      }
       // This first jump must not animate (there is nothing to ease from — the placeholder transform
       // was never on screen); the *next* transform change (a follow, a manual zoom) should. Waiting
       // two frames lets the browser actually paint the fitted transform before the transition comes
@@ -235,12 +242,6 @@ export function FabricCanvas({
   const attention = blocker !== undefined ? { kind: 'waiting' as const, reason: blocker.reason }
     : fenceReason !== undefined ? { kind: 'fence' as const, reason: fenceReason } : undefined;
 
-  // Every branch of the fork the Run is standing inside, labelled at its own first node — the same
-  // rows `scene.ts`'s `forkOf` already fed into `layoutCanvas` as `facts.fork`, read back here off
-  // `view` directly rather than threaded through `CanvasScene` (which carries no branch id of its
-  // own on a `PlacedNode`, only the row/rank its branch put it at).
-  const forkBranches = view?.run.fork === undefined ? [] : (view.generations.at(-1)?.branches ?? []);
-
   return (
     <div className="hima-canvas-wrap">
       {attention === undefined ? null : (
@@ -284,14 +285,6 @@ export function FabricCanvas({
               // edge, or two revisit edges collide on the same key and React drops one.
               const key = edge.kind === 'revisit' ? `revisit-${edge.from}-${edge.to}-${String(revisitPulseKey)}` : `${edge.from}-${edge.to}-${edge.kind}-${String(index)}`;
               return <Edge key={key} edge={edge} firstLit={firstLit} pulse={pulse} />;
-            })}
-            {forkBranches.map((branch) => {
-              const head = branch.nodes[0]?.nodeId;
-              const node = head === undefined ? undefined : scene.nodes.find((placed) => placed.id === head);
-              if (node === undefined) return null;
-              // Under the branch's own first node — the mockup's own placement — not on the fork's
-              // incoming edge, which the node's own id/caption already sit close beside.
-              return <text key={branch.id} className="hima-branch-label" x={node.x} y={node.y + 46} textAnchor="middle">{branch.id}</text>;
             })}
             {scene.nodes.map((node) => (
               <FabricNode key={`${node.frame ?? ''}/${node.id}`} node={node} runId={runId} labelsVisible={labelsVisible}

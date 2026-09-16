@@ -139,7 +139,6 @@ export const HIMA_STYLE = `
 .hima-frame-box{fill:none;stroke:var(--hima-line-strong);stroke-dasharray:3 3}
 .hima-frame-open .hima-frame-box{stroke:var(--hima-accent)}
 .hima-frame-label{font-size:var(--hima-fs-label);fill:var(--hima-ink-2)}
-.hima-branch-label{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-ink-2)}
 
 .hima-arrow-fill{fill:var(--hima-line-strong)}
 .hima-arrow-fill-lit{fill:var(--hima-good)}

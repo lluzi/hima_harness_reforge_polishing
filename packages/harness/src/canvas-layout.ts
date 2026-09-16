@@ -11,6 +11,12 @@
 // truth for a coordinate; nothing here special-cases a Pack, a node id, or an outcome word beyond the
 // vocabulary CONTEXT.md already fixes (`PASS`, `FAIL`, `UNDETERMINED`, the revisit edge, a loop's
 // `opens`, a growth's `parentNode`/`returnNode`, a revision's `changedNodes`/`affectedNodes`).
+//
+// Behaviour change (intended): `hangNodeIds` counts only non-revisit edges as "incoming" (rule 1 is
+// itself computed without the revisit edge), so a node whose *only* incoming edge is a revisit edge
+// counts as having zero incoming edges and is hung exactly like a node with no incoming edge at all.
+// A node reached only through a revisit — the loop-back edge is what routes to it, never a forward
+// edge a pack author drew — is exactly the case rule 2's hung-node placement exists for.
 
 /** HimaFabric's four node kinds (CONTEXT.md; `packGraph`'s own `PackNode.kind`). */
 export type NodeKind = 'act' | 'judge' | 'explore' | 'wait';
@@ -212,10 +218,27 @@ function autoDetectForkBranches(nodes: readonly LayoutNode[], edges: readonly La
 
 /** Rule 2's row: 0 on the spine; 1 for a hung node; for a fork's branch `i` of `n`,
  * `(i - (n - 1) / 2) * 0.6` for every node the branch lists — the fork and its join are never listed,
- * so they keep row 0 ("the join returns to row 0"). */
-function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>, fork: LayoutFacts['fork'] | undefined): Map<string, number> {
+ * so they keep row 0 ("the join returns to row 0").
+ *
+ * More than one hung node can share the same rank — two nodes reached only by dynamic routing off
+ * the same (or no) predecessor, or two nodes HimaFabric hung off one FAIL/UNDETERMINED source — and
+ * `rank` alone (this module's own `x`) does not tell them apart. Row 1 for all of them would then
+ * put two nodes on the very same pixels, so nodes sharing a rank are stacked: the first one (in the
+ * graph's own declaration order, i.e. `nodes`'s own order) still takes row 1, the next takes row 2,
+ * and so on. Two hung nodes at *different* ranks both still take row 1 — different `x` already keeps
+ * them apart, and stacking rows only where a collision would otherwise happen is what "declaration
+ * order" below is scoped to. */
+function computeRow(nodes: readonly LayoutNode[], edges: readonly LayoutEdge[], hang: ReadonlySet<string>, rank: ReadonlyMap<string, number>, fork: LayoutFacts['fork'] | undefined): Map<string, number> {
   const row = new Map<string, number>(nodes.map((node) => [node.id, 0]));
-  for (const id of hang) row.set(id, 1);
+  const hungByRank = new Map<number, string[]>();
+  for (const node of nodes) {
+    if (!hang.has(node.id)) continue;
+    const r = rank.get(node.id) ?? 0;
+    const list = hungByRank.get(r) ?? [];
+    list.push(node.id);
+    hungByRank.set(r, list);
+  }
+  for (const ids of hungByRank.values()) ids.forEach((id, i) => row.set(id, i + 1));
   const branches = fork?.branches ?? autoDetectForkBranches(nodes, edges);
   if (branches) {
     const n = branches.length;
@@ -339,7 +362,7 @@ function boundingFrame(
 export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasScene {
   const hang = hangNodeIds(graph.nodes, graph.edges, graph.entry);
   const rankMap = computeRank(graph.nodes, graph.edges, hang);
-  const rowMap = computeRow(graph.nodes, graph.edges, hang, facts?.fork);
+  const rowMap = computeRow(graph.nodes, graph.edges, hang, rankMap, facts?.fork);
 
   const rows = graph.nodes.map((node) => rowMap.get(node.id) ?? 0);
   const minRow = rows.length > 0 ? Math.min(...rows) : 0;
@@ -393,7 +416,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   function placeSubgraph(subgraph: LayoutSubgraph, baseRank: number, baseRow: number, frameId: string, generation: number | undefined) {
     const localHang = hangNodeIds(subgraph.nodes, subgraph.edges, subgraph.entry);
     const localRank = computeRank(subgraph.nodes, subgraph.edges, localHang);
-    const localRow = computeRow(subgraph.nodes, subgraph.edges, localHang, undefined);
+    const localRow = computeRow(subgraph.nodes, subgraph.edges, localHang, localRank, undefined);
     const rankOf = (id: string) => baseRank + (localRank.get(id) ?? 0);
     const rowOf = (id: string) => baseRow + (localRow.get(id) ?? 0);
     const positions = new Map<string, { x: number; y: number }>();
