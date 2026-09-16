@@ -16,7 +16,8 @@ test('a linear graph ranks along one spine at the mockup pitch and ends in a Goa
   assert.deepEqual(scene.nodes.map((n) => [n.id, n.rank, n.row, n.state]), [['prepare', 0, 0, 'pending'], ['analyze', 1, 0, 'pending'], ['check', 2, 0, 'pending'], ['select', 3, 0, 'pending']]);
   assert.equal(scene.nodes[1]!.x, X0 + PITCH);
   assert.equal(scene.nodes[1]!.y, PAD_Y);
-  assert.equal(scene.goal.x, X0 + 4 * PITCH);
+  // maxRank = 3 (prepare/analyze/check/select); goal.x = X0 + (maxRank + 1.5) * PITCH = X0 + 4.5 * PITCH.
+  assert.equal(scene.goal.x, X0 + 4.5 * PITCH);
   assert.equal(scene.edges.find((e) => e.outcome === 'PASS')?.chip?.text, 'PASS');
 });
 
@@ -81,7 +82,8 @@ test('a fifty-one node graph fits to width and hides labels below sixty percent'
   const ids = Array.from({ length: 51 }, (_, i) => `n${i}`);
   const graph: LayoutGraph = { entry: 'n0', nodes: ids.map((id) => node(id)), edges: ids.slice(1).map((id, i) => ({ from: ids[i]!, to: id })) };
   const scene = layoutCanvas(graph);
-  assert.equal(scene.width, X0 + 51 * PITCH + 96);
+  // maxRank = 50 (n0..n50); width = goal.x + 96 = X0 + (maxRank + 1.5) * PITCH + 96 = X0 + 51.5 * PITCH + 96.
+  assert.equal(scene.width, X0 + 51.5 * PITCH + 96);
   const fit = fitToWidth(scene, { width: 760, height: 618 });
   assert.ok(fit.scale < 0.6 && fit.scale > 0);
   assert.equal(labelsVisibleAt(fit.scale), false); assert.equal(labelsVisibleAt(0.6), true);
@@ -117,7 +119,12 @@ test('a FAIL-hung wait node still ranks the nodes after it', () => {
 
 const loopGraph: LayoutGraph = {
   entry: 'a', nodes: [node('a'), node('dig', 'explore')], edges: [{ from: 'a', to: 'dig' }], opens: { dig: 'deeper' },
-  loops: { deeper: { entry: 'd1', nodes: [node('d1'), node('d2', 'judge')], edges: [{ from: 'd1', to: 'd2' }, { from: 'd2', to: 'd1', revisit: true }] } },
+  // Three loop nodes, not two: with the Goal roundel now a half-pitch further out (`goal.x = X0 +
+  // (maxRank + 1.5) * PITCH`, moved to clear the last spine node's own caption), a two-node loop's
+  // open frame no longer reaches past the Goal's own floor and the "open widens past closed" half of
+  // this test would otherwise assert a false thing on this fixture alone — see the comment below.
+  loops: { deeper: { entry: 'd1', nodes: [node('d1'), node('d2', 'judge'), node('d3')],
+    edges: [{ from: 'd1', to: 'd2' }, { from: 'd2', to: 'd3' }, { from: 'd3', to: 'd1', revisit: true }] } },
 };
 
 test('an open loop widens the scene to contain its frame', () => {
@@ -128,16 +135,17 @@ test('an open loop widens the scene to contain its frame', () => {
   assert.ok(open.width > closed.width);
   // Pinned by hand from rules 1, 6 and 9 (X0 = 64, PITCH = 90, NODE = 36, PAD_Y = 72):
   //   Main graph is a (rank 0) -> dig (rank 1, explore), so maxRank = 1 and the goal-based floor is
-  //   goal.x + 96 = X0 + (maxRank + 1) * PITCH + 96 = 64 + 2*90 + 96 = 340 for both scenes.
+  //   goal.x + 96 = X0 + (maxRank + 1.5) * PITCH + 96 = 64 + 2.5*90 + 96 = 385 for both scenes.
   //   Closed: the collapsed frame hangs at x = dig.x (154) + PITCH/2 (45) = 199, with the fixed 120px
-  //     width rule 6 gives a closed loop, so frame.x + width + 24 = 199 + 120 + 24 = 343 - wider than
-  //     the 340 floor, and wider than any node's own x + NODE/2 + 24 (dig: 154+18+24=196). closed.width
-  //     = max(340, 343, 106, 196) = 343.
-  //   Open: the loop's own d1 (rank 1.5, x = 199) and d2 (rank 2.5, x = 289) bound a frame from
-  //     199-18-24=157 to 289+18+24=331 (width 174), so frame.x + width + 24 = 157 + 174 + 24 = 355,
-  //     wider than the 340 floor and every node's own x + NODE/2 + 24 (<= 331). open.width = 355.
-  assert.equal(closed.width, 343);
-  assert.equal(open.width, 355);
+  //     width rule 6 gives a closed loop, so frame.x + width + 24 = 199 + 120 + 24 = 343 - narrower
+  //     than the 385 floor, and every node's own x + NODE/2 + 24 (dig: 154+18+24=196) is narrower
+  //     still. closed.width = max(385, 343, 196) = 385.
+  //   Open: the loop's own d1 (rank 1.5, x = 199), d2 (rank 2.5, x = 289) and d3 (rank 3.5, x = 379)
+  //     bound a frame from 199-18-24=157 to 379+18+24=421 (width 264), so frame.x + width + 24 =
+  //     157 + 264 + 24 = 445, wider than the 385 floor and every node's own x + NODE/2 + 24 (<= 421).
+  //     open.width = max(385, 445, 421) = 445.
+  assert.equal(closed.width, 385);
+  assert.equal(open.width, 445);
 });
 
 test("a loop's own revisit badge sits on the loop's arc", () => {

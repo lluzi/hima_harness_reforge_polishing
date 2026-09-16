@@ -521,7 +521,11 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   }
 
   // Rule 9.
-  const goal = { x: X0 + (maxRank + 1) * PITCH, y: PAD_Y - minRow * ROW + shiftBefore(maxRank + 1) };
+  // 1.5 pitches past the last main-spine rank, not 1: a full pitch left no room between the last
+  // node's own caption and the Goal's own label — "next-period" running straight into "clock period
+  // at m…" (PLS design review) — and a node's caption already reads to the right of its own shape,
+  // so the roundel needs the extra half-pitch of clearance a bare node-to-node gap does not.
+  const goal = { x: X0 + (maxRank + 1.5) * PITCH, y: PAD_Y - minRow * ROW + shiftBefore(maxRank + 1) };
   const allFrames = [...loopFrames, ...growthFrames];
   const allNodes = [...mainNodes, ...loopNodes, ...growthNodes];
   // Finding 2: the Goal roundel's own column (`goal.x + 96`) is only ever wide enough for the main

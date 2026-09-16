@@ -84,10 +84,9 @@ export const HIMA_STYLE = `
 .hima-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .hima-studio{position:relative;height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--hima-paper);overflow:hidden}
-.hima-studio-header{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
+.hima-studio-header{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-1) var(--hima-sp-4);min-height:40px;border-bottom:1px solid var(--hima-line);flex:none}
+.hima-studio-header select{flex:1;min-width:0}
 .hima-studio-header-actions{display:flex;gap:var(--hima-sp-2);margin-inline-start:auto}
-.hima-run-picker{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-2) var(--hima-sp-4);border-bottom:1px solid var(--hima-line);flex:none}
-.hima-run-picker select{flex:1;min-width:0}
 
 /* The Campaign tab (#41 task 5): masthead, view switch, and the HimaFabric canvas that makes the
    Live view. Every colour and every font-size is a token, SVG text included — an SVG user unit at

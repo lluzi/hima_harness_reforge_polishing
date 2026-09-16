@@ -92,18 +92,17 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
 
   return <div className='hima-studio hima-root' data-hima-region='studio' data-hima-state-session={activeSessionId} data-hima-state-run={selected ?? ''} data-stale={snapshot.error !== undefined}>
     {/* The masthead and the session-header chip (`CampaignChip`) now carry Campaign's identity, so
-        this header stays two small icon-labelled controls and nothing else — no "Campaign workspace"
-        heading repeats what the chip and the tab title already say (Design bar). Both controls keep
-        their established names and text: `studio-pack-owner` is a plain, always-present button rather
-        than a tab-menu item, because the pack-owner desktop test drives it with one click and no menu
-        it would first have to open. */}
+        this header names no "Campaign workspace" heading of its own (Design bar) — one 40 px row:
+        the CAMPAIGN picker at the left, `Files & code`/`Pack & assets` at the right. A separate,
+        otherwise-empty band above this one for only those two buttons was Task 9's own design
+        review finding (a blank strip with nothing in it but two right-aligned buttons); merging
+        loses no control and no marker. Both controls keep their established names and text:
+        `studio-pack-owner` is a plain, always-present button rather than a tab-menu item, because
+        the pack-owner desktop test drives it with one click and no menu it would first have to
+        open, and `Files & code`'s own visible text is what `markText('button', 'Files & code', …)`
+        matches in the existing desktop suites — restyled compact (`.hima-icon-button`) here, never
+        replaced with an icon-only control that text could not still match. */}
     <header className='hima-studio-header'>
-      <div className='hima-studio-header-actions'>
-        <button className='hima-button' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
-        <button className='hima-button' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
-      </div>
-    </header>
-    <div className='hima-run-picker'>
       <span className='hima-studio-eyebrow'>CAMPAIGN</span>
       <select aria-label='Campaign on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { setSelected(e.target.value || undefined); }}>
         <option value=''>Select a Campaign</option>
@@ -114,7 +113,11 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       {selected !== undefined
         ? <button className='hima-button' data-hima-control='studio-configure' disabled={confirming} onClick={() => setSelected(undefined)}>Start another Campaign</button>
         : null}
-    </div>
+      <div className='hima-studio-header-actions'>
+        <button className='hima-icon-button' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
+        <button className='hima-icon-button' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
+      </div>
+    </header>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
     {managingPack
       // The Pack owner panel replaces the Configuration page or the Live canvas below it rather than

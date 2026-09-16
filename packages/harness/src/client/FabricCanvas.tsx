@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type R
 import { fitToWidth, labelsVisibleAt } from '../canvas-layout.js';
 import type { CanvasScene, Frame, PlacedEdge } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
-import { goalSaid, sealSaid } from '../card-labels.js';
+import { goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
 import type { RunView } from '../remote.js';
 import { FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
 import { Glyph } from './glyphs.js';
@@ -334,6 +334,23 @@ export function FabricCanvas({
           {attention.kind === 'waiting' && isOwner && run?.control?.owner !== undefined ? (
             <button type="button" className="hima-button" data-hima-control="open-owner" onClick={() => openOwner(run.control!.owner)}>Open Campaign Agent</button>
           ) : null}
+          {/* A historical automatic Run (`run.control === undefined`) is nobody's Side Talk
+              (`run-ownership.ts`'s own `isOwner`), so the same bare human controls the transcript's
+              own tool receipt offers such a Run (`RunControls`, `HimaRunCard.tsx`) belong in its own
+              attention strip too: Continue while it waits, Stop whenever it is active, through the
+              same `actOnRun` route and the same `runControls` words (#41 task 9 item B). */}
+          {run?.control !== undefined ? null : (
+            <>
+              {showsResume(run?.status) ? (
+                <button type="button" className="hima-button" data-hima-control="resume" disabled={acting.inFlight !== undefined} onClick={() => acting.act('resume')}>{runControls.resume.said}</button>
+              ) : null}
+              {showsCancel(run?.status) ? (
+                <button type="button" className="hima-button" data-hima-control="cancel" disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>{runControls.cancel.said}</button>
+              ) : null}
+              {acting.notice === undefined ? null : <span role="status">{acting.notice}</span>}
+              {acting.refusal === undefined ? null : <span role="alert" data-hima-region="run-error">{acting.refusal.message}</span>}
+            </>
+          )}
         </div>
       )}
       <div className="hima-canvas" ref={containerRef} data-hima-region="campaign-graph"
@@ -386,7 +403,7 @@ export function FabricCanvas({
                   <circle r={22} className="hima-goal-roundel" />
                   <circle r={5} className="hima-goal-mark" />
                   <circle r={1.5} className="hima-goal-mark-dot" />
-                  {goalText === '' ? null : <text className="hima-goal-label" y={40} textAnchor="middle">{truncate(goalText, 18)}<title>{goalText}</title></text>}
+                  {goalText === '' ? null : <text className="hima-goal-label" y={40} textAnchor="middle">{truncate(goalText, 14)}<title>{goalText}</title></text>}
                 </>
               )}
             </g>

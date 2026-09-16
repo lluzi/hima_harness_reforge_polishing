@@ -5,11 +5,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { layoutCanvas } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
-import { cancelAsked, cancelObserved, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
+import { cancelAsked, cancelObserved } from '../card-labels.js';
 import { runPath } from '../paths.js';
 import { reportBlocks } from '../experience-report.js';
 import type { RunView } from '../remote.js';
+import type { PreparationView } from '../workbench.js';
 import { sceneInputs } from '../scene.js';
+import { fetchStartChoices } from './api.js';
 import { FabricCanvas } from './FabricCanvas.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
@@ -168,7 +170,35 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
   const reducedMotion = useReducedMotion();
   const control = view?.run.control;
   const isOwner = isOwnerOf(control, sessionId);
-  const reference = context?.method?.reference;
+  const methodReference = context?.method?.reference;
+
+  // A historical automatic Run (`control === undefined`) carries no `context.method` at all
+  // (`executionContext`, `fabric.ts` computes it only for an owned Run) — a genuine HimaFabric fact,
+  // not a reason the canvas itself cannot draw: the Pack the Run started from is still installed on
+  // this Host (starting one requires it), and `/hima/api/start-options` answers that same Pack's own
+  // reference graph with no Site and no live conversation needed. Fetched once per (run, pack) pair
+  // — never on every poll, and never for a Run whose own `context.method` already has one — and kept
+  // until either changes, so a Pack that gets uninstalled mid-poll still shows the graph fetched
+  // while it was there rather than blanking a running Campaign.
+  const [fallback, setFallback] = useState<{ readonly key: string; readonly graph: PreparationView['referenceGraph'] | 'unavailable' }>();
+  const packId = view?.run.packId;
+  useEffect(() => {
+    if (methodReference !== undefined || packId === undefined) return;
+    const key = `${runId}:${packId}`;
+    if (fallback?.key === key) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    void fetchStartChoices(packId, undefined, controller.signal).then((result) => {
+      if (cancelled) return;
+      const graph = result.ok ? result.value.proposal?.referenceGraph ?? 'unavailable' as const : 'unavailable' as const;
+      setFallback({ key, graph });
+    });
+    return () => { cancelled = true; controller.abort(); };
+  }, [methodReference, packId, runId, fallback?.key]);
+  const fallbackGraph = fallback?.key === `${runId}:${packId ?? ''}` && fallback.graph !== 'unavailable' ? fallback.graph : undefined;
+  const reference = methodReference ?? fallbackGraph;
+  const packUnavailable = methodReference === undefined && fallback?.key === `${runId}:${packId ?? ''}` && fallback.graph === 'unavailable';
+
   // `sceneInputs`+`layoutCanvas` recompute only when the reference graph, the Run view or the
   // execution context actually change identity (a fresh poll) — not on every render this component
   // takes for a reason of its own (switching views, selecting a node, the masthead's own tick).
@@ -179,14 +209,6 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
   }, [reference, view, context]);
 
   useEffect(() => { setSelectedNodeId(undefined); }, [runId]);
-
-  // The graph-less fallback's own reading of the same two facts `FabricCanvas` draws from `view`
-  // alone (never `context`): a blocker while waiting, and the Goal seal once ended. Named `legacy*`
-  // because the one Run kind that ever reaches this fallback with a real `view` behind it is the
-  // historical automatic path (`scene === undefined` otherwise only means "still reading").
-  const legacyBlocker = view?.run.status === 'waiting' ? view.blockers.at(-1) : undefined;
-  const legacyEnded = view?.run.status !== undefined && (view.run.status.startsWith('ended-') || view.run.status === 'cancelled');
-  const legacySeal = legacyEnded && view !== undefined ? sealSaid(view.run.status, view.run.meters?.endedBy) : undefined;
 
   return (
     <div className="hima-campaign" data-hima-region="campaign" data-hima-state-run={runId}
@@ -201,43 +223,9 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
         {section === 'live' ? (
           scene === undefined
             ? <div className="hima-empty">
-                {/* A historical automatic Run (`control === undefined`) carries no method/reference
-                    graph at all (`executionContext`, `fabric.ts`) — HimaFabric's own fact, not a UI
-                    gap — so the Live view never reaches the canvas for one and never will. What the
-                    graph would have shown of the Run's own standing does not depend on that method,
-                    though: a blocker and a Goal seal are both plain facts on the view itself
-                    (`view.blockers`, `view.run.status`/`meters`), the same facts `FabricCanvas`'s own
-                    attention strip and Goal roundel read — so they are said here too, under the same
-                    markers, rather than left unsaid for exactly the Run this canvas cannot draw. */}
-                {view?.run.status !== 'waiting' || legacyBlocker === undefined ? null : (
-                  <div className="hima-canvas-attention hima-canvas-attention-waiting" data-hima-region="campaign-attention" data-hima-state-kind="waiting">
-                    <span>{legacyBlocker.reason}</span>
-                  </div>
-                )}
-                {!legacyEnded || view === undefined ? null : (
-                  <div data-hima-region="campaign-goal" data-hima-state-status={view.run.status}>
-                    <p className="hima-goal-title">{legacySeal!.title}</p>
-                    {legacySeal!.reason === '' ? null : <p className="hima-goal-reason">{legacySeal!.reason}</p>}
-                  </div>
-                )}
-                {legacyBlocker !== undefined || legacyEnded ? null : <p>{context?.reason ?? 'Reading the reference graph…'}</p>}
-                {/* Still nobody's Side Talk (`run-ownership.ts`'s own `isOwner`), so the same bare
-                    human controls the transcript's tool receipt offers such a Run (`RunControls`,
-                    `HimaRunCard.tsx`) belong here too: Continue while it waits, Stop whenever it is
-                    active, through the same `actOnRun` route and the same `runControls` words
-                    (#41 task 9 item B). */}
-                {control !== undefined || view === undefined ? null : (
-                  <div className="hima-campaign-legacy-controls">
-                    {showsResume(view.run.status) ? (
-                      <button type="button" className="hima-button" data-hima-control="resume" disabled={acting.inFlight !== undefined} onClick={() => acting.act('resume')}>{runControls.resume.said}</button>
-                    ) : null}
-                    {showsCancel(view.run.status) ? (
-                      <button type="button" className="hima-button" data-hima-control="cancel" disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>{runControls.cancel.said}</button>
-                    ) : null}
-                    {acting.notice === undefined ? null : <p role="status">{acting.notice}</p>}
-                    {acting.refusal === undefined ? null : <p role="alert" data-hima-region="run-error">{acting.refusal.message}</p>}
-                  </div>
-                )}
+                <p>{packUnavailable && packId !== undefined
+                  ? `The Pack ${packId} is not installed on this Host; the reference graph cannot be shown.`
+                  : context?.reason ?? 'Reading the reference graph…'}</p>
               </div>
             : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
                 stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
