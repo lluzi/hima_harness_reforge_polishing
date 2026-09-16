@@ -9,6 +9,7 @@ import { reportBlocks } from '../experience-report.js';
 import { runPath } from '../paths.js';
 import { fetchExecutionContext, fetchRun, fetchRuns, fetchStartChoices, reviewPackTransfer, startCampaign, type HimaResult } from './api.js';
 import { ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection, MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, RunControls, useRunActions, VerdictRow, WorkshopSection } from './HimaRunCard.js';
+import { Glyph, type GlyphName } from './glyphs.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot. */
 export interface WorkbenchProps {
@@ -43,12 +44,12 @@ function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<H
 }
 
 const shortTime = (at: string | number): string => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-const stateGlyph = (state: string): string => {
-  if (state === 'done' || state === 'ended-goal-met') return '✓';
-  if (state === 'running') return '◉';
-  if (['waiting', 'ended-converged', 'retrying', 'waiting-for-slot'].includes(state)) return '◇';
-  if (['blocked', 'cancelled', 'ended-goal-not-met', 'ended-budget-exhausted'].includes(state)) return '×';
-  return '○';
+const stateGlyphName = (state: string): GlyphName => {
+  if (state === 'done' || state === 'ended-goal-met') return 'check';
+  if (state === 'running') return 'dot';
+  if (['waiting', 'ended-converged', 'retrying', 'waiting-for-slot'].includes(state)) return 'diamond';
+  if (['blocked', 'cancelled', 'ended-goal-not-met', 'ended-budget-exhausted'].includes(state)) return 'square';
+  return 'circle';
 };
 
 export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, openOwner }: WorkbenchProps): ReactElement {
@@ -94,12 +95,12 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
     } catch (error) { if (!own.signal.aborted) setSaved({ error: (error as Error).message }); }
   };
 
-  return <div className='hima-studio' data-hima-region='studio' data-hima-state-session={activeSessionId} data-hima-state-run={selected ?? ''} data-stale={snapshot.error !== undefined}>
+  return <div className='hima-studio hima-root' data-hima-region='studio' data-hima-state-session={activeSessionId} data-hima-state-run={selected ?? ''} data-stale={snapshot.error !== undefined}>
     <header className='hima-studio-header'>
       <div><h2>Campaign workspace</h2></div>
       <button className='hima-button' disabled={starting} onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
       <button className='hima-button' disabled={starting} data-hima-control='studio-pack-owner' onClick={() => setManagingPack(value => !value)}>Pack & assets</button>
-      <button className='hima-button hima-primary' disabled={starting} data-hima-control='studio-new' onClick={() => { if (!startPending.current) setCreating(true); }}>＋ New Campaign</button>
+      <button className='hima-button hima-primary' disabled={starting} data-hima-control='studio-new' onClick={() => { if (!startPending.current) setCreating(true); }}><Glyph name='circle' /> New Campaign</button>
     </header>
     <div className='hima-run-picker'>
       <span className='hima-studio-eyebrow'>CAMPAIGN</span>
@@ -108,14 +109,14 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         {selected && !list.value?.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
         {list.value?.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
       </select>
-      <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); }}>↻</button>
+      <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); }}><Glyph name='retry' /></button>
     </div>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
     {notice ? <p role='alert' className='hima-error'>{notice}</p> : null}
     {managingPack ? <PackOwnerPanel key={activeSessionId} sessionId={activeSessionId} initialPack={view?.run.packId ?? ''} /> : null}
     {view?.run.control && view.run.control.owner !== activeSessionId ? <button type='button' className='hima-button' data-hima-control='open-owner' onClick={() => openOwner(view.run.control!.owner)}>Open Campaign Agent</button> : null}
     {creating ? <StartRunForm key={activeSessionId} sessionId={activeSessionId} onBusy={startBusy} onClose={() => { if (!startPending.current) setCreating(false); }} onStarted={(run) => { setSelected(run.run.id); setCreating(false); setSection('live'); list.refresh(); snapshot.refresh(); setNotice(undefined); }} />
-      : selected === undefined ? <div className='hima-empty'><div className='hima-empty-glyph'>⌘</div><h3>Complete a chip-design Campaign.</h3><p>Keep coding and conversation available while HimaGuide prepares the inputs and the Campaign Agent executes the method.</p><button className='hima-button hima-primary' onClick={() => setCreating(true)}>Prepare a Campaign</button><p className='hima-small'>Choose an existing Campaign above, install a HimaPack, or connect a Site.</p></div>
+      : selected === undefined ? <div className='hima-empty'><div className='hima-empty-glyph'><Glyph name='ring' size={32} /></div><h3>Complete a chip-design Campaign.</h3><p>Keep coding and conversation available while HimaGuide prepares the inputs and the Campaign Agent executes the method.</p><button className='hima-button hima-primary' onClick={() => setCreating(true)}>Prepare a Campaign</button><p className='hima-small'>Choose an existing Campaign above, install a HimaPack, or connect a Site.</p></div>
         : <>
           {snapshot.error ? <div className='hima-notice' role='alert'>Updates unavailable. {snapshot.at ? `Showing the last successful read at ${shortTime(snapshot.at)}.` : 'No Run data has been read.'} {snapshot.error}</div> : null}
           {view === undefined ? <div className='hima-empty'><p>{snapshot.error ? 'Retry the data read to continue.' : 'Reading Run records…'}</p></div> : <>
@@ -135,10 +136,10 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
                 <ArchiveSection view={view} />
               </> : section === 'experiments' ? <div className='hima-detail'><h3>Experiment history</h3><p className='hima-small'>Recorded generations, measurements and decisions.</p>{view.generations.length ? <GenerationsTable view={view} /> : <p>No generation has been recorded.</p>}</div>
                 : section === 'evidence' ? <EvidenceTrail view={view} />
-                  : <div className='hima-detail hima-report'><h3>Technical report</h3>{saved ? <><button className='hima-button' onClick={() => { savedRead.current?.abort(); setSaved(undefined); }}>← Current ledger preview</button><p className='hima-small'>{saved.markdown !== undefined ? 'Saved Markdown · original bytes verified by the Host' : saved.loading ? 'Reading and verifying the saved file…' : 'Saved file could not be verified'}</p>{saved.loading ? <p>Reading saved report…</p> : saved.error ? <p role='alert' className='hima-notice'>{saved.error}</p> : reportBlocks(saved.markdown!).map((block, index) => <ReportBlockRow key={index} block={block} />)}</> : view.experience ? <ExperienceSection view={view} experience={view.experience} onOpenSaved={() => { void openSaved(); }} /> : <p>{view.experienceUnavailable ?? 'A technical report will appear here when the Run closes.'}</p>}</div>}
+                  : <div className='hima-detail hima-report'><h3>Technical report</h3>{saved ? <><button className='hima-button' onClick={() => { savedRead.current?.abort(); setSaved(undefined); }}>Current ledger preview</button><p className='hima-small'>{saved.markdown !== undefined ? 'Saved Markdown · original bytes verified by the Host' : saved.loading ? 'Reading and verifying the saved file…' : 'Saved file could not be verified'}</p>{saved.loading ? <p>Reading saved report…</p> : saved.error ? <p role='alert' className='hima-notice'>{saved.error}</p> : reportBlocks(saved.markdown!).map((block, index) => <ReportBlockRow key={index} block={block} />)}</> : view.experience ? <ExperienceSection view={view} experience={view.experience} onOpenSaved={() => { void openSaved(); }} /> : <p>{view.experienceUnavailable ?? 'A technical report will appear here when the Run closes.'}</p>}</div>}
             </div>
             {section === 'report' ? <ArchiveSection view={view} /> : null}
-            <footer className='hima-studio-footer'><span>{snapshot.error ? '◇ Updates unavailable' : `✓ Read ${snapshot.at ? shortTime(snapshot.at) : '—'}`}</span><span title={view.run.id}>{view.run.id}</span><span>Fabric / Ledger</span></footer>
+            <footer className='hima-studio-footer'><span>{snapshot.error ? <><Glyph name='diamond' /> Updates unavailable</> : <><Glyph name='check' /> Read {snapshot.at ? shortTime(snapshot.at) : '—'}</>}</span><span title={view.run.id}>{view.run.id}</span><span>Fabric / Ledger</span></footer>
           </>}
         </>}
   </div>;
@@ -205,7 +206,7 @@ function RunSummary({ view }: { view: RunView }): ReactElement {
   const lines = bannerLines(run);
   const blocker = run.status === 'waiting' ? view.blockers.at(-1) : undefined;
   return <section className='hima-run-summary' data-hima-region='studio-status' data-hima-state-status={run.status ?? 'unknown'} data-hima-state-purpose={run.purpose ?? 'campaign'}>
-    <div className='hima-run-title'><h3>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''}</h3><span className='hima-state' data-state={run.status}>{stateGlyph(run.status ?? 'unknown')} {status?.said ?? 'No Fabric state recorded'}</span></div>
+    <div className='hima-run-title'><h3>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''}</h3><span className='hima-state' data-state={run.status}><Glyph name={stateGlyphName(run.status ?? 'unknown')} /> {status?.said ?? 'No Fabric state recorded'}</span></div>
     <p className='hima-run-context'>{view.workspace?.design ?? 'Design not recorded'} <span>·</span> {run.siteId} {run.packVersion ? <><span>·</span> Pack v{run.packVersion}</> : null}</p>
     <div className='hima-headlines'><div><span className='hima-studio-eyebrow'>CAMPAIGN GOAL</span><p>{lines.goal ?? 'No goal recorded'}</p></div><div><span className='hima-studio-eyebrow'>CURRENT STEP</span><p>{run.currentNode ?? 'No current node recorded'}</p></div></div>
     <div className='hima-metrics'>
@@ -214,7 +215,7 @@ function RunSummary({ view }: { view: RunView }): ReactElement {
       <div><span>Observations</span><strong>{view.observations.length}</strong></div>
     </div>
     <details className='hima-budget'><summary>Budget and resource use</summary><dl>{meterRows(view).map((row) => <div key={row.key}><dt>{row.label}</dt><dd>{row.detail}</dd></div>)}</dl></details>
-    {blocker ? <div className='hima-blocker'><strong>◇ Needs attention · {blocker.nodeId}</strong><p>{blocker.reason}</p></div> : null}
+    {blocker ? <div className='hima-blocker'><strong><Glyph name='diamond' /> Needs attention · {blocker.nodeId}</strong><p>{blocker.reason}</p></div> : null}
   </section>;
 }
 
@@ -289,11 +290,11 @@ function CampaignGraph({ view, context, owner }: { view: RunView; context?: Exec
     <div className='hima-section-heading'><div><h3>Campaign graph</h3><p className='hima-small'>Complete Pack method with actual execution, growth and revision facts.</p></div><div className='hima-graph-tools'><button className='hima-button' onClick={locate}>Locate current</button><label>Zoom <input aria-label='Campaign graph zoom' type='range' min='65' max='135' value={zoom} onChange={(event) => setZoom(Number(event.target.value))}/></label></div></div>
     <div className='hima-graph-scroll' ref={graphRef}><div className='hima-graph-canvas' style={{ width: width * zoom / 100, height: height * zoom / 100 }}><div style={{ width, height, transform: `scale(${zoom / 100})`, transformOrigin: 'top left', position: 'relative' }}>
       <svg width={width} height={height} aria-hidden='true'><defs><marker id='hima-arrow' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='5' markerHeight='5' orient='auto-start-reverse'><path d='M 0 0 L 10 5 L 0 10 z'/></marker></defs>{edges.map((edge, index) => { const from = positions.get(edge.from), to = positions.get(edge.to); if (!from || !to) return null; return <g key={`${edge.from}-${edge.to}-${index}`}><path d={`M ${from.x + 146} ${from.y + 32} C ${from.x + 168} ${from.y + 32}, ${to.x - 22} ${to.y + 32}, ${to.x} ${to.y + 32}`} className={edge.revisit ? 'hima-graph-edge hima-revisit' : 'hima-graph-edge'} markerEnd='url(#hima-arrow)'/>{edge.outcome ? <text x={(from.x + to.x + 146) / 2} y={(from.y + to.y) / 2 + 22}>{edge.outcome}</text> : null}</g>; })}</svg>
-      {nodes.map((node) => { const at = positions.get(node.id)!; const state = campaignNodeState(node, referenceIds, context, view); return <button key={node.id} type='button' className='hima-graph-node' data-state={state} data-hima-node={node.id} title={`${node.id}: ${graphNodeSummary(node)} · ${state}`} style={{ left: at.x, top: at.y }} onClick={() => setSelected(node.id)}><span>{stateGlyph(state)}</span><strong>{node.id}</strong><small>{graphNodeSummary(node)}</small></button>; })}
+      {nodes.map((node) => { const at = positions.get(node.id)!; const state = campaignNodeState(node, referenceIds, context, view); return <button key={node.id} type='button' className='hima-graph-node' data-state={state} data-hima-node={node.id} title={`${node.id}: ${graphNodeSummary(node)} · ${state}`} style={{ left: at.x, top: at.y }} onClick={() => setSelected(node.id)}><span><Glyph name={stateGlyphName(state)} /></span><strong>{node.id}</strong><small>{graphNodeSummary(node)}</small></button>; })}
     </div></div></div>
-    <div className='hima-trace-caption'><span>○ Planned</span><span>＋ Available / added</span><span>◉ Running</span><span>✓ Done</span><span>◇ Waiting</span><span>× Blocked / stopped</span></div>
+    <div className='hima-trace-caption'><span><Glyph name='circle' /> Planned</span><span><Glyph name='circle' /> Available / added</span><span><Glyph name='dot' /> Running</span><span><Glyph name='check' /> Done</span><span><Glyph name='diamond' /> Waiting</span><span><Glyph name='square' /> Blocked / stopped</span></div>
     {chosen ? <aside className='hima-node-inspector' data-hima-region='campaign-node-inspector' data-hima-state-node={chosen.id}>
-      <header><div><span className='hima-studio-eyebrow'>NODE</span><h4>{chosen.id}</h4></div><span className='hima-state' data-state={chosenState}>{stateGlyph(chosenState ?? 'planned')} {chosenState}</span></header>
+      <header><div><span className='hima-studio-eyebrow'>NODE</span><h4>{chosen.id}</h4></div><span className='hima-state' data-state={chosenState}><Glyph name={stateGlyphName(chosenState ?? 'planned')} /> {chosenState}</span></header>
       <p>{graphNodeSummary(chosen)}. {owner ? 'Campaign Agent controls are available when Fabric admits this node.' : 'Open the Campaign Agent to perform owner actions.'}</p>
       <dl><div><dt>Inputs / action</dt><dd><pre>{JSON.stringify(chosen.parameters, null, 2)}</pre></dd></div><div><dt>Evidence</dt><dd>{chosenEvidence.length ? chosenEvidence.map((item) => item.recordId).join(', ') : 'No evidence formed for this node.'}</dd></div><div><dt>Jobs</dt><dd>{chosenJobs.length ? chosenJobs.map((job) => `${job.event} · ${job.job.session}`).join('; ') : 'No Job recorded for this node.'}</dd></div></dl>
     </aside> : null}
@@ -302,7 +303,7 @@ function CampaignGraph({ view, context, owner }: { view: RunView; context?: Exec
 
 function JobActivity({ view }: { view: RunView }): ReactElement {
   const log = view.run.status === 'waiting' ? view.blockers.at(-1)?.logTail : undefined;
-  return <section className='hima-activity'><header><span>▤ {log ? 'Captured job output' : 'Job activity'}</span><span>{log ? 'Blocker log tail' : 'Ledger events'}</span></header>
+  return <section className='hima-activity'><header><span><Glyph name='bar' /> {log ? 'Captured job output' : 'Job activity'}</span><span>{log ? 'Blocker log tail' : 'Ledger events'}</span></header>
     <pre>{log ?? (view.jobs.length ? view.jobs.slice(-12).map((job) => `${shortTime(job.at)}  ${job.nodeId ?? 'job'}  ${job.event}${job.exitCode === undefined ? '' : `  exit ${job.exitCode}`}\n  ${job.job.session}`).join('\n') : 'Waiting for the first recorded Job event.')}</pre>
     <footer>{log ? 'Original output retained in the blocker record.' : 'Job lifecycle events from the Run record.'}</footer>
   </section>;
@@ -360,7 +361,7 @@ function StartRunForm({ sessionId, onStarted, onClose, onBusy }: { sessionId: st
     if (result.ok) onStarted(result.value); else setError(result.error.message);
   };
   return <form className='hima-start-form' data-hima-region='studio-start' onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-    <div className='hima-section-heading'><h3>Prepare a Campaign</h3><button type='button' className='hima-icon-button' aria-label='Close Campaign preparation' disabled={submitting} onClick={onClose}>×</button></div>
+    <div className='hima-section-heading'><h3>Prepare a Campaign</h3><button type='button' className='hima-icon-button' aria-label='Close Campaign preparation' disabled={submitting} onClick={onClose}><Glyph name='close' /></button></div>
     <p className='hima-small'>Choose a business capability and execution Site. HimaGuide checks the method, inputs, knowledge and environment before one confirmation creates the Campaign.</p>
     {prepared?.packs.length === 0 ? <div className='hima-notice' data-hima-region='studio-empty-pack'><strong>No HimaPack is installed.</strong><p>Ask HimaGuide to install a Pack, or open Pack &amp; assets to review and install a fixed Pack folder.</p></div> : null}
     {prepared?.sites.length === 0 ? <div className='hima-notice' data-hima-region='studio-empty-site'><strong>No execution Site is saved.</strong><p>Give HimaGuide an SSH host or OpenSSH alias. It can discover a safe Site profile before Campaign preparation.</p></div> : null}
@@ -368,16 +369,16 @@ function StartRunForm({ sessionId, onStarted, onClose, onBusy }: { sessionId: st
     {prepared?.proposal ? <section className='hima-preparation' data-hima-region='studio-proposal' data-hima-state-ready={String(prepared.proposal.ready)}>
       <h4>{prepared.proposal.pack.title}</h4><p className='hima-small'>Pack {prepared.proposal.pack.id}@{prepared.proposal.pack.version}{prepared.proposal.pack.status ? ` · ${prepared.proposal.pack.status.raw}` : ''}</p>
       <div className='hima-headlines'><div><strong>Business goal</strong><p>{Object.entries(prepared.proposal.goal).map(([name, value]) => `${prepared.words?.goal[name]?.label ?? name}: ${String(value)}${prepared.words?.goal[name]?.unit ? ` ${prepared.words.goal[name]!.unit}` : ''}`).join(' · ') || 'Pack-defined goal'}</p></div><div><strong>Method</strong><p>{prepared.proposal.referenceGraph.nodes.length} reference nodes · {prepared.proposal.knowledge.documents} Pack knowledge documents · {prepared.proposal.site?.kind ?? 'Site needed'}</p></div></div>
-      <details><summary>Inputs and readiness</summary>{prepared.proposal.inputs.map((input) => <p key={input.name}>{input.ready ? '✓' : '○'} <strong>{input.name}</strong>{input.value ? ` · ${input.value}` : ''}<br/><span className='hima-small'>{input.description}</span></p>)}{prepared.proposal.unknowns.map((unknown) => <p key={unknown} className='hima-notice'>{unknown}</p>)}</details>
-      <details><summary>Reference graph and tools</summary><p>{prepared.proposal.referenceGraph.nodes.map((node) => `${node.id} (${node.kind})`).join(' → ')}</p><p className='hima-small'>{prepared.proposal.pack.tools.map((tool) => `${tool.id}${tool.recommendedVersion ? ` · ${tool.recommendedVersion}` : ''}`).join('; ') || 'No external tool declared.'}</p></details>
+      <details><summary>Inputs and readiness</summary>{prepared.proposal.inputs.map((input) => <p key={input.name}>{input.ready ? <Glyph name='check' /> : <Glyph name='circle' />} <strong>{input.name}</strong>{input.value ? ` · ${input.value}` : ''}<br/><span className='hima-small'>{input.description}</span></p>)}{prepared.proposal.unknowns.map((unknown) => <p key={unknown} className='hima-notice'>{unknown}</p>)}</details>
+      <details><summary>Reference graph and tools</summary><p>{prepared.proposal.referenceGraph.nodes.map((node) => `${node.id} (${node.kind})`).join(' -> ')}</p><p className='hima-small'>{prepared.proposal.pack.tools.map((tool) => `${tool.id}${tool.recommendedVersion ? ` · ${tool.recommendedVersion}` : ''}`).join('; ') || 'No external tool declared.'}</p></details>
     </section> : null}
     <details className='hima-advanced'><summary>Proposed Campaign settings</summary>
       <p className='hima-small'>HimaGuide selected the Pack defaults after checking the actual inputs and Site. Confirming uses these exact values and the Pack budget.</p>
       <div className='hima-headlines'><div><strong>Goal</strong><p>{Object.entries(prepared?.proposal?.goal ?? {}).map(([name, value]) => `${name}: ${String(value)}`).join(' · ') || 'Unavailable'}</p></div>
         <div><strong>Initial strategy</strong><p>{Object.entries(prepared?.proposal?.strategy ?? {}).map(([name, value]) => `${name}: ${String(value)}`).join(' · ') || 'Unavailable'}</p></div></div>
     </details>
-    <div className='hima-preflight' role='status' data-hima-region='studio-preflight' data-hima-state-status={checking ? 'checking' : checkPending.current ? 'unavailable' : prepared?.proposal?.ready ? 'ready' : 'needs-input'}>{checking ? 'Preparing Campaign proposal…' : checkPending.current ? 'Preparation unavailable; retry before confirming.' : prepared?.proposal?.ready ? '✓ Inputs, Pack, Site and method are ready for one Campaign confirmation.' : prepared?.preparation?.message ?? prepared?.proposal?.nextActions.join(' ') ?? 'Choose a Pack and Site to continue.'}</div>
+    <div className='hima-preflight' role='status' data-hima-region='studio-preflight' data-hima-state-status={checking ? 'checking' : checkPending.current ? 'unavailable' : prepared?.proposal?.ready ? 'ready' : 'needs-input'}>{checking ? 'Preparing Campaign proposal…' : checkPending.current ? 'Preparation unavailable; retry before confirming.' : prepared?.proposal?.ready ? <><Glyph name='check' /> Inputs, Pack, Site and method are ready for one Campaign confirmation.</> : prepared?.preparation?.message ?? prepared?.proposal?.nextActions.join(' ') ?? 'Choose a Pack and Site to continue.'}</div>
     {error ? <div className='hima-notice' role='alert'><p>{error}</p><button type='button' className='hima-button' data-hima-control='studio-recheck' onClick={() => { checkPending.current = true; setCheckRevision((value) => value + 1); }}>Retry preparation check</button></div> : null}
-    <div className='hima-start-footer'><button className='hima-button hima-primary' data-hima-control='studio-start' disabled={checking || checkPending.current || submitting || prepared?.proposal?.ready !== true}>{submitting ? 'Creating Campaign…' : 'Confirm and start Campaign →'}</button><details><summary>Checks and data source</summary><p>{START_STATIC_LIMIT}</p></details></div>
+    <div className='hima-start-footer'><button className='hima-button hima-primary' data-hima-control='studio-start' disabled={checking || checkPending.current || submitting || prepared?.proposal?.ready !== true}>{submitting ? 'Creating Campaign…' : <>Confirm and start Campaign <Glyph name='arrow-right' /></>}</button><details><summary>Checks and data source</summary><p>{START_STATIC_LIMIT}</p></details></div>
   </form>;
 }

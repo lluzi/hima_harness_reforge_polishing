@@ -71,7 +71,7 @@ interface EntryProps {
 function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
   const current = useSessions((state) => state.current);
   const [error, setError] = useState<string>();
-  return createElement('div', { className: 'hima-entry', 'data-wide': wide },
+  return createElement('div', { className: 'hima-entry hima-root', 'data-wide': wide },
     createElement('style', null, STUDIO_STYLE),
     createElement('button', {
       type: 'button', disabled: current === undefined,

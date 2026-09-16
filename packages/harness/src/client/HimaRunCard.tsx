@@ -22,6 +22,7 @@ import { experienceReport, reportBlocks, type ReportBlock } from '../experience-
 import type { SemanticValue } from '../semantics.js';
 import { bad, bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionColour, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, good, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopOutcomeLabel, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, outcomeColour, askedObservedSaid, plain, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, warn, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
 import { actOnRun, controlRun, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
+import { Glyph } from './glyphs.js';
 
 /** The slice of the tool block this card reads. The owner passes the frozen call or result node. */
 export interface ToolBlock {
@@ -939,7 +940,7 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId }: { block: T
   }
   return (
     <div style={card}>
-      <a href={runCardPath(runId)} onClick={openRun === undefined ? undefined : (event) => { event.preventDefault(); openRun(runId); }} style={{ ...mono, color: 'inherit' }} title="Open this Run beside the conversation">{runId} ↗</a>
+      <a href={runCardPath(runId)} onClick={openRun === undefined ? undefined : (event) => { event.preventDefault(); openRun(runId); }} style={{ ...mono, color: 'inherit' }} title="Open this Run beside the conversation">{runId} <Glyph name="arrow-right" size={12} /></a>
       {state.error !== undefined ? <FailureRow error={state.error} /> : null}
       {state.view !== undefined ? (openRun === undefined
         ? <RunBody view={state.view} acting={acting} />
