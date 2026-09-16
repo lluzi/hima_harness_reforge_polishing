@@ -22,6 +22,9 @@ Library 由三类互补候选组成：
 3. **multi-output shared logic**：独立免费 POC，只有形式等价、真实共享和 mapper adoption 全部成立后
    才能进入共同 Library。
 
+实施优先级是 physical/electrical richness 高于 functional enumeration：先完成 D1–D4，再验证少量
+design-observed phase gap，最后处理 multi-output。P-equivalence 的 80 个三输入类不是生成清单。
+
 ## 2. 固定约束
 
 - DC 和 APR 的 foundry/custom arm 继续保持相同 RTL 身份、约束、工具、核数、25% core、pin plan、
@@ -104,6 +107,10 @@ Phase-completion candidate 必须同时满足：
 - bool2cmos 结构的 device count、max N/P stack 和 output width 落在声明上限内；复杂度不通过时保留
   refusal，不降级成大 cone candidate。
 
+Bubble pushing 能吸收的大量相位差不会形成候选。P identity 只负责暴露“可能的 mapper-visible gap”；
+真实 augmented mapping 的 adoption 和 level reduction 才决定它是否成为资产。不得枚举全部 P 类，也
+不得用 P-class coverage 数量作为优化目标。
+
 ### 代码修改
 
 | 文件 | 固定修改 |
@@ -136,13 +143,19 @@ Site 的 bool2cmos CLI 已支持重复 `--function/--output` 生成真正的 mul
 
 ### POC 边界
 
-POC 继续使用现有 `proxy_mapping.py` adapter，不增加 Runtime 动作。Augmented arm 在 ABC 前执行一项
-确定性 subgraph replacement：把矿工保存的 exact shared subgraph 替换为一个 multi-output macro；
-reference arm 保留原分解逻辑。
+POC 不先自研局部 replacement mapper。固定版本的 mockturtle `emap` 已实现 ICCAD 2023 whole-network
+multi-output library mapping，并返回支持 multi-output Cell 的 `block_network`。POC 在隔离工具目录固定
+source commit、build flags、binary hash 和许可证；通过后才由现有 `proxy_mapping.py` 包装，不增加
+Runtime 动作。
 
-Replacement 必须由 Yosys 形式等价证明：原 subgraph 和 macro wrapper 进入 `equiv_make`、
-`equiv_simple`/SAT、`equiv_status -assert`。证明失败、output 对不上、side output 未覆盖或多个 occurrence
-重叠时 fail closed。
+Yosys 将同一 subject graph 导出给 ABC 单输出 reference mapper 与 mockturtle augmented mapper，并在
+导回后执行组合形式等价。证明失败、output 对不上、Library Cell 未真实采用或 mapped graph 无法完整
+导出时 fail closed。percy 只用于 bounded multi-output exact topology synthesis，不承担 technology
+mapping。
+
+逻辑采用之后还要运行一次免费 OpenROAD placement proxy。multi-output roots、每个 output sink 集合、
+sink bounding box、HPWL 和 pin-access refusal 必须可见。输出负载明显发散的候选保留为物理负因子，
+不以内部共享量掩盖。
 
 ### 代码修改
 
@@ -152,16 +165,20 @@ Replacement 必须由 Yosys 形式等价证明：原 subgraph 和 macro wrapper 
 | `stages.py:stage_generate` | 对一个 job 向 bool2cmos 重复传入 `--function/--output`；验证一个 subckt 同时暴露全部 outputs |
 | `abstract_cell.py`、`charlib_emit.py` | 验证多 output pin、每个 output 的 function/timing arc 和共享 cell identity |
 | `mine_timing_route.py`、`mine_patterns.py` | 只有 `shared_logic_audit=PASS` 且完整 boundary 可替换的候选进入 POC pool |
-| `proxy_mapping.py` | augmented-only、hash-bound、形式等价通过的 macro replacement；记录 replacement 数、macro census 和 proof log |
+| `proxy_mapping.py` | 包装固定 mockturtle `emap` augmented arm 和 ABC reference arm；记录 source/tool identity、multi-output census、whole-network cost 和 equivalence proof |
 | `library_richness.py` | F2 adoption 读取 multi-output macro census；F1 记录共享节点、removed nodes/edges 和 output count |
+| 现有免费物理 adapter | 对已映射 graph 运行 OpenROAD placement proxy，记录每个 multi-output candidate 的 sink divergence、HPWL 和 pin-access 状态 |
 
 ### 验收
 
 - Full Adder fixture 生成一个含 `S/CO` 的物理 Cell，而不是两个单输出 Cell；
 - 等价 replacement 后两个 outputs 逐 bit 与原图一致；篡改任一 output 必须使形式证明失败；
 - augmented mapper/netlist 真实包含 multi-output master，reference 不包含；
+- mockturtle 统计的 `multioutput_gates` 与导出 netlist census 一致；
+- 相对 ABC 的 whole-network delay/area 指标和 mapper runtime 都有证据，不用单个 replacement 冒充全局 mapping；
 - Library cost 计一颗物理 Cell，不能按两个 output 计两颗；
 - 在 held-out 非 FA shared-logic fixture 上完成同样证明，避免只支持硬编码 FA/compressor；
+- OpenROAD proxy 中至少一个 adopted candidate 通过 locality gate；sink divergence 反例必须被标成负因子；
 - POC 通过前 graph、commercial stages 和 release 状态不变，不启动 LC/DC/Innovus。
 
 ## 7. M2-05：因子与下一次 E0 准入
@@ -173,6 +190,7 @@ Replacement 必须由 Yosys 形式等价证明：原 subgraph 和 macro wrapper 
 - `phase_completion_level_reduction`：相位补洞带来的实际 mapped level 变化；
 - `depth_survival`：license-free synthesis depth 收益经过免费物理代理后的保留比例；
 - `multi_output_equivalence_and_adoption`：形式证明和 macro census。
+- `multi_output_sink_divergence`：每个 output sink 的几何分离、HPWL 和 pin-access evidence。
 
 下一次 50-Cell Library 在免费层必须完整披露这些因子；缺失值是 unknown，不转成零。研究程序依据因子
 选择一份 Library，E0 仍只有一次。上一轮负样本作为
@@ -190,3 +208,14 @@ Replacement 必须由 Yosys 形式等价证明：原 subgraph 和 macro wrapper 
 共享文件 `stages.py` 由集成者单独接线。每项先运行相关 Python/domain/contract 子集；只有真实 Yosys/ABC
 接口变化才升级 L2。Desktop 与 Hima Harness Campaign 不属于本方法切片。
 
+## 9. 参考边界
+
+- Beeftink et al., ICCAD 1998 直接支持 primitive gate size selection；它不作为“少于20%逻辑类型、
+  1–3%收益或综合时间倍增”这些数字的来源。
+- 2022 Essential Standard Cell Library Composition 在一个 12nm/ARM/benchmark 范围内报告 14 个组合
+  函数、4 个时序函数和 88 个 physical Cells 可接近完整库；它是 lean baseline 的证据，不排除
+  design-specific extension。
+- EPFL Three-Input Gates 工作说明十个 fully-dependent 三输入 NPN 类的表达能力不同；这支持按设计
+  选择少量基础拓扑，不支持枚举全部 P 类。
+- Tempia Calvino and De Micheli, ICCAD 2023 给出 whole-network multi-output mapping；mockturtle `emap`
+  是优先 POC 基线。
