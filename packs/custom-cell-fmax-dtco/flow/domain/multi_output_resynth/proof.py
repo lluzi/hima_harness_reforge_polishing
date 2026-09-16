@@ -171,7 +171,7 @@ def _without_modules(text, names):
 
 def prove_hierarchical_equivalence(
     original, rewritten, proof_top, subject_modules, cells, workdir,
-    yosys="yosys", timeout=120,
+    yosys="yosys", timeout=120, allowed_changed_modules=(),
 ):
     """Compose exact combinational leaf proofs under an unchanged hierarchy."""
     modules = tuple(sorted(set(subject_modules)))
@@ -179,10 +179,13 @@ def prove_hierarchical_equivalence(
         raise ProofError("hierarchical proof requires non-top subject modules")
     original_text = Path(original).read_text()
     rewritten_text = Path(rewritten).read_text()
-    original_outside, original_matches = _without_modules(original_text, modules)
-    rewritten_outside, rewritten_matches = _without_modules(rewritten_text, modules)
+    allowed = tuple(sorted(set(allowed_changed_modules)))
+    original_outside, original_all_matches = _without_modules(original_text, modules + allowed)
+    rewritten_outside, rewritten_all_matches = _without_modules(rewritten_text, modules + allowed)
     if original_outside != rewritten_outside:
         raise ProofError("netlist outside the subject modules changed")
+    original_matches = _module_matches(original_text)
+    rewritten_matches = _module_matches(rewritten_text)
     parsed = parse_modules(original_text)
     rows = []
     workdir = Path(workdir)
@@ -223,13 +226,14 @@ def prove_hierarchical_equivalence(
         "status": "proved",
         "proofTop": proof_top,
         "subjectModules": list(modules),
+        "allowedSeparatelyProvedChangedModules": list(allowed),
         "outsideSubjectsUnchangedSha256": outside_hash,
         "originalNetlistSha256": _sha256(original),
         "rewrittenNetlistSha256": _sha256(rewritten),
         "moduleProofs": rows,
         "claim": (
             "Each changed combinational leaf is Yosys-equivalent, its interface is unchanged, "
-            "and every byte outside the changed module definitions is identical."
+            "and every byte outside the changed or separately proved module definitions is identical."
         ),
     }
     (workdir / "equivalence.json").write_text(

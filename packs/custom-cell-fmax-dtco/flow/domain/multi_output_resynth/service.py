@@ -90,10 +90,10 @@ def _validate_request(request, request_path):
     scope = request.get("scope") or {}
     max_inputs = int(scope.get("maxInputs", 3))
     max_outputs = int(scope.get("maxOutputs", 2))
-    if max_inputs > 3 or max_outputs > (3 if request.get("operation") == "directed" else 2):
+    if max_inputs > (4 if request.get("operation") == "directed" else 3) or max_outputs > (3 if request.get("operation") == "directed" else 2):
         raise ResynthesisError(
             "unsupported-scope",
-            "POC supports at most 3 inputs and 2 discovered or 3 directed outputs",
+            "service supports at most 3 discovered or 4 directed inputs and 2 discovered or 3 directed outputs",
         )
     for required in ("preserveRegisters", "preservePorts", "preserveHierarchy"):
         if scope.get(required) is not True:
@@ -222,6 +222,28 @@ def _top_output_nets(text, top):
     return tuple(sorted(outputs))
 
 
+def _module_pin_directions(text, module):
+    """Return raw module port directions for hierarchical graph construction."""
+    body = None
+    for match in re.finditer(r"(?ms)^\s*module\s+(\S+?)\b(.*?)^\s*endmodule", text):
+        if match.group(1) == module:
+            body = match.group(2)
+            break
+    if body is None:
+        return {}
+    result = {}
+    for match in re.finditer(
+        r"\b(input|output|inout)\b\s*(?:wire|logic|reg)?\s*(?:\[[^\]]+\])?\s*([^;\)]*)[;\)]",
+        body,
+    ):
+        direction, names = match.groups()
+        for raw in names.split(","):
+            name = raw.strip().split("=")[0].strip()
+            if name and not re.search(r"\s", name):
+                result[name] = direction
+    return result
+
+
 def _derive_boundary(graph, source_names, top_output_nets=()):
     selected = set(source_names)
     inputs = set()
@@ -279,7 +301,7 @@ def _opportunity_id(module, instances, master, inputs, outputs):
 
 def _make_opportunity(
     module, instances, graph, cells, allowed, expected_inputs=None,
-    expected_outputs=None, top_outputs=(), maximum_outputs=2,
+    expected_outputs=None, top_outputs=(), maximum_inputs=3, maximum_outputs=2,
 ):
     missing = sorted(set(instances) - set(graph.instances))
     if missing:
@@ -295,10 +317,11 @@ def _make_opportunity(
             "target-boundary-mismatch", "target output boundary differs from request",
             {"expected": list(expected_outputs), "actual": list(boundary_outputs)},
         )
-    if len(boundary_inputs) > 3 or not (1 <= len(boundary_outputs) <= maximum_outputs):
+    if len(boundary_inputs) > maximum_inputs or not (1 <= len(boundary_outputs) <= maximum_outputs):
         raise ResynthesisError(
             "target-boundary-unsupported",
-            "target must have <=3 inputs and no more than %d outputs" % maximum_outputs,
+            "target must have <=%d inputs and no more than %d outputs"
+            % (maximum_inputs, maximum_outputs),
             {"inputs": list(boundary_inputs), "outputs": list(boundary_outputs)},
         )
     source = [graph.instances[name] for name in sorted(instances)]
@@ -340,6 +363,7 @@ def _make_opportunity(
 def _directed(request, graphs, cells, allowed, module_outputs):
     opportunities = []
     maximum_outputs = int((request.get("scope") or {}).get("maxOutputs", 2))
+    maximum_inputs = int((request.get("scope") or {}).get("maxInputs", 3))
     for target in request.get("targets", ()):
         module = target.get("module")
         if module not in graphs:
@@ -348,7 +372,7 @@ def _directed(request, graphs, cells, allowed, module_outputs):
             module, target.get("instances") or (), graphs[module], cells, allowed,
             tuple(sorted(target.get("expectedBoundaryInputs") or ())),
             tuple(sorted(target.get("expectedBoundaryOutputs") or ())),
-            module_outputs[module],
+            module_outputs[module], maximum_inputs,
             maximum_outputs,
         ))
     return opportunities, {"cuts": 0, "leafBuckets": 0, "hashHits": 0, "pairChecks": 0, "bucketOverflows": []}
@@ -507,7 +531,10 @@ def _discover_module(request, module, graph, cells, allowed, top_outputs):
     refusals = []
     for cluster in sorted(candidates):
         try:
-            opportunities.append(_make_opportunity(module, cluster, graph, cells, allowed, top_outputs=top_outputs))
+            opportunities.append(_make_opportunity(
+                module, cluster, graph, cells, allowed, top_outputs=top_outputs,
+                maximum_inputs=max_inputs, maximum_outputs=2,
+            ))
         except ResynthesisError as error:
             refusals.append({"instances": list(cluster), "code": error.code})
     stats = {
@@ -556,13 +583,28 @@ def _discover(request, graphs, cells, allowed, module_outputs):
     return opportunities, totals
 
 
-def _select(opportunities, maximum):
+def _select(opportunities, maximum, selected_ids=None):
     occupied = set()
     selected = []
-    ranked = sorted(
-        opportunities,
-        key=lambda row: (-row["removedCellCount"], -row["removedInternalNetCount"], row["masterArea"], row["opportunityId"]),
-    )
+    by_id = {row["opportunityId"]: row for row in opportunities}
+    if selected_ids is not None:
+        if (not isinstance(selected_ids, list) or not selected_ids
+                or any(not isinstance(value, str) for value in selected_ids)
+                or len(set(selected_ids)) != len(selected_ids)):
+            raise ResynthesisError("invalid-request", "selectedOpportunityIds must be unique strings")
+        missing = sorted(set(selected_ids) - set(by_id))
+        if missing:
+            raise ResynthesisError(
+                "selected-opportunity-missing",
+                "the Action Portfolio names opportunities absent from this bound input",
+                {"opportunityIds": missing},
+            )
+        ranked = [by_id[value] for value in selected_ids]
+    else:
+        ranked = sorted(
+            opportunities,
+            key=lambda row: (-row["removedCellCount"], -row["removedInternalNetCount"], row["masterArea"], row["opportunityId"]),
+        )
     for row in ranked:
         if len(selected) >= maximum:
             break
@@ -571,6 +613,12 @@ def _select(opportunities, maximum):
             for instance in row["sourceInstances"]
         }
         if source.intersection(occupied):
+            if selected_ids is not None:
+                raise ResynthesisError(
+                    "selected-opportunity-conflict",
+                    "the Action Portfolio contains overlapping source instances",
+                    {"opportunityId": row["opportunityId"]},
+                )
             continue
         occupied.update(source)
         selected.append(row)
@@ -631,6 +679,7 @@ def run_request(request_path, result_path):
                 {"modules": missing_modules},
             )
         directions = _directions(cells)
+        directions.update({module: _module_pin_directions(text, module) for module in modules})
         graphs = {
             module: build_named_net_graph(
                 modules[module], directions, top_assign_aliases(text, module)
@@ -645,7 +694,7 @@ def run_request(request_path, result_path):
         else:
             opportunities, stats = _discover(request, graphs, cells, allowed, module_outputs)
         maximum = int((request.get("scope") or {}).get("maxReplacements", 50))
-        selected = _select(opportunities, maximum)
+        selected = _select(opportunities, maximum, request.get("selectedOpportunityIds"))
         result = _result_base(
             netlist_hash, round((time.monotonic() - started) * 1000, 3), opportunities, selected, stats
         )
@@ -670,14 +719,49 @@ def run_request(request_path, result_path):
                     "yosys": ((request.get("tools") or {}).get("yosys") or "yosys"),
                     "timeout": int((request.get("tools") or {}).get("proofTimeoutSeconds", 120)),
                 }
-                if len(selected_modules) == 1:
+                top = request["top"]
+                top_has_sequential_boundaries = any(
+                    cells.get(instance.base_type) is not None
+                    and cells[instance.base_type].is_seq
+                    for instance in modules[top]
+                )
+                leaf_modules = [module for module in selected_modules if module != top]
+                if top in selected_modules and top_has_sequential_boundaries:
+                    leaf_proof = (
+                        prove_hierarchical_equivalence(
+                            netlist, candidate, top, leaf_modules,
+                            cells, output / "proof", allowed_changed_modules=(top,),
+                            **proof_args,
+                        ) if leaf_modules else None
+                    )
+                    top_windows = [row["windowProof"] for row in selected if row["module"] == top]
+                    proof = {
+                        "schema": "hima.multi-output-equivalence-proof/1",
+                        "backend": "yosys-hierarchical-plus-exhaustive-top-windows",
+                        "status": "proved" if (
+                            (leaf_proof is None or leaf_proof.get("status") == "proved")
+                            and top_windows
+                            and all(row.get("status") == "proved" for row in top_windows)
+                        ) else "failed",
+                        "top": top,
+                        "leafProof": leaf_proof,
+                        "topWindowProofs": top_windows,
+                        "compositionClaim": (
+                            "Every changed combinational leaf is Yosys-equivalent; each top-level "
+                            "replacement is exhaustively truth-vector equivalent at the exact "
+                            "boundary; the structural patch and byte-exact rollback bind those "
+                            "local proofs into the unchanged sequential design."
+                        ),
+                    }
+                    if proof["status"] != "proved":
+                        raise ProofError("mixed hierarchical/window equivalence failed")
+                elif top in selected_modules:
                     proof = prove_top_equivalence(
-                        netlist, candidate, request["top"], cells, output / "proof",
-                        **proof_args,
+                        netlist, candidate, top, cells, output / "proof", **proof_args,
                     )
                 else:
                     proof = prove_hierarchical_equivalence(
-                        netlist, candidate, request["top"], selected_modules,
+                        netlist, candidate, top, leaf_modules,
                         cells, output / "proof", **proof_args,
                     )
             rewritten_path = output / "rewritten.v"

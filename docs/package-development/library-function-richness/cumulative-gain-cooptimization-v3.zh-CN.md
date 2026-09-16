@@ -1,6 +1,6 @@
 # 累计收益驱动的 Standard Cell 协同优化方法学 v3
 
-状态：升级方案，待按本文任务切片实施。
+状态：CGO-01～CGO-07 已实现并完成 AES 100-Cell 商业观察；CGO-08 因 ECO 主目标为负而按条件跳过。
 归属：`custom-cell-fmax-dtco` HimaPack 的 Library Function Richness 开发专线。
 依据：AES 单输出、20-Cell 双输出、40-Cell 双/三输出商业结果，以及 EPFL
 《Technology Mapping Using Multi-output Library Cells》。
@@ -393,3 +393,21 @@ Desktop App 不参与本方法学测试。
 
 5% 仍是 Campaign 的最终商业目标。它来自多轮已验证正边际收益的累计，不寄希望于一颗或少数“银弹”
 Cell。
+
+
+## 14. 2026-09-16 实施与商业观察
+
+CGO-01～CGO-06 已在现有 miner、Library evaluator、generation projection、resynth、stage 和 Reader seam 内实现。
+域测试为 90 项，覆盖本文 L0/L1 的 endpoint 去重、32-endpoint 全覆盖、path migration、逐 Action 重算、
+module-scoped conflict、三输出全 root required-time、fusion side output、Cell Demand、delta Library 与 sampled-frontier
+fail-closed。没有新增 Runtime 组件或 Fabric 节点。
+
+CGO-07 使用 100-Cell 预算完成了真实 AES free loop、100/100 bool2cmos、100/100 abstract、learned Liberty、
+11-Cell Portfolio、逻辑证明、LC 和 Innovus post-route。保留 11 个 ECO Cell 后，WNS 从 baseline -57 ps 变为
+-75 ps，Fmax 下降 3.130%；面积、wire 和 modeled power 的改善不能替代 Fmax。CGO-08 因此标为
+`skipped-with-reason: eco-primary-objective-negative`。详见
+[evidence/2026-09-16-aes-cgo100-cumulative-gain.md](evidence/2026-09-16-aes-cgo100-cumulative-gain.md)。
+
+本轮还收紧了 E0 准入：普通 top-N timing report 明确标记为 `sampled-commercial-top-paths`，不得再以
+“覆盖了报告中的 endpoint”冒充完整 timing-cone coverage 并开启商业门。下一轮先补齐 endpoint 内多 launch path/
+完整 cone，再根据本轮 33～67 ps 的 route-retained custom arc 商业标签修正 F3/F4。

@@ -35,6 +35,8 @@ SCHEMA = "lfr-round/3"
 RESULT_SCHEMA = "lfr-round-evaluation/3"
 FRONTIER_REQUEST_SCHEMA = "lfr-frontier-request/1"
 FRONTIER_RESULT_SCHEMA = "lfr-frontier-evaluation/1"
+CGO_REQUEST_SCHEMA = "hima.lfr-cumulative-gain-request/1"
+CGO_RESULT_SCHEMA = "hima.lfr-cumulative-gain-evaluation/1"
 SCENARIOS = ("optimistic", "nominal", "conservative")
 FREE_FACTOR_LAYERS = ("F1", "F2", "F3")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -2122,6 +2124,7 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
         result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))
         return result
 
+
     try:
         mapping_request = validated["mapping"]
         top = _string(mapping_request.get("top"), "mapping.top")
@@ -2222,6 +2225,279 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
         return result
 
 
+def _cgo_signed_number(value: object, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RoundRequestError("%s must be a number" % name)
+    result = float(value)
+    if not math.isfinite(result):
+        raise RoundRequestError("%s must be finite" % name)
+    return result
+
+
+def _cgo_endpoint_state(design_state: Mapping[str, Any]) -> tuple[dict[str, float], float, str]:
+    """Read the v3 endpoint state without accepting path-row multiplicity."""
+    if design_state.get("schema") != "hima.lfr-endpoint-frontier/1":
+        raise RoundRequestError("design_state must be an endpoint-frontier/1 document")
+    rows = design_state.get("endpoints")
+    if not isinstance(rows, list) or not rows:
+        raise RoundRequestError("design_state.endpoints must be non-empty")
+    slacks: dict[str, float] = {}
+    for index, row_value in enumerate(rows):
+        row = _mapping(row_value, "design_state.endpoints[%d]" % index)
+        endpoint = _string(row.get("endpoint"), "design_state endpoint")
+        if endpoint in slacks:
+            raise RoundRequestError("design_state repeats endpoint %s" % endpoint)
+        slacks[endpoint] = _cgo_signed_number(row.get("slack_ns"), "endpoint slack")
+    target = _cgo_signed_number(design_state.get("target_slack_ns"), "target_slack_ns")
+    group = _string(design_state.get("path_group"), "path_group")
+    return slacks, target, group
+
+
+def _cgo_snapshot(slacks: Mapping[str, float], target: float, epsilon: float) -> dict[str, object]:
+    wns = min(slacks.values())
+    frontier = sorted(name for name, slack in slacks.items() if slack <= wns + epsilon + 1e-12)
+    deficit = sum(max(0.0, target - slacks[name]) for name in slacks)
+    tns = sum(min(0.0, slack) for slack in slacks.values())
+    return {
+        "wns_ns": round(wns, 12), "frontier_endpoints": frontier,
+        "frontier_deficit_ns": round(deficit, 12), "tns_ns": round(tns, 12),
+        "violating_endpoint_count": sum(slack < 0 for slack in slacks.values()),
+    }
+
+
+def _cgo_action(value: object, known_endpoints: set[str], index: int) -> dict[str, object]:
+    row = dict(_mapping(value, "actions[%d]" % index))
+    identifier = _string(row.get("action_id"), "actions[%d].action_id" % index)
+    kind = _string(row.get("kind"), "actions[%d].kind" % index)
+    if kind not in {"single-output", "multi-output", "physical-fusion"}:
+        raise RoundRequestError("action %s has unsupported kind" % identifier)
+    apply_mode = _string(row.get("apply_mode"), "actions[%d].apply_mode" % index)
+    if apply_mode not in {"eco-only", "synthesis-eligible"}:
+        raise RoundRequestError("action %s has unsupported apply_mode" % identifier)
+    deltas_value = _mapping(row.get("delta_slack_by_endpoint"), "action delta")
+    unknown = sorted(set(deltas_value) - known_endpoints)
+    if unknown:
+        raise RoundRequestError("action %s names unknown endpoints: %s" % (identifier, unknown))
+    uncertainty = _number(row.get("model_uncertainty_ns", 0.0), "model_uncertainty_ns")
+    penalty = _number(row.get("physical_penalty_ns", 0.0), "physical_penalty_ns")
+    if uncertainty < 0 or penalty < 0:
+        raise RoundRequestError("action uncertainty and physical penalty must be non-negative")
+    conservative = {}
+    for endpoint, value_delta in deltas_value.items():
+        delta = _cgo_signed_number(value_delta, "delta_slack_by_endpoint.%s" % endpoint)
+        conservative[endpoint] = round(delta - uncertainty - penalty, 12)
+    root_checks = row.get("root_checks", [])
+    if not isinstance(root_checks, list):
+        raise RoundRequestError("action root_checks must be an array")
+    rejected_roots = []
+    for root_index, root_value in enumerate(root_checks):
+        root = _mapping(root_value, "root_checks[%d]" % root_index)
+        if root.get("output_used") is not True or root.get("required_time_met") is not True:
+            rejected_roots.append(str(root.get("root") or root_index))
+    demand = _mapping(row.get("cell_demand"), "action cell_demand")
+    demand_id = _string(demand.get("demand_id"), "cell_demand.demand_id")
+    resources = row.get("resources", [])
+    if not isinstance(resources, list) or not all(isinstance(item, str) and item for item in resources):
+        raise RoundRequestError("action resources must be non-empty strings")
+    row.update({
+        "action_id": identifier, "kind": kind, "apply_mode": apply_mode,
+        "delta_slack_by_endpoint": {str(key): float(value) for key, value in deltas_value.items()},
+        "conservative_delta_slack_by_endpoint": conservative,
+        "affected_endpoints": sorted(conservative), "resources": sorted(set(resources)),
+        "cell_demand": dict(demand), "demand_id": demand_id,
+        "root_rejections": rejected_roots,
+    })
+    return row
+
+
+def optimize_action_portfolio(design_state: Mapping[str, Any], actions: Sequence[object],
+                              cell_budget: int) -> dict[str, object]:
+    """Select a stateful, endpoint-frontier Action Portfolio.
+
+    The evaluator intentionally operates on timing-graph indicators.  It does
+    not predict commercial MHz.  Each accepted Action updates endpoint slacks;
+    all remaining marginal vectors are then recomputed against that state.
+    """
+    if isinstance(cell_budget, bool) or not isinstance(cell_budget, int) or not 1 <= cell_budget <= 100:
+        raise RoundRequestError("cell_budget must be within 1..100")
+    if not isinstance(actions, Sequence) or isinstance(actions, (str, bytes)):
+        raise RoundRequestError("actions must be an array")
+    slacks, target, path_group = _cgo_endpoint_state(design_state)
+    epsilon = _number(design_state.get("epsilon_ns"), "epsilon_ns")
+    normalized = [_cgo_action(value, set(slacks), index) for index, value in enumerate(actions)]
+    if len({row["action_id"] for row in normalized}) != len(normalized):
+        raise RoundRequestError("actions repeat action_id")
+    baseline = _cgo_snapshot(slacks, target, epsilon)
+    current = dict(slacks)
+    selected: list[dict[str, object]] = []
+    selected_resources: set[str] = set()
+    selected_demands: set[str] = set()
+    remaining = list(normalized)
+    trace = []
+    stop_reason = "no-positive-conservative-action"
+    while remaining:
+        before = _cgo_snapshot(current, target, epsilon)
+        evaluations = []
+        for action in remaining:
+            reasons = list(action["root_rejections"])
+            if set(action["resources"]) & selected_resources:
+                reasons.append("resource-conflict")
+            new_demand = action["demand_id"] not in selected_demands
+            if new_demand and len(selected_demands) >= cell_budget:
+                reasons.append("cell-budget-reached")
+            simulated = dict(current)
+            for endpoint, delta in action["conservative_delta_slack_by_endpoint"].items():
+                simulated[endpoint] += delta
+            after = _cgo_snapshot(simulated, target, epsilon)
+            wns_gain = round(after["wns_ns"] - before["wns_ns"], 12)
+            deficit_gain = round(before["frontier_deficit_ns"] - after["frontier_deficit_ns"], 12)
+            tns_gain = round(after["tns_ns"] - before["tns_ns"], 12)
+            current_frontier = set(before["frontier_endpoints"])
+            affected_frontier = current_frontier & set(action["affected_endpoints"])
+            coverable = set(action["affected_endpoints"])
+            blocked = set(action["resources"]) | selected_resources
+            for other in remaining:
+                if other["action_id"] == action["action_id"] or other["root_rejections"]:
+                    continue
+                if set(other["resources"]) & blocked:
+                    continue
+                coverable.update(other["affected_endpoints"])
+            complete_plan = current_frontier <= coverable
+            admission = None
+            if not reasons and wns_gain > 0:
+                admission = "direct-gain"
+            elif (not reasons and deficit_gain > 0 and affected_frontier and complete_plan):
+                admission = "portfolio-preparation"
+            elif not reasons:
+                reasons.append("no-complete-positive-frontier-plan")
+            evaluations.append({
+                "action": action, "after_slacks": simulated, "after": after,
+                "admission": admission, "rejection_reasons": reasons,
+                "marginal": {
+                    "delta_wns_ns": wns_gain,
+                    "delta_frontier_deficit_ns": deficit_gain,
+                    "delta_tns_ns": tns_gain,
+                    "affected_frontier_endpoints": sorted(affected_frontier),
+                    "complete_frontier_plan": complete_plan,
+                },
+            })
+        admitted = [row for row in evaluations if row["admission"]]
+        trace.append({
+            "iteration": len(selected) + 1, "state_before": before,
+            "evaluations": [{
+                "action_id": row["action"]["action_id"], "admission": row["admission"],
+                "rejection_reasons": row["rejection_reasons"], "marginal": row["marginal"],
+            } for row in evaluations],
+        })
+        if not admitted:
+            if any("cell-budget-reached" in row["rejection_reasons"] for row in evaluations):
+                stop_reason = "cell-budget-reached"
+            break
+        best = max(admitted, key=lambda row: (
+            row["marginal"]["delta_wns_ns"], row["marginal"]["delta_frontier_deficit_ns"],
+            row["marginal"]["delta_tns_ns"],
+            len(row["marginal"]["affected_frontier_endpoints"]),
+            -int(row["action"].get("library_cost", 1)),
+            str(row["action"]["action_id"]),
+        ))
+        current = best["after_slacks"]
+        action = best["action"]
+        selected_resources.update(action["resources"])
+        selected_demands.add(action["demand_id"])
+        selected.append({
+            **action, "admission": best["admission"], "marginal_at_selection": best["marginal"],
+            "state_after": best["after"],
+        })
+        remaining = [row for row in remaining if row["action_id"] != action["action_id"]]
+        if not remaining:
+            stop_reason = "candidate-actions-exhausted"
+    final = _cgo_snapshot(current, target, epsilon)
+    return {
+        "schema": "hima.lfr-action-portfolio/1", "status": "succeeded",
+        "path_group": path_group, "cell_budget": cell_budget,
+        "baseline": baseline, "final": final,
+        "selected_actions": selected, "selected_action_ids": [row["action_id"] for row in selected],
+        "selected_demand_ids": sorted(selected_demands), "cells_demanded": len(selected_demands),
+        "stop_reason": stop_reason, "objective_trace": trace,
+        "claim_limits": {"commercial_qor": False, "fmax_prediction": False},
+    }
+
+
+def derive_cell_demands(portfolio: Mapping[str, Any]) -> dict[str, object]:
+    """Aggregate selected Action sites into the minimal delta Library demand."""
+    if portfolio.get("schema") != "hima.lfr-action-portfolio/1":
+        raise RoundRequestError("portfolio must be an action-portfolio/1 document")
+    selected = portfolio.get("selected_actions")
+    if not isinstance(selected, list):
+        raise RoundRequestError("portfolio.selected_actions must be an array")
+    demands: dict[str, dict[str, object]] = {}
+    for index, action_value in enumerate(selected):
+        action = _mapping(action_value, "selected_actions[%d]" % index)
+        demand = dict(_mapping(action.get("cell_demand"), "selected action cell_demand"))
+        demand_id = _string(demand.get("demand_id"), "cell_demand.demand_id")
+        if demand_id in demands:
+            identity = {key: value for key, value in demand.items() if key != "demand_id"}
+            existing = {key: value for key, value in demands[demand_id].items()
+                        if key not in {"demand_id", "action_ids", "sites", "expected_occurrences"}}
+            if identity != existing:
+                raise RoundRequestError("demand %s has inconsistent definitions" % demand_id)
+        else:
+            demands[demand_id] = {
+                **demand, "action_ids": [], "sites": [], "expected_occurrences": 0,
+            }
+        row = demands[demand_id]
+        row["action_ids"].append(action["action_id"])
+        row["sites"].append({
+            "module": action.get("module"),
+            "source_instances": list(action.get("source_instances") or ()),
+            "affected_endpoints": list(action.get("affected_endpoints") or ()),
+        })
+        row["expected_occurrences"] += 1
+    return {
+        "schema": "hima.lfr-cell-demand/1", "status": "succeeded",
+        "library_budget": portfolio.get("cell_budget"),
+        "demand_count": len(demands),
+        "demands": [demands[key] for key in sorted(demands)],
+        "source_action_portfolio_sha256": _sha256_bytes(_canonical_json(portfolio)),
+    }
+
+
+def evaluate_cumulative_gain(request: Mapping[str, Any]) -> dict[str, object]:
+    """Execute the v3 free Action loop and emit its three internal artifacts."""
+    if request.get("schema") != CGO_REQUEST_SCHEMA:
+        raise RoundRequestError("unsupported cumulative-gain request schema")
+    state = _mapping(request.get("design_state"), "design_state")
+    actions = request.get("actions")
+    if not isinstance(actions, list):
+        raise RoundRequestError("actions must be an array")
+    budget = _integer(request.get("cell_budget"), "cell_budget", positive=True)
+    portfolio = optimize_action_portfolio(state, actions, budget)
+    demands = derive_cell_demands(portfolio)
+    gain_positive = portfolio["final"]["wns_ns"] > portfolio["baseline"]["wns_ns"]
+    coverage_complete = state.get("coverage_scope") == "complete"
+    blockers = []
+    if not portfolio["selected_actions"]:
+        blockers.append("no-positive-conservative-action-portfolio")
+    if not gain_positive:
+        blockers.append("portfolio-does-not-advance-proxy-wns")
+    if not coverage_complete:
+        blockers.append("endpoint-frontier-is-sampled-not-complete")
+    result = {
+        "schema": CGO_RESULT_SCHEMA, "status": "succeeded",
+        "design_state": dict(state), "action_portfolio": portfolio,
+        "cell_demand": demands,
+        "evaluated_actions": list(actions), "cell_budget": budget,
+        "commercial_gate": {
+            "eligible": not blockers,
+            "reason": "positive-conservative-complete-frontier-portfolio" if not blockers else blockers[0],
+            "blocking_reasons": blockers,
+            "maximum_generated_arms": 1,
+        },
+        "claim_limits": {"commercial_qor": False, "fmax_prediction": False},
+    }
+    result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))
+    return result
+
 def _main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", required=True, help="JSON request path")
@@ -2232,7 +2508,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
         request = json.loads(Path(arguments.request).read_text())
         if not isinstance(request, Mapping):
             raise RoundRequestError("request JSON root must be an object")
-        result = evaluate_round(request)
+        result = (evaluate_cumulative_gain(request)
+                  if request.get("schema") == CGO_REQUEST_SCHEMA
+                  else evaluate_round(request))
     except (OSError, json.JSONDecodeError, RoundRequestError) as error:
         result = {
             "schema": RESULT_SCHEMA,

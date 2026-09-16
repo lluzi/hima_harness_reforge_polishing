@@ -21,6 +21,7 @@ GitHub tracker: [#40 — Build and integrate the Library Function Richness Frame
 - [AES ten-cell multi-output logical ECO](evidence/2026-09-16-aes-10mo-logical-eco.md)
 - [AES 20-cell multi-output commercial P&R](evidence/2026-09-16-aes-mo20-commercial-pnr.md)
 - [AES hierarchy-scaled 40-cell 2/3-output commercial result](evidence/2026-09-16-aes-mo40-hier3-commercial.md)
+- [AES 100-Cell cumulative-gain commercial observation](evidence/2026-09-16-aes-cgo100-cumulative-gain.md)
 - [Third-party theory review](evidence/2026-09-16-third-party-theory-review.md)
 - [Current HimaPack](../../../packs/custom-cell-fmax-dtco/)
 

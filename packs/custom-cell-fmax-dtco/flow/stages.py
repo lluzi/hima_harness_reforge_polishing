@@ -63,7 +63,7 @@ STAGES = (
     "foundry-synth", "custom-synth", "adoption", "pnr-foundry",
     "pnr-generated", "verify", "compare",
 )
-BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis"}
+BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis", "multi_output_resynthesis"}
 
 
 class Rejected(RuntimeError):
@@ -236,6 +236,31 @@ def atomic_json(path, value):
     temp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     temp.write_text(json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n")
     temp.replace(path)
+
+
+def write_cumulative_gain_artifacts(run_dir, request):
+    """Write v3 free-loop evidence through the existing stage workspace."""
+    result = lfr.evaluate_cumulative_gain(request)
+    if result.get("status") != "succeeded":
+        raise Rejected("cumulative-gain evaluation failed")
+    root = Path(run_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    documents = {
+        "endpoint-frontier.json": result["design_state"],
+        "opportunities.json": {
+            "schema": "hima.lfr-opportunities/1",
+            "actions": result["evaluated_actions"],
+        },
+        "action-portfolio.json": result["action_portfolio"],
+        "cell-demand.json": result["cell_demand"],
+        "gain-evaluation.json": result,
+    }
+    paths = {}
+    for name, document in documents.items():
+        path = root / name
+        atomic_json(path, document)
+        paths[name] = path
+    return paths
 
 
 def method_identity():
@@ -1756,9 +1781,12 @@ def stage_generate(ctx):
     cells.mkdir()
     for index, job in enumerate(jobs):
         target = cells / (job["cell_name"] + ".sp")
-        argv = command + ["--function", job["liberty_function"], "--inputs", ",".join(job["inputs"]),
-                          "--output", job["output_name"], "--pdk", str(pdk),
-                          "--cell-name", job["cell_name"], "--out", str(target), "--quiet"]
+        argv = list(command)
+        for output in job["outputs"]:
+            argv.extend(["--function", output["liberty_function"],
+                         "--output", output["output_name"]])
+        argv.extend(["--inputs", ",".join(job["inputs"]), "--pdk", str(pdk),
+                     "--cell-name", job["cell_name"], "--out", str(target), "--quiet"])
         try:
             ctx.run(argv, cwd=cwd, timeout=int(ctx.binding("GENERATION_TIMEOUT_SEC")),
                     tag="bool2cmos-%02d" % index)

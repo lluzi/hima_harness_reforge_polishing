@@ -1,0 +1,198 @@
+{
+  "adoption": {
+    "customPathStageRowsTop100": 98,
+    "initialInstances": 11,
+    "mastersInTop100Timing": 7,
+    "maxObservedCustomArcDelayNs": 0.067,
+    "preservedMasterTypes": 11,
+    "preservedPostRouteInstances": 11,
+    "unprotectedPostRouteInstances": 0
+  },
+  "arms": {
+    "baseline": {
+      "derivedFmaxMhz": 1795.3321364452422,
+      "drcViolations": 5,
+      "logicAreaUm2": 22614.354,
+      "tnsNs": -7.213,
+      "totalPower": 26.52302438,
+      "violatingPaths": 315,
+      "wireLengthUm": 188099.67,
+      "wnsNs": -0.057
+    },
+    "generatedEcoPreserved": {
+      "derivedFmaxMhz": 1739.1304347826087,
+      "drcViolations": 9,
+      "logicAreaUm2": 18545.4,
+      "retainedCustomInstances": 11,
+      "tnsNs": -8.799,
+      "totalPower": 23.52879007,
+      "violatingPaths": 295,
+      "wireLengthUm": 167314.185,
+      "wnsNs": -0.075
+    },
+    "generatedOptimizerFreeToRemove": {
+      "derivedFmaxMhz": 1792.1146953405016,
+      "drcViolations": 2,
+      "logicAreaUm2": 22076.8,
+      "retainedCustomInstances": 0,
+      "tnsNs": -7.593,
+      "totalPower": 26.25656062,
+      "violatingPaths": 318,
+      "wireLengthUm": 181355.345,
+      "wnsNs": -0.058
+    }
+  },
+  "claimLimits": {
+    "abstractRoutingComplete": false,
+    "commercialPnrCompleted": true,
+    "commercialTimingObserved": true,
+    "customCellPhysicalAdoptionObserved": true,
+    "gdsComplete": false,
+    "siliconBenefit": false,
+    "timingModelMeasured": false
+  },
+  "date": "2026-09-16",
+  "deltaPreservedMinusBaseline": {
+    "derivedFmaxMhz": {
+      "absolute": -56.20170166263347,
+      "percentOfBaseline": -3.130434782608682
+    },
+    "drcViolations": {
+      "absolute": 4,
+      "percentOfBaseline": 80.0
+    },
+    "logicAreaUm2": {
+      "absolute": -4068.953999999998,
+      "percentOfBaseline": -17.99279342668819
+    },
+    "tnsNs": {
+      "absolute": -1.5859999999999994,
+      "percentOfBaseline": 21.988077083044487
+    },
+    "totalPower": {
+      "absolute": -2.9942343099999995,
+      "percentOfBaseline": -11.289188846268372
+    },
+    "violatingPaths": {
+      "absolute": -20,
+      "percentOfBaseline": -6.349206349206349
+    },
+    "wireLengthUm": {
+      "absolute": -20785.485000000015,
+      "percentOfBaseline": -11.05025064637275
+    },
+    "wnsNs": {
+      "absolute": -0.017999999999999995,
+      "percentOfBaseline": 31.57894736842104
+    }
+  },
+  "deltaUnprotectedMinusBaseline": {
+    "derivedFmaxMhz": {
+      "absolute": -3.217441104740601,
+      "percentOfBaseline": -0.17921146953404632
+    },
+    "drcViolations": {
+      "absolute": -3,
+      "percentOfBaseline": -60.0
+    },
+    "logicAreaUm2": {
+      "absolute": -537.5540000000001,
+      "percentOfBaseline": -2.3770477812454893
+    },
+    "tnsNs": {
+      "absolute": -0.3799999999999999,
+      "percentOfBaseline": 5.268265631498692
+    },
+    "totalPower": {
+      "absolute": -0.2664637600000006,
+      "percentOfBaseline": -1.0046507373455138
+    },
+    "violatingPaths": {
+      "absolute": 3,
+      "percentOfBaseline": 0.952380952380949
+    },
+    "wireLengthUm": {
+      "absolute": -6744.325000000012,
+      "percentOfBaseline": -3.585506024545393
+    },
+    "wnsNs": {
+      "absolute": -0.0010000000000000009,
+      "percentOfBaseline": 1.7543859649122862
+    }
+  },
+  "failuresRetained": [
+    {
+      "attempt": "pnr-cgo",
+      "reason": "malformed concatenated LEF loaded only one macro; route refused unplaced instances"
+    },
+    {
+      "attempt": "pnr-cgo-v2",
+      "reason": "Innovus legally optimized away every ECO Cell; result cannot prove custom-Cell benefit"
+    },
+    {
+      "attempt": "pnr-cgo-v3",
+      "reason": "script preparation stopped before execution; empty directory retained"
+    },
+    {
+      "attempt": "pnr-cgo-v4",
+      "reason": "all ECO Cells retained but primary Fmax regressed 3.130%"
+    }
+  ],
+  "freeGate": {
+    "correctedBlockingReason": "endpoint-frontier-is-sampled-not-complete",
+    "correctedGateEligible": false,
+    "originalSampledGateResult": "admitted before coverage-scope defect was fixed",
+    "proxyFrontierDeficitAfterNs": 0.006,
+    "proxyFrontierDeficitBeforeNs": 0.15,
+    "proxyWnsAfterNs": -0.049,
+    "proxyWnsBeforeNs": -0.057
+  },
+  "interpretation": {
+    "areaWirePowerImproved": true,
+    "fmaxImprovementObserved": false,
+    "nextGate": "obtain multi-path-per-endpoint complete frontier and recalibrate F3/F4 before another commercial observation",
+    "primaryFailure": "sampled top-path frontier missed within-endpoint launch-path migration and Liberty proxy understated loaded post-route custom arc delays",
+    "target5PercentMet": false
+  },
+  "method": {
+    "candidateActions": 461,
+    "candidateBudget": 100,
+    "commercialGeneratedArmsCompleted": 2,
+    "commercialSearchLoopsClaimed": false,
+    "driveVariant": "D8 proxy sizing",
+    "frontierEndpointsCoveredByCandidatePool": 50,
+    "frontierEndpointsSampled": 50,
+    "minedFunctions": 100,
+    "selectedActions": 11,
+    "selectedCellDemands": 11,
+    "selectedKinds": {
+      "multiOutput": 9,
+      "singleOutputPhysicalFusion": 2
+    }
+  },
+  "proof": {
+    "leafModuleProofCount": 8,
+    "postRouteIndependentEquivalence": false,
+    "prePnrStatus": "proved-composition",
+    "rollbackByteExact": true,
+    "topLevelWindowCount": 2,
+    "windowProofCount": 11
+  },
+  "schema": "hima.aes-cgo100-cumulative-gain-evidence/1",
+  "sha256": {
+    "baselineDcNetlist": "704006dc6a6ea98a8a508ef8f8b60915830e6d9801c327f5c384d9c720fd0762",
+    "committedSelectedLibertyGzip": "20fa9d3f69e209bbde537f55a6c7932f27755798e1dd0880985c8955a9641960",
+    "connectivityReport": "b6088855fbc8ba70133d0532909963a0ead32bc978bdb780b46cf633e53dc0c8",
+    "drcReport": "116c7153bd3f632846ff653273505f89dfcfbb24ae4de2259997bc67ba3d8bb2",
+    "ecoNetlist": "c275f5940dfb2bd72bb3386a2b4d94c0f6dcfbb66f71f807ec02646f558eae95",
+    "equivalence": "b137c3d15a53f30f55473b628385d633a33d41a2a47fe11890bb1948621b8be3",
+    "postRouteNetlist": "53c98732063919856d92cdad4cdaf8deeae6ff37ab1ccee4e8f76bb9f8e51a0f",
+    "powerReport": "30133ca6b9992b70ff12625d74ef0b8ba0bedd1209ddc112753657a923070ccd",
+    "selectedDb": "bb39d6fd506533155ef07784a0ef3c07c79cf6aa3368fababb3bf33812f750ad",
+    "selectedLef": "943dbe728838b2da2a15d6a26a7a3883cb5bc7e5d89b6e3c8de3028fea924164",
+    "selectedLiberty": "ff3905511f69e8f5847516eb9517ce9e8f2332ce7e2bc3ced0afca7dc2346c29",
+    "summaryReport": "2dd9c86f6724c84f20596f5cf9a01d6a81e38d91aae9e8aaef407387cf634aca"
+  },
+  "siteEvidenceRoot": "/data/eda/project/hima_harness/polishing-runs/aes-cgo100-20260916-v1",
+  "status": "commercial-complete-negative-primary-objective"
+}

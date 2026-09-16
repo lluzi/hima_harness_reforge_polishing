@@ -556,6 +556,110 @@ def _endpoint_family(point):
     return re.sub(r"[0-9]+", "#", value)
 
 
+def build_endpoint_frontier(paths, epsilon_ns=0.010, path_group="reg2reg",
+                            coverage_scope="complete"):
+    """Build one path-group frontier by unique capture endpoint."""
+    if (isinstance(epsilon_ns, bool) or not isinstance(epsilon_ns, (int, float))
+            or not math.isfinite(float(epsilon_ns)) or epsilon_ns < 0):
+        raise ValueError("epsilon_ns must be a finite non-negative number")
+    if not isinstance(paths, list) or not paths:
+        raise ValueError("endpoint frontier requires at least one timing path")
+    by_endpoint = {}
+    for index, raw in enumerate(paths, 1):
+        if not isinstance(raw, dict):
+            raise ValueError("timing path %d must be an object" % index)
+        if raw.get("path_group", path_group) != path_group:
+            raise ValueError("timing paths must belong to one path group")
+        endpoint = str(raw.get("endpoint") or "").strip()
+        slack = raw.get("slack_ns")
+        if (not endpoint or isinstance(slack, bool)
+                or not isinstance(slack, (int, float))
+                or not math.isfinite(float(slack))):
+            raise ValueError("timing path %d has no finite endpoint slack" % index)
+        row = by_endpoint.setdefault(endpoint, {
+            "endpoint": endpoint, "slack_ns": float(slack), "path_count": 0,
+            "beginpoints": set(), "instances": set(), "path_ids": [],
+        })
+        row["slack_ns"] = min(row["slack_ns"], float(slack))
+        row["path_count"] += 1
+        if raw.get("beginpoint"):
+            row["beginpoints"].add(str(raw["beginpoint"]))
+        row["instances"].update(str(value) for value in raw.get("instances", ()))
+        row["path_ids"].append(str(raw.get("path_id") or index))
+    wns = min(row["slack_ns"] for row in by_endpoint.values())
+    target = wns + float(epsilon_ns)
+    endpoints = []
+    for endpoint in sorted(by_endpoint):
+        row = by_endpoint[endpoint]
+        endpoints.append({
+            **{key: value for key, value in row.items()
+               if key not in {"beginpoints", "instances"}},
+            "beginpoints": sorted(row["beginpoints"]),
+            "instances": sorted(row["instances"]),
+            "frontier": row["slack_ns"] <= target + 1e-12,
+            "deficit_ns": round(max(0.0, target - row["slack_ns"]), 12),
+        })
+    frontier = [row["endpoint"] for row in endpoints if row["frontier"]]
+    return {
+        "schema": "hima.lfr-endpoint-frontier/1", "path_group": path_group,
+        "coverage_scope": coverage_scope,
+        "epsilon_ns": float(epsilon_ns), "wns_ns": round(wns, 12),
+        "target_slack_ns": round(target, 12),
+        "path_count": sum(row["path_count"] for row in endpoints),
+        "unique_endpoint_count": len(endpoints),
+        "frontier_endpoint_count": len(frontier), "frontier_endpoints": frontier,
+        "frontier_deficit_ns": round(sum(
+            row["deficit_ns"] for row in endpoints if row["frontier"]
+        ), 12),
+        "endpoints": endpoints,
+    }
+
+
+def compare_endpoint_frontiers(before, after):
+    """Describe endpoint migration between two recomputed frontiers."""
+    for name, value in (("before", before), ("after", after)):
+        if value.get("schema") != "hima.lfr-endpoint-frontier/1":
+            raise ValueError("%s is not an endpoint frontier" % name)
+        if value.get("path_group") != before.get("path_group"):
+            raise ValueError("frontiers use different path groups")
+    old, new = set(before["frontier_endpoints"]), set(after["frontier_endpoints"])
+    return {
+        "schema": "hima.lfr-path-migration/1", "path_group": before["path_group"],
+        "previous_wns_ns": before["wns_ns"], "current_wns_ns": after["wns_ns"],
+        "wns_gain_ns": round(after["wns_ns"] - before["wns_ns"], 12),
+        "entered_frontier": sorted(new - old), "left_frontier": sorted(old - new),
+        "retained_frontier": sorted(old & new), "path_migrated": bool(old != new),
+    }
+
+
+def evaluate_physical_fusion(source_cell_arc_ns, extracted_net_ns, via_ns,
+                             candidate_arc_ns, added_pin_load_ns=0.0,
+                             reroute_penalty_ns=0.0, side_load_count=0):
+    """Return the F4 margin and required outputs for one serial fusion."""
+    values = {
+        "source_cell_arc_ns": source_cell_arc_ns, "extracted_net_ns": extracted_net_ns,
+        "via_ns": via_ns, "candidate_arc_ns": candidate_arc_ns,
+        "added_pin_load_ns": added_pin_load_ns, "reroute_penalty_ns": reroute_penalty_ns,
+    }
+    for name, value in values.items():
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(float(value)) or value < 0):
+            raise ValueError("%s must be a finite non-negative number" % name)
+    if isinstance(side_load_count, bool) or not isinstance(side_load_count, int) or side_load_count < 0:
+        raise ValueError("side_load_count must be a non-negative integer")
+    margin = (float(source_cell_arc_ns) + float(extracted_net_ns) + float(via_ns)
+              - float(candidate_arc_ns) - float(added_pin_load_ns)
+              - float(reroute_penalty_ns))
+    return {
+        "schema": "hima.lfr-physical-fusion-evaluation/1", "apply_mode": "eco-only",
+        "required_output_count": 2 if side_load_count else 1,
+        "preserve_intermediate_output": bool(side_load_count),
+        "side_load_count": side_load_count, "physical_margin_ns": round(margin, 12),
+        "admitted": margin > 0,
+        "components_ns": {key: round(float(value), 12) for key, value in values.items()},
+    }
+
+
 def _proxy_reg2reg_timing_graph(document, expected_top, modules):
     if (document.get("schema") != "hima.lfr-proxy-reg2reg/1"
             or document.get("status") != "succeeded"
@@ -578,6 +682,7 @@ def _proxy_reg2reg_timing_graph(document, expected_top, modules):
         "endpoint_families": set(), "worst_path_slack_ns": None,
     }))
     families = defaultdict(lambda: {"path_ranks": [], "slacks": []})
+    path_facts = []
     for rank, path in enumerate(paths, 1):
         if not isinstance(path, dict) or not isinstance(path.get("stages"), list):
             raise ValueError("proxy timing path %d is malformed" % rank)
@@ -586,6 +691,12 @@ def _proxy_reg2reg_timing_graph(document, expected_top, modules):
         begin_family, end_family = _endpoint_family(begin), _endpoint_family(end)
         family_id = begin_family + "->" + end_family
         slack = float(path.get("slack")) * float(unit_ns)
+        path_facts.append({
+            "path_id": str(rank), "path_group": "reg2reg", "beginpoint": begin,
+            "endpoint": end, "slack_ns": slack,
+            "instances": [str(stage.get("instance")) for stage in path["stages"]
+                          if isinstance(stage, dict) and stage.get("instance")],
+        })
         family = families[family_id]
         family.update({"beginpoint_family": begin_family, "endpoint_family": end_family})
         family["path_ranks"].append(rank)
@@ -635,6 +746,9 @@ def _proxy_reg2reg_timing_graph(document, expected_top, modules):
     return {"instances": result, "graph": {
         "path_group": "reg2reg", "path_count": len(paths),
         "path_family_count": len(family_rows), "path_families": family_rows,
+        "endpoint_frontier": build_endpoint_frontier(
+            path_facts, coverage_scope="reported-license-free-paths"
+        ),
         "endpoint_family_method": "remove terminal pin and replace every decimal run with #",
         "evidence_source": "license-free-proxy-sta-not-commercial-timing",
     }}
@@ -744,8 +858,14 @@ def parse_reg2reg_timing_graph(report, expected_top, modules):
             continue
         leaf = parts[-1]
         local = instances_by_module.get(module, {}).get(leaf)
-        if local is None or local.base_type != cell_type:
+        if local is None:
             continue
+        # Innovus is expected to resize and swap a mapped instance while
+        # preserving its hierarchical identity.  Requiring the post-route
+        # master to equal the DC master discarded nearly every data-path cell
+        # and left only capture registers in the endpoint graph.  Identity is
+        # therefore bound by hierarchy/module/instance; the observed master is
+        # retained as timing evidence rather than used as an equality gate.
         current = path_seen[path_rank].get((module, leaf), 0.0)
         path_seen[path_rank][(module, leaf)] = max(current, increment)
     families = defaultdict(lambda: {"path_ranks": [], "slacks": []})
@@ -815,6 +935,22 @@ def parse_reg2reg_timing_graph(report, expected_top, modules):
             }
     if not result:
         raise ValueError("timing report has no combinational instance that maps to the netlist")
+    path_facts = []
+    for rank in sorted(path_seen):
+        meta = path_meta[rank]
+        endpoint = meta.get("endpoint")
+        slack = meta.get("slack_ns")
+        if not endpoint or not isinstance(slack, float):
+            continue
+        path_facts.append({
+            "path_id": str(rank), "path_group": "reg2reg",
+            "beginpoint": meta.get("beginpoint"), "endpoint": endpoint,
+            "slack_ns": slack,
+            "instances": ["%s/%s" % key for key in sorted(path_seen[rank])],
+        })
+    endpoint_frontier = build_endpoint_frontier(
+        path_facts, coverage_scope="sampled-commercial-top-paths"
+    )
     return {
         "instances": result,
         "graph": {
@@ -822,6 +958,7 @@ def parse_reg2reg_timing_graph(report, expected_top, modules):
             "path_count": len(path_seen),
             "path_family_count": len(family_rows),
             "path_families": family_rows,
+            "endpoint_frontier": endpoint_frontier,
             "endpoint_family_method": "remove terminal pin and replace every decimal run with #",
         },
     }
@@ -1385,14 +1522,24 @@ def _route_requests(modules, cells, critical_records, observed_reg2reg, library,
                     occurrence_id = "OCC_%s" % hashlib.sha256(
                         occurrence_key.encode("utf-8")
                     ).hexdigest()[:16].upper()
-                    counterfactual = _candidate_counterfactual(
-                        module, occurrence_id, mapped_origins,
-                        seed["mapped_instance"], mapped_eligible,
-                        mapped_predecessors, mapped_successors, mapped_order,
-                        mapped_weights,
-                        cut_boundary_input_count=len(ordered_leaves),
-                        cut_boundary_output_count=1,
-                    )
+                    try:
+                        counterfactual = _candidate_counterfactual(
+                            module, occurrence_id, mapped_origins,
+                            seed["mapped_instance"], mapped_eligible,
+                            mapped_predecessors, mapped_successors, mapped_order,
+                            mapped_weights,
+                            cut_boundary_input_count=len(ordered_leaves),
+                            cut_boundary_output_count=1,
+                        )
+                    except ValueError as error:
+                        if "collapsed counterfactual graph contains a cycle" not in str(error):
+                            raise
+                        # The Boolean AIG cut can map back to a non-convex set of
+                        # mapped origins: a path leaves the set and later re-enters
+                        # it.  Collapsing that set would create a combinational
+                        # cycle, so it is not an ECO Opportunity.
+                        statistics["nonconvex_counterfactual_rejected"] += 1
+                        continue
                     family_slacks = seed.get("reg2reg_path_family_worst_slacks_ns", {})
                     family_ids = sorted(seed.get("reg2reg_path_family_ids") or [])
                     endpoint_family = min(
@@ -1662,8 +1809,8 @@ def arguments(argv=None):
     parser.add_argument("--vt-class", action="append", required=True)
     parser.add_argument("--model-type", action="append", default=["NLDM"])
     args = parser.parse_args(argv)
-    if not 1 <= args.top <= 40:
-        parser.error("--top must be within 1..40")
+    if not 1 <= args.top <= 100:
+        parser.error("--top must be within 1..100")
     if args.max_inputs != 4 or args.max_outputs != 4:
         parser.error("Package v0.3 fixes K=4 and max_outputs=4")
     return args

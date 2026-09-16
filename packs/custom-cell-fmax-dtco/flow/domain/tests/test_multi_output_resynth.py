@@ -196,6 +196,29 @@ cell (MO_DEEP) {
     function : "(A + B) * C";
   }
 }
+cell (MO4) {
+  area : 3.5;
+  pin(A) {
+    direction : input;
+  }
+  pin(B) {
+    direction : input;
+  }
+  pin(C) {
+    direction : input;
+  }
+  pin(D) {
+    direction : input;
+  }
+  pin(P) {
+    direction : output;
+    function : "A * B * C * D";
+  }
+  pin(Q) {
+    direction : output;
+    function : "!(A * B * C * D)";
+  }
+}
 cell (DFF) {
   ff (IQ, IQN) {
     next_state : "D";
@@ -272,6 +295,26 @@ endmodule
 
 
 class MultiOutputResynthTests(unittest.TestCase):
+    def test_directed_four_input_vector_is_supported(self):
+        netlist = '''module top(input a, input b, input c, input d, output p, output q);
+  AND2 u0 (.A(a), .B(b), .Y(n0));
+  AND2 u1 (.A(c), .B(d), .Y(n1));
+  AND2 u2 (.A(n0), .B(n1), .Y(p));
+  INV u3 (.A(p), .Y(q));
+endmodule
+'''
+        work = Workspace(self, netlist, allowed=("MO4",))
+        self.addCleanup(work.close)
+        work.data["scope"]["maxInputs"] = 4
+        work.data["targets"] = [{
+            "module": "top", "instances": ["u0", "u1", "u2", "u3"],
+            "expectedBoundaryInputs": ["a", "b", "c", "d"],
+            "expectedBoundaryOutputs": ["p", "q"],
+        }]
+        result = work.write()
+        self.assertEqual("succeeded", result["status"], result)
+        self.assertEqual("MO4", result["selectedReplacements"][0]["master"])
+
     def test_directed_non_fa_vector_is_matched_from_library_functions(self):
         netlist = '''module top(input a, input b, output p, output q);
   AND2 u0 (.A(a), .B(b), .Y(p));

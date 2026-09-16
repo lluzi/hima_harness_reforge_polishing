@@ -24,6 +24,7 @@ retained_candidate_ids = None
 select_candidate_portfolio = None
 validate_cumulative_manifest = None
 evaluate_frontier = None
+evaluate_cumulative_gain = None
 
 
 def load_domain(workspace):
@@ -54,7 +55,7 @@ def load_domain(workspace):
 
 
 def load_frontier(workspace):
-    global evaluate_frontier
+    global evaluate_frontier, evaluate_cumulative_gain
     flow = workspace / "flow"
     source = flow / "library_richness.py"
     if not source.is_file() or source.is_symlink():
@@ -62,7 +63,30 @@ def load_frontier(workspace):
     if str(flow) not in sys.path:
         sys.path.insert(0, str(flow))
     from library_richness import evaluate_frontier as frontier_evaluator
+    from library_richness import evaluate_cumulative_gain as cumulative_gain_evaluator
     evaluate_frontier = frontier_evaluator
+    evaluate_cumulative_gain = cumulative_gain_evaluator
+
+
+def recompute_cumulative_gain_evaluation(evaluation):
+    """Independently recompute the v3 portfolio from held evaluation inputs."""
+    if evaluation.get("schema") != "hima.lfr-cumulative-gain-evaluation/1":
+        raise ValueError("evaluation is not a cumulative-gain result")
+    request = {
+        "schema": "hima.lfr-cumulative-gain-request/1",
+        "design_state": evaluation.get("design_state"),
+        "actions": evaluation.get("evaluated_actions"),
+        "cell_budget": evaluation.get("cell_budget"),
+    }
+    recomputed = evaluate_cumulative_gain(request)
+    if recomputed != evaluation:
+        raise ValueError("cumulative-gain evaluation does not recompute exactly")
+    return {
+        "endpoint_count": recomputed["design_state"]["unique_endpoint_count"],
+        "selected_action_count": len(recomputed["action_portfolio"]["selected_actions"]),
+        "cell_demand_count": recomputed["cell_demand"]["demand_count"],
+        "commercial_gate_eligible": recomputed["commercial_gate"]["eligible"],
+    }
 
 
 def unique(pairs):

@@ -85,6 +85,8 @@ def expected_generation_jobs(patterns):
         if len(input_names) != len(set(input_names)):
             raise ValueError("generation request %s repeats an input" % candidate_id)
         output_names = []
+        route = (request.get("implementation_plan") or {}).get("route")
+        vector_outputs = []
         for output in outputs:
             name = output.get("name") if isinstance(output, dict) else None
             function = output.get("liberty_function") if isinstance(output, dict) else None
@@ -95,19 +97,28 @@ def expected_generation_jobs(patterns):
                     "generation request %s output %s has no liberty_function"
                     % (candidate_id, name))
             output_names.append(name)
-            cell_name = canonical_cell_name(candidate_id, name)
-            if not IDENTIFIER.fullmatch(cell_name) or cell_name in cells:
-                raise ValueError("generation requests do not produce unique legal Cell names")
-            cells.add(cell_name)
-            jobs.append({
-                "candidate_id": candidate_id,
-                "cell_name": cell_name,
-                "inputs": list(input_names),
-                "output_name": name,
-                "liberty_function": function,
-            })
+            vector_outputs.append({"output_name": name, "liberty_function": function})
         if len(output_names) != len(set(output_names)) or set(input_names) & set(output_names):
             raise ValueError("generation request %s pin names are not unique" % candidate_id)
+        if route == "multi_output_resynthesis":
+            cell_name = "XS_%s_MO" % str(candidate_id).replace("CAND_", "")
+            projected = [{
+                "candidate_id": candidate_id, "cell_name": cell_name,
+                "inputs": list(input_names), "outputs": vector_outputs,
+                "multi_output": True,
+            }]
+        else:
+            projected = [{
+                "candidate_id": candidate_id,
+                "cell_name": canonical_cell_name(candidate_id, row["output_name"]),
+                "inputs": list(input_names), "outputs": [row], "multi_output": False,
+                **row,
+            } for row in vector_outputs]
+        for job in projected:
+            if not IDENTIFIER.fullmatch(job["cell_name"]) or job["cell_name"] in cells:
+                raise ValueError("generation requests do not produce unique legal Cell names")
+            cells.add(job["cell_name"])
+            jobs.append(job)
     return jobs
 
 
@@ -172,6 +183,12 @@ def function_identity(request):
         "driveStrengths": sorted(set(drives)),
         "vtClasses": sorted(set(vt_classes)),
     }
+    physical_variant_id = implementation.get("physical_variant_id")
+    if physical_variant_id is not None:
+        if (not isinstance(physical_variant_id, str)
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", physical_variant_id)):
+            raise ValueError("generation request physical_variant_id is invalid")
+        identity["physicalVariantId"] = physical_variant_id
     return {
         "key": "sha256:" + hashlib.sha256(_canonical_json(identity).encode()).hexdigest(),
         **identity,
@@ -295,6 +312,46 @@ def expected_delta_generation_jobs(patterns, manifest):
     return expected_generation_jobs({
         "generation_requests": delta_generation_requests(patterns, manifest),
     })
+
+
+def patterns_from_cell_demands(cell_demands, manifest=None):
+    """Project selected v3 Cell Demands into the existing generation seam."""
+    if (not isinstance(cell_demands, dict)
+            or cell_demands.get("schema") != "hima.lfr-cell-demand/1"):
+        raise ValueError("cell_demands must use hima.lfr-cell-demand/1")
+    demands = cell_demands.get("demands")
+    if not isinstance(demands, list):
+        raise ValueError("cell_demands.demands must be an array")
+    requests, seen = [], set()
+    for index, demand in enumerate(demands):
+        if not isinstance(demand, dict):
+            raise ValueError("cell demand %d must be an object" % index)
+        demand_id = demand.get("demand_id")
+        request = demand.get("generation_request")
+        if not isinstance(demand_id, str) or not demand_id or not isinstance(request, dict):
+            raise ValueError("cell demand %d has no identity/generation request" % index)
+        request = json.loads(json.dumps(request))
+        candidate_id = request.get("candidate_id")
+        if not isinstance(candidate_id, str) or candidate_id in seen:
+            raise ValueError("Cell Demand generation requests need unique candidate_id")
+        seen.add(candidate_id)
+        requests.append(request)
+    selected = (delta_generation_requests({"generation_requests": requests}, manifest)
+                if manifest is not None else requests)
+    patterns = {
+        "report_schema": "hima.lfr-demanded-patterns/1",
+        "source_cell_demand_sha256": hashlib.sha256(
+            _canonical_json(cell_demands).encode()
+        ).hexdigest(),
+        "generation_requests": selected,
+        "accounting": {
+            "selected_demand_count": len(demands),
+            "selected_generation_request_count": len(selected),
+            "reused_cumulative_request_count": len(requests) - len(selected),
+        },
+    }
+    expected_generation_jobs(patterns)
+    return patterns
 
 
 def advance_function_state(manifest, function_key, next_state, failure=None):

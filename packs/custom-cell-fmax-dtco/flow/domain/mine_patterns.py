@@ -64,7 +64,7 @@ from verilog_netlist import GENERIC_PREFIX, parse_modules  # noqa: E402
 
 REPORT_SCHEMA = "xspace_cell-pattern-search/v2"
 CONSTANT_NETS = ("1'b0", "1'b1", "1'h0", "1'h1")
-BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis"}
+BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis", "multi_output_resynthesis"}
 PORTFOLIO_SCHEMA = "hima.library-richness.portfolio/1"
 PORTFOLIO_CANDIDATE_SCHEMA = "hima.library-richness.portfolio-candidate/1"
 
@@ -87,6 +87,59 @@ class ClusterResult:
     canonical_output_permutation: tuple
     library_equivalence_key: tuple
     library_matches: tuple
+
+
+def evaluate_cover_opportunity(*, opportunity_id, kind, roots, baseline_cover,
+                               candidate_cover, model_uncertainty_ns=0.0,
+                               physical_penalty_ns=0.0):
+    """Evaluate every root of one complete single/multi-output cover."""
+    if kind not in {"single-output", "multi-output", "physical-fusion"}:
+        raise ValueError("unsupported opportunity kind")
+    if not isinstance(roots, list) or not roots:
+        raise ValueError("cover opportunity requires at least one root")
+    if not isinstance(baseline_cover, dict) or not isinstance(candidate_cover, dict):
+        raise ValueError("baseline and candidate cover must be objects")
+    checks, deltas, reasons = [], {}, []
+    for index, root in enumerate(roots):
+        if not isinstance(root, dict):
+            raise ValueError("root %d must be an object" % index)
+        name = str(root.get("root") or "").strip()
+        endpoint = str(root.get("endpoint") or "").strip()
+        required = root.get("required_time_ns")
+        arrival = root.get("candidate_arrival_ns")
+        output_used = root.get("output_used") is True
+        if not name or not endpoint or not all(
+                isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(float(value)) for value in (required, arrival)):
+            raise ValueError("root %d has incomplete timing identity" % index)
+        required_met = float(arrival) <= float(required)
+        if not output_used:
+            reasons.append("unused-output:%s" % name)
+        if not required_met:
+            reasons.append("required-time-miss:%s" % name)
+        base_delay = baseline_cover.get(name)
+        candidate_delay = candidate_cover.get(name)
+        if not all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                   and math.isfinite(float(value)) for value in (base_delay, candidate_delay)):
+            raise ValueError("cover delay is missing for root %s" % name)
+        delta = (float(base_delay) - float(candidate_delay)
+                 - float(model_uncertainty_ns) - float(physical_penalty_ns))
+        deltas[endpoint] = round(delta, 12)
+        checks.append({
+            "root": name, "endpoint": endpoint, "output_used": output_used,
+            "required_time_met": required_met, "baseline_delay_ns": float(base_delay),
+            "candidate_delay_ns": float(candidate_delay),
+            "conservative_delta_ns": round(delta, 12),
+        })
+    if any(value <= 0 for value in deltas.values()):
+        reasons.append("non-positive-conservative-root")
+    return {
+        "schema": "hima.lfr-cover-opportunity/1", "opportunity_id": opportunity_id,
+        "kind": kind, "status": "admitted" if not reasons else "rejected",
+        "root_checks": checks, "delta_slack_by_endpoint": deltas,
+        "rejection_reasons": sorted(set(reasons)),
+        "baseline_cover": dict(baseline_cover), "candidate_cover": dict(candidate_cover),
+    }
 
 
 def combinational_instances(instances, cells):
@@ -1350,9 +1403,11 @@ def _cluster_compose_spec(name, representative, cells, input_order, output_order
         "external_outputs": list(output_order),
         "internal_nets": [internal_names[key] for key in sorted(internal_names)],
         "stages": stages,
-        "function": compact_liberty_function(
-            representative.output_asts[0], input_order
-        ),
+        "function": compact_liberty_function(representative.output_asts[0], input_order),
+        "functions": {
+            pin: compact_liberty_function(ast, input_order)
+            for pin, ast in zip(output_order, representative.output_asts)
+        },
     }
 
 
@@ -1382,9 +1437,6 @@ def derive_implementation_plan(name, representative, cells, input_order, output_
         reasons.append(
             "generic gates %s have no foundry CDL topology; the unmapped graph "
             "yields canonical-function evidence, not a forge input" % ", ".join(generic))
-    if len(representative.output_nets) != 1:
-        reasons.append("cluster has %d outputs; current forge routes emit 1"
-                       % len(representative.output_nets))
     if len(members) not in (2, 3):
         reasons.append("cluster has %d cells; current forge routes support 2 or 3"
                        % len(members))
@@ -1403,6 +1455,14 @@ def derive_implementation_plan(name, representative, cells, input_order, output_
         )
     except ValueError as exc:
         return {"route": "unsupported", "reasons": [str(exc)]}
+
+    if len(representative.output_nets) > 1:
+        return {
+            "route": "multi_output_resynthesis",
+            "cluster_spec": cluster_spec,
+            "eco_only": True,
+            "output_count": len(representative.output_nets),
+        }
 
     if len(members) != 2 or representative.internal_nets != 1:
         return {"route": "cluster_compose", "cluster_spec": cluster_spec}
@@ -1561,6 +1621,9 @@ def generator_request(candidate_id, sites, nonoverlap, cells, args):
             representative.canonical_output_permutation)
     }
     occurrence_alignments = []
+    affected_endpoints = set()
+    frontier_site_count = 0
+    endpoint_by_instance = getattr(args, "timing_frontier_by_instance", {})
     for site in sites:
         if not replacement_alignment_valid(representative, site):
             raise RuntimeError(
@@ -1579,9 +1642,20 @@ def generator_request(candidate_id, sites, nonoverlap, cells, args):
             "instances": list(site.instances),
             "contract_pin_mapping": pin_mapping,
         })
+        site_endpoints = set()
+        for instance in site.instances:
+            site_endpoints.update(endpoint_by_instance.get("%s/%s" % (site.module, instance), ()))
+        if site_endpoints:
+            frontier_site_count += 1
+            affected_endpoints.update(site_endpoints)
 
     implementation_plan = derive_implementation_plan(
         candidate_id, representative, cells, input_order, output_order)
+    physical_variant_id = None
+    if args.objective == "endpoint_frontier_coverage":
+        physical_variant_id = "sha256:" + hashlib.sha256(json.dumps(
+            implementation_plan, sort_keys=True, separators=(",", ":")
+        ).encode()).hexdigest()
 
     output_count = len(output_order)
     algorithm = (
@@ -1645,12 +1719,23 @@ def generator_request(candidate_id, sites, nonoverlap, cells, args):
             "source_graph": args.source_graph,
             "replacement_key": key_string(representative.replacement_key),
             "library_equivalence_key": key_string(representative.library_equivalence_key),
-            "library_function_match": "ABSENT_UNDER_NPN_OR_NPNP_EQUIVALENCE",
+            "library_function_match": (
+                "PRESENT_PHYSICAL_VARIANT_TARGET"
+                if representative.library_matches
+                else "ABSENT_UNDER_NPN_OR_NPNP_EQUIVALENCE"
+            ),
             "raw_support": len(sites),
             "non_overlapping_support": len(nonoverlap),
             "non_overlapping_support_method": "deterministic_greedy_lower_bound",
             "occurrences_by_module": dict(sorted(occurrences_by_module.items())),
             "occurrence_alignments": occurrence_alignments,
+            "endpoint_frontier_influence": {
+                "affected_endpoints": sorted(affected_endpoints),
+                "affected_endpoint_count": len(affected_endpoints),
+                "affected_occurrence_count": frontier_site_count,
+                "source": "exact-endpoint-membership-from-bound-timing-frontier"
+                          if endpoint_by_instance else "not-supplied",
+            },
             "equivalence_status": "EXACT_TRUTH_TABLE_FROM_COMPOSED_LIBERTY_FUNCTIONS",
             "ppa_status": "UNPROVEN",
             "search_bound": {
@@ -1695,8 +1780,11 @@ def generator_request(candidate_id, sites, nonoverlap, cells, args):
             },
             "G3_library_gap": {
                 "status": "PASS",
-                "evidence": "ABSENT_UNDER_NPN_OR_NPNP_EQUIVALENCE against the "
-                            "parsed library index",
+                "evidence": (
+                    "function exists but the endpoint-bound fused physical variant is absent"
+                    if representative.library_matches
+                    else "ABSENT_UNDER_NPN_OR_NPNP_EQUIVALENCE against the parsed library index"
+                ),
             },
             "G4_circuit_feasibility": {
                 "status": "READY" if implementation_plan["route"] != "unsupported"
@@ -1724,6 +1812,10 @@ def generator_request(candidate_id, sites, nonoverlap, cells, args):
             },
         ],
     }
+    if physical_variant_id is not None:
+        request["generator_contract"]["implementation_request"][
+            "physical_variant_id"
+        ] = physical_variant_id
     request["candidate_identity"] = project_candidate_identity(request)
     return request
 
@@ -1733,6 +1825,22 @@ def run(args):
     modules = parse_modules(netlist_text)
     cells = parse_skeleton(args.liberty_skeleton)
     library = library_indexes(cells, args.max_inputs, args.max_outputs)
+    args.timing_frontier_by_instance = {}
+    if args.timing_frontier is not None:
+        timing_document = json.loads(Path(args.timing_frontier).read_text())
+        frontier = timing_document
+        if timing_document.get("schema") != "hima.lfr-endpoint-frontier/1":
+            frontier = (((timing_document.get("algorithm_records") or {})
+                         .get("observed_timing_graph") or {}).get("endpoint_frontier") or {})
+        if frontier.get("schema") != "hima.lfr-endpoint-frontier/1":
+            raise ValueError("--timing-frontier has no endpoint-frontier/1 document")
+        for endpoint in frontier.get("endpoints", []):
+            if not endpoint.get("frontier"):
+                continue
+            for instance in endpoint.get("instances", []):
+                args.timing_frontier_by_instance.setdefault(str(instance), set()).add(
+                    str(endpoint["endpoint"])
+                )
 
     groups = defaultdict(list)
     statistics = Counter()
@@ -1798,15 +1906,39 @@ def run(args):
                 library_matches=matches,
             ))
 
+    def touches_frontier(sites):
+        return any(
+            "%s/%s" % (site.module, instance) in args.timing_frontier_by_instance
+            for site in sites for instance in site.instances
+        )
+
     new_groups = [
         (key, sites, greedy_nonoverlap(sites))
         for key, sites in groups.items()
-        if not sites[0].library_matches and len(sites) >= args.min_support
+        if len(sites) >= args.min_support and (
+            not sites[0].library_matches
+            or (args.objective == "endpoint_frontier_coverage" and touches_frontier(sites))
+        )
     ]
 
     def group_rank(item):
         _, sites, nonoverlap = item
         representative = sites[0]
+        if args.objective == "endpoint_frontier_coverage":
+            endpoints, hit_sites = set(), 0
+            for site in sites:
+                local = set()
+                for instance in site.instances:
+                    local.update(args.timing_frontier_by_instance.get(
+                        "%s/%s" % (site.module, instance), ()))
+                if local:
+                    hit_sites += 1
+                    endpoints.update(local)
+            return (
+                -len(endpoints), -hit_sites,
+                -len(nonoverlap) * max(1, len(representative.instances) - 1),
+                -sum(site.internal_nets for site in nonoverlap), key_string(item[0]),
+            )
         if args.objective == "covered_cell_compaction":
             return (
                 -len(nonoverlap) * max(1, len(representative.instances) - 1),
@@ -1929,6 +2061,8 @@ def run(args):
         "inputs": {
             "netlist": os.path.abspath(str(args.netlist)),
             "liberty_function_skeleton": [os.path.abspath(str(path)) for path in args.liberty_skeleton],
+            "timing_frontier": (os.path.abspath(str(args.timing_frontier))
+                                if args.timing_frontier is not None else None),
         },
         "search_definition": {
             "route": args.strategy_id,
@@ -2005,6 +2139,7 @@ def arguments(argv=None):
             "covered_cell_compaction",
             "single_output_mapper_fit",
             "boundary_function_diversity",
+            "endpoint_frontier_coverage",
         ),
     )
     parser.add_argument("--min-cells", type=int, default=2)
@@ -2012,6 +2147,8 @@ def arguments(argv=None):
     parser.add_argument("--max-inputs", type=int, default=4)
     parser.add_argument("--max-outputs", type=int, default=4)
     parser.add_argument("--min-support", type=int, default=2)
+    parser.add_argument("--timing-frontier", type=Path,
+                        help="endpoint-frontier/1 document or timing-route report")
     parser.add_argument("--top", type=int, default=10,
                         help="custom-cell budget: the maximum candidates emitted")
     # Technology-driven defaults; still overridable per run. XSPACE_TECH selects the profile.
@@ -2031,8 +2168,10 @@ def arguments(argv=None):
         parser.error("--strategy-id must match [a-z][a-z0-9_]{2,47}")
     if args.min_cells < 2 or args.min_cells > args.max_cells:
         parser.error("--min-cells must be >= 2 and <= --max-cells")
-    if not 1 <= args.top <= 40:
-        parser.error("--top must be within 1..40")
+    if not 1 <= args.top <= 100:
+        parser.error("--top must be within 1..100")
+    if args.objective == "endpoint_frontier_coverage" and args.timing_frontier is None:
+        parser.error("--timing-frontier is required for endpoint_frontier_coverage")
     return args
 
 

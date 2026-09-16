@@ -116,6 +116,10 @@ _Avoid_: 跨设计通用状态、只有网表文件、商业 EDA 的 session
 同一 timing path group 内，slack 接近当前最差值的一组唯一寄存器 endpoint；它们共同决定当前瓶颈，不能用一条 timing path 代替。
 _Avoid_: top-N path 行、单个 endpoint、所有寄存器的无差别集合
 
+**完整 Endpoint Frontier**:
+除唯一 endpoint 及其 slack 外，还包含每个 endpoint 下可能迁移成最差路径的 launch path/timing cone；只有显式完备的 frontier 才能开启 E0，普通 top-N 报告必须标记为 sampled。
+_Avoid_: 报告里每个 endpoint 恰好出现一次、把 path-family 归一化当作完备性
+
 **Opportunity**:
 从当前 Design State 的逻辑或物理结构中识别出的可评估改造位置，尚未授权修改设计，也不自带收益结论。
 _Avoid_: Cell、已接受 Action、实验结果
@@ -123,6 +127,10 @@ _Avoid_: Cell、已接受 Action、实验结果
 **Optimization Action**:
 绑定具体位置、实现方式、影响 endpoint、成本、冲突和回滚的候选设计修改；可以采用单输出、多输出或物理合并实现。
 _Avoid_: 抽象算法名称、Cell 类型、没有位置的策略建议
+
+**ECO-only Action**:
+由 Framework 明确写入网表且商业综合/物理优化不负责重新发现的多输出或物理合并 Action；商业观察必须保留该 ECO 实例，若工具删除则该 arm 只能说明 non-adoption，不能归因 Cell 收益。
+_Avoid_: 允许优化器静默展开后仍声称 custom Cell 被采用、把 dont-touch 扩展到无关 foundry logic
 
 **Action Portfolio**:
 在同一 Design State 上共同评估、互不冲突，并以推动整个 Endpoint Frontier 为目标的一组 Optimization Actions。
