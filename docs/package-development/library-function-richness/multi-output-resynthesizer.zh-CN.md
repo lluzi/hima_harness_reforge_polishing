@@ -23,6 +23,8 @@ netlist-to-netlist resynthesizer，在商业 DC 输出与 placement 之间执行
 - GENLIB 中同名的多个 output gate 被组合成一个 multi-output Cell；
 - 自带 ripple-carry adder 和 multiplier multi-output mapping 测试；
 - 当前 `tech_library` 最多两个 outputs，multi-output cut 最多三个 leaves；
+- upstream opportunity enumeration 已用 leaf-set hash bucket，但 bucket 内仍执行 root-pair 双循环；
+- upstream 源码将当前 multi-output enumeration 标为 experimental，并注明 restricted to half/full adders；
 - exact-area 路径仍有 multi-output required-time TODO，delay cost 只能作为免费因子，不能替代 E0 timing。
 
 POC 固定在 **最多3输入、2输出**。扩大到4输入或更多输出属于后续 mockturtle 扩展，不能静默修改常量。
@@ -129,7 +131,42 @@ instance、pin、net 和层次路径。没有 source map 的 node 不能产生 E
 保存 `emap_stats`、Cell census、cut statistics、runtime 和完整 mapped netlist。mockturtle 的 delay/area
 只用于筛选。
 
-### 4.3 ECO provenance
+### 4.3 Large-netlist opportunity index
+
+DC Verilog 与 Liberty 先形成三个关联视图：
+
+1. **netlist graph**：instance、pin、net、driver/load、hierarchy 和 sequential boundary；
+2. **Boolean graph**：把每个 Liberty output function 展开为 AIG，并保留 AIG node 到 source
+   instance/pin/net 的多对多 provenance；
+3. **multi-output Library relation**：一个 master 的 ordered inputs、两个 output truth tables、pin-to-output
+   delays、area 和 drive identity，形成 `(f1, f2) -> master` 索引。
+
+机会发现不枚举全网 root pair。算法按以下顺序执行：
+
+1. 保留 hierarchy，并按 module 和 register-to-register combinational region 分区；
+2. 在每个 topological level 并行枚举每个 root 的 bounded K-feasible cuts；
+3. 每个 cut 生成 `(ordered-leaf-set, output-function-id, root-id)`；
+4. 第一层按 ordered leaf set 分桶，第二层按 output function id 分桶；
+5. 只对 Library 声明可组成同一 multi-output master 的 `(f1, f2)` 做 hash join；
+6. 对命中项检查 shared interior、完整 side outputs、sequential boundary 和 source provenance；
+7. 输出 opportunity，不在发现线程中修改网表。
+
+因此发现成本主要随 `nodes × bounded-cuts-per-node` 和真实 hash hits 增长，不随全网 roots 的平方增长。
+某个 leaf/function bucket 超过固定上限时保留 `bucket-overflow` refusal，并按 criticality、support 和
+module 切分后重试，不能退化成无界 pair loop。
+
+并行边界：
+
+- module、sequential region、同一 topological level 和 leaf bucket 可以并行；
+- Library lookup、truth-vector matching 和 benefit evaluation 可以并行；
+- 最终 patch selection 需要全局冲突信息，按独立 module/region 分组后确定性选择；
+- 跨 partition candidate 进入单独边界队列，不与局部结果并行提交。
+
+最终选择把每个 opportunity 看作一个占用 source instances/nets 的集合。先按 timing margin、removed
+levels、area、locality 和 model uncertainty 排序，再做 deterministic greedy set packing 和一次 bounded
+local improvement。它不是精确全局最优，但输出稳定、可回放，并且不会产生 overlapping ECO。
+
+### 4.4 ECO provenance
 
 标准 `write_verilog_with_cell` 能输出全网 mapped netlist，但它会重建内部 node/instance naming，不能直接
 成为 in-place ECO。Hima wrapper 必须为每个 selected multi-output mapping 额外保存：
@@ -145,7 +182,7 @@ instance、pin、net 和层次路径。没有 source map 的 node 不能产生 E
 只有 source map 完整且与其他 patch 不重叠的 mapping 才能进入 rewrite。全网 writer 输出保留为
 diagnostic reference，不作为商业交付网表。
 
-### 4.4 Benefit and locality
+### 4.5 Benefit and locality
 
 每个 opportunity 单独记录：
 
@@ -158,7 +195,7 @@ diagnostic reference，不作为商业交付网表。
 
 选择器以完整向量做 Pareto 排序。内部共享量不能覆盖 sink divergence 或负 timing margin。
 
-### 4.5 Rewrite
+### 4.6 Rewrite
 
 Rewrite 操作在解析后的结构网表 IR 上完成，不使用文本正则：
 
@@ -171,7 +208,7 @@ Rewrite 操作在解析后的结构网表 IR 上完成，不使用文本正则�
 
 原 netlist 保持只读。`patches.json` 同时携带 removed fragment 和 inserted fragment，可重建原 window。
 
-### 4.6 Equivalence
+### 4.7 Equivalence
 
 两层证明都必须通过：
 
@@ -229,7 +266,10 @@ phase-completion 混合的完整 Library 留到该隔离试验通过后。
 
 - 8-bit Full Adder fixture 使用 8 个 multi-output Cell 完成 ripple-adder mapping，与 pinned mockturtle test
   结果一致；
-- 非 FA 双输出 fixture 至少产生一个 multi-output mapping；
+- 非 FA 双输出 fixture 至少产生一个 multi-output mapping；若 pinned upstream 失败，POC 必须以最小
+  反例定位其 HA/FA 特化点，不能把 FA 通过表述成通用能力；
+- 大网表 synthetic fixture 的 discovery 数量增加 10 倍时，禁止出现全网 root-pair 平方增长；记录
+  cuts、bucket sizes、hash hits、pair checks、runtime 和 peak RSS；
 - structural Verilog 只实例化允许的 multi-output masters；
 - window 和 top equivalence 均通过；篡改任一 output 必须失败；
 - patch rollback 重建原 netlist hash。
@@ -251,6 +291,8 @@ phase-completion 混合的完整 Library 留到该隔离试验通过后。
 ## 8. 已知限制
 
 - 当前 pinned mockturtle 仅支持 3-leaf、2-output multi-output cuts；
+- 当前 upstream multi-output matcher 对 HA/FA 有显式实验性假设，通用双输出能力尚待 held-out 证明；
+- upstream leaf bucket 内有 pair loop；Hima 大网表 adapter 必须增加 function-id join 和 overflow bound；
 - required-time exact-area 路径存在 upstream TODO；
 - GENLIB 同名 outputs 的 Library elaboration需要与 Hima multi-output Liberty pin/area/delay identity 对账；
 - `emap` 的全网 output 不是自动安全的局部 ECO，source provenance 和 patch proof 是 Hima 必须补的部分；
