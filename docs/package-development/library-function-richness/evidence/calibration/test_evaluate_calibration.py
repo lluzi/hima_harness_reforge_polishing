@@ -28,6 +28,12 @@ assert PRODUCTION_SPEC is not None and PRODUCTION_SPEC.loader is not None
 PRODUCTION_ROUND = importlib.util.module_from_spec(PRODUCTION_SPEC)
 sys.modules[PRODUCTION_SPEC.name] = PRODUCTION_ROUND
 PRODUCTION_SPEC.loader.exec_module(PRODUCTION_ROUND)
+PRODUCTION_PORTFOLIO = (
+    REPOSITORY
+    / "packs/custom-cell-fmax-dtco/flow/domain/tests/fixtures/"
+    "lfr-pre-mapping-portfolio.production.json"
+)
+PORTFOLIO_CELL = "XS_PORTFOLIO_ROUNDTRIP_A2_SINGLE_0001_Y"
 
 
 def _write(path: Path, value: object) -> str:
@@ -242,7 +248,7 @@ fall_transition (delay_template) {{ values ("0.01, 0.01", "0.01, 0.01"); }}'''
 
 
 def _library(name: str, include_custom: bool) -> str:
-    custom = f'''cell (CUSTOM_A) {{
+    custom = f'''cell ({PORTFOLIO_CELL}) {{
     pin (A) {{ direction : input; capacitance : 0.01; }}
     pin (Y) {{ direction : output; function : "A"; timing () {{
       related_pin : "A"; timing_sense : positive_unate; {_timing_tables(0.10)}
@@ -295,7 +301,7 @@ def _production_round_result(root: Path) -> dict[str, object]:
     augmented_netlist.write_text(
         "module top(input clk,input seed,output observed);\n"
         "  DFF launch (.D(seed), .CK(clk), .Q(q0));\n"
-        "  CUSTOM_A logic0 (.A(q0), .Y(n0));\n"
+        f"  {PORTFOLIO_CELL} logic0 (.A(q0), .Y(n0));\n"
         "  DFF capture (.D(n0), .CK(clk), .Q(observed));\n"
         "endmodule\n"
     )
@@ -353,7 +359,11 @@ def _production_round_result(root: Path) -> dict[str, object]:
         },
         "arms": {
             "reference": arm("reference", reference_netlist, {"DFF": 2, "BUF": 1}),
-            "augmented": arm("augmented", augmented_netlist, {"DFF": 2, "CUSTOM_A": 1}),
+            "augmented": arm(
+                "augmented",
+                augmented_netlist,
+                {"DFF": 2, PORTFOLIO_CELL: 1},
+            ),
         },
     }
     mapping_request = {
@@ -367,6 +377,8 @@ def _production_round_result(root: Path) -> dict[str, object]:
         },
         "constraints": {"sdc_files": []},
     }
+    portfolio = json.loads(PRODUCTION_PORTFOLIO.read_text())
+    selected = portfolio["selected"][0]
     request = {
         "schema": "lfr-round/3",
         "mapping": mapping_request,
@@ -375,7 +387,19 @@ def _production_round_result(root: Path) -> dict[str, object]:
             str(reference_lib): sha(reference_lib),
             str(augmented_lib): sha(augmented_lib),
         },
-        "candidate_cells": ["CUSTOM_A"],
+        "candidate_cells": [PORTFOLIO_CELL],
+        "candidate_functions": [
+            {
+                "candidate_id": selected["candidate_id"],
+                "candidate_cells": [PORTFOLIO_CELL],
+                "identity": selected["identity"],
+                "selected": True,
+            }
+        ],
+        "local_portfolio": {
+            "path": str(PRODUCTION_PORTFOLIO),
+            "sha256": sha(PRODUCTION_PORTFOLIO),
+        },
         "timing": {"clock_period_ps": 150, "uncertainty_ps": 0},
         "scenarios": {
             "optimistic": {"initial_slew_ps": 8, "wire_capacitance_in_library_units": 0},
@@ -385,6 +409,7 @@ def _production_round_result(root: Path) -> dict[str, object]:
         "metric_policy": {
             "objectives": [
                 {"metric": "F0.candidate_adoption_fraction", "direction": "maximize"},
+                {"metric": "F1.levels_removed", "direction": "maximize"},
                 {"metric": "F2.mapped_instance_count", "direction": "minimize"},
                 {"metric": "F3.worst_delay_indicator_ps", "direction": "minimize"},
                 {"metric": "F3.negative_slack_mass_indicator_ps", "direction": "minimize"},
@@ -475,10 +500,14 @@ class CalibrationEvaluatorTest(unittest.TestCase):
         self.assertTrue(report["assessment_complete"])
         self.assertFalse(relationship["conditions_homogeneous"])
         self.assertEqual(relationship["relationship_row_count"], 6)
-        self.assertEqual(report["available_metric_layers"], ["F0", "F2", "F3"])
+        self.assertEqual(report["available_metric_layers"], ["F0", "F1", "F2", "F3"])
         self.assertEqual(report["round_reader"]["mode"], "production-layered-scenario-interface")
         self.assertEqual(
             report["relation_evidence_coverage"]["F2_to_F4"],
+            "observed-scenario-by-trial",
+        )
+        self.assertEqual(
+            report["relation_evidence_coverage"]["F1_to_F4"],
             "observed-scenario-by-trial",
         )
         rows = relationship["rows"]
@@ -493,6 +522,12 @@ class CalibrationEvaluatorTest(unittest.TestCase):
         self.assertEqual(adoption["canonical_direction"], "maximize")
         self.assertGreater(adoption["raw_augmented_minus_reference"], 0)
         self.assertGreater(adoption["improvement_positive_change"], 0)
+        f1 = first_changes["F1.levels_removed"]
+        self.assertEqual(f1["canonical_direction"], "maximize")
+        self.assertEqual(f1["raw_augmented_minus_reference"], 1)
+        self.assertEqual(f1["improvement_positive_change"], 1)
+        self.assertEqual(f1["wns_sign_relationship"], "same-direction")
+        self.assertEqual(f1["fmax_sign_relationship"], "same-direction")
         descriptive = first_changes["F0.function_class_count"]
         self.assertEqual(descriptive["canonical_direction"], "descriptive-only")
         self.assertIsNone(descriptive["improvement_positive_change"])

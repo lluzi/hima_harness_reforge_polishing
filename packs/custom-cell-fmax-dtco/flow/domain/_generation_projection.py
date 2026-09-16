@@ -208,7 +208,7 @@ def validate_cumulative_manifest(manifest):
     functions = manifest.get("functions")
     if not isinstance(shards, list) or not isinstance(functions, list):
         raise ValueError("cumulative Library manifest arrays are missing")
-    shard_ids, keys, candidate_ids = set(), set(), set()
+    shard_ids, keys, candidate_ids, physical_cell_names = set(), set(), set(), set()
     for index, shard in enumerate(shards):
         if not isinstance(shard, dict):
             raise ValueError("Library shard %d is not an object" % index)
@@ -251,10 +251,20 @@ def validate_cumulative_manifest(manifest):
             raise ValueError("Library function %s has invalid failure evidence" % candidate_id)
         if state == "proxy-rejected" and not failures:
             raise ValueError("proxy-rejected Library function %s has no failure reason" % candidate_id)
+        physical = row.get("physicalCellNames")
+        if (not isinstance(physical, list) or not physical
+                or any(not isinstance(name, str) or not IDENTIFIER.fullmatch(name)
+                       for name in physical)
+                or len(set(physical)) != len(physical)
+                or physical_cell_names.intersection(physical)):
+            raise ValueError(
+                "Library function %s has missing, invalid or colliding physical Cell names"
+                % candidate_id)
         if row.get("shardId") not in shard_ids:
             raise ValueError("Library function %s refers to an unknown shard" % candidate_id)
         keys.add(key)
         candidate_ids.add(scoped_candidate_id)
+        physical_cell_names.update(physical)
     declared = {key for shard in shards for key in shard["functionKeys"]}
     if declared != keys:
         raise ValueError("Library shard function keys disagree with function rows")
@@ -397,6 +407,9 @@ def append_cumulative_shard(root, manifest, shard_id, requests, artifacts=None):
     if final.exists() or temporary.exists():
         raise ValueError("Library shard path already exists")
     existing = {row["functionKey"] for row in manifest["functions"]}
+    existing_physical = {
+        name for row in manifest["functions"] for name in row["physicalCellNames"]
+    }
     rows, keys = [], set()
     for request in requests:
         identity = function_identity(request)
@@ -405,6 +418,16 @@ def append_cumulative_shard(root, manifest, shard_id, requests, artifacts=None):
         candidate_id = request.get("candidate_id")
         if not isinstance(candidate_id, str) or not IDENTIFIER.fullmatch(candidate_id):
             raise ValueError("Library shard has an invalid candidate id")
+        interface = request["generator_contract"]["interface"]
+        physical = [
+            canonical_cell_name(candidate_id, output["name"])
+            for output in interface["outputs"]
+        ]
+        if existing_physical.intersection(physical) or any(
+                name in prior["physicalCellNames"] for prior in rows for name in physical):
+            raise ValueError(
+                "Library shard physical Cell name collision; candidate labels must be "
+                "collision-safe before materialization")
         keys.add(identity["key"])
         rows.append({
             "functionKey": identity["key"],
@@ -413,6 +436,7 @@ def append_cumulative_shard(root, manifest, shard_id, requests, artifacts=None):
             "state": "discovered",
             "stateHistory": ["discovered"],
             "knownFailures": [],
+            "physicalCellNames": physical,
             "identity": {key: value for key, value in identity.items() if key != "key"},
         })
     artifact_refs = []

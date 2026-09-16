@@ -485,10 +485,8 @@ Report pass, failure, skip and not-run separately.
 
 ## 10. Current development frontier
 
-The current frontier is **LFR-FW-07**: connect the completed multi-index influence/portfolio and
-cumulative-Library lifecycle to compact AI residual research, maintain a cross-candidate and
-cross-round frontier, and run held-out RTL plus second-tier-model validation. FW-01 through FW-06
-established real-tool, AES F0/F2/F3-to-F4 and deterministic portfolio foundations; those
-observations are not benefit-prediction accuracy. A new full DC/APR Campaign is not Framework
-progress until FW-07/08 shows that the metric system advances a stable frontier and produces a
-candidate worth observing.
+The current frontier is **LFR-PACK-01**. FW-08 approved the frozen Framework for HimaPack
+integration. The next work updates the existing `INTENT.md` and `SPEC.md` to express F0-F4,
+pairwise/frontier semantics, the cumulative Library and AI residual research without reimplementing
+the Framework. Commercial DC/APR remains outside the current development loop until Pack testing
+reaches the declared matched-observation gate.

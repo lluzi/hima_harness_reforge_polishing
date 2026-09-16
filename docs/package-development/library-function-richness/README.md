@@ -36,9 +36,10 @@ forecast.
 | LFR-FW-04 | complete | Available F0/F2/F3 baselines placed beside retained F4 observations; F1 remains a declared gap |
 | LFR-FW-05 | complete | Multi-index influence, full-cone counterfactual and verified pre/post-mapping portfolio |
 | LFR-FW-06 | complete | Immutable shards, disk hash verification, delta-only Jobs and state history |
-| LFR-FW-07 | ready | Standalone AI residual loop, cross-round frontier and held-out replay |
-| LFR-FW-08 | blocked by FW-07 | Standalone Framework assessment accepted; no commercial EDA search loop |
-| LFR-PACK-01 through LFR-PACK-08 | blocked by Framework assessment | Pack check, test Campaign and release evidence complete |
+| LFR-FW-07 | complete | Real held-out mapping rounds, cross-round frontier, DeepSeek residual code and bounded execution |
+| LFR-FW-08 | complete | Independent assessment approved Phase 2; no commercial EDA search loop |
+| LFR-PACK-01 | ready | Update accepted Intent/Spec around the exact Framework implementation |
+| LFR-PACK-02 through LFR-PACK-08 | blocked by Pack dependencies | Pack check, test Campaign and release evidence complete |
 
 No item is complete merely because code exists. Each item closes only with the evidence named in
 the development document.

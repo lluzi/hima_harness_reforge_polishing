@@ -65,7 +65,7 @@ from verilog_netlist import GENERIC_PREFIX, parse_modules  # noqa: E402
 REPORT_SCHEMA = "xspace_cell-pattern-search/v2"
 CONSTANT_NETS = ("1'b0", "1'b1", "1'h0", "1'h1")
 BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis"}
-PORTFOLIO_SCHEMA = "hima.library-richness.candidate-portfolio/1"
+PORTFOLIO_SCHEMA = "hima.library-richness.portfolio/1"
 PORTFOLIO_CANDIDATE_SCHEMA = "hima.library-richness.portfolio-candidate/1"
 
 

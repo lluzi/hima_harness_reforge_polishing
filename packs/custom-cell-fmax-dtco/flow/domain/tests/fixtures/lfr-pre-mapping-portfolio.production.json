@@ -1,0 +1,1060 @@
+{
+  "baseline": {
+    "proxy_negative_slack_mass_indicator_ps": 30.0,
+    "proxy_slack_by_endpoint_family_ps": {
+      "launch0->capture0": -20.0,
+      "launch1->capture1": -10.0
+    },
+    "proxy_worst_frontier_indicator_ps": -20.0
+  },
+  "candidate_evaluations": [
+    {
+      "candidate": {
+        "candidate_id": "CAND_PORTFOLIO_ROUNDTRIP_A2_SINGLE_0001",
+        "covered_instance_keys": [
+          "top/U0",
+          "top/U1"
+        ],
+        "functional_equivalence": {
+          "evidence": "complete truth table from the function-preserving AIG",
+          "status": "exact"
+        },
+        "generation_feasibility": {
+          "reasons": [],
+          "route": "boolean_synthesis",
+          "status": "ready"
+        },
+        "identity": {
+          "drive_variants": [
+            {
+              "drive_strength": "X1",
+              "variant_id": "LFRDV_38f74b34902637237478734b",
+              "vt_class": "SVT"
+            }
+          ],
+          "function_class": "NPN:k2:0x1",
+          "function_interface_id": "LFRFI_d345bb04f287c2a818360856",
+          "interface": {
+            "input_count": 2,
+            "inputs": [
+              "I0",
+              "I1"
+            ],
+            "output_count": 1,
+            "outputs": [
+              "Y"
+            ]
+          },
+          "schema": "hima.library-richness.candidate-identity/1"
+        },
+        "library_cost": {
+          "generation_units": 1,
+          "new_library_cells": 1
+        },
+        "local_break_even": {
+          "break_even_delay": 3.0,
+          "margin": 1.0,
+          "proxy_cell_delay": 2.0,
+          "reasons": [],
+          "status": "pass",
+          "unit": "delay_unit"
+        },
+        "mapper_evidence": {
+          "adopted": null,
+          "candidate_instances": null,
+          "status": "not_evaluated"
+        },
+        "path_family_ids": [],
+        "raw_metrics": {
+          "counterfactual": {
+            "baseline_worst_delay_du": 3.0,
+            "baseline_worst_endpoint": "U1",
+            "baseline_worst_path": [
+              "U0",
+              "U1"
+            ],
+            "boundary_penalty_du": 0.0,
+            "covered_instance_keys": [
+              "top/U0",
+              "top/U1"
+            ],
+            "cut_boundary_input_count": 2,
+            "cut_boundary_output_count": 1,
+            "cut_region_instance_keys": [
+              "top/U0",
+              "top/U1"
+            ],
+            "fanout_penalty_du": 0.0,
+            "local_break_even_du": 3.0,
+            "logic_depth_after": 1,
+            "logic_depth_before": 2,
+            "logic_depth_delta": 1,
+            "mapped_origin_instance_keys": [
+              "top/U0",
+              "top/U1"
+            ],
+            "mapping_feasible": true,
+            "new_cell_delay_du": 2.0,
+            "new_worst_delay_du": 2.0,
+            "new_worst_endpoint": "@candidate:OCC_B141E025144F2809",
+            "new_worst_path": [
+              "@candidate:OCC_B141E025144F2809"
+            ],
+            "occurrence_id": "OCC_B141E025144F2809",
+            "path_migrated": true,
+            "proposed_cell_endpoint": "@candidate:OCC_B141E025144F2809",
+            "proposed_cell_node": "@candidate:OCC_B141E025144F2809",
+            "proposed_cell_path": [
+              "@candidate:OCC_B141E025144F2809"
+            ],
+            "proxy_cell_delay_du": 2.0,
+            "proxy_delay_basis": "max_constituent_cell_delay_from_full_liberty_relative_DU",
+            "proxy_frontier_indicator_du": 1.0,
+            "removable_buffer_delay_du": 0.0,
+            "removable_cell_delay_du": 3.0,
+            "removable_edge_count": 1,
+            "removable_net_delay_du": 0.0,
+            "removable_node_count": 1,
+            "scope": "license_free_structural_proxy_not_commercial_qor_prediction",
+            "side_output_instance_keys": [],
+            "uncertainty_penalty_du": 0.0,
+            "wire_penalty_du": 0.0,
+            "worst_endpoint_relief_du": 1.0
+          },
+          "influence_vector": {
+            "buffer_inverter_pressure": {
+              "one_hop_count": 1,
+              "one_hop_fraction": 0.5
+            },
+            "cut_boundary_input_count": 2,
+            "cut_boundary_output_count": 1,
+            "dominator_endpoint_coverage": 1.0,
+            "fanout_count": 0,
+            "fanout_load_distribution": {
+              "fanout_count": 0,
+              "successor_indegree_max": 0,
+              "successor_indegree_min": 0
+            },
+            "library_cost": {
+              "generation_units": 1,
+              "new_library_cells": 1
+            },
+            "load_proxy": 0,
+            "logic_depth_delta_distribution": [
+              {
+                "after": 1,
+                "before": 2,
+                "delta": 1,
+                "occurrence_id": "OCC_B141E025144F2809"
+              }
+            ],
+            "logic_depth_delta_max": 1,
+            "logic_depth_delta_nonoverlap_sum": 1,
+            "mapping_adoption_status": "not_evaluated",
+            "mapping_feasible": true,
+            "negative_slack_mass_coverage_ns": 0,
+            "non_overlapping_occurrence_ids": [
+              "OCC_B141E025144F2809"
+            ],
+            "non_overlapping_support": 1,
+            "occurrences": [
+              {
+                "baseline_indicator": {
+                  "kind": "relative_internal_proxy",
+                  "value_du": -0.0
+                },
+                "covered_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "cut_region_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "endpoint_family": "relative-internal/U1",
+                "local_break_even_du": 3.0,
+                "logic_depth_after": 1,
+                "logic_depth_before": 2,
+                "logic_depth_delta": 1,
+                "occurrence_id": "OCC_B141E025144F2809",
+                "proxy_cell_delay_du": 2.0,
+                "proxy_frontier_indicator_du": 1.0
+              }
+            ],
+            "overlap_count": 0,
+            "overlap_pairs": [],
+            "overlap_ratio": 0.0,
+            "path_family_count": 0,
+            "path_family_ids": [],
+            "reconvergence_node_count": 0,
+            "reconvergence_nodes": [],
+            "removable_depth": 1,
+            "removable_edge_count": 1,
+            "removable_node_count": 1,
+            "repeat_support": 1,
+            "structural_metrics": {
+              "cut_width": 3,
+              "edges_removed": 1,
+              "levels_removed": 1,
+              "nodes_removed": 1,
+              "reconvergence_coverage": 0
+            },
+            "whole_design_mapping": {
+              "status": "not_evaluated"
+            },
+            "worst_endpoint_relief_du": 1.0
+          },
+          "occurrences": [
+            {
+              "baseline_indicator": {
+                "kind": "relative_internal_proxy",
+                "value_du": -0.0
+              },
+              "counterfactual": {
+                "baseline_worst_delay_du": 3.0,
+                "baseline_worst_endpoint": "U1",
+                "baseline_worst_path": [
+                  "U0",
+                  "U1"
+                ],
+                "boundary_penalty_du": 0.0,
+                "covered_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "cut_boundary_input_count": 2,
+                "cut_boundary_output_count": 1,
+                "cut_region_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "fanout_penalty_du": 0.0,
+                "local_break_even_du": 3.0,
+                "logic_depth_after": 1,
+                "logic_depth_before": 2,
+                "logic_depth_delta": 1,
+                "mapped_origin_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "mapping_feasible": true,
+                "new_cell_delay_du": 2.0,
+                "new_worst_delay_du": 2.0,
+                "new_worst_endpoint": "@candidate:OCC_B141E025144F2809",
+                "new_worst_path": [
+                  "@candidate:OCC_B141E025144F2809"
+                ],
+                "occurrence_id": "OCC_B141E025144F2809",
+                "path_migrated": true,
+                "proposed_cell_endpoint": "@candidate:OCC_B141E025144F2809",
+                "proposed_cell_node": "@candidate:OCC_B141E025144F2809",
+                "proposed_cell_path": [
+                  "@candidate:OCC_B141E025144F2809"
+                ],
+                "proxy_cell_delay_du": 2.0,
+                "proxy_delay_basis": "max_constituent_cell_delay_from_full_liberty_relative_DU",
+                "proxy_frontier_indicator_du": 1.0,
+                "removable_buffer_delay_du": 0.0,
+                "removable_cell_delay_du": 3.0,
+                "removable_edge_count": 1,
+                "removable_net_delay_du": 0.0,
+                "removable_node_count": 1,
+                "scope": "license_free_structural_proxy_not_commercial_qor_prediction",
+                "side_output_instance_keys": [],
+                "uncertainty_penalty_du": 0.0,
+                "wire_penalty_du": 0.0,
+                "worst_endpoint_relief_du": 1.0
+              },
+              "covered_instance_keys": [
+                "top/U0",
+                "top/U1"
+              ],
+              "critical_impact_du": 0.2,
+              "critical_rank": 2,
+              "cut_boundary_input_count": 2,
+              "cut_boundary_output_count": 1,
+              "cut_leaf_nodes": [
+                1,
+                2
+              ],
+              "cut_region_instance_keys": [
+                "top/U0",
+                "top/U1"
+              ],
+              "endpoint_family": "relative-internal/U1",
+              "influence_vector": {
+                "buffer_inverter_pressure": {
+                  "one_hop_count": 1,
+                  "one_hop_fraction": 0.5
+                },
+                "cut_boundary_input_count": 2,
+                "cut_boundary_output_count": 1,
+                "dominator_endpoint_coverage": 1.0,
+                "fanout_count": 0,
+                "fanout_load_distribution": {
+                  "fanout_count": 0,
+                  "successor_indegree_max": 0,
+                  "successor_indegree_min": 0
+                },
+                "load_proxy": 0,
+                "logic_depth_after": 1,
+                "logic_depth_before": 2,
+                "mapping_adoption_status": "not_evaluated",
+                "mapping_feasible": true,
+                "negative_slack_mass_coverage_ns": 0,
+                "non_overlapping_support": 1,
+                "overlap_count": 0,
+                "overlap_ratio": 0.0,
+                "path_family_count": 0,
+                "path_family_ids": [],
+                "reconvergence_node_count": 0,
+                "reconvergence_nodes": [],
+                "removable_depth": 1,
+                "removable_edge_count": 1,
+                "removable_node_count": 1,
+                "repeat_support": 1,
+                "worst_endpoint_relief_du": 1.0
+              },
+              "local_break_even_du": 3.0,
+              "logic_depth_after": 1,
+              "logic_depth_before": 2,
+              "logic_depth_delta": 1,
+              "mapped_origin_instance_keys": [
+                "top/U0",
+                "top/U1"
+              ],
+              "mapped_origins": [
+                "U0",
+                "U1"
+              ],
+              "module": "top",
+              "observed_cone_delay_by_path_ns": {},
+              "observed_cone_delay_upper_ns": 0.0,
+              "occurrence_id": "OCC_B141E025144F2809",
+              "proxy_cell_delay_du": 2.0,
+              "proxy_frontier_indicator_du": 1.0,
+              "reg2reg_beginpoint_families": null,
+              "reg2reg_endpoint_families": null,
+              "reg2reg_increment_ns": null,
+              "reg2reg_path_family_count": null,
+              "reg2reg_path_family_ids": [],
+              "reg2reg_path_family_support": null,
+              "reg2reg_path_family_worst_slacks_ns": {},
+              "reg2reg_path_hits": null,
+              "reg2reg_path_ranks": null,
+              "reg2reg_worst_path_slack_ns": null,
+              "removable_edge_count": 1,
+              "removable_node_count": 1,
+              "root_instance": "U1",
+              "root_pin": "Y"
+            }
+          ]
+        },
+        "schema": "hima.library-richness.portfolio-candidate/1",
+        "source_generation_request": {
+          "advisories": [
+            {
+              "code": "PPA_NOT_PROVEN",
+              "message": "Discovery and exact Boolean equivalence do not establish mapper selection or PPA benefit.",
+              "severity": "warning"
+            }
+          ],
+          "candidate_id": "CAND_PORTFOLIO_ROUNDTRIP_A2_SINGLE_0001",
+          "discovery_evidence": {
+            "counterfactual": {
+              "baseline_worst_delay_du": 3.0,
+              "baseline_worst_endpoint": "U1",
+              "baseline_worst_path": [
+                "U0",
+                "U1"
+              ],
+              "boundary_penalty_du": 0.0,
+              "covered_instance_keys": [
+                "top/U0",
+                "top/U1"
+              ],
+              "cut_boundary_input_count": 2,
+              "cut_boundary_output_count": 1,
+              "cut_region_instance_keys": [
+                "top/U0",
+                "top/U1"
+              ],
+              "fanout_penalty_du": 0.0,
+              "local_break_even_du": 3.0,
+              "logic_depth_after": 1,
+              "logic_depth_before": 2,
+              "logic_depth_delta": 1,
+              "mapped_origin_instance_keys": [
+                "top/U0",
+                "top/U1"
+              ],
+              "mapping_feasible": true,
+              "new_cell_delay_du": 2.0,
+              "new_worst_delay_du": 2.0,
+              "new_worst_endpoint": "@candidate:OCC_B141E025144F2809",
+              "new_worst_path": [
+                "@candidate:OCC_B141E025144F2809"
+              ],
+              "occurrence_id": "OCC_B141E025144F2809",
+              "path_migrated": true,
+              "proposed_cell_endpoint": "@candidate:OCC_B141E025144F2809",
+              "proposed_cell_node": "@candidate:OCC_B141E025144F2809",
+              "proposed_cell_path": [
+                "@candidate:OCC_B141E025144F2809"
+              ],
+              "proxy_cell_delay_du": 2.0,
+              "proxy_delay_basis": "max_constituent_cell_delay_from_full_liberty_relative_DU",
+              "proxy_frontier_indicator_du": 1.0,
+              "removable_buffer_delay_du": 0.0,
+              "removable_cell_delay_du": 3.0,
+              "removable_edge_count": 1,
+              "removable_net_delay_du": 0.0,
+              "removable_node_count": 1,
+              "scope": "license_free_structural_proxy_not_commercial_qor_prediction",
+              "side_output_instance_keys": [],
+              "uncertainty_penalty_du": 0.0,
+              "wire_penalty_du": 0.0,
+              "worst_endpoint_relief_du": 1.0
+            },
+            "critical_impact_du": 0.2,
+            "critical_root_rank": 2,
+            "discovery_algorithm": "CRITICAL_K_INPUT_CONE",
+            "influence_vector": {
+              "buffer_inverter_pressure": {
+                "one_hop_count": 1,
+                "one_hop_fraction": 0.5
+              },
+              "cut_boundary_input_count": 2,
+              "cut_boundary_output_count": 1,
+              "dominator_endpoint_coverage": 1.0,
+              "fanout_count": 0,
+              "fanout_load_distribution": {
+                "fanout_count": 0,
+                "successor_indegree_max": 0,
+                "successor_indegree_min": 0
+              },
+              "library_cost": {
+                "generation_units": 1,
+                "new_library_cells": 1
+              },
+              "load_proxy": 0,
+              "logic_depth_delta_distribution": [
+                {
+                  "after": 1,
+                  "before": 2,
+                  "delta": 1,
+                  "occurrence_id": "OCC_B141E025144F2809"
+                }
+              ],
+              "logic_depth_delta_max": 1,
+              "logic_depth_delta_nonoverlap_sum": 1,
+              "mapping_adoption_status": "not_evaluated",
+              "mapping_feasible": true,
+              "negative_slack_mass_coverage_ns": 0,
+              "non_overlapping_occurrence_ids": [
+                "OCC_B141E025144F2809"
+              ],
+              "non_overlapping_support": 1,
+              "occurrences": [
+                {
+                  "baseline_indicator": {
+                    "kind": "relative_internal_proxy",
+                    "value_du": -0.0
+                  },
+                  "covered_instance_keys": [
+                    "top/U0",
+                    "top/U1"
+                  ],
+                  "cut_region_instance_keys": [
+                    "top/U0",
+                    "top/U1"
+                  ],
+                  "endpoint_family": "relative-internal/U1",
+                  "local_break_even_du": 3.0,
+                  "logic_depth_after": 1,
+                  "logic_depth_before": 2,
+                  "logic_depth_delta": 1,
+                  "occurrence_id": "OCC_B141E025144F2809",
+                  "proxy_cell_delay_du": 2.0,
+                  "proxy_frontier_indicator_du": 1.0
+                }
+              ],
+              "overlap_count": 0,
+              "overlap_pairs": [],
+              "overlap_ratio": 0.0,
+              "path_family_count": 0,
+              "path_family_ids": [],
+              "reconvergence_node_count": 0,
+              "reconvergence_nodes": [],
+              "removable_depth": 1,
+              "removable_edge_count": 1,
+              "removable_node_count": 1,
+              "repeat_support": 1,
+              "structural_metrics": {
+                "cut_width": 3,
+                "edges_removed": 1,
+                "levels_removed": 1,
+                "nodes_removed": 1,
+                "reconvergence_coverage": 0
+              },
+              "whole_design_mapping": {
+                "status": "not_evaluated"
+              },
+              "worst_endpoint_relief_du": 1.0
+            },
+            "input_count": 2,
+            "library_equivalence_key": "NPN:k2:0x1",
+            "library_function_match": "ABSENT_UNDER_NPN_EQUIVALENCE",
+            "non_overlapping_support": 1,
+            "non_overlapping_support_method": "deterministic greedy disjoint globally-qualified cut regions",
+            "occurrences": [
+              {
+                "baseline_indicator": {
+                  "kind": "relative_internal_proxy",
+                  "value_du": -0.0
+                },
+                "counterfactual": {
+                  "baseline_worst_delay_du": 3.0,
+                  "baseline_worst_endpoint": "U1",
+                  "baseline_worst_path": [
+                    "U0",
+                    "U1"
+                  ],
+                  "boundary_penalty_du": 0.0,
+                  "covered_instance_keys": [
+                    "top/U0",
+                    "top/U1"
+                  ],
+                  "cut_boundary_input_count": 2,
+                  "cut_boundary_output_count": 1,
+                  "cut_region_instance_keys": [
+                    "top/U0",
+                    "top/U1"
+                  ],
+                  "fanout_penalty_du": 0.0,
+                  "local_break_even_du": 3.0,
+                  "logic_depth_after": 1,
+                  "logic_depth_before": 2,
+                  "logic_depth_delta": 1,
+                  "mapped_origin_instance_keys": [
+                    "top/U0",
+                    "top/U1"
+                  ],
+                  "mapping_feasible": true,
+                  "new_cell_delay_du": 2.0,
+                  "new_worst_delay_du": 2.0,
+                  "new_worst_endpoint": "@candidate:OCC_B141E025144F2809",
+                  "new_worst_path": [
+                    "@candidate:OCC_B141E025144F2809"
+                  ],
+                  "occurrence_id": "OCC_B141E025144F2809",
+                  "path_migrated": true,
+                  "proposed_cell_endpoint": "@candidate:OCC_B141E025144F2809",
+                  "proposed_cell_node": "@candidate:OCC_B141E025144F2809",
+                  "proposed_cell_path": [
+                    "@candidate:OCC_B141E025144F2809"
+                  ],
+                  "proxy_cell_delay_du": 2.0,
+                  "proxy_delay_basis": "max_constituent_cell_delay_from_full_liberty_relative_DU",
+                  "proxy_frontier_indicator_du": 1.0,
+                  "removable_buffer_delay_du": 0.0,
+                  "removable_cell_delay_du": 3.0,
+                  "removable_edge_count": 1,
+                  "removable_net_delay_du": 0.0,
+                  "removable_node_count": 1,
+                  "scope": "license_free_structural_proxy_not_commercial_qor_prediction",
+                  "side_output_instance_keys": [],
+                  "uncertainty_penalty_du": 0.0,
+                  "wire_penalty_du": 0.0,
+                  "worst_endpoint_relief_du": 1.0
+                },
+                "covered_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "critical_impact_du": 0.2,
+                "critical_rank": 2,
+                "cut_boundary_input_count": 2,
+                "cut_boundary_output_count": 1,
+                "cut_leaf_nodes": [
+                  1,
+                  2
+                ],
+                "cut_region_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "endpoint_family": "relative-internal/U1",
+                "influence_vector": {
+                  "buffer_inverter_pressure": {
+                    "one_hop_count": 1,
+                    "one_hop_fraction": 0.5
+                  },
+                  "cut_boundary_input_count": 2,
+                  "cut_boundary_output_count": 1,
+                  "dominator_endpoint_coverage": 1.0,
+                  "fanout_count": 0,
+                  "fanout_load_distribution": {
+                    "fanout_count": 0,
+                    "successor_indegree_max": 0,
+                    "successor_indegree_min": 0
+                  },
+                  "load_proxy": 0,
+                  "logic_depth_after": 1,
+                  "logic_depth_before": 2,
+                  "mapping_adoption_status": "not_evaluated",
+                  "mapping_feasible": true,
+                  "negative_slack_mass_coverage_ns": 0,
+                  "non_overlapping_support": 1,
+                  "overlap_count": 0,
+                  "overlap_ratio": 0.0,
+                  "path_family_count": 0,
+                  "path_family_ids": [],
+                  "reconvergence_node_count": 0,
+                  "reconvergence_nodes": [],
+                  "removable_depth": 1,
+                  "removable_edge_count": 1,
+                  "removable_node_count": 1,
+                  "repeat_support": 1,
+                  "worst_endpoint_relief_du": 1.0
+                },
+                "local_break_even_du": 3.0,
+                "logic_depth_after": 1,
+                "logic_depth_before": 2,
+                "logic_depth_delta": 1,
+                "mapped_origin_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "mapped_origins": [
+                  "U0",
+                  "U1"
+                ],
+                "module": "top",
+                "observed_cone_delay_by_path_ns": {},
+                "observed_cone_delay_upper_ns": 0.0,
+                "occurrence_id": "OCC_B141E025144F2809",
+                "proxy_cell_delay_du": 2.0,
+                "proxy_frontier_indicator_du": 1.0,
+                "reg2reg_beginpoint_families": null,
+                "reg2reg_endpoint_families": null,
+                "reg2reg_increment_ns": null,
+                "reg2reg_path_family_count": null,
+                "reg2reg_path_family_ids": [],
+                "reg2reg_path_family_support": null,
+                "reg2reg_path_family_worst_slacks_ns": {},
+                "reg2reg_path_hits": null,
+                "reg2reg_path_ranks": null,
+                "reg2reg_worst_path_slack_ns": null,
+                "removable_edge_count": 1,
+                "removable_node_count": 1,
+                "root_instance": "U1",
+                "root_pin": "Y"
+              }
+            ],
+            "output_count": 1,
+            "ppa_status": "UNPROVEN",
+            "raw_support": 1,
+            "reg2reg_cone_delay_upper_ns": 0.0,
+            "reg2reg_increment_ns": 0.0,
+            "reg2reg_path_family_count": 0,
+            "reg2reg_path_family_ids": [],
+            "reg2reg_path_family_support": 0,
+            "reg2reg_path_hits": 0,
+            "reg2reg_worst_path_slack_ns": null,
+            "replacement_key": "NP:k2:m1:[0x7]",
+            "search_bound": {
+              "max_cuts_per_root": 32,
+              "max_inputs": 4,
+              "max_outputs": 1,
+              "preselected_cell_families": [],
+              "preselected_instances": []
+            },
+            "search_objective": "critical_context_pareto",
+            "source_graph": "mapped_to_unmapped_aig",
+            "strategy_id": "portfolio_roundtrip"
+          },
+          "gate_evidence": {
+            "G0_discovery": {
+              "evidence": "current-run mapped design",
+              "status": "PASS"
+            },
+            "G1_boundary": {
+              "evidence": "K-feasible AIG cut and complete output vector",
+              "status": "PASS"
+            },
+            "G2_function": {
+              "evidence": "complete truth table from the function-preserving AIG",
+              "status": "PASS"
+            },
+            "G3_library_gap": {
+              "evidence": "absent under NPN/NPNP in bound Liberty function index",
+              "status": "PASS"
+            },
+            "G4_circuit_feasibility": {
+              "evidence": "boolean_synthesis",
+              "status": "READY"
+            }
+          },
+          "generator_contract": {
+            "cell_kind": "combinational",
+            "characterization_request": {
+              "model_types": [
+                "NLDM"
+              ],
+              "profile_ref": "test_characterization",
+              "timing_arcs": [
+                {
+                  "related_pin": "I0",
+                  "timing_sense": "negative_unate",
+                  "to_pin": "Y"
+                },
+                {
+                  "related_pin": "I1",
+                  "timing_sense": "negative_unate",
+                  "to_pin": "Y"
+                }
+              ]
+            },
+            "deliverables": [
+              "SPICE",
+              "GDS",
+              "LEF",
+              "LIBERTY",
+              "VERILOG"
+            ],
+            "equivalence_reference": {
+              "digest": "sha256:515f37828e934be811750569090f21673de3a391315e10f484f49b92c22718ec",
+              "input_order": [
+                "I0",
+                "I1"
+              ],
+              "output_order": [
+                "Y"
+              ],
+              "output_truth_tables_hex": {
+                "Y": "0x7"
+              }
+            },
+            "implementation_request": {
+              "drive_strengths": [
+                "X1"
+              ],
+              "mode": "synthesize_transistor_topology",
+              "vt_classes": [
+                "SVT"
+              ]
+            },
+            "interface": {
+              "inputs": [
+                {
+                  "direction": "input",
+                  "name": "I0"
+                },
+                {
+                  "direction": "input",
+                  "name": "I1"
+                }
+              ],
+              "outputs": [
+                {
+                  "direction": "output",
+                  "liberty_function": "(!I0 | !I1)",
+                  "name": "Y"
+                }
+              ],
+              "pg_pins_from_library_profile": true
+            },
+            "target_library_profile": {
+              "cell_architecture_ref": "test_architecture",
+              "process_family": "test_process"
+            },
+            "truth_table": {
+              "columns": [
+                "I0",
+                "I1",
+                "Y"
+              ],
+              "rows": [
+                [
+                  0,
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  0,
+                  1
+                ],
+                [
+                  0,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  1,
+                  0
+                ]
+              ]
+            }
+          },
+          "implementation_plan": {
+            "output_count": 1,
+            "route": "boolean_synthesis"
+          },
+          "influence_vector": {
+            "buffer_inverter_pressure": {
+              "one_hop_count": 1,
+              "one_hop_fraction": 0.5
+            },
+            "cut_boundary_input_count": 2,
+            "cut_boundary_output_count": 1,
+            "dominator_endpoint_coverage": 1.0,
+            "fanout_count": 0,
+            "fanout_load_distribution": {
+              "fanout_count": 0,
+              "successor_indegree_max": 0,
+              "successor_indegree_min": 0
+            },
+            "library_cost": {
+              "generation_units": 1,
+              "new_library_cells": 1
+            },
+            "load_proxy": 0,
+            "logic_depth_delta_distribution": [
+              {
+                "after": 1,
+                "before": 2,
+                "delta": 1,
+                "occurrence_id": "OCC_B141E025144F2809"
+              }
+            ],
+            "logic_depth_delta_max": 1,
+            "logic_depth_delta_nonoverlap_sum": 1,
+            "mapping_adoption_status": "not_evaluated",
+            "mapping_feasible": true,
+            "negative_slack_mass_coverage_ns": 0,
+            "non_overlapping_occurrence_ids": [
+              "OCC_B141E025144F2809"
+            ],
+            "non_overlapping_support": 1,
+            "occurrences": [
+              {
+                "baseline_indicator": {
+                  "kind": "relative_internal_proxy",
+                  "value_du": -0.0
+                },
+                "covered_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "cut_region_instance_keys": [
+                  "top/U0",
+                  "top/U1"
+                ],
+                "endpoint_family": "relative-internal/U1",
+                "local_break_even_du": 3.0,
+                "logic_depth_after": 1,
+                "logic_depth_before": 2,
+                "logic_depth_delta": 1,
+                "occurrence_id": "OCC_B141E025144F2809",
+                "proxy_cell_delay_du": 2.0,
+                "proxy_frontier_indicator_du": 1.0
+              }
+            ],
+            "overlap_count": 0,
+            "overlap_pairs": [],
+            "overlap_ratio": 0.0,
+            "path_family_count": 0,
+            "path_family_ids": [],
+            "reconvergence_node_count": 0,
+            "reconvergence_nodes": [],
+            "removable_depth": 1,
+            "removable_edge_count": 1,
+            "removable_node_count": 1,
+            "repeat_support": 1,
+            "structural_metrics": {
+              "cut_width": 3,
+              "edges_removed": 1,
+              "levels_removed": 1,
+              "nodes_removed": 1,
+              "reconvergence_coverage": 0
+            },
+            "whole_design_mapping": {
+              "status": "not_evaluated"
+            },
+            "worst_endpoint_relief_du": 1.0
+          },
+          "mapping_feasibility": {
+            "reasons": [],
+            "status": "FEASIBLE"
+          },
+          "schema_version": "standard-cell-generation-request/v2"
+        },
+        "stage": "pre_mapping",
+        "structural_metrics": {
+          "buffer_inverter_pressure": {
+            "one_hop_count": 1,
+            "one_hop_fraction": 0.5
+          },
+          "cut_width": 3,
+          "dominator_endpoint_coverage": 1.0,
+          "edges_removed": 1,
+          "fanout": 0.0,
+          "levels_removed": 1,
+          "negative_slack_mass_coverage_ns": 0.0,
+          "nodes_removed": 1,
+          "overlap_ratio": 0.0,
+          "path_family_count": 0.0,
+          "reconvergence_coverage": 0
+        }
+      },
+      "candidate_id": "CAND_PORTFOLIO_ROUNDTRIP_A2_SINGLE_0001",
+      "covered_instance_keys": [
+        "top/U0",
+        "top/U1"
+      ],
+      "multi_index": {
+        "axes": {
+          "cost.generation_units": -1.0,
+          "cost.new_library_cells": -1.0,
+          "structural.cut_width": -3.0,
+          "structural.dominator_endpoint_coverage": 1.0,
+          "structural.edges_removed": 1.0,
+          "structural.fanout": 0.0,
+          "structural.levels_removed": 1.0,
+          "structural.nodes_removed": 1.0,
+          "structural.overlap_ratio": -0.0,
+          "structural.reconvergence_coverage": 0.0
+        },
+        "missing_axes": [
+          "mapping.adopted",
+          "mapping.candidate_instances",
+          "mapping.area_reduction",
+          "mapping.buffer_inverter_pressure_reduction",
+          "mapping.fanout_relief"
+        ]
+      },
+      "rejection_reasons": []
+    }
+  ],
+  "claims": {
+    "commercial_adoption": false,
+    "commercial_qor_prediction": false,
+    "fmax_improvement": false,
+    "post_route_benefit": false
+  },
+  "design_proxy_evidence": {
+    "baseline_slack_by_endpoint_family_ps": {
+      "launch0->capture0": -20.0,
+      "launch1->capture1": -10.0
+    },
+    "evidence_id": "paired-map-001",
+    "paired_delta_by_endpoint_family_ps": {
+      "launch0->capture0": 2.0,
+      "launch1->capture1": 9.0
+    },
+    "raw": {
+      "baseline_slack_by_endpoint_family_ps": {
+        "launch0->capture0": -20.0,
+        "launch1->capture1": -10.0
+      },
+      "evidence_id": "paired-map-001",
+      "paired_delta_by_endpoint_family_ps": {
+        "launch0->capture0": 2.0,
+        "launch1->capture1": 9.0
+      }
+    }
+  },
+  "evidence_layers": {
+    "F0_function_equivalence": true,
+    "F1_local_structure": true,
+    "F2_whole_design_mapping": false,
+    "F3_proxy_sta_indicator": true
+  },
+  "family_delta_application": "once_for_the_paired_augmented_mapping_not_per_candidate_or_occurrence",
+  "max_candidates": 1,
+  "objective_trace": [
+    {
+      "candidate_id": "CAND_PORTFOLIO_ROUNDTRIP_A2_SINGLE_0001",
+      "pareto_axes": {
+        "cost.generation_units": -1.0,
+        "cost.new_library_cells": -1.0,
+        "proxy.negative_slack_mass_reduction": 11.0,
+        "proxy.worst_frontier_indicator": -18.0,
+        "structural.cut_width": -3.0,
+        "structural.dominator_endpoint_coverage": 1.0,
+        "structural.edges_removed": 1.0,
+        "structural.fanout": 0.0,
+        "structural.levels_removed": 1.0,
+        "structural.nodes_removed": 1.0,
+        "structural.overlap_ratio": -0.0,
+        "structural.reconvergence_coverage": 0.0
+      },
+      "pareto_front_candidate_ids": [
+        "CAND_PORTFOLIO_ROUNDTRIP_A2_SINGLE_0001"
+      ],
+      "rank": 1
+    }
+  ],
+  "overlap_advisories": [],
+  "paired_augmented_indicator": {
+    "proxy_negative_slack_mass_indicator_ps": 19.0,
+    "proxy_slack_by_endpoint_family_ps": {
+      "launch0->capture0": -18.0,
+      "launch1->capture1": -1.0
+    },
+    "proxy_worst_frontier_indicator_ps": -18.0
+  },
+  "schema": "hima.library-richness.portfolio/1",
+  "selected": [
+    {
+      "candidate_id": "CAND_PORTFOLIO_ROUNDTRIP_A2_SINGLE_0001",
+      "covered_instance_keys": [
+        "top/U0",
+        "top/U1"
+      ],
+      "identity": {
+        "drive_variants": [
+          {
+            "drive_strength": "X1",
+            "variant_id": "LFRDV_38f74b34902637237478734b",
+            "vt_class": "SVT"
+          }
+        ],
+        "function_class": "NPN:k2:0x1",
+        "function_interface_id": "LFRFI_d345bb04f287c2a818360856",
+        "interface": {
+          "input_count": 2,
+          "inputs": [
+            "I0",
+            "I1"
+          ],
+          "output_count": 1,
+          "outputs": [
+            "Y"
+          ]
+        },
+        "schema": "hima.library-richness.candidate-identity/1"
+      },
+      "pareto_axes": {
+        "cost.generation_units": -1.0,
+        "cost.new_library_cells": -1.0,
+        "proxy.negative_slack_mass_reduction": 11.0,
+        "proxy.worst_frontier_indicator": -18.0,
+        "structural.cut_width": -3.0,
+        "structural.dominator_endpoint_coverage": 1.0,
+        "structural.edges_removed": 1.0,
+        "structural.fanout": 0.0,
+        "structural.levels_removed": 1.0,
+        "structural.nodes_removed": 1.0,
+        "structural.overlap_ratio": -0.0,
+        "structural.reconvergence_coverage": 0.0
+      }
+    }
+  ],
+  "selection_method": "functional and generation gates; post-mapping adoption gate; deterministic Pareto selection over separate structure, mapper and Library-cost axes; one design-level paired proxy delta; discovery cone overlap is advisory and never drops a distinct function",
+  "stage": "pre_mapping",
+  "status": "PRE_MAPPING_PLANNING"
+}

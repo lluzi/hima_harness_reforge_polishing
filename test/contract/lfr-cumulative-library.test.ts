@@ -40,13 +40,13 @@ test('LFR cumulative Library appends immutable shards and projects only new func
   t.after(() => rm(root, { recursive: true, force: true }));
   const first = request('CAND_FIRST', 'sha256:function-a');
   const firstAlias = request('CAND_ALIAS', 'sha256:function-a');
-  const second = request('CAND_FIRST', 'sha256:function-b');
+  const second = request('CAND_SECOND', 'sha256:function-b');
   const code = `import hashlib,json,sys\nfrom pathlib import Path\nsys.path.insert(0,sys.argv[1])\nfrom _generation_projection import empty_cumulative_manifest,append_cumulative_shard,delta_generation_requests,expected_delta_generation_jobs,validate_cumulative_manifest\nd=json.load(sys.stdin); root=Path(sys.argv[2])\nmanifest=empty_cumulative_manifest({'source':'fixture://foundry.lib','bytes':17,'sha256':'a'*64})\nmanifest=append_cumulative_shard(root,manifest,'0001',[d['first']])\nold=(root/'shards'/'0001'/'manifest.json').read_bytes(); old_sha=hashlib.sha256(old).hexdigest()\npatterns={'generation_requests':[d['firstAlias'],d['second']]}\ndelta=delta_generation_requests(patterns,manifest); jobs=expected_delta_generation_jobs(patterns,manifest)\nmanifest=append_cumulative_shard(root,manifest,'0002',delta)\nvalidate_cumulative_manifest(manifest)\nprint(json.dumps({'manifest':manifest,'delta':[r['candidate_id'] for r in delta],'jobs':[r['candidate_id'] for r in jobs],'oldSha':old_sha,'oldShaAfter':hashlib.sha256((root/'shards'/'0001'/'manifest.json').read_bytes()).hexdigest()},sort_keys=True))`;
   const ran = runPython(code, { first, firstAlias, second }, [root]);
   assert.equal(ran.status, 0, ran.stderr);
   const result = JSON.parse(ran.stdout);
-  assert.deepEqual(result.delta, ['CAND_FIRST']);
-  assert.deepEqual(result.jobs, ['CAND_FIRST'], 'round two must create no Job for the old function');
+  assert.deepEqual(result.delta, ['CAND_SECOND']);
+  assert.deepEqual(result.jobs, ['CAND_SECOND'], 'round two must create no Job for the old function');
   assert.equal(result.oldShaAfter, result.oldSha, 'adding round 2 must not rewrite shard 0001');
   assert.deepEqual(result.manifest.shards.map((row: { id: string }) => row.id), ['0001', '0002']);
   assert.equal(result.manifest.functions.length, 2);
@@ -56,6 +56,18 @@ test('LFR cumulative Library appends immutable shards and projects only new func
   const shard = JSON.parse(await readFile(path.join(root, 'shards/0002/manifest.json'), 'utf8'));
   assert.equal(shard.schema, 'custom-cell-library-shard/1');
   assert.equal(shard.functionKeys.length, 1);
+});
+
+test('LFR cumulative Library rejects a cross-shard physical Cell name collision', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lfr-library-name-collision-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const first = request('CAND_REPEAT', 'sha256:function-a');
+  const differentFunctionSameLabel = request('CAND_REPEAT', 'sha256:function-b');
+  const code = `import json,sys\nfrom pathlib import Path\nsys.path.insert(0,sys.argv[1])\nfrom _generation_projection import empty_cumulative_manifest,append_cumulative_shard\nd=json.load(sys.stdin); m=empty_cumulative_manifest({'source':'fixture://f','bytes':1,'sha256':'e'*64}); m=append_cumulative_shard(Path(sys.argv[2]),m,'0001',[d['first']]); append_cumulative_shard(Path(sys.argv[2]),m,'0002',[d['second']])`;
+  const rejected = runPython(code, { first, second: differentFunctionSameLabel }, [root]);
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /physical Cell name collision/);
+  await assert.rejects(readFile(path.join(root, 'shards/0002/manifest.json')));
 });
 
 test('LFR cumulative evidence states advance monotonically and retain proxy rejection knowledge', async (t) => {

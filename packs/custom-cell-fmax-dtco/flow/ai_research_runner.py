@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import hashlib
 import gzip
+import ast
 import json
 import math
+import os
 import re
 import subprocess
 import sys
+import tempfile
+import time
 import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "domain"))
 from _generation_projection import retained_candidate_ids  # noqa: E402
+from _generation_projection import validate_cumulative_manifest  # noqa: E402
+from cell_need_miner.generator_contract import validate_generation_request  # noqa: E402
 
 ROUTES = (
     "timing_criticality", "timing_context", "structure_frequency",
@@ -22,7 +28,1102 @@ ROUTES = (
 )
 BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis"}
 SCHEMA = "custom-cell-fmax-ai-research/1"
+RESIDUAL_REQUEST_SCHEMA = "lfr-ai-residual-request/1"
+RESIDUAL_CONTEXT_SCHEMA = "lfr-ai-residual-context/1"
+RESIDUAL_OUTPUT_SCHEMA = "lfr-ai-residual-research/1"
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+RESIDUAL_EXECUTION_TIMEOUT_SECONDS = 5
+RESIDUAL_CPU_SECONDS = 2
+RESIDUAL_MEMORY_BYTES = 512 * 1024 * 1024
+RESIDUAL_FILE_BYTES = 1024 * 1024
+RESIDUAL_OUTPUT_BYTES = 256 * 1024
+RESIDUAL_STDERR_BYTES = 16 * 1024
+RESIDUAL_CONTEXT_BYTES = 512 * 1024
+RESIDUAL_DOCUMENT_BYTES = 1024 * 1024
+RESIDUAL_TEXT_BYTES = 8192
+RESIDUAL_NAME_BYTES = 256
+RESIDUAL_MAX_STATIC_ITERATIONS = 128
+
+_RESIDUAL_EXECUTOR = r'''#!/usr/bin/env python3
+import json
+import resource
+import sys
+
+applied_limits = {}
+def apply_limit(name, resource_id, value):
+    try:
+        resource.setrlimit(resource_id, (value, value))
+        applied_limits[name] = {"applied": True, "value": value}
+    except (OSError, ValueError):
+        applied_limits[name] = {"applied": False, "value": None}
+
+apply_limit("cpu_seconds", resource.RLIMIT_CPU, 2)
+apply_limit("file_bytes", resource.RLIMIT_FSIZE, 1048576)
+apply_limit("core_bytes", resource.RLIMIT_CORE, 0)
+apply_limit("open_files", resource.RLIMIT_NOFILE, 32)
+if sys.platform == "darwin":
+    applied_limits["memory_bytes"] = {"applied": False, "value": None}
+else:
+    apply_limit("memory_bytes", resource.RLIMIT_AS, 536870912)
+
+safe_builtins = {
+    "abs": abs, "all": all, "any": any, "bool": bool, "dict": dict,
+    "enumerate": enumerate, "float": float, "int": int, "len": len,
+    "isinstance": isinstance, "list": list, "max": max, "min": min, "range": range,
+    "reversed": reversed, "round": round, "set": set, "sorted": sorted,
+    "str": str, "sum": sum, "tuple": tuple, "zip": zip,
+}
+request = json.load(sys.stdin)
+namespace = {"__builtins__": safe_builtins}
+source = open(sys.argv[1], "r", encoding="utf-8").read()
+exec(compile(source, "<candidate-program>", "exec"), namespace, namespace)
+result = namespace["propose_candidates"](request["residual"], request["budget"])
+envelope = {"proposals": result, "posix_limits": applied_limits}
+payload = (json.dumps(envelope, sort_keys=True, separators=(",", ":")) + "\n").encode()
+if len(payload) > 262144:
+    raise SystemExit(65)
+sys.stdout.buffer.write(payload)
+'''
+
+
+def _canonical_json(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=False) + "\n").encode()
+
+
+def _bound_json_reference(base, reference, name):
+    """Load one regular JSON file whose bytes are explicitly SHA-bound."""
+    if not isinstance(reference, dict) or set(reference) != {"path", "sha256"}:
+        raise ValueError("%s must contain exactly path and sha256" % name)
+    relative = Path(str(reference.get("path") or ""))
+    digest = str(reference.get("sha256") or "")
+    if relative.is_absolute() or ".." in relative.parts or not SHA256.fullmatch(digest):
+        raise ValueError("%s path or sha256 is invalid" % name)
+    root = Path(base).resolve()
+    path = (root / relative).resolve()
+    if (not path.is_relative_to(root) or not path.is_file() or path.is_symlink()):
+        raise ValueError("%s is outside the residual evidence root" % name)
+    size = path.stat().st_size
+    if size > RESIDUAL_CONTEXT_BYTES:
+        raise ValueError("%s exceeds the bound evidence file byte limit" % name)
+    raw = path.read_bytes()
+    if _sha(raw) != digest:
+        raise ValueError("%s changed after the residual request was authored" % name)
+    try:
+        document = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError("%s is not valid JSON" % name) from error
+    if not isinstance(document, dict):
+        raise ValueError("%s JSON root must be an object" % name)
+    return document, {"path": str(relative), "sha256": digest, "bytes": size}
+
+
+def _finite_metric(value, name):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("%s must be numeric" % name)
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError("%s must be finite" % name)
+    return value
+
+
+def _bounded_text(value, name, maximum=RESIDUAL_TEXT_BYTES):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("%s must be non-empty text" % name)
+    value = value.strip()
+    if len(value.encode()) > maximum:
+        raise ValueError("%s exceeds its text byte limit" % name)
+    return value
+
+
+def _canonical_lens_name(value, name):
+    text = _bounded_text(value, name, RESIDUAL_NAME_BYTES).casefold()
+    canonical = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    if not canonical:
+        raise ValueError("%s has no canonical name" % name)
+    return canonical
+
+
+def _metric_layer(name):
+    if name.startswith(("F0.", "F1.", "F2.", "F3.")):
+        return name[:2]
+    return {
+        "structural": "F1",
+        "mapping": "F2",
+        "proxy": "F3",
+    }.get(name.split(".", 1)[0])
+
+
+def _compact_metric_vectors(evaluation):
+    """Project the paired agent result without carrying reports or QoR claims."""
+    if (evaluation.get("schema") != "lfr-round-evaluation/3"
+            or evaluation.get("status") != "succeeded"):
+        raise ValueError("evaluation must be one succeeded lfr-round-evaluation/3")
+    limits = evaluation.get("claim_limits") or {}
+    if any(limits.get(key) is not False for key in (
+            "fmax_claimed", "commercial_adoption_claimed", "physical_benefit_claimed",
+            "expected_qor_claimed", "commercial_eda_executed")):
+        raise ValueError("evaluation claim limits do not describe a license-free indicator agent")
+    scenarios = evaluation.get("scenarios")
+    if not isinstance(scenarios, dict) or not scenarios:
+        raise ValueError("evaluation has no scenario metric vectors")
+    compact = {}
+    available_layers = set()
+    for scenario_name in sorted(scenarios):
+        scenario = scenarios[scenario_name]
+        if not isinstance(scenario, dict) or scenario.get("status") != "succeeded":
+            compact[scenario_name] = {
+                "status": str((scenario or {}).get("status") or "missing"),
+                "reason": str((scenario or {}).get("reason") or "metric vector unavailable"),
+            }
+            continue
+        relation = scenario.get("pairwise_relation") or {}
+        comparisons = relation.get("comparisons")
+        if not isinstance(comparisons, list):
+            raise ValueError("scenario %s has no pairwise comparisons" % scenario_name)
+        rows = []
+        for index, item in enumerate(comparisons):
+            if not isinstance(item, dict):
+                raise ValueError("scenario comparison %d is not an object" % index)
+            metric = str(item.get("metric") or "")
+            layer = _metric_layer(metric)
+            if layer is None:
+                continue
+            direction = item.get("direction")
+            relation_name = item.get("relation")
+            if direction not in {"minimize", "maximize"} or relation_name not in {
+                    "improved", "regressed", "equal"}:
+                raise ValueError("scenario comparison %s is malformed" % metric)
+            rows.append({
+                "metric": metric,
+                "layer": layer,
+                "direction": direction,
+                "reference": _finite_metric(item.get("reference"), metric + ".reference"),
+                "augmented": _finite_metric(item.get("augmented"), metric + ".augmented"),
+                "relation": relation_name,
+            })
+            available_layers.add(layer)
+        migration = scenario.get("path_migration") or {}
+        compact_migration = {}
+        for key in ("path_families_added", "path_families_removed", "path_families_retained"):
+            values = migration.get(key) or []
+            if not isinstance(values, list) or any(
+                    not isinstance(value, str) or len(value.encode()) > RESIDUAL_NAME_BYTES
+                    for value in values):
+                raise ValueError("scenario %s path migration is malformed" % scenario_name)
+            compact_migration[key] = values[:32]
+            compact_migration[key + "_count"] = len(values)
+        compact[scenario_name] = {
+            "status": "succeeded",
+            "relation": relation.get("relation"),
+            "metrics": rows,
+            "path_migration": compact_migration,
+        }
+    aggregate = evaluation.get("pairwise_relation") or {}
+    return {
+        "available_layers": sorted(available_layers),
+        "aggregate_relation": aggregate.get("relation"),
+        "scenarios": compact,
+    }
+
+
+def _normalize_frontier(frontier, allowed_evaluation_hashes, *, candidate_pool_nonempty=False):
+    """Verify, then compact, a generic cross-round Pareto-frontier document.
+
+    The producer may choose its own schema name.  The deterministic seam is the
+    four fields below, so the AI never has to infer frontier membership.
+    """
+    if frontier.get("status") not in (None, "succeeded"):
+        raise ValueError("frontier input is not succeeded")
+    limits = frontier.get("claim_limits")
+    if limits is not None and (
+            not isinstance(limits, dict)
+            or any(limits.get(name) is not False for name in (
+                "commercial_qor_predicted", "fmax_predicted", "commercial_eda_executed"))):
+        raise ValueError("frontier claim limits permit an unsupported commercial prediction")
+    objectives = frontier.get("objectives")
+    members = frontier.get("members")
+    declared = frontier.get("frontier_member_ids")
+    if not all(isinstance(value, list) for value in (objectives, members, declared)):
+        raise ValueError("frontier objectives, members and member ids must be arrays")
+    library_cost = frontier.get("library_cost") or {}
+    if not isinstance(library_cost, dict):
+        raise ValueError("frontier library_cost must be an object")
+    normalized_cost = {}
+    for name, value in sorted(library_cost.items()):
+        if not isinstance(name, str) or not name:
+            raise ValueError("frontier library_cost names must be non-empty")
+        normalized_cost[name] = _finite_metric(value, "library_cost." + name)
+        if normalized_cost[name] < 0:
+            raise ValueError("frontier library_cost values must be non-negative")
+    residual_question = frontier.get("next_residual_question")
+    if (not isinstance(residual_question, dict)
+            or not isinstance(residual_question.get("id"), str)
+            or not residual_question["id"]
+            or not isinstance(residual_question.get("prompt"), str)):
+        raise ValueError("frontier has no explicit next residual question")
+    normalized_question = {
+        "id": _bounded_text(
+            residual_question["id"], "frontier residual question id", RESIDUAL_NAME_BYTES),
+        "prompt": _bounded_text(
+            residual_question["prompt"], "frontier residual question prompt"),
+    }
+    if not objectives or not members or not declared:
+        if objectives or members or declared:
+            raise ValueError("empty frontier requires empty objectives, members and member ids")
+        gate = frontier.get("commercial_validation_candidate")
+        if (not candidate_pool_nonempty or not isinstance(gate, dict)
+                or gate.get("value") is not False):
+            raise ValueError("empty frontier is valid only for a noncommercial candidate-pool cold start")
+        return {
+            "objectives": [], "members": [], "frontier_member_ids": [],
+            "library_cost": normalized_cost,
+            "next_residual_question": normalized_question,
+            "state": "cold-start-no-adopted-frontier",
+        }
+
+    directions = {}
+    for index, item in enumerate(objectives):
+        if not isinstance(item, dict) or set(item) != {"metric", "direction"}:
+            raise ValueError("frontier objective %d is malformed" % index)
+        metric, direction = item["metric"], item["direction"]
+        if (not isinstance(metric, str) or not metric
+                or direction not in {"minimize", "maximize"} or metric in directions):
+            raise ValueError("frontier objective %d is invalid" % index)
+        directions[metric] = direction
+
+    normalized = []
+    ids = set()
+    for index, member in enumerate(members):
+        required = {"id", "round_id", "evaluation_sha256", "metric_vector"}
+        if not isinstance(member, dict) or not required.issubset(member):
+            raise ValueError("frontier member %d is malformed" % index)
+        member_id = member["id"]
+        evaluation_sha = member["evaluation_sha256"]
+        vector = member["metric_vector"]
+        if (not isinstance(member_id, str) or not member_id or member_id in ids
+                or not isinstance(member["round_id"], str) or not member["round_id"]
+                or evaluation_sha not in allowed_evaluation_hashes
+                or not isinstance(vector, dict) or set(vector) != set(directions)):
+            raise ValueError("frontier member %d identity or metric vector is invalid" % index)
+        normalized_vector = {
+            metric: _finite_metric(vector[metric], "frontier.%s.%s" % (member_id, metric))
+            for metric in sorted(directions)
+        }
+        ids.add(member_id)
+        normalized.append({
+            "id": member_id,
+            "round_id": member["round_id"],
+            "evaluation_sha256": evaluation_sha,
+            "metric_vector": normalized_vector,
+        })
+    if len(set(declared)) != len(declared) or any(item not in ids for item in declared):
+        raise ValueError("frontier_member_ids contains duplicates or unknown members")
+
+    def dominates(left, right):
+        strict = False
+        for metric, direction in directions.items():
+            lvalue, rvalue = left["metric_vector"][metric], right["metric_vector"][metric]
+            better = lvalue < rvalue if direction == "minimize" else lvalue > rvalue
+            worse = lvalue > rvalue if direction == "minimize" else lvalue < rvalue
+            if worse:
+                return False
+            strict = strict or better
+        return strict
+
+    recomputed = []
+    for index, member in enumerate(normalized):
+        if any(dominates(other, member) for other in normalized if other is not member):
+            continue
+        if any(other["metric_vector"] == member["metric_vector"]
+               for other in normalized[:index]):
+            continue
+        recomputed.append(member["id"])
+    recomputed.sort()
+    if sorted(declared) != recomputed:
+        raise ValueError("declared cross-round frontier is not reproducible from its metric vectors")
+    return {
+        "objectives": [{"metric": metric, "direction": directions[metric]}
+                       for metric in sorted(directions)],
+        "members": normalized,
+        "frontier_member_ids": recomputed,
+        "library_cost": normalized_cost,
+        "next_residual_question": normalized_question,
+        "state": "verified-pareto-frontier",
+    }
+
+
+def _compact_manifest(manifest):
+    validate_cumulative_manifest(manifest)
+    states = {}
+    failures = []
+    for row in manifest["functions"]:
+        states[row["state"]] = states.get(row["state"], 0) + 1
+        for reason in row.get("knownFailures") or []:
+            failures.append({
+                "function_key": row["functionKey"],
+                "candidate_id": row["candidateId"],
+                "state": row["state"],
+                "reason": _bounded_text(reason, "Library failure reason"),
+            })
+            if len(failures) > 256:
+                raise ValueError("cumulative Library has too many failure records for AI context")
+    return {
+        "baseline_sha256": manifest["baselineReference"]["sha256"],
+        "shards": [{"id": row["id"], "manifest_sha256": row["manifestSha256"]}
+                   for row in manifest["shards"]],
+        "function_count": len(manifest["functions"]),
+        "state_counts": dict(sorted(states.items())),
+        "known_failures": failures,
+    }
+
+
+def _compact_candidate_pool(document, source_sha256):
+    if (not isinstance(document, dict)
+            or document.get("report_schema") != "xspace_cell-pattern-search/v2"):
+        raise ValueError("candidate_pool must be xspace_cell-pattern-search/v2")
+    requests = document.get("generation_requests")
+    if not isinstance(requests, list) or not 1 <= len(requests) <= RESIDUAL_MAX_STATIC_ITERATIONS:
+        raise ValueError("candidate_pool generation_requests exceeds its bounded pool size")
+    compact = []
+    registry = {}
+    for index, request in enumerate(requests):
+        if not isinstance(request, dict):
+            raise ValueError("candidate_pool generation request %d is not an object" % index)
+        errors = validate_generation_request(request)
+        if errors:
+            raise ValueError("candidate_pool generation request %d is invalid: %s"
+                             % (index, "; ".join(errors)))
+        contract = request.get("generator_contract") or {}
+        equivalence = contract.get("equivalence_reference") or {}
+        interface = contract.get("interface") or {}
+        target_profile = contract.get("target_library_profile") or {}
+        implementation = json.loads(json.dumps(contract.get("implementation_request") or {}))
+        for field in ("drive_strengths", "vt_classes"):
+            values = implementation.get(field)
+            if not isinstance(values, list) or not values or any(
+                    not isinstance(value, str) or not value for value in values):
+                raise ValueError("candidate_pool generation request %d has invalid %s"
+                                 % (index, field))
+            implementation[field] = sorted(set(values))
+        plan = request.get("implementation_plan") or {}
+        route = plan.get("route")
+        if route not in BUILDABLE_ROUTES:
+            raise ValueError("candidate_pool generation request %d has no buildable route" % index)
+        influence = request.get("influence_vector") or (
+            (request.get("discovery_evidence") or {}).get("influence_vector") or {})
+        structural = influence.get("structural_metrics") or {}
+        vector = {
+            "levels_removed": structural.get("levels_removed"),
+            "nodes_removed": structural.get("nodes_removed"),
+            "edges_removed": structural.get("edges_removed"),
+            "cut_width": structural.get("cut_width"),
+            "reconvergence_coverage": structural.get("reconvergence_coverage"),
+            "dominator_endpoint_coverage": influence.get("dominator_endpoint_coverage"),
+            "repeat_support": influence.get("repeat_support"),
+            "non_overlapping_support": influence.get("non_overlapping_support"),
+            "overlap_ratio": influence.get("overlap_ratio"),
+            "path_family_count": influence.get("path_family_count"),
+        }
+        for name, value in vector.items():
+            if value is not None:
+                _finite_metric(value, "candidate_pool.F1.%s" % name)
+        key_material = {
+            "equivalence": equivalence,
+            "interface": interface,
+            "target_library_profile": target_profile,
+            "implementation_request": implementation,
+            "build_route": route,
+            "F1": vector,
+        }
+        proposal_key = "proposal:" + _sha(_canonical_json(key_material))
+        if proposal_key in registry:
+            raise ValueError("candidate_pool contains duplicate deterministic proposal identity")
+        registry[proposal_key] = json.loads(json.dumps(request))
+        compact.append({
+            "proposal_key": proposal_key,
+            "equivalence": {
+                "digest": equivalence.get("digest"),
+                "input_order": equivalence.get("input_order"),
+                "output_order": equivalence.get("output_order"),
+                "output_truth_tables_hex": equivalence.get("output_truth_tables_hex"),
+            },
+            "function": {
+                "outputs": [
+                    {"name": row.get("name"), "liberty_function": row.get("liberty_function")}
+                    for row in interface.get("outputs", []) if isinstance(row, dict)
+                ],
+            },
+            "interface": interface,
+            "target_library_profile": target_profile,
+            "implementation_request": implementation,
+            "build_route": route,
+            "F1": vector,
+            "evidence_source_sha256": source_sha256,
+        })
+    return {"source_sha256": source_sha256, "count": len(compact),
+            "proposals": compact}, registry
+
+
+def build_residual_research_context(
+        request, *, evaluation, frontier, manifest, history_documents, evidence,
+        candidate_pool=None):
+    """Purely project verified documents into one compact FW-07 AI context."""
+    if not isinstance(request, dict) or request.get("schema") != RESIDUAL_REQUEST_SCHEMA:
+        raise ValueError("residual request schema is unsupported")
+    required = {"schema", "round_id", "evaluation", "frontier", "manifest", "history",
+                "budgets", "next_residual_question"}
+    if not required.issubset(request) or set(request) - required != ({"candidate_pool"}
+                                                                     if "candidate_pool" in request else set()):
+        raise ValueError("residual request has unexpected or missing fields")
+    round_id = request.get("round_id")
+    question = request.get("next_residual_question")
+    round_id = _bounded_text(round_id, "round_id", RESIDUAL_NAME_BYTES)
+    question = _bounded_text(question, "next_residual_question")
+    budgets = request.get("budgets")
+    if not isinstance(budgets, dict) or set(budgets) != {
+            "max_research_lenses", "max_candidate_proposals", "max_candidate_code_bytes"}:
+        raise ValueError("residual budgets are incomplete")
+    limits = {}
+    for name, lower, upper in (
+            ("max_research_lenses", 1, 12),
+            ("max_candidate_proposals", 1, 50),
+            ("max_candidate_code_bytes", 256, 65536)):
+        value = budgets.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or not lower <= value <= upper:
+            raise ValueError("%s must be within %d..%d" % (name, lower, upper))
+        limits[name] = value
+
+    history_refs = request.get("history")
+    if not isinstance(history_refs, list) or len(history_refs) > 50:
+        raise ValueError("history must be an array of at most 50 rounds")
+    evidence_keys = {"evaluation", "frontier", "manifest", "history"}
+    if "candidate_pool" in request:
+        evidence_keys.add("candidate_pool")
+    if (not isinstance(evidence, dict) or set(evidence) != evidence_keys
+            or not isinstance(history_documents, list)
+            or len(history_documents) != len(history_refs)
+            or not isinstance(evidence["history"], list)
+            or len(evidence["history"]) != len(history_refs)):
+        raise ValueError("verified residual evidence bindings are incomplete")
+    for name in ("evaluation", "frontier", "manifest"):
+        if (not isinstance(evidence[name], dict)
+                or evidence[name].get("sha256") != request[name].get("sha256")):
+            raise ValueError("verified %s binding differs from the request" % name)
+    if "candidate_pool" in request and (
+            not isinstance(evidence["candidate_pool"], dict)
+            or evidence["candidate_pool"].get("sha256")
+            != request["candidate_pool"].get("sha256")):
+        raise ValueError("verified candidate_pool binding differs from the request")
+    if any(
+            not isinstance(held, dict)
+            or held.get("sha256") != reference.get("sha256")
+            for held, reference in zip(evidence["history"], history_refs)):
+        raise ValueError("verified history bindings differ from the request")
+    history = []
+    for index, (document, held) in enumerate(zip(history_documents, evidence["history"])):
+        if not isinstance(document, dict):
+            raise ValueError("history[%d] is not an object" % index)
+        failures = document.get("failures") or []
+        if (not isinstance(failures, list) or len(failures) > 50
+                or any(not isinstance(value, str) or not value.strip()
+                       or len(value.encode()) > RESIDUAL_TEXT_BYTES for value in failures)):
+            raise ValueError("history[%d] failures must be compact non-empty strings" % index)
+        stop_reason = document.get("stop_reason") or document.get("stopReason")
+        if stop_reason is not None:
+            stop_reason = _bounded_text(
+                stop_reason, "history[%d] stop reason" % index)
+        history.append({
+            "round_id": _bounded_text(
+                str(document.get("round_id") or document.get("id") or held["path"]),
+                "history[%d] round_id" % index, RESIDUAL_NAME_BYTES),
+            "sha256": held["sha256"],
+            "status": document.get("status"),
+            "stop_reason": stop_reason,
+            "failures": [_bounded_text(value, "history failure") for value in failures],
+        })
+    allowed_hashes = {evidence["evaluation"]["sha256"]}
+    allowed_hashes.update(row["sha256"] for row in history)
+    for document in [evaluation, *history_documents]:
+        payload = document.get("evaluation_payload_sha256")
+        if isinstance(payload, str) and SHA256.fullmatch(payload):
+            allowed_hashes.add(payload)
+    if candidate_pool is None:
+        compact_pool = {"source_sha256": None, "count": 0, "proposals": []}
+    else:
+        compact_pool, _registry = _compact_candidate_pool(
+            candidate_pool, evidence["candidate_pool"]["sha256"])
+    normalized_frontier = _normalize_frontier(
+        frontier, allowed_hashes, candidate_pool_nonempty=compact_pool["count"] > 0)
+    if normalized_frontier["next_residual_question"]["prompt"] != question:
+        raise ValueError("residual request question differs from the verified frontier")
+    compact_manifest = _compact_manifest(manifest)
+    metric_vectors = _compact_metric_vectors(evaluation)
+    frontier_layers = {
+        layer for row in normalized_frontier["objectives"]
+        for layer in [_metric_layer(row["metric"])] if layer is not None
+    }
+    metric_vectors["scenario_layers"] = metric_vectors["available_layers"]
+    metric_vectors["available_layers"] = sorted(
+        set(metric_vectors["available_layers"]) | frontier_layers
+    )
+    context_evidence = {"evaluation": evidence["evaluation"],
+                        "frontier": evidence["frontier"],
+                        "manifest": evidence["manifest"], "history": history}
+    if "candidate_pool" in evidence:
+        context_evidence["candidate_pool"] = evidence["candidate_pool"]
+    context = {
+        "schema": RESIDUAL_CONTEXT_SCHEMA,
+        "round_id": round_id,
+        "next_residual_question": question,
+        "budgets": limits,
+        "evidence": context_evidence,
+        "metric_vectors": metric_vectors,
+        "pairwise_relation": evaluation.get("pairwise_relation") or {},
+        "portfolio_frontier": normalized_frontier,
+        "cumulative_library": compact_manifest,
+        "library_cost": normalized_frontier["library_cost"],
+        "candidate_pool": compact_pool,
+        "failures": compact_manifest["known_failures"] + [
+            {"round_id": row["round_id"], "detail": failure}
+            for row in history for failure in row["failures"]
+        ],
+        "agent_scope": {
+            "may": ["propose_research_lenses", "author_bounded_candidate_code"],
+            "may_not": ["assign_candidate_identity", "alter_evidence", "alter_budget",
+                        "write_judge_facts", "launch_commercial_eda"],
+            "commercial_qor_prediction": False,
+        },
+    }
+    payload = _canonical_json(context)
+    if len(payload) > RESIDUAL_CONTEXT_BYTES:
+        raise ValueError("residual AI context exceeds its byte limit")
+    context["context_sha256"] = _sha(payload)
+    return context
+
+
+def load_residual_research_context(request, *, evidence_root):
+    """Verify path/hash bindings, then call the pure context projector."""
+    if not isinstance(request, dict):
+        raise ValueError("residual request must be an object")
+    history_refs = request.get("history")
+    if not isinstance(history_refs, list) or len(history_refs) > 50:
+        raise ValueError("history must be an array of at most 50 rounds")
+    evaluation, evaluation_ref = _bound_json_reference(
+        evidence_root, request.get("evaluation"), "evaluation")
+    frontier, frontier_ref = _bound_json_reference(
+        evidence_root, request.get("frontier"), "frontier")
+    manifest, manifest_ref = _bound_json_reference(
+        evidence_root, request.get("manifest"), "manifest")
+    candidate_pool = None
+    candidate_pool_ref = None
+    if "candidate_pool" in request:
+        candidate_pool, candidate_pool_ref = _bound_json_reference(
+            evidence_root, request.get("candidate_pool"), "candidate_pool")
+    history_documents = []
+    history_evidence = []
+    for index, reference in enumerate(history_refs):
+        document, held = _bound_json_reference(
+            evidence_root, reference, "history[%d]" % index)
+        history_documents.append(document)
+        history_evidence.append(held)
+    bound_evidence = {"evaluation": evaluation_ref, "frontier": frontier_ref,
+                      "manifest": manifest_ref, "history": history_evidence}
+    if candidate_pool_ref is not None:
+        bound_evidence["candidate_pool"] = candidate_pool_ref
+    return build_residual_research_context(
+        request, evaluation=evaluation, frontier=frontier, manifest=manifest,
+        history_documents=history_documents, evidence=bound_evidence,
+        candidate_pool=candidate_pool,
+    )
+
+
+def load_candidate_pool_registry(workspace):
+    root = Path(workspace).resolve() / "flow" / "library-richness"
+    request_path = root / "research-context.json"
+    if not request_path.is_file() or request_path.is_symlink():
+        raise ValueError("residual research-context.json is absent")
+    if request_path.stat().st_size > RESIDUAL_CONTEXT_BYTES:
+        raise ValueError("residual research-context.json exceeds its byte limit")
+    request = json.loads(request_path.read_text())
+    if "candidate_pool" not in request:
+        return {}
+    document, held = _bound_json_reference(root, request["candidate_pool"], "candidate_pool")
+    _compact, registry = _compact_candidate_pool(document, held["sha256"])
+    return registry
+
+
+def optional_residual_research_context(workspace):
+    """Load the Phase-1 adapter when present; normal Campaigns remain legacy."""
+    root = Path(workspace).resolve() / "flow" / "library-richness"
+    request_path = root / "research-context.json"
+    if not request_path.exists():
+        return None
+    if request_path.is_symlink() or not request_path.is_file():
+        raise ValueError("residual research-context.json is not a regular file")
+    if request_path.stat().st_size > RESIDUAL_CONTEXT_BYTES:
+        raise ValueError("residual research-context.json exceeds its byte limit")
+    request = json.loads(request_path.read_text())
+    return load_residual_research_context(request, evidence_root=root)
+
+
+def _range_bound(call, literal_lengths):
+    if (not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name)
+            or call.func.id != "range" or call.keywords or not 1 <= len(call.args) <= 3):
+        return None
+
+    def integer(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, int):
+            return node.value
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "len" and len(node.args) == 1 and not node.keywords
+                and isinstance(node.args[0], ast.Name)):
+            return literal_lengths.get(node.args[0].id)
+        return None
+
+    values = [integer(argument) for argument in call.args]
+    if any(value is None for value in values):
+        return None
+    start, stop, step = ((0, values[0], 1) if len(values) == 1
+                         else (values[0], values[1], 1) if len(values) == 2
+                         else values)
+    if step == 0:
+        return None
+    return len(range(start, stop, step))
+
+
+def _validate_candidate_ast(tree):
+    forbidden = (ast.Import, ast.ImportFrom, ast.With, ast.AsyncWith, ast.ClassDef,
+                 ast.AsyncFunctionDef, ast.Global, ast.Nonlocal, ast.While,
+                 ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
+                 ast.Lambda, ast.Yield, ast.YieldFrom, ast.Await, ast.NamedExpr,
+                 ast.JoinedStr, ast.FormattedValue)
+    if any(isinstance(node, forbidden) for node in ast.walk(tree)):
+        raise ValueError("candidate_program must use the bounded pure-Python subset")
+    functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+    if len(functions) != 1:
+        raise ValueError("candidate_program cannot define nested helper functions")
+    function = functions[0]
+    literal_lengths = {}
+
+    def pool_projection(node):
+        return (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Constant) and node.slice.value == "proposals"
+            and isinstance(node.value, ast.Subscript)
+            and isinstance(node.value.slice, ast.Constant)
+            and node.value.slice.value == "candidate_pool"
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == "residual"
+        )
+
+    for statement in function.body:
+        if (isinstance(statement, ast.Assign) and len(statement.targets) == 1
+                and isinstance(statement.targets[0], ast.Name)
+                and isinstance(statement.value, (ast.List, ast.Tuple, ast.Set))):
+            literal_lengths[statement.targets[0].id] = len(statement.value.elts)
+        elif (isinstance(statement, ast.Assign) and len(statement.targets) == 1
+                and isinstance(statement.targets[0], ast.Name)
+                and pool_projection(statement.value)):
+            literal_lengths[statement.targets[0].id] = RESIDUAL_MAX_STATIC_ITERATIONS
+    loop_bounds = []
+
+    def inspect_loops(nodes, enclosing=1):
+        for node in nodes:
+            if isinstance(node, ast.For):
+                bound = _range_bound(node.iter, literal_lengths)
+                if (bound is None or bound < 0
+                        or bound * enclosing > RESIDUAL_MAX_STATIC_ITERATIONS):
+                    raise ValueError("candidate_program loop is not statically bounded")
+                loop_bounds.append(bound)
+                inspect_loops(node.body, max(1, bound * enclosing))
+                inspect_loops(node.orelse, enclosing)
+            else:
+                inspect_loops(list(ast.iter_child_nodes(node)), enclosing)
+
+    inspect_loops(function.body)
+    if sum(loop_bounds) > RESIDUAL_MAX_STATIC_ITERATIONS * 2:
+        raise ValueError("candidate_program aggregate loop budget is too large")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range":
+            bound = _range_bound(node, literal_lengths)
+            if bound is None or bound > RESIDUAL_MAX_STATIC_ITERATIONS:
+                raise ValueError("candidate_program range is not statically bounded")
+        if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+            if abs(node.value).bit_length() > 64:
+                raise ValueError("candidate_program contains an oversized integer literal")
+        if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
+            if len(node.value) > 4096:
+                raise ValueError("candidate_program contains an oversized literal")
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)) and len(node.elts) > 128:
+            raise ValueError("candidate_program contains an oversized sequence literal")
+        if isinstance(node, ast.Dict) and len(node.keys) > 128:
+            raise ValueError("candidate_program contains an oversized object literal")
+        if isinstance(node, ast.BinOp):
+            if not isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod)):
+                raise ValueError("candidate_program uses a nonessential binary operator")
+            operands = []
+            for value in (node.left, node.right):
+                if (not isinstance(value, ast.Constant)
+                        or not isinstance(value.value, (int, float))
+                        or isinstance(value.value, bool)
+                        or isinstance(value.value, int) and abs(value.value).bit_length() > 64
+                        or isinstance(value.value, float) and not math.isfinite(value.value)):
+                    raise ValueError("candidate_program arithmetic must use bounded numeric literals")
+                operands.append(value.value)
+            left, right = operands
+            if isinstance(node.op, (ast.Div, ast.FloorDiv, ast.Mod)) and right == 0:
+                raise ValueError("candidate_program arithmetic divides by zero")
+            operation = {
+                ast.Add: lambda: left + right,
+                ast.Sub: lambda: left - right,
+                ast.Mult: lambda: left * right,
+                ast.Div: lambda: left / right,
+                ast.FloorDiv: lambda: left // right,
+                ast.Mod: lambda: left % right,
+            }[type(node.op)]
+            try:
+                result = operation()
+            except (OverflowError, ValueError, ZeroDivisionError) as error:
+                raise ValueError("candidate_program arithmetic exceeds its numeric bound") from error
+            if ((isinstance(result, int) and abs(result).bit_length() > 64)
+                    or isinstance(result, float) and not math.isfinite(result)):
+                raise ValueError("candidate_program arithmetic exceeds its numeric bound")
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            if (not isinstance(node.operand, ast.Constant)
+                    or not isinstance(node.operand.value, (int, float))
+                    or isinstance(node.operand.value, bool)):
+                raise ValueError("candidate_program unary arithmetic must use a numeric literal")
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Invert):
+            raise ValueError("candidate_program bitwise inversion is not allowed")
+
+
+def _validate_candidate_program(program, byte_budget):
+    if (not isinstance(program, dict)
+            or set(program) not in ({"language", "entrypoint", "source"},
+                                    {"language", "entrypoint", "source", "sha256"})):
+        raise ValueError("candidate_program must contain language, entrypoint, source and optional sha256")
+    if program["language"] != "python" or program["entrypoint"] != "propose_candidates":
+        raise ValueError("candidate_program must be Python propose_candidates")
+    source = program["source"]
+    if not isinstance(source, str) or not source.strip() or len(source.encode()) > byte_budget:
+        raise ValueError("candidate_program source is empty or exceeds its byte budget")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as error:
+        raise ValueError("candidate_program is not valid Python") from error
+    _validate_candidate_ast(tree)
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
+    if (len(tree.body) != 1 or len(functions) != 1
+            or functions[0].name != "propose_candidates"
+            or [argument.arg for argument in functions[0].args.args] != ["residual", "budget"]
+            or functions[0].args.vararg is not None or functions[0].args.kwarg is not None):
+        raise ValueError("candidate_program must define exactly propose_candidates")
+    blocked_names = {"open", "exec", "eval", "compile", "__import__", "system", "popen", "spawn"}
+    allowed_calls = {
+        "abs", "all", "any", "bool", "dict", "enumerate", "float", "int",
+        "isinstance", "len", "list", "max", "min", "range", "reversed",
+        "round", "set", "sorted", "str", "sum", "tuple", "zip",
+    }
+    allowed_methods = {"append", "get", "items", "keys", "values"}
+    if (any(isinstance(node, ast.Name) and node.id in blocked_names for node in ast.walk(tree))
+            or any(isinstance(node, ast.Attribute) and node.attr in blocked_names
+                   for node in ast.walk(tree))
+            or any(isinstance(node, ast.Attribute) and node.attr.startswith("_")
+                   for node in ast.walk(tree))
+            or any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                   and node.func.id == "propose_candidates" for node in ast.walk(tree))
+            or any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                   and node.func.id not in allowed_calls for node in ast.walk(tree))
+            or any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                   and node.func.attr not in allowed_methods for node in ast.walk(tree))
+            or any(isinstance(node, ast.Call)
+                   and not isinstance(node.func, (ast.Name, ast.Attribute))
+                   for node in ast.walk(tree))):
+        raise ValueError("candidate_program cannot perform file, process or dynamic-code I/O")
+    digest = _sha(source.encode())
+    if "sha256" in program and program["sha256"] != digest:
+        raise ValueError("candidate_program sha256 differs from its source")
+    return {"language": "python", "entrypoint": "propose_candidates", "source": source,
+            "sha256": digest}
+
+
+def _validate_candidate_value(value, *, path="transformation", depth=0):
+    if depth > 8:
+        raise ValueError("candidate proposal JSON exceeds maximum nesting depth")
+    if value is None or isinstance(value, (bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("%s contains a non-finite number" % path)
+        return value
+    if isinstance(value, str):
+        if len(value.encode()) > 4096:
+            raise ValueError("%s contains an oversized string" % path)
+        return value
+    if isinstance(value, list):
+        if len(value) > 128:
+            raise ValueError("%s contains an oversized array" % path)
+        return [_validate_candidate_value(item, path="%s[]" % path, depth=depth + 1)
+                for item in value]
+    if isinstance(value, dict):
+        if len(value) > 128:
+            raise ValueError("%s contains an oversized object" % path)
+        forbidden = {
+            "candidate_id", "function_key", "identity", "sha256", "evidence",
+            "judge", "command", "argv", "tool", "commercial_eda",
+        }
+        normalized = {}
+        for key in sorted(value):
+            if (not isinstance(key, str) or not key or len(key.encode()) > 128
+                    or key.lower() in forbidden or key.startswith("__")):
+                raise ValueError("%s contains a runner-owned or invalid key" % path)
+            normalized[key] = _validate_candidate_value(
+                value[key], path="%s.%s" % (path, key), depth=depth + 1)
+        return normalized
+    raise ValueError("%s contains a non-JSON value" % path)
+
+
+def _validate_candidate_proposals(value, *, budget, allowed_lenses):
+    if not isinstance(value, list) or len(value) > budget:
+        raise ValueError("candidate program must return a JSON array within proposal budget")
+    proposals = []
+    seen = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError("candidate proposal %d has an invalid schema" % index)
+        if set(item) == {"lens", "transformation", "rationale"}:
+            lens = _canonical_lens_name(item["lens"], "candidate proposal lens")
+            rationale = item["rationale"]
+            transformation = item["transformation"]
+            if lens not in allowed_lenses:
+                raise ValueError("candidate proposal %d names an undeclared research lens" % index)
+        elif set(item) == {"kind", "lens", "target_layers", "must_not_regress",
+                           "structural_differentiator"}:
+            lens = _canonical_lens_name(item["lens"], "candidate proposal lens")
+            layers = item["target_layers"]
+            guards = item["must_not_regress"]
+            differentiator = item["structural_differentiator"]
+            if (item["kind"] != "research_lens" or not isinstance(lens, str) or not lens
+                    or not isinstance(layers, list) or not layers
+                    or any(layer not in {"F0", "F1", "F2", "F3"} for layer in layers)
+                    or not isinstance(guards, list)
+                    or any(not isinstance(metric, str)
+                           or _metric_layer(metric) not in {"F0", "F1", "F2", "F3"}
+                           for metric in guards)
+                    or not isinstance(differentiator, str) or not differentiator):
+                raise ValueError("candidate proposal %d has an invalid research-lens projection" % index)
+            transformation = {
+                "target_metric_layers": sorted(set(layers)),
+                "must_not_regress": sorted(set(guards)),
+                "structural_differentiator": differentiator,
+            }
+            rationale = "AI-authored bounded research-lens proposal"
+        else:
+            raise ValueError("candidate proposal %d has an invalid schema" % index)
+        if (not isinstance(rationale, str) or not rationale.strip()
+                or len(rationale.encode()) > 4096
+                or not isinstance(transformation, dict) or not transformation):
+            raise ValueError("candidate proposal %d is not explanatory" % index)
+        normalized = {
+            "lens": lens,
+            "transformation": _validate_candidate_value(
+                transformation, path="candidate_proposals[%d].transformation" % index),
+            "rationale": rationale.strip(),
+        }
+        key = _canonical_json(normalized)
+        if key in seen:
+            raise ValueError("candidate program returned a canonical duplicate proposal")
+        seen.add(key)
+        proposals.append(normalized)
+    payload = _canonical_json(proposals)
+    if len(payload) > RESIDUAL_OUTPUT_BYTES:
+        raise ValueError("candidate proposal JSON exceeds the output byte limit")
+    return proposals, payload
+
+
+def execute_candidate_program(program, context, *, allowed_lenses, candidate_registry=None):
+    """Execute the validated pure proposal function under deterministic limits."""
+    if not isinstance(program, dict) or not SHA256.fullmatch(str(program.get("sha256") or "")):
+        raise ValueError("candidate program must be validated before execution")
+    input_payload = _canonical_json({
+        "residual": context,
+        "budget": context["budgets"],
+    })
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="lfr-candidate-") as folder:
+        root = Path(folder)
+        program_path = root / "candidate.py"
+        executor_path = root / "executor.py"
+        stdout_path = root / "stdout.json"
+        stderr_path = root / "stderr.txt"
+        program_path.write_text(program["source"])
+        executor_path.write_text(_RESIDUAL_EXECUTOR)
+        environment = {
+            "HOME": str(root),
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": str(Path(sys.executable).parent),
+            "PYTHONHASHSEED": "0",
+        }
+        try:
+            with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
+                completed = subprocess.run(
+                    [sys.executable, "-I", "-S", str(executor_path), str(program_path)],
+                    input=input_payload, stdout=stdout, stderr=stderr,
+                    cwd=root, env=environment, timeout=RESIDUAL_EXECUTION_TIMEOUT_SECONDS,
+                    check=False, start_new_session=True,
+                )
+        except subprocess.TimeoutExpired as error:
+            raise ValueError("candidate program exceeded the hard wall timeout") from error
+        stdout_bytes = stdout_path.read_bytes()[:RESIDUAL_OUTPUT_BYTES + 1]
+        stderr_bytes = stderr_path.read_bytes()[:RESIDUAL_STDERR_BYTES + 1]
+    elapsed_ms = round((time.monotonic() - started) * 1000.0, 3)
+    if completed.returncode != 0:
+        raise ValueError("candidate program failed within its resource or runtime limits")
+    if len(stdout_bytes) > RESIDUAL_OUTPUT_BYTES:
+        raise ValueError("candidate program output exceeds the byte limit")
+    if len(stderr_bytes) > RESIDUAL_STDERR_BYTES:
+        raise ValueError("candidate program diagnostic output exceeds the byte limit")
+    try:
+        envelope = json.loads(stdout_bytes)
+    except json.JSONDecodeError as error:
+        raise ValueError("candidate program output is not JSON") from error
+    if (not isinstance(envelope, dict) or set(envelope) != {"proposals", "posix_limits"}
+            or not isinstance(envelope["posix_limits"], dict)):
+        raise ValueError("candidate executor envelope is malformed")
+    proposals, payload = _validate_candidate_proposals(
+        envelope["proposals"], budget=context["budgets"]["max_candidate_proposals"],
+        allowed_lenses=set(allowed_lenses),
+    )
+    candidate_registry = candidate_registry or {}
+    selected_keys = set()
+    attached = []
+    for index, proposal in enumerate(proposals):
+        proposal_key = proposal["transformation"].get("proposal_key")
+        if candidate_registry and not isinstance(proposal_key, str):
+            raise ValueError("candidate proposal %d must select one proposal_key" % index)
+        if proposal_key is None:
+            attached.append(proposal)
+            continue
+        if proposal_key not in candidate_registry:
+            raise ValueError("candidate proposal %d selects an unknown proposal_key" % index)
+        if proposal_key in selected_keys:
+            raise ValueError("candidate program selects one proposal_key more than once")
+        selected_keys.add(proposal_key)
+        generation_request = json.loads(json.dumps(candidate_registry[proposal_key]))
+        attached.append({
+            **proposal,
+            "generation_request_sha256": _sha(_canonical_json(generation_request)),
+            "generation_request": generation_request,
+        })
+    proposals = attached
+    provenance = {
+        "program_sha256": program["sha256"],
+        "input_sha256": _sha(input_payload),
+        "output_sha256": _sha(payload),
+        "proposal_count": len(proposals),
+        "return_code": completed.returncode,
+        "wall_time_ms": elapsed_ms,
+        "isolation": {
+            "python_flags": ["-I", "-S"],
+            "minimal_environment_keys": sorted(environment),
+            "temporary_working_directory": True,
+        },
+        "limits": {
+            "wall_seconds": RESIDUAL_EXECUTION_TIMEOUT_SECONDS,
+            "cpu_seconds": RESIDUAL_CPU_SECONDS,
+            "memory_bytes": RESIDUAL_MEMORY_BYTES,
+            "file_bytes": RESIDUAL_FILE_BYTES,
+            "output_bytes": RESIDUAL_OUTPUT_BYTES,
+            "posix_applied": envelope["posix_limits"],
+        },
+    }
+    return proposals, provenance
+
+
+def validate_residual_research_proposal(proposal, context):
+    """Validate model creativity while retaining deterministic ownership."""
+    if not isinstance(proposal, dict) or set(proposal) != {
+            "research_lenses", "candidate_program", "stop_reason"}:
+        raise ValueError("residual research must return lenses, candidate_program and stop_reason")
+    lenses = proposal["research_lenses"]
+    maximum = context["budgets"]["max_research_lenses"]
+    if not isinstance(lenses, list) or not 1 <= len(lenses) <= maximum:
+        raise ValueError("research_lenses exceeds its deterministic budget")
+    source_hashes = {
+        row["sha256"] for key, row in context["evidence"].items()
+        if key != "history"
+    } | {row["sha256"] for row in context["evidence"]["history"]}
+    normalized = []
+    names = set()
+    for index, lens in enumerate(lenses):
+        required = {"name", "question", "evidence_sha256", "target_metric_layers"}
+        if not isinstance(lens, dict) or set(lens) != required:
+            raise ValueError("research lens %d is malformed" % index)
+        name = _canonical_lens_name(lens["name"], "research lens name")
+        question = _bounded_text(lens["question"], "research lens question")
+        evidence = lens["evidence_sha256"]
+        layers = lens["target_metric_layers"]
+        if (name in names
+                or not isinstance(evidence, list) or not evidence
+                or any(value not in source_hashes for value in evidence)
+                or not isinstance(layers, list) or not layers
+                or any(value not in {"F0", "F1", "F2", "F3"} for value in layers)):
+            raise ValueError("research lens %d is not evidence-bound to F0-F3" % index)
+        names.add(name)
+        normalized.append({
+            "name": name, "question": question,
+            "evidence_sha256": sorted(set(evidence)),
+            "target_metric_layers": sorted(set(layers)),
+        })
+    stop = _bounded_text(proposal["stop_reason"], "stop_reason")
+    program = _validate_candidate_program(
+        proposal["candidate_program"], context["budgets"]["max_candidate_code_bytes"])
+    return {"research_lenses": normalized, "candidate_program": program,
+            "stop_reason": stop}
+
+
+def run_residual_research(research, workspace, output):
+    """Run one standalone FW-07 AI turn and its isolated proposal program."""
+    context = optional_residual_research_context(workspace)
+    if context is None:
+        raise ValueError("flow/library-richness/research-context.json is absent")
+    proposal = validate_residual_research_proposal(research(context), context)
+    candidate_registry = load_candidate_pool_registry(workspace)
+    candidate_proposals, candidate_execution = execute_candidate_program(
+        proposal["candidate_program"], context,
+        allowed_lenses=[row["name"] for row in proposal["research_lenses"]],
+        candidate_registry=candidate_registry,
+    )
+    document = {
+        "schema": RESIDUAL_OUTPUT_SCHEMA,
+        "status": "proposed",
+        "round_id": context["round_id"],
+        "context_sha256": context["context_sha256"],
+        "evidence": context["evidence"],
+        "next_residual_question": context["next_residual_question"],
+        "budgets": context["budgets"],
+        "research_lenses": proposal["research_lenses"],
+        "candidate_program": proposal["candidate_program"],
+        "candidate_proposals": candidate_proposals,
+        "candidate_execution": candidate_execution,
+        "stop_reason": proposal["stop_reason"],
+        "claims": {
+            "commercial_qor_prediction": False,
+            "commercial_eda_executed": False,
+            "candidate_identity_assigned": False,
+        },
+    }
+    document["output_sha256"] = _sha(_canonical_json(document))
+    payload = _canonical_json(document)
+    if len(payload) > RESIDUAL_DOCUMENT_BYTES:
+        raise ValueError("residual research document exceeds its byte limit")
+    destination = Path(output).resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(payload)
+    return document
 
 
 def _sha(data):

@@ -32,7 +32,7 @@ from dataclasses import dataclass
 # portable across Site-supplied technology profiles.)
 MODULE_RE = re.compile(r"(?ms)^[ \t]*module\s+(\S+?)\b(.*?)^[ \t]*endmodule")
 CELL_INST_RE = re.compile(
-    r"(?ms)^\s*([A-Za-z_][A-Za-z0-9_$]*)"
+    r"(?ms)^\s*(\\[^\s(]+|[A-Za-z_][A-Za-z0-9_$]*)"
     r"\s+([^\s(]+)\s*\((.*?)\)\s*;"
 )
 CONN_RE = re.compile(r"\.(\w+)\s*\(\s*([^)]*?)\s*\)")
@@ -42,6 +42,12 @@ SIMPLE_NET_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*(?:\[[0-9]+\])?\Z")
 PRIMITIVE_GATES = ("and", "or", "nand", "nor", "xor", "xnor", "not", "buf")
 SINGLE_INPUT_GATES = ("not", "buf")
 GENERIC_PREFIX = "GEN_"
+YOSYS_INTERNAL_GATES = {
+    r"\$_AND_": ("and", 2), r"\$_OR_": ("or", 2),
+    r"\$_NAND_": ("nand", 2), r"\$_NOR_": ("nor", 2),
+    r"\$_XOR_": ("xor", 2), r"\$_XNOR_": ("xnor", 2),
+    r"\$_NOT_": ("not", 1), r"\$_BUF_": ("buf", 1),
+}
 
 
 @dataclass(frozen=True)
@@ -124,6 +130,19 @@ def parse_modules(text: str):
                 conns = {
                     pin: re.sub(r"\s+", "", net) for pin, net in named
                 }
+                if cell_type in YOSYS_INTERNAL_GATES:
+                    gate, arity = YOSYS_INTERNAL_GATES[cell_type]
+                    generic_inputs, generic_output = generic_pin_names(arity)
+                    source_inputs = ("A", "B")[:arity]
+                    if (any(pin not in conns for pin in source_inputs)
+                            or "Y" not in conns):
+                        continue
+                    conns = {
+                        **{pin: conns[source] for pin, source in zip(
+                            generic_inputs, source_inputs)},
+                        generic_output: conns["Y"],
+                    }
+                    cell_type = generic_cell_name(gate, arity)
                 instances.append(Instance(module, cell_type, name, conns))
                 continue
             if cell_type not in PRIMITIVE_GATES:

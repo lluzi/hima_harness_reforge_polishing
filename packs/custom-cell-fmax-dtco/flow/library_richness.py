@@ -23,6 +23,7 @@ if str(DOMAIN_DIR) not in sys.path:
     sys.path.insert(0, str(DOMAIN_DIR))
 
 from proxy_mapping import map_reference_and_augmented  # type: ignore  # noqa: E402
+from _generation_projection import validate_cumulative_manifest  # type: ignore  # noqa: E402
 from cell_need_miner.liberty_timing import (  # type: ignore  # noqa: E402
     LibertyTimingError,
     analyze_mapped_netlist_reg2reg,
@@ -32,6 +33,8 @@ from cell_need_miner.liberty_timing import (  # type: ignore  # noqa: E402
 
 SCHEMA = "lfr-round/3"
 RESULT_SCHEMA = "lfr-round-evaluation/3"
+FRONTIER_REQUEST_SCHEMA = "lfr-frontier-request/1"
+FRONTIER_RESULT_SCHEMA = "lfr-frontier-evaluation/1"
 SCENARIOS = ("optimistic", "nominal", "conservative")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _TIME_UNIT = re.compile(
@@ -43,6 +46,15 @@ _METRICS = frozenset({
     "F0.candidate_adoption_fraction",
     "F0.known_cell_fraction",
     "F0.function_class_count",
+    "F1.levels_removed",
+    "F1.nodes_removed",
+    "F1.edges_removed",
+    "F1.cut_width_max",
+    "F1.reconvergence_coverage",
+    "F1.dominator_endpoint_coverage",
+    "F1.overlap_ratio",
+    "F1.new_library_cells",
+    "F1.generation_units",
     "F2.mapped_instance_count",
     "F2.combinational_instance_count",
     "F2.max_logic_level",
@@ -57,6 +69,14 @@ _METRICS = frozenset({
 _PARETO_DIRECTIONS = {
     "F0.candidate_adoption_fraction": "maximize",
     "F0.known_cell_fraction": "maximize",
+    "F1.levels_removed": "maximize",
+    "F1.nodes_removed": "maximize",
+    "F1.edges_removed": "maximize",
+    "F1.reconvergence_coverage": "maximize",
+    "F1.dominator_endpoint_coverage": "maximize",
+    "F1.overlap_ratio": "minimize",
+    "F1.new_library_cells": "minimize",
+    "F1.generation_units": "minimize",
     "F2.mapped_instance_count": "minimize",
     "F2.combinational_instance_count": "minimize",
     "F2.max_logic_level": "minimize",
@@ -66,6 +86,21 @@ _PARETO_DIRECTIONS = {
     "F2.mean_path_stage_count": "minimize",
     "F3.worst_delay_indicator_ps": "minimize",
     "F3.negative_slack_mass_indicator_ps": "minimize",
+}
+_F1_REQUIRED_METRICS = frozenset({
+    "F1.levels_removed",
+    "F1.nodes_removed",
+    "F1.edges_removed",
+    "F1.cut_width_max",
+    "F1.reconvergence_coverage",
+    "F1.dominator_endpoint_coverage",
+    "F1.overlap_ratio",
+    "F1.new_library_cells",
+    "F1.generation_units",
+})
+_COST_DIRECTIONS = {
+    "cost.cumulative_new_library_cells": "minimize",
+    "cost.cumulative_generation_units": "minimize",
 }
 
 
@@ -191,6 +226,275 @@ def _bound_inputs(mapping_request: Mapping[str, Any], value: object) -> dict[str
     return dict(sorted(validated.items()))
 
 
+def _candidate_function_bindings(value: object) -> dict[str, dict[str, object]]:
+    if not isinstance(value, list) or not value:
+        raise RoundRequestError("candidate_functions must be a non-empty array")
+    bindings: dict[str, dict[str, object]] = {}
+    for index, raw in enumerate(value):
+        item = _mapping(raw, f"candidate_functions[{index}]")
+        candidate_id = _string(item.get("candidate_id"), f"candidate_functions[{index}].candidate_id")
+        if candidate_id in bindings:
+            raise RoundRequestError(f"candidate_functions repeats candidate_id {candidate_id}")
+        raw_cells = item.get("candidate_cells")
+        if not isinstance(raw_cells, list) or not raw_cells:
+            raise RoundRequestError(f"candidate_functions[{index}].candidate_cells must be non-empty")
+        cells = [
+            _string(cell, f"candidate_functions[{index}].candidate_cells[{cell_index}]")
+            for cell_index, cell in enumerate(raw_cells)
+        ]
+        if len(set(cells)) != len(cells):
+            raise RoundRequestError(f"candidate_functions[{index}].candidate_cells contains duplicates")
+        identity = _mapping(item.get("identity"), f"candidate_functions[{index}].identity")
+        if identity.get("schema") != "hima.library-richness.candidate-identity/1":
+            raise RoundRequestError(
+                f"candidate_functions[{index}].identity has an unsupported schema"
+            )
+        selected = item.get("selected")
+        if not isinstance(selected, bool):
+            raise RoundRequestError(f"candidate_functions[{index}].selected must be boolean")
+        bindings[candidate_id] = {
+            "candidate_id": candidate_id,
+            "candidate_cells": sorted(cells),
+            "identity": dict(identity),
+            "selected": selected,
+        }
+    return bindings
+
+
+def _portfolio_candidate_cells(candidate: Mapping[str, Any], name: str) -> list[str]:
+    source = _mapping(candidate.get("source_generation_request"), f"{name}.source_generation_request")
+    candidate_id = _string(source.get("candidate_id"), f"{name}.source_generation_request.candidate_id")
+    contract = _mapping(source.get("generator_contract"), f"{name}.source_generation_request.generator_contract")
+    interface = _mapping(contract.get("interface"), f"{name}.source_generation_request.generator_contract.interface")
+    outputs = interface.get("outputs")
+    if not isinstance(outputs, list) or not outputs:
+        raise RoundRequestError(f"{name} has no generator output identity")
+    directory = str(DOMAIN_DIR)
+    if directory not in sys.path:
+        sys.path.insert(0, directory)
+    from mine_patterns import canonical_cell_name  # type: ignore
+
+    result = []
+    for index, raw_output in enumerate(outputs):
+        output = _mapping(raw_output, f"{name}.outputs[{index}]")
+        result.append(canonical_cell_name(
+            candidate_id,
+            _string(output.get("name"), f"{name}.outputs[{index}].name"),
+        ))
+    return sorted(result)
+
+
+def _f1_vector(evaluation: Mapping[str, Any], name: str) -> tuple[dict[str, float], dict[str, float]]:
+    candidate = _mapping(evaluation.get("candidate"), f"{name}.candidate")
+    structural = _mapping(candidate.get("structural_metrics"), f"{name}.candidate.structural_metrics")
+    cost = _mapping(candidate.get("library_cost"), f"{name}.candidate.library_cost")
+    raw = {
+        "levels_removed": _number(structural.get("levels_removed"), f"{name}.levels_removed"),
+        "nodes_removed": _number(structural.get("nodes_removed"), f"{name}.nodes_removed"),
+        "edges_removed": _number(structural.get("edges_removed"), f"{name}.edges_removed"),
+        "cut_width": _number(structural.get("cut_width"), f"{name}.cut_width", positive=True),
+        "reconvergence_coverage": _number(
+            structural.get("reconvergence_coverage"), f"{name}.reconvergence_coverage"
+        ),
+        "dominator_endpoint_coverage": _number(
+            structural.get("dominator_endpoint_coverage"),
+            f"{name}.dominator_endpoint_coverage",
+        ),
+        "overlap_ratio": _number(structural.get("overlap_ratio"), f"{name}.overlap_ratio"),
+        "new_library_cells": _number(
+            cost.get("new_library_cells"), f"{name}.new_library_cells", positive=True
+        ),
+        "generation_units": _number(
+            cost.get("generation_units"), f"{name}.generation_units", positive=True
+        ),
+    }
+    normalized = {
+        "structural.levels_removed": raw["levels_removed"],
+        "structural.nodes_removed": raw["nodes_removed"],
+        "structural.edges_removed": raw["edges_removed"],
+        "structural.cut_width": -raw["cut_width"],
+        "structural.reconvergence_coverage": raw["reconvergence_coverage"],
+        "structural.dominator_endpoint_coverage": raw["dominator_endpoint_coverage"],
+        "structural.overlap_ratio": -raw["overlap_ratio"],
+        "cost.new_library_cells": -raw["new_library_cells"],
+        "cost.generation_units": -raw["generation_units"],
+    }
+    return raw, normalized
+
+
+def _verify_f1_axes(actual_value: object, expected: Mapping[str, float], name: str) -> None:
+    actual = _mapping(actual_value, name)
+    for axis, expected_value in expected.items():
+        value = actual.get(axis)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or not math.isclose(float(value), expected_value, rel_tol=0.0, abs_tol=1e-12)
+        ):
+            raise RoundRequestError(f"{name}.{axis} disagrees with candidate_evaluations")
+
+
+def _portfolio_evidence(
+    value: object,
+    declared_cells: Sequence[str],
+    declared_functions: object,
+) -> dict[str, object]:
+    reference = _mapping(value, "local_portfolio")
+    path = _path(reference.get("path"), "local_portfolio.path")
+    expected_sha256 = _digest(reference.get("sha256"), "local_portfolio.sha256")
+    observed_sha256 = _sha256_file(path)
+    if observed_sha256 != expected_sha256:
+        raise RoundRequestError(
+            f"local_portfolio hash mismatch: expected {expected_sha256}, observed {observed_sha256}"
+        )
+    try:
+        document = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise RoundRequestError(f"local_portfolio is not valid JSON: {error}") from error
+    portfolio = _mapping(document, "local_portfolio document")
+    if portfolio.get("schema") != "hima.library-richness.portfolio/1":
+        raise RoundRequestError("local_portfolio schema must be 'hima.library-richness.portfolio/1'")
+    if portfolio.get("status") != "PRE_MAPPING_PLANNING":
+        raise RoundRequestError("local_portfolio status must be PRE_MAPPING_PLANNING")
+    claims = _mapping(portfolio.get("claims"), "local_portfolio.claims")
+    required_claims = {
+        "commercial_qor_prediction", "commercial_adoption",
+        "post_route_benefit", "fmax_improvement",
+    }
+    if set(claims) != required_claims or any(value is not False for value in claims.values()):
+        raise RoundRequestError("local_portfolio claims must contain only the four false claims")
+    layers = _mapping(portfolio.get("evidence_layers"), "local_portfolio.evidence_layers")
+    if layers.get("F1_local_structure") is not True:
+        raise RoundRequestError("local_portfolio must carry true F1_local_structure evidence")
+
+    bindings = _candidate_function_bindings(declared_functions)
+    evaluations_value = portfolio.get("candidate_evaluations")
+    selected_value = portfolio.get("selected")
+    trace_value = portfolio.get("objective_trace")
+    if not isinstance(evaluations_value, list) or not evaluations_value:
+        raise RoundRequestError("local_portfolio.candidate_evaluations must be non-empty")
+    if not isinstance(selected_value, list) or not selected_value:
+        raise RoundRequestError("local_portfolio.selected must be non-empty")
+    if not isinstance(trace_value, list) or not trace_value:
+        raise RoundRequestError("local_portfolio.objective_trace must be non-empty")
+
+    evaluations: dict[str, Mapping[str, Any]] = {}
+    for index, raw in enumerate(evaluations_value):
+        evaluation = _mapping(raw, f"local_portfolio.candidate_evaluations[{index}]")
+        candidate_id = _string(
+            evaluation.get("candidate_id"),
+            f"local_portfolio.candidate_evaluations[{index}].candidate_id",
+        )
+        if candidate_id in evaluations:
+            raise RoundRequestError(f"local_portfolio repeats candidate evaluation {candidate_id}")
+        evaluations[candidate_id] = evaluation
+    if set(evaluations) != set(bindings):
+        raise RoundRequestError("candidate_functions identities do not match candidate_evaluations")
+
+    selected: dict[str, Mapping[str, Any]] = {}
+    for index, raw in enumerate(selected_value):
+        row = _mapping(raw, f"local_portfolio.selected[{index}]")
+        candidate_id = _string(row.get("candidate_id"), f"local_portfolio.selected[{index}].candidate_id")
+        if candidate_id in selected:
+            raise RoundRequestError(f"local_portfolio.selected repeats {candidate_id}")
+        selected[candidate_id] = row
+    selected_bindings = {candidate_id for candidate_id, row in bindings.items() if row["selected"]}
+    if set(selected) != selected_bindings:
+        raise RoundRequestError("selected portfolio identities do not match declared candidate cells")
+    declared_selected_cells = sorted(
+        cell for candidate_id in selected_bindings for cell in bindings[candidate_id]["candidate_cells"]
+    )
+    if declared_selected_cells != sorted(declared_cells):
+        raise RoundRequestError("candidate_functions Cell identities do not match candidate_cells")
+
+    trace: dict[str, Mapping[str, Any]] = {}
+    ranks = []
+    for index, raw in enumerate(trace_value):
+        row = _mapping(raw, f"local_portfolio.objective_trace[{index}]")
+        candidate_id = _string(row.get("candidate_id"), f"local_portfolio.objective_trace[{index}].candidate_id")
+        if candidate_id in trace:
+            raise RoundRequestError(f"local_portfolio.objective_trace repeats {candidate_id}")
+        rank = _integer(row.get("rank"), f"local_portfolio.objective_trace[{index}].rank", positive=True)
+        ranks.append(rank)
+        trace[candidate_id] = row
+    if set(trace) != set(selected) or sorted(ranks) != list(range(1, len(trace) + 1)):
+        raise RoundRequestError("local_portfolio objective trace does not exactly rank selected candidates")
+
+    vectors = []
+    for candidate_id in sorted(evaluations):
+        evaluation = evaluations[candidate_id]
+        candidate = _mapping(evaluation.get("candidate"), f"candidate_evaluations[{candidate_id}].candidate")
+        if candidate.get("candidate_id") != candidate_id:
+            raise RoundRequestError(f"candidate_evaluations[{candidate_id}] candidate identity is inconsistent")
+        binding = bindings[candidate_id]
+        if candidate.get("identity") != binding["identity"]:
+            raise RoundRequestError(f"candidate_evaluations[{candidate_id}] function identity mismatch")
+        derived_cells = _portfolio_candidate_cells(candidate, f"candidate_evaluations[{candidate_id}].candidate")
+        if derived_cells != binding["candidate_cells"]:
+            raise RoundRequestError(f"candidate_evaluations[{candidate_id}] Cell identity mismatch")
+        if candidate_id not in selected:
+            continue
+        if evaluation.get("rejection_reasons") != []:
+            raise RoundRequestError(f"selected candidate {candidate_id} carries rejection reasons")
+        selected_row = selected[candidate_id]
+        if selected_row.get("identity") != binding["identity"]:
+            raise RoundRequestError(f"selected[{candidate_id}] function identity mismatch")
+        raw, normalized = _f1_vector(evaluation, f"candidate_evaluations[{candidate_id}]")
+        multi_index = _mapping(evaluation.get("multi_index"), f"candidate_evaluations[{candidate_id}].multi_index")
+        _verify_f1_axes(multi_index.get("axes"), normalized, f"candidate_evaluations[{candidate_id}].multi_index.axes")
+        _verify_f1_axes(selected_row.get("pareto_axes"), normalized, f"selected[{candidate_id}].pareto_axes")
+        _verify_f1_axes(trace[candidate_id].get("pareto_axes"), normalized, f"objective_trace[{candidate_id}].pareto_axes")
+        vectors.append({"candidate_id": candidate_id, "candidate_cells": derived_cells, **raw})
+
+    def aggregate(field: str, operation: str = "sum") -> float:
+        values = [float(vector[field]) for vector in vectors]
+        return max(values) if operation == "max" else sum(values)
+
+    zero = {
+        "selected_candidate_count": 0,
+        "levels_removed": 0.0,
+        "nodes_removed": 0.0,
+        "edges_removed": 0.0,
+        "cut_width_max": 0.0,
+        "reconvergence_coverage": 0.0,
+        "dominator_endpoint_coverage": 0.0,
+        "overlap_ratio": 0.0,
+        "new_library_cells": 0.0,
+        "generation_units": 0.0,
+        "candidate_vectors": [],
+        "interpretation": "reference baseline has no candidate transformation",
+    }
+    augmented = {
+        "selected_candidate_count": len(vectors),
+        "levels_removed": aggregate("levels_removed", "max"),
+        "nodes_removed": aggregate("nodes_removed", "max"),
+        "edges_removed": aggregate("edges_removed", "max"),
+        "cut_width_max": aggregate("cut_width", "max"),
+        "reconvergence_coverage": aggregate("reconvergence_coverage", "max"),
+        "dominator_endpoint_coverage": aggregate("dominator_endpoint_coverage", "max"),
+        "overlap_ratio": aggregate("overlap_ratio", "max"),
+        "new_library_cells": aggregate("new_library_cells"),
+        "generation_units": aggregate("generation_units"),
+        "candidate_vectors": vectors,
+        "aggregation": {
+            "additive": ["new_library_cells", "generation_units"],
+            "maximum": [
+                "levels_removed", "nodes_removed", "edges_removed", "cut_width_max",
+                "reconvergence_coverage", "dominator_endpoint_coverage", "overlap_ratio",
+            ],
+            "reason": "pre-mapping local regions may overlap; structural raw axes are not summed",
+        },
+        "interpretation": "pre-mapping local transformation evidence, not whole-design QoR",
+    }
+    return {
+        "source": {"path": str(path), "sha256": observed_sha256},
+        "selected_candidate_ids": sorted(selected),
+        "reference": zero,
+        "augmented": augmented,
+    }
+
+
 def _validate_request(request: Mapping[str, object]) -> dict[str, object]:
     if request.get("schema") != SCHEMA:
         raise RoundRequestError(f"schema must be {SCHEMA!r}")
@@ -203,6 +507,11 @@ def _validate_request(request: Mapping[str, object]) -> dict[str, object]:
     candidate_cells = [_string(value, f"candidate_cells[{index}]") for index, value in enumerate(candidates)]
     if len(set(candidate_cells)) != len(candidate_cells):
         raise RoundRequestError("candidate_cells contains duplicates")
+    local_portfolio = _portfolio_evidence(
+        request.get("local_portfolio"),
+        candidate_cells,
+        request.get("candidate_functions"),
+    )
 
     timing = _mapping(request.get("timing"), "timing")
     timing_values = {
@@ -265,6 +574,7 @@ def _validate_request(request: Mapping[str, object]) -> dict[str, object]:
             "metric_policy.required_metrics contains unsupported metrics: "
             + ", ".join(unsupported_required)
         )
+    required_metrics = sorted(set(required_metrics) | _F1_REQUIRED_METRICS)
 
     budgets = _mapping(request.get("budgets"), "budgets")
     budget_values = {
@@ -298,12 +608,13 @@ def _validate_request(request: Mapping[str, object]) -> dict[str, object]:
         "mapping": dict(mapping_request),
         "bound_inputs": bound_inputs,
         "candidate_cells": sorted(candidate_cells),
+        "local_portfolio": local_portfolio,
         "timing": timing_values,
         "scenarios": scenarios,
         "metric_policy": {
             "objectives": objectives,
             "canonical_directions": dict(sorted(_PARETO_DIRECTIONS.items())),
-            "required_metrics": sorted(required_metrics),
+            "required_metrics": required_metrics,
         },
         "budgets": budget_values,
         "comparison_evidence": comparison,
@@ -480,7 +791,8 @@ def _structural_metrics(model: object, verilog_text: str, top: str,
 def _layered_metrics(model: object, verilog_text: str, top: str,
                      timing_result: Mapping[str, Any], unit_ps: float,
                      adoption: Mapping[str, Any], candidates: Sequence[str],
-                     wire_capacitance: float) -> dict[str, object]:
+                     wire_capacitance: float,
+                     f1: Mapping[str, Any]) -> dict[str, object]:
     census = adoption["cell_census"]
     total_instances = sum(int(value) for value in census.values())
     unknown_instances = sum(int(census.get(cell, 0)) for cell in adoption["unknown_cells"])
@@ -507,6 +819,7 @@ def _layered_metrics(model: object, verilog_text: str, top: str,
             "pin_interface_census": adoption["pin_interface_census"],
             "drive_variant_census": adoption["drive_variant_census"],
         },
+        "F1": dict(f1),
         "F2": structural,
         "F3": {
             "indicator_only": True,
@@ -617,6 +930,7 @@ def _scenario_evaluation(
     adoptions: Mapping[str, Mapping[str, Any]],
     candidates: Sequence[str],
     metric_policy: Mapping[str, Any],
+    local_portfolio: Mapping[str, Any],
 ) -> dict[str, object]:
     unsupported = list(assumptions["unsupported_assumptions"])  # type: ignore[arg-type]
     public_assumptions = {
@@ -658,6 +972,7 @@ def _scenario_evaluation(
             adoptions[arm],
             candidates,
             float(assumptions["wire_capacitance_in_library_units"]),
+            local_portfolio[arm],
         )
     required = metric_policy["required_metrics"]
     completeness = {
@@ -793,11 +1108,910 @@ def _commercial_candidate(
     return candidate, budget_status
 
 
+def _verified_evaluation_payload(value: object, name: str) -> Mapping[str, Any]:
+    """Verify one immutable round result without trusting its declared digest."""
+    evaluation = _mapping(value, name)
+    if evaluation.get("schema") != RESULT_SCHEMA:
+        raise RoundRequestError(f"{name}.schema must be {RESULT_SCHEMA!r}")
+    if evaluation.get("status") != "succeeded":
+        raise RoundRequestError(f"{name} must be a successful round evaluation")
+    expected = _digest(
+        evaluation.get("evaluation_payload_sha256"),
+        f"{name}.evaluation_payload_sha256",
+    )
+    payload = dict(evaluation)
+    del payload["evaluation_payload_sha256"]
+    observed = _sha256_bytes(_canonical_json(payload))
+    if observed != expected:
+        raise RoundRequestError(
+            f"{name} payload hash mismatch: expected {expected}, observed {observed}"
+        )
+    limits = _mapping(evaluation.get("claim_limits"), f"{name}.claim_limits")
+    forbidden_claims = (
+        "fmax_claimed",
+        "commercial_adoption_claimed",
+        "physical_benefit_claimed",
+        "expected_qor_claimed",
+        "commercial_eda_executed",
+    )
+    asserted = [claim for claim in forbidden_claims if limits.get(claim) is not False]
+    if asserted:
+        raise RoundRequestError(
+            f"{name} does not preserve license-free claim limits: " + ", ".join(asserted)
+        )
+    return evaluation
+
+
+def _evaluation_identities(
+    evaluation: Mapping[str, Any],
+) -> tuple[str, dict[str, object], dict[str, object]]:
+    """Separate stable experiment identity from the cumulative Library lineage."""
+    hashes = _mapping(evaluation.get("hashes"), "evaluation.hashes")
+    tools = _mapping(hashes.get("tools"), "evaluation.hashes.tools")
+    libraries = _mapping(hashes.get("libraries"), "evaluation.hashes.libraries")
+    outputs = _mapping(hashes.get("mapped_netlists_revalidated"),
+                       "evaluation.hashes.mapped_netlists_revalidated")
+    library_hashes = {}
+    for arm in ("reference", "augmented"):
+        arm_libraries = libraries.get(arm)
+        if not isinstance(arm_libraries, list) or not arm_libraries:
+            raise RoundRequestError(f"evaluation.hashes.libraries.{arm} must be non-empty")
+        library_hashes[arm] = sorted(
+            _digest(
+                _mapping(item_value, f"evaluation.hashes.libraries.{arm}[{index}]").get("sha256"),
+                f"evaluation.hashes.libraries.{arm}[{index}].sha256",
+            )
+            for index, item_value in enumerate(arm_libraries)
+        )
+    mapping = _mapping(evaluation.get("mapping"), "evaluation.mapping")
+    inputs = _mapping(mapping.get("inputs"), "evaluation.mapping.inputs")
+    rtl_value = inputs.get("rtl")
+    if not isinstance(rtl_value, list) or not rtl_value:
+        raise RoundRequestError("evaluation mapping RTL identity is missing")
+    rtl_hashes = sorted(
+        _digest(
+            _mapping(item_value, f"evaluation.mapping.inputs.rtl[{index}]").get("sha256"),
+            f"evaluation.mapping.inputs.rtl[{index}].sha256",
+        )
+        for index, item_value in enumerate(rtl_value)
+    )
+    top = _string(inputs.get("top"), "evaluation.mapping.inputs.top")
+    output_hashes = _mapping(hashes.get("outputs"), "evaluation.hashes.outputs")
+    reference_outputs = _mapping(
+        output_hashes.get("reference"), "evaluation.hashes.outputs.reference"
+    )
+    scenario_identity = {}
+    scenarios = _mapping(evaluation.get("scenarios"), "evaluation.scenarios")
+    for scenario_name in SCENARIOS:
+        scenario = _mapping(scenarios.get(scenario_name), f"evaluation.scenarios.{scenario_name}")
+        scenario_identity[scenario_name] = _mapping(
+            scenario.get("assumptions"),
+            f"evaluation.scenarios.{scenario_name}.assumptions",
+        )
+    stable_identity = {
+        "tools": {
+            "yosys": _digest(tools.get("yosys"), "evaluation.hashes.tools.yosys"),
+            "abc": _digest(tools.get("abc"), "evaluation.hashes.tools.abc"),
+        },
+        "invariant_mapping_plan_sha256": _digest(
+            hashes.get("invariant_mapping_plan_sha256"),
+            "evaluation.hashes.invariant_mapping_plan_sha256",
+        ),
+        "design": {"top": top, "rtl_sha256": rtl_hashes},
+        "constraints_sha256": _digest(
+            reference_outputs.get("abc_constraints"),
+            "evaluation.hashes.outputs.reference.abc_constraints",
+        ),
+        "scenarios": scenario_identity,
+    }
+    lineage = {
+        "reference_library_sha256": library_hashes["reference"],
+        "augmented_library_sha256": library_hashes["augmented"],
+        "reference_mapped_netlist_sha256": _digest(
+            outputs.get("reference"),
+            "evaluation.hashes.mapped_netlists_revalidated.reference",
+        ),
+        "augmented_mapped_netlist_sha256": _digest(
+            outputs.get("augmented"),
+            "evaluation.hashes.mapped_netlists_revalidated.augmented",
+        ),
+    }
+    return _sha256_bytes(_canonical_json(stable_identity)), stable_identity, lineage
+
+
+def _frontier_metric_vector(
+    evaluation: Mapping[str, Any],
+) -> tuple[dict[str, float], dict[str, float], dict[str, str], list[str]]:
+    """Return raw and maximize-normalized pairwise changes for system-owned axes."""
+    policy = _mapping(evaluation.get("metric_policy"), "evaluation.metric_policy")
+    objectives_value = policy.get("objectives")
+    if not isinstance(objectives_value, list) or not objectives_value:
+        raise RoundRequestError("evaluation.metric_policy.objectives must be non-empty")
+    objectives: dict[str, str] = {}
+    for index, item_value in enumerate(objectives_value):
+        item = _mapping(item_value, f"evaluation.metric_policy.objectives[{index}]")
+        metric = _string(item.get("metric"), f"evaluation.metric_policy.objectives[{index}].metric")
+        direction = _string(
+            item.get("direction"),
+            f"evaluation.metric_policy.objectives[{index}].direction",
+        )
+        canonical = _PARETO_DIRECTIONS.get(metric)
+        if canonical is None or direction != canonical:
+            raise RoundRequestError(
+                f"evaluation objective {metric!r} does not use its system-owned direction"
+            )
+        if metric in objectives:
+            raise RoundRequestError(f"evaluation objective repeats {metric}")
+        objectives[metric] = canonical
+
+    raw: dict[str, float] = {}
+    normalized: dict[str, float] = {}
+    directions: dict[str, str] = {}
+    f3_regressions: list[str] = []
+    scenarios = _mapping(evaluation.get("scenarios"), "evaluation.scenarios")
+    for scenario_name in SCENARIOS:
+        scenario = _mapping(scenarios.get(scenario_name), f"evaluation.scenarios.{scenario_name}")
+        if scenario.get("status") != "succeeded":
+            raise RoundRequestError(f"evaluation scenario {scenario_name} did not succeed")
+        reference = _mapping(scenario.get("reference"), f"evaluation.scenarios.{scenario_name}.reference")
+        augmented = _mapping(scenario.get("augmented"), f"evaluation.scenarios.{scenario_name}.augmented")
+        for metric in sorted(objectives):
+            before = _metric(reference, metric)
+            after = _metric(augmented, metric)
+            change = after - before
+            axis = f"{scenario_name}:{metric}"
+            direction = objectives[metric]
+            raw[axis] = change
+            normalized[axis] = change if direction == "maximize" else -change
+            directions[axis] = direction
+            if metric.startswith("F3.") and normalized[axis] < 0.0:
+                f3_regressions.append(axis)
+    return raw, normalized, directions, f3_regressions
+
+
+def _frontier_cost(value: object, name: str) -> dict[str, float | int]:
+    cost = _mapping(value, name)
+    return {
+        "new_library_cells": _integer(
+            cost.get("new_library_cells"), f"{name}.new_library_cells"
+        ),
+        "generation_units": _number(
+            cost.get("generation_units"), f"{name}.generation_units"
+        ),
+    }
+
+
+def _research_question(value: object, name: str) -> dict[str, str]:
+    question = _mapping(value, name)
+    return {
+        "id": _string(question.get("id"), f"{name}.id"),
+        "prompt": _string(question.get("prompt"), f"{name}.prompt"),
+    }
+
+
+def _dominates(left: Mapping[str, float], right: Mapping[str, float]) -> bool:
+    if set(left) != set(right):
+        raise RoundRequestError("frontier metric vectors use different axes")
+    return all(left[name] >= right[name] for name in left) and any(
+        left[name] > right[name] for name in left
+    )
+
+
+def _recomputed_round_facts(evaluation: Mapping[str, Any]) -> dict[str, object]:
+    """Recompute every validation fact; self-declared gates are never authority."""
+    policy = _mapping(evaluation.get("metric_policy"), "evaluation.metric_policy")
+    objectives_value = policy.get("objectives")
+    required_value = policy.get("required_metrics")
+    if not isinstance(objectives_value, list) or not objectives_value:
+        raise RoundRequestError("evaluation metric objectives are missing")
+    if not isinstance(required_value, list) or not required_value:
+        raise RoundRequestError("evaluation required metrics are missing")
+    objectives = []
+    for index, value in enumerate(objectives_value):
+        item = _mapping(value, f"evaluation.metric_policy.objectives[{index}]")
+        metric = _string(item.get("metric"), f"evaluation.metric_policy.objectives[{index}].metric")
+        direction = _string(
+            item.get("direction"), f"evaluation.metric_policy.objectives[{index}].direction"
+        )
+        canonical = _PARETO_DIRECTIONS.get(metric)
+        if canonical is None or canonical != direction:
+            raise RoundRequestError(f"evaluation objective {metric!r} has a noncanonical direction")
+        objectives.append({"metric": metric, "direction": direction})
+    required = [
+        _string(value, f"evaluation.metric_policy.required_metrics[{index}]")
+        for index, value in enumerate(required_value)
+    ]
+
+    scenarios = _mapping(evaluation.get("scenarios"), "evaluation.scenarios")
+    computed_completeness: dict[str, dict[str, object]] = {}
+    computed_pairwise: dict[str, dict[str, object]] = {}
+    f3_regressions = []
+    nominal_non_f0_improvements = []
+    for scenario_name in SCENARIOS:
+        scenario = _mapping(scenarios.get(scenario_name), f"evaluation.scenarios.{scenario_name}")
+        if scenario.get("status") != "succeeded":
+            raise RoundRequestError(f"evaluation scenario {scenario_name} did not succeed")
+        reference = _mapping(scenario.get("reference"), f"evaluation.scenarios.{scenario_name}.reference")
+        augmented = _mapping(scenario.get("augmented"), f"evaluation.scenarios.{scenario_name}.augmented")
+        completeness = {
+            arm: _metric_completeness(metrics, required)
+            for arm, metrics in (("reference", reference), ("augmented", augmented))
+        }
+        completeness["complete"] = all(
+            item["complete"] for item in completeness.values()
+            if isinstance(item, Mapping)
+        )
+        pairwise = _pairwise_relation(reference, augmented, objectives)
+        computed_completeness[scenario_name] = completeness
+        computed_pairwise[scenario_name] = pairwise
+        if scenario.get("metric_completeness") != completeness:
+            raise RoundRequestError(
+                f"evaluation scenario {scenario_name} metric completeness is internally inconsistent"
+            )
+        if scenario.get("pairwise_relation") != pairwise:
+            raise RoundRequestError(
+                f"evaluation scenario {scenario_name} pairwise relation is internally inconsistent"
+            )
+        for comparison in pairwise["comparisons"]:
+            if comparison["metric"].startswith("F3.") and comparison["relation"] == "regressed":
+                f3_regressions.append(f"{scenario_name}:{comparison['metric']}")
+            if (
+                scenario_name == "nominal"
+                and not comparison["metric"].startswith("F0.")
+                and comparison["relation"] == "improved"
+            ):
+                nominal_non_f0_improvements.append(comparison["metric"])
+    complete = all(item["complete"] is True for item in computed_completeness.values())
+    expected_top_completeness = {
+        "by_scenario": computed_completeness,
+        "complete": complete,
+    }
+    if evaluation.get("metric_completeness") != expected_top_completeness:
+        raise RoundRequestError("evaluation top-level metric completeness is internally inconsistent")
+    aggregate_pairwise = _aggregate_pairwise_relation({
+        name: {"pairwise_relation": pairwise}
+        for name, pairwise in computed_pairwise.items()
+    })
+    if evaluation.get("pairwise_relation") != aggregate_pairwise:
+        raise RoundRequestError("evaluation aggregate pairwise relation is internally inconsistent")
+
+    adoption = _mapping(evaluation.get("mapping_adoption"), "evaluation.mapping_adoption")
+    candidate_cells_value = adoption.get("candidate_cells")
+    if (
+        not isinstance(candidate_cells_value, list)
+        or not candidate_cells_value
+        or not all(isinstance(cell, str) and cell for cell in candidate_cells_value)
+        or len(set(candidate_cells_value)) != len(candidate_cells_value)
+    ):
+        raise RoundRequestError("evaluation candidate Cell identities are invalid")
+    candidate_cells = list(candidate_cells_value)
+    reference_adoption = _mapping(adoption.get("reference"), "evaluation.mapping_adoption.reference")
+    augmented_adoption = _mapping(adoption.get("augmented"), "evaluation.mapping_adoption.augmented")
+    reference_census = _mapping(
+        reference_adoption.get("cell_census"), "evaluation.mapping_adoption.reference.cell_census"
+    )
+    augmented_census = _mapping(
+        augmented_adoption.get("cell_census"), "evaluation.mapping_adoption.augmented.cell_census"
+    )
+    for arm_name, census in (("reference", reference_census), ("augmented", augmented_census)):
+        if any(
+            not isinstance(cell, str)
+            or not cell
+            or isinstance(count, bool)
+            or not isinstance(count, int)
+            or count < 0
+            for cell, count in census.items()
+        ):
+            raise RoundRequestError(f"evaluation {arm_name} cell census is invalid")
+    adopted = {
+        cell: int(augmented_census.get(cell, 0))
+        for cell in candidate_cells
+        if augmented_census.get(cell, 0)
+    }
+    leaked = {
+        cell: int(reference_census.get(cell, 0))
+        for cell in candidate_cells
+        if reference_census.get(cell, 0)
+    }
+    candidate_instance_count = sum(adopted.values())
+    if adoption.get("candidate_instances_in_augmented") != dict(sorted(adopted.items())):
+        raise RoundRequestError("evaluation candidate adoption census is internally inconsistent")
+    if adoption.get("candidate_instance_count") != candidate_instance_count:
+        raise RoundRequestError("evaluation candidate instance count is internally inconsistent")
+    if adoption.get("candidate_cells_present_in_reference") != dict(sorted(leaked.items())):
+        raise RoundRequestError("evaluation reference leakage is internally inconsistent")
+    expected_adoption_fraction = len(adopted) / len(candidate_cells)
+    expected_reference_fraction = len(leaked) / len(candidate_cells)
+    for scenario_name in SCENARIOS:
+        scenario = _mapping(scenarios.get(scenario_name), f"evaluation.scenarios.{scenario_name}")
+        reference = _mapping(scenario.get("reference"), f"evaluation.scenarios.{scenario_name}.reference")
+        augmented = _mapping(scenario.get("augmented"), f"evaluation.scenarios.{scenario_name}.augmented")
+        if _metric(reference, "F0.candidate_adoption_fraction") != expected_reference_fraction:
+            raise RoundRequestError(
+                f"evaluation scenario {scenario_name} reference adoption metric is inconsistent"
+            )
+        if _metric(augmented, "F0.candidate_adoption_fraction") != expected_adoption_fraction:
+            raise RoundRequestError(
+                f"evaluation scenario {scenario_name} augmented adoption metric is inconsistent"
+            )
+
+    budget = _mapping(evaluation.get("budgets"), "evaluation.budgets")
+    limits = _mapping(budget.get("limits"), "evaluation.budgets.limits")
+    max_candidate_cells = _integer(
+        limits.get("max_candidate_cells"),
+        "evaluation.budgets.limits.max_candidate_cells",
+        positive=True,
+    )
+    max_augmented_instances = _integer(
+        limits.get("max_augmented_mapped_instances"),
+        "evaluation.budgets.limits.max_augmented_mapped_instances",
+        positive=True,
+    )
+    augmented_instance_count = sum(int(count) for count in augmented_census.values())
+    usage = {
+        "candidate_cells": len(candidate_cells),
+        "augmented_mapped_instances": augmented_instance_count,
+    }
+    violations = []
+    if usage["candidate_cells"] > max_candidate_cells:
+        violations.append("candidate-cell-budget-exceeded")
+    if usage["augmented_mapped_instances"] > max_augmented_instances:
+        violations.append("augmented-instance-budget-exceeded")
+    expected_budget = {
+        "limits": {
+            "max_candidate_cells": max_candidate_cells,
+            "max_augmented_mapped_instances": max_augmented_instances,
+        },
+        "usage": usage,
+        "violations": violations,
+        "within_budget": not violations,
+    }
+    if budget != expected_budget:
+        raise RoundRequestError("evaluation budget status is internally inconsistent")
+
+    reasons = []
+    blockers = []
+    if candidate_instance_count > 0:
+        reasons.append("declared-candidate-adopted-by-open-source-mapper")
+    else:
+        blockers.append("no-declared-candidate-adoption")
+    if leaked:
+        blockers.append("declared-candidate-already-present-in-reference")
+    if complete:
+        reasons.append("required-metric-vectors-complete")
+    else:
+        blockers.append("required-metric-vectors-incomplete")
+    if not violations:
+        reasons.append("evaluation-budgets-satisfied")
+    else:
+        blockers.extend(violations)
+    relation = aggregate_pairwise["relation"]
+    if relation in ("augmented-dominates", "tradeoff"):
+        reasons.append(f"pairwise-relation:{relation}")
+    else:
+        blockers.append(f"pairwise-relation:{relation}")
+    blockers.extend(f"f3-regression:{axis}" for axis in f3_regressions)
+    if nominal_non_f0_improvements:
+        reasons.append(
+            "nominal-non-f0-indicator-improvement:"
+            + ",".join(nominal_non_f0_improvements)
+        )
+    else:
+        blockers.append("no-nominal-non-f0-indicator-improvement")
+    return {
+        "candidate_cells": candidate_cells,
+        "candidate_instance_count": candidate_instance_count,
+        "reference_leakage": dict(sorted(leaked.items())),
+        "metric_complete": complete,
+        "pairwise_relation": aggregate_pairwise,
+        "f3_regressions": f3_regressions,
+        "evaluation_budget": expected_budget,
+        "reasons": reasons,
+        "blockers": blockers,
+    }
+
+
+def _manifest_candidate_cells(
+    manifest_functions: Mapping[str, Mapping[str, Any]], function_keys: Sequence[str]
+) -> list[str]:
+    cells = []
+    for key in sorted(set(function_keys)):
+        row = manifest_functions.get(key)
+        if row is None:
+            continue
+        physical_cells = row.get("physicalCellNames")
+        if (
+            not isinstance(physical_cells, list)
+            or not physical_cells
+            or not all(isinstance(cell, str) and cell for cell in physical_cells)
+            or len(set(physical_cells)) != len(physical_cells)
+        ):
+            raise RoundRequestError(
+                f"library function {key} has no unique physical Cell identity"
+            )
+        cells.extend(physical_cells)
+    if len(set(cells)) != len(cells):
+        raise RoundRequestError("Library manifest repeats a physical Cell identity")
+    return sorted(cells)
+
+
+def evaluate_frontier(request: Mapping[str, object]) -> dict[str, object]:
+    """Maintain the hash-bound cross-round Pareto frontier for one Library.
+
+    The interface consumes completed ``lfr-round-evaluation/3`` observations.
+    It never predicts F4 commercial QoR.  A positive validation candidate only
+    means that one surviving frontier member is worth one commercial observation.
+    """
+    request_sha256 = _sha256_bytes(_canonical_json(request))
+    try:
+        if request.get("schema") != FRONTIER_REQUEST_SCHEMA:
+            raise RoundRequestError(f"schema must be {FRONTIER_REQUEST_SCHEMA!r}")
+        manifest = _mapping(request.get("library_manifest"), "library_manifest")
+        try:
+            validate_cumulative_manifest(dict(manifest))
+        except ValueError as error:
+            raise RoundRequestError(str(error)) from error
+        manifest_sha256 = _digest(
+            request.get("library_manifest_sha256"), "library_manifest_sha256"
+        )
+        observed_manifest_sha256 = _sha256_bytes(_canonical_json(manifest))
+        if manifest_sha256 != observed_manifest_sha256:
+            raise RoundRequestError(
+                "library_manifest_sha256 does not bind the supplied cumulative manifest"
+            )
+        manifest_functions = {
+            row["functionKey"]: row for row in manifest["functions"]  # type: ignore[index]
+        }
+
+        budgets_value = _mapping(request.get("budgets"), "budgets")
+        budgets = {
+            "max_rounds": _integer(budgets_value.get("max_rounds"), "budgets.max_rounds", positive=True),
+            "max_new_library_cells": _integer(
+                budgets_value.get("max_new_library_cells"),
+                "budgets.max_new_library_cells",
+                positive=True,
+            ),
+            "max_generation_units": _number(
+                budgets_value.get("max_generation_units"),
+                "budgets.max_generation_units",
+                positive=True,
+            ),
+            "plateau_rounds": _integer(
+                budgets_value.get("plateau_rounds"), "budgets.plateau_rounds", positive=True
+            ),
+        }
+        rounds_value = request.get("rounds")
+        if not isinstance(rounds_value, list) or not rounds_value:
+            raise RoundRequestError("rounds must be a non-empty array")
+        next_question_value = request.get("next_residual_question")
+        next_question = (
+            None if next_question_value is None
+            else _research_question(next_question_value, "next_residual_question")
+        )
+
+        rows: list[dict[str, Any]] = []
+        active: list[dict[str, Any]] = []
+        seen_round_ids: set[str] = set()
+        seen_function_keys: dict[str, str] = {}
+        seen_question_ids: set[str] = set()
+        stable_sha256: str | None = None
+        stable_identity: dict[str, object] | None = None
+        accepted_lineage: dict[str, dict[str, Any]] = {}
+        accepted_round_ids: list[str] = []
+        accepted_question_ids: set[str] = set()
+        accepted_cost = {"new_library_cells": 0, "generation_units": 0.0}
+        objective_axes: set[str] | None = None
+        metric_directions: dict[str, str] = {}
+        cumulative_cost = {"new_library_cells": 0, "generation_units": 0.0}
+        trailing_no_progress = 0
+
+        for index, round_value in enumerate(rounds_value):
+            round_input = _mapping(round_value, f"rounds[{index}]")
+            round_id = _string(round_input.get("round_id"), f"rounds[{index}].round_id")
+            if round_id in seen_round_ids:
+                raise RoundRequestError(f"rounds repeats round_id {round_id!r}")
+            seen_round_ids.add(round_id)
+            question = _research_question(
+                round_input.get("research_question"), f"rounds[{index}].research_question"
+            )
+            cost = _frontier_cost(round_input.get("library_cost"), f"rounds[{index}].library_cost")
+            cumulative_cost = {
+                "new_library_cells": cumulative_cost["new_library_cells"] + cost["new_library_cells"],
+                "generation_units": cumulative_cost["generation_units"] + cost["generation_units"],
+            }
+            function_keys_value = round_input.get("function_keys")
+            if not isinstance(function_keys_value, list) or not function_keys_value:
+                raise RoundRequestError(f"rounds[{index}].function_keys must be non-empty")
+            function_keys = [
+                _string(value, f"rounds[{index}].function_keys[{key_index}]")
+                for key_index, value in enumerate(function_keys_value)
+            ]
+            reasons: list[str] = []
+            if len(set(function_keys)) != len(function_keys):
+                reasons.append("duplicate-function-identity-within-round")
+            missing = sorted(set(function_keys) - set(manifest_functions))
+            if missing:
+                reasons.append("function-identity-not-in-library-manifest:" + ",".join(missing))
+            duplicates = sorted(key for key in function_keys if key in seen_function_keys)
+            if duplicates:
+                reasons.extend(
+                    f"duplicate-function-identity:{key}:first-seen-in:{seen_function_keys[key]}"
+                    for key in duplicates
+                )
+            if cost["new_library_cells"] < len(set(function_keys)):
+                reasons.append("new-library-cell-cost-below-function-count")
+            if index + 1 > budgets["max_rounds"]:
+                reasons.append("round-budget-overshoot")
+            if cumulative_cost["new_library_cells"] > budgets["max_new_library_cells"]:
+                reasons.append("new-library-cell-budget-overshoot")
+            if cumulative_cost["generation_units"] > budgets["max_generation_units"]:
+                reasons.append("generation-unit-budget-overshoot")
+
+            row: dict[str, Any] = {
+                "round_id": round_id,
+                "research_question": question,
+                "function_keys": sorted(set(function_keys)),
+                "library_cost": cost,
+                "cumulative_library_cost": dict(cumulative_cost),
+                "status": "rejected" if reasons else "pending",
+                "reasons": reasons,
+            }
+            verified_identity = False
+            try:
+                evaluation = _verified_evaluation_payload(
+                    round_input.get("evaluation"), f"rounds[{index}].evaluation"
+                )
+                row["evaluation_payload_sha256"] = evaluation["evaluation_payload_sha256"]
+                row["round_request_sha256"] = _digest(
+                    evaluation.get("request_sha256"),
+                    f"rounds[{index}].evaluation.request_sha256",
+                )
+                expected_candidate_cells = _manifest_candidate_cells(
+                    manifest_functions, function_keys
+                )
+                recomputed = _recomputed_round_facts(evaluation)
+                if sorted(recomputed["candidate_cells"]) != expected_candidate_cells:
+                    row["reasons"].append("candidate-cell-function-identity-mismatch")
+                if cost["new_library_cells"] < len(expected_candidate_cells):
+                    row["reasons"].append("new-library-cell-cost-below-physical-cell-count")
+                current_stable_sha256, current_stable, lineage = _evaluation_identities(evaluation)
+                row["lineage"] = lineage
+                raw, normalized, directions, f3_regressions = _frontier_metric_vector(evaluation)
+                current_axes = set(normalized)
+                normalized["cost.cumulative_new_library_cells"] = -cumulative_cost["new_library_cells"]
+                normalized["cost.cumulative_generation_units"] = -cumulative_cost["generation_units"]
+                raw["cost.cumulative_new_library_cells"] = cumulative_cost["new_library_cells"]
+                raw["cost.cumulative_generation_units"] = cumulative_cost["generation_units"]
+                row["metric_changes"] = raw
+                row["normalized_vector"] = normalized
+                if sorted(f3_regressions) != sorted(recomputed["f3_regressions"]):
+                    row["reasons"].append("recomputed-f3-regression-disagreement")
+                row["f3_regressions"] = recomputed["f3_regressions"]
+                if recomputed["metric_complete"] is not True:
+                    row["reasons"].append("required-metric-vectors-incomplete")
+                if recomputed["candidate_instance_count"] <= 0:
+                    row["reasons"].append("no-declared-candidate-adoption")
+                if recomputed["reference_leakage"]:
+                    row["reasons"].append("declared-candidate-already-present-in-reference")
+                evaluation_budget = recomputed["evaluation_budget"]
+                if evaluation_budget["violations"]:
+                    row["reasons"].extend(
+                        f"evaluation-budget-overshoot:{reason}"
+                        for reason in evaluation_budget["violations"]
+                    )
+                row["round_gate_reasons"] = recomputed["reasons"]
+                row["round_gate_blockers"] = recomputed["blockers"]
+                row["f3_metrics_present"] = {
+                    metric for metric in directions if ":F3." in metric
+                } == {
+                    f"{scenario}:{metric}"
+                    for scenario in SCENARIOS
+                    for metric in (
+                        "F3.worst_delay_indicator_ps",
+                        "F3.negative_slack_mass_indicator_ps",
+                    )
+                }
+                row["f2_structural_improvement"] = any(
+                    value > 0.0 and ":F2." in axis
+                    for axis, value in normalized.items()
+                )
+                if not row["reasons"]:
+                    if stable_sha256 is not None and current_stable_sha256 != stable_sha256:
+                        row["reasons"].append("stable-experiment-identity-mismatch")
+                    if objective_axes is not None and current_axes != objective_axes:
+                        row["reasons"].append("objective-axis-set-mismatch")
+                if not row["reasons"]:
+                    parent_value = round_input.get("parent_round")
+                    parent = None
+                    if parent_value is not None:
+                        parent_spec = _mapping(
+                            parent_value, f"rounds[{index}].parent_round"
+                        )
+                        parent_id = _string(
+                            parent_spec.get("round_id"),
+                            f"rounds[{index}].parent_round.round_id",
+                        )
+                        parent_hash = _digest(
+                            parent_spec.get("evaluation_sha256"),
+                            f"rounds[{index}].parent_round.evaluation_sha256",
+                        )
+                        parent = accepted_lineage.get(parent_id)
+                        if parent is None:
+                            row["reasons"].append("parent-round-is-not-accepted")
+                        elif parent["evaluation_payload_sha256"] != parent_hash:
+                            row["reasons"].append("parent-round-evaluation-hash-mismatch")
+                    elif accepted_round_ids:
+                        parent = accepted_lineage[accepted_round_ids[-1]]
+                    if parent is not None and not row["reasons"]:
+                        parent_lineage = parent["lineage"]
+                        if (
+                            lineage["reference_library_sha256"]
+                            != parent_lineage["augmented_library_sha256"]
+                        ):
+                            row["reasons"].append("reference-library-lineage-mismatch")
+                        if (
+                            lineage["reference_mapped_netlist_sha256"]
+                            != parent_lineage["augmented_mapped_netlist_sha256"]
+                        ):
+                            row["reasons"].append("reference-netlist-lineage-mismatch")
+                        row["parent_round"] = {
+                            "round_id": parent["round_id"],
+                            "evaluation_sha256": parent["evaluation_payload_sha256"],
+                        }
+                    elif not accepted_round_ids and parent_value is not None:
+                        row["reasons"].append("first-accepted-round-cannot-declare-a-parent")
+                if not row["reasons"]:
+                    if stable_sha256 is None:
+                        stable_sha256 = current_stable_sha256
+                        stable_identity = current_stable
+                    if objective_axes is None:
+                        objective_axes = current_axes
+                    metric_directions.update(directions)
+                    for cost_name, direction in _COST_DIRECTIONS.items():
+                        metric_directions[cost_name] = direction
+                    verified_identity = True
+            except (RoundRequestError, KeyError, TypeError, ValueError) as error:
+                row["reasons"].append("invalid-round-evaluation:" + str(error))
+
+            seen_question_ids.add(question["id"])
+            if verified_identity:
+                for key in function_keys:
+                    seen_function_keys.setdefault(key, round_id)
+            if row["reasons"]:
+                row["status"] = "rejected"
+                rows.append(row)
+                continue
+
+            accepted_lineage[round_id] = row
+            accepted_round_ids.append(round_id)
+            accepted_question_ids.add(question["id"])
+            accepted_cost = {
+                "new_library_cells": accepted_cost["new_library_cells"] + cost["new_library_cells"],
+                "generation_units": accepted_cost["generation_units"] + cost["generation_units"],
+            }
+
+            equal = next(
+                (member for member in active
+                 if member["normalized_vector"] == row["normalized_vector"]),
+                None,
+            )
+            dominators = [
+                member for member in active
+                if _dominates(member["normalized_vector"], row["normalized_vector"])
+            ]
+            if equal is not None:
+                row["status"] = "dominated"
+                row["reasons"].append(f"equivalent-metric-vector:{equal['round_id']}")
+                trailing_no_progress += 1
+            elif dominators:
+                row["status"] = "dominated"
+                row["reasons"].extend(
+                    f"pareto-dominated-by:{member['round_id']}" for member in dominators
+                )
+                trailing_no_progress += 1
+            else:
+                displaced = [
+                    member for member in active
+                    if _dominates(row["normalized_vector"], member["normalized_vector"])
+                ]
+                for member in displaced:
+                    member["status"] = "dominated"
+                    member["reasons"].append(f"pareto-dominated-by:{round_id}")
+                    active.remove(member)
+                row["status"] = "frontier"
+                active.append(row)
+                trailing_no_progress = 0
+            rows.append(row)
+
+        budget_reasons = []
+        budget_violations = []
+        if len(rounds_value) >= budgets["max_rounds"]:
+            budget_reasons.append("round-budget-exhausted")
+        if len(rounds_value) > budgets["max_rounds"]:
+            budget_violations.append("round-budget-overshoot")
+        if cumulative_cost["new_library_cells"] >= budgets["max_new_library_cells"]:
+            budget_reasons.append("new-library-cell-budget-exhausted")
+        if cumulative_cost["new_library_cells"] > budgets["max_new_library_cells"]:
+            budget_violations.append("new-library-cell-budget-overshoot")
+        if cumulative_cost["generation_units"] >= budgets["max_generation_units"]:
+            budget_reasons.append("generation-unit-budget-exhausted")
+        if cumulative_cost["generation_units"] > budgets["max_generation_units"]:
+            budget_violations.append("generation-unit-budget-overshoot")
+        stop_reasons = list(budget_reasons)
+        converged = trailing_no_progress >= budgets["plateau_rounds"]
+        if converged:
+            stop_reasons.append("pareto-frontier-plateau")
+        if next_question is None or next_question["id"] in seen_question_ids:
+            stop_reasons.append("no-new-residual-question")
+            next_question = None
+        should_stop = bool(stop_reasons)
+        eligible_stop_reasons = []
+        if len(accepted_round_ids) >= budgets["max_rounds"]:
+            eligible_stop_reasons.append("accepted-round-budget-exhausted")
+        if accepted_cost["new_library_cells"] >= budgets["max_new_library_cells"]:
+            eligible_stop_reasons.append("accepted-library-cell-budget-exhausted")
+        if accepted_cost["generation_units"] >= budgets["max_generation_units"]:
+            eligible_stop_reasons.append("accepted-generation-unit-budget-exhausted")
+        if converged:
+            eligible_stop_reasons.append("pareto-frontier-plateau")
+        requested_next_question = request.get("next_residual_question")
+        if requested_next_question is None:
+            eligible_stop_reasons.append("no-new-residual-question")
+        elif isinstance(requested_next_question, Mapping):
+            requested_next_id = requested_next_question.get("id")
+            if requested_next_id in accepted_question_ids:
+                eligible_stop_reasons.append("no-new-residual-question")
+
+        selected = None
+        selected_reasons: list[str] = []
+        selected_blockers: list[str] = []
+        for row in reversed(rows):
+            blockers = list(row.get("round_gate_blockers", []))
+            blockers.extend(f"f3-regression:{axis}" for axis in row.get("f3_regressions", []))
+            if row.get("f3_metrics_present") is not True:
+                blockers.append("required-f3-frontier-indicators-missing")
+            if row.get("f2_structural_improvement") is not True:
+                blockers.append("no-f2-structural-indicator-improvement")
+            if row["status"] != "frontier":
+                blockers.append("not-a-current-frontier-member")
+            if not should_stop:
+                blockers.append("research-loop-has-not-reached-a-stop-condition")
+            if not eligible_stop_reasons:
+                blockers.append("no-accepted-round-stop-condition")
+            if budget_violations:
+                blockers.extend(
+                    f"frontier-{reason}" for reason in budget_violations
+                )
+            blockers = list(dict.fromkeys(blockers))
+            row["validation_blockers"] = blockers
+            if not blockers and selected is None:
+                selected = row
+                selected_reasons = list(row.get("round_gate_reasons", [])) + [
+                    "verified-cross-round-pareto-frontier-member",
+                    "research-stop-condition-reached",
+                ]
+                break
+            if row["status"] == "frontier" and not selected_blockers:
+                selected_blockers = blockers
+
+        candidate = {
+            "value": selected is not None,
+            "round_id": selected["round_id"] if selected is not None else None,
+            "meaning": "worth one commercial QoR observation; never an expected-benefit claim",
+            "reasons": selected_reasons,
+            "blocking_reasons": [] if selected is not None else (
+                selected_blockers or ["no-eligible-frontier-member"]
+            ),
+        }
+        for row in rows:
+            row["commercial_validation_candidate"] = {
+                "value": selected is row,
+                "meaning": candidate["meaning"],
+                "reasons": selected_reasons if selected is row else [],
+                "blocking_reasons": row.get(
+                    "validation_blockers", ["not-evaluated-for-commercial-validation"]
+                ),
+            }
+
+        portfolio_members = [{
+            "id": row["round_id"],
+            "round_id": row["round_id"],
+            "evaluation_sha256": row["evaluation_payload_sha256"],
+            "metric_vector": row["metric_changes"],
+            "function_keys": row["function_keys"],
+            "library_cost": row["cumulative_library_cost"],
+            "status": row["status"],
+            "reasons": row["reasons"],
+        } for row in rows if "normalized_vector" in row and row["status"] != "rejected"]
+        frontier_member_ids = [
+            row["round_id"] for row in rows if row["status"] == "frontier"
+        ]
+
+        result: dict[str, object] = {
+            "schema": FRONTIER_RESULT_SCHEMA,
+            "status": "succeeded",
+            "request_sha256": request_sha256,
+            "evidence_class": "license-free-cross-round-frontier",
+            "claim_limits": {
+                "commercial_qor_predicted": False,
+                "fmax_predicted": False,
+                "commercial_eda_executed": False,
+            },
+            "library_manifest": {
+                "sha256": manifest_sha256,
+                "function_count": len(manifest_functions),
+                "shard_count": len(manifest["shards"]),  # type: ignore[index]
+            },
+            "stable_identity": {
+                "sha256": stable_sha256,
+                "facts": stable_identity,
+            },
+            "reference_identity": {
+                "sha256": stable_sha256,
+                "facts": stable_identity,
+            },
+            "metric_directions": dict(sorted(metric_directions.items())),
+            "objectives": [
+                {"metric": metric, "direction": direction}
+                for metric, direction in sorted(metric_directions.items())
+            ],
+            "members": portfolio_members,
+            "frontier_member_ids": frontier_member_ids,
+            "library_cost": dict(cumulative_cost),
+            "rounds": rows,
+            "frontier": {
+                "member_round_ids": frontier_member_ids,
+                "dominated_round_ids": [row["round_id"] for row in rows if row["status"] == "dominated"],
+                "rejected_round_ids": [row["round_id"] for row in rows if row["status"] == "rejected"],
+            },
+            "budgets": {
+                "limits": budgets,
+                "usage": {
+                    "rounds": len(rounds_value),
+                    **cumulative_cost,
+                },
+                "accepted_usage": {
+                    "rounds": len(accepted_round_ids),
+                    **accepted_cost,
+                },
+                "exhausted": bool(budget_reasons),
+                "reasons": budget_reasons,
+                "violations": budget_violations,
+            },
+            "convergence": {
+                "trailing_rounds_without_frontier_progress": trailing_no_progress,
+                "plateau_rounds": budgets["plateau_rounds"],
+                "plateau": converged,
+            },
+            "stopping": {
+                "should_stop": should_stop,
+                "reasons": stop_reasons,
+                "commercial_gate_eligible_reasons": eligible_stop_reasons,
+            },
+            "next_residual_question": next_question,
+            "commercial_validation_candidate": candidate,
+        }
+        result["frontier_payload_sha256"] = _sha256_bytes(_canonical_json(result))
+        return result
+    except (RoundRequestError, KeyError, TypeError, ValueError) as error:
+        result = {
+            "schema": FRONTIER_RESULT_SCHEMA,
+            "status": "failed",
+            "stage": "frontier-request",
+            "request_sha256": request_sha256,
+            "error": {"code": "invalid-frontier-request", "message": str(error)},
+            "evidence_class": "license-free-cross-round-frontier",
+        }
+        result["frontier_payload_sha256"] = _sha256_bytes(_canonical_json(result))
+        return result
+
+
 def _hashes(
     validated: Mapping[str, Any], mapping_result: Mapping[str, Any], artifacts: Mapping[str, Any]
 ) -> dict[str, object]:
     return {
         "validated_inputs": validated["bound_inputs"],
+        "local_portfolio": validated["local_portfolio"]["source"],
         "mapping_request_sha256": mapping_result["request_sha256"],
         "invariant_mapping_plan_sha256": mapping_result["script_audit"]["invariant_plan_sha256"],
         "tools": {
@@ -886,6 +2100,7 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
                 adoptions,
                 validated["candidate_cells"],
                 validated["metric_policy"],
+                validated["local_portfolio"],
             )
             for name in SCENARIOS
         }
@@ -912,6 +2127,12 @@ def evaluate_round(request: Mapping[str, object]) -> dict[str, object]:
                 "commercial_eda_executed": False,
             },
             "hashes": _hashes(validated, mapping_result, artifacts),
+            "local_portfolio": {
+                "source": validated["local_portfolio"]["source"],
+                "selected_candidate_ids": validated["local_portfolio"]["selected_candidate_ids"],
+                "evidence_layer": "F1_local_structure",
+                "status": "PRE_MAPPING_PLANNING",
+            },
             "mapping_adoption": adoption,
             "metric_policy": validated["metric_policy"],
             "budgets": budget_status,

@@ -5,7 +5,44 @@ import sys
 
 FLOW = Path(sys.argv[1]).resolve() / "flow"
 sys.path.insert(0, str(FLOW))
-from ai_research_runner import run  # noqa: E402
+from ai_research_runner import run, run_residual_research  # noqa: E402
+
+
+def residual_research(context):
+    """Address exactly the hash-bound residual question with bounded pure code.
+
+    ``context`` is intentionally compact.  It contains the current F0-F3
+    indicator vectors and pairwise relation, a runner-verified cross-round
+    Pareto frontier, the cumulative Library state/failures and cost, and one
+    explicit ``next_residual_question``.  It never contains an expected
+    commercial gain or a request to predict DC/Innovus QoR.
+
+    Return exactly::
+
+      {"research_lenses": [
+         {"name": str, "question": str,
+          "evidence_sha256": [str, ...],
+          "target_metric_layers": ["F0" | "F1" | "F2" | "F3", ...]}, ...],
+       "candidate_program": {
+         "language": "python", "entrypoint": "propose_candidates",
+         "source": "def propose_candidates(residual, budget): ..."},
+       "stop_reason": str}
+
+    The candidate program is a pure proposal function.  It receives residual
+    data and the deterministic budget object, performs no file/process/network I/O,
+    and returns an array of
+    ``{"lens": str, "transformation": object, "rationale": str}`` without
+    assigning persistent identity. The deterministic runner executes it once
+    in an isolated, resource-limited Python subprocess and revalidates the JSON.
+    The runner owns hashes, schema, identity and budget; this function cannot
+    launch commercial EDA or write Judge facts.
+
+    When ``context.candidate_pool.proposals`` is non-empty, every returned
+    transformation must select one of its ``proposal_key`` values. The runner
+    resolves that key to the immutable production generation request after the
+    model process exits; the model never reads or assigns its candidate ID.
+    """
+    raise NotImplementedError("Author one data-dependent residual research turn here")
 
 
 def research(candidates, context):
@@ -17,11 +54,12 @@ def research(candidates, context):
     ``implementation_route`` aliases. The original ``discovery_evidence`` and
     ``generator_contract`` remain available for deeper inspection. context contains
     the AES-independent design identity, explicit
-    reg2reg pressure, source phase, current and target gain, the new-Cell slot budget,
+    reg2reg pressure, source phase, the new-Cell slot budget,
     retained adopted Cells and prior synthesis/adoption feedback. Timing-driven evidence
     includes sampled path ranks, actual delay, normalized beginpoint/endpoint families,
     timing-family support, worst covered slack and a mechanically derived theoretical
-    Fmax upper bound.
+    path-delay screening bound. This is the legacy Campaign adapter; new
+    Library-richness work uses ``residual_research`` and F0-F3 indicators.
 
     Return exactly:
       {"hypotheses": [{"name": str, "question": str, "signals": [str, ...]}, ...],
@@ -38,4 +76,7 @@ def research(candidates, context):
 
 
 if __name__ == "__main__":
-    run(research, sys.argv)
+    if len(sys.argv) == 4 and sys.argv[1] == "--lfr-residual":
+        run_residual_research(residual_research, sys.argv[2], sys.argv[3])
+    else:
+        run(research, sys.argv)

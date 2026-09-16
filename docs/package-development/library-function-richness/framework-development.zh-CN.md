@@ -419,8 +419,7 @@ Phase 2 继续使用仓库 L0～L5：
 
 ## 10. 当前开发前沿
 
-当前前沿是 **LFR-FW-07**：把已完成的多指标 influence/portfolio 和累计 Library 生命周期接入
-compact AI residual research，维护跨候选、跨轮次 frontier，并完成 held-out RTL 与第二梯队模型
-验证。FW-01～06 已建立真实工具、AES F0/F2/F3～F4 对照和确定性 portfolio 基础；这些数据不解释
-成收益预测精度。新的完整 DC/APR Campaign 不计作 Framework 进展，直到 FW-07/08 证明指标体系
-能够稳定推进 frontier 并形成值得观察的候选。
+当前前沿是 **LFR-PACK-01**。FW-08 已批准当前已冻结 Framework 进入 HimaPack integration；下一步
+只更新既有 `INTENT.md` 与 `SPEC.md` 来准确表达 F0～F4、pairwise/frontier、累计 Library 和 AI residual
+research，不重新实现 Framework。商业 DC/APR 仍不是当前开发手段，直到 Pack 测试链到达声明的
+matched observation 门。

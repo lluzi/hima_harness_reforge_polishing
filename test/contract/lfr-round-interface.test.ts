@@ -10,6 +10,11 @@ const repoRoot = path.resolve(import.meta.dirname, '../..');
 const entrypoint = path.join(
   repoRoot, 'packs/custom-cell-fmax-dtco/flow/library_richness.py',
 );
+const candidateCell = 'XS_PORTFOLIO_ROUNDTRIP_A2_SINGLE_0001_Y';
+const productionPortfolio = path.join(
+  repoRoot,
+  'packs/custom-cell-fmax-dtco/flow/domain/tests/fixtures/lfr-pre-mapping-portfolio.production.json',
+);
 
 function sha256(value: Buffer | string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -78,7 +83,7 @@ function library(name: string, includeFast: boolean, fastDelay = 0.10): string {
       }
     }
   }
-  ${includeFast ? `cell (FAST) {
+  ${includeFast ? `cell (${candidateCell}) {
     pin (A) {
       direction : input;
       capacitance : 0.01;
@@ -131,7 +136,7 @@ augmented='augmented' in script
 if augmented:
  netlist=('module top(input clk,input seed,output observed);\\n'
           '  DFF launch (.D(seed), .CK(clk), .Q(q0));\\n'
-          '  FAST logic0 (.A(q0), .Y(n0));\\n'
+          '  ${candidateCell} logic0 (.A(q0), .Y(n0));\\n'
           '  DFF capture (.D(n0), .CK(clk), .Q(observed));\\n'
           'endmodule\\n')
  count=3
@@ -166,7 +171,7 @@ print('UC Berkeley ABC round fixture')
       },
       libraries: {
         reference: { mapping: reference, support: [], drive_variants: { BUF: 'X1' } },
-        augmented: { mapping: selectedAugmented, support: [], drive_variants: { BUF: 'X1', FAST: 'X1' } },
+        augmented: { mapping: selectedAugmented, support: [], drive_variants: { BUF: 'X1', [candidateCell]: 'X1' } },
       },
       constraints: {
         delay_target_ps: 150,
@@ -175,6 +180,8 @@ print('UC Berkeley ABC round fixture')
         sdc_files: [],
       },
     };
+    const portfolio = JSON.parse(await readFile(productionPortfolio, 'utf8'));
+    const selected = portfolio.selected[0];
     return {
       schema: 'lfr-round/3',
       mapping,
@@ -183,7 +190,17 @@ print('UC Berkeley ABC round fixture')
         [reference]: await fileSha256(reference),
         [selectedAugmented]: await fileSha256(selectedAugmented),
       },
-      candidate_cells: ['FAST'],
+      candidate_cells: [candidateCell],
+      candidate_functions: [{
+        candidate_id: selected.candidate_id,
+        candidate_cells: [candidateCell],
+        identity: selected.identity,
+        selected: true,
+      }],
+      local_portfolio: {
+        path: productionPortfolio,
+        sha256: await fileSha256(productionPortfolio),
+      },
       timing: { clock_period_ps: 150, uncertainty_ps: 0 },
       scenarios: {
         optimistic: { initial_slew_ps: 8, wire_capacitance_in_library_units: 0 },
@@ -193,6 +210,7 @@ print('UC Berkeley ABC round fixture')
       metric_policy: {
         objectives: [
           { metric: 'F0.candidate_adoption_fraction', direction: 'maximize' },
+          { metric: 'F1.levels_removed', direction: 'maximize' },
           { metric: 'F2.mapped_instance_count', direction: 'minimize' },
           { metric: 'F2.buffer_inverter_pressure_ratio', direction: 'minimize' },
           { metric: 'F3.worst_delay_indicator_ps', direction: 'minimize' },
@@ -259,6 +277,15 @@ test('LFR round interface binds evidence, evaluates paired reg2reg timing, and f
   assert.equal(accepted.result.mapping_adoption.candidate_instance_count, 1);
   assert.equal(accepted.result.scenarios.nominal.reference.F0.candidate_adoption_fraction, 0);
   assert.equal(accepted.result.scenarios.nominal.augmented.F0.candidate_adoption_fraction, 1);
+  assert.equal(accepted.result.scenarios.nominal.reference.F1.levels_removed, 0);
+  assert.equal(accepted.result.scenarios.nominal.augmented.F1.levels_removed, 1);
+  assert.equal(accepted.result.scenarios.nominal.augmented.F1.nodes_removed, 1);
+  assert.equal(accepted.result.scenarios.nominal.augmented.F1.edges_removed, 1);
+  assert.equal(accepted.result.scenarios.nominal.augmented.F1.cut_width_max, 3);
+  assert.equal(accepted.result.scenarios.nominal.augmented.F1.dominator_endpoint_coverage, 1);
+  assert.equal(accepted.result.scenarios.nominal.augmented.F1.overlap_ratio, 0);
+  assert.equal(accepted.result.scenarios.nominal.augmented.F1.new_library_cells, 1);
+  assert.equal(accepted.result.scenarios.nominal.changes['F1.levels_removed'], 1);
   assert.equal(accepted.result.scenarios.nominal.reference.F2.mapped_instance_count, 4);
   assert.equal(accepted.result.scenarios.nominal.augmented.F2.mapped_instance_count, 3);
   assert.equal(accepted.result.scenarios.nominal.reference.F2.max_logic_level, 2);
@@ -290,6 +317,7 @@ test('LFR round interface binds evidence, evaluates paired reg2reg timing, and f
   assert.equal(accepted.result.objective, undefined);
   assert.equal(accepted.result.exit_ready, undefined);
   assert.match(accepted.result.hashes.tools.yosys, /^[0-9a-f]{64}$/);
+  assert.equal(accepted.result.hashes.local_portfolio.sha256, await fileSha256(productionPortfolio));
   assert.match(accepted.result.hashes.outputs.reference.mapped_netlist, /^[0-9a-f]{64}$/);
   assert.match(accepted.result.evaluation_payload_sha256, /^[0-9a-f]{64}$/);
 
@@ -323,6 +351,32 @@ test('LFR rejects a caller direction that reverses canonical metric meaning', as
   assert.equal(reversed.result.stage, 'request');
   assert.equal(reversed.result.error.code, 'invalid-request');
   assert.match(reversed.result.error.message, /system-owned canonical direction 'minimize'/);
+});
+
+test('LFR rejects missing, hash-mismatched, or identity-inconsistent local F1 evidence before mapping', async (t) => {
+  const held = await fixture();
+  t.after(() => rm(held.root, { recursive: true, force: true }));
+
+  const missing: any = await held.request(path.join(held.root, 'missing-f1-mapping'));
+  delete missing.local_portfolio;
+  const missingResult = await run(missing, held.root, 'missing-f1');
+  assert.equal(missingResult.completed.status, 2);
+  assert.equal(missingResult.result.stage, 'request');
+  assert.match(missingResult.result.error.message, /local_portfolio must be an object/);
+
+  const wrongHash: any = await held.request(path.join(held.root, 'bad-f1-hash-mapping'));
+  wrongHash.local_portfolio.sha256 = '0'.repeat(64);
+  const hashResult = await run(wrongHash, held.root, 'bad-f1-hash');
+  assert.equal(hashResult.completed.status, 2);
+  assert.equal(hashResult.result.stage, 'request');
+  assert.match(hashResult.result.error.message, /local_portfolio hash mismatch/);
+
+  const wrongIdentity: any = await held.request(path.join(held.root, 'bad-f1-identity-mapping'));
+  wrongIdentity.candidate_functions[0].identity.function_class = 'NPN:k2:0x0';
+  const identityResult = await run(wrongIdentity, held.root, 'bad-f1-identity');
+  assert.equal(identityResult.completed.status, 2);
+  assert.equal(identityResult.result.stage, 'request');
+  assert.match(identityResult.result.error.message, /function identity mismatch/);
 });
 
 test('LFR blocks commercial validation when F2 improves but an F3 indicator regresses', async (t) => {
