@@ -352,4 +352,12 @@ export const HIMA_STYLE = `
 .hima-settings h3{margin:0 0 var(--hima-sp-2);font-size:var(--hima-fs-title);font-weight:600}
 .hima-settings-sites{display:flex;flex-direction:column;gap:var(--hima-sp-2)}
 .hima-settings-row{display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap;padding:var(--hima-sp-1) 0}
+.hima-settings-packs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--hima-sp-1)}
+
+/* Every mount that reaches for these three since before this task existed to give them a rule
+   (review MINOR, task 8): mono for raw ids and hashes, muted for the secondary ink, small for the
+   label step everywhere a caption or a sentence beside a fact is not the body's own size. */
+.hima-mono{font-family:var(--hima-font-mono);font-size:var(--hima-fs-label)}
+.hima-muted{color:var(--hima-ink-2)}
+.hima-small{font-size:var(--hima-fs-label);color:var(--hima-ink-2)}
 `;

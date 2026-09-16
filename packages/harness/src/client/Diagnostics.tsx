@@ -19,6 +19,7 @@ export interface DiagnosticsProps {
   readonly acting: Acting;
   /** When `view` was last read successfully — the sheet's own "last Ledger read" line. */
   readonly readAt?: number;
+  openOwner(id: string): void;
   onClose(): void;
 }
 
@@ -26,15 +27,19 @@ type ConfirmKey = 'diagnostics-pause' | 'diagnostics-stop';
 
 const shortTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-export function Diagnostics({ view, isOwner, acting, readAt, onClose }: DiagnosticsProps): ReactElement {
+export function Diagnostics({ view, isOwner, acting, readAt, openOwner, onClose }: DiagnosticsProps): ReactElement {
   const [confirming, setConfirming] = useState<ConfirmKey>();
 
-  // Escape closes the sheet; `stopPropagation` so an outer Escape handler (the node card's own) does
-  // not also react to the same key press this sheet already took.
+  // Escape closes the sheet. Bound to `document` — one step further in than `window`, which is where
+  // the node card's own Escape handler binds — with `stopImmediatePropagation`: a plain
+  // `stopPropagation` call from a listener does not stop *other* listeners already bound to that
+  // same target from also firing (it only stops the event walking further up the tree), so if this
+  // sheet's own handler were on `window` beside the node card's, both would react to one key press.
+  // The sheet is the topmost surface open; only it should close on this Escape.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopImmediatePropagation(); onClose(); } };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); };
   }, [onClose]);
 
   const run = view?.run;
@@ -79,8 +84,15 @@ export function Diagnostics({ view, isOwner, acting, readAt, onClose }: Diagnost
           <p className="hima-small">Last Ledger read: {readAt === undefined ? 'never' : shortTime(readAt)}</p>
           <pre className="hima-diagnostics-line">{line ?? NO_JOB_LINE}</pre>
           {isOwner ? null : (
-            <div className="hima-diagnostics-emergency" data-hima-region="diagnostics-emergency">
+            // Same shape as the node card's own non-owner footer (`NodeCard.tsx`): a disclosed
+            // "Emergency" carrying only the human-origin Pause/Stop ADR-0008 allows, behind the same
+            // confirms, through the same `acting` the caller built with `useRunActions`.
+            <details className="hima-node-card-emergency" data-hima-region="emergency">
+              <summary>Emergency</summary>
               <p className="hima-node-card-owner">Owned by Campaign Agent{control?.owner === undefined ? '' : ` ${control.owner.slice(-6)}`}</p>
+              {control?.owner === undefined ? null : (
+                <button type="button" className="hima-button" data-hima-control="open-owner" onClick={() => openOwner(control.owner)}>Open Campaign Agent</button>
+              )}
               {!active ? null : (
                 <div className="hima-node-card-footer-row">
                   <button type="button" className="hima-button" data-hima-control="diagnostics-pause" disabled={acting.inFlight !== undefined} onClick={() => toggle('diagnostics-pause')}>Pause run</button>
@@ -91,7 +103,7 @@ export function Diagnostics({ view, isOwner, acting, readAt, onClose }: Diagnost
               {confirmBlock('diagnostics-stop', 'This asks every Job this run holds to stop; work already running may take a moment to end.', 'Confirm stop', () => { acting.act('cancel'); })}
               {acting.notice === undefined ? null : <p role="status">{acting.notice}</p>}
               {acting.refusal === undefined ? null : <p role="alert" data-hima-region="run-error">{acting.refusal.message}</p>}
-            </div>
+            </details>
           )}
         </>
       )}

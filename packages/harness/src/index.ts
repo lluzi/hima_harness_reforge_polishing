@@ -155,6 +155,7 @@ export type { Chooser, ChooserClause, ChooserExpression, ChooserInput, ChooserRe
 // caller — the contract tests, the acceptance script — takes them from here rather than retyping
 // them by hand, where a drift in the host's answer would go unnoticed until a person read the JSON.
 export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH, HIMA_CAMPAIGN_FILE_PATH, HIMA_SITES_PATH } from './paths.js';
+export { pickOwnedRun, isOwner } from './run-ownership.js';
 export type {
   HimaErrorCode,
   HimaErrorBody,

@@ -1,12 +1,12 @@
 // The existing Hima Run projection, presented inside the native dsh document dock.
 // Local state is selection, drafts and the last HTTP response; the Agent requests work and Fabric validates its facts.
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { fetchExecutionContext, fetchRun, fetchRuns, type HimaResult } from './api.js';
+import { fetchExecutionContext, fetchRun, type HimaResult } from './api.js';
 import { CampaignTab } from './CampaignTab.js';
 import { ConfigurationPage } from './ConfigurationPage.js';
 import { Diagnostics } from './Diagnostics.js';
 import { useRunActions } from './HimaRunCard.js';
-import { campaignEvents } from './owned-run.js';
+import { campaignEvents, isOwner as isOwnerOf, useRunsList } from './owned-run.js';
 import { PackOwnerPanel } from './PackOwnerPanel.js';
 import { runPurposeMark } from '../card-labels.js';
 import { Glyph } from './glyphs.js';
@@ -62,14 +62,14 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const [managingPackLocation, setManagingPackLocation] = useState<string>();
   const [confirming, setConfirming] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
-  const list = usePollingRead('runs', fetchRuns, tab.visible);
+  const list = useRunsList();
   const read = useCallback((signal: AbortSignal) => fetchRun(selected!, signal), [selected]);
   const snapshot = usePollingRead(selected ?? '', read, selected !== undefined && tab.visible);
   const readContext = useCallback((signal: AbortSignal) => fetchExecutionContext(selected!, signal), [selected]);
   const execution = usePollingRead(selected ?? '', readContext, selected !== undefined && tab.visible);
   const view = snapshot.value;
   const acting = useRunActions(selected, () => { snapshot.refresh(); list.refresh(); }, activeSessionId, view);
-  const isOwner = view?.run.control === undefined || view.run.control.owner === activeSessionId;
+  const isOwner = isOwnerOf(view?.run.control, activeSessionId);
 
   useEffect(() => {
     if (requested !== undefined) setSelected(requested);
@@ -107,8 +107,8 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       <span className='hima-studio-eyebrow'>CAMPAIGN</span>
       <select aria-label='Campaign on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { setSelected(e.target.value || undefined); }}>
         <option value=''>Select a Campaign</option>
-        {selected && !list.value?.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
-        {list.value?.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
+        {selected && !list.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
+        {list.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
       </select>
       <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); }}><Glyph name='retry' /></button>
       {selected !== undefined
@@ -131,7 +131,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
             onBusy={setConfirming}
             onStarted={(started) => { setSelected(started.run.id); list.refresh(); }} />
         : <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} refresh={() => { snapshot.refresh(); execution.refresh(); }} />}
-    {!diagnosticsOpen ? null : <Diagnostics view={view} isOwner={isOwner} acting={acting} readAt={snapshot.at} onClose={() => setDiagnosticsOpen(false)} />}
+    {!diagnosticsOpen ? null : <Diagnostics view={view} isOwner={isOwner} acting={acting} readAt={snapshot.at} openOwner={openOwner} onClose={() => setDiagnosticsOpen(false)} />}
   </div>;
 }
 

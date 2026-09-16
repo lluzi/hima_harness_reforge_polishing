@@ -66,13 +66,26 @@ export function SettingsSection({ useSessions, pickFolder }: SettingsSectionProp
       <style>{HIMA_STYLE}</style>
       <section>
         <h3>Packs</h3>
-        {choices === undefined ? <p className="hima-small">Reading installed Packs…</p> : (
-          <p className="hima-small">
-            {choices.packs.length} installed
-            {choices.cannotStart === undefined || choices.cannotStart.length === 0 ? '' : `, ${choices.cannotStart.length} cannot start`}.
-          </p>
+        {choices === undefined ? <p className="hima-small">Reading installed Packs…</p>
+          : choices.packs.length === 0 ? <p className="hima-small">No Pack is installed yet.</p> : (
+          <ul className="hima-settings-packs">
+            {choices.packs.map((pack) => {
+              const cannotStart = choices.cannotStart?.includes(pack) === true;
+              const mark = choices.marks?.[pack];
+              return (
+                <li key={pack} className="hima-settings-row" data-hima-region={`pack-${pack}`} data-hima-state-cannot-start={String(cannotStart)}>
+                  <span className="hima-mono">{pack}</span>
+                  {/* `mark` is the refusal text itself for a `cannotStart` pack ("unreadable: <why>",
+                      `packs.ts`) — the one sentence a person needs, not a second count beside it. */}
+                  {mark === undefined ? null : <span className="hima-muted">{mark}</span>}
+                </li>
+              );
+            })}
+          </ul>
         )}
-        <PackOwnerPanel sessionId={sessionId ?? ''} initialPack="" pickFolder={pickFolder} />
+        {sessionId === undefined
+          ? <p className="hima-small">Open a session to install a Pack.</p>
+          : <PackOwnerPanel sessionId={sessionId} initialPack="" pickFolder={pickFolder} />}
       </section>
       <section>
         <h3>Sites</h3>

@@ -16,6 +16,7 @@ import {
   MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
 } from './HimaRunCard.js';
 import { Masthead } from './Masthead.js';
+import { isOwner as isOwnerOf } from './owned-run.js';
 
 export interface CampaignTabProps {
   readonly sessionId: string;
@@ -166,7 +167,7 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const reducedMotion = useReducedMotion();
   const control = view?.run.control;
-  const isOwner = control === undefined || control.owner === sessionId;
+  const isOwner = isOwnerOf(control, sessionId);
   const reference = context?.method?.reference;
   // `sceneInputs`+`layoutCanvas` recompute only when the reference graph, the Run view or the
   // execution context actually change identity (a fresh poll) — not on every render this component

@@ -6,7 +6,7 @@ import { CampaignChip } from './CampaignChip.js';
 import { Glyph } from './glyphs.js';
 import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
 import { HimaWorkbench } from './HimaWorkbench.js';
-import { campaignEvents, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
+import { campaignEvents, statusSaid, useOwnedRun } from './owned-run.js';
 import { SettingsSection } from './SettingsSection.js';
 import { HIMA_STYLE } from './workbench-style.js';
 
@@ -75,17 +75,23 @@ function AuthoringCard({ block, openAuthor }: { block: ToolBlock; openAuthor(id:
 
 /**
  * The Campaign tab's own chip title (#41 task 8): `Campaign · configure` for a session that owns no
- * Run, the running glyph and the current node while running, `Campaign · waiting` while a person is
- * needed. Registered under the same key as the tab body (`sidebar.right.pane.tab.title`), so the
- * shell dispatches it beside `HimaWorkbench` and delivers it the same standard `sessionId` prop.
+ * Run at all, `Campaign · <dot glyph> ‹node›` (the running glyph, never a unicode character) while running,
+ * `Campaign · waiting` badged while a person is needed, else `Campaign · ‹status word›` for an ended
+ * or cancelled Run — the exact word `statusSaid` gives the chip, so the two never disagree.
+ * Registered under the same key as the tab body (`sidebar.right.pane.tab.title`), so the shell
+ * dispatches it beside `HimaWorkbench` and delivers it the same standard `sessionId` prop.
  */
 function CampaignTabTitle({ sessionId }: { sessionId: string }): ReactElement {
-  const { run } = useOwnedRun(sessionId);
-  if (run?.status === 'running') {
-    return createElement('span', { className: 'hima-tab-title' }, createElement(Glyph, { name: STATUS_GLYPH.running ?? 'ring', size: 13 }), ` Campaign · ${run.currentNode ?? 'running'}`);
-  }
-  if (run?.status === 'waiting') return createElement('span', { className: 'hima-tab-title' }, 'Campaign · waiting');
-  return createElement('span', { className: 'hima-tab-title' }, 'Campaign · configure');
+  const { run, stale } = useOwnedRun(sessionId);
+  const status = run?.status;
+  const body = run === undefined
+    ? 'Campaign · configure'
+    : status === 'running'
+      ? createElement('span', null, 'Campaign ·', createElement(Glyph, { name: 'dot', size: 13 }), ` ${run.currentNode ?? 'running'}`)
+      : status === 'waiting'
+        ? createElement('span', null, 'Campaign · waiting', createElement('span', { className: 'hima-campaign-chip-badge', 'aria-hidden': true }))
+        : `Campaign · ${statusSaid(status)}`;
+  return createElement('span', { className: 'hima-tab-title', 'data-hima-state-stale': String(stale) }, body);
 }
 
 /**
@@ -93,13 +99,23 @@ function CampaignTabTitle({ sessionId }: { sessionId: string }): ReactElement {
  * sheet that carries the Run id, the owner session's UUID, its epoch and revision — nowhere else in
  * this product prints those. Present only on the Campaign tab's own menu; every other tab's menu
  * renders nothing here, exactly as an entry with nothing to say is meant to (contract doc: "Entries
- * decide their own visibility from the tab they are given").
+ * decide their own visibility from the tab they are given"). No `label` here: this item draws its own
+ * text, and nothing on this list slot projects a registrant's `label` on its behalf.
+ *
+ * `openRun()` is called before the dispatch, and the dispatch itself waits a tick: the tab this menu
+ * belongs to is already open (its own menu is what is open), but a docked-and-collapsed pane can
+ * still leave `HimaWorkbench` unmounted until it is actually revealed, and an event with nobody
+ * listening yet would open nothing.
  */
-function DiagnosticsMenuItem({ tab, dismiss }: { tab?: { id?: string; kind?: string }; dismiss(): void }): ReactElement | null {
+function DiagnosticsMenuItem({ tab, dismiss, openRun }: { tab?: { id?: string; kind?: string }; dismiss(): void; openRun(): void }): ReactElement | null {
   if (tab?.kind !== WORKBENCH_KIND) return null;
   return createElement('button', {
     type: 'button', className: 'hima-tab-menu-item', 'data-hima-control': 'open-diagnostics',
-    onClick: () => { campaignEvents.dispatchEvent(new CustomEvent('diagnostics', { detail: { tabId: tab.id } })); dismiss(); },
+    onClick: () => {
+      openRun();
+      setTimeout(() => { campaignEvents.dispatchEvent(new CustomEvent('diagnostics', { detail: { tabId: tab.id } })); }, 0);
+      dismiss();
+    },
   }, 'Diagnostics');
 }
 
@@ -142,7 +158,8 @@ export function apply(ctx: ClientContext): void {
     name: 'sidebar.right.pane.tab.title', key: WORKBENCH_ID,
   }, CampaignTabTitle));
   ctx.slots.inject('sidebar.right.tab.menu.item', () => ctx.slots.register({
-    name: 'sidebar.right.tab.menu.item', id: 'hima-diagnostics', order: 10, label: () => 'Diagnostics',
+    name: 'sidebar.right.tab.menu.item', id: 'hima-diagnostics', order: 10,
+    inject: () => ({ openRun: () => openRun() }),
   }, DiagnosticsMenuItem));
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
     name: 'conversation.session.header.actions', id: 'hima-campaign', order: 15,
