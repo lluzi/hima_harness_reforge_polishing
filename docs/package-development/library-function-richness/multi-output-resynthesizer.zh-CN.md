@@ -45,7 +45,8 @@ mapping、window provenance、ECO、writer 和 equivalence 的复杂度。
 ```json
 {
   "schema": "hima.multi-output-resynthesis-request/1",
-  "mode": "rewrite",
+  "operation": "directed",
+  "action": "rewrite",
   "top": "aes_cipher_top",
   "netlist": {"path": "input.v", "sha256": "..."},
   "library": {
@@ -66,6 +67,14 @@ mapping、window provenance、ECO、writer 和 equivalence 的复杂度。
     "preservePorts": true,
     "preserveHierarchy": true
   },
+  "targets": [
+    {
+      "module": "aes_sbox_0",
+      "instances": ["U10", "U11"],
+      "expectedBoundaryInputs": ["n1", "n2", "n3"],
+      "expectedBoundaryOutputs": ["n10", "n11"]
+    }
+  ],
   "physicalContext": {
     "def": null,
     "maxSinkBoundingBoxUm": null,
@@ -81,8 +90,15 @@ mapping、window provenance、ECO、writer 和 equivalence 的复杂度。
 ```
 
 所有 path 是 workspace 内普通文件并受 SHA-256 约束。第一版 `physicalContext.def=null`，物理指标为
-unknown；有 DEF 时才允许产生 locality 结论。`mode` 只允许 `analyze` 或 `rewrite`：前者不写 ECO
-netlist，后者必须同时生成 patch 和 equivalence proof。
+unknown；有 DEF 时才允许产生 locality 结论。
+
+`operation` 只允许 `discover` 或 `directed`：
+
+- `discover` 执行 bounded whole-network opportunity search；
+- `directed` 只验证和评估 `targets` 指定的 instance cluster，不进行全网搜索。
+
+`action` 只允许 `analyze` 或 `rewrite`：前者不写 ECO netlist，后者必须同时生成 patch 和
+equivalence proof。四种组合共享同一 result schema。
 
 ### 3.2 Result
 
@@ -166,6 +182,10 @@ module 切分后重试，不能退化成无界 pair loop。
 levels、area、locality 和 model uncertainty 排序，再做 deterministic greedy set packing 和一次 bounded
 local improvement。它不是精确全局最优，但输出稳定、可回放，并且不会产生 overlapping ECO。
 
+`operation=directed` 跳过以上 discovery：工具重新读取 target instances，机械推导真实 boundary，和
+request 的 expected boundary 对账，再进入 benefit、rewrite 和 proof。调用者不能直接提供 Boolean
+function 或 pin mapping 来绕过网表事实。
+
 ### 4.4 ECO provenance
 
 标准 `write_verilog_with_cell` 能输出全网 mapped netlist，但它会重建内部 node/instance naming，不能直接
@@ -217,7 +237,85 @@ Rewrite 操作在解析后的结构网表 IR 上完成，不使用文本正则�
 
 任一 unknown、timeout 或 unsupported construct 均为 refusal，不能输出可进入商业链的 rewritten netlist。
 
-## 5. 商业工具链插入位置
+## 5. Physical folding modes
+
+### 5.1 Cluster types
+
+物理近邻不自动等于 multi-output：
+
+- **chain internalization**：上游 output 只驱动下游 Cell；中间 net 内化后可以是单输出 fusion；
+- **side-output preservation**：上游 output 同时有外部 loads；融合后必须保留上游和下游两个 outputs；
+- **fork/reconvergence cluster**：多个 roots 共享内部计算，形成二输出或更多输出 vector；
+- **arithmetic cluster**：HA、FA、compressor 或设计特有的 carry/sum/control vector。
+
+每类机会都从实际 driver/load graph 推导 output 数，不以“合并了两颗 Cell”猜测 output 数。
+
+### 5.2 Post-placement guided ECO
+
+输入增加 placed DEF。候选必须位于同一 row/合法 height，cluster bounding box 能容纳新 Cell，并满足：
+
+- source instances 几何近邻；
+- 被内化 net 的线长、HPWL 和 fanout 已知；
+- 每个保留 output 的 sink bounding box 不发散；
+- 新 pin 位置存在可接近 routing track；
+- 估计 reroute penalty 不超过被移除 interconnect 的收益。
+
+输出仍是 netlist patch；placement proposal 记录新 Cell 建议坐标和需要释放的 sites。OpenROAD proxy 负责
+legalize 和 global-route 反证。
+
+### 5.3 Post-route guided folding
+
+Post-route 数据用于**发现和计量**，不默认直接破坏最终数据库。Reader 提供 routed netlist、DEF、SPEF、
+timing paths、net RC、via count 和 placement identity。每个 cluster 的固定可移除项包括：
+
+- internalized net 的 extracted R/C；
+- route segment length；
+- via 数量；
+- 原 Cell arc delay；
+- 原 external pin capacitance。
+
+候选净 margin 是：
+
+```text
+removed Cell delay
++ removed extracted net/via delay
+- new multi-output Cell arc delay
+- added diffusion/pin capacitance
+- estimated external reroute penalty
+```
+
+优先执行方式是从相同 post-placement checkpoint 分叉：reference 沿原网表 route；generated 在 checkpoint
+上应用已选 ECO、legalize、重新 CTS/route。真正 final-DB in-place ECO 作为后续 vendor adapter，只有
+命令、checkpoint rollback 和 incremental-route 证据齐备时启用。
+
+### 5.4 Vendor ECO adapters
+
+核心工具始终输出 vendor-neutral structural netlist 与 patch manifest。可选 adapter 再产生 Innovus、
+ICC2 或 Fusion Compiler Tcl。Adapter 只翻译已证明 patch，不重新搜索或改变 pin mapping。Vendor 命令
+未在目标版本 probe 成功时，使用 netlist reload 路径而不是猜测 ECO 命令。
+
+## 6. Vector-function search space and pruning
+
+对 `n` 输入、`m` 输出，原始 vector-function 空间为 `2^(m*2^n)`：3输入2输出已有65,536种，
+4输入2输出约42.9亿种，4输入4输出为 `2^64`。Hima 不枚举该空间。
+
+Vector identity 对全部 outputs 使用**同一个** input permutation/phase transformation；不能把每个 output
+独立 canonicalize 后再拼接。Output permutation 只在 pin mapping 可交换时允许，output inversion 不是
+免费操作。
+
+候选来源只有：
+
+1. 当前 design 中真实观察到的 multi-root cuts；
+2. directed target cluster 推导出的完整 boundary truth vector；
+3. percy 对一个已观察 vector 做 bounded exact topology synthesis；
+4. Library 中 HA/FA/compressor 等已有 vector signature，用于 coverage 排除而不是重新生成。
+
+已有 foundry multi-output signature 精确匹配时优先使用 foundry Cell。Custom candidate 必须是 design-observed
+且 Library-missing，并按 criticality、frequency、shared-node saving、physical locality、pin count、stack、
+drive 和 model uncertainty 排序。二输出自动 discovery 与 pinned mockturtle 对齐；三/四输出只允许
+directed mode 或另行证明的 mapper，不冒充现有 `emap` 能力。
+
+## 7. 商业工具链插入位置
 
 ```text
 RTL
@@ -239,7 +337,7 @@ RTL
 multi-output ECO。这样唯一方法变量是 multi-output Library 加其必需的 mapping adapter。与 D1–D4、
 phase-completion 混合的完整 Library 留到该隔离试验通过后。
 
-## 6. HimaPack 接线
+## 8. HimaPack 接线
 
 不增加 graph node。现有 `custom-synth` stage 在 DC 完成后调用 resynthesizer，并将 rewritten netlist 继续
 发布为 `synthesis_netlist`。新增 artifact 是 `multioutput_opportunities`、`eco_patch_manifest`、
@@ -260,7 +358,7 @@ phase-completion 混合的完整 Library 留到该隔离试验通过后。
 这个目录是一个深模块：外部只有 request/result interface，mockturtle/Yosys/ECO 细节不泄漏到
 `stages.py`。
 
-## 7. POC 退出标准
+## 9. POC 退出标准
 
 ### 功能
 
@@ -273,6 +371,10 @@ phase-completion 混合的完整 Library 留到该隔离试验通过后。
 - structural Verilog 只实例化允许的 multi-output masters；
 - window 和 top equivalence 均通过；篡改任一 output 必须失败；
 - patch rollback 重建原 netlist hash。
+- directed chain fixture 分别覆盖单输出 internalization 和有 side-output 的二输出 replacement；
+- 3/4-output directed fixture 可以完成 truth-vector、patch 和 equivalence，但不会调用二输出 `emap`；
+- post-placement locality 正例通过，sink-divergence 和 pin-access 反例拒绝；
+- post-route fixture 能逐项复算 removed net R/C、via 和 margin，分析本身不修改 final database；
 
 ### 收益
 
@@ -288,7 +390,7 @@ phase-completion 混合的完整 Library 留到该隔离试验通过后。
 - current graph、Runtime、Site Permit 和 release 逻辑不变；
 - POC 期间 LC/DC/Innovus Job 为零。
 
-## 8. 已知限制
+## 10. 已知限制
 
 - 当前 pinned mockturtle 仅支持 3-leaf、2-output multi-output cuts；
 - 当前 upstream multi-output matcher 对 HA/FA 有显式实验性假设，通用双输出能力尚待 held-out 证明；
