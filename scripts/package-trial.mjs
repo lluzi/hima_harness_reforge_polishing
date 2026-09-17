@@ -2,7 +2,7 @@
 // archive or network release: GitHub publication happens only after acceptance.
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -174,7 +174,7 @@ function smokeRelocatedHost(app) {
   } finally { rmSync(home, { recursive: true, force: true }); }
 }
 
-function smokeVersionIsolatedTrialHome(app) {
+async function smokeVersionIsolatedTrialHome(app) {
   const userData = mkdtempSync(path.join(path.dirname(app), '.versioned-home-smoke-'));
   const staleHome = path.join(userData, 'trial-dsh');
   const staleLedger = path.join(staleHome, 'storages/hima_ledger.json');
@@ -185,16 +185,32 @@ function smokeVersionIsolatedTrialHome(app) {
     mkdirSync(path.dirname(staleLedger), { recursive: true });
     mkdirSync(workspace, { recursive: true });
     writeFileSync(staleLedger, stale);
-    const launched = spawnSync(path.join(app, 'Contents/MacOS/HimaHarness'), ['--driver'], {
-      cwd: workspace,
-      encoding: 'utf8',
-      input: `${JSON.stringify({ id: 'host', op: 'host' })}\n${JSON.stringify({ id: 'quit', op: 'quit' })}\n`,
-      timeout: 60_000,
-      env: { ...process.env, HIMA_USER_DATA: userData, HIMA_WORKSPACE: workspace, DSH_HOME: '', DSH_AGENTS_HOME: '',
-        HIMA_DRIVER_DISPLAY: 'Catsights', DSH_TELEMETRY_DISABLED: '1' },
+    const observed = await new Promise((resolve, reject) => {
+      const child = spawn(path.join(app, 'Contents/MacOS/HimaHarness'), ['--driver'], {
+        cwd: workspace, stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, HIMA_USER_DATA: userData, HIMA_WORKSPACE: workspace, DSH_HOME: '', DSH_AGENTS_HOME: '',
+          HIMA_DRIVER_DISPLAY: 'Catsights', DSH_TELEMETRY_DISABLED: '1' },
+      });
+      let stdout = '', stderr = '', answered = false;
+      const timeout = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('version-isolated trial home smoke timed out')); }, 60_000);
+      child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk;
+        if (!answered && stdout.includes('"id":"host","ok":true')) {
+          answered = true;
+          child.stdin.write(`${JSON.stringify({ id: 'quit', op: 'quit' })}\n`);
+        }
+      });
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      child.on('error', (error) => { clearTimeout(timeout); reject(error); });
+      child.on('close', (code) => {
+        clearTimeout(timeout);
+        if (code !== 0 || !answered) reject(new Error(`version-isolated trial home did not boot\n${stderr || stdout}`));
+        else resolve({ stdout, stderr });
+      });
+      child.stdin.write(`${JSON.stringify({ id: 'host', op: 'host' })}\n`);
     });
-    if (launched.status !== 0) fail(`version-isolated trial home did not boot\n${launched.stderr || launched.stdout}`);
-    if (/stored version 26|expected 27/.test(`${launched.stdout}\n${launched.stderr}`)) {
+    if (/stored version 26|expected 27/.test(`${observed.stdout}\n${observed.stderr}`)) {
       fail('the new trial adopted the prior trial ledger');
     }
     const versioned = path.join(userData, `trial-dsh-${trialVersion}`);
@@ -280,7 +296,7 @@ if (args.includes('--help') || args.includes('-h')) {
       source: { sha: sourceSha, dirty, diffSha256 }, files: collect(app) };
     writeFileSync(path.join(output, 'trial-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     verify(app);
-    smokeVersionIsolatedTrialHome(app);
+    await smokeVersionIsolatedTrialHome(app);
     smokeRelocatedHost(app);
   } finally {
     rmSync(stage, { recursive: true, force: true });
