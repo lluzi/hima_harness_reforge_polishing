@@ -35,7 +35,7 @@ import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, type
 import { handleHimaCommand, himaCommandDescription, versionLine } from './commands.js';
 import { agentWorkspaceOf, himaTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
-import { registerHimaRoutes, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
+import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import { previewPackTransfer, applyPackTransfer } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
@@ -725,16 +725,27 @@ export default class Hima extends Service {
    * as `discoverSshSite`'s own default already does.
    */
   private async discoverSite(request: Omit<SiteDiscoverBody, 'sessionId'>): Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView }> {
-    // Held to the schema before anything here dereferences `request.ssh` (#41 task 4 review round
-    // 3, minor 2): a request body missing `ssh` entirely, or naming it as something other than an
-    // object, is the caller's own request-shape mistake — thrown here as the `ZodError` the route's
-    // own catch already turns into a 400 naming the field, rather than a `TypeError` that would
-    // reach the dispatcher as an unexplained 500.
-    const parsed = siteDiscoveryRequestSchema.safeParse({ name: request.name, ssh: request.ssh, hints: request.hints });
+    // Bug 2 fix: an omitted `ssh` rediscovers an already-saved ssh Site's own destination, jumps and
+    // permitted roots — exactly the input `rediscoverInput` already computes for `hima_site
+    // rediscover`'s tool call, now reachable from this route too so the Configuration page can offer
+    // a person their own "Rediscover" button on a Site that already exists, not only a brand-new one.
+    // A body naming neither `ssh` nor an existing Site of that name is still the caller's own mistake.
+    const reuse = request.ssh === undefined ? this.rediscoverInput(request.name) : undefined;
+    if (request.ssh === undefined && reuse === undefined) {
+      throw new BadRequest(`"ssh" is required to discover a new Site; no saved ssh Site named "${request.name}" exists to rediscover`);
+    }
+    const ssh = request.ssh ?? reuse!.ssh;
+    const hints = request.hints ?? reuse?.hints;
+    // Held to the schema before anything here dereferences `ssh` (#41 task 4 review round
+    // 3, minor 2): a request body naming `ssh` as something other than an object is the caller's own
+    // request-shape mistake — thrown here as the `ZodError` the route's own catch already turns into
+    // a 400 naming the field, rather than a `TypeError` that would reach the dispatcher as an
+    // unexplained 500.
+    const parsed = siteDiscoveryRequestSchema.safeParse({ name: request.name, ssh, hints });
     if (!parsed.success) throw parsed.error;
     const channelFor = testDiscoveryChannelFor() ?? ((name: string, ssh: SshTarget) => new SshChannel(name, ssh));
-    const ssh = { destination: parsed.data.ssh.destination, ...(parsed.data.ssh.jumps.length === 0 ? {} : { jumps: [...parsed.data.ssh.jumps] }) };
-    const result = await discoverSshSite({ name: parsed.data.name, ssh, hints: parsed.data.hints }, channelFor);
+    const resolvedSsh = { destination: parsed.data.ssh.destination, ...(parsed.data.ssh.jumps.length === 0 ? {} : { jumps: [...parsed.data.ssh.jumps] }) };
+    const result = await discoverSshSite({ name: parsed.data.name, ssh: resolvedSsh, hints: parsed.data.hints }, channelFor);
     if (request.save !== true) return { result };
     return { result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, result)) };
   }

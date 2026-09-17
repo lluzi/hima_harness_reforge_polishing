@@ -623,7 +623,12 @@ export interface SiteHeadView {
 export interface SiteDiscoverBody {
   readonly sessionId: string;
   readonly name: string;
-  readonly ssh: { readonly destination: string; readonly jumps?: readonly string[] };
+  /** Left absent, this rediscovers a saved ssh Site's own destination/jumps and permitted roots — the
+   *  Configuration page's "Rediscover" control on an existing Site uses this so a person never
+   *  retypes a destination the Site already has on file (bug 2: previously the only rediscover path
+   *  was HimaGuide's own read-only tool call, which this route now shares a caller with). A Site new
+   *  to this Host still names its own destination here. */
+  readonly ssh?: { readonly destination: string; readonly jumps?: readonly string[] };
   readonly hints?: SiteDiscoveryRequest['hints'];
   /** Persist the discovered profile as the ordinary Site and Permit files `loadSite` reads. Left
    *  false (or absent), this is a preview: the caller reviews `result` and discovers again to save. */
@@ -762,7 +767,7 @@ export interface RemoteOperations {
 }
 
 /** A request the caller got wrong: it reaches them as `hima/bad-request`, with its own message. */
-class BadRequest extends Error {}
+export class BadRequest extends Error {}
 
 /**
  * A request this Run's status cannot take: it reaches the caller as `hima/run-not-in-state` (409),

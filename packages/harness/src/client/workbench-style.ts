@@ -347,6 +347,7 @@ export const HIMA_STYLE = `
 .hima-config-empty-pack,.hima-config-knowledge-add-row{display:flex;gap:var(--hima-sp-2);align-items:center;flex-wrap:wrap}
 .hima-config-site-new{display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-2);margin-top:6px}
 .hima-config-site-new-label{display:flex;flex-direction:column;gap:2px;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
+.hima-config-site-draft{display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-2);margin-top:6px;padding:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s)}
 .hima-config-readiness-row{display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap}
 .hima-config-readiness-row{padding:2px 0}
 .hima-config-confirm-row{display:flex;align-items:center;gap:var(--hima-sp-3);margin-top:var(--hima-sp-2)}

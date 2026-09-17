@@ -85,6 +85,7 @@
     "test/contract/growth-assets.desktop.test.ts",
     "test/contract/revision-assets.desktop.test.ts",
     "test/contract/pack-owner.desktop.test.ts",
+    "test/contract/site-rediscover.desktop.test.ts",
     "test/contract/campaign-refresh.desktop.test.ts",
     "test/contract/budget.test.ts",
     "test/contract/desktop.test.ts",

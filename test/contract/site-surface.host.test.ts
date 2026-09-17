@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createHimaHome, type HimaHome } from './support/dsh-home.ts';
 import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
 import { api, createLiveSession, openSession } from './support/hima-api.ts';
@@ -120,6 +120,73 @@ test('Case 2: POST /hima/api/sites/discover saves a redacted lab-a Site and Perm
         body: JSON.stringify({ sessionId: 'not-a-live-session', name: 'lab-b', ssh: { destination: 'engineer@lab-b.example.com' } }),
       });
       assert.equal(bad.status, 400, await bad.text());
+    } finally { await teardown(f); }
+  } finally {
+    delete process.env.HIMA_TEST_DISCOVERY_STANDIN;
+    await rm(tableFile, { force: true });
+  }
+});
+
+test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers an already-saved ssh Site\'s own destination and permitted roots, previews before writing, and only a second save:true call persists it', async (t) => {
+  const table = {
+    'uname -s': { code: 0, stdout: 'Linux' },
+    'which tmux': { code: 0, stdout: '/usr/bin/tmux\n' },
+  };
+  const tableFile = path.join(os.tmpdir(), `hima-discovery-standin-${randomUUID()}.json`);
+  await writeFile(tableFile, JSON.stringify(table));
+  process.env.HIMA_TEST_DISCOVERY_STANDIN = tableFile;
+  try {
+    const f = await bootedFixture(t);
+    if (!f) return;
+    try {
+      const sessionId = await createLiveSession(f.host, f.cookie, f.h.workspace);
+      // First save is exactly Case 2's own flow: a brand-new Site names its own destination.
+      const first = await api(f.host, f.cookie, '/hima/api/sites/discover', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sessionId, name: 'lab-a', ssh: { destination: 'engineer@lab.example.com' },
+          hints: { workspaceRoot: '/work/hima', allowedReadRoots: ['/work'], allowedWriteRoots: ['/work/hima'] },
+          save: true,
+        }),
+      });
+      assert.equal(first.status, 200, await first.text());
+
+      // A rediscover of that same saved Site (Configuration page's "Rediscover" button): the body
+      // names only `name`, and the route must reuse the Site's own destination and permitted roots
+      // exactly as `hima_site rediscover` already does for HimaGuide's tool call, and must answer a
+      // preview — nothing written — while `save` is left false.
+      const preview = await api(f.host, f.cookie, '/hima/api/sites/discover', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, name: 'lab-a' }),
+      });
+      const previewBody = await preview.json() as { result: { site: { ssh?: { destination: string } } }; saved?: unknown };
+      assert.equal(preview.status, 200, JSON.stringify(previewBody));
+      assert.equal(previewBody.result.site.ssh?.destination, 'engineer@lab.example.com', 'the saved Site\'s own destination is reused, never asked again');
+      assert.equal(previewBody.saved, undefined, 'a preview (save left false) writes nothing');
+      const beforeSaveMtime = (await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs;
+
+      // The person's own save of that reviewed draft: a second, identical call with save:true is the
+      // only thing that writes the Site and Permit files.
+      const saved = await api(f.host, f.cookie, '/hima/api/sites/discover', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, name: 'lab-a', save: true }),
+      });
+      const savedBody = await saved.json() as { saved?: SiteHeadView };
+      assert.equal(saved.status, 200, JSON.stringify(savedBody));
+      assert.ok(savedBody.saved, JSON.stringify(savedBody));
+      assert.equal(savedBody.saved!.name, 'lab-a');
+      assert.ok((await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs >= beforeSaveMtime, 'the reviewed rediscovery actually replaced the saved Site file');
+
+      // A rediscover naming a Site this Host has never saved is still the caller's own mistake, not
+      // an unexplained 500 — the same 400/"ssh" contract Case 7 already holds a brand-new Site to.
+      const unknown = await api(f.host, f.cookie, '/hima/api/sites/discover', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, name: 'lab-never-saved' }),
+      });
+      const unknownBody = await unknown.json() as { error?: { code: string; message: string } };
+      assert.equal(unknown.status, 400, JSON.stringify(unknownBody));
+      assert.equal(unknownBody.error?.code, 'hima/bad-request', JSON.stringify(unknownBody));
+      assert.match(unknownBody.error?.message ?? '', /ssh/);
     } finally { await teardown(f); }
   } finally {
     delete process.env.HIMA_TEST_DISCOVERY_STANDIN;

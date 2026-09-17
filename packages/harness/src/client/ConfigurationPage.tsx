@@ -21,6 +21,7 @@ import type { CampaignFile } from '../campaign-file.js';
 import { changedFields } from '../campaign-file-diff.js';
 import { layoutCanvas, NODE, type NodeKind } from '../canvas-layout.js';
 import type { CampaignFileView, RunView, SiteHeadView } from '../remote.js';
+import type { SiteDiscoveryResult } from '../sites.js';
 import type { PreparationView, StartChoices } from '../workbench.js';
 import { discoverSite, fetchCampaignFile, fetchSites, fetchStartChoices, saveCampaignFile, startCampaign } from './api.js';
 import { KindOutline } from './FabricNode.js';
@@ -247,6 +248,13 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   const [sshDestination, setSshDestination] = useState('');
   const [siteHints, setSiteHints] = useState('');
   const [discovering, setDiscovering] = useState(false);
+  // Bug 2: an existing ssh Site's own facts (e.g. which EDA tools are on its PATH) can go stale, and
+  // until now the only GUI affordance for an existing Site was "Discover with HimaGuide", which only
+  // drafts a chat message — HimaGuide's own `hima_site rediscover` tool call never writes a Site or
+  // Permit file (by design: the person is the one who may grant a Permit's authority, never the
+  // model). This holds a freshly rediscovered, *unsaved* draft for this page's own review, mirroring
+  // the Pack install review-then-confirm pattern (`PackOwnerPanel`) rather than saving automatically.
+  const [siteRediscovery, setSiteRediscovery] = useState<{ readonly name: string; readonly result: SiteDiscoveryResult } | undefined>();
   const [knowledgePath, setKnowledgePath] = useState('');
   // Which fields have an unsaved debounce pending, and how many saves are on the wire right now —
   // together, whether it is safe to say this page is ready: a Host answer that called the file ready
@@ -444,6 +452,31 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     commitField('site', (file) => ({ ...file, site: { name } }));
   };
 
+  /** Bug 2 fix: rediscover an already-saved ssh Site — the destination, jumps and permitted roots on
+   *  file, no retyping — and hold the fresh, unsaved draft for review. Nothing is written yet. */
+  const rediscoverSite = async () => {
+    if (siteName === '') return;
+    setDiscovering(true); setError(undefined);
+    const result = await discoverSite({ sessionId, name: siteName, save: false });
+    setDiscovering(false);
+    if (!result.ok) { setError(result.error.message); return; }
+    setSiteRediscovery({ name: siteName, result: result.value.result });
+  };
+
+  /** The person's own save of the draft `rediscoverSite` produced: a second, identical discovery
+   *  request, this time with `save: true` — the same protocol the "Discover with HimaGuide" button
+   *  already uses for a brand-new Site (`discoverNewSite`), and the only thing in this page that ever
+   *  writes a Site or Permit file. HimaGuide itself has no path to this call. */
+  const saveSiteRediscovery = async () => {
+    if (siteRediscovery === undefined) return;
+    setDiscovering(true); setError(undefined);
+    const result = await discoverSite({ sessionId, name: siteRediscovery.name, save: true });
+    setDiscovering(false);
+    if (!result.ok) { setError(result.error.message); return; }
+    setSiteRediscovery(undefined);
+    void tick.current();
+  };
+
   /** C17: knowledge entries are always added by a typed path, never the native folder picker —
    *  unlike a Pack's own source folder (`installPack`, a whole directory), a knowledge document is
    *  one file, and `pickFolder` (a directory chooser) is the wrong tool for naming one. */
@@ -514,10 +547,23 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         </select>
         <ChangedMark path="site" changed={changed} />
         {siteName !== '' && siteNeedsAttention
-          ? <button className="hima-button" data-hima-control="config-discover" onClick={() => ask(`Discover the Site ${siteName} with hima_site and tell me what you find.`)}>Discover with HimaGuide</button>
+          ? <>
+              <button className="hima-button" data-hima-control="config-discover" onClick={() => ask(`Discover the Site ${siteName} with hima_site and tell me what you find.`)}>Discover with HimaGuide</button>
+              {/* Bug 2 fix: a real GUI save path for a Site's own facts and Permit, beside the
+                  chat-only affordance above. Rediscovering only reads the Site; nothing is written
+                  until the person reviews the draft below and clicks Save. */}
+              <button className="hima-button" data-hima-control="config-site-rediscover" disabled={discovering} onClick={() => { void rediscoverSite(); }}>{discovering && siteRediscovery === undefined ? 'Rediscovering…' : 'Rediscover'}</button>
+            </>
           : null}
       </div>
       {proposal?.site ? <p className="hima-config-detail">{proposal.site.name} · {proposal.site.kind} · {proposal.site.resources.cores} cores · {proposal.site.resources.memoryGiB} GiB · {proposal.site.resources.parallelJobs} parallel job(s)</p> : null}
+      {siteRediscovery !== undefined && siteRediscovery.name === siteName ? <div className="hima-config-site-draft" data-hima-region="config-site-rediscovery">
+        <p className="hima-config-detail">Rediscovered {siteRediscovery.result.unknowns.length} unknown(s){siteRediscovery.result.conflicts.length > 0 ? `, ${siteRediscovery.result.conflicts.length} conflict(s)` : ''} — not saved yet.</p>
+        {siteRediscovery.result.unknowns.map((sentence, index) => <p key={index} className="hima-small">{sentence}</p>)}
+        {siteRediscovery.result.conflicts.map((sentence, index) => <p key={index} className="hima-small">{sentence}</p>)}
+        <button className="hima-button hima-primary" data-hima-control="config-site-rediscover-save" disabled={discovering} onClick={() => { void saveSiteRediscovery(); }}>{discovering ? 'Saving…' : 'Save reviewed Site'}</button>
+        <button className="hima-button" data-hima-control="config-site-rediscover-discard" disabled={discovering} onClick={() => setSiteRediscovery(undefined)}>Discard</button>
+      </div> : null}
       {/* C17: `align-items:flex-start` (`workbench-style.ts`) — a `flex-direction:column` container
           otherwise stretches each labelled field to the row's own full width, which reads oddly for
           two short-and-tall fields (an SSH destination line, a hints textarea) stacked in one column. */}
