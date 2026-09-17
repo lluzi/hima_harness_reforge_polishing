@@ -56,7 +56,7 @@ of fitting a portable benefit forecast.
 | AES 10-cell multi-output logical ECO | complete, logical only | Ten P-canonical Cell types replace 23 instances with ten explicit masters; whole `aes_cipher_top` equivalence and rollback pass |
 | AES 20-cell multi-output commercial P&R | complete, model-conditioned positive | Innovus retains 6/20 masters; Fmax +0.180%, logic area -7.274%, wirelength -6.507%, modeled power -4.294% |
 | AES 40-cell hierarchy 2/3-output P&R | complete, negative | 40/120 instances retained; 22 triple-output instances survive, but Fmax -0.179%, area +9.181%, wirelength +2.669%, modeled power +7.071% vs baseline |
-| Post-route DIG v4 | planned | Build immutable phase DIGs, CrossPhaseMap, graph annotations/LocalWindow proxies and placed-state CCEI before another E0 |
+| Post-route DIG v4 | design updated; implementation planned | OpenDB physical mirrors, SQLite DIG/annotations, replaceable HAL and STA backends, CrossPhaseMap, LocalWindow proxies and placed-state CCEI before another E0 |
 | LFR-PACK-08 | blocked by PACK-07 and business exit | A Harness-owned positive matched E0 benefit observation and Harness-generated release seal remain |
 
 No item is complete merely because code exists. Each item closes only with the evidence named in

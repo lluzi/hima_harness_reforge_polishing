@@ -3,6 +3,7 @@
 状态：开发方案，承接 v3 已完成的 CGO 实现与 AES 商业负样本；尚未宣称实现或收益。
 归属：`custom-cell-fmax-dtco` HimaPack 的 Library Function Richness 开发专线，继续由 GitHub Issue #40 跟踪。
 范围：升级现有 Framework、Pack domain tools、P&R adapter 和 Reader，不新增 Hima Runtime 组件、Fabric 动作、商业试验管理系统或对外交付件类型。
+修订：2026-09-16 纳入 OpenDB、SQLite、HAL、OpenSTA/OpenTimer、Yosys 和 LadybugDB 的技术选型；外部项目只作为现有 DIG/CCEI 深模块内可替换的 adapter/backend。
 
 ## 1. 方法决定
 
@@ -190,18 +191,88 @@ master and instance census
 
 ### 5.1 实现边界
 
-Phase 1 以 Innovus 为数据库权威和导出器，不引入第二条开源 P&R 链：
+Phase 1 以 Innovus 为设计事实权威和导出器，不引入第二条开源 P&R 链。开源组件在现有 Pack domain tools 内分层复用：
 
-- Innovus 从同一个 post-route checkpoint 写出 netlist、DEF/placement、SDC、SPEF/RC、timing/clock facts 和 census；
-- Pack 自己的 DIG builder 读取这些标准交付件并建立统一身份；
-- CCEI 继续使用 Innovus Tcl/数据库命令执行 instance/net ECO、位置 seed 和 incremental placement；
-- OpenSTA 可以作为局部 STA/timing-graph 查询后端；
-- OpenROAD/OpenDB 只作为可选的离线 join/诊断 POC，不是必需运行链，也不替代 Innovus placement、route 或 database；
-- 不先 fork 或修改 OpenSTA 核心源码。
+- Innovus 从同一个 checkpoint 写出 netlist、LEF/DEF、SDC、SPEF/RC、timing/clock facts、census 和 manifest；
+- OpenDB 读取同一 bundle，形成不可变 `physical.odb` 镜像，负责物理对象、坐标和连接关系，不运行 placement、CTS 或 route；
+- SQLite `dig.sqlite` 保存稳定 Hima ID、graph projection、hyperedge、CrossPhaseMap、LocalWindow、append-only annotations、lineage 和空间索引；
+- HAL 只作为逻辑图和 CCEI `analyze/discover` backend，负责结构网表、局部图遍历、Boolean subgraph 和 bounded resynthesis POC；
+- OpenSTA 是第一局部 timing backend，OpenTimer 是 MIT 许可的对照候选；两者只产生 timing annotations；
+- Yosys 继续承担 window/module/top equivalence proof，不因引入 HAL 而改变成功门；
+- LadybugDB 只参加可重建 property-graph query index 对照，不在 Phase 1 拥有任何唯一事实；
+- CCEI 继续使用 Innovus Tcl/数据库命令执行 instance/net ECO、位置 seed 和 incremental placement。
 
-第一阶段先证明 Innovus 导出束足以建立 DIG。只有标准导出无法表达所需 timing relation，且已有测试证明缺口时，才引入 OpenSTA API adapter；只有 DEF/netlist 身份 join 仍不够时，才评估 OpenDB。OpenSTA 的 GPLv3/商业双许可证需在产品分发前单独审核；可选分析后端不能成为客户必须运维的服务。
+因此只有两类持久事实：
 
-### 5.2 图模型
+1. Innovus 原件及可由原件重建的 OpenDB snapshot 是 **design facts**；
+2. SQLite 中绑定 snapshot hash 的 Hima annotations、decision 与 commercial response 是 **method facts**。
+
+HAL、OpenSTA/OpenTimer 和 LadybugDB 都是可替换计算或查询 view。任何 backend 的内部 object ID 都不能成为 Hima ID，任何 proxy 结果都不能反向覆盖 Innovus/OpenDB 基础事实。
+
+### 5.2 开源工具与数据库实现栈
+
+| 组件 | v4 职责 | 输入 | 输出 | 明确不拥有 |
+| --- | --- | --- | --- | --- |
+| Innovus | checkpoint、导出、CCEI物理实施、E0观察 | 商业 database/Library/constraints | export bundle、ECO database、Commercial Label | Hima方法结论 |
+| OpenDB | 不可变物理/netlist对象镜像 | LEF/DEF、linked netlist、manifest | `physical.odb`、对象 projection | annotations、CrossPhaseMap、商业结论 |
+| SQLite | DIG身份、关系、属性、lineage和RTree | deterministic projection、proxy/decision结果 | `dig.sqlite`、LocalWindow、查询结果 | EDA解析、图算法、时序计算 |
+| HAL | 逻辑图与 anchored-resynthesis分析后端 | augmented Liberty、gate netlist、Hima-scoped LocalWindow | cuts、truth vectors、候选 windows、诊断 | 物理事实、最终ECO发布、proof authority |
+| OpenSTA/OpenTimer | 局部STA view | Liberty、Verilog、SDC、SPEF、LocalWindow | arc/path/margin annotations | Innovus signoff label、跨阶段身份 |
+| Yosys | 等价性证明 | baseline/candidate windows/modules/netlists | proof evidence | Opportunity ranking、物理收益 |
+| LadybugDB | 可选可重建查询索引 | SQLite/DIG projection | Cypher查询对照 | canonical facts、Pack运行依赖 |
+
+数据通路固定为：
+
+```mermaid
+flowchart LR
+  I[Innovus checkpoint] --> B[Hash-bound export bundle]
+  B --> O[OpenDB physical.odb]
+  O --> P[Deterministic DIG projection]
+  B --> P
+  P --> S[SQLite dig.sqlite]
+  S --> W[LocalWindow]
+  W --> H[HAL logic backend]
+  W --> T[OpenSTA or OpenTimer]
+  H --> A[Annotations and candidate windows]
+  T --> A
+  A --> S
+  S --> C[Existing CCEI rewrite and proof]
+  C --> I
+  S -. rebuildable benchmark .-> L[LadybugDB]
+```
+
+每个 phase snapshot 的最小目录为：
+
+```text
+snapshot/
+  manifest.json
+  innovus-export/
+    design.v
+    design.def
+    constraints.sdc
+    parasitics.spef
+    timing-facts.json
+    clock-facts.json
+  physical.odb
+  dig.sqlite
+  projections/
+    graph-summary.json
+    local-window-*.json
+```
+
+`physical.odb` 和 `dig.sqlite` 都是同一 Innovus bundle 的派生物，manifest 保存输入、工具、schema 和输出 hashes。OpenDB OID 只在单个 snapshot save/restore 内使用；跨 place/post-route 的稳定身份使用：
+
+```text
+hima_id = hash(snapshot_id, object_kind, canonical_native_identity)
+```
+
+CrossPhaseMap 连接 Hima IDs，并保存 correspondence evidence。HAL gate ID、STA vertex 和 Ladybug row ID 只能作为一次 projection 的反向索引。
+
+采用外部 backend 前必须通过隔离 POC。OpenDB 导入失败时回退到 Innovus export 直接解析；HAL 失败时继续使用当前 native discovery；OpenTimer 失败时保留 OpenSTA/Innovus timing facts；LadybugDB 失败不影响 SQLite。详细选型与证据见 [Information Graph 数据库与开源基础设施选型](information-graph-database-technology-selection.zh-CN.md)。
+
+当前 Linglong Site 的 pinned IIC-OSIC 容器已经提供 OpenROAD/OpenDB、OpenSTA、Yosys 和 Python bindings，可直接开始 OpenDB/OpenSTA POC；HAL、OpenTimer 和 LadybugDB 尚未成为现场依赖，分别先做隔离构建或benchmark。所有外部工具记录版本、binary/container digest、启动命令和license。OpenSTA 的 GPLv3/商业双许可证在产品分发或链接前单独审查；POC阶段只作为Site侧独立进程调用。
+
+### 5.3 图模型
 
 DIG 是异构有向超图，不是普通 instance adjacency graph。
 
@@ -225,7 +296,7 @@ DIG 是异构有向超图，不是普通 instance adjacency graph。
 - launch/capture/clock relation；
 - phase lineage：DC → coarse placement → post-route。
 
-### 5.3 双阶段 Design Information Database
+### 5.4 双阶段 Design Information Database
 
 v4 不维护一个随流程覆盖更新的可变图，而是保存两个不可变 snapshot：
 
@@ -255,9 +326,9 @@ Cross-phase correspondence 允许：
 
 每条 correspondence 记录 source/target、relation type、evidence、confidence、unmatched reasons 和输入 graph hashes。Graph mapping 本身不删除或融合任一阶段事实。
 
-这里的 “database” 是 Pack workspace 中版本化、可 hash、可复算的 graph artifacts 和索引；第一阶段不新增 Neo4j 等外部服务，也不建立第二套产品状态库。实现可以使用紧凑 JSON/SQLite/columnar artifact 与内存图算法，存储选择由 POC 的容量和查询证据决定。
+这里的 “database” 是 Pack workspace 中版本化、可 hash、可复算的 OpenDB/SQLite artifacts 和可替换计算 view；第一阶段不新增 Neo4j 等外部服务，也不建立第二套产品状态库。JSON/columnar文件只作为确定性 projection 或证据导出，不与 `dig.sqlite` 争夺 annotation authority。
 
-### 5.4 Graph-based analysis
+### 5.5 Graph-based analysis
 
 DIG 不是只供 UI 展示。Framework 在其上执行有界、确定性的图算法：
 
@@ -272,7 +343,7 @@ DIG 不是只供 UI 展示。Framework 在其上执行有界、确定性的图�
 
 Centrality、community score 或相似度只能生成 proposal/priority，不能替代 STA、Boolean proof、physical gate 或 Commercial Label。
 
-### 5.5 Graph Annotation Layers
+### 5.6 Graph Annotation Layers
 
 DIG 既是 Opportunity Mining 的输入，也是所有免费局部评估的共同计算底座。基础 graph snapshot 保持不可变；算法不修改 Innovus facts，而是向绑定 graph hash 和 subgraph scope 的 annotation layers 追加结果。
 
@@ -301,7 +372,7 @@ run_id / iteration
 
 同一对象可以在不同阶段、不同迭代拥有多条 annotation。旧结果不被覆盖；“当前采用哪一条”由明确的 graph snapshot、方法版本和 Portfolio 决定。推断、proxy 和 commercial fact 使用不同 layer，禁止把模型输出改写成 Innovus 基础事实。
 
-### 5.6 Local Window Projection
+### 5.7 Local Window Projection
 
 局部代理不再各自重新读取全设计 netlist、DEF、SPEF 和 reports。它向 DIG 请求一个可复算的 bounded view：
 
@@ -326,7 +397,7 @@ LocalWindow = project(
 - 下一轮系统辨识可查询 proxy 与 commercial response 的条件关系；
 - `opportunities.json`、`gain-evaluation.json` 等文件成为 graph annotation 的确定性 projections，不再是另一套事实权威。
 
-### 5.7 增量更新
+### 5.8 增量更新
 
 CCEI 或商业工具改变局部设计后，不需要重新计算全部派生指标。Framework 根据 changed nodes/nets 与影响传播范围使相关 annotations 失效，并只重算：
 
@@ -338,7 +409,7 @@ CCEI 或商业工具改变局部设计后，不需要重新计算全部派生指
 
 基础 snapshot 仍不可变；局部更新产生新的 snapshot/annotation set。失效标记必须保留原因和前序 annotation identity，不能原地擦除历史。
 
-### 5.8 完备性
+### 5.9 完备性
 
 DIG manifest 明示：
 
@@ -530,6 +601,34 @@ Post-route Opportunity annotation 和双图映射的作用是提高一次性命�
 
 AES 10/20/40/100-Cell pilot 多数使用 `directed` 或预先选定 windows，因此它们证明了 patch/proof/P&R 能力，没有证明 place-stage anchored re-synthesis 已经实现。
 
+HAL 不成为第四种外部 operation，也不建立第二个 resynthesizer。现有 `hima-mo-resynth --request/--result` contract 保持，内部增加可替换 backend：
+
+```text
+multi_output_resynth service
+  -> native_v1   # current parser, bounded discovery and deterministic replay
+  -> hal_v0      # structural graph, LocalWindow analysis and anchored discovery POC
+  -> existing netlist_eco.py / proof.py / rollback publication
+```
+
+`hal_v0` 第一阶段只执行 `analyze/discover/anchored-search`：
+
+1. 用 augmented Liberty 和 gate netlist 建立 HAL project；
+2. 接收 DIG LocalWindow 的 Hima IDs、boundary、anchors 和 candidate Cell functions；
+3. 在范围内做 k-hop、single/multi-root subgraph、truth-vector 和 input phase/permutation matching；
+4. 返回以 Hima IDs 表达的候选 window、完整 boundary、所有 outputs、function evidence、runtime 与 peak RSS；
+5. 由现有 selector、`netlist_eco.py`、Yosys proof 和 rollback 决定是否发布 changed netlist。
+
+禁止把 HAL object ID、`.hal` project 或 Yosys resynthesis 输出直接当作可发布 ECO。HAL subgraph resynthesis 会改变内部对应关系，必须经过 Hima provenance、boundary recheck 和现有 proof。任意多输出 Cell matching 仍是 Hima CCEI 责任，不能把 HAL/Yosys 的普通 technology mapping 宣称为已经支持。
+
+`hal_v0` 晋级为默认 discovery backend 的条件是：
+
+- AES top-level 与至少一个 hierarchy leaf 的 instance/net/module/function counts 可对账；
+- 现有 directed/discover fixtures 的 boundary、truth-vector、selection 和 rejection 语义保持；
+- 已知非 FA 双输出与一个三输出 LocalWindow 能以 Hima IDs 往返；
+- 完整 AES anchored search 不出现全网 root-pair 平方增长，并记录相对 native 的 runtime、RSS、cuts、hash hits 和 pair checks；
+- native 与 HAL 不一致时 fail closed，并保留最小反例；
+- HAL 缺失、构建失败或版本不兼容时，Pack 可以明确选择 native backend，不静默改变结果。
+
 ### 9.4 Innovus script 操作
 
 CCEI 第一实现不需要新的 placement engine。Pack 生成并审计一份 Innovus Tcl ECO script：
@@ -630,12 +729,16 @@ Action 可标记为：
 | --- | --- | --- |
 | `flow/domain/mine_timing_route.py` | 从 report parser 转为 DIG timing projection consumer；保留完整 endpoint alternatives、data/clock contribution 和 completeness | sampled report 继续可读，但不能开启 E0 |
 | `flow/domain/mine_patterns.py` | 在 DIG 上产生 timing、drive、fusion、multi-output、slack-harvesting proposals | Boolean boundary 与现有 generation contract |
-| `flow/domain/design_information_graph.py`（domain helper） | 规范化 place/post-route导出束，形成不可变 snapshots、LocalWindow projection 和 annotation schema | 基础 facts 不被代理改写 |
+| `flow/domain/design_information_graph.py`（domain helper） | 编排 place/post-route bundle、OpenDB projection、Hima IDs、LocalWindow 和 completeness；不自行复制一套 LEF/DEF parser | 基础 facts 不被代理改写 |
+| `flow/domain/opendb_dig.py`（adapter） | 用 pinned OpenROAD/OpenDB 读取 LEF/DEF/netlist、保存/恢复 `physical.odb` 并输出确定性 object projection | 不运行 P&R，不输出方法结论 |
+| `flow/domain/dig_store.py`（domain helper） | 管理 SQLite schema、transactions、hyperedges、RTree、annotations、lineage、CrossPhaseMap 和 artifact manifest | JSON 只作为 projection；不建立服务数据库 |
 | `flow/domain/cross_phase_graph.py`（domain helper） | 构建 one-to-one/one-to-many/many-to-one/semantic-region correspondence 与 ambiguity | 输出映射证据，不产生 ECO target |
 | `flow/domain/innovus_dig_export.tcl`（tool adapter） | 从同一 checkpoint 写出 netlist/DEF/SDC/SPEF/timing/clock/census 与 manifest | 只读导出，不运行优化 |
-| `flow/domain/opensta_dig.tcl`（optional adapter） | 对导出束补充完整 timing graph 和局部 STA 查询 | 可选后端，不是 OpenROAD/P&R 依赖 |
+| `flow/domain/opensta_dig.tcl` / `opentimer_dig.py`（optional adapters） | 对同一 LocalWindow 补充 timing graph、arrival/required、path alternatives 和局部 STA | backend 可替换；Innovus 仍是商业标签权威 |
 | `flow/domain/proxy_mapping.py` | 对 bounded window 做 local cover/STA，不输出全局 Fmax 预测 | Yosys/ABC 单输出 mapping 角色 |
-| `flow/domain/multi_output_resynth/` | 深化为 CCEI anchored local resynthesis：1～2级 trace、single/multi-root cut、物理 seed、局部 proof、rollback | 保留 directed 仅供 debug/replay，复用现有 discover 与 proof |
+| `flow/domain/multi_output_resynth/service.py` | 冻结 request/result、backend选择、selection、publication 与错误收敛 | `discover`/`directed`兼容，changed rewrite继续fail closed |
+| `flow/domain/multi_output_resynth/hal_backend.py`（adapter） | HAL project导入、Hima ID映射、LocalWindow图分析和 anchored candidate discovery | 不发布网表、不拥有proof、不能泄漏HAL ID |
+| `flow/domain/multi_output_resynth/netlist_eco.py` / `proof.py` | 继续负责可逆结构ECO、window/module/top proof和rollback | HAL不能绕过既有发布门 |
 | `flow/domain/_generation_projection.py` | 从 Cell Demand 生成非对称 drive family 和 delta-only views | cumulative Library 和旧 shard 不重做 |
 | `flow/library_richness.py` | 持有 graph annotation lineage、Opportunity/Action response、trust region 和 system-identification labels | 现有 Action Portfolio 与 Commercial Label |
 | `flow/domain/init.tcl.tmpl`、`pnr.tcl.tmpl`、`mmmc.tcl.tmpl` | post-route export、early clock/useful skew、placed checkpoint 和 CCEI seam | matched floorplan/pin/uncertainty/DCCK/无 hold fix |
@@ -644,7 +747,7 @@ Action 可标记为：
 | `flow/read-stage.py` | 独立复算 DIG completeness、annotation provenance/projection、ECO census、clock/data contribution 和 Commercial Label | 不复制 optimizer 判断 |
 | `contract.yml` / Site tool binding | 声明 Innovus export/ECO 能力；OpenSTA 仅在启用时声明 pinned executable | 普通用户不承担知识/服务运维 |
 
-新增的四个 domain 文件是现有 Pack 工具内部 helper/adapter，不要求多个 Harness 模块适配，不构成架构扩张。
+新增的 domain helper/adapter 都位于现有 Pack 工具职责内，不要求 Harness、Runtime、Fabric 或 Desktop 适配。SQLite 是随 artifact 归档的嵌入式文件；OpenDB、HAL 和 timing backend 均通过窄 adapter 隔离，因此不构成产品架构扩张。
 
 ## 14. 开发计划
 
@@ -653,24 +756,36 @@ Action 可标记为：
 | 任务 | 依赖 | 主要文件 | 出口 |
 | --- | --- | --- | --- |
 | DIG-01 Dual Innovus export identity | 无 | P&R templates、`innovus_dig_export.tcl`、Readers | `S_place`/`S_postroute` 各自的 netlist/DEF/SDC/SPEF/Liberty/LEF/timing/clock/hash manifest；零优化副作用 |
-| DIG-02 Phase DIG snapshots | DIG-01 | `design_information_graph.py` | 两张不可变 graphs、annotation schema、LocalWindow projection、units、completeness 和对象 join |
-| DIG-03 Cross-phase graph mapping | DIG-02 | `cross_phase_graph.py` | correspondence relation、semantic-region、ambiguity、unmatched reason 和双 graph hashes |
-| DIG-04 Optional OpenSTA timing view | DIG-01/02 | `opensta_dig.tcl`、测试 fixture | 不改 OpenSTA 核心，补充多个 path alternatives、arrival/required 和局部 STA；可关闭 |
+| DIG-02 Phase DIG substrate | DIG-01 | `design_information_graph.py`、`opendb_dig.py`、`dig_store.py` | 两张 `physical.odb`、两个 `dig.sqlite`、稳定Hima IDs、hyperedges、RTree、annotation schema、LocalWindow、units、completeness 和确定性 projection hash |
+| DIG-03 Cross-phase graph mapping | DIG-02 | `cross_phase_graph.py`、`dig_store.py` | correspondence relation、semantic-region、ambiguity、unmatched reason 和双 graph hashes |
+| DIG-04 Replaceable timing view | DIG-01/02 | `opensta_dig.tcl`、OpenTimer adapter、测试 fixture | OpenSTA先行、OpenTimer对照；多个path alternatives、arrival/required和局部STA；可关闭且不改核心源码 |
 | DIG-05 Opportunity quadrants | DIG-02（DIG-04 可选增强） | `mine_patterns.py`、`mine_timing_route.py` | post-route graph annotation；深/浅 × 长/短；timing 与 slack-harvesting proposals 分离 |
 | DIG-06 Graph-native local proxy | DIG-02/05（DIG-04 可选增强） | `proxy_mapping.py`、`library_richness.py` | 只读 LocalWindow；逻辑/物理/timing annotations 写回同一 subgraph；无全局 Fmax claim |
 | DIG-07 Drive family | DIG-05/06 | `_generation_projection.py`、generation/char adapters | D1/D2/D4/D6/D8与非对称 outputs；Liberty/SPICE/LEF电气和几何一致 |
-| DIG-08 CCEI anchored-resynthesis POC | DIG-02/03/06/07 | `multi_output_resynth/`、P&R template | anchors 定位、1～2级 trace、place-state single/multi-output重发现、seed、局部 legalization、proof、rollback |
+| DIG-08 CCEI/HAL anchored-resynthesis POC | DIG-02/03/06/07 | `multi_output_resynth/service.py`、`hal_backend.py`、现有ECO/proof、P&R template | native/HAL同contract；anchors、1～2级trace、single/multi-output重发现、Hima ID provenance、seed、局部legalization、proof、rollback |
 | DIG-09 Useful-skew matched method | DIG-01/08 | P&R/MMMC templates、Reader | baseline/generated同设置；100 ps策略真实生效；data/clock delta分解 |
 | DIG-10 AES free closure | DIG-02～03、05～09（DIG-04 可选） | existing stages/readers | 完整 frontier、Portfolio、Cell Demand、CCEI patch；零商业 Job |
 | DIG-11 Commercial observation | DIG-10 | existing P&R/compare | 一次 CCEI causal E0；可选独立 DC adoption E0；Commercial Label 回灌 |
 | DIG-12 Pack integration | DIG-11 | Pack docs/graph/stages/tests | 当前 HimaPack 方法、知识和资产更新；不新增 Runtime 动作 |
 
-### 14.1 可并行边界
+### 14.1 外部后端准入门
+
+| Gate | 最便宜的反证 | 通过条件 | 失败回退 |
+| --- | --- | --- | --- |
+| OpenDB import | 一对 retained AES place/post-route bundles | instance/master/net/pin/location/DBU按exclusions对账；save/reload与重复projection确定 | Innovus export直接解析；OpenDB降为诊断器 |
+| SQLite DIG | synthetic加AES graph corpus | schema migration、foreign keys、RTree、lineage、CrossPhaseMap、LocalWindow和hash重放通过 | 保留JSON projection，修正schema后再接入 |
+| HAL logic backend | 一个AES leaf加top-level只读导入 | counts/function对账；已知2/3-output windows以Hima IDs往返；runtime/RSS/pair checks受控 | `native_v1`继续作为默认backend |
+| Timing backend | 同一组retained LocalWindows | critical arcs、path alternatives和排序差异逐项可解释；不以平均误差掩盖缺失 | Innovus facts/OpenSTA；OpenTimer不晋级 |
+| LadybugDB query index | 同一SQLite corpus重建 | deterministic export/restore，且代码量或查询性能有材料收益 | 不集成；SQLite保持唯一annotation store |
+
+通过 POC 只允许 adapter 在现有 contract 内晋级，不自动授权替换 Pack 事实模型或增加客户运维责任。
+
+### 14.2 可并行边界
 
 - DIG-01 dual export 与 DIG-07 drive-family mock preparation可并行，但共享 Liberty/LEF identity 由 DIG-07 单一负责；
-- DIG-02 snapshot/annotation/LocalWindow schema 冻结后，DIG-03 cross-phase mapping 与 DIG-04 可选 OpenSTA timing view可并行；
+- DIG-02 snapshot/annotation/LocalWindow schema 冻结后，DIG-03 cross-phase mapping、DIG-04 timing view与HAL只读导入POC可并行；
 - DIG-05 timing miner 与 slack-harvesting miner 可并行，共用冻结 DIG schema；
-- DIG-08 CCEI 的 graph projection 与 Innovus placement-seam probe 可并行，ECO writer 等待 correspondence schema 冻结；
+- DIG-08 HAL graph backend与Innovus placement-seam probe可并行，ECO writer等待correspondence schema冻结并继续由现有代码单一拥有；
 - `library_richness.py`、P&R templates 和 `stages.py` 各保持单一 owner；
 - DIG-10 前冻结共享 schema、units、identity 和 completeness，不允许各线自行发明第二套图。
 
@@ -679,6 +794,8 @@ Action 可标记为：
 ### L0：纯逻辑与 schema
 
 - heterogeneous node/edge identity、unit 和 hash；
+- SQLite schema migration、foreign keys、transactions、hyperedge、RTree和append-only lineage；
+- OpenDB OID、HAL gate ID、STA vertex不能替代稳定Hima ID；
 - 基础 facts immutable，proxy/decision/commercial annotations 分层且不可越权覆盖；
 - LocalWindow scope/hash/units/provenance 可复算，缺字段 fail closed；
 - annotation invalidation 只影响 changed subgraph 和传播范围；
@@ -690,13 +807,19 @@ Action 可标记为：
 - 四象限分类、community proposal 不直接 admission；
 - D1～D8 monotonic electrical/physical关系；
 - CCEI anchor、trace bound、source conflict、pin map、seed location 和 rollback；
+- native/HAL backend共享同一request/result、rejection code与publication门；HAL缺失时明确回退且不静默改结果；
 - 精确 instance name 改变但局部 function 保留时仍能重发现；邻域外 decoy 不得被选中。
 
-### L1：Innovus export schema 与可选 OpenSTA 小图
+### L1：Innovus export schema 与开源 backend 小图
 
 - synthetic LEF/Liberty/DEF/netlist/SDC/SPEF/timing facts形成同一 DIG；
-- netlist/DEF/SPEF对象 join 不依赖 OpenROAD；
+- OpenDB import/save/reload后对象counts、connectivity、geometry和projection hash稳定；
+- OpenDB import故意丢失custom multi-output pin或单位漂移时必须失败，不允许静默完成；
+- netlist/DEF/SPEF对象 join结果可由manifest复核，OpenDB失败时direct-parser fallback明示；
+- HAL导入同一结构网表与augmented Liberty，gate/net/module/function与DIG对账；
+- HAL在已知双/三输出LocalWindow上只返回Hima IDs、boundary和function evidence，不直接发布ECO；
 - 启用 OpenSTA 时，STA pin与 DIG instance/pin/net/坐标保持双向 identity；
+- OpenTimer对同一fixture的unsupported语义明确记录，不因进程成功而通过；
 - logical/physical/timing proxies 共享一个 LocalWindow 并写回不同 annotation layers；
 - local proxy在已知两路径 endpoint 上触发 path migration；
 - community proposal 经过 required-time、sink divergence 和 locality gate；
@@ -706,6 +829,9 @@ Action 可标记为：
 
 - 从已保存 AES database/export bundle 构建 DIG；
 - 所有输入 hash、units、unmatched objects 和 completeness 明示；
+- place/post-route各自产生可重载的`physical.odb`和`dig.sqlite`，CrossPhaseMap不依赖OpenDB OID偶然相同；
+- SQLite完成k-hop、bbox、annotation lineage、CrossPhaseMap和LocalWindow查询；Ladybug对照不影响出口；
+- HAL在AES top-level或按hierarchy分片运行，记录runtime、RSS、cuts、bucket sizes、hash hits和pair checks；
 - 重放 20/40/100-Cell Commercial Labels；
 - 找到 `MULTI_0103`、`MULTI_0142`、`SINGLE_0009` 等已知敏感点；
 - 免费层不得把 sampled path report 放行到 E0；
@@ -716,6 +842,7 @@ Action 可标记为：
 - D1～D8与非对称 output variants通过生成、LEF/Liberty identity 和 LC；
 - coarse placement 前后 source census probe；
 - post-route annotated subgraph 先映射到 place candidate region，再在改名/resize 的 place netlist中完成 bounded re-synthesis；
+- 同一个request分别由native和HAL analyze；selection不一致时保留反例并fail closed，不能任选较好结果；
 - 同一 placed database内插入、seed、legalize、STA update；
 - window/module proof、ECO census、rollback和未影响区域检查；
 - 只运行必要的小规模 Innovus seam，不跑完整 route。
@@ -737,12 +864,12 @@ Desktop App 不参与 Framework 日常验证。
 第一里程碑不是立即达到 5%，而是用现有 AES 负样本证明以下闭环真实成立：
 
 1. 从同一 baseline flow 保存 `S_place` 与 `S_postroute` 两个身份一致的 bundle；
-2. Pack 形成两张不可变 DIG、annotation layers 和可复算 LocalWindow，并建立可审计的 cross-phase correspondence；
+2. Pack 用OpenDB形成两张不可变物理镜像、用SQLite形成两份DIG/annotation stores和可复算LocalWindow，并建立可审计的cross-phase correspondence；
 3. post-route Opportunity 可以投影成 place candidate region，而不是精确 target instances；
 4. DIG 能解释 100-Cell 轮为何局部代理正向而 WNS 下降；
 5. Opportunity Mining 将 timing、drive、fusion 和 slack-harvesting 分开；
 6. 局部代理从 DIG 读取 LocalWindow、把并列指标写回原 subgraph，只给 local margin/trust region，不预测全局 MHz；
-7. CCEI 在同一 placed state原位实施并保留 ECO-only instances；
+7. HAL或native backend在同一contract内完成anchored discovery，现有CCEI ECO/proof/rollback在同一placed state原位实施并保留ECO-only instances；
 8. baseline/generated 使用一致 early clock/useful skew；
 9. 一个 Commercial Label 能回写到 Action、Cell Demand 和下一轮 uncertainty。
 
@@ -753,6 +880,9 @@ Desktop App 不参与 Framework 日常验证。
 - 不建立第二套 Hima Runtime、Fabric graph 或商业试验调度器；
 - 不把 OpenROAD 变成第二条 P&R 链，不把 OpenSTA fork 直接嵌入产品作为第一方案；
 - 不要求客户部署独立知识、OpenROAD链路或外部 graph database 服务；
+- 不把OpenDB、HAL、STA或Ladybug内部对象ID写成Hima稳定身份；
+- 不让HAL直接发布ECO、绕过现有proof/rollback，或把普通Yosys mapping表述成任意多输出mapping；
+- 不因Cypher查询方便就让LadybugDB成为新的唯一事实源；
 - 不用 community score、adoption count、面积收益代替 Fmax；
 - 不把 DC free mapping 与 CCEI causal result 混成一个结论；
 - 不把 CCEI 产品路径实现成依赖精确 instance cluster 的 point-to-point ECO；
@@ -762,8 +892,17 @@ Desktop App 不参与 Framework 日常验证。
 
 ## 18. 主要技术依据
 
+- [Information Graph 数据库与开源基础设施选型](information-graph-database-technology-selection.zh-CN.md)：组件职责、许可证、本地可用性、POC gates与回退；
+- [OpenDB](https://github.com/The-OpenROAD-Project/OpenROAD/blob/master/src/odb/README.md)：LEF/DEF物理对象、binary save/load与snapshot内OID；
+- [OpenDB dbProperty API](https://github.com/The-OpenROAD-Project/OpenDB/blob/master/include/opendb/db.h)：scalar properties能力与边界；
+- [HAL](https://github.com/emsec/hal)：gate-level netlist、Liberty、Python、plugin和project能力；
+- [HAL Graph Algorithms](https://github.com/emsec/hal/wiki/Graph-Algorithms)：igraph-backed逻辑图投影；
+- [HAL Resynthesis](https://github.com/emsec/hal/wiki/Resynthesis)：selected-subgraph Yosys resynthesis及其集成边界；
 - [OpenSTA](https://github.com/parallaxsw/OpenSTA)：standalone 输入能力、Network Adapter、增量 STA 及许可证说明；
-- [OpenSTA STA API](https://github.com/The-OpenROAD-Project/OpenSTA/blob/master/doc/StaApi.txt)：Network、timing graph、delay calculation、arrival/required 和 SPEF API；
+- [OpenSTA STA API](https://github.com/parallaxsw/OpenSTA/blob/master/doc/StaApi.md)：Network、timing graph、delay calculation、arrival/required 和 SPEF API；
+- [OpenTimer](https://github.com/OpenTimer/OpenTimer)：MIT局部STA对照backend；
+- [SQLite JSON](https://www.sqlite.org/json1.html)、[RTree](https://www.sqlite.org/rtree.html)、[recursive query](https://www.sqlite.org/lang_with.html)：嵌入式annotation、空间索引和最低依赖图查询基线；
+- [LadybugDB](https://github.com/LadybugDB/ladybug)：可选嵌入式property-graph query index对照；
 - [OpenROAD API](https://openroad.readthedocs.io/en/latest/main/src/README.html)：OpenDB 的 LEF/DEF/Verilog/DB 读取与保存接口；
 - [OpenROAD Global Placement](https://openroad.readthedocs.io/en/latest/main/src/gpl/README.html)：timing-driven placement、virtual CTS、incremental placement 和 net weighting；
 - [OpenROAD Detailed Placement](https://openroad.readthedocs.io/en/latest/main/src/dpl/README.html)：增量改动后的 legalization；
