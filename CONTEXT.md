@@ -112,6 +112,10 @@ _Avoid_: 重复性统计试验、噪声估计、仅 Cell 级指标、改变其�
 某一优化迭代中，目标设计的网表、Library、约束、timing endpoint、可用物理上下文和已接受修改共同构成的事实快照；所有边际收益都以它为条件。
 _Avoid_: 跨设计通用状态、只有网表文件、商业 EDA 的 session
 
+**Design Information Graph（DIG）**:
+从同一 Design State 投影出的异构设计关系图，把逻辑依赖、timing propagation、placement、互连寄生、clock关系和跨阶段 lineage 绑定在共同身份上，供 Opportunity Mining 使用。
+_Avoid_: top-N timing path 列表、普通 instance adjacency graph、第二套设计事实源
+
 **Endpoint Frontier**:
 同一 timing path group 内，slack 接近当前最差值的一组唯一寄存器 endpoint；它们共同决定当前瓶颈，不能用一条 timing path 代替。
 _Avoid_: top-N path 行、单个 endpoint、所有寄存器的无差别集合
@@ -124,6 +128,10 @@ _Avoid_: 报告里每个 endpoint 恰好出现一次、把 path-family 归一化
 从当前 Design State 的逻辑或物理结构中识别出的可评估改造位置，尚未授权修改设计，也不自带收益结论。
 _Avoid_: Cell、已接受 Action、实验结果
 
+**Slack-harvesting Opportunity**:
+位于 primary timing frontier 外、具有明确时序余量的逻辑与物理内聚区域，可在保持 guard band 的条件下换取面积、线长、功耗或拥塞改善；它不自带 Fmax 收益声明。
+_Avoid_: critical-path optimization、用面积收益替代频率收益
+
 **Optimization Action**:
 绑定具体位置、实现方式、影响 endpoint、成本、冲突和回滚的候选设计修改；可以采用单输出、多输出或物理合并实现。
 _Avoid_: 抽象算法名称、Cell 类型、没有位置的策略建议
@@ -131,6 +139,14 @@ _Avoid_: 抽象算法名称、Cell 类型、没有位置的策略建议
 **ECO-only Action**:
 由 Framework 明确写入网表且商业综合/物理优化不负责重新发现的多输出或物理合并 Action；商业观察必须保留该 ECO 实例，若工具删除则该 arm 只能说明 non-adoption，不能归因 Cell 收益。
 _Avoid_: 允许优化器静默展开后仍声称 custom Cell 被采用、把 dont-touch 扩展到无关 foundry logic
+
+**Custom Cell ECO Integrator（CCEI）**:
+把已冻结的 Optimization Actions 和 Cell Demand 落实到其来源物理状态中的 ECO 能力，负责精确替换、位置种子、局部合法化、证明、保存和回滚；它不负责发现 Opportunity 或决定业务收益。
+_Avoid_: 新的执行 Agent、全量逻辑综合器、重新冷启动 placement
+
+**局部免费代理**:
+在一个有界逻辑与物理窗口内比较 source cover 和 candidate cover，输出局部 margin、风险与不确定度；它用于阻止低质量 Action，不预测全设计最终 Fmax。
+_Avoid_: 商业 QoR 模拟器、完整 P&R 替代品、跨设计 MHz 预测
 
 **Action Portfolio**:
 在同一 Design State 上共同评估、互不冲突，并以推动整个 Endpoint Frontier 为目标的一组 Optimization Actions。
@@ -147,6 +163,10 @@ _Avoid_: 单条 path 的局部 delay、从初始 baseline 独立计算后直接�
 **Commercial Label**:
 Matched commercial flow 对一个 Action Portfolio 在明确 Design State 下产生的采用、route survival、WNS/TNS、PPA、DRC 和限制条件记录；用于改善后续因子和选择，不变成跨设计收益承诺。
 _Avoid_: 通用 QoR 预测、单颗 Cell 的固定收益、没有条件身份的成功或失败标签
+
+**系统辨识**:
+根据局部代理输入与 Commercial Label 的条件化关系，更新 Action 风险、模型不确定度、path migration 和下一轮 trust region；目标是改善闭环决策，不拟合跨设计固定收益。
+_Avoid_: 训练商业工具替代模型、把单次结果外推成普遍规律
 
 **试用版**:
 已经接近正式产品、主业务路径和跨同等环境迁移可用的候选版本，只允许少量可快速修复且不破坏任务、控制、数据或证据的缺陷。
