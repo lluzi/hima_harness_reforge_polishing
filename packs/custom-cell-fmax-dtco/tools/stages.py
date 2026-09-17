@@ -2819,7 +2819,9 @@ def parse_connectivity(path):
     counts = [int(value) for value in re.findall(
         r"(?:Total(?: number of)? (?:connectivity )?violations|Total Violations)\s*[:=]\s*(\d+)", text, re.I)]
     counts.extend(int(value) for value in re.findall(r"^\s*(\d+)\s+Problem\(s\)", text, re.I | re.M))
-    clean = bool(re.search(r"(?:no connectivity violations|0\s+connectivity violations)", text, re.I))
+    clean = bool(re.search(
+        r"(?:no connectivity violations|0\s+connectivity violations|Found no problems or warnings\.)",
+        text, re.I))
     if counts and len(set(counts)) != 1:
         raise Rejected("connectivity report carries conflicting violation totals")
     if counts:

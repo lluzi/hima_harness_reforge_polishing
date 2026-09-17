@@ -255,7 +255,9 @@ def connectivity_count(path):
     counts = [int(value) for value in re.findall(
         r"(?:Total(?: number of)? (?:connectivity )?violations|Total Violations)\s*[:=]\s*(\d+)", text, re.I)]
     counts.extend(int(value) for value in re.findall(r"^\s*(\d+)\s+Problem\(s\)", text, re.I | re.M))
-    clean = bool(re.search(r"(?:no connectivity violations|0\s+connectivity violations)", text, re.I))
+    clean = bool(re.search(
+        r"(?:no connectivity violations|0\s+connectivity violations|Found no problems or warnings\.)",
+        text, re.I))
     if counts and len(set(counts)) == 1:
         return counts[0]
     if not counts and clean:
@@ -412,7 +414,9 @@ def checkpoint_allowed_links(record, workspace, arm, phase):
     mmmc = mmmc_identity(one(record, workspace, "mmmc_script:" + arm))
     categories = [
         (lef_rows[0].split(), "libs/lef"),
-        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase in ("init", "place") else []), "libs/mmmc"),
+        # Innovus keeps the source SDC link only in init. Place/postroute
+        # checkpoints hold the active constraints internally.
+        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase == "init" else []), "libs/mmmc"),
         ([mmmc["qrc"]], "libs/mmmc/rc_" + arm),
     ]
     if phase == "postroute":

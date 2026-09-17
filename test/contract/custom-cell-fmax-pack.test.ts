@@ -585,6 +585,12 @@ test('Innovus 23.14 connectivity summary grammar is read as a physical violation
       path.join(packDir, module), functionName, report], { encoding: 'utf8' });
     assert.equal(read.status, 0, `${module}: ${read.stderr}`); assert.equal(read.stdout.trim(), '2');
   }
+  await writeFile(report, 'Begin Summary\n    Found no problems or warnings.\nEnd Summary\n');
+  for (const [module, functionName] of [['flow/stages.py', 'parse_connectivity'], ['flow/read-stage.py', 'connectivity_count']] as const) {
+    const read = spawnSync('/usr/bin/python3', ['-c', `import importlib.util,pathlib,sys;spec=importlib.util.spec_from_file_location('checked',sys.argv[1]);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);print(getattr(m,sys.argv[2])(pathlib.Path(sys.argv[3])))`,
+      path.join(packDir, module), functionName, report], { encoding: 'utf8' });
+    assert.equal(read.status, 0, `${module}: ${read.stderr}`); assert.equal(read.stdout.trim(), '0');
+  }
 });
 
 test('Innovus 23.14 Path 1 slack accepts the observed optional equals marker without weakening WNS equality', async (t) => {
