@@ -352,6 +352,20 @@ endmodule
         self.assertIn("update_library_set -name {libs_generated}", apply)
         self.assertIn("addInst -cell {XOR2} -inst {renamed_sum}", rollback)
 
+        full = build_ccei_plan(
+            netlist_text=netlist, top="top", checkpoint="place.enc.dat",
+            output_checkpoint="full.enc", opportunities=selected,
+            place_instances={
+                "renamed_sum": {"x": 10.0, "y": 20.0, "orientation": "R0"},
+                "renamed_carry": {"x": 14.0, "y": 20.0, "orientation": "R0"},
+            }, placement_mode="full-replay")
+        full_tcl = render_apply_tcl(full, "full.place.rpt")
+        self.assertIn("unplaceAllInsts", full_tcl)
+        self.assertIn("place_opt_design", full_tcl)
+        self.assertNotIn("ecoPlace -fixPlacedInsts true", full_tcl)
+        self.assertEqual(hashlib.sha256(netlist.encode()).hexdigest(),
+                         full["common_parent"]["netlist_sha256"])
+
     def test_hal_fallback_is_explicit_and_absent_anchor_fails_closed(self):
         work = Workspace(self, HA, operation="anchored")
         self.addCleanup(work.close)
@@ -412,6 +426,28 @@ endmodule
         self.assertEqual(result["selectedReplacements"][0]["master"], "MO_ANDOR")
         self.assertEqual(result["selectedReplacements"][0]["windowProof"]["status"], "proved")
         self.assertFalse(result["claimLimits"]["fmaxImprovement"])
+        audit = result["selectedReplacements"][0]["physicalSharingAudit"]
+        self.assertEqual("multi-output-container-only", audit["status"])
+        self.assertTrue(audit["independent_output_networks"])
+
+    def test_explicit_shared_transistor_audit_is_preserved(self):
+        work = Workspace(self, HA)
+        self.addCleanup(work.close)
+        work.data["targets"] = [{
+            "module": "top", "instances": ["u_sum", "u_carry"],
+            "expectedBoundaryInputs": ["a", "b"],
+            "expectedBoundaryOutputs": ["carry", "sum"],
+        }]
+        work.data["library"]["masterPhysicalAudits"] = {"MO_HA": {
+            "sharedInternalNodes": ["n_shared"], "sharedTransistorCount": 4,
+            "independentOutputNetworks": False, "sharedTransistorOptimization": True,
+            "source": "transistor-netlist-sha256:test",
+        }}
+        result = work.write()
+        self.assertEqual("succeeded", result["status"], result)
+        audit = result["selectedReplacements"][0]["physicalSharingAudit"]
+        self.assertEqual("shared-physical-topology-audited", audit["status"])
+        self.assertEqual(4, audit["shared_transistor_count"])
 
     def test_truth_vector_tamper_is_refused(self):
         work = Workspace(self, HA, allowed=("MO_ANDOR",))

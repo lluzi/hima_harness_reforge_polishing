@@ -2434,6 +2434,166 @@ def optimize_action_portfolio(design_state: Mapping[str, Any], actions: Sequence
     }
 
 
+def _v5_graph_model(design_state: Mapping[str, Any]):
+    if design_state.get("schema") != "hima.lfr-timing-graph-state/1":
+        raise RoundRequestError("V5 design_state must be a timing-graph-state/1 document")
+    raw_nodes = design_state.get("nodes")
+    raw_arcs = design_state.get("arcs")
+    endpoints = design_state.get("endpoints")
+    if not isinstance(raw_nodes, list) or not raw_nodes or not isinstance(raw_arcs, list):
+        raise RoundRequestError("V5 timing graph needs non-empty nodes and an arc array")
+    nodes = {}
+    for row in raw_nodes:
+        item = _mapping(row, "timing graph node")
+        name = _string(item.get("node"), "timing graph node identity")
+        if name in nodes:
+            raise RoundRequestError("V5 timing graph repeats node %s" % name)
+        nodes[name] = _cgo_signed_number(item.get("source_arrival_ns", 0.0),
+                                         "source_arrival_ns")
+    arcs = {}
+    incoming = {name: [] for name in nodes}
+    outgoing = {name: [] for name in nodes}
+    for row in raw_arcs:
+        item = _mapping(row, "timing graph arc")
+        identifier = _string(item.get("arc_id"), "arc_id")
+        source, target = _string(item.get("source"), "arc source"), _string(item.get("target"), "arc target")
+        if identifier in arcs or source not in nodes or target not in nodes:
+            raise RoundRequestError("V5 timing graph has duplicate or dangling arc %s" % identifier)
+        delay = _number(item.get("delay_ns"), "arc delay")
+        arcs[identifier] = {"source": source, "target": target, "delay_ns": delay}
+        incoming[target].append(identifier); outgoing[source].append(identifier)
+    endpoint_names = [_string(value, "endpoint") for value in endpoints or ()]
+    if not endpoint_names or set(endpoint_names) - set(nodes) or len(endpoint_names) != len(set(endpoint_names)):
+        raise RoundRequestError("V5 endpoints must be unique graph nodes")
+    indegree = {name: len(incoming[name]) for name in nodes}
+    ready = sorted(name for name, degree in indegree.items() if degree == 0)
+    order = []
+    while ready:
+        name = ready.pop(0); order.append(name)
+        for arc_id in sorted(outgoing[name]):
+            target = arcs[arc_id]["target"]
+            indegree[target] -= 1
+            if indegree[target] == 0:
+                ready.append(target); ready.sort()
+    if len(order) != len(nodes):
+        raise RoundRequestError("V5 timing graph must be acyclic")
+    q_target = _number(design_state.get("q_target_ns"), "q_target_ns", positive=True)
+    scenarios = design_state.get("scenarios") or [{"scenario_id": "nominal"}]
+    if not isinstance(scenarios, list) or not scenarios:
+        raise RoundRequestError("V5 scenarios must be a non-empty array")
+    return nodes, arcs, incoming, order, endpoint_names, q_target, scenarios
+
+
+def _v5_action(value, arcs, index):
+    row = dict(_mapping(value, "actions[%d]" % index))
+    identifier = _string(row.get("action_id"), "action_id")
+    master = _string(row.get("master_id"), "master_id")
+    changes = row.get("graph_changes")
+    if not isinstance(changes, list) or not changes:
+        raise RoundRequestError("V5 action %s needs graph_changes" % identifier)
+    normalized = []
+    for change in changes:
+        item = _mapping(change, "graph change")
+        arc_id = _string(item.get("arc_id"), "graph change arc_id")
+        if arc_id not in arcs:
+            raise RoundRequestError("V5 action %s changes unknown arc %s" % (identifier, arc_id))
+        normalized.append({"arc_id": arc_id,
+                           "delta_delay_ns": _cgo_signed_number(item.get("delta_delay_ns"),
+                                                                  "delta_delay_ns")})
+    resources = row.get("resources") or []
+    if not isinstance(resources, list) or not all(isinstance(item, str) and item for item in resources):
+        raise RoundRequestError("V5 action resources must be strings")
+    hard = row.get("hard_gates") or {}
+    required_gates = ("logical_proof", "all_outputs_used", "ccei_applicable", "rollback_proved")
+    failed = [gate for gate in required_gates if hard.get(gate) is not True]
+    return {**row, "action_id": identifier, "master_id": master,
+            "graph_changes": normalized, "resources": sorted(set(resources)),
+            "hard_gate_failures": failed, "input_order": index}
+
+
+def _v5_recompute(model, selected):
+    nodes, arcs, incoming, order, endpoints, q_target, scenarios = model
+    delay_delta = {}
+    for action in selected:
+        for change in action["graph_changes"]:
+            delay_delta[change["arc_id"]] = delay_delta.get(change["arc_id"], 0.0) + change["delta_delay_ns"]
+    scenario_rows = []
+    for scenario in scenarios:
+        scenario_id = _string(scenario.get("scenario_id"), "scenario_id")
+        scenario_delta = scenario.get("arc_delay_delta_ns") or {}
+        arrivals = {}
+        for node in order:
+            candidates = []
+            for arc_id in incoming[node]:
+                arc = arcs[arc_id]
+                delay = arc["delay_ns"] + delay_delta.get(arc_id, 0.0) + float(scenario_delta.get(arc_id, 0.0))
+                if delay < 0:
+                    raise RoundRequestError("V5 action portfolio makes arc %s negative" % arc_id)
+                candidates.append(arrivals[arc["source"]] + delay)
+            arrivals[node] = max([nodes[node], *candidates])
+        q = {endpoint: arrivals[endpoint] for endpoint in endpoints}
+        scenario_rows.append({"scenario_id": scenario_id, "endpoint_q_ns": q,
+                              "worst_q_ns": max(q.values()),
+                              "target_deficit_ns": sum(max(0.0, value - q_target) for value in q.values())})
+    return {"scenarios": scenario_rows,
+            "worst_q_ns": max(row["worst_q_ns"] for row in scenario_rows),
+            "target_deficit_ns": max(row["target_deficit_ns"] for row in scenario_rows)}
+
+
+def optimize_action_portfolio_v5(design_state: Mapping[str, Any], actions: Sequence[object],
+                                 master_budget: int, action_budget: int, beam_width: int = 12):
+    """Bounded whole-graph beam search with alternative-path takeover."""
+    if any(isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > 100
+           for value in (master_budget, action_budget, beam_width)):
+        raise RoundRequestError("V5 budgets and beam width must be integers within 1..100")
+    model = _v5_graph_model(design_state)
+    normalized = [_v5_action(value, model[1], index) for index, value in enumerate(actions)]
+    if len({row["action_id"] for row in normalized}) != len(normalized):
+        raise RoundRequestError("V5 actions repeat action_id")
+    baseline = _v5_recompute(model, [])
+    frontier = [tuple()]
+    evaluated = {tuple(): baseline}
+    for _depth in range(action_budget):
+        expanded = set(frontier)
+        for prefix in frontier:
+            chosen = [normalized[index] for index in prefix]
+            resources = set().union(*(set(row["resources"]) for row in chosen)) if chosen else set()
+            masters = {row["master_id"] for row in chosen}
+            start = prefix[-1] + 1 if prefix else 0
+            for index in range(start, len(normalized)):
+                action = normalized[index]
+                if action["hard_gate_failures"] or resources.intersection(action["resources"]):
+                    continue
+                if action["master_id"] not in masters and len(masters) >= master_budget:
+                    continue
+                candidate = prefix + (index,)
+                evaluated[candidate] = _v5_recompute(model, [normalized[item] for item in candidate])
+                expanded.add(candidate)
+        def score(prefix):
+            state = evaluated[prefix]
+            masters = len({normalized[index]["master_id"] for index in prefix})
+            return (state["worst_q_ns"], state["target_deficit_ns"], masters,
+                    len(prefix), tuple(normalized[index]["action_id"] for index in prefix))
+        frontier = sorted(expanded, key=score)[:beam_width]
+    best = min(frontier, key=lambda prefix: (
+        evaluated[prefix]["worst_q_ns"], evaluated[prefix]["target_deficit_ns"],
+        len({normalized[index]["master_id"] for index in prefix}), len(prefix),
+        tuple(normalized[index]["action_id"] for index in prefix)))
+    selected = [normalized[index] for index in best]
+    return {
+        "schema": "hima.lfr-action-portfolio/2", "status": "succeeded",
+        "baseline": baseline, "final": evaluated[best],
+        "selected_actions": selected,
+        "selected_action_ids": [row["action_id"] for row in selected],
+        "selected_master_ids": sorted({row["master_id"] for row in selected}),
+        "master_budget": master_budget, "action_budget": action_budget,
+        "beam_width": beam_width, "whole_graph_recomputed": True,
+        "alternative_path_takeover_modeled": True,
+        "free_proxy_decision_authority": False,
+        "claim_limits": {"commercial_qor": False, "fmax_prediction": False},
+    }
+
+
 def derive_cell_demands(portfolio: Mapping[str, Any]) -> dict[str, object]:
     """Aggregate selected Action sites into the minimal delta Library demand."""
     if portfolio.get("schema") != "hima.lfr-action-portfolio/1":

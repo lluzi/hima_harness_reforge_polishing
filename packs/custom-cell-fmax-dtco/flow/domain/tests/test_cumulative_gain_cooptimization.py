@@ -23,6 +23,7 @@ from library_richness import (  # noqa: E402
     derive_cell_demands,
     evaluate_cumulative_gain,
     optimize_action_portfolio,
+    optimize_action_portfolio_v5,
 )
 from _generation_projection import patterns_from_cell_demands  # noqa: E402
 import stages  # noqa: E402
@@ -89,6 +90,45 @@ class EndpointFrontierTests(unittest.TestCase):
 
 
 class CoverAndPortfolioTests(unittest.TestCase):
+    def test_v5_whole_graph_search_models_alternative_takeover(self):
+        state = {
+            "schema": "hima.lfr-timing-graph-state/1",
+            "nodes": [{"node": name, "source_arrival_ns": 0.0}
+                      for name in ("S0", "S1", "E0", "E1")],
+            "arcs": [
+                {"arc_id": "A0", "source": "S0", "target": "E0", "delay_ns": 0.56},
+                {"arc_id": "A1", "source": "S1", "target": "E1", "delay_ns": 0.56},
+            ],
+            "endpoints": ["E0", "E1"], "q_target_ns": 0.54,
+            "scenarios": [{"scenario_id": "nominal"},
+                          {"scenario_id": "pessimistic",
+                           "arc_delay_delta_ns": {"A0": 0.002, "A1": 0.002}}],
+        }
+        def action(name, arc):
+            return {"action_id": name, "master_id": name, "resources": [arc],
+                    "graph_changes": [{"arc_id": arc, "delta_delay_ns": -0.03}],
+                    "hard_gates": {"logical_proof": True, "all_outputs_used": True,
+                                   "ccei_applicable": True, "rollback_proved": True}}
+        result = optimize_action_portfolio_v5(
+            state, [action("X0", "A0"), action("X1", "A1")], 2, 2, beam_width=4)
+        self.assertEqual(["X0", "X1"], result["selected_action_ids"])
+        self.assertAlmostEqual(0.532, result["final"]["worst_q_ns"])
+        self.assertTrue(result["whole_graph_recomputed"])
+        self.assertFalse(result["free_proxy_decision_authority"])
+
+    def test_v5_rejects_unproved_action_and_keeps_endpoint_sentinels(self):
+        state = {"schema": "hima.lfr-timing-graph-state/1",
+                 "nodes": [{"node": "S"}, {"node": "E"}],
+                 "arcs": [{"arc_id": "A", "source": "S", "target": "E", "delay_ns": 0.5}],
+                 "endpoints": ["E"], "q_target_ns": 0.48}
+        action = {"action_id": "BAD", "master_id": "M", "resources": [],
+                  "graph_changes": [{"arc_id": "A", "delta_delay_ns": -0.1}],
+                  "hard_gates": {"logical_proof": False, "all_outputs_used": True,
+                                 "ccei_applicable": True, "rollback_proved": True}}
+        result = optimize_action_portfolio_v5(state, [action], 1, 1)
+        self.assertEqual([], result["selected_action_ids"])
+        self.assertEqual(result["baseline"], result["final"])
+
     def test_three_output_required_time_is_all_or_nothing(self):
         result = evaluate_cover_opportunity(
             opportunity_id="MO3", kind="multi-output",

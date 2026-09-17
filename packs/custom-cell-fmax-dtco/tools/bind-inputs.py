@@ -115,13 +115,15 @@ def materialize_profile(document):
         "CCFMAX_CONTAINER_MOUNT_POINT", "CCFMAX_LCLAYOUT_ACTIVATE",
         "CCFMAX_POWER_PIN", "CCFMAX_GROUND_PIN", "CCFMAX_POWER_TEMPLATE_BASE_CELL",
         "GENERATED_LIBRARY_NAME", "GENERATED_LIB_CELL_PATTERN", "CCFMAX_MAX_ROUTE_LAYER",
-        "CCFMAX_TAP_CELL", "CCFMAX_FILLER_CELLS", "PLACE_SITE",
+        "CCFMAX_TAP_CELL", "CCFMAX_FILLER_CELLS", "CCFMAX_DCAP_CELL", "PLACE_SITE",
+        "CCFMAX_PG_HORIZONTAL_LAYER", "CCFMAX_PG_VERTICAL_LAYER",
     )
     positive_integer_fields = (
         "MAX_ROUTE_CANDIDATES", "GENERATION_TIMEOUT_SEC", "ABSTRACT_TIMEOUT_SEC",
         "CHARACTERIZE_TIMEOUT_SEC", "LC_TIMEOUT_SEC", "SYNTH_TIMEOUT_SEC", "MULTI_CPU",
         "CCFMAX_TAP_INTERVAL", "PNR_TIMEOUT_SEC", "DRC_LIMIT", "VERIFY_TIMEOUT_SEC",
         "LFR_PROXY_TIMEOUT_SEC", "LFR_PROXY_CPU_COUNT", "LFR_PROXY_MEMORY_MB",
+        "CCFMAX_DCAP_ROW_STRIDE",
     )
     for name in file_fields:
         document[name] = plain_file(document.get(name), name)
@@ -174,6 +176,17 @@ def materialize_profile(document):
     document["CLOCK_NS"] = positive_number(document.get("CLOCK_NS"), "CLOCK_NS")
     document["CCFMAX_RC_TEMPERATURE"] = positive_number(document.get("CCFMAX_RC_TEMPERATURE"), "CCFMAX_RC_TEMPERATURE", -273.15)
     document["CCFMAX_PROCESS_NODE"] = positive_number(document.get("CCFMAX_PROCESS_NODE"), "CCFMAX_PROCESS_NODE")
+    for name in (
+        "CCFMAX_DCAP_X_PITCH_UM", "CCFMAX_DCAP_EDGE_MARGIN_UM",
+        "CCFMAX_PG_RING_WIDTH_UM", "CCFMAX_PG_RING_SPACING_UM",
+        "CCFMAX_PG_STRIPE_WIDTH_UM", "CCFMAX_PG_STRIPE_SPACING_UM",
+        "CCFMAX_PG_STRIPE_SET_DISTANCE_UM", "CCFMAX_PG_STRIPE_START_OFFSET_UM",
+    ):
+        document[name] = positive_number(document.get(name), name)
+    document["CCFMAX_MAX_EFFECTIVE_DENSITY"] = positive_number(
+        document.get("CCFMAX_MAX_EFFECTIVE_DENSITY"), "CCFMAX_MAX_EFFECTIVE_DENSITY")
+    if document["CCFMAX_MAX_EFFECTIVE_DENSITY"] > 0.85:
+        raise ValueError("CCFMAX_MAX_EFFECTIVE_DENSITY must not exceed 0.85")
     document["CCFMAX_SWITCHING_ACTIVITY"] = document.get("CCFMAX_SWITCHING_ACTIVITY")
     if (isinstance(document["CCFMAX_SWITCHING_ACTIVITY"], bool)
             or not isinstance(document["CCFMAX_SWITCHING_ACTIVITY"], (int, float))

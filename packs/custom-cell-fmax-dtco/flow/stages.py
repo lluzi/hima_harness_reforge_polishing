@@ -2392,6 +2392,43 @@ def pin_plan_identity(path):
             "canonicalization": "pin name, side and normalized saveIoFile -locations attributes"}
 
 
+def physical_plan_identity(dcap_plan, physical_facts):
+    """Validate and identify the V5 PG/DCAP/effective-density contract."""
+    plan_lines = Path(dcap_plan).read_text(errors="replace").splitlines()
+    if not plan_lines or plan_lines[0] != "instance\tmaster\tx\ty\trow_index\tphase":
+        raise Rejected("DCAP plan lacks its exact header")
+    rows = [line.split("\t") for line in plan_lines[1:] if line.strip()]
+    if not rows or any(len(row) != 6 for row in rows):
+        raise Rejected("DCAP plan has no complete checkerboard rows")
+    if len({row[0] for row in rows}) != len(rows):
+        raise Rejected("DCAP plan repeats instance identities")
+    if any(row[5] not in {"0", "1"} for row in rows):
+        raise Rejected("DCAP checkerboard phase must be 0 or 1")
+    facts = {}
+    lines = Path(physical_facts).read_text(errors="replace").splitlines()
+    if not lines or lines[0] != "metric\tvalue\tunit":
+        raise Rejected("physical facts lack their exact header")
+    for line in lines[1:]:
+        fields = line.split("\t")
+        if len(fields) == 3:
+            facts[fields[0]] = {"value": float(fields[1]), "unit": fields[2]}
+    required = {"occupied_standard_cell_area", "core_area", "effective_site_occupancy",
+                "dcap_count", "pg_special_wire_count"}
+    if required - set(facts):
+        raise Rejected("physical facts are incomplete")
+    occupancy = facts["effective_site_occupancy"]["value"]
+    if not 0.0 < occupancy <= 0.85:
+        raise Rejected("effective site occupancy is outside (0, 0.85]")
+    if int(facts["dcap_count"]["value"]) != len(rows):
+        raise Rejected("physical facts DCAP count disagrees with the plan")
+    if facts["pg_special_wire_count"]["value"] <= 0:
+        raise Rejected("physical facts prove no PG special wires")
+    canonical = "\n".join("\t".join(row) for row in rows) + "\n"
+    return {"dcapPlanSha256": sha_bytes(canonical.encode()), "dcapCount": len(rows),
+            "effectiveSiteOccupancy": occupancy,
+            "pgSpecialWireCount": int(facts["pg_special_wire_count"]["value"])}
+
+
 def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, fixed_floorplan=None):
     foundry_synth, custom_synth = prior(ctx, "foundry-synth"), prior(ctx, "custom-synth")
     frozen_path = ctx.flow / "records" / "freeze-cumulative-library.json"
@@ -2464,7 +2501,24 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
             "INIT_DB": str(init_db) + ".dat", "DESIGN_TOP": ctx.binding("DESIGN_TOP"),
             "PLACE_DB": place_db,
             "MULTI_CPU": ctx.binding("MULTI_CPU"), "TAP_CELL": ctx.binding("CCFMAX_TAP_CELL"),
-            "TAP_INTERVAL": ctx.binding("CCFMAX_TAP_INTERVAL"), "FILLER_CELLS": ctx.binding("CCFMAX_FILLER_CELLS"),
+            "TAP_INTERVAL": ctx.binding("CCFMAX_TAP_INTERVAL"),
+            "PWR_NET": ctx.binding("CCFMAX_POWER_PIN"), "GND_NET": ctx.binding("CCFMAX_GROUND_PIN"),
+            "DCAP_CELL": ctx.binding("CCFMAX_DCAP_CELL"),
+            "DCAP_ROW_STRIDE": ctx.binding("CCFMAX_DCAP_ROW_STRIDE"),
+            "DCAP_X_PITCH_UM": ctx.binding("CCFMAX_DCAP_X_PITCH_UM"),
+            "DCAP_EDGE_MARGIN_UM": ctx.binding("CCFMAX_DCAP_EDGE_MARGIN_UM"),
+            "DCAP_PLAN": ctx.run_dir / ("dcap-plan-" + arm + ".tsv"),
+            "PHYSICAL_FACTS": ctx.run_dir / ("rpt_" + arm) / "physical-facts.tsv",
+            "DENSITY_REPORT": ctx.run_dir / ("rpt_" + arm) / "density-map.rpt",
+            "MAX_EFFECTIVE_DENSITY": ctx.binding("CCFMAX_MAX_EFFECTIVE_DENSITY"),
+            "PG_HORIZONTAL_LAYER": ctx.binding("CCFMAX_PG_HORIZONTAL_LAYER"),
+            "PG_VERTICAL_LAYER": ctx.binding("CCFMAX_PG_VERTICAL_LAYER"),
+            "PG_RING_WIDTH_UM": ctx.binding("CCFMAX_PG_RING_WIDTH_UM"),
+            "PG_RING_SPACING_UM": ctx.binding("CCFMAX_PG_RING_SPACING_UM"),
+            "PG_STRIPE_WIDTH_UM": ctx.binding("CCFMAX_PG_STRIPE_WIDTH_UM"),
+            "PG_STRIPE_SPACING_UM": ctx.binding("CCFMAX_PG_STRIPE_SPACING_UM"),
+            "PG_STRIPE_SET_DISTANCE_UM": ctx.binding("CCFMAX_PG_STRIPE_SET_DISTANCE_UM"),
+            "PG_STRIPE_START_OFFSET_UM": ctx.binding("CCFMAX_PG_STRIPE_START_OFFSET_UM"),
             "RPT_DIR": rpt, "FINAL_DB": final_db, "GDS_OUT": gds,
             "GDS_MAP": site["CCFMAX_GDS_MAP"], "MERGE_GDS": site["FOUNDRY_GDS"],
             "SWITCHING_ACTIVITY": ctx.binding("CCFMAX_SWITCHING_ACTIVITY"), "ARM": arm,
@@ -2483,6 +2537,9 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
                         "gds": gds, "postroute_sdc": postroute_sdc,
                         "postroute_netlist": postroute_netlist,
                         "pin_plan": pin_plan,
+                        "dcap_plan": ctx.run_dir / ("dcap-plan-" + arm + ".tsv"),
+                        "physical_facts": ctx.run_dir / ("rpt_" + arm) / "physical-facts.tsv",
+                        "density_report": ctx.run_dir / ("rpt_" + arm) / "density-map.rpt",
                         "floorplan": floorplan,
                         "input_sdc": sdc, "input_netlist": netlist}
     arm_only_paths = (str(generated_lib), str(generated_lef))
@@ -2591,6 +2648,13 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     plan_identity = pin_plan_identity(chosen["pin_plan"])
     if fixed_pin_plan is not None and plan_identity != pin_plan_identity(fixed_pin_plan):
         raise Rejected("generated arm pin locations differ from the frozen foundry pin plan")
+    physical_identity = physical_plan_identity(chosen["dcap_plan"], chosen["physical_facts"])
+    if arm == "generated":
+        reference_physical = foundry_record.get("facts", {}).get("v5_physical_identity")
+        if not isinstance(reference_physical, dict):
+            raise Rejected("foundry arm has no V5 physical identity")
+        if physical_identity["dcapPlanSha256"] != reference_physical.get("dcapPlanSha256"):
+            raise Rejected("generated arm DCAP checkerboard differs from the foundry arm")
     rc_model = ctx.add_artifact(ctx.run_dir / "rc_model.bin", "postroute_rc_model",
                                 "innovus-output")
     postroute_links = checkpoint_allowed_links(
@@ -2617,6 +2681,9 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     secondary = parse_secondary_pnr(power_report, gatecount_report, route_summary)
     for at, role in ((chosen["gds"], "postroute_gds"),
                      (chosen["pin_plan"], "fixed_pin_plan" if arm == "foundry" else "applied_pin_plan"),
+                     (chosen["dcap_plan"], "fixed_dcap_plan" if arm == "foundry" else "applied_dcap_plan"),
+                     (chosen["physical_facts"], "v5_physical_facts"),
+                     (chosen["density_report"], "v5_density_map"),
                      (timing_summary, "postroute_timing_summary"),
                      (timing_paths, "postroute_timing_paths"),
                      (hold_summary, "postroute_hold_summary"),
@@ -2659,6 +2726,7 @@ def stage_pnr(ctx, arm, utilization="0.60"):
                       "floorplan_core_box": core_box,
                       "floorplan_core_area_um2": (core_box[2] - core_box[0]) * (core_box[3] - core_box[1]),
                       "pin_plan_identity": plan_identity,
+                      "v5_physical_identity": physical_identity,
                       **clock_tree,
                       "templateSha256": {name: sha_file(DOMAIN / name) for name in
                                          ("init.tcl.tmpl", "mmmc.tcl.tmpl", "pnr.tcl.tmpl")}})

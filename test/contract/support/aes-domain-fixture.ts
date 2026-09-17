@@ -206,6 +206,14 @@ elif tool == 'innovus':
         (pathlib.Path(report_dir) / 'power.rpt').write_text('Power Units = 1mW\nTotal Power: 1.25\n')
         (pathlib.Path(report_dir) / 'gatecount.rpt').write_text('[0] held_out_datapath Gates=42 Cells=21 Area=12.5 um^2\n')
         (pathlib.Path(report_dir) / 'summary.rpt').write_text('# Instances: 25\n% Pure Gate Density #6 ((fixture)): 55.5%\n')
+        dcap_plan = pathlib.Path(re.search(r'set _hima_dcap_plan \[open \{([^}]+)\} w\]', text).group(1))
+        dcap_plan.parent.mkdir(parents=True, exist_ok=True)
+        dcap_plan.write_text('instance\tmaster\tx\ty\trow_index\tphase\nHIMA_DCAP_R000_C0000\tFIXTURE_DCAP\t2.8\t2.0\t0\t0\n')
+        physical_facts = pathlib.Path(re.search(r'set _hima_physical_facts \[open \{([^}]+)\} w\]', text).group(1))
+        physical_facts.parent.mkdir(parents=True, exist_ok=True)
+        physical_facts.write_text('metric\tvalue\tunit\noccupied_standard_cell_area\t100\tum2\ncore_area\t400\tum2\neffective_site_occupancy\t0.25\tfraction\ndcap_count\t1\tcount\npg_special_wire_count\t4\tcount\n')
+        density_report = pathlib.Path(re.search(r'reportDensityMap > \{([^}]+)\}', text).group(1))
+        density_report.write_text('SYNTHETIC DENSITY MAP\n')
         save_netlist = re.search(r'^saveNetlist\s+(\S+)', text, re.M)
         if save_netlist:
             routed_netlist = pathlib.Path(save_netlist.group(1))
@@ -318,6 +326,13 @@ def parse_netlist(path):
     FOUNDRY_QRC_TECH: path.join(site, 'qrc'), FOUNDRY_GDS: path.join(site, 'foundry.gds'), XS28_GDS_MAP: path.join(site, 'map'),
     XS28_RC_TEMPERATURE: 25, XS28_PROCESS_NODE: 28, XS28_MAX_ROUTE_LAYER: 'M8', MULTI_CPU: 1,
     XS28_TAP_CELL: 'FIXTURE_TAP', XS28_TAP_INTERVAL: 10, XS28_FILLER_CELLS: 'FIXTURE_FILL',
+    CCFMAX_DCAP_CELL: 'FIXTURE_DCAP', CCFMAX_DCAP_ROW_STRIDE: 4,
+    CCFMAX_DCAP_X_PITCH_UM: 14, CCFMAX_DCAP_EDGE_MARGIN_UM: 2.8,
+    CCFMAX_MAX_EFFECTIVE_DENSITY: 0.85,
+    CCFMAX_PG_HORIZONTAL_LAYER: 'M7', CCFMAX_PG_VERTICAL_LAYER: 'M6',
+    CCFMAX_PG_RING_WIDTH_UM: 0.4, CCFMAX_PG_RING_SPACING_UM: 0.4,
+    CCFMAX_PG_STRIPE_WIDTH_UM: 0.2, CCFMAX_PG_STRIPE_SPACING_UM: 0.2,
+    CCFMAX_PG_STRIPE_SET_DISTANCE_UM: 20, CCFMAX_PG_STRIPE_START_OFFSET_UM: 4,
     CCFMAX_CLOCK_BUFFER_CELLS: 'DCCKBD4_FIXTURE DCCKBD8_FIXTURE',
     CCFMAX_CLOCK_INVERTER_CELLS: 'DCCKND4_FIXTURE DCCKND8_FIXTURE',
     XS28_SWITCHING_ACTIVITY: 0.2, PNR_TIMEOUT_SEC: 30, DRC_LIMIT: 1000000, VERIFY_TIMEOUT_SEC: 30,

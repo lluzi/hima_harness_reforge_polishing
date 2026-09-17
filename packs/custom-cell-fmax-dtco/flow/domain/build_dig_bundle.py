@@ -21,6 +21,9 @@ ROLE_FILES = {
     "tool_version": "tool-version.txt",
     "timing_facts": "timing-facts.json",
     "clock_facts": "clock-facts.json",
+    "setup_endpoint_index": "setup-endpoints.tsv",
+    "endpoint_worst_setup_report": "endpoint-worst-setup.rpt",
+    "active_frontier": "active-frontier.json",
 }
 
 

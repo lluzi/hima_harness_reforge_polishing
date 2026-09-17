@@ -386,3 +386,63 @@ def main():
 
 if __name__ == "__main__":
     main()
+def build_break_even_envelope(window):
+    """Build a conditional V5 Cell envelope from one closed local window.
+
+    This does not predict route gain.  It answers how fast and how light the
+    candidate must be for each boundary output after charging upstream input
+    capacitance, bypass-sink and boundary-wire penalties.
+    """
+    required = ("boundary_inputs", "boundary_outputs", "upstream_drivers",
+                "bystander_sinks", "old_output_arrival_ns")
+    missing = [name for name in required if not window.get(name)]
+    if missing:
+        return {"schema": "hima.lfr-break-even-envelope/1", "status": "incomplete",
+                "missing": missing, "decision_authority": False}
+    inputs = window["boundary_inputs"]
+    outputs = window["boundary_outputs"]
+    old_arrivals = window["old_output_arrival_ns"]
+    loads = window.get("output_load_pf") or {}
+    if set(outputs) - set(old_arrivals) or set(outputs) - set(loads):
+        return {"schema": "hima.lfr-break-even-envelope/1", "status": "incomplete",
+                "missing": ["per-output old arrival/load"], "decision_authority": False}
+    required_gain = float(window.get("required_local_gain_ns", 0.0))
+    upstream_penalty = float(window.get("upstream_driver_penalty_ns", 0.0))
+    bystander_penalty = float(window.get("bystander_sink_penalty_ns", 0.0))
+    wire_penalty = window.get("boundary_wire_penalty_ns") or {}
+    input_arrival = float(window.get("worst_boundary_input_arrival_ns", 0.0))
+    if min(required_gain, upstream_penalty, bystander_penalty, input_arrival) < 0:
+        raise ValueError("break-even window timing quantities must be non-negative")
+    rows = []
+    for output in outputs:
+        allowed = (float(old_arrivals[output]) - input_arrival - required_gain
+                   - upstream_penalty - bystander_penalty
+                   - float(wire_penalty.get(output, 0.0)))
+        rows.append({
+            "output": output, "max_candidate_arc_delay_ns": max(0.0, allowed),
+            "output_load_pf": float(loads[output]),
+            "max_output_slew_ns": (window.get("max_output_slew_ns") or {}).get(output),
+            "removed_internal_net_cap_pf": float(
+                (window.get("removed_internal_net_cap_pf") or {}).get(output, 0.0)),
+        })
+    cap_rows = []
+    baseline_caps = window.get("baseline_input_cap_pf") or {}
+    driver_resistance = window.get("upstream_driver_resistance_ns_per_pf") or {}
+    cap_penalty_budget = float(window.get("input_cap_penalty_budget_ns", 0.0))
+    for pin in inputs:
+        base = baseline_caps.get(pin)
+        resistance = driver_resistance.get(pin)
+        maximum = None
+        if isinstance(base, (int, float)) and isinstance(resistance, (int, float)) and resistance > 0:
+            maximum = float(base) + cap_penalty_budget / float(resistance)
+        cap_rows.append({"input": pin, "baseline_cap_pf": base,
+                         "max_candidate_input_cap_pf": maximum})
+    status = "bounded" if all(row["max_candidate_arc_delay_ns"] > 0 for row in rows) else "outside"
+    return {
+        "schema": "hima.lfr-break-even-envelope/1", "status": status,
+        "outputs": rows, "inputs": cap_rows,
+        "penalties_ns": {"upstream_driver": upstream_penalty,
+                         "bystander_sinks": bystander_penalty},
+        "window_closed": True, "decision_authority": False,
+        "claim_limits": {"commercial_qor": False, "silicon_benefit": False},
+    }

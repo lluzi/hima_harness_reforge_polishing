@@ -66,6 +66,25 @@ report_timing -late -skip_io_paths -max_paths 100000 -nworst 100 \
 report_timing -late -skip_io_paths -begin_end_pair -max_slack 0.100 \
   -net -view $_view > [file join $_out timing-begin-end-pairs.rpt]
 
+# V5 endpoint-complete state.  Enumerate every register data pin first, then
+# request one worst setup path for each identity.  This is intentionally not a
+# Top-N report.  It proves current endpoint coverage while keeping the separate
+# statement that path alternatives are incomplete.
+set _endpoint_index [file join $_out setup-endpoints.tsv]
+set _endpoint_report [file join $_out endpoint-worst-setup.rpt]
+set _fp [open $_endpoint_index w]
+puts $_fp "# endpoint"
+set _setup_endpoints [lsort [get_object_name [all_registers -data_pins]]]
+foreach _endpoint $_setup_endpoints {
+  puts $_fp $_endpoint
+}
+close $_fp
+file delete -force $_endpoint_report
+foreach _endpoint $_setup_endpoints {
+  set _pin [get_pins $_endpoint]
+  report_timing -late -to $_pin -max_paths 1 -nworst 1 -net -view $_view >> $_endpoint_report
+}
+
 set _fp [open [file join $_out census.tsv] w]
 puts $_fp "kind\tname\tmaster\tx\ty\tplace_status"
 foreach _inst [lsort [dbGet top.insts.name]] {
@@ -89,6 +108,7 @@ puts $_fp [join [list analysis_view $_view] "\t"]
 puts $_fp [join [list timing_max_paths 100000] "\t"]
 puts $_fp [join [list timing_nworst 100] "\t"]
 puts $_fp [join [list timing_max_slack_ns 0.100] "\t"]
+puts $_fp [join [list setup_endpoint_count [llength $_setup_endpoints]] "\t"]
 close $_fp
 
 set _fp [open [file join $_out tool-version.txt] w]

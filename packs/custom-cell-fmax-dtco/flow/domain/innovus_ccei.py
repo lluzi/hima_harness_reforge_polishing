@@ -65,7 +65,9 @@ def _resolve_net(contexts, modules, context, net):
 def build_ccei_plan(*, netlist_text, top, checkpoint, output_checkpoint,
                     opportunities, place_instances, power_net=None, ground_net=None,
                     power_pin=None, ground_pin=None, library_set=None,
-                    timing_liberties=()):
+                    timing_liberties=(), placement_mode="incremental"):
+    if placement_mode not in {"incremental", "full-replay"}:
+        raise CceiError("placement_mode must be incremental or full-replay")
     modules, contexts = _contexts(netlist_text, top)
     occupied, actions = set(), []
     for opportunity in opportunities:
@@ -116,6 +118,9 @@ def build_ccei_plan(*, netlist_text, top, checkpoint, output_checkpoint,
         })
     payload = {"schema": "hima.innovus-ccei-plan/1", "top": top,
                "checkpoint": str(checkpoint), "output_checkpoint": str(output_checkpoint),
+               "placement_mode": placement_mode,
+               "common_parent": {"top": top, "netlist_sha256": hashlib.sha256(
+                   netlist_text.encode()).hexdigest()},
                "actions": actions, "power": {"net": power_net, "pin": power_pin},
                "ground": {"net": ground_net, "pin": ground_pin},
                "library_overlay": ({"library_set": library_set,
@@ -167,8 +172,11 @@ def render_apply_tcl(plan, placement_report):
                 lines.append("globalNetConnect %s -type pgpin -pin %s -inst %s" % (
                     _tcl(identity["net"]), _tcl(identity["pin"]),
                     _tcl(action["full_replacement_instance"])))
-    lines.extend([
-        "ecoPlace -fixPlacedInsts true -timing_driven true",
+    placement = (["unplaceAllInsts", "place_opt_design",
+                  "puts \"=== HIMA CCEI FULL PLACEMENT REPLAY ===\""]
+                 if plan.get("placement_mode") == "full-replay" else
+                 ["ecoPlace -fixPlacedInsts true -timing_driven true"])
+    lines.extend(placement + [
         "puts \"=== HIMA CCEI FINAL_INSTANCE_COUNT [sizeof_collection [get_cells -hierarchical *HIMA_MO_*]] ===\"",
         "checkPlace %s" % _tcl(placement_report),
         "saveDesign %s" % _tcl(plan["output_checkpoint"]),
@@ -225,6 +233,8 @@ def main():
     parser.add_argument("--ground-pin")
     parser.add_argument("--library-set")
     parser.add_argument("--timing-liberty", action="append", default=[])
+    parser.add_argument("--placement-mode", choices=("incremental", "full-replay"),
+                        default="incremental")
     args = parser.parse_args()
     if args.max_actions < 1:
         raise CceiError("max-actions must be positive")
@@ -255,6 +265,7 @@ def main():
         power_net=args.power_net, ground_net=args.ground_net,
         power_pin=args.power_pin, ground_pin=args.ground_pin,
         library_set=args.library_set, timing_liberties=args.timing_liberty,
+        placement_mode=args.placement_mode,
     )
     plan["place_graph_sha256"] = snapshot[0]
     plan["resynthesis_result_sha256"] = hashlib.sha256(

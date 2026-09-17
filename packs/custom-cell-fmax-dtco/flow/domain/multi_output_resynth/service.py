@@ -770,6 +770,52 @@ def _result_base(netlist_hash, elapsed_ms, opportunities, selected, stats):
     }
 
 
+def _attach_physical_sharing_audits(request, opportunities):
+    """Attach explicit physical-sharing claims; absence means container-only."""
+    audits = ((request.get("library") or {}).get("masterPhysicalAudits") or {})
+    if not isinstance(audits, dict):
+        raise ResynthesisError("invalid-request", "masterPhysicalAudits must be an object")
+    for row in opportunities:
+        raw = audits.get(row["master"])
+        output_count = len(row.get("outputPinToNet") or {})
+        if raw is None:
+            audit = {
+                "status": ("multi-output-container-only" if output_count > 1
+                           else "single-output-not-applicable"),
+                "shared_internal_nodes": [], "shared_transistor_count": 0,
+                "independent_output_networks": output_count > 1,
+                "shared_transistor_optimization": False,
+                "source": "not-provided",
+            }
+        else:
+            if not isinstance(raw, dict):
+                raise ResynthesisError("invalid-request", "physical sharing audit must be an object")
+            required = {"sharedInternalNodes", "sharedTransistorCount",
+                        "independentOutputNetworks", "sharedTransistorOptimization", "source"}
+            if required - set(raw):
+                raise ResynthesisError("invalid-request", "physical sharing audit is incomplete",
+                                       {"master": row["master"], "missing": sorted(required - set(raw))})
+            count = raw["sharedTransistorCount"]
+            if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                raise ResynthesisError("invalid-request", "shared transistor count must be non-negative")
+            audit = {
+                "status": ("shared-physical-topology-audited"
+                           if raw["sharedTransistorOptimization"] else
+                           "multi-output-container-only"),
+                "shared_internal_nodes": list(raw["sharedInternalNodes"]),
+                "shared_transistor_count": count,
+                "independent_output_networks": bool(raw["independentOutputNetworks"]),
+                "shared_transistor_optimization": bool(raw["sharedTransistorOptimization"]),
+                "source": str(raw["source"]),
+            }
+            if audit["shared_transistor_optimization"] and (
+                    audit["independent_output_networks"] or count <= 0):
+                raise ResynthesisError("invalid-request",
+                                       "shared optimization contradicts the physical audit")
+        row["physicalSharingAudit"] = audit
+    return opportunities
+
+
 def run_request(request_path, result_path):
     started = time.monotonic()
     request_path = Path(request_path).resolve()
@@ -835,6 +881,7 @@ def run_request(request_path, result_path):
             opportunities, stats = _anchored(request, graphs, cells, allowed, module_outputs)
         else:
             opportunities, stats = _discover(request, graphs, cells, allowed, module_outputs)
+        _attach_physical_sharing_audits(request, opportunities)
         maximum = int((request.get("scope") or {}).get("maxReplacements", 50))
         selected = _select(opportunities, maximum, request.get("selectedOpportunityIds"))
         result = _result_base(

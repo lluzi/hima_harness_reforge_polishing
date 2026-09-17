@@ -13,12 +13,13 @@ sys.path.insert(0, str(DOMAIN))
 
 from cross_phase_graph import build_cross_phase_map, project_opportunity_region  # noqa: E402
 from build_dig_bundle import publish_bundle  # noqa: E402
-from innovus_timing_facts import parse_timing_report  # noqa: E402
+from innovus_timing_facts import build_active_frontier, parse_timing_report  # noqa: E402
 from mine_patterns import classify_dig_opportunity  # noqa: E402
 from mine_timing_route import mine_dig_endpoint_opportunities  # noqa: E402
 from proxy_mapping import RequestError, evaluate_dig_local_window  # noqa: E402
 from _generation_projection import validate_drive_family  # noqa: E402
-from relative_mock_timing import replace_arc_tables, scale_cell_tables  # noqa: E402
+from relative_mock_timing import (build_break_even_envelope, replace_arc_tables,
+                                  scale_cell_tables)  # noqa: E402
 from design_information_graph import (  # noqa: E402
     DesignInformationGraphError,
     validate_bundle,
@@ -125,6 +126,87 @@ def cone_projection():
 
 
 class DesignInformationGraphTests(unittest.TestCase):
+    def test_break_even_envelope_charges_upstream_and_bystander_penalties(self):
+        result = build_break_even_envelope({
+            "boundary_inputs": ["A"], "boundary_outputs": ["Y"],
+            "upstream_drivers": ["DRV"], "bystander_sinks": ["BYPASS"],
+            "old_output_arrival_ns": {"Y": 0.20}, "output_load_pf": {"Y": 0.01},
+            "worst_boundary_input_arrival_ns": 0.10, "required_local_gain_ns": 0.01,
+            "upstream_driver_penalty_ns": 0.01, "bystander_sink_penalty_ns": 0.005,
+            "boundary_wire_penalty_ns": {"Y": 0.005},
+            "baseline_input_cap_pf": {"A": 0.002},
+            "upstream_driver_resistance_ns_per_pf": {"A": 2.0},
+            "input_cap_penalty_budget_ns": 0.004,
+        })
+        self.assertEqual("bounded", result["status"])
+        self.assertAlmostEqual(0.07, result["outputs"][0]["max_candidate_arc_delay_ns"])
+        self.assertAlmostEqual(0.004, result["inputs"][0]["max_candidate_input_cap_pf"])
+        self.assertFalse(result["decision_authority"])
+
+    def test_break_even_envelope_fails_closed_without_bystander_scope(self):
+        result = build_break_even_envelope({
+            "boundary_inputs": ["A"], "boundary_outputs": ["Y"],
+            "upstream_drivers": ["DRV"], "old_output_arrival_ns": {"Y": 0.2},
+        })
+        self.assertEqual("incomplete", result["status"])
+        self.assertIn("bystander_sinks", result["missing"])
+
+    def test_endpoint_index_proves_endpoint_coverage_without_claiming_alternatives(self):
+        report = """# Design : top
+# Command : report_timing endpoint loop
+Path 1: MET Setup Check
+Endpoint: E0 (^) checked
+Beginpoint: L0 (^) triggered
+Path Groups: {clk}
+Analysis View: view
+= Required Time 0.500
+- Arrival Time 0.510
+= Slack Time -0.010
+Path 1: MET Setup Check
+Endpoint: E1 (^) checked
+Beginpoint: L1 (^) triggered
+Path Groups: {clk}
+Analysis View: view
+= Required Time 0.500
+- Arrival Time 0.505
+= Slack Time -0.005
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            report_path = Path(directory) / "endpoints.rpt"
+            index_path = Path(directory) / "endpoints.tsv"
+            report_path.write_text(report)
+            index_path.write_text("# endpoint\nE0\nE1\n")
+            timing, _clocks = parse_timing_report(
+                report_path, 100000, 1, 1.0, index_path)
+        self.assertEqual("complete", timing["completeness"])
+        self.assertFalse(timing["coverage_scope"]["path_alternatives_complete"])
+        self.assertEqual([1, 2], [row["path_id"] for row in timing["paths"]])
+        frontier = build_active_frontier(timing, 0.5, 0.05, 0.0)
+        self.assertEqual(2, frontier["endpoint_count"])
+        self.assertAlmostEqual(0.51 / 1.05, frontier["q_target_ns"])
+
+    def test_endpoint_index_fails_closed_when_one_endpoint_has_no_path(self):
+        report = """# Design : top
+# Command : report_timing endpoint loop
+Path 1: MET Setup Check
+Endpoint: E0 (^) checked
+Beginpoint: L0 (^) triggered
+Path Groups: {clk}
+Analysis View: view
+= Required Time 0.500
+- Arrival Time 0.510
+= Slack Time -0.010
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            report_path = Path(directory) / "endpoints.rpt"
+            index_path = Path(directory) / "endpoints.tsv"
+            report_path.write_text(report); index_path.write_text("E0\nE1\n")
+            timing, _ = parse_timing_report(report_path, 100000, 1, 1.0, index_path)
+        self.assertEqual("partial", timing["completeness"])
+        self.assertEqual(["E1"], timing["coverage_scope"]["missing_endpoints"])
+        with self.assertRaisesRegex(ValueError, "endpoint-complete"):
+            build_active_frontier(timing, 0.5, 0.05, 0.0)
+
     def test_projection_hash_is_deterministic_and_identity_is_snapshot_scoped(self):
         first = validate_projection(projection("place-1", "place"))
         second = validate_projection(projection("place-1", "place"))

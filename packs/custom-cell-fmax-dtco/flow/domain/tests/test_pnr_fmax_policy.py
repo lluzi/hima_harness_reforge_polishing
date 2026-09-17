@@ -30,6 +30,19 @@ class PnrFmaxPolicyTests(unittest.TestCase):
         self.assertIn("-opt_skew_apply_delay_limits_to_full_flow true", template)
         self.assertLess(template.index("setUsefulSkewMode"), template.index("place_opt_design"))
 
+    def test_v5_reserves_pg_dcap_and_density_before_full_placement(self):
+        template = (DOMAIN / "pnr.tcl.tmpl").read_text()
+        self.assertIn("addRing -nets", template)
+        self.assertIn("addStripe -nets", template)
+        self.assertIn("sroute -connect {corePin floatingStripe}", template)
+        self.assertIn("HIMA_DCAP_R%03d_C%04d", template)
+        self.assertIn("-place_global_max_density @@MAX_EFFECTIVE_DENSITY@@", template)
+        self.assertLess(template.index("HIMA_DCAP_R%03d_C%04d"),
+                        template.index("place_opt_design"))
+        self.assertLess(template.index("addStripe -nets"), template.index("place_opt_design"))
+        self.assertNotIn("addFiller -cell", template)
+        self.assertIn("NO ORDINARY FILLER", template)
+
 
 if __name__ == "__main__":
     unittest.main()

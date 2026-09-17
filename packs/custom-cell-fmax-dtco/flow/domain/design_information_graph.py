@@ -204,9 +204,14 @@ def augment_timing_projection(physical_projection, timing_facts, clock_facts):
             duplicate_paths += 1
     manifest["timing_duplicate_path_rows"] = duplicate_paths
     endpoint_names = {row["endpoint"] for row in unique_paths.values()}
+    frontier_rows = {
+        row["endpoint"]: row for row in
+        ((timing_facts.get("active_frontier") or {}).get("endpoints") or [])
+    }
     for endpoint in sorted(endpoint_names):
         rows = [row for row in unique_paths.values() if row["endpoint"] == endpoint]
         identity = endpoint
+        frontier = frontier_rows.get(endpoint, {})
         result["nodes"].append({
             "kind": "EndpointState", "native_identity": identity,
             "attributes": {
@@ -214,6 +219,10 @@ def augment_timing_projection(physical_projection, timing_facts, clock_facts):
                 "worst_slack_ns": min(row["slack_ns"] for row in rows),
                 "path_alternative_count": len(rows),
                 "coverage_complete": completeness == "complete",
+                "q_ns": frontier.get("q_ns"),
+                "active_frontier": frontier.get("active"),
+                "target_deficit_ns": frontier.get("target_deficit_ns"),
+                "regression_sentinel": True,
             },
         })
         known.add(("EndpointState", identity))

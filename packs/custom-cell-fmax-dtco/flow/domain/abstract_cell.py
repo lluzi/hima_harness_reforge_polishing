@@ -87,6 +87,18 @@ RULE_KEYS = (
 )
 
 
+def select_staggered_pin_tracks(tracks, pin_height, rail_lo, rail_hi, rail_spacing):
+    """Return up to three deterministic legal M1 tracks spanning the row."""
+    legal = [track for track in tracks
+             if track - pin_height // 2 - rail_lo >= rail_spacing
+             and rail_hi - (track + (pin_height - pin_height // 2)) >= rail_spacing]
+    if not legal:
+        raise ValueError("no M1 track can host a signal pin between the PG rails")
+    if len(legal) <= 3:
+        return legal
+    return list(dict.fromkeys((legal[0], legal[len(legal) // 2], legal[-1])))
+
+
 def load_rule_deck(path):
     """The site geometry rule deck, with every key this generator needs present.
 
@@ -303,7 +315,10 @@ def main():
     #   blockage  untouched -- the other remedy would have deleted OBS height from a model that
     #             already blocks far less M1 than a real cell does.
     PIN_W = EOL["M1"][1]                   # eolWidth: the pin end is no longer an end-of-line edge
-    PIN_H = 230                            # OUR choice; asserted against the deck's M1 min area
+    # Use the smallest 10nm-grid height that satisfies M1 area.  The previous
+    # 230nm single band forced every signal pin onto one crowded horizontal
+    # stripe.  V5 assigns pins round-robin to up to three legal M1 tracks.
+    PIN_H = max(WIRE, ((M1_AREA + PIN_W - 1) // PIN_W + 9) // 10 * 10)
     assert PIN_W * PIN_H >= M1_AREA, \
         "pin %dx%dnm is under M1 minimum area %dnm2" % (PIN_W, PIN_H, M1_AREA)
     assert cpp_nm - PIN_W >= SP, \
@@ -311,9 +326,6 @@ def main():
     assert (cpp_nm - PIN_W) // 2 + NEIGHBOUR_STANDOFF >= SP, \
         "a pin against an abutted neighbour leaves %dnm < M1 min spacing %dnm" \
         % ((cpp_nm - PIN_W) // 2 + NEIGHBOUR_STANDOFF, SP)
-    PIN_Y0 = (H - PIN_H) // 2
-    PIN_Y0 -= PIN_Y0 % 10                  # keep on the 0.01um manufacturing-friendly grid
-    PIN_Y1 = PIN_Y0 + PIN_H
     rail_lo, rail_hi = RAIL // 2, H - RAIL // 2      # the two rail edges facing the device band
     # The M2 stub is deliberately NOT widened with the pin, though it used to take the pin's x0/x1
     # and so would have followed it to eolWidth for free. Two reasons, both measured:
@@ -333,6 +345,9 @@ def main():
         "M2 stub %dx%dnm is under M2 minimum area %dnm2" % (M2_STUB_W, M2_STUB_H, M2_AREA)
 
     os.makedirs(a.outdir, exist_ok=True)
+    tracks = list(range(M1_PITCH, H, M1_PITCH))
+    pin_tracks = select_staggered_pin_tracks(
+        tracks, PIN_H, rail_lo, rail_hi, SP_RAIL)
     pins = {}
     for i, s in enumerate(signals):
         # Pin x is the CENTRE of site i+1, not the site boundary. The old code used (i+1)*CPP -- the
@@ -345,12 +360,16 @@ def main():
         cx = (i + 1) * cpp_nm + cpp_nm // 2
         assert (cx - M2_OFF) % M2_PITCH == 0, "pin %s at %dnm is off the M2 track grid" % (s, cx)
         assert cx + PIN_W // 2 <= W, "pin %s at %dnm does not fit the %dnm cell" % (s, cx, W)
-        pins[s] = (cx - PIN_W // 2, PIN_Y0, cx + PIN_W // 2, PIN_Y1)
+        cy = pin_tracks[i % len(pin_tracks)]
+        y0 = cy - PIN_H // 2
+        y1 = y0 + PIN_H
+        pins[s] = (cx - PIN_W // 2, y0, cx + PIN_W // 2, y1)
 
-    tracks = list(range(M1_PITCH, H, M1_PITCH))
-    open_tr = [t for t in tracks if PIN_Y0 <= t <= PIN_Y1]     # tracks a wire can share with a pin
-    assert open_tr, "pin band %d..%d covers no M1 track" % (PIN_Y0, PIN_Y1)
-    via_y = min(open_tr, key=lambda t: abs(t - (PIN_Y0 + PIN_H // 2)))
+    open_tr = sorted({t for t in tracks for _s, (_x0, y0, _x1, y1) in pins.items()
+                      if y0 <= t <= y1})
+    assert open_tr, "staggered pin bands cover no M1 track"
+    via_y = {s: min(open_tr, key=lambda t: abs(t - (rect[1] + rect[3]) // 2))
+             for s, rect in pins.items()}
 
     # ---- OBS -----------------------------------------------------------------------------------
     # The previous version emitted ONE rectangle across the whole device band. It looked reasonable
@@ -418,8 +437,8 @@ def main():
                 "OBS strip %d..%d is within M1.S.1 of a wire on track %d" % (y0, y1, t)
         assert y0 - rail_lo >= SP_RAIL and rail_hi - y1 >= SP_RAIL, \
             "OBS strip %d..%d is within wide-metal spacing of a rail" % (y0, y1)
-        assert y0 - PIN_Y1 >= SP or PIN_Y0 - y1 >= SP, \
-            "OBS strip %d..%d is within M1.S.1 of the pin band" % (y0, y1)
+        assert all(y0 - pin[3] >= SP or pin[1] - y1 >= SP for pin in pins.values()), \
+            "OBS strip %d..%d is within M1.S.1 of a pin band" % (y0, y1)
         obs.append((y0, y1))
 
     # The inset is only as good as the arithmetic behind it -- assert the abutment, not the intent.
@@ -447,8 +466,8 @@ def main():
     # OBS strips and the rails have short edges at or above eolWidth and so are not end-of-line;
     # the M2 stub ends are minimum width and so ARE end-of-line, but the nearest M2 inside their
     # window is a whole pin row away, far past what the M2 rule asks for.
-    m2_stub = {s: ((pins[s][0] + pins[s][2]) // 2 - M2_STUB_W // 2, via_y - M2_STUB_H // 2,
-                   (pins[s][0] + pins[s][2]) // 2 + M2_STUB_W // 2, via_y + M2_STUB_H // 2)
+    m2_stub = {s: ((pins[s][0] + pins[s][2]) // 2 - M2_STUB_W // 2, via_y[s] - M2_STUB_H // 2,
+                   (pins[s][0] + pins[s][2]) // 2 + M2_STUB_W // 2, via_y[s] + M2_STUB_H // 2)
                for s in signals}
     geom = {"M1": [("pin " + s, pins[s]) for s in signals]
                   + [("OBS %d..%d" % (y0, y1), (obs_x0, y0, obs_x1, y1)) for y0, y1 in obs]
@@ -506,7 +525,7 @@ def main():
               "        RECT %.3f %.3f %.3f %.3f ;" % (x0 / 1000.0, y0 / 1000.0, x1 / 1000.0, y1 / 1000.0),
               "      LAYER M2 ;",
               "        RECT %.3f %.3f %.3f %.3f ;" % tuple(v / 1000.0 for v in m2_stub[s]),
-              "      VIA %.3f %.3f %s ;" % (cx / 1000.0, via_y / 1000.0, deck["m1_m2_via_name"]),
+              "      VIA %.3f %.3f %s ;" % (cx / 1000.0, via_y[s] / 1000.0, deck["m1_m2_via_name"]),
               "    END", "  END %s" % s]
     for nm, use, y0, y1 in ((a.power_pin, "POWER", H - RAIL // 2, H + RAIL // 2),
                             (a.ground_pin, "GROUND", -RAIL // 2, RAIL // 2)):
@@ -526,11 +545,13 @@ def main():
             "columns": cols, "column_source": src, "sites": W // cpp_nm,
             "devices": len(devs), "inputs": ins, "outputs": outs,
             "pin_x_um": sorted(round((p[0] + p[2]) / 2000.0, 4) for p in pins.values()),
+            "pin_y_um": {s: round((p[1] + p[3]) / 2000.0, 4) for s, p in pins.items()},
+            "pin_track_policy": "deterministic-three-track-staggered",
             "m1_open_tracks_um": [t / 1000.0 for t in open_tr],
             "obs_m1_um": [[y0 / 1000.0, y1 / 1000.0] for y0, y1 in obs],
             "obs_x_um": [obs_x0 / 1000.0, obs_x1 / 1000.0],
             "obs_edge_inset_um": OBS_EDGE / 1000.0,
-            "m2_landing_via_y_um": via_y / 1000.0,
+            "m2_landing_via_y_um": {s: y / 1000.0 for s, y in via_y.items()},
             "pin_m1_um": [PIN_W / 1000.0, PIN_H / 1000.0],
             "m2_stub_um": [M2_STUB_W / 1000.0, M2_STUB_H / 1000.0],
             "eol_rule": {k: {"space_um": v[0] / 1000.0, "width_um": v[1] / 1000.0,

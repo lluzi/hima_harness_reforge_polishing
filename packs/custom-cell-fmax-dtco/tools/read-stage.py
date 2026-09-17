@@ -283,6 +283,26 @@ def secondary_pnr(power_path, gatecount_path, summary_path):
             "route_instance_count": int(instances[0]), "route_density_pct": values[2]}
 
 
+def v5_physical_facts(path):
+    lines = Path(path).read_text(errors="replace").splitlines()
+    if not lines or lines[0] != "metric\tvalue\tunit":
+        raise ValueError("V5 physical facts lack their exact header")
+    rows = {}
+    for line in lines[1:]:
+        fields = line.split("\t")
+        if len(fields) == 3:
+            rows[fields[0]] = (float(fields[1]), fields[2])
+    required = {"occupied_standard_cell_area", "core_area", "effective_site_occupancy",
+                "dcap_count", "pg_special_wire_count"}
+    if required - set(rows):
+        raise ValueError("V5 physical facts are incomplete")
+    if not 0 < rows["effective_site_occupancy"][0] <= 0.85:
+        raise ValueError("V5 effective occupancy is outside (0, 0.85]")
+    if rows["dcap_count"][0] <= 0 or rows["pg_special_wire_count"][0] <= 0:
+        raise ValueError("V5 physical baseline lacks DCAP or PG resources")
+    return rows
+
+
 def report_text(path):
     try:
         raw = gzip.decompress(path.read_bytes()) if path.suffix == ".gz" else path.read_bytes()
@@ -1160,6 +1180,7 @@ def values_for(record, workspace, stage):
         secondary = secondary_pnr(one(record, workspace, "postroute_power_report"),
                                   one(record, workspace, "postroute_gatecount_report"),
                                   one(record, workspace, "postroute_summary_report"))
+        physical_v5 = v5_physical_facts(one(record, workspace, "v5_physical_facts"))
         for key, actual in (("hold_wns_ns", hold_wns), ("hold_violating_paths", hold_violating),
                             ("route_drc_violations", route_drc), ("connectivity_violations", connectivity)):
             if facts.get(key) != actual:
@@ -1178,6 +1199,9 @@ def values_for(record, workspace, stage):
                        number("gate_count", secondary["gate_count"]), number("cell_count", secondary["cell_count"]),
                        number("postroute_cell_area", secondary["postroute_cell_area_um2"], "um2"),
                        number("route_instance_count", secondary["route_instance_count"]), number("route_density", secondary["route_density_pct"], "percent"),
+                       number("effective_site_occupancy", physical_v5["effective_site_occupancy"][0], "fraction"),
+                       number("dcap_count", int(physical_v5["dcap_count"][0])),
+                       number("pg_special_wire_count", int(physical_v5["pg_special_wire_count"][0])),
                        unknown("congestion_overflow", "current Innovus summary has no verified congestion-overflow metric")])
     elif stage == "verify":
         diagnostic = 0
