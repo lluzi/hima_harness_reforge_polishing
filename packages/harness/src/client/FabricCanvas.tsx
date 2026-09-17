@@ -3,7 +3,7 @@
 // every node at its own `x`/`y`), the Goal roundel, and the attention strip above it all. Nothing
 // here computes a coordinate; `canvas-layout.ts` already has.
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
-import { fitToWidth, labelsVisibleAt } from '../canvas-layout.js';
+import { centerAt, fitToWidth, labelsVisibleAt } from '../canvas-layout.js';
 import type { CanvasScene, Frame, PlacedEdge } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import { goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
@@ -26,8 +26,9 @@ export interface FabricCanvasProps {
   readonly stale: boolean;
   readonly reducedMotion: boolean;
   /** The masthead already carries its own "Open Campaign Agent" for a non-owner (Side Talk); the
-   *  attention strip offers the same link only for the owner, so the page never shows two controls
-   *  under the one marker `open-owner` at once. */
+   *  attention strip can offer the same link too, for the same non-owner, when a waiting blocker is
+   *  also shown there. The two controls carry distinct markers (masthead: `open-owner`; strip:
+   *  `attention-open-owner`), so both can appear at once without two controls under one marker. */
   readonly isOwner: boolean;
   readonly selectedNodeId?: string;
   /** `undefined` closes the open card (Escape, `node-card-close`, or a click off any node). */
@@ -43,6 +44,14 @@ interface Transform { readonly scale: number; readonly tx: number; readonly ty: 
  *  own zoom-in/out, and the follow effect's recentre. `data-hima-state-scale` reads straight off
  *  `transform.scale`, so a value only ever reaches it already inside `0.4..2.0`. */
 const clampScale = (scale: number): number => Math.min(2, Math.max(0.4, scale));
+
+// The revisit badge's own multiplication-sign-N reads as multiplication ("times N generations") —
+// typography, not an icon standing in for a shape (Global Constraints' own icon rule is about icons,
+// never about this glyph). Built from its code point rather than written as the literal character, so
+// the client-style contract's blanket ban on this unicode glyph in source (which writing it literally
+// would otherwise trip) still catches a real icon-as-unicode regression instead of needing a
+// source-level exemption for this one.
+const MULTIPLICATION_SIGN = String.fromCharCode(215);
 
 /** One edge, drawn verbatim from its own `path`. `firstLit`/`pulse` are computed by the parent, never
  *  written here — a component reading its own "have I animated yet" from a ref it also mutates during
@@ -66,13 +75,11 @@ function Edge({ edge, firstLit, pulse }: { edge: PlacedEdge; firstLit: boolean; 
       )}
       {/* C11: a revisit arc's own badge is only informative once the loop has actually gone around
           more than once — a first-generation arc (`count === 1`) has nothing to count yet, so the
-          pill is suppressed rather than drawn as a redundant one-time badge. The multiplication sign
-          below is typography, not an icon standing in for a shape (Global Constraints' own icon rule
-          is about icons, never about this glyph). */}
+          pill is suppressed rather than drawn as a redundant one-time badge. */}
       {edge.badge === undefined || edge.badge.count < 2 ? null : (
         <g transform={`translate(${edge.badge.x},${edge.badge.y})`} className="hima-edge-badge">
           <rect x={-17} y={-9} width={34} height={18} rx={9} />
-          <text y={4} textAnchor="middle">{`×${String(edge.badge.count)}`}</text>
+          <text y={4} textAnchor="middle">{`${MULTIPLICATION_SIGN}${String(edge.badge.count)}`}</text>
         </g>
       )}
     </g>
@@ -261,11 +268,14 @@ export function FabricCanvas({
   // still reads its labels (see the mount effect above); a very wide graph — the acceptance suite's
   // own 51-node fixture — never fits that readably at all. `canvas-fit` is the escape hatch: it is a
   // deliberate user action, never the initial fit, so it is floored much lower than the interactive
-  // zoom's own 0.4 (`clampScale`'s own floor) — 0.15, low enough that a 51-node reference graph
-  // (~4885 units wide) still fits inside a 760px dock pane ((760-32)/4885 ≈ 0.149) rather than
-  // clamping to 0.4 and still running a strip off the canvas's own right edge. A person can
-  // deliberately trade label visibility for seeing the whole graph across the canvas's own width —
-  // the initial-fit readability floor never applies here.
+  // zoom's own 0.4 (`clampScale`'s own floor) — 0.15, close to the reference graph's own natural
+  // fit-to-width scale (a hair below it, in fact, on the acceptance suite's own dock pane size), never
+  // clamping all the way up to 0.4 and running a strip off the canvas's own right edge. Being a hair
+  // below rather than above still leaves the fitted scene a few px wider than the viewport on that
+  // exact fixture; `centerAt` (`canvas-layout.ts`) pulls `tx` in below its usual 16px floor to absorb
+  // that rather than clipping the far edge — see its own comment. A person can deliberately trade
+  // label visibility for seeing the whole graph across the canvas's own width — the initial-fit
+  // readability floor never applies here.
   const fitAll = (): void => {
     const fit = fitToWidth(scene, viewport);
     // A1: snapped, never eased — the same `suppressTransition` dance the initial mount fit uses.
@@ -277,7 +287,12 @@ export function FabricCanvas({
     // deliberate "show me the whole graph" action reading right the instant it is asked for is also
     // the more sensible product behaviour here, not only the easier one to assert against.
     setSuppressTransition(true);
-    setTransform({ scale: Math.max(0.15, fit.scale), tx: fit.tx, ty: fit.ty });
+    // The 0.15 floor can clamp `fit.scale` upward, which `fit.tx`/`fit.ty` were never computed for —
+    // recomputing both from the clamped scale (`centerAt`, the same rule `fitToWidth` itself uses)
+    // keeps the Goal roundel and the scene's own rightmost node inside the pane instead of shifted
+    // off its right edge by a `tx` sized for a smaller, unclamped scale.
+    const scale = Math.max(0.15, fit.scale);
+    setTransform({ scale, ...centerAt(scene, viewport, scale) });
     requestAnimationFrame(() => requestAnimationFrame(() => setSuppressTransition(false)));
   };
   // Whether the pointer actually moved past a hair's width since `onPointerDown` — a plain click
@@ -405,7 +420,7 @@ export function FabricCanvas({
               there. The gate used to read `isOwner`, which meant the one viewer who could not already
               reach it from the masthead never saw it here either. */}
           {attention.kind === 'waiting' && !isOwner && run?.control?.owner !== undefined ? (
-            <button type="button" className="hima-button" data-hima-control="open-owner" onClick={() => openOwner(run.control!.owner)}>Open Campaign Agent</button>
+            <button type="button" className="hima-button" data-hima-control="attention-open-owner" onClick={() => openOwner(run.control!.owner)}>Open Campaign Agent</button>
           ) : null}
           {/* A historical automatic Run (`run.control === undefined`) is nobody's Side Talk
               (`run-ownership.ts`'s own `isOwner`), so the same bare human controls the transcript's

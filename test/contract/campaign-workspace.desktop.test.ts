@@ -296,7 +296,7 @@ async function bothThemes(t: TestContext, run: (theme: 'light' | 'dark') => Prom
  * never a retry of a Hima assertion, which must still fail loud and immediately if the state it
  * reads is actually wrong.
  */
-async function openNewSessionWorkbench(t: TestContext, d: BootedDriver, browser: Inspector, clickMark: string, openMark: string): Promise<void> {
+async function openNewSessionWorkbench(t: TestContext, d: BootedDriver, browser: Inspector, clickMark: string, openMark: string, notSession?: string): Promise<void> {
   const maxAttempts = 2;
   // "New session" is clicked at most once: a first attempt's own click already creates the fresh
   // session (confirmed by its own composer rendering, waited for below), so a naive retry that
@@ -308,6 +308,9 @@ async function openNewSessionWorkbench(t: TestContext, d: BootedDriver, browser:
   // `studio` to mount after `open-workbench` is clicked — is retried, together with re-clicking
   // `open-workbench` itself (idempotent: clicking an already-open tab's own opener again is a no-op
   // on the same tab), never the "New session" bootstrap step and never a Hima-specific assertion.
+  // The shell renders its "New session" control a beat after the previous session's page settles;
+  // marking it before it exists throws inside the page. Wait for it (bounded), never for a Hima fact.
+  await browser.wait(`!!document.querySelector('[aria-label="New session"]')`, 15_000);
   await browser.mark('[aria-label="New session"]', clickMark);
   assert.ok((await d.click(clickMark)).ok);
   await browser.wait(`document.body.innerText.includes('New session') && [...document.querySelectorAll('[contenteditable="true"]')].some(e=>e.getBoundingClientRect().height>0)`);
@@ -316,7 +319,13 @@ async function openNewSessionWorkbench(t: TestContext, d: BootedDriver, browser:
       await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]')?.disabled`);
       await browser.mark('[data-hima-control="open-workbench"]', openMark);
       assert.ok((await d.click(openMark)).ok);
-      await browser.wait(`document.querySelector('[data-hima-region="studio"]') !== null`, 20_000);
+      // The previous session's own Campaign tab may still be mounted (each session keeps its dock),
+      // so "a studio exists" is not "this session's studio exists": when the caller names the session
+      // it just left, wait for a studio whose session id is a different one.
+      const studioOfThisSession = notSession === undefined
+        ? `document.querySelector('[data-hima-region="studio"]') !== null`
+        : `[...document.querySelectorAll('[data-hima-region="studio"]')].some((e) => e.getAttribute('data-hima-state-session') && e.getAttribute('data-hima-state-session') !== ${JSON.stringify(notSession)})`;
+      await browser.wait(studioOfThisSession, 20_000);
       return;
     } catch (error) {
       if (attempt >= maxAttempts) throw error;
@@ -511,8 +520,8 @@ test('state 6: a Side Talk viewing an owned Run sees who owns it and no business
 
       // A2: hardened against the bootstrap race diagnosed above — one bounded retry of the click
       // and studio-mount wait, never of the Hima assertion right after it.
-      await openNewSessionWorkbench(t, d, browser, 'new-side-talk', 'open-side-workbench');
-      const sideSession = await browser.evaluate<string>(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session') || ''`);
+      await openNewSessionWorkbench(t, d, browser, 'new-side-talk', 'open-side-workbench', ownerSessionId);
+      const sideSession = await browser.evaluate<string>(`[...document.querySelectorAll('[data-hima-region="studio"]')].map((e) => e.getAttribute('data-hima-state-session') || '').find((id) => id && id !== ${JSON.stringify(ownerSessionId)}) || ''`);
       assert.ok(sideSession && sideSession !== ownerSessionId, 'the Side Talk is a genuinely different session');
 
       assert.ok((await d.fill('studio-run', runId)).ok);
@@ -682,6 +691,19 @@ test('state 7: a fifty-one node graph fits to width, scaled and label-hidden', a
         return { ok: nodeRect.left >= containerRect.left && nodeRect.left <= containerRect.right, nodeLeft: nodeRect.left, containerRight: containerRect.right };
       })()`);
       assert.ok(lastNodeInBounds.ok, `the last node's own screen x should sit inside the canvas: ${JSON.stringify(lastNodeInBounds)}`);
+      // The Goal roundel sits past the main spine's own last rank (`layoutCanvas`'s own 1.5-pitch
+      // clearance), further right than any node — `canvas-fit`'s `tx` clamp fix must keep it inside
+      // the pane too, not just the rightmost node checked above, or a `tx` recomputed against the
+      // wrong edge would pass the node check while still clipping the roundel off the right.
+      const goalInBounds = await browser.evaluate<{ ok: boolean; goalRight?: number; containerRight?: number }>(`(() => {
+        const container = document.querySelector('[data-hima-region="campaign-graph"]');
+        const goal = document.querySelector('[data-hima-region="campaign-goal"]');
+        if (!container || !goal) return { ok: false };
+        const containerRect = container.getBoundingClientRect();
+        const goalRect = goal.getBoundingClientRect();
+        return { ok: goalRect.left >= containerRect.left && goalRect.right <= containerRect.right, goalRight: goalRect.right, containerRight: containerRect.right };
+      })()`);
+      assert.ok(goalInBounds.ok, `the Goal roundel should sit inside the canvas: ${JSON.stringify(goalInBounds)}`);
       await capture(d, browser, `graph-51-node-${theme}`);
     } finally {
       await finish(d, browser);

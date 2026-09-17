@@ -477,8 +477,8 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     // The spine must clear the open frame's own bottom edge, not just grow by the frame's height: the
     // frame hangs 1.2 rows below its anchor explore node, which can already sit several rows above the
     // spine's own deepest row (`maxRow`), so `placed.box.height + 24` alone under-shifts and the spine
-    // lands inside the frame (verified on `packs/aes-tsmc28-dtco`, a `mine-start` node between loop
-    // nodes). The needed shift is the frame's own bottom (`box.y + box.height`, plus the same 24px
+    // lands inside the frame (verified on a shipped Pack whose entry explore node opens a loop). The
+    // needed shift is the frame's own bottom (`box.y + box.height`, plus the same 24px
     // clearance) measured against where the spine's own deepest row would otherwise sit
     // (`PAD_Y + (maxRow - minRow) * ROW`) — clamped to never go negative, since a frame that already
     // sits above the spine's own bottom needs no extra shift at all.
@@ -566,6 +566,25 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
   };
 }
 
+/** Where a scene sits at a given scale: centred (both axes) when it fits inside the viewport at that
+ * scale, else pinned toward the 16px left gutter (top clamped to never go negative). Shared by
+ * `fitToWidth` and any caller that clamps `fitToWidth`'s own scale after the fact (`canvas-fit`'s
+ * 0.15 floor, below) — a clamped scale must still resolve `tx`/`ty` by this same rule, not by the
+ * offsets `fitToWidth` computed for its own, larger, unclamped scale.
+ *
+ * The left gutter is a ceiling on `tx`, not a fixed value: `fitToWidth`'s own scale is always chosen
+ * so the fitted scene already clears a full 32px of gutter (`scene.width * scale <= viewport.width -
+ * 32`), so `tx` never needs to go below 16 there. A scale some caller clamped *up* past what
+ * `fitToWidth` would have chosen (`canvas-fit`'s floor, when the natural fit is narrower than 0.15
+ * allows) can land the fitted scene wider than the viewport by a few px — flat 16px would then push
+ * the far edge (the Goal roundel, past every node's own right margin) off the visible canvas. `tx` is
+ * pulled in below 16, however far it takes, to keep that edge on-screen instead. */
+export function centerAt(scene: CanvasScene, viewport: { width: number; height: number }, scale: number): { tx: number; ty: number } {
+  const fitted = scene.width * scale;
+  const tx = fitted < viewport.width ? (viewport.width - fitted) / 2 : Math.min(16, viewport.width - fitted);
+  return { tx, ty: Math.max(16, (viewport.height - scene.height * scale) / 2) };
+}
+
 /** Rule 10: fit the scene's width into a viewport, centring it vertically (never above 16px from the
  * top) and never scaling up past 1. C12: a scene narrower than the viewport at its own fitted scale
  * (`scene.width * scale < viewport.width`) is also centred horizontally, rather than left flush
@@ -573,9 +592,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
  * not a fixed left margin for one that does not. */
 export function fitToWidth(scene: CanvasScene, viewport: { width: number; height: number }): { scale: number; tx: number; ty: number } {
   const scale = Math.min(1, (viewport.width - 32) / scene.width);
-  const fitted = scene.width * scale;
-  const tx = fitted < viewport.width ? (viewport.width - fitted) / 2 : 16;
-  return { scale, tx, ty: Math.max(16, (viewport.height - scene.height * scale) / 2) };
+  return { scale, ...centerAt(scene, viewport, scale) };
 }
 
 /** The mockup's floor for reading a node's caption or an edge's chip: below 60% zoom, a label is

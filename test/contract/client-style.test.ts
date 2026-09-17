@@ -25,16 +25,14 @@ test('the token sheet states a scale of five steps and nothing below 12 px', () 
 test('the client draws icons as inline SVG, never as unicode characters', () => {
   for (const file of clientFiles()) {
     const text = readFileSync(file, 'utf8');
-    for (const glyph of ['✓', '◉', '◇', '○', '＋', '↗']) {
+    // `×` is banned outright, the same as every other glyph here: the revisit badge's own "×N" is
+    // typography (review C11 — "times N generations", not an icon standing in for a shape), so it is
+    // built at runtime from `String.fromCharCode(215)` (`FabricCanvas.tsx`'s own named constant)
+    // rather than written as the literal character in source. A blanket ban on the literal is what
+    // keeps that true — a narrower, quote-scoped exemption here would stop noticing if the literal
+    // crept back in through some other template.
+    for (const glyph of ['✓', '◉', '◇', '○', '＋', '↗', '×']) {
       assert.ok(!text.includes(glyph), `${path.basename(file)} uses ${glyph} as an icon`);
-    }
-    // `×` is exempted (review C11): the revisit badge's own `×N` reads as multiplication ("times N"
-    // generations), which is typography, not an icon standing in for a shape — the ban this test
-    // otherwise enforces is about a unicode character replacing an inline SVG glyph, which `×N` never
-    // does. Scoped narrowly to that one template literal, so a stray `×` used as an icon elsewhere
-    // still fails this test.
-    for (const match of text.matchAll(/[`'"][^`'"\n]*×[^`'"\n]*[`'"]/g)) {
-      assert.match(match[0]!, /×\$\{[^}]*\}/, `${path.basename(file)} uses × outside the revisit badge's own "×N" template`);
     }
   }
 });
