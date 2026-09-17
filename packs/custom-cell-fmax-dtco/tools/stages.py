@@ -2277,7 +2277,11 @@ def checkpoint_allowed_links(inputs, workspace, init_script, mmmc_script, arm, p
     mmmc = parse_mmmc(mmmc_script)
     categories = [
         (lef_rows[0].split(), "libs/lef"),
-        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase in ("init", "place") else []), "libs/mmmc"),
+        # Innovus retains the source SDC link in the init checkpoint. After
+        # placement it serializes the active constraints into the database and
+        # deliberately drops that external link; requiring it at place made a
+        # valid vendor checkpoint look incomplete.
+        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase == "init" else []), "libs/mmmc"),
         ([mmmc["qrc"]], "libs/mmmc/rc_" + arm),
     ]
     if phase == "postroute":

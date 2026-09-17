@@ -91,6 +91,37 @@ class EndpointFrontierTests(unittest.TestCase):
 
 
 class CoverAndPortfolioTests(unittest.TestCase):
+    def test_place_checkpoint_does_not_require_vendor_sdc_link(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            files = {}
+            for role, name in (("TECH_LEF", "tech.lef"), ("FOUNDRY_LEF", "cells.lef"),
+                               ("FOUNDRY_LIB", "cells.lib"),
+                               ("FOUNDRY_QRC_TECH", "qrc"),
+                               ("pnr_input_sdc", "design.sdc")):
+                path = root / name; path.write_text(role)
+                files[role] = path
+            init = root / "init.tcl"
+            init.write_text("set init_lef_file [list %s %s]\n" %
+                            (files["TECH_LEF"], files["FOUNDRY_LEF"]))
+            mmmc = root / "mmmc.tcl"
+            mmmc.write_text(
+                "create_library_set -name libs_foundry -timing [list %s]\n"
+                "create_rc_corner -name rc_foundry -qx_tech_file %s -temperature 25\n"
+                "create_delay_corner -name delay_foundry -library_set libs_foundry -rc_corner rc_foundry\n"
+                "create_constraint_mode -name func_foundry -sdc_files [list %s]\n"
+                "create_analysis_view -name view_foundry -constraint_mode func_foundry -delay_corner delay_foundry\n"
+                "set_analysis_view -setup {view_foundry} -hold {view_foundry}\n" %
+                (files["FOUNDRY_LIB"], files["FOUNDRY_QRC_TECH"], files["pnr_input_sdc"]))
+            refs = [stages.file_ref(path, root, role, "fixture")
+                    for role, path in files.items()]
+            init_links = stages.checkpoint_allowed_links(
+                refs, root, init, mmmc, "foundry", "init")
+            place_links = stages.checkpoint_allowed_links(
+                refs, root, init, mmmc, "foundry", "place")
+            self.assertIn("libs/mmmc/design.sdc", init_links)
+            self.assertNotIn("libs/mmmc/design.sdc", place_links)
+
     def test_free_factor_assessment_is_scenario_order_independent(self):
         scenario = lambda value: {"pairwise_relation": {"comparisons": [
             {"metric": "F1.levels_removed", "relation": value},
