@@ -780,7 +780,7 @@ Action 可标记为：
 | DIG-03 | 通过 | baseline-place ↔ negative-postroute map 已生成；Opportunity region 只作为 candidate region |
 | DIG-04 | 有界通过 | OpenSTA 真实读取 Liberty/netlist/SDC/SPEF；2,000 path 上限不冒充完整；OpenTimer 未晋级 |
 | DIG-05 | 通过 | 389/389 完整结构 endpoint cones 与四象限 proposals；没有直接 admission |
-| DIG-06 | 通过并拒绝首个 Action | 同一 Cell 出现在 30 条 OpenSTA 路径；22 个可比 pair 全部负向 |
+| DIG-06 | 通过并拒绝首个 Action | 同一 Cell 出现在 30 条 OpenSTA 路径；worst-per-pair 复算为 11/14 负向、均值 -0.656 ps，固定局部分支慢 7.060 ps |
 | DIG-07 | contract 通过，物化未完成 | D1～D8/非对称 output 单调性可拒绝错误 family；完整五档 Library/LC 未构建 |
 | DIG-08 | native 路径通过 | place-state anchored search 62 opportunities/50 selected；单项 CCEI apply/proof/rollback 通过；HAL 未安装且显式不晋级 |
 | DIG-09 | 配置探针通过 | Innovus 23.14 读回 useful skew=true、max delay=0.1 ns、full-flow/preCTS=true；完整 matched route 未运行 |

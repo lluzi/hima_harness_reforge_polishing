@@ -9,8 +9,10 @@
 V4 的 Pack 内基础设施、真实 AES 双阶段图、graph-native Opportunity、place-state
 anchored resynthesis、单项 CCEI apply/rollback、Yosys proof、OpenSTA 局部代理与
 useful-skew 配置探针已经形成可执行闭环。完整 E0 没有运行：唯一送入 CCEI seam 的
-Cell 在免费 OpenSTA 对照中覆盖 30 条路径，22 个可比 start/end pair 全部变差，局部
-slack delta 为 -16.085 ps 到 -0.113 ps，平均 -3.073 ps。按 V4 门禁，该 Action 被拒绝，
+Cell 在免费 OpenSTA 对照中覆盖 30 条路径。按每个 start/end pair 的 worst slack 复算后，
+14 个可比 pair 中 11 个变差、3 个改善，delta 为 -3.138 ps 到 +1.463 ps，平均
+-0.656 ps。强制经过相同逻辑分支时，新 Cell 的 I0→Y1 为 22.149 ps，原 INV+NAND
+source cover 为 15.089 ps，局部慢 7.060 ps。按 V4 门禁，该 Action 被拒绝，
 不能再让商业 route 充当试错引擎。
 
 这轮证明的是方法和控制闭环，不是 Fmax 收益。它没有产生新的商业 QoR、没有证明
@@ -93,8 +95,16 @@ baseline/apply/rollback 的 `checkPlace` violation 分别是 11791/11788/11791�
 ### 免费局部代理与停止决定
 
 OpenSTA 对 baseline/applied 使用同一 Liberty、SDC 和 baseline SPEF。两边 2,000-path
-上限下的全局 worst slack 都是 -33.178 ps；新 Cell 出现在 30 条已报告路径。22 个相同
-start/end pair 的局部 slack delta 全为负，范围 -16.085 ps 到 -0.113 ps。
+上限下的全局 worst slack 都是 -33.178 ps；新 Cell 出现在 30 条已报告路径。按每个
+start/end pair 保留 worst slack 后，14 个可比 pair 中 11 个负向、3 个正向，平均
+-0.656 ps。一个固定 `sa22_reg_3_/Q -> sa10_reg_2_/D` 分支中，原 source cover 从输入
+到 `n171` 约 15.089 ps，新 Cell I0→Y1 约 22.149 ps；该分支 slack 从 -26.008 ps
+变为 -30.914 ps。新 Cell 还把原先排名靠后的逻辑分支推入更关键的位置。这两项证据与
+全局 proxy WNS 无改善共同构成拒绝理由。
+
+初版分析曾错误地用每个 pair 的“最后一条路径”而不是 worst path，得到“22/22 全负”的
+错误统计。原 annotation 保留并以 `invalidation` 标记失效；本报告和 v2 annotation 使用
+上述 worst-per-pair 复算结果。
 
 因此 annotation lineage 为：
 

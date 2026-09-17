@@ -110,13 +110,20 @@
     "baselineWnsNs": -0.033178,
     "appliedWnsNs": -0.033178,
     "customCellPathCount": 30,
-    "comparableStartEndpointPairs": 22,
+    "comparableStartEndpointPairs": 14,
     "localSlackDeltaNs": {
-      "min": -0.016085,
-      "mean": -0.0030726818181818186,
-      "max": -0.000113,
-      "positivePairs": 0,
-      "negativePairs": 22
+      "min": -0.003138,
+      "mean": -0.0006560714285714289,
+      "max": 0.001463,
+      "positivePairs": 3,
+      "negativePairs": 11
+    },
+    "forcedLocalBranch": {
+      "baselineSourceCoverDelayPs": 15.089,
+      "candidateI0ToY1DelayPs": 22.149,
+      "candidateMinusSourcePs": 7.06,
+      "baselineSlackNs": -0.026008,
+      "appliedSlackNs": -0.030914
     },
     "status": "rejected-negative-local-proxy"
   },
@@ -139,7 +146,7 @@
   "commercialObservation": {
     "newCompleteE0Jobs": 0,
     "status": "skipped",
-    "reason": "negative local proxy on all 22 comparable start/end pairs"
+    "reason": "11 of 14 worst-per-pair comparisons were negative, mean delta was -0.656 ps, the forced local branch was 7.060 ps slower, and global proxy WNS did not improve"
   },
   "claimLimits": {
     "newCommercialQor": false,
