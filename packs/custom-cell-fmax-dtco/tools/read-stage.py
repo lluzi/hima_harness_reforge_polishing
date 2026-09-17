@@ -1486,7 +1486,8 @@ def read_mining_research(report, out, stage):
     record = load(workspace / "flow" / "records" / ("mine-" + route + ".json"))
     held = one(record, workspace, "mining_research_view")
     if (view.get("schema") != "custom-cell-fmax-mining-research-view/1" or view.get("route") != route
-            or view.get("sourcePhase") not in ("dc-probe", "generated-postroute")
+            or view.get("sourcePhase") not in (
+                "license-free-baseline", "dc-probe", "generated-postroute")
             or not isinstance(view.get("candidates"), list)
             or view.get("sourceSha256") != hashlib.sha256(raw_path.read_bytes()).hexdigest()
             or view.get("minerCodeSha256") != (record.get("facts") or {}).get("codeSha256")

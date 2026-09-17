@@ -60,3 +60,22 @@ class LfrPackReaderTests(unittest.TestCase):
         self.assertEqual(0,ran.returncode,ran.stderr)
         values={row["type"]:row["value"] for row in json.loads(out.read_text())["values"]}
         self.assertEqual({"new_library_cell_count":1,"cumulative_library_cell_count":1},values)
+    def test_mining_research_reader_accepts_license_free_baseline_source(self):
+        folder=self.workspace/"flow/mining/timing_criticality"; folder.mkdir(parents=True)
+        raw=folder/"raw.json"; raw.write_text('{"generation_requests":[]}\n')
+        code="c"*64
+        view={"schema":"custom-cell-fmax-mining-research-view/1",
+              "sourceSha256":sha(raw),"minerCodeSha256":code,
+              "route":"timing_criticality","candidates":[],
+              "sourcePhase":"license-free-baseline","limitations":["fixture"]}
+        report=folder/"research.json"; report.write_text(json.dumps(view,sort_keys=True)+"\n")
+        record=self.workspace/"flow/records/mine-timing_criticality.json"
+        record.write_text(json.dumps({"schema":"custom-cell-fmax-stage/1",
+          "stage":"mine-timing_criticality","status":"passed","inputs":[],
+          "artifacts":[{"role":"mining_research_view",
+            "path":str(report.relative_to(self.workspace)),"sha256":sha(report),
+            "bytes":report.stat().st_size,"sourceType":"synthetic-reader-fixture"}],
+          "executions":[],"facts":{"codeSha256":code}},sort_keys=True)+"\n")
+        ran,out=self.run_reader(report,"research-route-timing-criticality")
+        self.assertEqual(0,ran.returncode,ran.stderr)
+        self.assertEqual(0,json.loads(out.read_text())["values"][0]["value"])
