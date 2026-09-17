@@ -19,6 +19,7 @@ FLOW = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(FLOW))
 
 from ai_research_runner import (  # noqa: E402
+    BUILDABLE_ROUTES,
     RESIDUAL_CONTEXT_SCHEMA,
     RESIDUAL_OUTPUT_SCHEMA,
     build_residual_research_context,
@@ -258,6 +259,9 @@ def _proposal(context: dict) -> dict:
 
 
 class ResidualResearchContextTests(unittest.TestCase):
+    def test_residual_context_admits_the_pack_multi_output_resynthesis_route(self):
+        self.assertIn("multi_output_resynthesis", BUILDABLE_ROUTES)
+
     def test_commercial_frontier_response_is_hash_bound_and_visible_to_research(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

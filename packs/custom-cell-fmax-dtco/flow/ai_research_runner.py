@@ -26,7 +26,9 @@ ROUTES = (
     "timing_criticality", "timing_context", "structure_frequency",
     "structure_compaction", "mapper_compatibility", "functional_diversity",
 )
-BUILDABLE_ROUTES = {"fusion", "cluster_compose", "boolean_synthesis"}
+BUILDABLE_ROUTES = {
+    "fusion", "cluster_compose", "boolean_synthesis", "multi_output_resynthesis",
+}
 SCHEMA = "custom-cell-fmax-ai-research/1"
 RESIDUAL_REQUEST_SCHEMA = "lfr-ai-residual-request/1"
 RESIDUAL_CONTEXT_SCHEMA = "lfr-ai-residual-context/1"
