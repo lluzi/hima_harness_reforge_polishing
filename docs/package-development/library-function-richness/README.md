@@ -17,6 +17,7 @@ GitHub tracker: [#40 — Build and integrate the Library Function Richness Frame
 - [Methodology v2 implementation specification](methodology-v2.zh-CN.md)
 - [累计收益驱动的协同优化方法学 v3](cumulative-gain-cooptimization-v3.zh-CN.md)
 - [Post-route Design Information Graph 驱动的协同优化方法学 v4](postroute-design-information-graph-methodology-v4.zh-CN.md)
+- [第一性原理与 Active Frontier 驱动的协同优化方法学 v5](first-principles-frontier-methodology-v5.zh-CN.md)
 - [Information Graph 数据库与开源基础设施选型](information-graph-database-technology-selection.zh-CN.md)
 - [Multi-output netlist resynthesizer specification](multi-output-resynthesizer.zh-CN.md)
 - [Multi-output resynthesizer isolated POC evidence](evidence/2026-09-16-multi-output-resynthesizer-poc.md)
@@ -57,6 +58,7 @@ of fitting a portable benefit forecast.
 | AES 20-cell multi-output commercial P&R | complete, model-conditioned positive | Innovus retains 6/20 masters; Fmax +0.180%, logic area -7.274%, wirelength -6.507%, modeled power -4.294% |
 | AES 40-cell hierarchy 2/3-output P&R | complete, negative | 40/120 instances retained; 22 triple-output instances survive, but Fmax -0.179%, area +9.181%, wirelength +2.669%, modeled power +7.071% vs baseline |
 | Post-route DIG v4 | observation calibration implemented | Free proxies are observation-only; source-cover 5%/10% Mock Liberty, single/multi CCEI and two matched AES E0 runs completed. Best Fmax +1.085% with area/power cost; full PPA and 5% target remain open |
+| First-principles frontier v5 | method specified; implementation not started | New PG/density/DCAP/pin baseline, complete timing-state frontier, break-even certificates, whole-Portfolio recomputation and one matched two-arm E0 remain |
 | LFR-PACK-08 | blocked by PACK-07 and business exit | A Harness-owned positive matched E0 benefit observation and Harness-generated release seal remain |
 
 No item is complete merely because code exists. Each item closes only with the evidence named in
