@@ -1,6 +1,8 @@
 # Multi-output Netlist Resynthesizer 规格
 
 状态：设计冻结；logical in-place ECO、层次化多模块 proof、双/三输出 Library 和 AES 商业 P&R 已验证；20-Cell 为小幅正结果，扩大到 40-Cell 后 QoR 转负，Pack 接线未实现。
+
+实现审计说明：本工具同时存在 `discover` 与 `directed` 两种语义。`discover` 是 bounded cut + Boolean function matching 的局部 re-synthesis 基础；`directed` 则对请求指定的精确 instance cluster 做 boundary 重算、proof 和 rewrite。既有 AES 10/20/40/100-Cell pilot 主要使用 `directed` 或预先冻结 windows，因此证明的是 patch/proof/P&R，不代表 place-stage 自动重发现已经完成。后续产品路径以 [v4 anchored local resynthesis](postroute-design-information-graph-methodology-v4.zh-CN.md) 为准；`directed` 保留给测试、重放和调试，不作为 CCEI 主路径。
 归属：`custom-cell-fmax-dtco` Pack 的 domain tool；不是 Hima Runtime 组件，也不是通用 RTL synthesis 产品。
 
 ## 1. 决定

@@ -141,8 +141,8 @@ _Avoid_: 抽象算法名称、Cell 类型、没有位置的策略建议
 _Avoid_: 允许优化器静默展开后仍声称 custom Cell 被采用、把 dont-touch 扩展到无关 foundry logic
 
 **Custom Cell ECO Integrator（CCEI）**:
-把已冻结的 Optimization Actions 和 Cell Demand 落实到其来源物理状态中的 ECO 能力，负责精确替换、位置种子、局部合法化、证明、保存和回滚；它不负责发现 Opportunity 或决定业务收益。
-_Avoid_: 新的执行 Agent、全量逻辑综合器、重新冷启动 placement
+把已冻结的 Optimization Actions 和 Cell Demand 落实到 place 物理状态中的局部重综合能力；它根据 post-route anchors 在有界邻域重新发现 single/multi-output function 的实际引用位置，再负责位置种子、局部合法化、证明、保存和回滚。
+_Avoid_: 新的执行 Agent、全量逻辑综合器、依赖精确 instance cluster 的 point-to-point ECO、重新冷启动 placement
 
 **局部免费代理**:
 在一个有界逻辑与物理窗口内比较 source cover 和 candidate cover，输出局部 margin、风险与不确定度；它用于阻止低质量 Action，不预测全设计最终 Fmax。

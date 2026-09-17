@@ -346,10 +346,12 @@ CCEI 是现有 `multi_output_resynth`/ECO adapter 的深化能力，不是新的
 - hash-bound DIG snapshot；
 - frozen Action Portfolio；
 - selected Cell views；
-- source instances/nets/pins；
-- source placement bbox 和 seed locations；
+- post-route anchors：design module、稳定 nets、幸存的 `U*` instances、boundary function、endpoint/path identity；
+- source placement bbox、seed locations 和允许的 1～2 级前后 trace 半径；
 - preserve/rollback/proof policy；
 - Site P&R command seam。
+
+这些输入是搜索提示和边界，不是要求 place netlist 中存在一组字节级相同的 target instances。
 
 ### 9.2 两个状态：post-route 观察态与 place 执行态
 
@@ -372,9 +374,9 @@ S_postroute(k): reference/generated final observation
 
 目标 seam 是 coarse/global placement 已形成，而 destructive optimization 尚未改写目标 source identity 的时刻。不能仅根据命令名字假设 `place_opt_design -place` 不改网表；必须在真实 Innovus 版本上用前后 census、netlist hash 和 target identity probe 证明。
 
-Opportunity 来自 `S_postroute(k)`，实施在 `S_place(k)` 或下一次匹配 replay 的 placed checkpoint；两者不能被假设为同一物理图。DIG/CCEI 必须通过 phase lineage 或稳定的逻辑边界签名重新绑定，并检查：
+Opportunity 来自 `S_postroute(k)`，实施在 `S_place(k)` 或下一次匹配 replay 的 placed checkpoint；两者不能被假设为同一物理图。DIG/CCEI 不依赖 post-route target cluster 逐实例复现，而是通过 anchors 缩小搜索空间，在 place netlist 中重新发现逻辑等价机会，并检查：
 
-- source instances/functions仍存在；
+- design module、稳定 nets 或一部分 `U*` anchors 仍可定位；
 - ordered leaves、roots 和 Boolean boundary 与 post-route Opportunity 等价；
 - physical locality、sink divergence 和 bbox仍满足阈值；
 - place State没有新的冲突或不可见 load；
@@ -387,13 +389,37 @@ Opportunity 来自 `S_postroute(k)`，实施在 `S_place(k)` 或下一次匹配 
 
 Direct post-route ECO 证明局部动作在当前物理状态是否成立，不自动证明从 place 开始的完整流程也会保持收益。反过来，也不能用 post-route 距离证明一个重新全量 placement 后的 Action。
 
-### 9.3 Innovus script 操作
+### 9.3 Anchored Local Resynthesis，不做 point-to-point ECO
+
+CCEI 是一个为新功能 Cell 引用而设计的局部逻辑重综合引擎。它接收 Cell 的 Boolean/vector function 和 post-route anchors，在 place netlist 的有界邻域内重新搜索，而不是要求删除指定的几个旧 instances 再换上一颗 Cell。
+
+place-stage 搜索顺序固定为：
+
+1. 用 module、稳定 nets、幸存 `U*` names、endpoint 和 post-route bbox 找到 seed objects；
+2. 对 seed 做 1～2 级 backward/forward trace，形成 bounded induced graph；
+3. 在邻域内枚举 single-root 与 multi-root cuts；
+4. 对 selected single/multi-output Cell 做 input permutation/phase 与完整 truth-vector matching；
+5. 重新计算 place-state boundary、all-output usage、load、sink divergence、距离和 required-time margin；
+6. 对候选做 non-overlap selection，得到当前 place State 的实际 ECO windows；
+7. 只有重新发现并通过局部 gate 的 windows 才交给 Innovus script 实施。
+
+Post-route Opportunity 的作用是提高一次性命中率、缩短搜索时间和给出优先级，不是冻结 source instance list。即使 instance 被 resize、部分 rename 或局部改写，只要 place 邻域中仍存在匹配 Cell function 的逻辑 cut，CCEI 就可以重新综合；若找不到，Action 被记录为 `anchor-rebind-miss`，不强行替换。
+
+现有 resynthesizer 的模式需要明确区分：
+
+- `discover` 已具备 bounded cut、function hash join 和 local rewrite 的基础，是 CCEI 的演进起点；
+- `directed` 接收精确 instance cluster，只用于单元测试、失败重放、proof/debug 和已冻结 patch 的确定性复算；
+- v4 产品路径增加/深化 `anchored` 模式，把 post-route hints、place-state trace、物理局部 gate 和 single/multi-output matching 接入现有服务。
+
+AES 10/20/40/100-Cell pilot 多数使用 `directed` 或预先选定 windows，因此它们证明了 patch/proof/P&R 能力，没有证明 place-stage anchored re-synthesis 已经实现。
+
+### 9.4 Innovus script 操作
 
 CCEI 第一实现不需要新的 placement engine。Pack 生成并审计一份 Innovus Tcl ECO script：
 
 1. 从 `S_place` database 读取 source instances、pins、nets、location、orientation 和 bbox；
-2. 校验 source objects、稳定逻辑边界和 DIG Action identity仍匹配；
-3. 原位移除 source cluster并插入 custom Cell；
+2. 接收 anchored resynthesizer 在当前 place State 重新发现并证明的 ECO windows；
+3. 原位移除该实际 window 并插入 custom Cell；
 4. 新 Cell 初始位置取 source cluster centroid，或按 output sinks 做有界偏置；
 5. 连接全部 inputs/outputs/PG pins；
 6. 保护声明的 ECO-only instances；
@@ -491,7 +517,7 @@ Action 可标记为：
 | `flow/domain/innovus_dig_export.tcl`（tool adapter） | 从同一 checkpoint 写出 netlist/DEF/SDC/SPEF/timing/clock/census 与 manifest | 只读导出，不运行优化 |
 | `flow/domain/opensta_dig.tcl`（optional adapter） | 对导出束补充完整 timing graph 和局部 STA 查询 | 可选后端，不是 OpenROAD/P&R 依赖 |
 | `flow/domain/proxy_mapping.py` | 对 bounded window 做 local cover/STA，不输出全局 Fmax 预测 | Yosys/ABC 单输出 mapping 角色 |
-| `flow/domain/multi_output_resynth/` | 深化为 CCEI：物理 seed、selected Actions、局部 proof、rollback 和 preservation | 当前 directed ECO、2/3-output、hierarchical proof |
+| `flow/domain/multi_output_resynth/` | 深化为 CCEI anchored local resynthesis：1～2级 trace、single/multi-root cut、物理 seed、局部 proof、rollback | 保留 directed 仅供 debug/replay，复用现有 discover 与 proof |
 | `flow/domain/_generation_projection.py` | 从 Cell Demand 生成非对称 drive family 和 delta-only views | cumulative Library 和旧 shard 不重做 |
 | `flow/library_richness.py` | 持有 Opportunity/Action response、trust region、system-identification labels | 现有 Action Portfolio 与 Commercial Label |
 | `flow/domain/init.tcl.tmpl`、`pnr.tcl.tmpl`、`mmmc.tcl.tmpl` | post-route export、early clock/useful skew、placed checkpoint 和 CCEI seam | matched floorplan/pin/uncertainty/DCCK/无 hold fix |
@@ -514,7 +540,7 @@ Action 可标记为：
 | DIG-04 Opportunity quadrants | DIG-02（DIG-03 可选增强） | `mine_patterns.py`、`mine_timing_route.py` | 深/浅 × 长/短分类；timing 与 slack-harvesting proposals 分离 |
 | DIG-05 Local physical proxy | DIG-02/04（DIG-03 可选增强） | `proxy_mapping.py`、`library_richness.py` | bounded window 的 source/candidate cover、RC/load/slew、uncertainty；无全局 Fmax claim |
 | DIG-06 Drive family | DIG-04/05 | `_generation_projection.py`、generation/char adapters | D1/D2/D4/D6/D8与非对称 outputs；Liberty/SPICE/LEF电气和几何一致 |
-| DIG-07 CCEI placed-state POC | DIG-02/05/06 | `multi_output_resynth/`、P&R template | coarse placement identity probe、原位 ECO、seed、局部 legalization、proof、rollback |
+| DIG-07 CCEI anchored-resynthesis POC | DIG-02/05/06 | `multi_output_resynth/`、P&R template | anchors 定位、1～2级 trace、place-state single/multi-output重发现、seed、局部 legalization、proof、rollback |
 | DIG-08 Useful-skew matched method | DIG-01/07 | P&R/MMMC templates、Reader | baseline/generated同设置；100 ps策略真实生效；data/clock delta分解 |
 | DIG-09 AES free closure | DIG-02、04～08（DIG-03 可选） | existing stages/readers | 完整 frontier、Portfolio、Cell Demand、CCEI patch；零商业 Job |
 | DIG-10 Commercial observation | DIG-09 | existing P&R/compare | 一次 CCEI causal E0；可选独立 DC adoption E0；Commercial Label 回灌 |
@@ -538,7 +564,8 @@ Action 可标记为：
 - sampled/partial/complete fail-closed；
 - 四象限分类、community proposal 不直接 admission；
 - D1～D8 monotonic electrical/physical关系；
-- CCEI source conflict、pin map、seed location 和 rollback。
+- CCEI anchor、trace bound、source conflict、pin map、seed location 和 rollback；
+- 精确 instance name 改变但局部 function 保留时仍能重发现；邻域外 decoy 不得被选中。
 
 ### L1：Innovus export schema 与可选 OpenSTA 小图
 
@@ -562,6 +589,7 @@ Action 可标记为：
 
 - D1～D8与非对称 output variants通过生成、LEF/Liberty identity 和 LC；
 - coarse placement 前后 source census probe；
+- post-route anchors 在改名/resize 的 place netlist 中完成 bounded re-synthesis；
 - 同一 placed database内插入、seed、legalize、STA update；
 - window/module proof、ECO census、rollback和未影响区域检查；
 - 只运行必要的小规模 Innovus seam，不跑完整 route。
@@ -600,6 +628,7 @@ Desktop App 不参与 Framework 日常验证。
 - 不要求客户部署独立知识或 DIG 服务；
 - 不用 community score、adoption count、面积收益代替 Fmax；
 - 不把 DC free mapping 与 CCEI causal result 混成一个结论；
+- 不把 CCEI 产品路径实现成依赖精确 instance cluster 的 point-to-point ECO；
 - 不在 physical-aware ECO 后无条件冷启动全量 placement；
 - 不用 top-N timing report 声称完整 endpoint frontier；
 - 不因连续失败而放宽逻辑等价、唯一变量或证据标准。
