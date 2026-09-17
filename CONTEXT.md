@@ -116,6 +116,14 @@ _Avoid_: 跨设计通用状态、只有网表文件、商业 EDA 的 session
 从同一 Design State 投影出的异构设计关系图，把逻辑依赖、timing propagation、placement、互连寄生、clock关系和跨阶段 lineage 绑定在共同身份上，供 Opportunity Mining 使用。
 _Avoid_: top-N timing path 列表、普通 instance adjacency graph、第二套设计事实源
 
+**Phase DIG Snapshot**:
+同一设计在一个明确流程 checkpoint 上的不可变 DIG；place 与 post-route snapshots 使用同一 schema、各自保留完整身份，不能互相覆盖或冒充同一物理图。
+_Avoid_: 一个随流程原地更新的可变图、只有阶段名称没有 checkpoint hash
+
+**CrossPhaseMap**:
+连接 place 与 post-route DIG snapshots 的有证据 correspondence，允许一对一、一对多、多对一、semantic-region、ambiguity 和 absent；它把 Opportunity 投影为候选搜索区域，不直接产生 ECO target。
+_Avoid_: instance-name 字典、强制 point-to-point 映射、自动选择一个歧义匹配
+
 **Endpoint Frontier**:
 同一 timing path group 内，slack 接近当前最差值的一组唯一寄存器 endpoint；它们共同决定当前瓶颈，不能用一条 timing path 代替。
 _Avoid_: top-N path 行、单个 endpoint、所有寄存器的无差别集合
