@@ -12,6 +12,7 @@ DOMAIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DOMAIN))
 
 from cross_phase_graph import build_cross_phase_map  # noqa: E402
+from build_dig_bundle import publish_bundle  # noqa: E402
 from design_information_graph import (  # noqa: E402
     DesignInformationGraphError,
     validate_bundle,
@@ -175,6 +176,29 @@ class DesignInformationGraphTests(unittest.TestCase):
                 "completeness": "complete", "artifacts": artifacts,
             }))
             with self.assertRaisesRegex(DesignInformationGraphError, "missing roles"):
+                validate_bundle(root)
+
+    def test_bundle_builder_is_hash_bound_and_downgrades_sampled_timing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, value in {
+                "design.v": "module top; endmodule\n", "design.def": "VERSION 5.8 ;\n",
+                "constraints.sdc": "create_clock -period 1 clk\n",
+                "parasitics.spef": "*SPEF IEEE 1481-1998\n",
+                "census.tsv": "kind\tname\tmaster\tx\ty\tplace_status\n",
+                "tool-version.txt": "Innovus test\n",
+                "checkpoint-facts.tsv": (
+                    "phase\tpostroute\ntop\ttop\ndatabase\tdb.enc.dat\n"
+                    "instance_count\t0\nnet_count\t0\ndbu_per_micron\t2000\n"
+                    "spef_status\tok\n"
+                ),
+            }.items():
+                (root / name).write_text(value)
+            result = publish_bundle(root, "fixture", "postroute", "top")
+            self.assertEqual(result["manifest"]["completeness"], "partial")
+            self.assertEqual(validate_bundle(root)["bundle_sha256"], result["bundle_sha256"])
+            (root / "design.v").write_text("changed")
+            with self.assertRaisesRegex(DesignInformationGraphError, "hash mismatch"):
                 validate_bundle(root)
 
 
