@@ -16,7 +16,7 @@
 # session (flow/scripts/checker_session.tcl.tmpl), because a checker invoked a second time in a
 # session that has already run one is incremental and under-reports.
 #
-# Placeholders: @@ARM@@ @@INIT_DB@@ @@DESIGN_TOP@@ @@MULTI_CPU@@ @@TAP_CELL@@ @@TAP_INTERVAL@@
+# Placeholders: @@ARM@@ @@INIT_DB@@ @@PLACE_DB@@ @@DESIGN_TOP@@ @@MULTI_CPU@@ @@TAP_CELL@@ @@TAP_INTERVAL@@
 #   @@FILLER_CELLS@@ @@RPT_DIR@@ @@FINAL_DB@@ @@GDS_OUT@@ @@GDS_MAP@@ @@MERGE_GDS@@
 #   @@SWITCHING_ACTIVITY@@ @@CLOCK_BUFFER_CELLS@@ @@CLOCK_INVERTER_CELLS@@
 #   @@POSTROUTE_NETLIST@@ is the routed logical graph used by the next research generation
@@ -55,6 +55,10 @@ puts "=== CCFMAX well taps placed @@ARM@@ ==="
 
 @@PIN_SETUP@@
 place_opt_design
+# This is the CCEI branch point.  It precedes CTS/route and is retained with
+# its own identity; generated/reference continuations must start here.
+saveDesign @@PLACE_DB@@
+puts "=== CCFMAX PLACE CHECKPOINT @@ARM@@ @@PLACE_DB@@ ==="
 @@PIN_CAPTURE@@
 clock_opt_design
 setNanoRouteMode -routeWithTimingDriven true

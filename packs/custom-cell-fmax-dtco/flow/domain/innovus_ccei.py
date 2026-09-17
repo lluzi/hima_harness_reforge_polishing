@@ -135,16 +135,21 @@ def render_apply_tcl(plan, placement_report):
                          (_tcl(source["full_name"]), source["full_name"]))
         for source in action["source_instances"]:
             lines.append("deleteInst %s" % _tcl(source["full_name"]))
-        add = "addInst -cell %s -inst %s -loc {%0.6f %0.6f} -place_status unplaced" % (
+        add = "addInst -cell %s -inst %s -loc {%0.6f %0.6f} -place_status placed" % (
             _tcl(action["master"]), _tcl(action["replacement_instance"]),
             action["seed"]["x"], action["seed"]["y"])
         if action["hierarchy_path"]:
-            add += " -moduleBased %s" % _tcl(action["hierarchy_path"])
+            add += " -moduleBased %s" % _tcl(action["module"])
         lines.append(add)
         for pin, net in sorted(action["pin_to_net"].items()):
             lines.append("attachTerm %s %s %s" % (
                 _tcl(action["full_replacement_instance"]), _tcl(pin), _tcl(net)))
-        lines.append("set_dont_touch [get_cells %s] true" % _tcl(action["full_replacement_instance"]))
+        collection_name = "_hima_ccei_%s" % action["opportunity_id"].replace("-", "_")
+        lines.append("set %s [get_cells -hierarchical %s]" % (
+            collection_name, _tcl("*" + action["replacement_instance"])))
+        lines.append("if {[sizeof_collection $%s] != 1} { error \"CCEI replacement census is not one: %s\" }" %
+                     (collection_name, action["full_replacement_instance"]))
+        lines.append("set_dont_touch $%s true" % collection_name)
         for kind in ("power", "ground"):
             identity = plan[kind]
             if identity["net"] and identity["pin"]:
@@ -153,6 +158,7 @@ def render_apply_tcl(plan, placement_report):
                     _tcl(action["full_replacement_instance"])))
     lines.extend([
         "ecoPlace -fixPlacedInsts true -timing_driven true",
+        "puts \"=== HIMA CCEI FINAL_INSTANCE_COUNT [sizeof_collection [get_cells -hierarchical *HIMA_MO_*]] ===\"",
         "checkPlace %s" % _tcl(placement_report),
         "saveDesign %s" % _tcl(plan["output_checkpoint"]),
         "puts \"=== HIMA CCEI APPLY DONE %s ===\"" % plan["plan_sha256"],
@@ -162,8 +168,10 @@ def render_apply_tcl(plan, placement_report):
 
 
 def render_rollback_tcl(plan, rollback_checkpoint, placement_report):
+    applied_restore = (plan["output_checkpoint"] if str(plan["output_checkpoint"]).endswith(".dat")
+                       else str(plan["output_checkpoint"]) + ".dat")
     lines = ["# Hima CCEI rollback plan %s" % plan["plan_sha256"],
-             "restoreDesign %s %s" % (_tcl(plan["output_checkpoint"]), _tcl(plan["top"]))]
+             "restoreDesign %s %s" % (_tcl(applied_restore), _tcl(plan["top"]))]
     for action in reversed(plan["actions"]):
         lines.append("deleteInst %s" % _tcl(action["full_replacement_instance"]))
         for source in action["source_instances"]:
@@ -171,7 +179,7 @@ def render_rollback_tcl(plan, rollback_checkpoint, placement_report):
                 _tcl(source["master"]), _tcl(source["local_name"]), source["x"], source["y"],
                 _tcl(source["orientation"]))
             if action["hierarchy_path"]:
-                add += " -moduleBased %s" % _tcl(action["hierarchy_path"])
+                add += " -moduleBased %s" % _tcl(action["module"])
             lines.append(add)
             for pin, net in sorted(source["connections"].items()):
                 lines.append("attachTerm %s %s %s" % (

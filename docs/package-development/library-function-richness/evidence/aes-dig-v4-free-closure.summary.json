@@ -1,0 +1,151 @@
+{
+  "schema": "hima.dig-v4-aes-free-closure-evidence/1",
+  "date": "2026-09-16",
+  "sourceRun": "/data/eda/project/hima_harness/polishing-runs/aes-cgo100-20260916-v1",
+  "siteWorkspace": "/data/eda/project/hima_harness/polishing-runs/dig-v4-aes-export-20260916",
+  "tools": {
+    "innovus": "23.14-s088_1",
+    "openroad": "26Q2-2270-g4c26918f5",
+    "opensta": "bundled-with-openroad-26Q2",
+    "yosys": "bundled-with-iic-osic-2026.06"
+  },
+  "snapshots": {
+    "baselinePlace": {
+      "snapshotId": "aes-cgo100-baseline-place-v4",
+      "graphSha256": "0b3b97be75c1efb6464c076ecbcb94a7113b3d7b48be7b745e1de10e1df327d1",
+      "physicalOdbSha256": "7abc2223661e9f0d4e312c1cae061c318ce51c50829cf9affaf9af1036d52b8c",
+      "instances": 16647,
+      "pins": 81196,
+      "nets": 15466,
+      "hyperedges": 15464,
+      "endpoints": 389,
+      "reportedPathAlternatives": 38466,
+      "completeness": "partial-timing-path-list-complete-structural-cones"
+    },
+    "negativeGeneratedPostroute": {
+      "snapshotId": "aes-cgo100-postroute-v4",
+      "graphSha256": "5f66aae965b625b50b685058c036cd3f94931663093df00a6d83a2fcc93aa183",
+      "physicalOdbSha256": "53221f667685eb359c8574f6cea819cd40741620d71aa9b4d0ba90dba162bcfe",
+      "instances": 28224,
+      "pins": 106284,
+      "nets": 16313,
+      "hyperedges": 16313,
+      "endpoints": 389,
+      "reportedPathAlternatives": 38470,
+      "completeness": "partial-timing-path-list-complete-structural-cones"
+    }
+  },
+  "timingView": {
+    "reportedPathRows": 38470,
+    "endpointCount": 389,
+    "endpointNworstLimit": 100,
+    "endpointLimitSaturatedCount": 384,
+    "globalPathLimitSaturated": false,
+    "status": "partial"
+  },
+  "crossPhase": {
+    "mapSha256": "03c174d68f3c3763353265ee3468c3dabf0b612e03fbeaf75ea35b83157e454a",
+    "relations": {
+      "one-to-one": 64005,
+      "semantic-region": 1086,
+      "many-to-one": 38,
+      "absent": 124551
+    },
+    "projectedOpportunityRegions": 389,
+    "coverageMin": 0.3606060606060606,
+    "coverageMedian": 0.6472868217054264,
+    "coverageMax": 0.9047619047619048,
+    "exactEcoTargetsClaimed": false
+  },
+  "opportunityMining": {
+    "status": "complete",
+    "endpointCount": 389,
+    "completeEndpointCones": 389,
+    "quadrants": {
+      "deep-long": 358,
+      "deep-short": 26,
+      "shallow-short": 5
+    },
+    "maxLogicDepth": 23,
+    "maxPhysicalSpanUm": 126.003811,
+    "maxSharedEndpointInfluence": 128,
+    "ecoAdmissionClaimed": false
+  },
+  "anchoredPlace": {
+    "status": "succeeded",
+    "backend": "native_v1",
+    "opportunities": 62,
+    "selectedNonoverlappingWindows": 50,
+    "cuts": 16806,
+    "hashHits": 117,
+    "pairChecks": 119,
+    "runtimeMs": 81776.806,
+    "peakRssKb": 43060,
+    "proofStatus": "proved",
+    "proofBackend": "yosys-hierarchical-composition",
+    "provedModule": "aes_sbox_9",
+    "originalNetlistSha256": "70cd15819d8d14faca71063df0747a872292089b073715b68b63237202c98d9d",
+    "rewrittenNetlistSha256": "30a76331d8b3a35807a56dd97106522d62839c784980efe23ecade67d32a0ca0"
+  },
+  "cceiOneAction": {
+    "planSha256": "605605438587b178c315b3460176fc44125d1bd2501bfbd639641b3953586bb0",
+    "master": "XS_CGO_ENDPOINT_FRONTIER_MAPPED_MULTI_0020_MO_D8",
+    "sourceInstances": 4,
+    "seed": {
+      "x": 39.48,
+      "y": 134.3
+    },
+    "appliedMasterCount": 1,
+    "appliedDontTouch": true,
+    "rollbackMasterCount": 0,
+    "rollbackSourceCount": 4,
+    "placementViolations": {
+      "baseline": 11791,
+      "applied": 11788,
+      "rollback": 11791
+    }
+  },
+  "openstaLocalProxy": {
+    "pathLimit": 2000,
+    "baselineWnsNs": -0.033178,
+    "appliedWnsNs": -0.033178,
+    "customCellPathCount": 30,
+    "comparableStartEndpointPairs": 22,
+    "localSlackDeltaNs": {
+      "min": -0.016085,
+      "mean": -0.0030726818181818186,
+      "max": -0.000113,
+      "positivePairs": 0,
+      "negativePairs": 22
+    },
+    "status": "rejected-negative-local-proxy"
+  },
+  "usefulSkewProbe": {
+    "analysisUsefulSkew": true,
+    "maxAllowedDelayNs": 0.1,
+    "applyLimitToFullFlow": true,
+    "delayPreCts": true
+  },
+  "annotations": {
+    "baselinePlace": [
+      "opportunity",
+      "local-proxy",
+      "decision"
+    ],
+    "negativeGeneratedPostroute": [
+      "commercial-response"
+    ]
+  },
+  "commercialObservation": {
+    "newCompleteE0Jobs": 0,
+    "status": "skipped",
+    "reason": "negative local proxy on all 22 comparable start/end pairs"
+  },
+  "claimLimits": {
+    "newCommercialQor": false,
+    "fmaxImprovement": false,
+    "openstaEqualsInnovus": false,
+    "halBackendAdmitted": false,
+    "fullDriveFamilyMaterialized": false
+  }
+}

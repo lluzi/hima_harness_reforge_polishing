@@ -1,9 +1,10 @@
 # Post-route Design Information Graph 驱动的协同优化方法学 v4
 
-状态：开发方案，承接 v3 已完成的 CGO 实现与 AES 商业负样本；尚未宣称实现或收益。
+状态：免费闭环与小型 CCEI seam 已实现并验证；首个真实 local proxy 为负，完整 E0 按门禁跳过，尚未产生新 Fmax 收益。
 归属：`custom-cell-fmax-dtco` HimaPack 的 Library Function Richness 开发专线，继续由 GitHub Issue #40 跟踪。
 范围：升级现有 Framework、Pack domain tools、P&R adapter 和 Reader，不新增 Hima Runtime 组件、Fabric 动作、商业试验管理系统或对外交付件类型。
 修订：2026-09-16 纳入 OpenDB、SQLite、HAL、OpenSTA/OpenTimer、Yosys 和 LadybugDB 的技术选型；外部项目只作为现有 DIG/CCEI 深模块内可替换的 adapter/backend。
+实施证据：[AES DIG v4 免费闭环](evidence/2026-09-16-aes-dig-v4-free-closure.md)。
 
 ## 1. 方法决定
 
@@ -730,11 +731,13 @@ Action 可标记为：
 | `flow/domain/mine_timing_route.py` | 从 report parser 转为 DIG timing projection consumer；保留完整 endpoint alternatives、data/clock contribution 和 completeness | sampled report 继续可读，但不能开启 E0 |
 | `flow/domain/mine_patterns.py` | 在 DIG 上产生 timing、drive、fusion、multi-output、slack-harvesting proposals | Boolean boundary 与现有 generation contract |
 | `flow/domain/design_information_graph.py`（domain helper） | 编排 place/post-route bundle、OpenDB projection、Hima IDs、LocalWindow 和 completeness；不自行复制一套 LEF/DEF parser | 基础 facts 不被代理改写 |
+| `flow/domain/build_dig_bundle.py`、`build_dig_snapshot.py` | 校验/发布 export manifest，将 OpenDB、Liberty 与 timing view 物化为可重载 snapshot | 不读取或修改商业数据库 |
 | `flow/domain/opendb_dig.py`（adapter） | 用 pinned OpenROAD/OpenDB 读取 LEF/DEF/netlist、保存/恢复 `physical.odb` 并输出确定性 object projection | 不运行 P&R，不输出方法结论 |
 | `flow/domain/dig_store.py`（domain helper） | 管理 SQLite schema、transactions、hyperedges、RTree、annotations、lineage、CrossPhaseMap 和 artifact manifest | JSON 只作为 projection；不建立服务数据库 |
 | `flow/domain/cross_phase_graph.py`（domain helper） | 构建 one-to-one/one-to-many/many-to-one/semantic-region correspondence 与 ambiguity | 输出映射证据，不产生 ECO target |
 | `flow/domain/innovus_dig_export.tcl`（tool adapter） | 从同一 checkpoint 写出 netlist/DEF/SDC/SPEF/timing/clock/census 与 manifest | 只读导出，不运行优化 |
 | `flow/domain/opensta_dig.tcl` / `opentimer_dig.py`（optional adapters） | 对同一 LocalWindow 补充 timing graph、arrival/required、path alternatives 和局部 STA | backend 可替换；Innovus 仍是商业标签权威 |
+| `flow/domain/dig_opportunity.py`、`innovus_ccei.py` | 通过现有 domain 函数提供 Opportunity projection 与 placed-state CCEI apply/rollback CLI | 不新增 Pack stage/Fabric 动作；仍由现有 stage 编排 |
 | `flow/domain/proxy_mapping.py` | 对 bounded window 做 local cover/STA，不输出全局 Fmax 预测 | Yosys/ABC 单输出 mapping 角色 |
 | `flow/domain/multi_output_resynth/service.py` | 冻结 request/result、backend选择、selection、publication 与错误收敛 | `discover`/`directed`兼容，changed rewrite继续fail closed |
 | `flow/domain/multi_output_resynth/hal_backend.py`（adapter） | HAL project导入、Hima ID映射、LocalWindow图分析和 anchored candidate discovery | 不发布网表、不拥有proof、不能泄漏HAL ID |
@@ -767,6 +770,26 @@ Action 可标记为：
 | DIG-10 AES free closure | DIG-02～03、05～09（DIG-04 可选） | existing stages/readers | 完整 frontier、Portfolio、Cell Demand、CCEI patch；零商业 Job |
 | DIG-11 Commercial observation | DIG-10 | existing P&R/compare | 一次 CCEI causal E0；可选独立 DC adoption E0；Commercial Label 回灌 |
 | DIG-12 Pack integration | DIG-11 | Pack docs/graph/stages/tests | 当前 HimaPack 方法、知识和资产更新；不新增 Runtime 动作 |
+
+2026-09-16 实施状态：
+
+| 任务 | 状态 | 真实出口/边界 |
+| --- | --- | --- |
+| DIG-01 | 通过 | baseline place 与负样本 post-route 各自导出 netlist/DEF/SDC/SPEF/timing/clock/census/manifest；原 checkpoint 未覆盖 |
+| DIG-02 | 通过 | 两张 OpenDB mirror 与 SQLite DIG 可重载；AES 规模单事务物化；timing path list 明示 `partial` |
+| DIG-03 | 通过 | baseline-place ↔ negative-postroute map 已生成；Opportunity region 只作为 candidate region |
+| DIG-04 | 有界通过 | OpenSTA 真实读取 Liberty/netlist/SDC/SPEF；2,000 path 上限不冒充完整；OpenTimer 未晋级 |
+| DIG-05 | 通过 | 389/389 完整结构 endpoint cones 与四象限 proposals；没有直接 admission |
+| DIG-06 | 通过并拒绝首个 Action | 同一 Cell 出现在 30 条 OpenSTA 路径；22 个可比 pair 全部负向 |
+| DIG-07 | contract 通过，物化未完成 | D1～D8/非对称 output 单调性可拒绝错误 family；完整五档 Library/LC 未构建 |
+| DIG-08 | native 路径通过 | place-state anchored search 62 opportunities/50 selected；单项 CCEI apply/proof/rollback 通过；HAL 未安装且显式不晋级 |
+| DIG-09 | 配置探针通过 | Innovus 23.14 读回 useful skew=true、max delay=0.1 ns、full-flow/preCTS=true；完整 matched route 未运行 |
+| DIG-10 | 完成，结果为负 | AES free closure 形成 `opportunity -> negative local-proxy -> skip E0` lineage |
+| DIG-11 | 按门禁跳过 | 新完整 E0 job=0；旧 100-Cell 负样本作为 `commercial-response` 重放 |
+| DIG-12 | Pack 内代码/Reader/文档已接入 | 保存 `place_checkpoint`；不新增 Runtime/Fabric；正式新 Pack 版本仍等待 DIG-07 与正向 Portfolio |
+
+上述“通过”只限定于对应机制出口。它不把免费代理负结果、旧商业结果或小型 CCEI seam
+写成新的 Fmax 收益。完整数据、hash 与失败记录见实施证据。
 
 ### 14.1 外部后端准入门
 

@@ -145,10 +145,17 @@ elif tool == 'innovus':
             print('=== CCFMAX GENERATED_LIB_CELLS_AFTER_RESTORE %d ===' % (1 if arm == 'generated' else 0))
         print('=== core area: {2.0 2.0 22.0 22.0} ===')
     elif script.name.startswith('pnr_'):
-        target = pathlib.Path(re.search(r'saveDesign\s+([^\s]+)', text).group(1))
+        checkpoint_targets = re.findall(r'^saveDesign\s+(\S+)', text, re.M)
+        if len(checkpoint_targets) != 2:
+            raise SystemExit('synthetic P&R expects place and postroute saveDesign checkpoints')
+        place_target = pathlib.Path(checkpoint_targets[0])
+        target = pathlib.Path(checkpoint_targets[1])
         restored = pathlib.Path(re.search(r'^restoreDesign\s+(\S+)', text, re.M).group(1))
-        links = [(str(link.relative_to(restored)), link.readlink())
-                 for link in restored.rglob('*') if link.is_symlink()]
+        place_links = [(str(link.relative_to(restored)), link.readlink())
+                       for link in restored.rglob('*') if link.is_symlink()]
+        save_checkpoint(place_target, arm + '-place', place_links)
+        print('=== CCFMAX PLACE CHECKPOINT %s %s ===' % (arm, place_target))
+        links = list(place_links)
         links = [row for row in links if not str(row[1]).endswith('.dc.sdc')]
         rc_model = script.parent / 'rc_model.bin'
         rc_model.write_bytes(b'SYNTHETIC POSTROUTE RC MODEL\n')

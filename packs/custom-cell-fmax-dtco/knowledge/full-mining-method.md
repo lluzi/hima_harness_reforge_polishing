@@ -1,5 +1,40 @@
 # Full custom Cell candidate research
 
+## Current v4 method: Opportunity before Cell
+
+The active method starts from two immutable Design Information Graph snapshots: a baseline coarse-place
+state and the preceding post-route observation. Innovus exports the authoritative netlist, DEF, SDC,
+SPEF, timing/clock facts and census. OpenDB is a read-only physical mirror; SQLite holds stable Hima
+IDs, hyperedges, annotations, CrossPhaseMap and LocalWindow projections. A reported timing-path list is
+always sampled/partial when its global or per-endpoint bound saturates. Complete endpoint analysis walks
+the structural timing cone in the netlist graph instead of pretending a larger Top-N is the graph.
+
+Mine `Opportunity` regions first. Classify deep/shallow logic and long/short physical influence, retain
+every affected endpoint, and keep timing, drive, fusion/multi-output and slack-harvesting proposals
+separate. Graph centrality/community only proposes regions; it does not admit an ECO. Project each
+post-route region through CrossPhaseMap to a bounded place candidate region. Missing and ambiguous
+correspondence remains explicit.
+
+At coarse place, run the existing resynthesizer in `anchored` mode. Post-route module/net/instance hints
+only bound a 1-2 hop search. The engine must rediscover the single/multi-output Boolean function in the
+current place netlist, prove the window and select non-overlapping replacements. Do not use `directed`
+mode as the Campaign product path and do not turn source names into point-to-point ECO targets.
+
+CCEI applies only proved place-state windows in the same placed checkpoint. It seeds the new Cell at
+the source centroid, reconnects every signal/PG pin, checks census, sets dont-touch for ECO-only Cells,
+runs local `ecoPlace`, records placement changes and retains rollback. Baseline and generated
+continuations use the same Early Clock/useful-skew policy and 100 ps maximum borrowed delay.
+
+Before a complete commercial route, evaluate a hash-bound LocalWindow with the free logic/physical/STA
+views. Keep the raw factor vector; do not predict MHz. Missing path coverage or non-positive conservative
+local slack rejects the Action. A negative free proxy is a completed finding and stops E0. Commercial
+EDA is used only after a positive frozen Portfolio, then its response is written back as a separate
+`commercial-response` annotation.
+
+The 2026-09-16 AES closure found 389 complete structural endpoint cones, but the first placed-state CCEI
+Cell was negative on every one of 22 comparable OpenSTA start/end pairs. It is a method validation and
+negative asset, not a reusable positive candidate or Fmax claim.
+
 The current Campaign uses the layered Library-richness evaluation method in
 `library-richness-evaluation.md`. The older DC-probe material below remains useful for the final
 commercial observation and for reading retained historical records. It is not the first-generation

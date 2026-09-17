@@ -35,6 +35,14 @@ ends the probe immediately. Always use the current observation and both Judge ve
 conditions to assess stability. A two-generation test may honestly exhaust its budget.
 No synthesized measurement is a post-route or silicon Fmax claim.
 
+The current v4 development seam retains a coarse-place checkpoint before CTS/route and can export
+hash-bound place/post-route bundles into Pack-local OpenDB/SQLite Design Information Graph snapshots.
+`dig_opportunity.py` mines complete structural endpoint cones; `hima-mo-resynth` uses `anchored` mode to
+rediscover a selected Cell function inside a projected place region; `innovus_ccei.py` emits audited
+apply/rollback Tcl for the existing Innovus flow. `directed` remains a replay/debug mode. OpenSTA and
+other free views may reject an Action but never predict final MHz. A complete commercial E0 continuation
+requires a positive frozen Portfolio; the first AES v4 local proxy was negative and therefore stopped.
+
 For subsequent bounded algorithm work, `timing.rpt` identifies actual path points and
 `netlist.v` identifies actual instances. Both carry hashes in the manifest. Extract finite
 samples with line/object provenance; verify generated candidates against these objects and

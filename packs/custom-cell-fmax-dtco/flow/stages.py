@@ -150,8 +150,8 @@ def checkpoint_path(workspace, value, what):
 
 
 def checkpoint_snapshot(base_path, workspace, allowed_links, phase):
-    if phase not in ("init", "postroute"):
-        raise Rejected("checkpoint phase must be init or postroute")
+    if phase not in ("init", "place", "postroute"):
+        raise Rejected("checkpoint phase must be init, place or postroute")
     script = checkpoint_path(workspace, base_path, "checkpoint script")
     root = checkpoint_path(workspace, str(base_path) + ".dat", "checkpoint directory")
     if not script.is_file() or script.stat().st_size == 0:
@@ -2233,8 +2233,8 @@ def fill_template(path, mapping):
 
 
 def checkpoint_allowed_links(inputs, workspace, init_script, mmmc_script, arm, phase):
-    if phase not in ("init", "postroute"):
-        raise Rejected("checkpoint link phase must be init or postroute")
+    if phase not in ("init", "place", "postroute"):
+        raise Rejected("checkpoint link phase must be init, place or postroute")
     target_roles = {"TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH",
                     "generated_liberty", "generated_lef", "pnr_input_sdc",
                     "postroute_rc_model"}
@@ -2254,7 +2254,7 @@ def checkpoint_allowed_links(inputs, workspace, init_script, mmmc_script, arm, p
     mmmc = parse_mmmc(mmmc_script)
     categories = [
         (lef_rows[0].split(), "libs/lef"),
-        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase == "init" else []), "libs/mmmc"),
+        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase in ("init", "place") else []), "libs/mmmc"),
         ([mmmc["qrc"]], "libs/mmmc/rc_" + arm),
     ]
     if phase == "postroute":
@@ -2450,6 +2450,7 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
         })
         rpt = ctx.run_dir / ("rpt_" + arm)
         final_db = ctx.run_dir / ("DBS_" + arm) / "postroute.enc"
+        place_db = ctx.run_dir / ("DBS_" + arm) / "place.enc"
         gds = ctx.run_dir / (arm + ".gds")
         postroute_sdc = rpt / "postroute-active.sdc"
         postroute_netlist = rpt / "postroute-netlist.v"
@@ -2461,6 +2462,7 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
         pin_capture = "saveIoFile -locations {%s}\nsetPlaceMode -place_global_place_io_pins false" % pin_plan
         pnr = fill_template(DOMAIN / "pnr.tcl.tmpl", {
             "INIT_DB": str(init_db) + ".dat", "DESIGN_TOP": ctx.binding("DESIGN_TOP"),
+            "PLACE_DB": place_db,
             "MULTI_CPU": ctx.binding("MULTI_CPU"), "TAP_CELL": ctx.binding("CCFMAX_TAP_CELL"),
             "TAP_INTERVAL": ctx.binding("CCFMAX_TAP_INTERVAL"), "FILLER_CELLS": ctx.binding("CCFMAX_FILLER_CELLS"),
             "RPT_DIR": rpt, "FINAL_DB": final_db, "GDS_OUT": gds,
@@ -2477,6 +2479,7 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
         texts[arm] = {"init": init, "pnr": pnr}
         outputs[arm] = {"mmmc": mmmc_path, "init": init_path, "pnr": pnr_path,
                         "init_checkpoint_base": init_db, "final_checkpoint_base": final_db,
+                        "place_checkpoint_base": place_db,
                         "gds": gds, "postroute_sdc": postroute_sdc,
                         "postroute_netlist": postroute_netlist,
                         "pin_plan": pin_plan,
@@ -2570,6 +2573,14 @@ def stage_pnr(ctx, arm, utilization="0.60"):
         raise Rejected("Innovus init and route tool versions differ")
     if ("=== CCFMAX PNR DONE %s (GDS written) ===" % arm) not in pnr_text:
         raise ToolFailure("Innovus P&R log lacks the completion marker for " + arm)
+    place_marker = "=== CCFMAX PLACE CHECKPOINT %s %s ===" % (
+        arm, chosen["place_checkpoint_base"])
+    if place_marker not in pnr_text:
+        raise ToolFailure("Innovus P&R log lacks the placed-checkpoint marker")
+    place_links = checkpoint_allowed_links(
+        ctx.inputs, ctx.workspace, chosen["init"], chosen["mmmc"], arm, "place")
+    publish_checkpoint(ctx, chosen["place_checkpoint_base"],
+                       "place_checkpoint", place_links, "place")
     if not chosen["postroute_netlist"].is_file() or chosen["postroute_netlist"].is_symlink():
         raise ToolFailure("Innovus P&R did not save the routed logical netlist")
     clock_tree = clock_tree_identity(

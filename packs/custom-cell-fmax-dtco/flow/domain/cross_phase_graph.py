@@ -17,6 +17,44 @@ class CrossPhaseError(ValueError):
 MAX_AMBIGUOUS_CANDIDATES = 16
 
 
+def project_opportunity_region(mapping, opportunity):
+    """Project a post-route subgraph to candidate place IDs, never ECO targets."""
+    if mapping.get("schema") != "hima.dig-cross-phase-map/1":
+        raise CrossPhaseError("unsupported CrossPhaseMap")
+    source_ids = list(opportunity.get("cone_instance_ids") or opportunity.get("scope_nodes") or ())
+    if not source_ids:
+        raise CrossPhaseError("opportunity has no post-route source region")
+    by_source = {}
+    for row in mapping.get("correspondences", []):
+        by_source.setdefault(row["source_id"], []).append(row)
+    targets, absent, ambiguous = set(), [], []
+    evidence = []
+    for source in source_ids:
+        rows = by_source.get(source, [])
+        admitted = [row for row in rows if row["relation_type"] in {
+            "one-to-one", "one-to-many", "many-to-one", "semantic-region"
+        } and row.get("target_id")]
+        uncertain = [row for row in rows if row["relation_type"] == "ambiguous"]
+        if len(admitted) == 1:
+            targets.add(admitted[0]["target_id"])
+            evidence.append(admitted[0])
+        elif uncertain or len(admitted) > 1:
+            ambiguous.append(source)
+        else:
+            absent.append(source)
+    return {
+        "schema": "hima.dig-place-candidate-region/1",
+        "postroute_opportunity_id": opportunity.get("opportunity_id") or opportunity.get("endpoint_id"),
+        "cross_phase_map_sha256": mapping["map_sha256"],
+        "source_node_count": len(source_ids), "mapped_node_count": len(evidence),
+        "candidate_region_hima_ids": sorted(targets),
+        "absent_source_ids": sorted(absent), "ambiguous_source_ids": sorted(ambiguous),
+        "coverage": len(evidence) / len(source_ids),
+        "status": "projected" if targets and not ambiguous else "partial",
+        "claim_limits": {"exact_eco_target": False, "place_revalidation_required": True},
+    }
+
+
 def _nodes(connection, snapshot_id):
     return [{"hima_id": row[0], "kind": row[1], "native_identity": row[2],
              "attributes": json.loads(row[3])}

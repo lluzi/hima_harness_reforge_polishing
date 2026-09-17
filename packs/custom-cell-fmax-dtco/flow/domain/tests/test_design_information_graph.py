@@ -11,7 +11,7 @@ from pathlib import Path
 DOMAIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DOMAIN))
 
-from cross_phase_graph import build_cross_phase_map  # noqa: E402
+from cross_phase_graph import build_cross_phase_map, project_opportunity_region  # noqa: E402
 from build_dig_bundle import publish_bundle  # noqa: E402
 from innovus_timing_facts import parse_timing_report  # noqa: E402
 from mine_patterns import classify_dig_opportunity  # noqa: E402
@@ -200,6 +200,11 @@ class DesignInformationGraphTests(unittest.TestCase):
                 exact = hima_id("post-1", "Instance", "top/U_B")
                 self.assertEqual(by_source[exact][0]["relation_type"], "one-to-one")
                 self.assertEqual(len(mapping["map_sha256"]), 64)
+                region = project_opportunity_region(mapping, {
+                    "endpoint_id": "opp-1", "cone_instance_ids": [exact, renamed]
+                })
+                self.assertEqual(region["status"], "partial")
+                self.assertFalse(region["claim_limits"]["exact_eco_target"])
 
     def test_cross_phase_map_does_not_expand_high_frequency_empty_semantics(self):
         place = projection("place-1", "place")
@@ -378,6 +383,15 @@ Other End Arrival Time 0.050
         bad[-1]["input_cap_pf"] = 0.0001
         with self.assertRaisesRegex(ValueError, "monotonic"):
             validate_drive_family(bad)
+
+    def test_opensta_adapter_is_a_read_only_replaceable_view(self):
+        text = (DOMAIN / "opensta_dig.tcl").read_text()
+        for command in ("read_liberty", "read_verilog", "link_design", "read_sdc",
+                        "read_spef", "find_timing_paths"):
+            self.assertIn(command, text)
+        for forbidden in ("write_verilog", "write_spef", "replace_cell", "swap_cell"):
+            self.assertNotIn(forbidden, text)
+        self.assertIn("hima.opensta-dig-paths/1", text)
 
 
 if __name__ == "__main__":

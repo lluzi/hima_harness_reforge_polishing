@@ -133,8 +133,8 @@ def checkpoint_path(workspace, value, what):
 
 
 def checkpoint_snapshot(base_path, workspace, allowed_links, phase):
-    if phase not in ("init", "postroute"):
-        raise ValueError("checkpoint phase must be init or postroute")
+    if phase not in ("init", "place", "postroute"):
+        raise ValueError("checkpoint phase must be init, place or postroute")
     script = checkpoint_path(workspace, base_path, "checkpoint script")
     root = checkpoint_path(workspace, str(base_path) + ".dat", "checkpoint directory")
     if not script.is_file() or script.stat().st_size == 0:
@@ -364,8 +364,8 @@ def mmmc_identity(path):
 
 
 def checkpoint_allowed_links(record, workspace, arm, phase):
-    if phase not in ("init", "postroute"):
-        raise ValueError("checkpoint link phase must be init or postroute")
+    if phase not in ("init", "place", "postroute"):
+        raise ValueError("checkpoint link phase must be init, place or postroute")
     target_roles = {"TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH",
                     "generated_liberty", "generated_lef", "pnr_input_sdc",
                     "postroute_rc_model"}
@@ -392,7 +392,7 @@ def checkpoint_allowed_links(record, workspace, arm, phase):
     mmmc = mmmc_identity(one(record, workspace, "mmmc_script:" + arm))
     categories = [
         (lef_rows[0].split(), "libs/lef"),
-        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase == "init" else []), "libs/mmmc"),
+        (list(mmmc["libraries"]) + ([mmmc["sdc"]] if phase in ("init", "place") else []), "libs/mmmc"),
         ([mmmc["qrc"]], "libs/mmmc/rc_" + arm),
     ]
     if phase == "postroute":
@@ -1122,6 +1122,14 @@ def values_for(record, workspace, stage):
         init_links = checkpoint_allowed_links(record, workspace, arm, "init")
         postroute_links = checkpoint_allowed_links(record, workspace, arm, "postroute")
         validate_checkpoint(one(record, workspace, "init_checkpoint"), workspace, init_links, "init")
+        place_rows = [row for row in record.get("artifacts", [])
+                      if row.get("role") == "place_checkpoint"]
+        if len(place_rows) > 1:
+            raise ValueError("PnR record has multiple place checkpoints")
+        if place_rows:
+            place_links = checkpoint_allowed_links(record, workspace, arm, "place")
+            validate_checkpoint(one(record, workspace, "place_checkpoint"),
+                                workspace, place_links, "place")
         validate_checkpoint(one(record, workspace, "postroute_checkpoint"),
                             workspace, postroute_links, "postroute")
         one(record, workspace, "postroute_gds")
@@ -1242,6 +1250,14 @@ def values_for(record, workspace, stage):
             postroute_links = checkpoint_allowed_links(pnr_record, workspace, pnr_arm, "postroute")
             validate_checkpoint(one(pnr_record, workspace, "init_checkpoint"),
                                 workspace, init_links, "init")
+            place_rows = [row for row in pnr_record.get("artifacts", [])
+                          if row.get("role") == "place_checkpoint"]
+            if len(place_rows) > 1:
+                raise ValueError("PnR record has multiple place checkpoints")
+            if place_rows:
+                place_links = checkpoint_allowed_links(pnr_record, workspace, pnr_arm, "place")
+                validate_checkpoint(one(pnr_record, workspace, "place_checkpoint"),
+                                    workspace, place_links, "place")
             validate_checkpoint(one(pnr_record, workspace, "postroute_checkpoint"),
                                 workspace, postroute_links, "postroute")
             _hold_view, hold_wns, hold_violating = timing(one(pnr_record, workspace, "postroute_hold_summary"),
