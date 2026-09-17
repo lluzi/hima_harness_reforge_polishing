@@ -184,6 +184,9 @@ Analysis View: view
         frontier = build_active_frontier(timing, 0.5, 0.05, 0.0)
         self.assertEqual(2, frontier["endpoint_count"])
         self.assertAlmostEqual(0.51 / 1.05, frontier["q_target_ns"])
+        frozen = build_active_frontier(timing, 0.5, 0.05, 0.0, 0.49)
+        self.assertEqual("frozen-baseline-target", frozen["q_target_source"])
+        self.assertEqual(0.49, frozen["q_target_ns"])
 
     def test_endpoint_index_fails_closed_when_one_endpoint_has_no_path(self):
         report = """# Design : top

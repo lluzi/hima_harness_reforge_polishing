@@ -1,0 +1,99 @@
+{
+  "artifacts": [
+    {
+      "bytes": 83425,
+      "path": "active-frontier.json",
+      "role": "active_frontier",
+      "sha256": "0cbc7d6e81b3e8eccf215fa45897c1c46ec1753d40bdf0ead8d35c41d1b64756"
+    },
+    {
+      "bytes": 1070489,
+      "path": "census.tsv",
+      "role": "census",
+      "sha256": "d00c9d6d3a09571bd5bfe4f7fb1c0f11e0c5c8e17b8bc04388eb5b2bb28d411e"
+    },
+    {
+      "bytes": 339,
+      "path": "checkpoint-facts.tsv",
+      "role": "checkpoint_facts",
+      "sha256": "c0ab1a72bb4b5137d964f2aa1cd2725ee70069391e69971f9264da8cfea5aec0"
+    },
+    {
+      "bytes": 134405,
+      "path": "clock-facts.json",
+      "role": "clock_facts",
+      "sha256": "da36e9b43392455e636f3c23083e845193375b98e9701348a347c8222ebae937"
+    },
+    {
+      "bytes": 14251521,
+      "path": "design.def",
+      "role": "def",
+      "sha256": "cd926a5d5f9533d7a7a515ba5b3fb720fd436cabebe86b108115b737f3d3bff0"
+    },
+    {
+      "bytes": 2409997,
+      "path": "endpoint-worst-setup.rpt",
+      "role": "endpoint_worst_setup_report",
+      "sha256": "fd8128a09168afd0d1ffb7fbfc4c01fd37e1dabbb2c629885aa49583992c1dd2"
+    },
+    {
+      "bytes": 1493530,
+      "path": "design.v",
+      "role": "netlist",
+      "sha256": "ea5cb5a0647b31f671797386e787a31f47a3e7fba2ac2ed5af368693db3a0ac1"
+    },
+    {
+      "bytes": 61788,
+      "path": "constraints.sdc",
+      "role": "sdc",
+      "sha256": "1d1d4566e32d542bbab868807a37bca781c96b65d1196c9c1a3de7b776d03643"
+    },
+    {
+      "bytes": 9413,
+      "path": "setup-endpoints.tsv",
+      "role": "setup_endpoint_index",
+      "sha256": "b81a369e5b4889c2eecb69c17290150fc406ddb9aa2f6bc1e93dff50274680c2"
+    },
+    {
+      "bytes": 9806170,
+      "path": "parasitics.spef",
+      "role": "spef",
+      "sha256": "cd3d3318273d99c76980d139def06914e56c10a906e5bcd0b5105aa431855210"
+    },
+    {
+      "bytes": 1691260,
+      "path": "timing-facts.json",
+      "role": "timing_facts",
+      "sha256": "562b65842959d670e6d1d6353464148ef84fafede2be915418b3684cad3ac91c"
+    },
+    {
+      "bytes": 13,
+      "path": "tool-version.txt",
+      "role": "tool_version",
+      "sha256": "d12a87e4e5d4ac29ac040ca7983b6c486c3fbf86401046eaf781bc1f21ca7d7b"
+    }
+  ],
+  "checkpoint": "/data/eda/project/hima_harness/polishing-runs/lfr-v5-aes-20260917-v2/reference/DBS/postroute.enc.dat",
+  "completeness": "complete",
+  "counts": {
+    "instances": 18017,
+    "nets": 16225
+  },
+  "design_name": "aes-v5",
+  "manifest_sha256": "940ccdd34f55af49ee74c65d44bec9bddb31cb7fb069b500eb4746adbe310c3e",
+  "missing_roles": [],
+  "phase": "postroute",
+  "schema": "hima.innovus-dig-export/1",
+  "schema_version": 1,
+  "side_effect_policy": "restore-and-export-only-no-design-optimization",
+  "source_checkpoint_sha256": null,
+  "tool_version": "23.14-s088_1",
+  "top_module": "aes_cipher_top",
+  "units": {
+    "capacitance": "pF",
+    "database": "2000",
+    "distance": "um",
+    "resistance": "ohm",
+    "time": "ns"
+  }
+}

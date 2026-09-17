@@ -171,7 +171,8 @@ def parse_timing_report(path, max_paths, nworst, max_slack_ns, endpoint_index=No
     return timing, clocks
 
 
-def build_active_frontier(timing, period_ns, target_fmax_gain, guardband_ns):
+def build_active_frontier(timing, period_ns, target_fmax_gain, guardband_ns,
+                          frozen_q_target_ns=None):
     """Derive V5 q_e and the active frontier from endpoint-complete STA facts."""
     if timing.get("schema") != "hima.innovus-timing-facts/1":
         raise ValueError("unsupported timing fact schema")
@@ -194,7 +195,16 @@ def build_active_frontier(timing, period_ns, target_fmax_gain, guardband_ns):
         rows.append({"endpoint": row["endpoint"], "slack_ns": float(slack),
                      "q_ns": float(period_ns) - float(slack)})
     q0 = max(row["q_ns"] for row in rows)
-    q_target = q0 / (1.0 + float(target_fmax_gain))
+    if frozen_q_target_ns is None:
+        q_target = q0 / (1.0 + float(target_fmax_gain))
+        target_source = "derived-from-this-snapshot-q0"
+    else:
+        if (isinstance(frozen_q_target_ns, bool)
+                or not isinstance(frozen_q_target_ns, (int, float))
+                or not math.isfinite(frozen_q_target_ns) or frozen_q_target_ns <= 0):
+            raise ValueError("frozen_q_target_ns must be finite and positive")
+        q_target = float(frozen_q_target_ns)
+        target_source = "frozen-baseline-target"
     threshold = q_target - float(guardband_ns)
     for row in rows:
         row["active"] = row["q_ns"] >= threshold - 1e-15
@@ -203,7 +213,8 @@ def build_active_frontier(timing, period_ns, target_fmax_gain, guardband_ns):
         "schema": "hima.lfr-active-frontier/1", "status": "observed",
         "period_ns": float(period_ns), "target_fmax_gain": float(target_fmax_gain),
         "guardband_ns": float(guardband_ns), "q0_ns": q0,
-        "q_target_ns": q_target, "required_gain_ns": q0 - q_target,
+        "q_target_ns": q_target, "q_target_source": target_source,
+        "required_gain_ns": q0 - q_target,
         "endpoint_count": len(rows),
         "active_endpoint_count": sum(row["active"] for row in rows),
         "endpoints": sorted(rows, key=lambda row: (-row["q_ns"], row["endpoint"])),
@@ -225,6 +236,7 @@ def main():
     parser.add_argument("--target-fmax-gain", type=float, default=0.05)
     parser.add_argument("--guardband-ns", type=float, default=0.0)
     parser.add_argument("--frontier-json")
+    parser.add_argument("--frozen-q-target-ns", type=float)
     args = parser.parse_args()
     timing, clocks = parse_timing_report(args.report, args.max_paths, args.nworst,
                                          args.max_slack_ns, args.endpoint_index)
@@ -232,7 +244,7 @@ def main():
         if args.period_ns is None:
             parser.error("--frontier-json requires --period-ns")
         frontier = build_active_frontier(timing, args.period_ns, args.target_fmax_gain,
-                                         args.guardband_ns)
+                                         args.guardband_ns, args.frozen_q_target_ns)
         timing["active_frontier"] = frontier
         Path(args.frontier_json).write_text(json.dumps(frontier, indent=2, sort_keys=True) + "\n")
     Path(args.timing_json).write_text(json.dumps(timing, indent=2, sort_keys=True) + "\n")

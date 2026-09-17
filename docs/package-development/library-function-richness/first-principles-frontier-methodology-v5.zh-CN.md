@@ -1,10 +1,13 @@
 # 第一性原理与 Active Frontier 驱动的协同优化方法学 v5
 
-状态：方法规格已形成，代码实施与新物理基线尚未开始
+状态：既有模块增量与首轮 AES E0 已完成；5% Fmax 目标未达到
 
 开发对象：`packs/custom-cell-fmax-dtco` HimaPack
 
 跟踪标识：`LFR-V5-*`，继续归属 [Issue #40](https://github.com/lluzi/hima_harness_reforge_polishing/issues/40)
+
+实施证据：[2026-09-17 AES V5 开发与 E0](evidence/2026-09-17-aes-v5-first-principles-e0.md)；
+[结构化摘要](evidence/aes-v5-first-principles-e0.summary.json)
 
 前置方法：
 
@@ -34,6 +37,23 @@ V5 把方法学的中心从“选择看起来更好的 Cell 或 Action”改为�
 > 在新的真实物理基线中识别阻碍目标 Fmax 的 active endpoint frontier；为候选动作形成分层、
 > 条件化、可被推翻的局部收益证书；把候选作为一个 Portfolio 真正应用到同一张候选图并重算；
 > 最后只用一对身份严格匹配的商业 E0 arms 观察整个 Portfolio 的流程总效应。
+
+### 1.1 首轮实现与实验出口
+
+2026-09-17 的实现保持上述边界，在现有 Pack 模块中完成 PG/DCAP/85% baseline、endpoint-complete
+timing state、Active Frontier、break-even envelope、whole-graph beam、physical-sharing audit、
+common-parent/full-replay CCEI 以及 staggered-pin abstract。真实 AES 两臂得到：
+
+- WNS -57 ps → -57 ps，derived Fmax 0%；
+- TNS -6.641 ns → -5.885 ns，setup violations 289 → 227；
+- area -3.182%、wire -1.449%、modeled power -2.042%；
+- 530/530 endpoints 完整，冻结 5% frontier 128 → 127；只移出 2 个旧 frontier endpoints，新增 1 个；
+- reference/generated Custom census 0/50，650 颗 DCAP plan hash 完全一致；
+- hold 未闭合、route DRC 约 2,070、未做 IR/EM，因此不构成 physical closure。
+
+它是针对 5% 目标的有效负结果。V5 证明当前 50-Action Portfolio 能广泛改善非瓶颈 PPA/TNS，但没有
+同时击穿完整 WNS frontier；下一轮的搜索输入应是 generated DIG 上仍存的 127 个 endpoints，而不是
+继续增加未定位 Actions。
 
 V5 的成功首先意味着实验有效、证据分层正确、结果可解释。5% matched post-route Fmax 仍是 AES
 Campaign 的业务目标，但不能预先写入 Mock Liberty、证书门槛或结果解释。
@@ -566,6 +586,10 @@ Fabric action、隐藏 Agent、商业搜索服务或新的资产生命周期。
 | LFR-V5-05 Portfolio v5 | `library_richness.py`、现有 fixtures/tests | whole-Portfolio graph recompute、beam/swap、budget/conflict、deterministic frozen result | 等待 02/03 contract |
 | LFR-V5-06 Common-parent CCEI replay | `cross_phase_graph.py`、`innovus_ccei.py`、`stages.py`、P&R template | `N*`/`N*+ECO`、两臂 full replay、proof/rollback、阶段 census | 等待 01/02/04/05 |
 | LFR-V5-07 两臂 E0 与报告 | existing P&R stage、DIG response、Reader/evidence | 新 baseline + 一个 generated arm；完整 claims/limits；5% 或诚实负结果 | 等待 06 |
+
+首轮状态：01～07 均已形成代码和对应测试；01/02/04/06/07 已由真实 Innovus/OpenDB 两臂验证；03/05
+以 L1 的 closed-window/alternative-takeover 反例验证，并在 E0 中保持 observation-only，没有用免费指标
+删减 50-Action calibration Portfolio。真实结果是 07 允许的“诚实负结果”，Issue #40 不因此关闭。
 
 共享接线文件 `stages.py`、`read-stage.py` 和 P&R template 保持单一所有者。任务可以在模块边界内并行，
 但接口冻结前不同时编辑共享接线。每项规格应足以让第二梯队模型在不重新定义产品的情况下实施。

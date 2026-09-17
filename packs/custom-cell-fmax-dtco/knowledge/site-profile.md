@@ -24,7 +24,11 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `DRIVE_STRENGTH`, `VT_CLASS` | one-line text | Target library class for generated candidates. |
 | `PLACE_SITE` | one-line text | Innovus row/site name from the technology LEF. It is never assumed to be `core`. |
 | `CCFMAX_POWER_PIN`, `CCFMAX_GROUND_PIN` | one-line text | Power and ground rail names from the library/technology profile. |
-| `CCFMAX_TAP_CELL`, `CCFMAX_FILLER_CELLS` | one-line text | Site-valid tap and filler/decap masters shared by both arms. |
+| `CCFMAX_TAP_CELL`, `CCFMAX_FILLER_CELLS` | one-line text | Site-valid tap master and legacy filler declaration. V5 does not insert ordinary filler; the retained filler field preserves profile compatibility. |
+| `CCFMAX_DCAP_CELL`, `CCFMAX_DCAP_ROW_STRIDE`, `CCFMAX_DCAP_X_PITCH_UM`, `CCFMAX_DCAP_EDGE_MARGIN_UM` | master, integer and positive distances | Site-valid DCAP and deterministic checkerboard plan inputs. Both arms derive and hash the same collision-free plan before placement. |
+| `CCFMAX_MAX_EFFECTIVE_DENSITY` | fraction | Final effective standard-cell occupancy ceiling, including logic, clock, DCAP and tap cells; V5 rejects values above 0.85. |
+| `CCFMAX_PG_HORIZONTAL_LAYER`, `CCFMAX_PG_VERTICAL_LAYER` | layer names | Site-qualified block-level PG ring/stripe layers. |
+| `CCFMAX_PG_RING_WIDTH_UM`, `CCFMAX_PG_RING_SPACING_UM`, `CCFMAX_PG_STRIPE_WIDTH_UM`, `CCFMAX_PG_STRIPE_SPACING_UM`, `CCFMAX_PG_STRIPE_SET_DISTANCE_UM`, `CCFMAX_PG_STRIPE_START_OFFSET_UM` | positive distances | Matched PG geometry inputs. They establish routing-resource competition; IR/EM and final DRC remain separate gates. |
 | `CCFMAX_CLOCK_BUFFER_CELLS`, `CCFMAX_CLOCK_INVERTER_CELLS` | whitespace-separated DCCK Cell names | Site-valid balanced clock buffer and inverter masters shared by both CCOpt runs. Every name must start with `DCCK`; the routed netlist independently proves actual `CTS_` use. |
 | `CCFMAX_TAP_INTERVAL` | positive integer | Site method's tap interval. |
 | `CCFMAX_PROCESS_NODE` | positive number | Innovus process setting used by both arms. |

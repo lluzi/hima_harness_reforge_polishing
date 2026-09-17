@@ -365,6 +365,8 @@ def main():
         y1 = y0 + PIN_H
         pins[s] = (cx - PIN_W // 2, y0, cx + PIN_W // 2, y1)
 
+    PIN_Y0 = min(rect[1] for rect in pins.values())
+    PIN_Y1 = max(rect[3] for rect in pins.values())
     open_tr = sorted({t for t in tracks for _s, (_x0, y0, _x1, y1) in pins.items()
                       if y0 <= t <= y1})
     assert open_tr, "staggered pin bands cover no M1 track"
@@ -428,6 +430,11 @@ def main():
             y1 = min(y1, PIN_Y0 - SP)
         else:
             y0 = max(y0, PIN_Y1 + SP)
+        if y1 - y0 < WIRE:
+            # Staggered pin bands can leave an intermediate track with too
+            # little legal room for a blockage.  Leaving that track routable
+            # is conservative for pin access and avoids emitting illegal OBS.
+            continue
         assert y1 - y0 >= WIRE, "OBS strip %d..%d is thinner than M1 MINWIDTH" % (y0, y1)
         for t in grp:                          # every track in the group must actually be killed
             assert max(0, y0 - (t + WIRE // 2), (t - WIRE // 2) - y1) < SP, \

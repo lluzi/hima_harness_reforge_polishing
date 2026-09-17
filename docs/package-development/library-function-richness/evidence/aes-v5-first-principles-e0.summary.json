@@ -1,0 +1,3327 @@
+{
+  "claim_limits": {
+    "drc_clean": false,
+    "five_percent_achieved": false,
+    "hold_closed": false,
+    "ir_em_signed_off": false,
+    "mock_characterization": true,
+    "single_pair_no_statistics": true
+  },
+  "delta": {
+    "area_percent": -3.1815543948930936,
+    "drc": -3,
+    "effective_occupancy_points": -0.012687305368000001,
+    "fmax_mhz": 0.0,
+    "fmax_percent": 0.0,
+    "power_percent": -2.042334278046465,
+    "tns_ns": 0.7560000000000002,
+    "violating_paths": -62,
+    "wire_percent": -1.4493632506229037,
+    "wns_ns": 0.0
+  },
+  "dig": {
+    "database_bytes": 316260352,
+    "endpoint_completeness": "530/530 each arm",
+    "generated_bundle_sha256": "326e5dca7626dad5556321c140cc4fee9abfaf1e251271e403b40115cb21ffbe",
+    "generated_graph_sha256": "433acaa02983e1607782b2414f0ec8105dcf75604a286e90feff1e02f87ac848",
+    "reference_bundle_sha256": "87c333c030017f9e06e8083b47215387ebe58e047a8842890d1f128efa67ad5c",
+    "reference_graph_sha256": "f1ebcfb3a615bc561bd1d84037fef8081896308a08d32ce2bcf341604a9551a6"
+  },
+  "endpoint_deltas": [
+    {
+      "delta_slack_ns": -0.09999999999999999,
+      "endpoint": "text_in_r_reg_61_/D",
+      "generated_slack_ns": 0.11,
+      "reference_slack_ns": 0.21
+    },
+    {
+      "delta_slack_ns": -0.08099999999999999,
+      "endpoint": "text_in_r_reg_40_/D",
+      "generated_slack_ns": 0.038,
+      "reference_slack_ns": 0.119
+    },
+    {
+      "delta_slack_ns": -0.08099999999999999,
+      "endpoint": "text_in_r_reg_43_/D",
+      "generated_slack_ns": 0.038,
+      "reference_slack_ns": 0.119
+    },
+    {
+      "delta_slack_ns": -0.08099999999999999,
+      "endpoint": "text_in_r_reg_75_/D",
+      "generated_slack_ns": 0.037,
+      "reference_slack_ns": 0.118
+    },
+    {
+      "delta_slack_ns": -0.08000000000000002,
+      "endpoint": "text_in_r_reg_76_/D",
+      "generated_slack_ns": 0.037,
+      "reference_slack_ns": 0.117
+    },
+    {
+      "delta_slack_ns": -0.07999999999999999,
+      "endpoint": "text_in_r_reg_48_/D",
+      "generated_slack_ns": 0.038,
+      "reference_slack_ns": 0.118
+    },
+    {
+      "delta_slack_ns": -0.07900000000000001,
+      "endpoint": "text_in_r_reg_41_/D",
+      "generated_slack_ns": 0.038,
+      "reference_slack_ns": 0.117
+    },
+    {
+      "delta_slack_ns": -0.07900000000000001,
+      "endpoint": "text_in_r_reg_44_/D",
+      "generated_slack_ns": 0.038,
+      "reference_slack_ns": 0.117
+    },
+    {
+      "delta_slack_ns": -0.07900000000000001,
+      "endpoint": "text_in_r_reg_45_/D",
+      "generated_slack_ns": 0.038,
+      "reference_slack_ns": 0.117
+    },
+    {
+      "delta_slack_ns": -0.07900000000000001,
+      "endpoint": "text_in_r_reg_50_/D",
+      "generated_slack_ns": 0.038,
+      "reference_slack_ns": 0.117
+    },
+    {
+      "delta_slack_ns": -0.07899999999999999,
+      "endpoint": "text_in_r_reg_47_/D",
+      "generated_slack_ns": 0.039,
+      "reference_slack_ns": 0.118
+    },
+    {
+      "delta_slack_ns": -0.07899999999999999,
+      "endpoint": "text_in_r_reg_49_/D",
+      "generated_slack_ns": 0.039,
+      "reference_slack_ns": 0.118
+    },
+    {
+      "delta_slack_ns": -0.07899999999999999,
+      "endpoint": "text_in_r_reg_55_/D",
+      "generated_slack_ns": 0.039,
+      "reference_slack_ns": 0.118
+    },
+    {
+      "delta_slack_ns": -0.07800000000000001,
+      "endpoint": "text_in_r_reg_52_/D",
+      "generated_slack_ns": 0.038,
+      "reference_slack_ns": 0.116
+    },
+    {
+      "delta_slack_ns": -0.07800000000000001,
+      "endpoint": "text_in_r_reg_74_/D",
+      "generated_slack_ns": 0.038,
+      "reference_slack_ns": 0.116
+    },
+    {
+      "delta_slack_ns": -0.053000000000000005,
+      "endpoint": "text_in_r_reg_117_/D",
+      "generated_slack_ns": 0.072,
+      "reference_slack_ns": 0.125
+    },
+    {
+      "delta_slack_ns": -0.051000000000000004,
+      "endpoint": "text_in_r_reg_115_/D",
+      "generated_slack_ns": 0.074,
+      "reference_slack_ns": 0.125
+    },
+    {
+      "delta_slack_ns": -0.045,
+      "endpoint": "text_in_r_reg_82_/D",
+      "generated_slack_ns": 0.016,
+      "reference_slack_ns": 0.061
+    },
+    {
+      "delta_slack_ns": -0.044,
+      "endpoint": "text_in_r_reg_84_/D",
+      "generated_slack_ns": 0.016,
+      "reference_slack_ns": 0.06
+    },
+    {
+      "delta_slack_ns": -0.043,
+      "endpoint": "text_in_r_reg_80_/D",
+      "generated_slack_ns": 0.016,
+      "reference_slack_ns": 0.059
+    },
+    {
+      "delta_slack_ns": -0.043,
+      "endpoint": "text_in_r_reg_83_/D",
+      "generated_slack_ns": 0.016,
+      "reference_slack_ns": 0.059
+    },
+    {
+      "delta_slack_ns": -0.042,
+      "endpoint": "text_in_r_reg_86_/D",
+      "generated_slack_ns": 0.016,
+      "reference_slack_ns": 0.058
+    },
+    {
+      "delta_slack_ns": -0.041999999999999996,
+      "endpoint": "text_in_r_reg_126_/D",
+      "generated_slack_ns": 0.017,
+      "reference_slack_ns": 0.059
+    },
+    {
+      "delta_slack_ns": -0.041999999999999996,
+      "endpoint": "text_in_r_reg_81_/D",
+      "generated_slack_ns": 0.017,
+      "reference_slack_ns": 0.059
+    },
+    {
+      "delta_slack_ns": -0.041,
+      "endpoint": "text_in_r_reg_118_/D",
+      "generated_slack_ns": 0.016,
+      "reference_slack_ns": 0.057
+    },
+    {
+      "delta_slack_ns": -0.040999999999999995,
+      "endpoint": "text_in_r_reg_113_/D",
+      "generated_slack_ns": 0.018,
+      "reference_slack_ns": 0.059
+    },
+    {
+      "delta_slack_ns": -0.04000000000000001,
+      "endpoint": "text_in_r_reg_87_/D",
+      "generated_slack_ns": 0.018,
+      "reference_slack_ns": 0.058
+    },
+    {
+      "delta_slack_ns": -0.03900000000000001,
+      "endpoint": "text_in_r_reg_85_/D",
+      "generated_slack_ns": 0.018,
+      "reference_slack_ns": 0.057
+    },
+    {
+      "delta_slack_ns": -0.02,
+      "endpoint": "text_out_reg_77_/D",
+      "generated_slack_ns": -0.007,
+      "reference_slack_ns": 0.013
+    },
+    {
+      "delta_slack_ns": -0.019,
+      "endpoint": "text_out_reg_75_/D",
+      "generated_slack_ns": -0.009,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": -0.017,
+      "endpoint": "sa00_reg_6_/D",
+      "generated_slack_ns": -0.039,
+      "reference_slack_ns": -0.022
+    },
+    {
+      "delta_slack_ns": -0.017,
+      "endpoint": "text_in_r_reg_62_/D",
+      "generated_slack_ns": 0.109,
+      "reference_slack_ns": 0.126
+    },
+    {
+      "delta_slack_ns": -0.017,
+      "endpoint": "text_in_r_reg_72_/D",
+      "generated_slack_ns": 0.11,
+      "reference_slack_ns": 0.127
+    },
+    {
+      "delta_slack_ns": -0.016,
+      "endpoint": "text_in_r_reg_63_/D",
+      "generated_slack_ns": 0.112,
+      "reference_slack_ns": 0.128
+    },
+    {
+      "delta_slack_ns": -0.016,
+      "endpoint": "text_out_reg_112_/D",
+      "generated_slack_ns": -0.009,
+      "reference_slack_ns": 0.007
+    },
+    {
+      "delta_slack_ns": -0.016,
+      "endpoint": "text_out_reg_86_/D",
+      "generated_slack_ns": -0.006,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": -0.015,
+      "endpoint": "text_in_r_reg_53_/D",
+      "generated_slack_ns": 0.114,
+      "reference_slack_ns": 0.129
+    },
+    {
+      "delta_slack_ns": -0.015,
+      "endpoint": "text_in_r_reg_54_/D",
+      "generated_slack_ns": 0.111,
+      "reference_slack_ns": 0.126
+    },
+    {
+      "delta_slack_ns": -0.015,
+      "endpoint": "text_out_reg_5_/D",
+      "generated_slack_ns": -0.015,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": -0.013999999999999999,
+      "endpoint": "text_in_r_reg_42_/D",
+      "generated_slack_ns": 0.113,
+      "reference_slack_ns": 0.127
+    },
+    {
+      "delta_slack_ns": -0.013999999999999999,
+      "endpoint": "text_in_r_reg_46_/D",
+      "generated_slack_ns": 0.114,
+      "reference_slack_ns": 0.128
+    },
+    {
+      "delta_slack_ns": -0.013999999999999999,
+      "endpoint": "text_in_r_reg_51_/D",
+      "generated_slack_ns": 0.115,
+      "reference_slack_ns": 0.129
+    },
+    {
+      "delta_slack_ns": -0.013999999999999999,
+      "endpoint": "text_in_r_reg_56_/D",
+      "generated_slack_ns": 0.115,
+      "reference_slack_ns": 0.129
+    },
+    {
+      "delta_slack_ns": -0.013,
+      "endpoint": "text_out_reg_104_/D",
+      "generated_slack_ns": -0.009,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.013,
+      "endpoint": "text_out_reg_28_/D",
+      "generated_slack_ns": 0.0,
+      "reference_slack_ns": 0.013
+    },
+    {
+      "delta_slack_ns": -0.013,
+      "endpoint": "text_out_reg_44_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": 0.019
+    },
+    {
+      "delta_slack_ns": -0.012999999999999998,
+      "endpoint": "sa01_reg_7_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.031
+    },
+    {
+      "delta_slack_ns": -0.011,
+      "endpoint": "text_out_reg_126_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": -0.011,
+      "endpoint": "text_out_reg_66_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": 0.007
+    },
+    {
+      "delta_slack_ns": -0.011,
+      "endpoint": "text_out_reg_83_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": -0.010999999999999996,
+      "endpoint": "sa30_reg_5_/D",
+      "generated_slack_ns": -0.043,
+      "reference_slack_ns": -0.032
+    },
+    {
+      "delta_slack_ns": -0.01,
+      "endpoint": "text_out_reg_107_/D",
+      "generated_slack_ns": -0.012,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": -0.01,
+      "endpoint": "text_out_reg_7_/D",
+      "generated_slack_ns": -0.008,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": -0.01,
+      "endpoint": "u0/w_reg_2__29_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": 0.007
+    },
+    {
+      "delta_slack_ns": -0.009999999999999998,
+      "endpoint": "text_out_reg_55_/D",
+      "generated_slack_ns": 0.008,
+      "reference_slack_ns": 0.018
+    },
+    {
+      "delta_slack_ns": -0.009999999999999998,
+      "endpoint": "u0/w_reg_0__19_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": -0.009,
+      "endpoint": "text_out_reg_120_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.011
+    },
+    {
+      "delta_slack_ns": -0.009,
+      "endpoint": "text_out_reg_125_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": 0.013
+    },
+    {
+      "delta_slack_ns": -0.009,
+      "endpoint": "text_out_reg_85_/D",
+      "generated_slack_ns": -0.011,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": -0.008,
+      "endpoint": "sa10_reg_4_/D",
+      "generated_slack_ns": -0.057,
+      "reference_slack_ns": -0.049
+    },
+    {
+      "delta_slack_ns": -0.008,
+      "endpoint": "sa20_reg_5_/D",
+      "generated_slack_ns": -0.052,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": -0.008,
+      "endpoint": "sa30_reg_4_/D",
+      "generated_slack_ns": -0.048,
+      "reference_slack_ns": -0.04
+    },
+    {
+      "delta_slack_ns": -0.008,
+      "endpoint": "sa32_reg_5_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.032
+    },
+    {
+      "delta_slack_ns": -0.008,
+      "endpoint": "sa32_reg_7_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.038
+    },
+    {
+      "delta_slack_ns": -0.008,
+      "endpoint": "text_out_reg_110_/D",
+      "generated_slack_ns": -0.007,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": -0.008,
+      "endpoint": "text_out_reg_111_/D",
+      "generated_slack_ns": -0.009,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": -0.008,
+      "endpoint": "text_out_reg_90_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": 0.012
+    },
+    {
+      "delta_slack_ns": -0.008,
+      "endpoint": "u0/w_reg_1__24_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": -0.007999999999999993,
+      "endpoint": "sa00_reg_0_/D",
+      "generated_slack_ns": -0.043,
+      "reference_slack_ns": -0.035
+    },
+    {
+      "delta_slack_ns": -0.007000000000000006,
+      "endpoint": "text_in_r_reg_59_/D",
+      "generated_slack_ns": 0.11,
+      "reference_slack_ns": 0.117
+    },
+    {
+      "delta_slack_ns": -0.007,
+      "endpoint": "text_out_reg_100_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": 0.014
+    },
+    {
+      "delta_slack_ns": -0.007,
+      "endpoint": "text_out_reg_102_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.007,
+      "endpoint": "text_out_reg_89_/D",
+      "generated_slack_ns": -0.007,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": -0.006999999999999999,
+      "endpoint": "sa01_reg_0_/D",
+      "generated_slack_ns": -0.049,
+      "reference_slack_ns": -0.042
+    },
+    {
+      "delta_slack_ns": -0.006999999999999999,
+      "endpoint": "sa02_reg_1_/D",
+      "generated_slack_ns": -0.048,
+      "reference_slack_ns": -0.041
+    },
+    {
+      "delta_slack_ns": -0.006999999999999999,
+      "endpoint": "sa30_reg_1_/D",
+      "generated_slack_ns": -0.053,
+      "reference_slack_ns": -0.046
+    },
+    {
+      "delta_slack_ns": -0.006999999999999999,
+      "endpoint": "sa30_reg_3_/D",
+      "generated_slack_ns": -0.048,
+      "reference_slack_ns": -0.041
+    },
+    {
+      "delta_slack_ns": -0.006999999999999999,
+      "endpoint": "sa31_reg_0_/D",
+      "generated_slack_ns": -0.041,
+      "reference_slack_ns": -0.034
+    },
+    {
+      "delta_slack_ns": -0.006,
+      "endpoint": "text_out_reg_108_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.006,
+      "endpoint": "text_out_reg_91_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.005999999999999998,
+      "endpoint": "sa00_reg_7_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.038
+    },
+    {
+      "delta_slack_ns": -0.005999999999999998,
+      "endpoint": "sa20_reg_2_/D",
+      "generated_slack_ns": -0.039,
+      "reference_slack_ns": -0.033
+    },
+    {
+      "delta_slack_ns": -0.005999999999999998,
+      "endpoint": "sa20_reg_6_/D",
+      "generated_slack_ns": -0.045,
+      "reference_slack_ns": -0.039
+    },
+    {
+      "delta_slack_ns": -0.0050000000000000044,
+      "endpoint": "sa12_reg_5_/D",
+      "generated_slack_ns": -0.042,
+      "reference_slack_ns": -0.037
+    },
+    {
+      "delta_slack_ns": -0.0050000000000000044,
+      "endpoint": "sa20_reg_1_/D",
+      "generated_slack_ns": -0.056,
+      "reference_slack_ns": -0.051
+    },
+    {
+      "delta_slack_ns": -0.0050000000000000044,
+      "endpoint": "text_in_r_reg_34_/D",
+      "generated_slack_ns": 0.111,
+      "reference_slack_ns": 0.116
+    },
+    {
+      "delta_slack_ns": -0.0050000000000000044,
+      "endpoint": "text_in_r_reg_58_/D",
+      "generated_slack_ns": 0.11,
+      "reference_slack_ns": 0.115
+    },
+    {
+      "delta_slack_ns": -0.005000000000000001,
+      "endpoint": "text_out_reg_73_/D",
+      "generated_slack_ns": 0.019,
+      "reference_slack_ns": 0.024
+    },
+    {
+      "delta_slack_ns": -0.005,
+      "endpoint": "text_out_reg_127_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.007
+    },
+    {
+      "delta_slack_ns": -0.005,
+      "endpoint": "text_out_reg_81_/D",
+      "generated_slack_ns": -0.007,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": -0.005,
+      "endpoint": "u0/w_reg_0__24_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": 0.006
+    },
+    {
+      "delta_slack_ns": -0.0049999999999999975,
+      "endpoint": "sa20_reg_7_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.035
+    },
+    {
+      "delta_slack_ns": -0.0049999999999999975,
+      "endpoint": "sa22_reg_1_/D",
+      "generated_slack_ns": -0.043,
+      "reference_slack_ns": -0.038
+    },
+    {
+      "delta_slack_ns": -0.0040000000000000036,
+      "endpoint": "sa13_reg_7_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.036
+    },
+    {
+      "delta_slack_ns": -0.0040000000000000036,
+      "endpoint": "sa22_reg_0_/D",
+      "generated_slack_ns": -0.042,
+      "reference_slack_ns": -0.038
+    },
+    {
+      "delta_slack_ns": -0.004,
+      "endpoint": "dcnt_reg_0_/D",
+      "generated_slack_ns": 0.019,
+      "reference_slack_ns": 0.023
+    },
+    {
+      "delta_slack_ns": -0.004,
+      "endpoint": "text_out_reg_103_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": 0.008
+    },
+    {
+      "delta_slack_ns": -0.004,
+      "endpoint": "text_out_reg_118_/D",
+      "generated_slack_ns": -0.008,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": -0.004,
+      "endpoint": "text_out_reg_1_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": -0.004,
+      "endpoint": "text_out_reg_6_/D",
+      "generated_slack_ns": -0.008,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": -0.004,
+      "endpoint": "text_out_reg_70_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": -0.004,
+      "endpoint": "u0/w_reg_1__1_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.006
+    },
+    {
+      "delta_slack_ns": -0.004,
+      "endpoint": "u0/w_reg_3__31_/D",
+      "generated_slack_ns": -0.006,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": -0.003999999999999997,
+      "endpoint": "sa22_reg_5_/D",
+      "generated_slack_ns": -0.038,
+      "reference_slack_ns": -0.034
+    },
+    {
+      "delta_slack_ns": -0.003999999999999997,
+      "endpoint": "sa30_reg_7_/D",
+      "generated_slack_ns": -0.039,
+      "reference_slack_ns": -0.035
+    },
+    {
+      "delta_slack_ns": -0.003999999999999997,
+      "endpoint": "sa32_reg_0_/D",
+      "generated_slack_ns": -0.043,
+      "reference_slack_ns": -0.039
+    },
+    {
+      "delta_slack_ns": -0.003999999999999997,
+      "endpoint": "text_in_r_reg_7_/D",
+      "generated_slack_ns": 0.032,
+      "reference_slack_ns": 0.036
+    },
+    {
+      "delta_slack_ns": -0.0030000000000000027,
+      "endpoint": "sa02_reg_3_/D",
+      "generated_slack_ns": -0.047,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": -0.0030000000000000027,
+      "endpoint": "sa12_reg_6_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.037
+    },
+    {
+      "delta_slack_ns": -0.0030000000000000027,
+      "endpoint": "sa22_reg_6_/D",
+      "generated_slack_ns": -0.042,
+      "reference_slack_ns": -0.039
+    },
+    {
+      "delta_slack_ns": -0.0030000000000000027,
+      "endpoint": "text_in_r_reg_37_/D",
+      "generated_slack_ns": 0.211,
+      "reference_slack_ns": 0.214
+    },
+    {
+      "delta_slack_ns": -0.0030000000000000027,
+      "endpoint": "text_in_r_reg_4_/D",
+      "generated_slack_ns": 0.036,
+      "reference_slack_ns": 0.039
+    },
+    {
+      "delta_slack_ns": -0.003,
+      "endpoint": "text_out_reg_38_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": -0.003,
+      "endpoint": "text_out_reg_78_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": -0.003,
+      "endpoint": "text_out_reg_98_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.003,
+      "endpoint": "u0/w_reg_0__13_/D",
+      "generated_slack_ns": -0.007,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": -0.003,
+      "endpoint": "u0/w_reg_1__25_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.006
+    },
+    {
+      "delta_slack_ns": -0.003,
+      "endpoint": "u0/w_reg_1__5_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": -0.003,
+      "endpoint": "u0/w_reg_3__25_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": -0.003,
+      "endpoint": "u0/w_reg_3__28_/D",
+      "generated_slack_ns": -0.006,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": -0.0029999999999999957,
+      "endpoint": "sa01_reg_6_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.041
+    },
+    {
+      "delta_slack_ns": -0.0029999999999999957,
+      "endpoint": "sa20_reg_3_/D",
+      "generated_slack_ns": -0.052,
+      "reference_slack_ns": -0.049
+    },
+    {
+      "delta_slack_ns": -0.0029999999999999957,
+      "endpoint": "sa21_reg_2_/D",
+      "generated_slack_ns": -0.045,
+      "reference_slack_ns": -0.042
+    },
+    {
+      "delta_slack_ns": -0.0029999999999999957,
+      "endpoint": "sa30_reg_0_/D",
+      "generated_slack_ns": -0.045,
+      "reference_slack_ns": -0.042
+    },
+    {
+      "delta_slack_ns": -0.0029999999999999957,
+      "endpoint": "text_in_r_reg_20_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.038
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "dcnt_reg_1_/D",
+      "generated_slack_ns": 0.022,
+      "reference_slack_ns": 0.024
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "sa01_reg_5_/D",
+      "generated_slack_ns": -0.049,
+      "reference_slack_ns": -0.047
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "sa03_reg_7_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "sa10_reg_5_/D",
+      "generated_slack_ns": -0.056,
+      "reference_slack_ns": -0.054
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "sa10_reg_6_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.038
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "sa12_reg_0_/D",
+      "generated_slack_ns": -0.041,
+      "reference_slack_ns": -0.039
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "sa12_reg_4_/D",
+      "generated_slack_ns": -0.047,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "sa23_reg_3_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "text_in_r_reg_57_/D",
+      "generated_slack_ns": 0.114,
+      "reference_slack_ns": 0.116
+    },
+    {
+      "delta_slack_ns": -0.0020000000000000018,
+      "endpoint": "u0/r0/rcnt_reg_2_/D",
+      "generated_slack_ns": 0.142,
+      "reference_slack_ns": 0.144
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "dcnt_reg_2_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": 0.008
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "text_out_reg_101_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": 0.006
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "text_out_reg_30_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "text_out_reg_45_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": 0.008
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "text_out_reg_71_/D",
+      "generated_slack_ns": 0.008,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "text_out_reg_88_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "text_out_reg_99_/D",
+      "generated_slack_ns": 0.009,
+      "reference_slack_ns": 0.011
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_0__10_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_0__29_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_0__31_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.005
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_1__12_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_1__6_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_2__27_/D",
+      "generated_slack_ns": 0.005,
+      "reference_slack_ns": 0.007
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_2__28_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_2__31_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_2__7_/D",
+      "generated_slack_ns": 0.009,
+      "reference_slack_ns": 0.011
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_3__4_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": -0.002,
+      "endpoint": "u0/w_reg_3__7_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": -0.001999999999999999,
+      "endpoint": "text_out_reg_92_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": -0.001999999999999995,
+      "endpoint": "sa02_reg_4_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.042
+    },
+    {
+      "delta_slack_ns": -0.001999999999999995,
+      "endpoint": "sa21_reg_1_/D",
+      "generated_slack_ns": -0.043,
+      "reference_slack_ns": -0.041
+    },
+    {
+      "delta_slack_ns": -0.001999999999999995,
+      "endpoint": "sa22_reg_4_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.042
+    },
+    {
+      "delta_slack_ns": -0.001999999999999995,
+      "endpoint": "text_in_r_reg_14_/D",
+      "generated_slack_ns": 0.034,
+      "reference_slack_ns": 0.036
+    },
+    {
+      "delta_slack_ns": -0.001999999999999995,
+      "endpoint": "text_in_r_reg_17_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.037
+    },
+    {
+      "delta_slack_ns": -0.001999999999999995,
+      "endpoint": "text_in_r_reg_19_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.037
+    },
+    {
+      "delta_slack_ns": -0.0010000000000000009,
+      "endpoint": "sa00_reg_4_/D",
+      "generated_slack_ns": -0.047,
+      "reference_slack_ns": -0.046
+    },
+    {
+      "delta_slack_ns": -0.0010000000000000009,
+      "endpoint": "sa23_reg_2_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": -0.0010000000000000009,
+      "endpoint": "sa30_reg_6_/D",
+      "generated_slack_ns": -0.054,
+      "reference_slack_ns": -0.053
+    },
+    {
+      "delta_slack_ns": -0.0010000000000000009,
+      "endpoint": "sa31_reg_2_/D",
+      "generated_slack_ns": -0.041,
+      "reference_slack_ns": -0.04
+    },
+    {
+      "delta_slack_ns": -0.0010000000000000009,
+      "endpoint": "text_in_r_reg_22_/D",
+      "generated_slack_ns": 0.036,
+      "reference_slack_ns": 0.037
+    },
+    {
+      "delta_slack_ns": -0.0010000000000000009,
+      "endpoint": "text_in_r_reg_3_/D",
+      "generated_slack_ns": 0.036,
+      "reference_slack_ns": 0.037
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "text_out_reg_114_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "text_out_reg_31_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "text_out_reg_58_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "text_out_reg_68_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "text_out_reg_69_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "text_out_reg_80_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "text_out_reg_95_/D",
+      "generated_slack_ns": 0.005,
+      "reference_slack_ns": 0.006
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "u0/w_reg_0__22_/D",
+      "generated_slack_ns": -0.007,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "u0/w_reg_1__27_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "u0/w_reg_1__8_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "u0/w_reg_2__26_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "u0/w_reg_3__13_/D",
+      "generated_slack_ns": -0.007,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "u0/w_reg_3__24_/D",
+      "generated_slack_ns": -0.008,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "u0/w_reg_3__29_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "u0/w_reg_3__3_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": -0.001,
+      "endpoint": "u0/w_reg_3__6_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": -0.000999999999999994,
+      "endpoint": "sa21_reg_6_/D",
+      "generated_slack_ns": -0.036,
+      "reference_slack_ns": -0.035
+    },
+    {
+      "delta_slack_ns": -0.000999999999999994,
+      "endpoint": "text_in_r_reg_0_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.036
+    },
+    {
+      "delta_slack_ns": -0.000999999999999994,
+      "endpoint": "text_in_r_reg_10_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.036
+    },
+    {
+      "delta_slack_ns": -0.000999999999999994,
+      "endpoint": "text_in_r_reg_31_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.036
+    },
+    {
+      "delta_slack_ns": -0.000999999999999994,
+      "endpoint": "text_in_r_reg_9_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.036
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "sa00_reg_1_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "sa02_reg_0_/D",
+      "generated_slack_ns": -0.039,
+      "reference_slack_ns": -0.039
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "sa02_reg_7_/D",
+      "generated_slack_ns": -0.039,
+      "reference_slack_ns": -0.039
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "sa11_reg_6_/D",
+      "generated_slack_ns": -0.047,
+      "reference_slack_ns": -0.047
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "sa20_reg_4_/D",
+      "generated_slack_ns": -0.052,
+      "reference_slack_ns": -0.052
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "sa21_reg_0_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "sa31_reg_3_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.04
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_in_r_reg_11_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.035
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_in_r_reg_15_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.035
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_in_r_reg_2_/D",
+      "generated_slack_ns": 0.036,
+      "reference_slack_ns": 0.036
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_in_r_reg_8_/D",
+      "generated_slack_ns": 0.034,
+      "reference_slack_ns": 0.034
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_out_reg_35_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_out_reg_39_/D",
+      "generated_slack_ns": -0.0,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_out_reg_42_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_out_reg_67_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": 0.007
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_out_reg_74_/D",
+      "generated_slack_ns": -0.007,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "text_out_reg_84_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "u0/w_reg_0__17_/D",
+      "generated_slack_ns": -0.006,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "u0/w_reg_1__19_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "u0/w_reg_1__31_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "u0/w_reg_1__3_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.0,
+      "endpoint": "u0/w_reg_2__8_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": 0.000999999999999994,
+      "endpoint": "sa02_reg_6_/D",
+      "generated_slack_ns": -0.035,
+      "reference_slack_ns": -0.036
+    },
+    {
+      "delta_slack_ns": 0.000999999999999994,
+      "endpoint": "sa21_reg_3_/D",
+      "generated_slack_ns": -0.042,
+      "reference_slack_ns": -0.043
+    },
+    {
+      "delta_slack_ns": 0.000999999999999994,
+      "endpoint": "text_in_r_reg_13_/D",
+      "generated_slack_ns": 0.036,
+      "reference_slack_ns": 0.035
+    },
+    {
+      "delta_slack_ns": 0.000999999999999994,
+      "endpoint": "text_in_r_reg_16_/D",
+      "generated_slack_ns": 0.036,
+      "reference_slack_ns": 0.035
+    },
+    {
+      "delta_slack_ns": 0.001,
+      "endpoint": "text_out_reg_113_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.001,
+      "endpoint": "text_out_reg_49_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.001,
+      "endpoint": "text_out_reg_65_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": 0.001,
+      "endpoint": "text_out_reg_96_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": 0.006
+    },
+    {
+      "delta_slack_ns": 0.001,
+      "endpoint": "u0/w_reg_0__1_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": 0.001,
+      "endpoint": "u0/w_reg_1__10_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": 0.001,
+      "endpoint": "u0/w_reg_1__28_/D",
+      "generated_slack_ns": -0.006,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.001,
+      "endpoint": "u0/w_reg_2__24_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": 0.001,
+      "endpoint": "u0/w_reg_2__25_/D",
+      "generated_slack_ns": -0.0,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": 0.0010000000000000009,
+      "endpoint": "sa01_reg_4_/D",
+      "generated_slack_ns": -0.047,
+      "reference_slack_ns": -0.048
+    },
+    {
+      "delta_slack_ns": 0.0010000000000000009,
+      "endpoint": "sa10_reg_7_/D",
+      "generated_slack_ns": -0.053,
+      "reference_slack_ns": -0.054
+    },
+    {
+      "delta_slack_ns": 0.0010000000000000009,
+      "endpoint": "sa11_reg_0_/D",
+      "generated_slack_ns": -0.047,
+      "reference_slack_ns": -0.048
+    },
+    {
+      "delta_slack_ns": 0.0010000000000000009,
+      "endpoint": "sa13_reg_3_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.0010000000000000009,
+      "endpoint": "sa31_reg_1_/D",
+      "generated_slack_ns": -0.038,
+      "reference_slack_ns": -0.039
+    },
+    {
+      "delta_slack_ns": 0.0010000000000000009,
+      "endpoint": "sa31_reg_5_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.0010000000000000009,
+      "endpoint": "sa32_reg_3_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.0010000000000000009,
+      "endpoint": "sa32_reg_4_/D",
+      "generated_slack_ns": -0.045,
+      "reference_slack_ns": -0.046
+    },
+    {
+      "delta_slack_ns": 0.001999999999999995,
+      "endpoint": "sa20_reg_0_/D",
+      "generated_slack_ns": -0.042,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": 0.001999999999999995,
+      "endpoint": "sa33_reg_6_/D",
+      "generated_slack_ns": -0.041,
+      "reference_slack_ns": -0.043
+    },
+    {
+      "delta_slack_ns": 0.001999999999999995,
+      "endpoint": "text_in_r_reg_5_/D",
+      "generated_slack_ns": 0.037,
+      "reference_slack_ns": 0.035
+    },
+    {
+      "delta_slack_ns": 0.001999999999999999,
+      "endpoint": "text_out_reg_37_/D",
+      "generated_slack_ns": -0.007,
+      "reference_slack_ns": -0.009
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "text_out_reg_119_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "text_out_reg_122_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "text_out_reg_25_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "text_out_reg_50_/D",
+      "generated_slack_ns": 0.01,
+      "reference_slack_ns": 0.008
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "text_out_reg_62_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "u0/w_reg_1__21_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "u0/w_reg_2__1_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": 0.004
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "u0/w_reg_3__1_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "u0/w_reg_3__22_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.002,
+      "endpoint": "u0/w_reg_3__26_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.0020000000000000018,
+      "endpoint": "sa10_reg_2_/D",
+      "generated_slack_ns": -0.053,
+      "reference_slack_ns": -0.055
+    },
+    {
+      "delta_slack_ns": 0.0020000000000000018,
+      "endpoint": "sa11_reg_5_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.048
+    },
+    {
+      "delta_slack_ns": 0.0020000000000000018,
+      "endpoint": "sa12_reg_7_/D",
+      "generated_slack_ns": -0.038,
+      "reference_slack_ns": -0.04
+    },
+    {
+      "delta_slack_ns": 0.0020000000000000018,
+      "endpoint": "sa13_reg_1_/D",
+      "generated_slack_ns": -0.045,
+      "reference_slack_ns": -0.047
+    },
+    {
+      "delta_slack_ns": 0.0020000000000000018,
+      "endpoint": "sa33_reg_4_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.046
+    },
+    {
+      "delta_slack_ns": 0.0020000000000000018,
+      "endpoint": "text_in_r_reg_12_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.033
+    },
+    {
+      "delta_slack_ns": 0.0020000000000000018,
+      "endpoint": "text_in_r_reg_1_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.033
+    },
+    {
+      "delta_slack_ns": 0.0029999999999999957,
+      "endpoint": "sa01_reg_1_/D",
+      "generated_slack_ns": -0.041,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": 0.0029999999999999957,
+      "endpoint": "sa01_reg_3_/D",
+      "generated_slack_ns": -0.042,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.002999999999999999,
+      "endpoint": "u0/w_reg_1__17_/D",
+      "generated_slack_ns": -0.008,
+      "reference_slack_ns": -0.011
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "text_out_reg_33_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "text_out_reg_43_/D",
+      "generated_slack_ns": 0.005,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "text_out_reg_60_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "text_out_reg_82_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "text_out_reg_94_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_0__12_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_0__25_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_0__27_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_0__4_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_0__6_/D",
+      "generated_slack_ns": 0.0,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_1__29_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_1__7_/D",
+      "generated_slack_ns": -0.0,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_2__11_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_3__11_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_3__12_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_3__5_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": 0.003,
+      "endpoint": "u0/w_reg_3__9_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": -0.008
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "sa00_reg_3_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.049
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "sa10_reg_0_/D",
+      "generated_slack_ns": -0.051,
+      "reference_slack_ns": -0.054
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "sa11_reg_1_/D",
+      "generated_slack_ns": -0.047,
+      "reference_slack_ns": -0.05
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "sa11_reg_2_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.049
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "sa23_reg_0_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.047
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "sa23_reg_4_/D",
+      "generated_slack_ns": -0.045,
+      "reference_slack_ns": -0.048
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "sa23_reg_7_/D",
+      "generated_slack_ns": -0.037,
+      "reference_slack_ns": -0.04
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "sa33_reg_3_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.049
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "text_in_r_reg_39_/D",
+      "generated_slack_ns": 0.217,
+      "reference_slack_ns": 0.214
+    },
+    {
+      "delta_slack_ns": 0.0030000000000000027,
+      "endpoint": "text_in_r_reg_6_/D",
+      "generated_slack_ns": 0.035,
+      "reference_slack_ns": 0.032
+    },
+    {
+      "delta_slack_ns": 0.004,
+      "endpoint": "text_out_reg_121_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": 0.004,
+      "endpoint": "text_out_reg_9_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": 0.004,
+      "endpoint": "u0/w_reg_0__16_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.004,
+      "endpoint": "u0/w_reg_0__5_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": 0.004,
+      "endpoint": "u0/w_reg_1__13_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": 0.004,
+      "endpoint": "u0/w_reg_1__30_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.004,
+      "endpoint": "u0/w_reg_2__6_/D",
+      "generated_slack_ns": 0.0,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": 0.0040000000000000036,
+      "endpoint": "sa00_reg_5_/D",
+      "generated_slack_ns": -0.043,
+      "reference_slack_ns": -0.047
+    },
+    {
+      "delta_slack_ns": 0.0040000000000000036,
+      "endpoint": "sa21_reg_5_/D",
+      "generated_slack_ns": -0.036,
+      "reference_slack_ns": -0.04
+    },
+    {
+      "delta_slack_ns": 0.0040000000000000036,
+      "endpoint": "sa22_reg_3_/D",
+      "generated_slack_ns": -0.037,
+      "reference_slack_ns": -0.041
+    },
+    {
+      "delta_slack_ns": 0.0040000000000000036,
+      "endpoint": "text_in_r_reg_32_/D",
+      "generated_slack_ns": 0.214,
+      "reference_slack_ns": 0.21
+    },
+    {
+      "delta_slack_ns": 0.0040000000000000036,
+      "endpoint": "text_in_r_reg_33_/D",
+      "generated_slack_ns": 0.217,
+      "reference_slack_ns": 0.213
+    },
+    {
+      "delta_slack_ns": 0.0040000000000000036,
+      "endpoint": "text_in_r_reg_35_/D",
+      "generated_slack_ns": 0.216,
+      "reference_slack_ns": 0.212
+    },
+    {
+      "delta_slack_ns": 0.0040000000000000036,
+      "endpoint": "text_in_r_reg_36_/D",
+      "generated_slack_ns": 0.214,
+      "reference_slack_ns": 0.21
+    },
+    {
+      "delta_slack_ns": 0.0049999999999999975,
+      "endpoint": "sa12_reg_3_/D",
+      "generated_slack_ns": -0.038,
+      "reference_slack_ns": -0.043
+    },
+    {
+      "delta_slack_ns": 0.0049999999999999975,
+      "endpoint": "sa13_reg_5_/D",
+      "generated_slack_ns": -0.041,
+      "reference_slack_ns": -0.046
+    },
+    {
+      "delta_slack_ns": 0.0049999999999999975,
+      "endpoint": "sa31_reg_6_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "text_out_reg_106_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "text_out_reg_13_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "text_out_reg_59_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "text_out_reg_64_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_0__20_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_0__3_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_0__7_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_0__9_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_1__20_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_2__18_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_2__19_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_2__21_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_2__22_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_3__21_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.005,
+      "endpoint": "u0/w_reg_3__23_/D",
+      "generated_slack_ns": -0.005,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.0050000000000000044,
+      "endpoint": "sa21_reg_7_/D",
+      "generated_slack_ns": -0.037,
+      "reference_slack_ns": -0.042
+    },
+    {
+      "delta_slack_ns": 0.0050000000000000044,
+      "endpoint": "sa32_reg_6_/D",
+      "generated_slack_ns": -0.036,
+      "reference_slack_ns": -0.041
+    },
+    {
+      "delta_slack_ns": 0.0050000000000000044,
+      "endpoint": "text_in_r_reg_60_/D",
+      "generated_slack_ns": 0.216,
+      "reference_slack_ns": 0.211
+    },
+    {
+      "delta_slack_ns": 0.005999999999999998,
+      "endpoint": "sa02_reg_5_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.046
+    },
+    {
+      "delta_slack_ns": 0.005999999999999998,
+      "endpoint": "sa11_reg_7_/D",
+      "generated_slack_ns": -0.045,
+      "reference_slack_ns": -0.051
+    },
+    {
+      "delta_slack_ns": 0.005999999999999998,
+      "endpoint": "sa21_reg_4_/D",
+      "generated_slack_ns": -0.038,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": 0.005999999999999998,
+      "endpoint": "sa22_reg_7_/D",
+      "generated_slack_ns": -0.032,
+      "reference_slack_ns": -0.038
+    },
+    {
+      "delta_slack_ns": 0.005999999999999998,
+      "endpoint": "sa23_reg_1_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.052
+    },
+    {
+      "delta_slack_ns": 0.005999999999999998,
+      "endpoint": "sa31_reg_7_/D",
+      "generated_slack_ns": -0.035,
+      "reference_slack_ns": -0.041
+    },
+    {
+      "delta_slack_ns": 0.005999999999999998,
+      "endpoint": "sa32_reg_2_/D",
+      "generated_slack_ns": -0.039,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.005999999999999999,
+      "endpoint": "u0/w_reg_3__10_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.009
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "text_out_reg_109_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "text_out_reg_36_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "text_out_reg_4_/D",
+      "generated_slack_ns": 0.014,
+      "reference_slack_ns": 0.008
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "text_out_reg_93_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "u0/w_reg_0__0_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "u0/w_reg_0__30_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "u0/w_reg_1__22_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.008
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "u0/w_reg_1__23_/D",
+      "generated_slack_ns": -0.009,
+      "reference_slack_ns": -0.015
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "u0/w_reg_2__13_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "u0/w_reg_2__4_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "u0/w_reg_2__5_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": 0.006,
+      "endpoint": "u0/w_reg_3__2_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.006000000000000005,
+      "endpoint": "sa10_reg_1_/D",
+      "generated_slack_ns": -0.051,
+      "reference_slack_ns": -0.057
+    },
+    {
+      "delta_slack_ns": 0.006000000000000005,
+      "endpoint": "sa11_reg_3_/D",
+      "generated_slack_ns": -0.043,
+      "reference_slack_ns": -0.049
+    },
+    {
+      "delta_slack_ns": 0.006000000000000005,
+      "endpoint": "text_in_r_reg_25_/D",
+      "generated_slack_ns": 0.097,
+      "reference_slack_ns": 0.091
+    },
+    {
+      "delta_slack_ns": 0.006000000000000005,
+      "endpoint": "text_in_r_reg_28_/D",
+      "generated_slack_ns": 0.096,
+      "reference_slack_ns": 0.09
+    },
+    {
+      "delta_slack_ns": 0.006999999999999999,
+      "endpoint": "sa01_reg_2_/D",
+      "generated_slack_ns": -0.039,
+      "reference_slack_ns": -0.046
+    },
+    {
+      "delta_slack_ns": 0.006999999999999999,
+      "endpoint": "sa13_reg_0_/D",
+      "generated_slack_ns": -0.037,
+      "reference_slack_ns": -0.044
+    },
+    {
+      "delta_slack_ns": 0.006999999999999999,
+      "endpoint": "sa22_reg_2_/D",
+      "generated_slack_ns": -0.038,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.006999999999999999,
+      "endpoint": "sa31_reg_4_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.047
+    },
+    {
+      "delta_slack_ns": 0.006999999999999999,
+      "endpoint": "sa32_reg_1_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.051
+    },
+    {
+      "delta_slack_ns": 0.006999999999999999,
+      "endpoint": "sa33_reg_1_/D",
+      "generated_slack_ns": -0.046,
+      "reference_slack_ns": -0.053
+    },
+    {
+      "delta_slack_ns": 0.006999999999999999,
+      "endpoint": "sa33_reg_7_/D",
+      "generated_slack_ns": -0.038,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.006999999999999999,
+      "endpoint": "u0/w_reg_1__9_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.009
+    },
+    {
+      "delta_slack_ns": 0.006999999999999999,
+      "endpoint": "u0/w_reg_3__16_/D",
+      "generated_slack_ns": -0.006,
+      "reference_slack_ns": -0.013
+    },
+    {
+      "delta_slack_ns": 0.007,
+      "endpoint": "text_out_reg_123_/D",
+      "generated_slack_ns": 0.008,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.007,
+      "endpoint": "text_out_reg_124_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": 0.007,
+      "endpoint": "text_out_reg_15_/D",
+      "generated_slack_ns": 0.008,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.007,
+      "endpoint": "u0/w_reg_0__21_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.007,
+      "endpoint": "u0/w_reg_1__4_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": 0.007,
+      "endpoint": "u0/w_reg_2__12_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": 0.007,
+      "endpoint": "u0/w_reg_3__0_/D",
+      "generated_slack_ns": 0.0,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.007,
+      "endpoint": "u0/w_reg_3__8_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.007000000000000003,
+      "endpoint": "sa02_reg_2_/D",
+      "generated_slack_ns": -0.028,
+      "reference_slack_ns": -0.035
+    },
+    {
+      "delta_slack_ns": 0.007000000000000006,
+      "endpoint": "text_in_r_reg_104_/D",
+      "generated_slack_ns": 0.082,
+      "reference_slack_ns": 0.075
+    },
+    {
+      "delta_slack_ns": 0.007000000000000006,
+      "endpoint": "text_in_r_reg_64_/D",
+      "generated_slack_ns": 0.082,
+      "reference_slack_ns": 0.075
+    },
+    {
+      "delta_slack_ns": 0.007000000000000006,
+      "endpoint": "text_in_r_reg_70_/D",
+      "generated_slack_ns": 0.082,
+      "reference_slack_ns": 0.075
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "sa10_reg_3_/D",
+      "generated_slack_ns": -0.049,
+      "reference_slack_ns": -0.057
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "sa12_reg_1_/D",
+      "generated_slack_ns": -0.041,
+      "reference_slack_ns": -0.049
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "sa13_reg_2_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.048
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "sa33_reg_0_/D",
+      "generated_slack_ns": -0.039,
+      "reference_slack_ns": -0.047
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "text_out_reg_23_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "text_out_reg_3_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "u0/w_reg_1__18_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.011
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "u0/w_reg_2__10_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "u0/w_reg_2__2_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "u0/w_reg_3__17_/D",
+      "generated_slack_ns": -0.006,
+      "reference_slack_ns": -0.014
+    },
+    {
+      "delta_slack_ns": 0.008,
+      "endpoint": "u0/w_reg_3__19_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.008000000000000007,
+      "endpoint": "dcnt_reg_3_/D",
+      "generated_slack_ns": 0.08,
+      "reference_slack_ns": 0.072
+    },
+    {
+      "delta_slack_ns": 0.008000000000000007,
+      "endpoint": "text_in_r_reg_29_/D",
+      "generated_slack_ns": 0.097,
+      "reference_slack_ns": 0.089
+    },
+    {
+      "delta_slack_ns": 0.008000000000000007,
+      "endpoint": "text_in_r_reg_66_/D",
+      "generated_slack_ns": 0.082,
+      "reference_slack_ns": 0.074
+    },
+    {
+      "delta_slack_ns": 0.008999999999999994,
+      "endpoint": "sa03_reg_3_/D",
+      "generated_slack_ns": -0.042,
+      "reference_slack_ns": -0.051
+    },
+    {
+      "delta_slack_ns": 0.009,
+      "endpoint": "text_out_reg_76_/D",
+      "generated_slack_ns": 0.009,
+      "reference_slack_ns": 0.0
+    },
+    {
+      "delta_slack_ns": 0.009,
+      "endpoint": "u0/w_reg_3__18_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": -0.013
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "sa11_reg_4_/D",
+      "generated_slack_ns": -0.043,
+      "reference_slack_ns": -0.052
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "sa23_reg_5_/D",
+      "generated_slack_ns": -0.041,
+      "reference_slack_ns": -0.05
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "sa30_reg_2_/D",
+      "generated_slack_ns": -0.036,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "text_out_reg_105_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.008
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "text_out_reg_47_/D",
+      "generated_slack_ns": 0.008,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "text_out_reg_53_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "text_out_reg_79_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "text_out_reg_87_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "u0/w_reg_0__18_/D",
+      "generated_slack_ns": -0.001,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "u0/w_reg_0__8_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "u0/w_reg_1__0_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "u0/w_reg_1__11_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "u0/w_reg_1__15_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.012
+    },
+    {
+      "delta_slack_ns": 0.009000000000000001,
+      "endpoint": "u0/w_reg_2__9_/D",
+      "generated_slack_ns": 0.005,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": 0.009000000000000008,
+      "endpoint": "text_in_r_reg_65_/D",
+      "generated_slack_ns": 0.083,
+      "reference_slack_ns": 0.074
+    },
+    {
+      "delta_slack_ns": 0.009000000000000008,
+      "endpoint": "text_in_r_reg_68_/D",
+      "generated_slack_ns": 0.083,
+      "reference_slack_ns": 0.074
+    },
+    {
+      "delta_slack_ns": 0.009000000000000008,
+      "endpoint": "text_in_r_reg_69_/D",
+      "generated_slack_ns": 0.083,
+      "reference_slack_ns": 0.074
+    },
+    {
+      "delta_slack_ns": 0.009000000000000008,
+      "endpoint": "u0/r0/out_reg_30_/D",
+      "generated_slack_ns": 0.097,
+      "reference_slack_ns": 0.088
+    },
+    {
+      "delta_slack_ns": 0.009999999999999995,
+      "endpoint": "sa33_reg_2_/D",
+      "generated_slack_ns": -0.035,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.009999999999999998,
+      "endpoint": "u0/w_reg_0__14_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.009
+    },
+    {
+      "delta_slack_ns": 0.009999999999999998,
+      "endpoint": "u0/w_reg_2__23_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.013
+    },
+    {
+      "delta_slack_ns": 0.01,
+      "endpoint": "text_out_reg_116_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.01,
+      "endpoint": "text_out_reg_17_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.01,
+      "endpoint": "text_out_reg_51_/D",
+      "generated_slack_ns": 0.005,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.01,
+      "endpoint": "text_out_reg_54_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.008
+    },
+    {
+      "delta_slack_ns": 0.01,
+      "endpoint": "text_out_reg_72_/D",
+      "generated_slack_ns": 0.01,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": 0.01,
+      "endpoint": "u0/w_reg_0__11_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.01,
+      "endpoint": "u0/w_reg_0__23_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": -0.014
+    },
+    {
+      "delta_slack_ns": 0.01,
+      "endpoint": "u0/w_reg_3__27_/D",
+      "generated_slack_ns": -0.0,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.010000000000000002,
+      "endpoint": "sa03_reg_2_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.05
+    },
+    {
+      "delta_slack_ns": 0.010000000000000002,
+      "endpoint": "sa03_reg_4_/D",
+      "generated_slack_ns": -0.044,
+      "reference_slack_ns": -0.054
+    },
+    {
+      "delta_slack_ns": 0.010000000000000002,
+      "endpoint": "sa03_reg_5_/D",
+      "generated_slack_ns": -0.04,
+      "reference_slack_ns": -0.05
+    },
+    {
+      "delta_slack_ns": 0.010000000000000002,
+      "endpoint": "sa13_reg_4_/D",
+      "generated_slack_ns": -0.043,
+      "reference_slack_ns": -0.053
+    },
+    {
+      "delta_slack_ns": 0.010000000000000009,
+      "endpoint": "text_in_r_reg_71_/D",
+      "generated_slack_ns": 0.083,
+      "reference_slack_ns": 0.073
+    },
+    {
+      "delta_slack_ns": 0.010000000000000009,
+      "endpoint": "u0/r0/rcnt_reg_3_/D",
+      "generated_slack_ns": 0.138,
+      "reference_slack_ns": 0.128
+    },
+    {
+      "delta_slack_ns": 0.010999999999999982,
+      "endpoint": "u0/r0/out_reg_24_/D",
+      "generated_slack_ns": 0.178,
+      "reference_slack_ns": 0.167
+    },
+    {
+      "delta_slack_ns": 0.010999999999999996,
+      "endpoint": "sa03_reg_0_/D",
+      "generated_slack_ns": -0.042,
+      "reference_slack_ns": -0.053
+    },
+    {
+      "delta_slack_ns": 0.011,
+      "endpoint": "text_out_reg_115_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": -0.008
+    },
+    {
+      "delta_slack_ns": 0.011,
+      "endpoint": "text_out_reg_117_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.011,
+      "endpoint": "text_out_reg_34_/D",
+      "generated_slack_ns": 0.009,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.011,
+      "endpoint": "text_out_reg_40_/D",
+      "generated_slack_ns": 0.01,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": 0.011,
+      "endpoint": "u0/w_reg_0__28_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.011,
+      "endpoint": "u0/w_reg_1__14_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.011,
+      "endpoint": "u0/w_reg_1__26_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.011,
+      "endpoint": "u0/w_reg_2__14_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": -0.005
+    },
+    {
+      "delta_slack_ns": 0.011,
+      "endpoint": "u0/w_reg_3__20_/D",
+      "generated_slack_ns": -0.003,
+      "reference_slack_ns": -0.014
+    },
+    {
+      "delta_slack_ns": 0.01100000000000001,
+      "endpoint": "text_in_r_reg_109_/D",
+      "generated_slack_ns": 0.083,
+      "reference_slack_ns": 0.072
+    },
+    {
+      "delta_slack_ns": 0.01100000000000001,
+      "endpoint": "text_in_r_reg_67_/D",
+      "generated_slack_ns": 0.083,
+      "reference_slack_ns": 0.072
+    },
+    {
+      "delta_slack_ns": 0.01100000000000001,
+      "endpoint": "text_in_r_reg_89_/D",
+      "generated_slack_ns": 0.083,
+      "reference_slack_ns": 0.072
+    },
+    {
+      "delta_slack_ns": 0.011999999999999997,
+      "endpoint": "sa00_reg_2_/D",
+      "generated_slack_ns": -0.035,
+      "reference_slack_ns": -0.047
+    },
+    {
+      "delta_slack_ns": 0.011999999999999997,
+      "endpoint": "sa12_reg_2_/D",
+      "generated_slack_ns": -0.033,
+      "reference_slack_ns": -0.045
+    },
+    {
+      "delta_slack_ns": 0.012,
+      "endpoint": "text_out_reg_2_/D",
+      "generated_slack_ns": 0.002,
+      "reference_slack_ns": -0.01
+    },
+    {
+      "delta_slack_ns": 0.012,
+      "endpoint": "text_out_reg_57_/D",
+      "generated_slack_ns": 0.017,
+      "reference_slack_ns": 0.005
+    },
+    {
+      "delta_slack_ns": 0.012,
+      "endpoint": "u0/w_reg_0__26_/D",
+      "generated_slack_ns": 0.005,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.012,
+      "endpoint": "u0/w_reg_1__16_/D",
+      "generated_slack_ns": 0.006,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.012,
+      "endpoint": "u0/w_reg_2__15_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.011
+    },
+    {
+      "delta_slack_ns": 0.012,
+      "endpoint": "u0/w_reg_2__3_/D",
+      "generated_slack_ns": 0.013,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.01200000000000001,
+      "endpoint": "text_in_r_reg_77_/D",
+      "generated_slack_ns": 0.083,
+      "reference_slack_ns": 0.071
+    },
+    {
+      "delta_slack_ns": 0.012999999999999998,
+      "endpoint": "sa33_reg_5_/D",
+      "generated_slack_ns": -0.039,
+      "reference_slack_ns": -0.052
+    },
+    {
+      "delta_slack_ns": 0.012999999999999998,
+      "endpoint": "text_in_r_reg_112_/D",
+      "generated_slack_ns": 0.073,
+      "reference_slack_ns": 0.06
+    },
+    {
+      "delta_slack_ns": 0.012999999999999998,
+      "endpoint": "text_in_r_reg_116_/D",
+      "generated_slack_ns": 0.073,
+      "reference_slack_ns": 0.06
+    },
+    {
+      "delta_slack_ns": 0.013,
+      "endpoint": "text_out_reg_8_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.009
+    },
+    {
+      "delta_slack_ns": 0.013,
+      "endpoint": "u0/w_reg_3__30_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.009
+    },
+    {
+      "delta_slack_ns": 0.013000000000000001,
+      "endpoint": "text_out_reg_16_/D",
+      "generated_slack_ns": -0.004,
+      "reference_slack_ns": -0.017
+    },
+    {
+      "delta_slack_ns": 0.013000000000000001,
+      "endpoint": "text_out_reg_19_/D",
+      "generated_slack_ns": 0.007,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.013000000000000005,
+      "endpoint": "done_reg/D",
+      "generated_slack_ns": 0.064,
+      "reference_slack_ns": 0.051
+    },
+    {
+      "delta_slack_ns": 0.013000000000000012,
+      "endpoint": "text_in_r_reg_106_/D",
+      "generated_slack_ns": 0.084,
+      "reference_slack_ns": 0.071
+    },
+    {
+      "delta_slack_ns": 0.013000000000000012,
+      "endpoint": "text_in_r_reg_94_/D",
+      "generated_slack_ns": 0.084,
+      "reference_slack_ns": 0.071
+    },
+    {
+      "delta_slack_ns": 0.013999999999999985,
+      "endpoint": "text_in_r_reg_38_/D",
+      "generated_slack_ns": 0.217,
+      "reference_slack_ns": 0.203
+    },
+    {
+      "delta_slack_ns": 0.013999999999999999,
+      "endpoint": "sa03_reg_1_/D",
+      "generated_slack_ns": -0.041,
+      "reference_slack_ns": -0.055
+    },
+    {
+      "delta_slack_ns": 0.013999999999999999,
+      "endpoint": "sa13_reg_6_/D",
+      "generated_slack_ns": -0.038,
+      "reference_slack_ns": -0.052
+    },
+    {
+      "delta_slack_ns": 0.013999999999999999,
+      "endpoint": "text_in_r_reg_107_/D",
+      "generated_slack_ns": 0.083,
+      "reference_slack_ns": 0.069
+    },
+    {
+      "delta_slack_ns": 0.013999999999999999,
+      "endpoint": "text_in_r_reg_119_/D",
+      "generated_slack_ns": 0.075,
+      "reference_slack_ns": 0.061
+    },
+    {
+      "delta_slack_ns": 0.013999999999999999,
+      "endpoint": "text_in_r_reg_88_/D",
+      "generated_slack_ns": 0.084,
+      "reference_slack_ns": 0.07
+    },
+    {
+      "delta_slack_ns": 0.013999999999999999,
+      "endpoint": "text_out_reg_22_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.013
+    },
+    {
+      "delta_slack_ns": 0.013999999999999999,
+      "endpoint": "u0/w_reg_0__15_/D",
+      "generated_slack_ns": 0.005,
+      "reference_slack_ns": -0.009
+    },
+    {
+      "delta_slack_ns": 0.014,
+      "endpoint": "u0/w_reg_0__2_/D",
+      "generated_slack_ns": 0.012,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.014,
+      "endpoint": "u0/w_reg_2__30_/D",
+      "generated_slack_ns": 0.008,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.014000000000000012,
+      "endpoint": "u0/r0/out_reg_31_/D",
+      "generated_slack_ns": 0.1,
+      "reference_slack_ns": 0.086
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "sa23_reg_6_/D",
+      "generated_slack_ns": -0.031,
+      "reference_slack_ns": -0.046
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "text_in_r_reg_105_/D",
+      "generated_slack_ns": 0.084,
+      "reference_slack_ns": 0.069
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "text_in_r_reg_108_/D",
+      "generated_slack_ns": 0.085,
+      "reference_slack_ns": 0.07
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "text_in_r_reg_114_/D",
+      "generated_slack_ns": 0.075,
+      "reference_slack_ns": 0.06
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "text_in_r_reg_93_/D",
+      "generated_slack_ns": 0.084,
+      "reference_slack_ns": 0.069
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "text_out_reg_12_/D",
+      "generated_slack_ns": 0.018,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "text_out_reg_21_/D",
+      "generated_slack_ns": 0.0,
+      "reference_slack_ns": -0.015
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "text_out_reg_26_/D",
+      "generated_slack_ns": 0.012,
+      "reference_slack_ns": -0.003
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "u0/r0/out_reg_29_/D",
+      "generated_slack_ns": 0.051,
+      "reference_slack_ns": 0.036
+    },
+    {
+      "delta_slack_ns": 0.015,
+      "endpoint": "u0/w_reg_2__0_/D",
+      "generated_slack_ns": 0.009,
+      "reference_slack_ns": -0.006
+    },
+    {
+      "delta_slack_ns": 0.015000000000000001,
+      "endpoint": "text_in_r_reg_100_/D",
+      "generated_slack_ns": 0.024,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": 0.015000000000000001,
+      "endpoint": "text_in_r_reg_123_/D",
+      "generated_slack_ns": 0.024,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": 0.015000000000000001,
+      "endpoint": "text_in_r_reg_98_/D",
+      "generated_slack_ns": 0.025,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": 0.015000000000000003,
+      "endpoint": "u0/r0/out_reg_27_/D",
+      "generated_slack_ns": 0.041,
+      "reference_slack_ns": 0.026
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_in_r_reg_101_/D",
+      "generated_slack_ns": 0.025,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_in_r_reg_102_/D",
+      "generated_slack_ns": 0.026,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_in_r_reg_110_/D",
+      "generated_slack_ns": 0.026,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_in_r_reg_122_/D",
+      "generated_slack_ns": 0.026,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_in_r_reg_124_/D",
+      "generated_slack_ns": 0.026,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_in_r_reg_92_/D",
+      "generated_slack_ns": 0.026,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_in_r_reg_95_/D",
+      "generated_slack_ns": 0.026,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_in_r_reg_97_/D",
+      "generated_slack_ns": 0.084,
+      "reference_slack_ns": 0.068
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_out_reg_11_/D",
+      "generated_slack_ns": 0.008,
+      "reference_slack_ns": -0.008
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_out_reg_29_/D",
+      "generated_slack_ns": 0.015,
+      "reference_slack_ns": -0.001
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_out_reg_32_/D",
+      "generated_slack_ns": 0.018,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_out_reg_41_/D",
+      "generated_slack_ns": 0.016,
+      "reference_slack_ns": -0.0
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "text_out_reg_46_/D",
+      "generated_slack_ns": 0.012,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "u0/r0/out_reg_25_/D",
+      "generated_slack_ns": 0.047,
+      "reference_slack_ns": 0.031
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "u0/w_reg_1__2_/D",
+      "generated_slack_ns": 0.017,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "u0/w_reg_2__17_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.012
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "u0/w_reg_3__14_/D",
+      "generated_slack_ns": 0.001,
+      "reference_slack_ns": -0.015
+    },
+    {
+      "delta_slack_ns": 0.016,
+      "endpoint": "u0/w_reg_3__15_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.018
+    },
+    {
+      "delta_slack_ns": 0.017,
+      "endpoint": "text_in_r_reg_103_/D",
+      "generated_slack_ns": 0.025,
+      "reference_slack_ns": 0.008
+    },
+    {
+      "delta_slack_ns": 0.017,
+      "endpoint": "text_in_r_reg_111_/D",
+      "generated_slack_ns": 0.026,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": 0.017,
+      "endpoint": "text_in_r_reg_120_/D",
+      "generated_slack_ns": 0.027,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": 0.017,
+      "endpoint": "text_in_r_reg_121_/D",
+      "generated_slack_ns": 0.026,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": 0.017,
+      "endpoint": "text_in_r_reg_91_/D",
+      "generated_slack_ns": 0.026,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": 0.017,
+      "endpoint": "text_out_reg_14_/D",
+      "generated_slack_ns": 0.003,
+      "reference_slack_ns": -0.014
+    },
+    {
+      "delta_slack_ns": 0.017,
+      "endpoint": "u0/w_reg_2__20_/D",
+      "generated_slack_ns": 0.005,
+      "reference_slack_ns": -0.012
+    },
+    {
+      "delta_slack_ns": 0.018,
+      "endpoint": "u0/w_reg_2__16_/D",
+      "generated_slack_ns": 0.005,
+      "reference_slack_ns": -0.013
+    },
+    {
+      "delta_slack_ns": 0.018000000000000002,
+      "endpoint": "text_in_r_reg_127_/D",
+      "generated_slack_ns": 0.027,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": 0.018000000000000002,
+      "endpoint": "text_in_r_reg_79_/D",
+      "generated_slack_ns": 0.085,
+      "reference_slack_ns": 0.067
+    },
+    {
+      "delta_slack_ns": 0.018000000000000002,
+      "endpoint": "text_out_reg_0_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.014
+    },
+    {
+      "delta_slack_ns": 0.018000000000000002,
+      "endpoint": "text_out_reg_24_/D",
+      "generated_slack_ns": 0.014,
+      "reference_slack_ns": -0.004
+    },
+    {
+      "delta_slack_ns": 0.018000000000000002,
+      "endpoint": "text_out_reg_27_/D",
+      "generated_slack_ns": 0.02,
+      "reference_slack_ns": 0.002
+    },
+    {
+      "delta_slack_ns": 0.018000000000000002,
+      "endpoint": "text_out_reg_48_/D",
+      "generated_slack_ns": 0.021,
+      "reference_slack_ns": 0.003
+    },
+    {
+      "delta_slack_ns": 0.018000000000000002,
+      "endpoint": "u0/r0/out_reg_28_/D",
+      "generated_slack_ns": 0.056,
+      "reference_slack_ns": 0.038
+    },
+    {
+      "delta_slack_ns": 0.01899999999999999,
+      "endpoint": "text_in_r_reg_78_/D",
+      "generated_slack_ns": 0.087,
+      "reference_slack_ns": 0.068
+    },
+    {
+      "delta_slack_ns": 0.018999999999999996,
+      "endpoint": "sa03_reg_6_/D",
+      "generated_slack_ns": -0.032,
+      "reference_slack_ns": -0.051
+    },
+    {
+      "delta_slack_ns": 0.019,
+      "endpoint": "text_in_r_reg_125_/D",
+      "generated_slack_ns": 0.027,
+      "reference_slack_ns": 0.008
+    },
+    {
+      "delta_slack_ns": 0.019,
+      "endpoint": "text_out_reg_52_/D",
+      "generated_slack_ns": 0.012,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.019000000000000003,
+      "endpoint": "text_in_r_reg_96_/D",
+      "generated_slack_ns": 0.028,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": 0.019000000000000003,
+      "endpoint": "text_in_r_reg_99_/D",
+      "generated_slack_ns": 0.028,
+      "reference_slack_ns": 0.009
+    },
+    {
+      "delta_slack_ns": 0.02,
+      "endpoint": "text_out_reg_61_/D",
+      "generated_slack_ns": 0.027,
+      "reference_slack_ns": 0.007
+    },
+    {
+      "delta_slack_ns": 0.020999999999999998,
+      "endpoint": "u0/r0/out_reg_26_/D",
+      "generated_slack_ns": 0.054,
+      "reference_slack_ns": 0.033
+    },
+    {
+      "delta_slack_ns": 0.021,
+      "endpoint": "text_out_reg_10_/D",
+      "generated_slack_ns": 0.004,
+      "reference_slack_ns": -0.017
+    },
+    {
+      "delta_slack_ns": 0.023,
+      "endpoint": "text_out_reg_18_/D",
+      "generated_slack_ns": 0.016,
+      "reference_slack_ns": -0.007
+    },
+    {
+      "delta_slack_ns": 0.023,
+      "endpoint": "text_out_reg_20_/D",
+      "generated_slack_ns": 0.012,
+      "reference_slack_ns": -0.011
+    },
+    {
+      "delta_slack_ns": 0.023,
+      "endpoint": "text_out_reg_56_/D",
+      "generated_slack_ns": 0.024,
+      "reference_slack_ns": 0.001
+    },
+    {
+      "delta_slack_ns": 0.028999999999999998,
+      "endpoint": "text_out_reg_97_/D",
+      "generated_slack_ns": -0.002,
+      "reference_slack_ns": -0.031
+    },
+    {
+      "delta_slack_ns": 0.041,
+      "endpoint": "text_out_reg_63_/D",
+      "generated_slack_ns": 0.039,
+      "reference_slack_ns": -0.002
+    },
+    {
+      "delta_slack_ns": 0.044,
+      "endpoint": "u0/r0/rcnt_reg_1_/D",
+      "generated_slack_ns": 0.155,
+      "reference_slack_ns": 0.111
+    },
+    {
+      "delta_slack_ns": 0.05099999999999999,
+      "endpoint": "u0/r0/rcnt_reg_0_/D",
+      "generated_slack_ns": 0.184,
+      "reference_slack_ns": 0.133
+    },
+    {
+      "delta_slack_ns": 0.054,
+      "endpoint": "text_in_r_reg_26_/D",
+      "generated_slack_ns": 0.096,
+      "reference_slack_ns": 0.042
+    },
+    {
+      "delta_slack_ns": 0.054000000000000006,
+      "endpoint": "text_in_r_reg_27_/D",
+      "generated_slack_ns": 0.097,
+      "reference_slack_ns": 0.043
+    },
+    {
+      "delta_slack_ns": 0.056,
+      "endpoint": "text_in_r_reg_24_/D",
+      "generated_slack_ns": 0.097,
+      "reference_slack_ns": 0.041
+    },
+    {
+      "delta_slack_ns": 0.056,
+      "endpoint": "text_in_r_reg_30_/D",
+      "generated_slack_ns": 0.097,
+      "reference_slack_ns": 0.041
+    },
+    {
+      "delta_slack_ns": 0.058,
+      "endpoint": "text_in_r_reg_21_/D",
+      "generated_slack_ns": 0.097,
+      "reference_slack_ns": 0.039
+    },
+    {
+      "delta_slack_ns": 0.061000000000000006,
+      "endpoint": "text_in_r_reg_23_/D",
+      "generated_slack_ns": 0.098,
+      "reference_slack_ns": 0.037
+    },
+    {
+      "delta_slack_ns": 0.062,
+      "endpoint": "text_in_r_reg_18_/D",
+      "generated_slack_ns": 0.097,
+      "reference_slack_ns": 0.035
+    },
+    {
+      "delta_slack_ns": 0.06300000000000001,
+      "endpoint": "text_in_r_reg_73_/D",
+      "generated_slack_ns": 0.137,
+      "reference_slack_ns": 0.074
+    },
+    {
+      "delta_slack_ns": 0.07500000000000001,
+      "endpoint": "text_in_r_reg_90_/D",
+      "generated_slack_ns": 0.085,
+      "reference_slack_ns": 0.01
+    },
+    {
+      "delta_slack_ns": 0.076,
+      "endpoint": "ld_r_reg/D",
+      "generated_slack_ns": 0.154,
+      "reference_slack_ns": 0.078
+    }
+  ],
+  "frontier": {
+    "endpoint_count": 530,
+    "generated_active_count_under_frozen_target": 127,
+    "generated_custom_path_endpoint_count": 9,
+    "generated_worst": {
+      "delta_slack_ns": -0.008,
+      "endpoint": "sa10_reg_4_/D",
+      "generated_slack_ns": -0.057,
+      "reference_slack_ns": -0.049
+    },
+    "improved": 321,
+    "new_frontier_entrants": 1,
+    "new_violations": 26,
+    "q0_ns": 0.557,
+    "q_target_ns": 0.5304761904761905,
+    "reference_active_count": 128,
+    "reference_worst": {
+      "delta_slack_ns": 0.006000000000000005,
+      "endpoint": "sa10_reg_1_/D",
+      "generated_slack_ns": -0.051,
+      "reference_slack_ns": -0.057
+    },
+    "remaining_reference_frontier": 126,
+    "required_gain_ns": 0.026523809523809505,
+    "resolved_from_reference_frontier": 2,
+    "unchanged": 22,
+    "violations_fixed": 81,
+    "worsened": 187
+  },
+  "generated": {
+    "area_um2": 21688.3,
+    "cell_count": 16447,
+    "connectivity_clean": true,
+    "core_area": 34391.7,
+    "dcap_count": 650.0,
+    "effective_site_occupancy": 0.611350064114,
+    "hold_tns_ns": -40.677,
+    "hold_violating_paths": 530,
+    "hold_wns_ns": -0.123,
+    "instances": 17889,
+    "occupied_standard_cell_area": 21025.368,
+    "pg_special_wire_count": 16321.0,
+    "power_mw": 25.5550689,
+    "pure_gate_density_pct": 64.074,
+    "route_drc": 2070,
+    "setup_tns_ns": -5.885,
+    "setup_violating_paths": 227,
+    "setup_wns_ns": -0.057,
+    "wire_um": 177785.6
+  },
+  "identity": {
+    "abstract_pin_audit_sha256": "c34cd30d6e7b06f98addeb77c06c96ddbc555ee7b8e7157d3da5dd1aef329e1f",
+    "common_parent_reference_sha256": "70cd15819d8d14faca71063df0747a872292089b073715b68b63237202c98d9d",
+    "custom_lef_sha256": "6b85db67aaaaeda50a499b8292a9ed8bd253e88e2a4f2b1a6087d98a9ef7b0e1",
+    "dcap_plan_generated_sha256": "a26ac74b64047360b340de545999ae24a27e100e2f47774747a5a25d4f1c6e15",
+    "dcap_plan_reference_sha256": "a26ac74b64047360b340de545999ae24a27e100e2f47774747a5a25d4f1c6e15",
+    "generated_custom_instances": 50,
+    "generated_parent_sha256": "f74e5adff82c4e497249223a81a790ae858af252d376c299f149e4c072578342",
+    "portfolio_instances": 50,
+    "reference_custom_instances": 0,
+    "scripts_sha256": [
+      "118dfa8b8a7f1637ecae222ef9662c631501292dbcd1224cdf4682e96cb6f608  init-generated.tcl",
+      "2632cbbb0be789163b70d976c553547f17eabb693dfb071d28b83d1f634e1cd2  init-reference.tcl",
+      "3b889637d4897e90d81f57290044cd9d352b41373d81973e0362347efe551106  innovus_dig_export.tcl",
+      "b9cef38e9759704763495321b9be84cb2121dadb714c1c7d60f9289afbe0a41c  mmmc-generated.tcl",
+      "afca05df35425f4e1fa12649a506672263a9592fc24f10dba77fd047d757ac9f  mmmc-reference.tcl",
+      "fc54ab18eeabdf4773d43e756f1b8ef2ab93c62ad6a5a62155267720065a34c3  pnr-generated.tcl",
+      "e062a2bc406f3a9fc4da5d61fd1df32a8e83e1d6f8fb921a7a880a125b408737  pnr-reference.tcl",
+      "a3c12ce2d4e2285fbddfeab5cc6bee6a6b9046affb330445fdf767cb66ed2b10  run-v5-export-generated.tcl",
+      "a4cadf8f380994faebf0955f756678e4f12cc4350965babd3c7bb238e9a49ad5  run-v5-export-reference.tcl"
+    ]
+  },
+  "invalid_or_diagnostic_observations": {
+    "common_library_reference": "invalid: reference optimizer introduced 91 Custom instances",
+    "occupancy_audit_failures": "preserved remotely; nested core-box shape fixed before valid arms",
+    "old_single_band_pin_generated": {
+      "area_percent": 3.971251283424837,
+      "fmax_percent": 0.723327305605781,
+      "power_percent": 3.0891998351163075,
+      "wire_percent": 1.6279051268525135
+    }
+  },
+  "physical_method": {
+    "checkerboard_dcap": true,
+    "dcap_count_per_arm": 650,
+    "full_placement": true,
+    "hold_fix": false,
+    "max_effective_density": 0.85,
+    "ordinary_filler": false,
+    "power_mesh": true
+  },
+  "reference": {
+    "area_um2": 22401.0,
+    "cell_count": 16575,
+    "connectivity_clean": true,
+    "core_area": 34391.7,
+    "dcap_count": 650.0,
+    "effective_site_occupancy": 0.624037369482,
+    "hold_tns_ns": -41.72,
+    "hold_violating_paths": 527,
+    "hold_wns_ns": -0.121,
+    "instances": 18017,
+    "occupied_standard_cell_area": 21461.706,
+    "pg_special_wire_count": 16340.0,
+    "power_mw": 26.08787042,
+    "pure_gate_density_pct": 66.212,
+    "route_drc": 2073,
+    "setup_tns_ns": -6.641,
+    "setup_violating_paths": 289,
+    "setup_wns_ns": -0.057,
+    "wire_um": 180400.255
+  },
+  "schema": "hima.lfr-v5-aes-e0/1",
+  "status": "valid-negative-against-5pct-target-with-positive-nonfrontier-ppa",
+  "workspace": "/data/eda/project/hima_harness/polishing-runs/lfr-v5-aes-20260917-v2"
+}

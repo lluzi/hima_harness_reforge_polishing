@@ -58,7 +58,7 @@ of fitting a portable benefit forecast.
 | AES 20-cell multi-output commercial P&R | complete, model-conditioned positive | Innovus retains 6/20 masters; Fmax +0.180%, logic area -7.274%, wirelength -6.507%, modeled power -4.294% |
 | AES 40-cell hierarchy 2/3-output P&R | complete, negative | 40/120 instances retained; 22 triple-output instances survive, but Fmax -0.179%, area +9.181%, wirelength +2.669%, modeled power +7.071% vs baseline |
 | Post-route DIG v4 | observation calibration implemented | Free proxies are observation-only; source-cover 5%/10% Mock Liberty, single/multi CCEI and two matched AES E0 runs completed. Best Fmax +1.085% with area/power cost; full PPA and 5% target remain open |
-| First-principles frontier v5 | method specified; implementation not started | New PG/density/DCAP/pin baseline, complete timing-state frontier, break-even certificates, whole-Portfolio recomputation and one matched two-arm E0 remain |
+| First-principles frontier v5 | implemented; first AES E0 complete, 5% target negative | PG/DCAP/85%/full-placement baseline and 530-endpoint DIG are real; WNS 0%, TNS +0.756 ns, area/wire/power improved; next work is the residual 127-endpoint frontier and PG DRC tuning |
 | LFR-PACK-08 | blocked by PACK-07 and business exit | A Harness-owned positive matched E0 benefit observation and Harness-generated release seal remain |
 
 No item is complete merely because code exists. Each item closes only with the evidence named in

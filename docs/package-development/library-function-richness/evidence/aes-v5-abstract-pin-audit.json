@@ -1,0 +1,317 @@
+{
+  "cells": [
+    {
+      "cell": "XS_CGO_ENDPOINT_FRONTIER_MAPPED_MULTI_0020_MO_D8",
+      "column_source": "device-count bound (placement unavailable)",
+      "columns": 3,
+      "devices": 6,
+      "eol_edges_emitted": {
+        "M1": 0,
+        "M2": 8
+      },
+      "eol_rule": {
+        "M1": {
+          "space_um": 0.06,
+          "width_um": 0.07,
+          "within_um": 0.025
+        },
+        "M2": {
+          "space_um": 0.07,
+          "width_um": 0.07,
+          "within_um": 0.025
+        }
+      },
+      "eol_violations": 0,
+      "height_um": 0.9,
+      "inputs": [
+        "I0",
+        "I1"
+      ],
+      "m1_open_tracks_um": [
+        0.3,
+        0.5,
+        0.6
+      ],
+      "m2_landing_via_y_um": {
+        "I0": 0.3,
+        "I1": 0.5,
+        "Y0": 0.6,
+        "Y1": 0.3
+      },
+      "m2_stub_um": [
+        0.05,
+        0.29
+      ],
+      "obs_edge_inset_um": 0.025,
+      "obs_m1_um": [],
+      "obs_x_um": [
+        0.025,
+        0.675
+      ],
+      "outputs": [
+        "Y0",
+        "Y1"
+      ],
+      "pin_m1_um": [
+        0.07,
+        0.17
+      ],
+      "pin_track_policy": "deterministic-three-track-staggered",
+      "pin_x_um": [
+        0.21,
+        0.35,
+        0.49,
+        0.63
+      ],
+      "pin_y_um": {
+        "I0": 0.3,
+        "I1": 0.5,
+        "Y0": 0.6,
+        "Y1": 0.3
+      },
+      "routing_complete": false,
+      "sites": 5,
+      "warning": "ABSTRACT: real placement-derived size and legal pins; NO intra-cell routing. Valid for placement and block routing / area measurement. NOT tape-out ready.",
+      "width_um": 0.7
+    },
+    {
+      "cell": "XS_CGO_ENDPOINT_FRONTIER_MAPPED_MULTI_0064_MO_D8",
+      "column_source": "device-count bound (placement unavailable)",
+      "columns": 20,
+      "devices": 40,
+      "eol_edges_emitted": {
+        "M1": 0,
+        "M2": 12
+      },
+      "eol_rule": {
+        "M1": {
+          "space_um": 0.06,
+          "width_um": 0.07,
+          "within_um": 0.025
+        },
+        "M2": {
+          "space_um": 0.07,
+          "width_um": 0.07,
+          "within_um": 0.025
+        }
+      },
+      "eol_violations": 0,
+      "height_um": 0.9,
+      "inputs": [
+        "I0",
+        "I1",
+        "I2",
+        "I3"
+      ],
+      "m1_open_tracks_um": [
+        0.3,
+        0.5,
+        0.6
+      ],
+      "m2_landing_via_y_um": {
+        "I0": 0.3,
+        "I1": 0.5,
+        "I2": 0.6,
+        "I3": 0.3,
+        "Y0": 0.5,
+        "Y1": 0.6
+      },
+      "m2_stub_um": [
+        0.05,
+        0.29
+      ],
+      "obs_edge_inset_um": 0.025,
+      "obs_m1_um": [],
+      "obs_x_um": [
+        0.025,
+        2.915
+      ],
+      "outputs": [
+        "Y0",
+        "Y1"
+      ],
+      "pin_m1_um": [
+        0.07,
+        0.17
+      ],
+      "pin_track_policy": "deterministic-three-track-staggered",
+      "pin_x_um": [
+        0.21,
+        0.35,
+        0.49,
+        0.63,
+        0.77,
+        0.91
+      ],
+      "pin_y_um": {
+        "I0": 0.3,
+        "I1": 0.5,
+        "I2": 0.6,
+        "I3": 0.3,
+        "Y0": 0.5,
+        "Y1": 0.6
+      },
+      "routing_complete": false,
+      "sites": 21,
+      "warning": "ABSTRACT: real placement-derived size and legal pins; NO intra-cell routing. Valid for placement and block routing / area measurement. NOT tape-out ready.",
+      "width_um": 2.94
+    },
+    {
+      "cell": "XS_CGO_ENDPOINT_FRONTIER_MAPPED_SINGLE_0009_Y_D8",
+      "column_source": "device-count bound (placement unavailable)",
+      "columns": 20,
+      "devices": 40,
+      "eol_edges_emitted": {
+        "M1": 0,
+        "M2": 10
+      },
+      "eol_rule": {
+        "M1": {
+          "space_um": 0.06,
+          "width_um": 0.07,
+          "within_um": 0.025
+        },
+        "M2": {
+          "space_um": 0.07,
+          "width_um": 0.07,
+          "within_um": 0.025
+        }
+      },
+      "eol_violations": 0,
+      "height_um": 0.9,
+      "inputs": [
+        "I0",
+        "I1",
+        "I2",
+        "I3"
+      ],
+      "m1_open_tracks_um": [
+        0.3,
+        0.5,
+        0.6
+      ],
+      "m2_landing_via_y_um": {
+        "I0": 0.3,
+        "I1": 0.5,
+        "I2": 0.6,
+        "I3": 0.3,
+        "Y": 0.5
+      },
+      "m2_stub_um": [
+        0.05,
+        0.29
+      ],
+      "obs_edge_inset_um": 0.025,
+      "obs_m1_um": [],
+      "obs_x_um": [
+        0.025,
+        2.915
+      ],
+      "outputs": [
+        "Y"
+      ],
+      "pin_m1_um": [
+        0.07,
+        0.17
+      ],
+      "pin_track_policy": "deterministic-three-track-staggered",
+      "pin_x_um": [
+        0.21,
+        0.35,
+        0.49,
+        0.63,
+        0.77
+      ],
+      "pin_y_um": {
+        "I0": 0.3,
+        "I1": 0.5,
+        "I2": 0.6,
+        "I3": 0.3,
+        "Y": 0.5
+      },
+      "routing_complete": false,
+      "sites": 21,
+      "warning": "ABSTRACT: real placement-derived size and legal pins; NO intra-cell routing. Valid for placement and block routing / area measurement. NOT tape-out ready.",
+      "width_um": 2.94
+    },
+    {
+      "cell": "XS_CGO_ENDPOINT_FRONTIER_MAPPED_SINGLE_0011_Y_D8",
+      "column_source": "device-count bound (placement unavailable)",
+      "columns": 5,
+      "devices": 10,
+      "eol_edges_emitted": {
+        "M1": 0,
+        "M2": 10
+      },
+      "eol_rule": {
+        "M1": {
+          "space_um": 0.06,
+          "width_um": 0.07,
+          "within_um": 0.025
+        },
+        "M2": {
+          "space_um": 0.07,
+          "width_um": 0.07,
+          "within_um": 0.025
+        }
+      },
+      "eol_violations": 0,
+      "height_um": 0.9,
+      "inputs": [
+        "I0",
+        "I1",
+        "I2",
+        "I3"
+      ],
+      "m1_open_tracks_um": [
+        0.3,
+        0.5,
+        0.6
+      ],
+      "m2_landing_via_y_um": {
+        "I0": 0.3,
+        "I1": 0.5,
+        "I2": 0.6,
+        "I3": 0.3,
+        "Y": 0.5
+      },
+      "m2_stub_um": [
+        0.05,
+        0.29
+      ],
+      "obs_edge_inset_um": 0.025,
+      "obs_m1_um": [],
+      "obs_x_um": [
+        0.025,
+        0.815
+      ],
+      "outputs": [
+        "Y"
+      ],
+      "pin_m1_um": [
+        0.07,
+        0.17
+      ],
+      "pin_track_policy": "deterministic-three-track-staggered",
+      "pin_x_um": [
+        0.21,
+        0.35,
+        0.49,
+        0.63,
+        0.77
+      ],
+      "pin_y_um": {
+        "I0": 0.3,
+        "I1": 0.5,
+        "I2": 0.6,
+        "I3": 0.3,
+        "Y": 0.5
+      },
+      "routing_complete": false,
+      "sites": 6,
+      "warning": "ABSTRACT: real placement-derived size and legal pins; NO intra-cell routing. Valid for placement and block routing / area measurement. NOT tape-out ready.",
+      "width_um": 0.84
+    }
+  ],
+  "schema": "hima.v5-abstract-pin-audit/1"
+}

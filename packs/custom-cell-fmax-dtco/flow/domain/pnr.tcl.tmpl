@@ -79,12 +79,16 @@ foreach _hima_box $_hima_rows {
       error "V5 DCAP master has no positive physical width: @@DCAP_CELL@@"
     }
     while {($_hima_x + $_hima_dcap_width) <= ($_hima_x1 - @@DCAP_EDGE_MARGIN_UM@@)} {
-      set _hima_name [format "HIMA_DCAP_R%03d_C%04d" $_hima_row_index $_hima_dcap_count]
-      addInst -cell {@@DCAP_CELL@@} -inst $_hima_name -loc [list $_hima_x $_hima_y] -place_status fixed
-      globalNetConnect {@@PWR_NET@@} -type pgpin -pin {@@PWR_NET@@} -inst $_hima_name
-      globalNetConnect {@@GND_NET@@} -type pgpin -pin {@@GND_NET@@} -inst $_hima_name
-      puts $_hima_dcap_plan "$_hima_name\t@@DCAP_CELL@@\t$_hima_x\t$_hima_y\t$_hima_row_index\t$_hima_phase"
-      incr _hima_dcap_count
+      set _hima_candidate_box [list $_hima_x $_hima_y \
+        [expr {$_hima_x + $_hima_dcap_width}] [expr {$_hima_y + [dbGet [dbGet -p1 head.libCells.name {@@DCAP_CELL@@}].size_y]}]]
+      if {[llength [dbQuery -area $_hima_candidate_box -objType inst]] == 0} {
+        set _hima_name [format "HIMA_DCAP_R%03d_C%04d" $_hima_row_index $_hima_dcap_count]
+        addInst -cell {@@DCAP_CELL@@} -inst $_hima_name -loc [list $_hima_x $_hima_y] -place_status fixed
+        globalNetConnect {@@PWR_NET@@} -type pgpin -pin {@@PWR_NET@@} -inst $_hima_name
+        globalNetConnect {@@GND_NET@@} -type pgpin -pin {@@GND_NET@@} -inst $_hima_name
+        puts $_hima_dcap_plan "$_hima_name\t@@DCAP_CELL@@\t$_hima_x\t$_hima_y\t$_hima_row_index\t$_hima_phase"
+        incr _hima_dcap_count
+      }
       set _hima_x [expr {$_hima_x + @@DCAP_X_PITCH_UM@@}]
     }
   }
@@ -108,16 +112,22 @@ puts "=== CCFMAX V5 PG MESH @@ARM@@ @@PG_HORIZONTAL_LAYER@@/@@PG_VERTICAL_LAYER@
 
 @@PIN_SETUP@@
 setPlaceMode -place_global_max_density @@MAX_EFFECTIVE_DENSITY@@
+set _hima_frozen_core_box [lindex [dbGet top.fPlan.coreBox] 0]
+if {[llength $_hima_frozen_core_box] != 4} {
+  error "V5 floorplan has no unique four-coordinate core box"
+}
 place_opt_design
 # Compute the effective standard-cell occupancy from every instantiated master,
 # including fixed DCAP/tap cells.  Pure-gate density remains a separate report.
 set _hima_occupied_area 0.0
-foreach _hima_width [dbGet top.insts.cell.size_x] _hima_height [dbGet top.insts.cell.size_y] {
+foreach _hima_size [dbGet top.insts.cell.size] {
+  set _hima_width [lindex $_hima_size 0]
+  set _hima_height [lindex $_hima_size 1]
   if {[string is double -strict $_hima_width] && [string is double -strict $_hima_height]} {
     set _hima_occupied_area [expr {$_hima_occupied_area + $_hima_width * $_hima_height}]
   }
 }
-set _hima_core_box [dbGet top.fPlan.coreBox]
+set _hima_core_box $_hima_frozen_core_box
 set _hima_core_area [expr {([lindex $_hima_core_box 2] - [lindex $_hima_core_box 0]) * ([lindex $_hima_core_box 3] - [lindex $_hima_core_box 1])}]
 set _hima_effective_occupancy [expr {$_hima_occupied_area / $_hima_core_area}]
 if {$_hima_effective_occupancy > (@@MAX_EFFECTIVE_DENSITY@@ + 1.0e-9)} {
