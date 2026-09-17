@@ -24,16 +24,16 @@ v4 不追求开源工具预测最终 MHz，也不以单次免费代理结果代�
 
 ```mermaid
 flowchart LR
-  A[Commercial post-route DB] --> X[Bound export bundle]
-  X --> G[Design Information Graph]
+  A[Innovus post-route DB] --> X[Innovus bound export]
+  X --> G[Pack Design Information Graph]
   G --> O[Opportunity Mining]
   O --> P[Local free proxy]
   P --> F[Action Portfolio]
   F --> D[Cell Demand]
-  F --> C[CCEI patch]
+  F --> C[Innovus-script CCEI]
   D --> C
-  C --> I[Same placed state: local ECO and legalization]
-  I --> E[Matched commercial continuation]
+  C --> I[Placed checkpoint: seed and incremental placement]
+  I --> E[Matched CTS route post-route]
   E --> L[Commercial Label]
   L --> G
   F --> S[Separate DC adoption observation]
@@ -189,15 +189,16 @@ master and instance census
 
 ### 5.1 实现边界
 
-Phase 1 优先使用独立进程方式运行 OpenROAD/OpenDB/OpenSTA：
+Phase 1 以 Innovus 为数据库权威和导出器，不引入第二条开源 P&R 链：
 
-- OpenDB 承载 netlist、instance、pin、net、placement、LEF 和 DEF；
-- OpenSTA 承载 timing vertices/edges、arrival、required、slack、slew、load、clock 和 SPEF parasitics；
-- 使用现有 OpenROAD `dbSta`/Network adapter 关系连接 STA 对象与 database 对象；
-- 在其上投影 Pack 自己的 DIG artifact；
+- Innovus 从同一个 post-route checkpoint 写出 netlist、DEF/placement、SDC、SPEF/RC、timing/clock facts 和 census；
+- Pack 自己的 DIG builder 读取这些标准交付件并建立统一身份；
+- CCEI 继续使用 Innovus Tcl/数据库命令执行 instance/net ECO、位置 seed 和 incremental placement；
+- OpenSTA 可以作为局部 STA/timing-graph 查询后端；
+- OpenROAD/OpenDB 只作为可选的离线 join/诊断 POC，不是必需运行链，也不替代 Innovus placement、route 或 database；
 - 不先 fork 或修改 OpenSTA 核心源码。
 
-只有 Tcl/C++公开接口无法无损导出所需对象，并有测试证明缺口时，才评估一个最小上游 adapter patch。OpenSTA 的 GPLv3/商业双许可证与 OpenROAD 分发方式需在 Pack 产品化前单独审核；POC 不自动授权把修改后的 OpenSTA 链接进专有产品。
+第一阶段先证明 Innovus 导出束足以建立 DIG。只有标准导出无法表达所需 timing relation，且已有测试证明缺口时，才引入 OpenSTA API adapter；只有 DEF/netlist 身份 join 仍不够时，才评估 OpenDB。OpenSTA 的 GPLv3/商业双许可证需在产品分发前单独审核；可选分析后端不能成为客户必须运维的服务。
 
 ### 5.2 图模型
 
@@ -350,33 +351,58 @@ CCEI 是现有 `multi_output_resynth`/ECO adapter 的深化能力，不是新的
 - preserve/rollback/proof policy；
 - Site P&R command seam。
 
-### 9.2 插入时机
+### 9.2 两个状态：post-route 观察态与 place 执行态
+
+**Opportunity 分析发生在 post-route。** 此时真实 route RC、via、load/slew、clock latency、path alternatives、拥塞和最终物理邻接最完整，是 DIG 和系统辨识的主要输入。
+
+**CCEI 合入发生在 place/coarse-placement checkpoint。** 此时设计已经有可用位置，但 destructive timing optimization 尚未大量 resize、clone、buffer 或删除目标 source logic，适合用 Innovus script 原位替换并做 incremental placement。
+
+一次迭代保留两个有身份的 checkpoint：
+
+```text
+S_place(k): baseline coarse-placement checkpoint
+    |-- reference: no ECO, continue matched flow
+    |-- generated: rebind Action -> CCEI -> incremental placement -> matched flow
+
+S_postroute(k): reference/generated final observation
+    -> Innovus export -> DIG -> next Opportunity Portfolio
+```
+
+因此不是在 place 阶段重新做 Opportunity Mining。place 阶段只做 Action rebind、状态复核和执行。
 
 目标 seam 是 coarse/global placement 已形成，而 destructive optimization 尚未改写目标 source identity 的时刻。不能仅根据命令名字假设 `place_opt_design -place` 不改网表；必须在真实 Innovus 版本上用前后 census、netlist hash 和 target identity probe 证明。
 
-若该命令已经 sizing、buffering、cloning 或删除 source instances，CCEI 应前移到纯 placement checkpoint，或使用工具原生 ECO API 在当前 database 上定位 lineage 后实施。
-
-Opportunity 来自 post-route State，实施却可能发生在 coarse-placement State；两者不能被假设为同一物理图。DIG 必须用 phase lineage 把 post-route source objects 投影回可实施 checkpoint，并重新检查：
+Opportunity 来自 `S_postroute(k)`，实施在 `S_place(k)` 或下一次匹配 replay 的 placed checkpoint；两者不能被假设为同一物理图。DIG/CCEI 必须通过 phase lineage 或稳定的逻辑边界签名重新绑定，并检查：
 
 - source instances/functions仍存在；
-- logical boundary 与 post-route Opportunity 等价；
+- ordered leaves、roots 和 Boolean boundary 与 post-route Opportunity 等价；
 - physical locality、sink divergence 和 bbox仍满足阈值；
-- coarse-placement State没有新的冲突或不可见 load；
-- baseline 与 generated 都从这个共同 checkpoint继续。
+- place State没有新的冲突或不可见 load；
+- reference 与 generated 从同一个 `S_place` checkpoint继续。
 
-投影失败的 Opportunity 只能选择“直接 post-route incremental ECO”或拒绝，不能用 post-route 距离证明一个重新 placement 后的 Action。
+若 source 只在 post-route optimization 后出现，无法投影回 place checkpoint，该 Opportunity 有两种结局：
 
-### 9.3 操作
+1. 在 clone 的 post-route database 上做 direct incremental ECO，作为最便宜的局部因果验证；
+2. 拒绝 place-stage Action，等待能在较早阶段表达的结构需求。
 
-1. 校验 source objects 和 DIG identity仍匹配；
-2. 原位移除 source cluster并插入 custom Cell；
-3. 按 source bbox/centroid 设置初始位置；
-4. 连接全部 inputs/outputs/PG pins；
-5. 保护声明的 ECO-only instances；
-6. 局部 legalization/incremental placement；
-7. 局部寄生/STA 更新；
-8. window proof、module proof、census、placement legality 和 rollback；
-9. 通过后继续统一 CTS/route/post-route。
+Direct post-route ECO 证明局部动作在当前物理状态是否成立，不自动证明从 place 开始的完整流程也会保持收益。反过来，也不能用 post-route 距离证明一个重新全量 placement 后的 Action。
+
+### 9.3 Innovus script 操作
+
+CCEI 第一实现不需要新的 placement engine。Pack 生成并审计一份 Innovus Tcl ECO script：
+
+1. 从 `S_place` database 读取 source instances、pins、nets、location、orientation 和 bbox；
+2. 校验 source objects、稳定逻辑边界和 DIG Action identity仍匹配；
+3. 原位移除 source cluster并插入 custom Cell；
+4. 新 Cell 初始位置取 source cluster centroid，或按 output sinks 做有界偏置；
+5. 连接全部 inputs/outputs/PG pins；
+6. 保护声明的 ECO-only instances；
+7. 调用 Innovus 局部 legalization/incremental placement；
+8. 更新局部寄生和 timing facts；
+9. window proof、module proof、census、placement legality 和 rollback；
+10. 通过后继续统一 CTS/route/post-route。
+
+具体 Innovus 命令名和参数由 DIG-07 在当前版本上 probe 后冻结，文档不预先发明不可验证的命令。Script、目标对象、前后位置和数据库身份全部进入现有 stage evidence。
 
 CCEI 输出仍进入现有 workspace artifacts、CodeRecord、Reader 和 Commercial Label，不建立独立状态库。
 
@@ -461,8 +487,9 @@ Action 可标记为：
 | --- | --- | --- |
 | `flow/domain/mine_timing_route.py` | 从 report parser 转为 DIG timing projection consumer；保留完整 endpoint alternatives、data/clock contribution 和 completeness | sampled report 继续可读，但不能开启 E0 |
 | `flow/domain/mine_patterns.py` | 在 DIG 上产生 timing、drive、fusion、multi-output、slack-harvesting proposals | Boolean boundary 与现有 generation contract |
-| `flow/domain/design_information_graph.py`（domain helper） | 规范化 OpenDB/OpenSTA 导出为 hash-bound异构图 | 仅是 Pack domain helper，不是 Runtime 组件 |
-| `flow/domain/openroad_dig.tcl`（tool adapter） | 读取 LEF/DEF/netlist/SDC/SPEF并导出对象/完备性 | 优先公开接口，不修改 OpenSTA 核心 |
+| `flow/domain/design_information_graph.py`（domain helper） | 规范化 Innovus 导出束并可选接入 OpenSTA 查询，形成 hash-bound异构图 | 仅是 Pack domain helper，不是 Runtime 组件 |
+| `flow/domain/innovus_dig_export.tcl`（tool adapter） | 从同一 checkpoint 写出 netlist/DEF/SDC/SPEF/timing/clock/census 与 manifest | 只读导出，不运行优化 |
+| `flow/domain/opensta_dig.tcl`（optional adapter） | 对导出束补充完整 timing graph 和局部 STA 查询 | 可选后端，不是 OpenROAD/P&R 依赖 |
 | `flow/domain/proxy_mapping.py` | 对 bounded window 做 local cover/STA，不输出全局 Fmax 预测 | Yosys/ABC 单输出 mapping 角色 |
 | `flow/domain/multi_output_resynth/` | 深化为 CCEI：物理 seed、selected Actions、局部 proof、rollback 和 preservation | 当前 directed ECO、2/3-output、hierarchical proof |
 | `flow/domain/_generation_projection.py` | 从 Cell Demand 生成非对称 drive family 和 delta-only views | cumulative Library 和旧 shard 不重做 |
@@ -471,9 +498,9 @@ Action 可标记为：
 | `flow/domain/shared_synth.tcl` | DC adoption arm 接入同一 frozen synthesis-eligible Library | 不负责 multi-output 自动 mapping |
 | `flow/stages.py` | 在现有 mine/generate/P&R职责内编排 DIG export、CCEI subphase 和两支路证据 | 不新增 Fabric node或第二控制者 |
 | `flow/read-stage.py` | 独立复算 DIG completeness、ECO census、clock/data contribution 和 Commercial Label | 不复制 optimizer 判断 |
-| `contract.yml` / Site tool binding | 声明 pinned OpenROAD executable、版本和资源 | 普通用户不承担知识/服务运维 |
+| `contract.yml` / Site tool binding | 声明 Innovus export/ECO 能力；OpenSTA 仅在启用时声明 pinned executable | 普通用户不承担知识/服务运维 |
 
-新增的两个 domain 文件是现有 Pack 工具内部 helper/adapter，不要求多个 Harness 模块适配，不构成架构扩张。
+新增的三个 domain 文件是现有 Pack 工具内部 helper/adapter，不要求多个 Harness 模块适配，不构成架构扩张。
 
 ## 14. 开发计划
 
@@ -481,22 +508,22 @@ Action 可标记为：
 
 | 任务 | 依赖 | 主要文件 | 出口 |
 | --- | --- | --- | --- |
-| DIG-01 Export identity | 无 | P&R templates、`stages.py`、`read-stage.py` | 同一 checkpoint 的 netlist/DEF/SDC/SPEF/Liberty/LEF/hash manifest；零优化副作用 |
-| DIG-02 OpenROAD/OpenSTA isolated POC | DIG-01 | `openroad_dig.tcl`、测试 fixture | 不改 OpenSTA 核心，读取真实 AES bundle并查询 pin/instance/net/timing/coordinates |
-| DIG-03 Heterogeneous DIG | DIG-02 | `design_information_graph.py` | node/edge schema、lineage、units、completeness、50+ endpoint alternatives 可复算 |
-| DIG-04 Opportunity quadrants | DIG-03 | `mine_patterns.py`、`mine_timing_route.py` | 深/浅 × 长/短分类；timing 与 slack-harvesting proposals 分离 |
-| DIG-05 Local physical proxy | DIG-03/04 | `proxy_mapping.py`、`library_richness.py` | bounded window 的 source/candidate cover、RC/load/slew、uncertainty；无全局 Fmax claim |
+| DIG-01 Innovus export identity | 无 | P&R templates、`innovus_dig_export.tcl`、Readers | 同一 checkpoint 的 netlist/DEF/SDC/SPEF/Liberty/LEF/timing/clock/hash manifest；零优化副作用 |
+| DIG-02 Heterogeneous DIG | DIG-01 | `design_information_graph.py` | 不依赖 OpenROAD P&R，完成 node/edge schema、units、completeness 和对象 join |
+| DIG-03 Optional OpenSTA timing view | DIG-01/02 | `opensta_dig.tcl`、测试 fixture | 不改 OpenSTA 核心，补充多个 path alternatives、arrival/required 和局部 STA；可关闭 |
+| DIG-04 Opportunity quadrants | DIG-02（DIG-03 可选增强） | `mine_patterns.py`、`mine_timing_route.py` | 深/浅 × 长/短分类；timing 与 slack-harvesting proposals 分离 |
+| DIG-05 Local physical proxy | DIG-02/04（DIG-03 可选增强） | `proxy_mapping.py`、`library_richness.py` | bounded window 的 source/candidate cover、RC/load/slew、uncertainty；无全局 Fmax claim |
 | DIG-06 Drive family | DIG-04/05 | `_generation_projection.py`、generation/char adapters | D1/D2/D4/D6/D8与非对称 outputs；Liberty/SPICE/LEF电气和几何一致 |
-| DIG-07 CCEI placed-state POC | DIG-03/05/06 | `multi_output_resynth/`、P&R template | coarse placement identity probe、原位 ECO、seed、局部 legalization、proof、rollback |
+| DIG-07 CCEI placed-state POC | DIG-02/05/06 | `multi_output_resynth/`、P&R template | coarse placement identity probe、原位 ECO、seed、局部 legalization、proof、rollback |
 | DIG-08 Useful-skew matched method | DIG-01/07 | P&R/MMMC templates、Reader | baseline/generated同设置；100 ps策略真实生效；data/clock delta分解 |
-| DIG-09 AES free closure | DIG-03～08 | existing stages/readers | 完整 frontier、Portfolio、Cell Demand、CCEI patch；零商业 Job |
+| DIG-09 AES free closure | DIG-02、04～08（DIG-03 可选） | existing stages/readers | 完整 frontier、Portfolio、Cell Demand、CCEI patch；零商业 Job |
 | DIG-10 Commercial observation | DIG-09 | existing P&R/compare | 一次 CCEI causal E0；可选独立 DC adoption E0；Commercial Label 回灌 |
 | DIG-11 Pack integration | DIG-10 | Pack docs/graph/stages/tests | 当前 HimaPack 方法、知识和资产更新；不新增 Runtime 动作 |
 
 ### 14.1 可并行边界
 
 - DIG-01 export 与 DIG-06 drive-family mock preparation可并行，但共享 Liberty/LEF identity 由 DIG-06 单一负责；
-- DIG-02/03 的 OpenROAD view 与 DIG-07 的 Innovus placement-seam probe 可并行；
+- DIG-02 的 Innovus-export DIG 与 DIG-03 的可选 OpenSTA timing view、DIG-07 的 placement-seam probe 可并行；
 - DIG-04 timing miner 与 slack-harvesting miner 可并行，共用冻结 DIG schema；
 - `library_richness.py`、P&R templates 和 `stages.py` 各保持单一 owner；
 - DIG-09 前冻结共享 schema、units、identity 和 completeness，不允许各线自行发明第二套图。
@@ -513,10 +540,11 @@ Action 可标记为：
 - D1～D8 monotonic electrical/physical关系；
 - CCEI source conflict、pin map、seed location 和 rollback。
 
-### L1：OpenROAD/OpenSTA 小图
+### L1：Innovus export schema 与可选 OpenSTA 小图
 
-- synthetic LEF/Liberty/DEF/netlist/SDC/SPEF形成同一 DIG；
-- STA pin与OpenDB instance/pin/net/坐标双向 identity；
+- synthetic LEF/Liberty/DEF/netlist/SDC/SPEF/timing facts形成同一 DIG；
+- netlist/DEF/SPEF对象 join 不依赖 OpenROAD；
+- 启用 OpenSTA 时，STA pin与 DIG instance/pin/net/坐标保持双向 identity；
 - local proxy在已知两路径 endpoint 上触发 path migration；
 - community proposal 经过 required-time、sink divergence 和 locality gate；
 - 零商业工具、零 Desktop、零模型调用。
@@ -555,7 +583,7 @@ Desktop App 不参与 Framework 日常验证。
 第一里程碑不是立即达到 5%，而是用现有 AES 负样本证明以下闭环真实成立：
 
 1. 从一个 post-route checkpoint 导出身份一致的完整 bundle；
-2. OpenDB/OpenSTA 形成包含物理位置和多个 path alternatives 的 DIG；
+2. Pack 从 Innovus 导出束形成包含物理位置的 DIG，可选 OpenSTA 补充多个 path alternatives；
 3. DIG 能解释 100-Cell 轮为何局部代理正向而 WNS 下降；
 4. Opportunity Mining 将 timing、drive、fusion 和 slack-harvesting 分开；
 5. 局部代理只给 local margin/trust region，不预测全局 MHz；
@@ -568,7 +596,7 @@ Desktop App 不参与 Framework 日常验证。
 ## 17. 明确不做的事情
 
 - 不建立第二套 Hima Runtime、Fabric graph 或商业试验调度器；
-- 不把 OpenSTA fork 直接嵌入产品作为第一方案；
+- 不把 OpenROAD 变成第二条 P&R 链，不把 OpenSTA fork 直接嵌入产品作为第一方案；
 - 不要求客户部署独立知识或 DIG 服务；
 - 不用 community score、adoption count、面积收益代替 Fmax；
 - 不把 DC free mapping 与 CCEI causal result 混成一个结论；
