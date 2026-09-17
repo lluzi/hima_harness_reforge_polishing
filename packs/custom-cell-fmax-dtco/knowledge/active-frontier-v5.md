@@ -75,6 +75,27 @@ Workshop receives this response with the cumulative Library, prior rounds, failu
 candidate pool. It must answer the new residual question. Repeating the same proposal, ignoring a new
 bottleneck, changing the Goal, or hiding a negative result is not research progress.
 
+## Published V5 calibration fact
+
+The Reference Pack was frozen after one matched AES Innovus 23.14 E0 observation. Under a common
+0.5 ns requested clock, foundry-only reference views and a generated arm retaining 50 Custom
+instances, the final setup WNS was `-57 ps` in both arms. The observation therefore established
+`0.000%` Fmax improvement and did not meet the 5% Goal. It did establish secondary movement:
+TNS improved from `-6.641 ns` to `-5.885 ns`, setup violations fell from 289 to 227, logic area fell
+3.182%, wire length fell 1.449%, and modelled power fell 2.042%.
+
+The endpoint-complete response covered 530/530 register data endpoints. The frozen Active Frontier
+moved from 128 endpoints to 127: two reference frontier endpoints resolved, one new endpoint entered,
+and 126 remained. The original WNS endpoint improved by 6 ps while another endpoint took over and
+regressed by 8 ps. This is the calibration lesson carried into the next Campaign: broad local and
+secondary gains do not imply movement of the global maximum, and the next research algorithm must
+address alternative-path takeover across the remaining frontier.
+
+This fact is design- and condition-specific. Both arms retained substantial route DRC, hold was not
+closed, and no IR/EM or silicon claim exists. It is a truthful negative Fmax result and a positive
+knowledge asset, not a portable QoR promise. Publishing this Pack does not rerun that commercial
+experiment; a new Site Campaign uses this method and its own evidence to continue the frontier.
+
 A useful next generation normally presents several independent, evidence-linked hypotheses, such as:
 
 - one Portfolio aimed at simultaneous frontier coverage;

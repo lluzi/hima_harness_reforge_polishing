@@ -1,22 +1,37 @@
-# Validation status
+## Site
 
-This Pack is still in `development`. It deliberately has no `VERSION.yml` release seal and this file
-is not a Hima authoring test record: no Harness-owned test Campaign Run id exists yet.
+Site `local` with a publication-only stand-in binding. Golden Flow: `INTENT.md` points to `flow/library_richness.py`, `flow/domain/`, `flow/stages.py` and `flow/README.md`. No EDA executable or model was invoked. The already completed matched V5 E0 is frozen in `knowledge/active-frontier-v5.md`; this smoke Run does not repeat it.
 
-The Library-richness integration has passed local contract, Reader, graph, stage-adapter and
-tamper/refusal tests. A real local Yosys 0.69/ABC 1.01 pilot also passed baseline mapping, six mining
-views, F0/F1 residual-context construction, proposal-key binding, delta merge and paired F0-F3
-evaluation. One of two proposed Cells was adopted by the open-source mapper. The aggregate relation
-was `tradeoff`: F1 was positive, F2 was positive and F3 was mixed because the optimistic worst-delay
-indicator regressed. A replay under the current parallel-factor rule admits this whole Library to E0
-because F1/F2/F3 are not all explicitly negative. No LC/DC/Innovus E0 job has yet run.
+## Run
 
-The pilot's generated timing models were reused Phase 1 fixtures. That test establishes the Pack and
-Framework integration seam; it does not establish fresh characterization, commercial adoption,
-post-route Fmax, PPA or silicon benefit. Detailed hashes and limits are recorded in
-`docs/package-development/library-function-richness/evidence/pack-01-07-integration.md` outside the
-deliverable Pack.
+run: run-8c3a4dc7-3907-474f-8eb1-443f719b5b18
 
-Release still requires one Harness-owned test Campaign with Ledger, CodeRecord and refusal evidence,
-then one candidate that passes the portfolio gate and receives the necessary matched commercial
-observation. Only `/hima pack release` may create `VERSION.yml` after those facts exist.
+Goal: `target_period_ns=0.5`, `target_fmax_improvement_pct=5`. Initial Strategy:
+`periodNs=0.5`, `floorplanUtilization=0.25`, `algorithmRevision=0`. The Run was marked
+`test: true`, installed the exact V5 method, resolved the local Site, materialized a
+Pack-owned workspace, exposed entry node `bind-inputs`, and was then ended by the publication
+smoke budget before any business node ran.
+
+## Ending
+
+status: ended-budget-exhausted
+
+This publication smoke intentionally ends as budget exhausted before any node work. `SPEC.md`
+declares Budget exhausted and retains completed facts without treating them as Goal success.
+This dedicated publication budget proves only install/start/control behavior.
+
+## Generations
+
+Generation 1 — no research or EDA generation was executed. The Harness loaded the exact method digest `5c03cc934ac39c910d5b2cd1dc7dc39523e8e1e301c379c5b633a24868d03d8c`, admitted the fixed Goal and Strategy, created the workspace and presented `bind-inputs` as the first available node. Launched jobs: 0; observations: 0; verdicts: 0.
+
+## Code
+
+none
+
+## Refusals
+
+none
+
+## Disagreements
+
+The stand-in Site deliberately does not provide a production Golden Flow and the Run deliberately does not execute the commercial tail. This is the bounded publication-smoke scope, not evidence of design QoR. The frozen matched AES E0 result remains the commercial calibration evidence.

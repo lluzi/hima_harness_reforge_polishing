@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -748,7 +748,8 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     assert.equal(work.kind, 'accepted', work.reason);
     await waitUntil('the Pack input adapter finishes', () => host.ctx.hima.executionContext(started.run.id).executions.some(item => item.id === executionId && item.phase === 'ready'));
     const materialized = JSON.parse(await readFile(path.join(started.workspace, 'flow/inputs.json'), 'utf8')) as Record<string, unknown>;
-    assert.equal(materialized.designRoot, designRoot); assert.equal(materialized.DESIGN_ROOT, designRoot);
+    const canonicalDesignRoot = await realpath(designRoot);
+    assert.equal(materialized.designRoot, canonicalDesignRoot); assert.equal(materialized.DESIGN_ROOT, canonicalDesignRoot);
     assert.equal(materialized.designTop, 'held_out'); assert.equal(materialized.DESIGN_TOP, 'held_out');
     assert.equal(materialized.edaWrapper, '/usr/bin/true');
     assert.equal(materialized.MAX_NEW_CELLS, 50); assert.equal(materialized.MAX_CELLS, 200);
