@@ -571,7 +571,9 @@ def _baseline_metrics(mapping, profile, ctx):
         "pairwise_relation": {"relation": "equal", "comparisons": []},
         "metric_completeness": {"complete": True},
     }
-    result["evaluation_payload_sha256"] = canonical_sha(result)
+    # All Library-richness payload identities use the newline-terminated
+    # canonical JSON contract independently recomputed by read-stage.py.
+    result["evaluation_payload_sha256"] = canonical_json_sha(result)
     return result, timing, netlist
 
 

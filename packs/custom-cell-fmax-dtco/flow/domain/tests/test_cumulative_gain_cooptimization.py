@@ -90,6 +90,14 @@ class EndpointFrontierTests(unittest.TestCase):
 
 
 class CoverAndPortfolioTests(unittest.TestCase):
+    def test_baseline_payload_identity_uses_reader_newline_contract(self):
+        document = {"schema": "lfr-baseline-evaluation/1", "status": "succeeded"}
+        expected = __import__("hashlib").sha256(
+            (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        ).hexdigest()
+        self.assertEqual(expected, stages.canonical_json_sha(document))
+        self.assertNotEqual(expected, stages.canonical_sha(document))
+
     def test_v5_commercial_response_preserves_takeover_for_next_research(self):
         timing = lambda rows: {
             "schema": "hima.innovus-timing-facts/1", "completeness": "complete",
