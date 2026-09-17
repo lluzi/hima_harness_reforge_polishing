@@ -198,23 +198,8 @@ export const overridesOf = (file: CampaignFile): PreparationOverrides => ({
   budget: file.budget,
 });
 
-/** Every dotted path whose value differs between two Campaign files, e.g. `['goal.clock_period',
- *  'inputs.design']` — what a person or HimaGuide changed, for an edit summary that names the field
- *  rather than dumping the whole document. Object fields recurse; anything else (a string, a number,
- *  an array, `undefined`) is compared by its JSON identity and named whole. */
-export function changedFields(before: CampaignFile, after: CampaignFile): string[] {
-  const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null && !Array.isArray(value);
-  const changed: string[] = [];
-  const walk = (a: unknown, b: unknown, prefix: string): void => {
-    if (isPlainObject(a) && isPlainObject(b)) {
-      for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-        walk(a[key], b[key], prefix === '' ? key : `${prefix}.${key}`);
-      }
-      return;
-    }
-    if (JSON.stringify(a) !== JSON.stringify(b)) changed.push(prefix);
-  };
-  walk(before, after, '');
-  return changed;
-}
+/** Every dotted path whose value differs between two Campaign files (H8): moved to the leaf
+ *  `campaign-file-diff.ts`, which has no imports of its own, so the client half can diff two
+ *  documents it already holds without pulling this module's `node:fs`/`yaml` machinery in. Re-exported
+ *  here so every existing caller of this module keeps reading it from the same place. */
+export { changedFields } from './campaign-file-diff.js';

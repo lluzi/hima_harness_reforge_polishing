@@ -226,7 +226,11 @@ test('Case 4: GET /hima/api/runs/<id>/log-tail reads the currently running node 
   }
 });
 
-test('Case 5: a running node whose log the Site cannot produce yet answers 200 with the session and an empty tail, never a 500 (#41 task 4 review, blocking)', async () => {
+// Final whole-branch review, H11: split into two named tests. The original Case 5 asserted two
+// unrelated facts in one test body — a Job the Site cannot yet produce a log for never faults, and a
+// revision that invalidates a node's running record removes it from what `nodeLogTail` sees as
+// current — so a failure of either half left the other half's own name off the failing test.
+test('Case 5a: a running node whose log the Site cannot produce yet answers 200 with the session and an empty tail, never a 500 (#41 task 4 review, blocking)', async () => {
   const h = await createHimaHome();
   try {
     const site = await writeLocalSite(h);
@@ -244,12 +248,30 @@ test('Case 5: a running node whose log the Site cannot produce yet answers 200 w
         job: { session, workspace: h.workspace, name: 'synthesize', startedAt: new Date().toISOString(), wire: 'echo', pid: 1 },
         nodeId: 'synthesize',
       });
-      const nodeRecord = await host.ctx.hima.ledger.appendNode(run.id, { nodeId: 'synthesize', kind: 'act', state: 'running', attempt: 1, jobSession: session });
+      await host.ctx.hima.ledger.appendNode(run.id, { nodeId: 'synthesize', kind: 'act', state: 'running', attempt: 1, jobSession: session });
       const found = await nodeLogTail(deps, { run: run.id, nodeId: 'synthesize', lines: 5 });
       assert.equal(found.session, session, JSON.stringify(found));
       assert.deepEqual(found.lines, []);
       assert.equal(found.truncated, false);
+    } finally { await host.dispose(); }
+  } finally { await h.dispose(); }
+});
 
+test('Case 5b: a revision that invalidates a node\'s running record removes it from what nodeLogTail sees as current (#41 task 4 review round 3, item 1)', async () => {
+  const h = await createHimaHome();
+  try {
+    const site = await writeLocalSite(h);
+    const host = await bootInProcess(h);
+    try {
+      const deps: JobDeps = { ledger: host.ctx.hima.ledger, sitesDir: site.sitesDir };
+      const run = await host.ctx.hima.ledger.createRun({ campaignId: 'log-tail-revision', siteId: 'local', status: 'running' });
+      const session = `hima-${randomUUID()}-never-started`;
+      await host.ctx.hima.ledger.appendJob(run.id, {
+        event: 'launched',
+        job: { session, workspace: h.workspace, name: 'synthesize', startedAt: new Date().toISOString(), wire: 'echo', pid: 1 },
+        nodeId: 'synthesize',
+      });
+      const nodeRecord = await host.ctx.hima.ledger.appendNode(run.id, { nodeId: 'synthesize', kind: 'act', state: 'running', attempt: 1, jobSession: session });
       // A revision that invalidates this node's own running record (#41 task 4 review round 3, item
       // 1) removes it from what `nodeLogTail` sees as this node's *current* latest fact: `currentRecordsIn`
       // must run over the Run's whole record set — including the `revision` record itself — before
@@ -340,7 +362,14 @@ test('Case 8: a Site that cannot be asked for its log still reaches nodeLogTail 
           (err: unknown) => err instanceof SiteUnreadableError,
         );
       } finally {
-        process.env.PATH = savedPath;
+        // H11: `process.env.PATH = savedPath` with `savedPath` typed `string | undefined` coerces to
+        // the literal string `"undefined"` when `savedPath` actually is `undefined` — Node's
+        // `process.env` setter stringifies its value rather than deleting the key — which would leave
+        // every test that runs after this one in the same process with a `PATH` of `"undefined"`
+        // instead of the one the shell handed this process. `savedPath` is never actually undefined
+        // on any real invocation, but the fallback is what makes that true by contract rather than by
+        // accident.
+        process.env.PATH = savedPath ?? '';
         await rm(emptyBin, { recursive: true, force: true });
       }
     } finally { await host.dispose(); }

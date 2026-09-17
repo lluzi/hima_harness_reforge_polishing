@@ -25,7 +25,7 @@ import { releasePack } from './release.js';
 import { runView, type RunWords, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import type { SiteDiscoveryResult } from './sites.js';
 import type { PreparationView } from './workbench.js';
-import { CAMPAIGN_FILE_RELATIVE, overridesOf, readCampaignFile, type PreparationOverrides } from './campaign-file.js';
+import { CAMPAIGN_FILE_RELATIVE, CampaignFileError, overridesOf, readCampaignFile, type PreparationOverrides } from './campaign-file.js';
 import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReason, type RunArgumentName, type StrategyValue } from './run-arguments.js';
 
 type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]: ToolJson };
@@ -63,11 +63,25 @@ function knowledgeImportRoots(agent: Agent): readonly string[] {
  * Reported back on both tools' JSON as `campaignFile: { path, applied }` so a person reading either
  * receipt knows whether the numbers it saw came from that file or from the Pack's own declaration —
  * and so a caller comparing a confirmation to a preparation is comparing like with like.
+ *
+ * H9: a file this workspace holds that does not read as `hima-campaign/1` (bad YAML, or a value the
+ * schema refuses — the same fault the `/hima/api/campaign` route answers 400 for) is the caller's own
+ * stale or hand-edited file, not a reason to fail the tool call it happened to be sitting under: it is
+ * reported as `campaignFile: { applied: false, error: <sentence> }` and this call proceeds exactly as
+ * `useFile: false` would, with no overrides applied. Any other fault (a workspace this process cannot
+ * read, `EACCES` and the like) is not this — it still propagates, the same as every other unexpected
+ * filesystem fault this bundle does not turn into a business answer.
  */
 function campaignFileApplication(agent: Agent | undefined, packId: string, useFile: boolean):
-  { readonly campaignFile: { readonly path: string; readonly applied: boolean }; readonly overrides?: PreparationOverrides } {
+  { readonly campaignFile: { readonly path: string; readonly applied: boolean; readonly error?: string }; readonly overrides?: PreparationOverrides } {
   const workspace = useFile ? agentWorkspaceOf(agent) : undefined;
-  const found = workspace === undefined ? undefined : readCampaignFile(workspace);
+  let found: ReturnType<typeof readCampaignFile>;
+  try {
+    found = workspace === undefined ? undefined : readCampaignFile(workspace);
+  } catch (err) {
+    if (err instanceof CampaignFileError) return { campaignFile: { path: CAMPAIGN_FILE_RELATIVE, applied: false, error: err.message } };
+    throw err;
+  }
   const applied = found !== undefined && found.file.pack?.id === packId;
   return { campaignFile: { path: CAMPAIGN_FILE_RELATIVE, applied }, ...(applied ? { overrides: overridesOf(found!.file) } : {}) };
 }
@@ -597,7 +611,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     }),
     defineTool({
       name: 'hima_run',
-      description: 'Prepare a Campaign on the named Site and bind it to this actual conversational Agent. Returns promptly with the Run and execution context; starts no business node or hidden Agent. You remain the execution owner: use hima_context and hima_execute to choose and perform each node, inspect real evidence, and decide the next action. Goal and total budget remain fixed.',
+      description: 'Prepare a Campaign on the named Site and bind it to this actual conversational Agent. Returns promptly with the Run and execution context; starts no business node or hidden Agent. You remain the execution owner: use hima_context and hima_execute to choose and perform each node, inspect real evidence, and decide the next action. Goal and total budget remain fixed. When this Agent\'s own workspace holds hima/campaign.yml naming this same Pack, its Goal, Strategy, input and Budget overrides are applied by default (report: campaignFile.applied), the same file hima_prepare applies.',
       parameters: {
         proposalId: { type: 'string', description: 'The current id returned by hima_prepare. Supply it when confirming a prepared Campaign.' },
         pack: { type: 'string', required: true, description: 'Pack id, as the packs directory holds it.' },
@@ -613,6 +627,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
           additionalProperties: true,
           description: 'What to set the pack\'s own strategy knobs to for the first generation, by the names its contract declares, e.g. { "<knob>": <value> }. A knob left out takes the default that pack declares; a knob it does not declare, or a value outside the bounds or the list it declares, is refused and no run is started.',
         },
+        file: { type: 'boolean', description: 'Apply this workspace\'s own hima/campaign.yml when it names this same Pack. Default true; false confirms plainly, ignoring any Campaign file present.' },
         ...(legacyAutomaticAllowed() ? {
           test: { type: 'boolean', description: 'Contract-test purpose only.' },
           timeBox: { type: 'number', description: 'Contract-test budget only.' },
@@ -634,7 +649,8 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
             strategy: { type: 'object', additionalProperties: true, description: 'The strategy the run now stands at: the next one to try, or the one that met the goal.' },
             reason: { type: 'string', description: 'Why the run could not start, on an unfit pack or a workspace that is not this campaign\'s.' },
             campaignFile: { type: 'object', additionalProperties: false, description: 'Whether this Agent\'s own hima/campaign.yml was applied (#41 task 3).', properties: {
-              path: { type: 'string', required: true }, applied: { type: 'boolean', required: true } } },
+              path: { type: 'string', required: true }, applied: { type: 'boolean', required: true },
+              error: { type: 'string', description: 'A file present but not readable as hima-campaign/1 (H9): the one sentence naming the field, and applied is false.' } } },
           },
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
@@ -650,7 +666,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         // so a confirmation compares like with like: the freshness check below and the actual start
         // both see the workspace's own input overrides, whether or not this Agent's workspace holds
         // one naming this Pack.
-        const { campaignFile, overrides } = campaignFileApplication(execution.agent, args.pack, true);
+        const { campaignFile, overrides } = campaignFileApplication(execution.agent, args.pack, args.file !== false);
         if (args.proposalId !== undefined) {
           if (args.test === true) throw new Error('a confirmed product Campaign cannot be changed into a Pack test');
           const current = prepare?.(args.pack, args.site, overrides);

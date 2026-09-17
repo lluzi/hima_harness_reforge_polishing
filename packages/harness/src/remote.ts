@@ -1220,14 +1220,32 @@ async function startFromCampaignFileOperation(ops: RemoteOperations, request: St
   if (request.test !== undefined || request.timeBox !== undefined || request.retries !== undefined || request.generations !== undefined) {
     throw new BadRequest('a Campaign-file start uses the file\'s own Budget and purpose; test/timeBox/retries/generations are refused in this body');
   }
+  // H7: a Campaign-file start uses the file's own Goal and Strategy, exactly as it already uses the
+  // file's own Budget above — a body that also supplied one is not silently overridden by the file
+  // (which would let a caller believe their own numbers took effect when the file's did) and not
+  // silently discarded either; it is refused, in the same words the Budget fields above are.
+  if (Object.keys(request.goal).length > 0 || request.strategy !== undefined) {
+    throw new BadRequest('a Campaign-file start uses the file\'s own Goal and Strategy; goal/strategy in this body are refused');
+  }
   const workspace = ops.sessionWorkspace?.(request.sessionId);
   if (workspace === undefined) throw new BadRequest('the selected conversation has no workspace to read a Campaign file from');
+  // H6: an unwired `readCampaignFile` is this Host's own gap, not the caller's mistake — every other
+  // route answers exactly this the same way (`campaignFileReadOperation`/`campaignFileWriteOperation`
+  // above), and this path drifted to a 400 by not reusing that answer.
   const read = ops.readCampaignFile?.(request.sessionId);
-  if (read === undefined) throw new BadRequest('Campaign file reads are unavailable on this Host');
+  if (read === undefined) return failure(500, 'hima/internal', 'Campaign file reads are unavailable on this Host');
   if (read.kind === 'invalid') throw new BadRequest(read.message);
   if (!read.exists) throw new BadRequest('no Campaign file exists in this conversation\'s workspace');
   if (read.file.pack === undefined || read.file.pack.id !== request.pack) {
     throw new BadRequest('the Campaign file does not name the Pack this start is for');
+  }
+  // H7: the file's own Site, when it names a saved one, must be the Site this start is for — a body
+  // that named a different Site would otherwise start silently on the file's Site while a caller read
+  // the body's own as what it was starting. A file that names an ssh destination for discovery rather
+  // than a saved name has nothing to hold the body's `site` against here.
+  const fileSiteName = read.file.site !== undefined && 'name' in read.file.site ? read.file.site.name : undefined;
+  if (fileSiteName !== undefined && fileSiteName !== request.site) {
+    throw new BadRequest('the Campaign file names a different Site than this start is for');
   }
   if (request.proposalId === undefined) throw new BadRequest('confirm the current Campaign proposal before starting a Run');
   const overrides = read.overrides;
@@ -1832,6 +1850,11 @@ async function campaignFileReadOperation(ops: RemoteOperations, sessionId: strin
 
 async function campaignFileWriteOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
   const body = await readJsonBody(req);
+  // H10: named the same way `/packs/transfer` already names an unknown field of its own body — a
+  // caller's own typo (`experctedMtimeMs`, `fille`) is silently ignored otherwise, and a write that
+  // dropped a field the caller believed it sent is a worse failure than an explicit 400.
+  const allowed = ['sessionId', 'file', 'expectedMtimeMs'];
+  if (Object.keys(body).some((key) => !allowed.includes(key))) throw new BadRequest(`unknown Campaign file field; expected one of ${allowed.join(', ')}`);
   const sessionId = requiredString(body, 'sessionId');
   const expectedMtimeMs = optionalFiniteNumber(body, 'expectedMtimeMs');
   const gate = campaignWorkspaceOf(ops, sessionId);
@@ -1905,17 +1928,6 @@ async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: UR
   if (ops.jobLogTail === undefined) return failure(500, 'hima/internal', 'the Job log tail is unavailable on this Host');
   const nodeId = url.searchParams.get('node');
   if (!nodeId) throw new BadRequest('"node" is required as a query parameter');
-  // A node id no reference graph of this Run declares is a caller mistake, not a fact to answer
-  // "no Job open" about — `executionContext` is what every other node-shaped read holds a node id
-  // against, so this route does not invent its own second notion of what a node id is. `nodes` is
-  // empty rather than absent for a historical automatic Run (`run.control === undefined`, before
-  // #41 task 3's owner model existed) or an uninstalled pack: neither is a reference graph this
-  // route can hold a node id against, so an empty list refuses nothing here — only a *non-empty*
-  // one that plainly does not name this node id is the caller's mistake.
-  const nodes = ops.executionContext?.(runId).nodes;
-  if (nodes !== undefined && nodes.length > 0 && !nodes.some((node) => node.id === nodeId)) {
-    throw new BadRequest(`node "${nodeId}" is not in this Run's method`);
-  }
   const rawLines = url.searchParams.get('lines');
   let lines = 1;
   if (rawLines !== null) {
@@ -1923,7 +1935,26 @@ async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: UR
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) throw new BadRequest('"lines" must be an integer from 1 through 100');
     lines = parsed;
   }
-  return ok(await ops.jobLogTail(runId, nodeId, lines));
+  // H2: ask for the tail itself first. `executionContext` snapshots and hashes the whole Pack folder
+  // to answer, which is wasted work on every one of this route's ~2s polls when the node id is simply
+  // right, as it almost always is — a caller polling a running node paid that cost on every single
+  // look. Only when the answer carries no `session` — this node has no Job open right now — is a node
+  // id worth holding against the Run's reference graph at all, to tell "no Job on a real node" apart
+  // from "not a node in this Run's method" (still a caller mistake, and still refused as one): a node
+  // id that *does* have an open Job has already answered the only question this route exists to
+  // answer, and checking it against the graph afterwards would only reject an answer already given.
+  const answer = await ops.jobLogTail(runId, nodeId, lines);
+  if (answer.session === undefined) {
+    // `nodes` is empty rather than absent for a historical automatic Run (`run.control === undefined`,
+    // before #41 task 3's owner model existed) or an uninstalled pack: neither is a reference graph
+    // this route can hold a node id against, so an empty list refuses nothing here — only a
+    // *non-empty* one that plainly does not name this node id is the caller's mistake.
+    const nodes = ops.executionContext?.(runId).nodes;
+    if (nodes !== undefined && nodes.length > 0 && !nodes.some((node) => node.id === nodeId)) {
+      throw new BadRequest(`node "${nodeId}" is not in this Run's method`);
+    }
+  }
+  return ok(answer);
 }
 
 /**

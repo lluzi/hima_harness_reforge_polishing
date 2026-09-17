@@ -272,13 +272,35 @@ export function newCampaignProposalId(pack: Pack, site?: Site, overrides?: Prepa
   const nonce = randomBytes(16).toString('hex');
   const message = `${facts}.${nonce}`;
   const issued = `${message}.${createHmac('sha256', proposalSigningKey).update(message).digest('hex')}`;
-  pendingProposalIds.set(facts, issued);
+  rememberPendingProposal(facts, issued);
   return issued;
 }
 
 /** Pending proposals are process-local; exact confirmed tokens remain idempotent in the Ledger. */
 const proposalSigningKey = randomBytes(32);
 const pendingProposalIds = new Map<string, string>();
+
+// H12: the most pending facts this process keeps a re-servable proposal token for. `facts` (#41 task
+// 3) now varies with every Goal, Strategy, input and Budget field a Campaign file lets a caller
+// override, not only with Pack and Site — a HimaGuide session or a person sweeping many distinct draft
+// combinations while confirming none of them would otherwise grow this map for the life of the
+// process. 64 is generous for one Host's worth of concurrently-open, unconfirmed drafts and small
+// enough that the worst case (every entry evicted and re-minted) costs one HMAC per preparation, which
+// this function already pays on a cache miss.
+const PENDING_PROPOSAL_CAP = 64;
+
+/** Record `issued` as the pending token for `facts`, evicting the oldest entry once the cap is
+ *  exceeded. `Map` keeps insertion order, so "oldest" is simply its first key — and re-preparing
+ *  facts already pending deletes and re-inserts first, moving that entry to "newest" rather than
+ *  letting a proposal still in active use be the one evicted merely for having been minted earliest. */
+function rememberPendingProposal(facts: string, issued: string): void {
+  pendingProposalIds.delete(facts);
+  pendingProposalIds.set(facts, issued);
+  for (const oldest of pendingProposalIds.keys()) {
+    if (pendingProposalIds.size <= PENDING_PROPOSAL_CAP) break;
+    pendingProposalIds.delete(oldest);
+  }
+}
 
 function proposalFactsPart(proposalId: string): string | undefined {
   const [facts, nonce, signature, ...extra] = proposalId.split('.');
@@ -343,13 +365,21 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
     throw new RunStartError('the execution owner must be a live conversation on this Host');
   }
   const site = loadSite(deps.sitesDir, req.site);
+  // H4: the one source of truth for which input overrides this start actually applies is
+  // `req.overrides?.inputs` when the caller handed one through — the very object its own preparation
+  // minted `proposalId` from (#41 task 3) — falling back to the flatter `req.inputs` only for a caller
+  // that predates `overrides` and never sets it. Reading `req.inputs` alone here, while
+  // `campaignProposalFactsIdentity` above already prefers `req.overrides`, was two different readings
+  // of "what this start overrides" that happened to agree only when both were supplied or both left
+  // out.
+  const inputOverrides = req.overrides?.inputs ?? req.inputs;
   // Campaign-file input overrides (#41 task 3), merged over the Site's own bindings in memory: the
   // Permit is untouched, since `effectiveSite` keeps this same Site's own `permitFile`/`permitRules`
   // and only its `bindings` differ, so every overridden path still passes `decideRead`/`decideWrite`
   // exactly as a bound path from the site file would. `site` itself (unmerged) is what a later
   // resumption reloads and compares its own control identity against (`recovery.ts`), so it is kept
   // and never replaced by the merged copy; only what depends on bindings uses `effectiveSite`.
-  const effectiveSite = siteWithInputOverrides(site, req.inputs === undefined ? undefined : { inputs: req.inputs });
+  const effectiveSite = siteWithInputOverrides(site, inputOverrides === undefined ? undefined : { inputs: inputOverrides });
   // **One reading of the pack folder, and everything this start says about it is derived from it**
   // (#64) — the contract and graph this Campaign is driven by, the rung the folder stands on, the
   // seal the check verifies, and the digest the row records. Two readings would be two folders
@@ -528,7 +558,10 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   // report only that HimaFabric never started this Run.
   let prepared: PrepareResult;
   try {
-    prepared = await prepareWorkspace(deps, { pack: pack.id, site: site.name, campaign: campaignId, run: opened.id, folder, inputs: req.inputs });
+    // H4: the same `inputOverrides` `effectiveSite` above was built from, not `req.inputs` alone —
+    // the workspace this Campaign is actually prepared with must bind the same inputs the check and
+    // the facts identity already agreed on.
+    prepared = await prepareWorkspace(deps, { pack: pack.id, site: site.name, campaign: campaignId, run: opened.id, folder, inputs: inputOverrides });
   } catch (err) {
     const message = (err as Error).message;
     await blockAtEntry(deps, opened, pack, `the campaign workspace could not be prepared: ${message}`, strategy);

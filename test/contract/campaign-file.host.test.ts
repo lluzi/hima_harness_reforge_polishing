@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createHimaHome, type HimaHome } from './support/dsh-home.ts';
 import { bootHimaHost, type BootedHost } from './support/boot-host.ts';
@@ -378,5 +378,219 @@ test('Case 13: a PUT racing another writer 409s naming the current file, and the
     const freshBody = await fresh.json() as any;
     assert.equal(fresh.status, 200, JSON.stringify(freshBody));
     assert.equal(freshBody.file.name, 'from the person', JSON.stringify(freshBody));
+  } finally { await teardown(f); }
+});
+
+// Final whole-branch review, H1: `Hima.preparation`'s own `overrideUnknowns` validated a file's Goal
+// and its input names but never its Strategy or its Budget, so a file naming an unknown Strategy
+// knob, a Strategy value outside the knob's own declared bounds, or a Budget value outside the same
+// bounds `startRun` itself checks read `ready: true` here and were refused only once a Run was
+// actually attempted — for `budget.generations`, past `startRun`'s own re-check and into the ledger,
+// since nothing between here and there ever looked at it again.
+test('Case 14: a file naming an unknown Strategy knob, an out-of-range Strategy value or an out-of-range Budget value is not ready, and names the offending knob or argument', async (t) => {
+  const f = await bootedFixture(t);
+  try {
+    const unknownKnob = await (await putCampaign(f, {
+      schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' },
+      goal: { target_period_ns: 2.3 }, strategy: { nope: 1 },
+    })).json() as any;
+    assert.equal(unknownKnob.preparation.proposal.ready, false, JSON.stringify(unknownKnob.preparation.proposal));
+    assert.ok(unknownKnob.preparation.proposal.unknowns.some((line: string) => /unknown strategy knob "nope"/.test(line)), JSON.stringify(unknownKnob.preparation.proposal.unknowns));
+
+    // periodNs's declared bounds are 0.5 through 10 (Case 8); 9999 is well outside them.
+    const outOfRangeKnob = await (await putCampaign(f, {
+      schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' },
+      goal: { target_period_ns: 2.3 }, strategy: { periodNs: 9999 },
+    })).json() as any;
+    assert.equal(outOfRangeKnob.preparation.proposal.ready, false, JSON.stringify(outOfRangeKnob.preparation.proposal));
+    assert.ok(outOfRangeKnob.preparation.proposal.unknowns.some((line: string) => /invalid strategy knob "periodNs"/.test(line)), JSON.stringify(outOfRangeKnob.preparation.proposal.unknowns));
+
+    // The table in `run-arguments.ts` bounds `generations` at 1000; a million is refused the same way
+    // `startRun` itself would refuse it, but here, before any Run exists.
+    const hugeGenerations = await (await putCampaign(f, {
+      schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' },
+      goal: { target_period_ns: 2.3 }, budget: { generations: 1_000_000 },
+    })).json() as any;
+    assert.equal(hugeGenerations.preparation.proposal.ready, false, JSON.stringify(hugeGenerations.preparation.proposal));
+    assert.ok(hugeGenerations.preparation.proposal.unknowns.some((line: string) => /invalid budget\.generations/.test(line)), JSON.stringify(hugeGenerations.preparation.proposal.unknowns));
+  } finally { await teardown(f); }
+});
+
+test('Case 15: hima_prepare agrees with the route: an unknown Strategy knob and an out-of-range Budget override are both not ready', async (t) => {
+  const h = await createHimaHome();
+  const flow = await writeStandinFlow(t, h, {});
+  assert.ok(flow, 'the stand-in flow is written');
+  await installCampaignFilePack(h);
+  await writeLocalSite(h, {
+    allowedReadRoots: [h.workspace, flow!.root],
+    allowedWriteRoots: [h.workspace],
+    bindings: { flowRoot: flow!.root, design: flow!.design, workspaceRoot: h.workspace },
+  });
+  const host: InProcessHost = await bootInProcess(h);
+  try {
+    writeCampaignFile(h.workspace, {
+      schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' },
+      inputs: {}, goal: { target_period_ns: 2.3 }, strategy: { nope: 1 },
+      budget: { generations: 1_000_000 }, knowledge: [], notes: '',
+    });
+    const agent = await createRootAgent(host.ctx, h.workspace);
+    const prepared = await host.ctx.tools.execute({
+      callId: 'prepare-invalid-overrides' as never, name: 'hima_prepare', arguments: { pack: campaignFilePackId, site: 'local' },
+      agent, signal: AbortSignal.timeout(20_000),
+    });
+    assert.equal(prepared.isError, false, JSON.stringify(prepared));
+    const preparedJson = jsonOf(prepared as unknown as ToolResult);
+    assert.equal(preparedJson.ready, false, JSON.stringify(preparedJson));
+    assert.ok(preparedJson.unknowns.some((line: string) => /unknown strategy knob "nope"/.test(line)), JSON.stringify(preparedJson.unknowns));
+    assert.ok(preparedJson.unknowns.some((line: string) => /invalid budget\.generations/.test(line)), JSON.stringify(preparedJson.unknowns));
+  } finally { await host.dispose(); await h.dispose(); }
+});
+
+// Final whole-branch review, H9: a malformed file on disk must not throw out of `hima_prepare` or
+// `hima_run` — it is reported as `campaignFile: { applied: false, error: <sentence> }` and the call
+// proceeds exactly as `file: false` would, with no overrides applied.
+test('Case 16: a malformed Campaign file does not throw out of hima_prepare or hima_run; both report the sentence and proceed without overrides', async (t) => {
+  const h = await createHimaHome();
+  const flow = await writeStandinFlow(t, h, {});
+  assert.ok(flow, 'the stand-in flow is written');
+  await installCampaignFilePack(h);
+  await writeLocalSite(h, {
+    allowedReadRoots: [h.workspace, flow!.root],
+    allowedWriteRoots: [h.workspace],
+    bindings: { flowRoot: flow!.root, design: flow!.design, workspaceRoot: h.workspace },
+  });
+  const host: InProcessHost = await bootInProcess(h);
+  try {
+    mkdirSync(path.join(h.workspace, 'hima'), { recursive: true });
+    writeFileSync(path.join(h.workspace, 'hima', 'campaign.yml'), 'schema: hima-campaign/1\ngoal: [oops]\n', 'utf8');
+    const agent = await createRootAgent(host.ctx, h.workspace);
+
+    const prepared = await host.ctx.tools.execute({
+      callId: 'prepare-malformed' as never, name: 'hima_prepare', arguments: { pack: campaignFilePackId, site: 'local' },
+      agent, signal: AbortSignal.timeout(20_000),
+    });
+    assert.equal(prepared.isError, false, JSON.stringify(prepared));
+    const preparedJson = jsonOf(prepared as unknown as ToolResult);
+    assert.equal(preparedJson.campaignFile?.applied, false, JSON.stringify(preparedJson));
+    assert.match(preparedJson.campaignFile?.error ?? '', /goal/i, JSON.stringify(preparedJson));
+    // No overrides applied (the same as `file: false`): the Pack's own declared Goal default fills in
+    // and readiness never asks about a Goal at all.
+    assert.equal(preparedJson.ready, true, JSON.stringify(preparedJson));
+    assert.equal(preparedJson.goal?.target_period_ns, 2.3, JSON.stringify(preparedJson));
+
+    const started = await host.ctx.tools.execute({
+      callId: 'run-malformed' as never, name: 'hima_run', arguments: {
+        proposalId: preparedJson.id, pack: campaignFilePackId, site: 'local',
+        goal: preparedJson.goal, strategy: preparedJson.strategy,
+      }, agent, signal: AbortSignal.timeout(20_000),
+    });
+    assert.equal(started.isError, false, JSON.stringify(started));
+    const startedJson = jsonOf(started as unknown as ToolResult);
+    assert.equal(startedJson.campaignFile?.applied, false, JSON.stringify(startedJson));
+    assert.match(startedJson.campaignFile?.error ?? '', /goal/i, JSON.stringify(startedJson));
+    assert.equal(startedJson.kind, 'ran', JSON.stringify(startedJson));
+  } finally { await host.dispose(); await h.dispose(); }
+});
+
+// Final whole-branch review, H11 (spec seam 2): readiness invalidation on each field. Changing the
+// Strategy, an input binding, the Budget, the Site file, or the Pack's own bytes must each change the
+// proposal's facts part (the first `.`-separated segment `factsOf` reads) — the identity two distinct
+// preparations are told apart by, and what a stale confirmation is compared against.
+test('Case 17: changing Strategy, an input binding, Budget, the Site file or the Pack\'s own bytes each changes the proposal\'s facts part', async (t) => {
+  const f = await bootedFixture(t);
+  try {
+    await addOverrideDesign(f.flowRoot, 'guide');
+    const base = { schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' }, goal: { target_period_ns: 2.3 } };
+    const baseline = await (await putCampaign(f, base)).json() as any;
+    assert.equal(baseline.preparation.proposal.ready, true, JSON.stringify(baseline.preparation.proposal));
+    const baseFacts = factsOf(baseline.preparation.proposal.id);
+
+    const strategyChanged = await (await putCampaign(f, { ...base, strategy: { periodNs: 3.5 } })).json() as any;
+    assert.notEqual(factsOf(strategyChanged.preparation.proposal.id), baseFacts, 'a Strategy override changes the facts part');
+
+    const inputChanged = await (await putCampaign(f, { ...base, inputs: { design: 'guide' } })).json() as any;
+    assert.notEqual(factsOf(inputChanged.preparation.proposal.id), baseFacts, 'an input binding override changes the facts part');
+
+    const budgetChanged = await (await putCampaign(f, { ...base, budget: { generations: 3 } })).json() as any;
+    assert.notEqual(factsOf(budgetChanged.preparation.proposal.id), baseFacts, 'a Budget override changes the facts part');
+
+    // The Site file itself, read fresh at every preparation (`identityOf(site)`,
+    // `campaignProposalFactsIdentity`), not only its bindings: a capacity change is a fact about the
+    // Site even though it binds no input this Pack declares.
+    await writeLocalSite(f.h, {
+      allowedReadRoots: [f.h.workspace, f.flowRoot], allowedWriteRoots: [f.h.workspace],
+      bindings: { flowRoot: f.flowRoot, design: 'fixture', workspaceRoot: f.h.workspace },
+      parallelJobs: 2,
+    });
+    const siteChanged = await (await putCampaign(f, base)).json() as any;
+    assert.notEqual(factsOf(siteChanged.preparation.proposal.id), baseFacts, 'a changed Site file changes the facts part');
+
+    // Restored before the next case, which isolates one field at a time exactly as every case above
+    // does.
+    await writeLocalSite(f.h, {
+      allowedReadRoots: [f.h.workspace, f.flowRoot], allowedWriteRoots: [f.h.workspace],
+      bindings: { flowRoot: f.flowRoot, design: 'fixture', workspaceRoot: f.h.workspace },
+    });
+
+    // The Pack's own bytes (`pack.folder.digest(packDigestExcludes)`): an appended YAML comment
+    // changes nothing this Pack declares — the parsed contract is byte-for-byte the same shape — only
+    // the folder's own digest.
+    const contractPath = path.join(packsDirOf(f.h), campaignFilePackId, 'contract.yml');
+    appendFileSync(contractPath, '\n# a harmless comment (final whole-branch review, H11)\n', 'utf8');
+    const packChanged = await (await putCampaign(f, base)).json() as any;
+    assert.notEqual(factsOf(packChanged.preparation.proposal.id), baseFacts, 'a changed Pack digest changes the facts part');
+  } finally { await teardown(f); }
+});
+
+// Final whole-branch review, H7: a Campaign-file start must not silently substitute the body's own
+// Site for the file's, and must not silently discard a body-supplied Goal or Strategy in favour of
+// the file's own — both are refused with a sentence.
+test('Case 18: a Campaign-file start refuses a body Site that disagrees with the file\'s, and a body Goal or Strategy', async (t) => {
+  const f = await bootedFixture(t);
+  try {
+    const prepared = await (await putCampaign(f, {
+      schema: CAMPAIGN_SCHEMA, pack: { id: campaignFilePackId }, site: { name: 'local' }, goal: { target_period_ns: 2.3 },
+    })).json() as any;
+    assert.equal(prepared.preparation.proposal.ready, true, JSON.stringify(prepared.preparation.proposal));
+    const proposalId = prepared.preparation.proposal.id;
+
+    const wrongSite = await api(f.host, f.cookie, '/hima/api/runs/start', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fromCampaignFile: true, sessionId: f.sessionId, pack: campaignFilePackId, site: 'not-local', proposalId }),
+    });
+    const wrongSiteBody = await wrongSite.json() as any;
+    assert.equal(wrongSite.status, 400, JSON.stringify(wrongSiteBody));
+    assert.match(wrongSiteBody.error?.message ?? '', /different Site/, JSON.stringify(wrongSiteBody));
+
+    const bodyGoal = await api(f.host, f.cookie, '/hima/api/runs/start', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fromCampaignFile: true, sessionId: f.sessionId, pack: campaignFilePackId, site: 'local', proposalId, goal: { target_period_ns: 5 } }),
+    });
+    const bodyGoalBody = await bodyGoal.json() as any;
+    assert.equal(bodyGoal.status, 400, JSON.stringify(bodyGoalBody));
+    assert.match(bodyGoalBody.error?.message ?? '', /own Goal and Strategy/, JSON.stringify(bodyGoalBody));
+
+    const bodyStrategy = await api(f.host, f.cookie, '/hima/api/runs/start', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fromCampaignFile: true, sessionId: f.sessionId, pack: campaignFilePackId, site: 'local', proposalId, strategy: { periodNs: 3 } }),
+    });
+    const bodyStrategyBody = await bodyStrategy.json() as any;
+    assert.equal(bodyStrategy.status, 400, JSON.stringify(bodyStrategyBody));
+    assert.match(bodyStrategyBody.error?.message ?? '', /own Goal and Strategy/, JSON.stringify(bodyStrategyBody));
+  } finally { await teardown(f); }
+});
+
+// Final whole-branch review, H10: an unknown top-level field of the PUT body is named, the same way
+// `/packs/transfer` already names one of its own.
+test('Case 19: PUT with an unknown top-level body field answers 400 naming it', async (t) => {
+  const f = await bootedFixture(t);
+  try {
+    const res = await api(f.host, f.cookie, campaignPath, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: f.sessionId, file: { schema: CAMPAIGN_SCHEMA }, bogus: true }),
+    });
+    const body = await res.json() as any;
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.match(body.error?.message ?? '', /unknown Campaign file field/, JSON.stringify(body));
   } finally { await teardown(f); }
 });

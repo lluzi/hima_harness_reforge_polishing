@@ -39,7 +39,7 @@ import { registerHimaRoutes, type LogTailView, type SiteDiscoverBody, type SiteH
 import { previewPackTransfer, applyPackTransfer } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
-import { strategyValue } from './run-arguments.js';
+import { strategyValue, strategyFrom, allowsRunArgument, badRunArgument, allowsTimeBoxMs, timeBoxMsBounds } from './run-arguments.js';
 import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteDiscoveryRequestSchema, type Site, type SiteDiscoveryResult, type SshTarget } from './sites.js';
 import { SshChannel, type Channel } from './channel.js';
 import { nodeLogTail } from './jobs.js';
@@ -862,6 +862,27 @@ export default class Hima extends Service {
       for (const name of Object.keys(overrides.inputs ?? {})) {
         if (!pack.contract.inputs.some((input) => input.name === name)) overrideUnknowns.push(`Input "${name}" is not declared by Pack ${pack.id}.`);
       }
+      // H1: a file's own Strategy and Budget overrides are held to the same checks `startRun` itself
+      // applies at admission (`strategyFrom`, and the Budget bounds every face's own argument reuses),
+      // not only refused once a Run is actually attempted. Without this, `strategy: { nope: 1 }`,
+      // `strategy: { periodNs: 9999 }` or `budget: { generations: 1000000 }` read `ready: true` here
+      // and a caller confirming this very proposal would only be told at `startRun` — or, for a
+      // generation count within `startRun`'s own unchecked path, would have it pass straight into the
+      // ledger.
+      const strategyHeld = strategyFrom(pack.contract.strategy, overrides.strategy);
+      if ('error' in strategyHeld) overrideUnknowns.push(strategyHeld.error);
+      if (overrides.budget?.timeBoxMinutes !== undefined) {
+        const ms = Math.round(overrides.budget.timeBoxMinutes * 60_000);
+        if (!allowsTimeBoxMs(ms)) {
+          overrideUnknowns.push(`invalid budget.timeBoxMinutes ${JSON.stringify(overrides.budget.timeBoxMinutes)}: converts to ${String(ms)} ms; expected ${timeBoxMsBounds.what}`);
+        }
+      }
+      if (overrides.budget?.retries !== undefined && !allowsRunArgument('retries', overrides.budget.retries)) {
+        overrideUnknowns.push(badRunArgument('retries', 'budget.retries', overrides.budget.retries));
+      }
+      if (overrides.budget?.generations !== undefined && !allowsRunArgument('generations', overrides.budget.generations)) {
+        overrideUnknowns.push(badRunArgument('generations', 'budget.generations', overrides.budget.generations));
+      }
     }
     const unknowns = [
       ...(site === undefined ? ['No Site is selected.'] : []),
@@ -944,5 +965,10 @@ export { sceneInputs } from './scene.js';
 // session workspace, and the overrides it hands Preparation. Exported here for the same reason every
 // other business format is: `test/contract/campaign-file.host.test.ts`, `tools.ts` and `remote.ts`
 // all need the one reading of what this file may say.
-export { CAMPAIGN_FILE_RELATIVE, CAMPAIGN_SCHEMA, campaignFileSchema, changedFields, emptyCampaignFile, overridesOf, parseCampaignFile, readCampaignFile, serializeCampaignFile, writeCampaignFile } from './campaign-file.js';
+export { CAMPAIGN_FILE_RELATIVE, CAMPAIGN_SCHEMA, campaignFileSchema, emptyCampaignFile, overridesOf, parseCampaignFile, readCampaignFile, serializeCampaignFile, writeCampaignFile } from './campaign-file.js';
 export type { CampaignFile, PreparationOverrides } from './campaign-file.js';
+// The pure Campaign-file diff (H8): its own leaf, with no imports of its own, so the client half can
+// import it directly without pulling `campaign-file.ts`'s `node:fs`/`yaml` machinery into a browser
+// bundle. Re-exported here too, beside `campaign-file.ts`'s own re-export, so every existing caller of
+// this bundle's surface keeps reading it from here.
+export { changedFields } from './campaign-file-diff.js';
