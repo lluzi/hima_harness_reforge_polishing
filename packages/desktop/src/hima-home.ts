@@ -99,6 +99,21 @@ export function resolveDshHome(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 /**
+ * The default DSH home of one packaged trial version.
+ *
+ * A trial upgrade must not open the previous trial's ledger under a newer schema. The old directory
+ * remains untouched for explicit migration or rollback; the new version receives a clean home. An
+ * explicitly supplied `DSH_HOME` still wins in `main.ts`, which is how a reviewed continuation uses
+ * an existing Campaign deliberately.
+ */
+export function packagedTrialDshHome(userData: string, applicationVersion: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(applicationVersion)) {
+    throw new Error(`application version ${JSON.stringify(applicationVersion)} is not safe for a trial home name`);
+  }
+  return path.join(path.resolve(userData), `trial-dsh-${applicationVersion}`);
+}
+
+/**
  * The root of this checkout, from a module that sits exactly one directory under `packages/desktop`
  * whether it is being read as `src/hima-home.ts` or run as `lib/hima-home.js`.
  *

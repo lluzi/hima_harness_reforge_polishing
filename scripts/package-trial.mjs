@@ -174,6 +174,36 @@ function smokeRelocatedHost(app) {
   } finally { rmSync(home, { recursive: true, force: true }); }
 }
 
+function smokeVersionIsolatedTrialHome(app) {
+  const userData = mkdtempSync(path.join(path.dirname(app), '.versioned-home-smoke-'));
+  const staleHome = path.join(userData, 'trial-dsh');
+  const staleLedger = path.join(staleHome, 'storages/hima_ledger.json');
+  const workspace = path.join(userData, 'workspace');
+  const stale = `${JSON.stringify({ unit: { name: 'hima_ledger', version: 26 }, global: null,
+    tables: { runs: {}, records: {} } }, null, 2)}\n`;
+  try {
+    mkdirSync(path.dirname(staleLedger), { recursive: true });
+    mkdirSync(workspace, { recursive: true });
+    writeFileSync(staleLedger, stale);
+    const launched = spawnSync(path.join(app, 'Contents/MacOS/HimaHarness'), ['--driver'], {
+      cwd: workspace,
+      encoding: 'utf8',
+      input: `${JSON.stringify({ id: 'host', op: 'host' })}\n${JSON.stringify({ id: 'quit', op: 'quit' })}\n`,
+      timeout: 60_000,
+      env: { ...process.env, HIMA_USER_DATA: userData, HIMA_WORKSPACE: workspace, DSH_HOME: '', DSH_AGENTS_HOME: '',
+        HIMA_DRIVER_DISPLAY: 'Catsights', DSH_TELEMETRY_DISABLED: '1' },
+    });
+    if (launched.status !== 0) fail(`version-isolated trial home did not boot\n${launched.stderr || launched.stdout}`);
+    if (/stored version 26|expected 27/.test(`${launched.stdout}\n${launched.stderr}`)) {
+      fail('the new trial adopted the prior trial ledger');
+    }
+    const versioned = path.join(userData, `trial-dsh-${trialVersion}`);
+    if (!existsSync(path.join(versioned, 'storages/hima_ledger.json'))) fail(`versioned trial home was not created at ${versioned}`);
+    if (readFileSync(staleLedger, 'utf8') !== stale) fail('the prior trial ledger was changed during isolated startup');
+    process.stdout.write(`package-trial: version-isolated home smoke passed (${path.basename(versioned)})\n`);
+  } finally { rmSync(userData, { recursive: true, force: true }); }
+}
+
 if (args.includes('--help') || args.includes('-h')) {
   process.stdout.write('usage: node scripts/package-trial.mjs [--output <directory>] | --verify <HimaHarness.app>\n');
 } else if (args[0] === '--check-pack-assets') {
@@ -250,6 +280,7 @@ if (args.includes('--help') || args.includes('-h')) {
       source: { sha: sourceSha, dirty, diffSha256 }, files: collect(app) };
     writeFileSync(path.join(output, 'trial-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     verify(app);
+    smokeVersionIsolatedTrialHome(app);
     smokeRelocatedHost(app);
   } finally {
     rmSync(stage, { recursive: true, force: true });

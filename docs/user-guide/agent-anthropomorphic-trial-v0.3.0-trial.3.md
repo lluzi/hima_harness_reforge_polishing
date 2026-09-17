@@ -1,4 +1,4 @@
-# HimaHarness 0.3.0-trial.2：拟人试用、持续 Campaign 与 Bug Fix 任务
+# HimaHarness 0.3.0-trial.3：拟人试用、持续 Campaign 与 Bug Fix 任务
 
 ## 任务目标
 
@@ -20,12 +20,12 @@ Coding Agent 是用户代理和产品调试者。候选发现、研究算法、C
 
 试用目录：
 
-`/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.2`
+`/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.3`
 
 其中包含：
 
 - `HimaHarness.app`：macOS Apple Silicon App；
-- `Launch HimaHarness Trial.command`：隔离启动器，窗口固定在 Catsights 副屏；
+- `launch-hima-trial.command`：Coding Agent 使用的唯一启动入口，窗口固定在 Catsights 副屏；
 - `Reference Packs/custom-cell-fmax-dtco/`：V5 Reference Pack；
 - `trial-manifest.json`、`BUILD-RECEIPT.md`、`SHA256SUMS.txt`：构建与校验事实；
 - 本任务文档的交付副本。
@@ -77,11 +77,44 @@ Coding Agent 是用户代理和产品调试者。候选发现、研究算法、C
 
 完成条件：最终报告能够从每项结论追溯到截图、录像时间点、Run/Job/record id、报告或 Git commit。
 
+## 测试能力门与唯一启动协议
+
+开始前确认你拥有以下能力：
+
+1. 能截取 Catsights 屏幕；
+2. 能在 Catsights 上移动鼠标、点击、输入文字和读取窗口；
+3. 能保持一个长期 shell/PTY session，而不是命令启动后立即关闭 stdin；
+4. 能识别窗口标题 `HimaHarness`，不把已经运行的 `DSH Desktop` 当成被测 App。
+
+缺少鼠标/键盘 GUI 控制能力时，记录 `TESTER_CAPABILITY_BLOCKED` 并停止。仅有 shell 和截图能力
+不能完成拟人 UI 试用。不得为绕过能力缺口自行创建 FIFO、拼装 driver 客户端或修改 App。
+
+唯一允许的启动方式：
+
+```bash
+cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.3"
+./launch-hima-trial.command
+```
+
+保持这个 shell session 存活。不要使用 `open HimaHarness.app`、不要直接运行 App 内二进制、不要增加
+`--driver`，也不要通过 LaunchServices、DSH Desktop 或临时 FIFO 启动。`--driver` 是仓库自动化测试
+接口，不是本次拟人试用入口。
+
+启动成功必须同时满足：
+
+- shell 输出和 `Trial Data/launcher.log` 都写明
+  `DSH_HOME: .../ui-trial-0.3.0-trial.3/Trial Data/dsh`；
+- Catsights 出现标题为 `HimaHarness` 的窗口；
+- 窗口显示 Internal Testing Notice 或产品首页，而不是启动失败页；
+- `Trial Data/dsh` 出现 profile 和 storage 文件。
+
+任一条件不满足时停止启动尝试，记录准确命令、退出码、日志和截图。不要发明第二种启动方案。
+
 ## 阶段 A：零背景黑盒试用
 
 ### A1. 冷启动和产品认知
 
-1. 双击 `Launch HimaHarness Trial.command`，确认 App 出现在 Catsights。
+1. 按“唯一启动协议”运行 `./launch-hima-trial.command`，确认四项成功条件全部成立。
 2. 接受测试提示，建立新会话。
 3. 不阅读其他手册，依次询问 HimaGuide：
    - “你是什么产品？你能帮我完成什么？”
@@ -153,7 +186,8 @@ Coding Agent 是用户代理和产品调试者。候选发现、研究算法、C
 
 ### B1. 建立隔离工作区
 
-只有黑盒检查点完成后才执行：
+只有黑盒检查点完成后才执行。先运行 `git worktree list`。若目标 worktree 已存在，进入该目录并核对
+分支与状态，不重复创建；只有目标不存在时才运行：
 
 ```bash
 git -C /Users/lluzi/code/hima_harness_reforge_polishing fetch origin
@@ -174,6 +208,8 @@ git rev-parse HEAD
 
 完成条件：目录是 `/Users/lluzi/code/hima_harness_agent_trial_fix`，分支是
 `agent/hima-trial-bugfix`，初始状态干净。分支已存在时停止创建，先检查已有 worktree，不覆盖它。
+已有 worktree 干净且没有自己的 commit 时，先执行 `git fetch origin` 和
+`git merge --ff-only origin/main`；存在修改或独有 commit 时保留现场并报告，不自行 rebase 或覆盖。
 
 ### B2. 读取开发边界
 
@@ -215,6 +251,23 @@ git rev-parse HEAD
 修复失败后重新建立根因，不连续盲改。错误修改未合入 main 时可直接 revert 自己的 commit，或丢弃
 worktree；不得用正式仓库中的文件覆盖 worktree 来制造“恢复”。
 
+Harness 或 Desktop 修复通过定向测试后，使用同一 Trial Data 验证恢复，不创建第二套用户状态：
+
+```bash
+cd /Users/lluzi/code/hima_harness_agent_trial_fix
+pnpm install --frozen-lockfile
+pnpm --filter @hima/harness run build
+pnpm --filter @hima/desktop run build
+HIMA_USER_DATA="/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.3/Trial Data" \
+DSH_HOME="/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.3/Trial Data/dsh" \
+HIMA_WORKSPACE="/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.3/Trial Workspace" \
+HIMA_DRIVER_DISPLAY="Catsights" \
+pnpm --filter @hima/desktop run start
+```
+
+运行前先通过 UI 暂停 Campaign，或等待当前 Job 到达安全边界，再关闭原 App。新进程必须读回同一
+Run id、Pack digest 和当前节点；否则把恢复失败作为新 Bug，不另起一个 Run 掩盖它。
+
 已发布 Pack 带有 `VERSION.yml` seal。Pack 方法修改必须形成新版本，保留旧 Run 和旧 Pack 证据；
 不得手写或修补 seal。Workshop 研究代码、策略变化和累积 Library 属于同一 Campaign 的正常探索，
 不等于 Pack 方法修改。
@@ -253,6 +306,11 @@ pins、PG、DCAP、约束和分析视图必须 apple-to-apple；两臂唯一逻�
 4. Side Talk 可做普通工作，但不自动取得 ownership；
 5. App 或 Coding Agent 会话重启后恢复同一个 Run，不因等待创建新 Run。
 
+启动后立即把 Campaign id、Run id、owner session、Pack digest、workspace 和当前节点写入报告。Job
+处于 working 时等待它产生实际完成/失败事实；不要重复点击、重复 begin 或启动同一节点。长 Job 每
+五分钟观察一次 UI/Job 状态即可。Coding Agent 会话即将结束时先写 checkpoint，下一会话从相同
+Trial Data 和报告恢复，不重新执行 A1-A3，不创建新 Campaign。
+
 ### C3. 研究迭代
 
 持续观察每一代：
@@ -288,7 +346,7 @@ Bug 可以恢复同一 Run；Pack 方法本身需要修改时，发布新 Pack �
 在试用目录写入 `Agent Trial Report.md`：
 
 ```markdown
-# HimaHarness 0.3.0-trial.2 Trial and Bug Fix Report
+# HimaHarness 0.3.0-trial.3 Trial and Bug Fix Report
 
 ## Verdict
 MILESTONE_PASS / LOOP_WORKS_TARGET_MISS / PARTIAL / FAIL，以及最关键理由。

@@ -77,7 +77,8 @@
     "test/contract/aes-full-graph.host.test.ts",
     "test/contract/aes-mining-view.test.ts",
     "test/contract/aes-selection-template.test.ts",
-    "test/contract/trial-package.test.ts"
+    "test/contract/trial-package.test.ts",
+    "test/contract/trial-home.test.ts"
   ],
   "desktop": [
     "test/contract/campaign-graph.desktop.test.ts",

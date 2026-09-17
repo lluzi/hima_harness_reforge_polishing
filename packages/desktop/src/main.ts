@@ -20,13 +20,19 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
+import { checkoutRoot, clearReplayOverlay, HIMA_PROFILE, packagedTrialDshHome, prepareHimaHome, resolveDshHome, writeReplayOverlay } from './hima-home.js';
 import { launchHimaHost, HostLaunchError, stopChild, type LaunchedHost } from './host-launch.js';
 import { LOCAL_SITE_NAME, seedLocalSite } from './local-site.js';
 import { startDriver, type DriverSession } from './driver.js';
 
 /** The product's name: the window title, the menu's application name, and what the dock says. */
 const APP_NAME = 'HimaHarness';
+
+function applicationVersion(): string {
+  const manifest = JSON.parse(readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as { version?: unknown };
+  if (typeof manifest.version !== 'string' || manifest.version === '') throw new Error('desktop package.json has no application version');
+  return manifest.version;
+}
 
 /** The window's own cookie jar, kept apart from anything else Electron might store. */
 const SESSION_PARTITION = 'persist:hima-workbench';
@@ -546,7 +552,7 @@ async function start(): Promise<void> {
   // A trial never adopts an existing ~/.dsh ledger. A reviewer can still opt
   // into a prepared home explicitly, which is how pilot validation is run.
   if (app.isPackaged && (env.DSH_HOME === undefined || env.DSH_HOME.trim() === '')) {
-    env.DSH_HOME = path.join(app.getPath('userData'), 'trial-dsh');
+    env.DSH_HOME = packagedTrialDshHome(app.getPath('userData'), applicationVersion());
     env.DSH_AGENTS_HOME = path.join(env.DSH_HOME, 'agents');
   }
   try {
