@@ -163,7 +163,7 @@ class CoverAndPortfolioTests(unittest.TestCase):
         self.assertEqual(1, result["commercial_gate"]["maximum_generated_arms"])
         self.assertFalse(result["claim_limits"]["fmax_prediction"])
 
-    def test_sampled_top_paths_cannot_open_the_commercial_gate(self):
+    def test_sampled_proxy_is_recorded_but_cannot_block_commercial_calibration(self):
         state = _state({"E0": -0.1})
         state["coverage_scope"] = "sampled-commercial-top-paths"
         result = evaluate_cumulative_gain({
@@ -172,11 +172,23 @@ class CoverAndPortfolioTests(unittest.TestCase):
             "actions": [_action("A", {"E0": 0.02})],
             "cell_budget": 100,
         })
-        self.assertFalse(result["commercial_gate"]["eligible"])
-        self.assertIn(
-            "endpoint-frontier-is-sampled-not-complete",
-            result["commercial_gate"]["blocking_reasons"],
-        )
+        self.assertTrue(result["commercial_gate"]["eligible"])
+        self.assertFalse(result["commercial_gate"]["free_proxy_decision_authority"])
+        self.assertEqual("sampled-commercial-top-paths",
+                         result["free_proxy_observations"]["coverage_scope"])
+        self.assertFalse(result["free_proxy_observations"]["used_for_admission"])
+
+    def test_negative_proxy_action_is_released_for_commercial_calibration(self):
+        state = _state({"E0": -0.1})
+        action = _action("NEGATIVE_PROXY", {"E0": -0.02})
+        result = evaluate_cumulative_gain({
+            "schema": "hima.lfr-cumulative-gain-request/1",
+            "design_state": state, "actions": [action], "cell_budget": 100,
+        })
+        self.assertTrue(result["commercial_gate"]["eligible"])
+        self.assertEqual(["NEGATIVE_PROXY"], result["action_portfolio"]["selected_action_ids"])
+        self.assertEqual("commercial-calibration",
+                         result["action_portfolio"]["selected_actions"][0]["admission"])
 
     def test_existing_stage_workspace_writes_the_five_internal_artifacts(self):
         state = _state({"E0": -0.1})

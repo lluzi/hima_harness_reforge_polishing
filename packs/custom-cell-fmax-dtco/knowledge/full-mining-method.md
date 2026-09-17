@@ -26,14 +26,15 @@ runs local `ecoPlace`, records placement changes and retains rollback. Baseline 
 continuations use the same Early Clock/useful-skew policy and 100 ps maximum borrowed delay.
 
 Before a complete commercial route, evaluate a hash-bound LocalWindow with the free logic/physical/STA
-views. Keep the raw factor vector; do not predict MHz. Missing path coverage or non-positive conservative
-local slack rejects the Action. A negative free proxy is a completed finding and stops E0. Commercial
-EDA is used only after a positive frozen Portfolio, then its response is written back as a separate
-`commercial-response` annotation.
+views. Keep the raw factor vector; do not predict MHz. Until a factor has demonstrated correlation with
+E0 across retained observations, it has no admission authority: record whether it succeeds under its own
+metric, then pass every logically proved, physically implementable, budgeted Action to commercial
+calibration. Bind its proxy vector, graph delta and Commercial Label to the same subgraph. Only later
+evidence may promote a factor into a decision rule.
 
-The 2026-09-16 AES closure found 389 complete structural endpoint cones, but the first placed-state CCEI
-Cell was negative on every one of 22 comparable OpenSTA start/end pairs. It is a method validation and
-negative asset, not a reusable positive candidate or Fmax claim.
+The first AES local proxy observation remains a negative asset, but its earlier `skip E0` decision was
+invalidated when the Owner removed proxy admission authority. It is calibration input, not a reusable
+positive candidate or Fmax claim.
 
 The current Campaign uses the layered Library-richness evaluation method in
 `library-richness-evaluation.md`. The older DC-probe material below remains useful for the final

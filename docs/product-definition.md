@@ -12,6 +12,8 @@
 
 AI 承担数据分析、假设与策略生成、试验组织、算法和脚本编写，以及基于结果反馈的继续探索。具体好策略不能全部预先写死。Pack/Harness 为模型提供方法骨架、工具、数据含义、约束和事实检查，降低理解与执行门槛。
 
+Library-richness calibration 阶段的免费代理只提供各自指标、局部响应、适用范围和历史成功率；在这些因子尚未通过真实 EDA Commercial Label 证明相关性前，它们不能批准或拒绝 Action。逻辑等价、物理可实施性、权限、预算、proof 和 rollback 仍是硬约束。Information Graph 将免费因子与后续商业响应绑定在同一设计 subgraph 上，用累积证据决定未来哪些因子可以晋级为决策规则。
+
 用户最新明确：一个可见的 Campaign Agent 是该 Campaign 持久 Run 的唯一业务执行主体。它读取 Pack 的参考路线与实际状态，执行节点内的研究、Coding 和工具工作，并根据结果及人类指令决定后续动作；用户可以在同一产品内新开独立 Side Talk 继续普通对话和 Coding，切换会话不改变 Run owner。Fabric 提供执行上下文、合法动作、资源/依赖约束、验收与事实记录；主产品路径不再由 Fabric 自主连续推进整张图。机械的 Job 执行、状态采集和硬约束继续由基础设施代码承担。见 [并行会话与执行主导权决定](adr/0008-visible-campaign-agent-and-side-talk.md)。
 
 模型基线为用户提供的 DeepSeek-V4.1-Flash（官方 API wire id `deepseek-flash`）。预期整体工作流可靠，模型能力差异主要体现在特定研究环节的创造力和思考深度；不能依赖只有最强闭源模型才能完成的隐性前提，也不要求最弱模型具备同等研究能力。

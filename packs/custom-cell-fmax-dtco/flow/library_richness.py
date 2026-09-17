@@ -2311,7 +2311,7 @@ def _cgo_action(value: object, known_endpoints: set[str], index: int) -> dict[st
 
 
 def optimize_action_portfolio(design_state: Mapping[str, Any], actions: Sequence[object],
-                              cell_budget: int) -> dict[str, object]:
+                              cell_budget: int, proxy_decision_authority: bool = True) -> dict[str, object]:
     """Select a stateful, endpoint-frontier Action Portfolio.
 
     The evaluator intentionally operates on timing-graph indicators.  It does
@@ -2325,6 +2325,8 @@ def optimize_action_portfolio(design_state: Mapping[str, Any], actions: Sequence
     slacks, target, path_group = _cgo_endpoint_state(design_state)
     epsilon = _number(design_state.get("epsilon_ns"), "epsilon_ns")
     normalized = [_cgo_action(value, set(slacks), index) for index, value in enumerate(actions)]
+    for index, row in enumerate(normalized):
+        row["input_order"] = index
     if len({row["action_id"] for row in normalized}) != len(normalized):
         raise RoundRequestError("actions repeat action_id")
     baseline = _cgo_snapshot(slacks, target, epsilon)
@@ -2364,7 +2366,9 @@ def optimize_action_portfolio(design_state: Mapping[str, Any], actions: Sequence
                 coverable.update(other["affected_endpoints"])
             complete_plan = current_frontier <= coverable
             admission = None
-            if not reasons and wns_gain > 0:
+            if not reasons and not proxy_decision_authority:
+                admission = "commercial-calibration"
+            elif not reasons and wns_gain > 0:
                 admission = "direct-gain"
             elif (not reasons and deficit_gain > 0 and affected_frontier and complete_plan):
                 admission = "portfolio-preparation"
@@ -2393,13 +2397,16 @@ def optimize_action_portfolio(design_state: Mapping[str, Any], actions: Sequence
             if any("cell-budget-reached" in row["rejection_reasons"] for row in evaluations):
                 stop_reason = "cell-budget-reached"
             break
-        best = max(admitted, key=lambda row: (
-            row["marginal"]["delta_wns_ns"], row["marginal"]["delta_frontier_deficit_ns"],
-            row["marginal"]["delta_tns_ns"],
-            len(row["marginal"]["affected_frontier_endpoints"]),
-            -int(row["action"].get("library_cost", 1)),
-            str(row["action"]["action_id"]),
-        ))
+        if proxy_decision_authority:
+            best = max(admitted, key=lambda row: (
+                row["marginal"]["delta_wns_ns"], row["marginal"]["delta_frontier_deficit_ns"],
+                row["marginal"]["delta_tns_ns"],
+                len(row["marginal"]["affected_frontier_endpoints"]),
+                -int(row["action"].get("library_cost", 1)),
+                str(row["action"]["action_id"]),
+            ))
+        else:
+            best = min(admitted, key=lambda row: int(row["action"]["input_order"]))
         current = best["after_slacks"]
         action = best["action"]
         selected_resources.update(action["resources"])
@@ -2419,6 +2426,10 @@ def optimize_action_portfolio(design_state: Mapping[str, Any], actions: Sequence
         "selected_actions": selected, "selected_action_ids": [row["action_id"] for row in selected],
         "selected_demand_ids": sorted(selected_demands), "cells_demanded": len(selected_demands),
         "stop_reason": stop_reason, "objective_trace": trace,
+        "selection_policy": ("free-proxy-gated-legacy"
+                             if proxy_decision_authority
+                             else "commercial-calibration-all-feasible-in-input-order"),
+        "free_proxy_decision_authority": proxy_decision_authority,
         "claim_limits": {"commercial_qor": False, "fmax_prediction": False},
     }
 
@@ -2471,17 +2482,16 @@ def evaluate_cumulative_gain(request: Mapping[str, Any]) -> dict[str, object]:
     if not isinstance(actions, list):
         raise RoundRequestError("actions must be an array")
     budget = _integer(request.get("cell_budget"), "cell_budget", positive=True)
-    portfolio = optimize_action_portfolio(state, actions, budget)
+    policy = request.get("free_proxy_policy", "observation-only")
+    if policy not in ("observation-only", "legacy-gate"):
+        raise RoundRequestError("free_proxy_policy must be observation-only or legacy-gate")
+    portfolio = optimize_action_portfolio(
+        state, actions, budget, proxy_decision_authority=(policy == "legacy-gate")
+    )
     demands = derive_cell_demands(portfolio)
-    gain_positive = portfolio["final"]["wns_ns"] > portfolio["baseline"]["wns_ns"]
-    coverage_complete = state.get("coverage_scope") == "complete"
     blockers = []
     if not portfolio["selected_actions"]:
-        blockers.append("no-positive-conservative-action-portfolio")
-    if not gain_positive:
-        blockers.append("portfolio-does-not-advance-proxy-wns")
-    if not coverage_complete:
-        blockers.append("endpoint-frontier-is-sampled-not-complete")
+        blockers.append("no-structurally-feasible-action-portfolio")
     result = {
         "schema": CGO_RESULT_SCHEMA, "status": "succeeded",
         "design_state": dict(state), "action_portfolio": portfolio,
@@ -2489,9 +2499,16 @@ def evaluate_cumulative_gain(request: Mapping[str, Any]) -> dict[str, object]:
         "evaluated_actions": list(actions), "cell_budget": budget,
         "commercial_gate": {
             "eligible": not blockers,
-            "reason": "positive-conservative-complete-frontier-portfolio" if not blockers else blockers[0],
+            "reason": ("commercial-calibration-required" if not blockers else blockers[0]),
             "blocking_reasons": blockers,
             "maximum_generated_arms": 1,
+            "free_proxy_decision_authority": False if policy == "observation-only" else True,
+        },
+        "free_proxy_observations": {
+            "coverage_scope": state.get("coverage_scope"),
+            "proxy_wns_delta_ns": round(
+                portfolio["final"]["wns_ns"] - portfolio["baseline"]["wns_ns"], 12),
+            "used_for_admission": policy == "legacy-gate",
         },
         "claim_limits": {"commercial_qor": False, "fmax_prediction": False},
     }

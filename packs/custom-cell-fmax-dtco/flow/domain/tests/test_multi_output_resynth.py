@@ -296,6 +296,20 @@ endmodule
 
 
 class MultiOutputResynthTests(unittest.TestCase):
+    def test_anchored_discovery_includes_single_output_custom_master(self):
+        netlist = '''module top(input a, input b, output y);
+  XOR2 old_name (.A(a), .B(b), .Y(y));
+endmodule
+'''
+        work = Workspace(self, netlist, allowed=("XOR2",), operation="anchored")
+        self.addCleanup(work.close)
+        work.data["anchorHints"] = [{"module": "top", "seedInstances": ["missing"],
+                                     "stableNets": ["y"], "maxTraceHops": 1}]
+        result = work.write()
+        self.assertEqual(result["status"], "succeeded", result)
+        self.assertEqual(result["selectedReplacements"][0]["master"], "XOR2")
+        self.assertEqual(result["selectedReplacements"][0]["roots"], ["y"])
+
     def test_anchored_rediscovers_renamed_function_and_excludes_outside_decoy(self):
         netlist = '''module top(input a, input b, output sum, output carry, output p, output q);
   XOR2 renamed_sum (.A(a), .B(b), .Y(sum));

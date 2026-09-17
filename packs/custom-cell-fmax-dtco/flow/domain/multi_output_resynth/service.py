@@ -517,9 +517,10 @@ def _discover_module(request, module, graph, cells, allowed, top_outputs, allowe
             overflows.append({"orderedLeaves": list(support), "size": size, "limit": max_bucket})
             continue
         admitted_pairs = set()
+        admitted_single_tables = set()
         for master_name in sorted(allowed):
             master = cells[master_name]
-            if len(master.inputs) != len(support) or len(master.outputs) != 2:
+            if len(master.inputs) != len(support) or len(master.outputs) not in (1, 2):
                 continue
             for input_nets in itertools.permutations(support):
                 pin_to_net = dict(zip(master.inputs, input_nets))
@@ -534,7 +535,13 @@ def _discover_module(request, module, graph, cells, allowed, top_outputs, allowe
                         if eval_ast(ast, env):
                             table |= 1 << assignment
                     tables.append(table)
-                admitted_pairs.add(tuple(sorted(tables)))
+                if len(tables) == 1:
+                    admitted_single_tables.add(tables[0])
+                else:
+                    admitted_pairs.add(tuple(sorted(tables)))
+        for table in admitted_single_tables:
+            for row in function_buckets.get(table, ()):
+                candidates.add(tuple(sorted(row["instances"])))
         for left_table, right_table in sorted(admitted_pairs):
             left_rows = function_buckets.get(left_table, ())
             right_rows = function_buckets.get(right_table, ())

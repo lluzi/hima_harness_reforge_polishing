@@ -37,7 +37,7 @@ class RequestError(ValueError):
 
 
 def evaluate_dig_local_window(window, candidate):
-    """Evaluate parallel local factors without inventing a global Fmax score."""
+    """Observe parallel local factors without acquiring admission authority."""
     if window.get("schema") != "hima.dig-local-window/1":
         raise RequestError("local proxy requires a DIG LocalWindow")
     required = {
@@ -56,7 +56,7 @@ def evaluate_dig_local_window(window, candidate):
         raise RequestError("local proxy metrics must be finite numbers")
     coverage = candidate["endpoint_alternative_coverage"]
     if not isinstance(coverage, dict) or not coverage or not all(coverage.values()):
-        status, reasons = "rejected", ["incomplete-endpoint-alternative-coverage"]
+        metric_success, reasons = False, ["incomplete-endpoint-alternative-coverage"]
     else:
         conservative_margin = (float(candidate["source_arc_delay_ns"])
                                - float(candidate["candidate_arc_delay_ns"])
@@ -65,17 +65,20 @@ def evaluate_dig_local_window(window, candidate):
         reasons = [] if conservative_margin > 0 else ["non-positive-local-margin"]
         if float(candidate["pin_access_risk"]) > 1.0:
             reasons.append("pin-access-risk-out-of-range")
-        status = "admitted-local-only" if not reasons else "rejected"
+        metric_success = not reasons
     conservative_margin = (float(candidate["source_arc_delay_ns"])
                            - float(candidate["candidate_arc_delay_ns"])
                            + float(candidate["removed_net_rc_ns"])
                            - float(candidate["model_uncertainty_ns"]))
     return {
         "schema": "hima.dig-local-proxy/1", "window_id": window.get("window_id"),
-        "base_graph_sha256": window.get("base_graph_sha256"), "status": status,
-        "rejection_reasons": reasons, "local_slack_lower_bound_ns": round(conservative_margin, 12),
+        "base_graph_sha256": window.get("base_graph_sha256"), "status": "observed",
+        "metric_success": metric_success, "metric_failure_reasons": reasons,
+        "decision_authority": False,
+        "local_slack_lower_bound_ns": round(conservative_margin, 12),
         "value_vector": dict(candidate),
-        "claim_limits": {"global_fmax_prediction": False, "commercial_qor": False},
+        "claim_limits": {"global_fmax_prediction": False, "commercial_qor": False,
+                         "may_block_e0": False},
     }
 
 

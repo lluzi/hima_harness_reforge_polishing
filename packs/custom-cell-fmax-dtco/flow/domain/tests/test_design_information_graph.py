@@ -18,6 +18,7 @@ from mine_patterns import classify_dig_opportunity  # noqa: E402
 from mine_timing_route import mine_dig_endpoint_opportunities  # noqa: E402
 from proxy_mapping import RequestError, evaluate_dig_local_window  # noqa: E402
 from _generation_projection import validate_drive_family  # noqa: E402
+from relative_mock_timing import replace_arc_tables, scale_cell_tables  # noqa: E402
 from design_information_graph import (  # noqa: E402
     DesignInformationGraphError,
     validate_bundle,
@@ -358,13 +359,17 @@ Other End Arrival Time 0.050
                      "endpoint_alternative_coverage": {"path0": True, "path1": True},
                      "model_uncertainty_ns": 0.005}
         result = evaluate_dig_local_window(window, candidate)
-        self.assertEqual(result["status"], "admitted-local-only")
+        self.assertEqual(result["status"], "observed")
+        self.assertTrue(result["metric_success"])
+        self.assertFalse(result["decision_authority"])
         self.assertEqual(result["local_slack_lower_bound_ns"], 0.025)
         self.assertFalse(result["claim_limits"]["global_fmax_prediction"])
         rejected = evaluate_dig_local_window(
             window, {**candidate, "endpoint_alternative_coverage": {"path0": False}}
         )
-        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(rejected["status"], "observed")
+        self.assertFalse(rejected["metric_success"])
+        self.assertFalse(rejected["claim_limits"]["may_block_e0"])
         with self.assertRaises(RequestError):
             evaluate_dig_local_window(window, {"logic_levels_removed": 1})
 
@@ -392,6 +397,31 @@ Other End Arrival Time 0.050
         for forbidden in ("write_verilog", "write_spef", "replace_cell", "swap_cell"):
             self.assertNotIn(forbidden, text)
         self.assertIn("hima.opensta-dig-paths/1", text)
+
+    def test_relative_mock_scales_full_tables_without_changing_axes(self):
+        liberty = '''library(x) {
+cell (NEW) {
+  pin (Y) { direction : output;
+    timing () { related_pin : "A";
+      cell_rise (t) { index_1("0.1, 0.2"); index_2("0.01, 0.02"); values("10, 20", "30, 40"); }
+      fall_transition (t) { index_1("0.1, 0.2"); index_2("0.01, 0.02"); values("2, 4", "6, 8"); }
+    }
+  }
+}
+}
+'''
+        scaled = scale_cell_tables(liberty, {"NEW": 0.5})
+        self.assertIn('index_1("0.1, 0.2")', scaled)
+        self.assertIn('index_2("0.01, 0.02")', scaled)
+        self.assertIn('values("5, 10", "15, 20")', scaled)
+        self.assertIn('values("1, 2", "3, 4")', scaled)
+        self.assertIn("not measured characterization", scaled)
+        replaced = replace_arc_tables(liberty, {
+            ("NEW", "Y", "A", "cell_rise"): [[1.0, 2.0], [3.0, 4.0]],
+            ("NEW", "Y", "A", "fall_transition"): [[0.2, 0.4], [0.6, 0.8]],
+        })
+        self.assertIn('values("1, 2", "3, 4")', replaced)
+        self.assertIn('values("0.2, 0.4", "0.6, 0.8")', replaced)
 
 
 if __name__ == "__main__":

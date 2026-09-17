@@ -4,6 +4,7 @@
 归属：`custom-cell-fmax-dtco` HimaPack 的 Library Function Richness 开发专线，继续由 GitHub Issue #40 跟踪。
 范围：升级现有 Framework、Pack domain tools、P&R adapter 和 Reader，不新增 Hima Runtime 组件、Fabric 动作、商业试验管理系统或对外交付件类型。
 修订：2026-09-16 纳入 OpenDB、SQLite、HAL、OpenSTA/OpenTimer、Yosys 和 LadybugDB 的技术选型；外部项目只作为现有 DIG/CCEI 深模块内可替换的 adapter/backend。
+决策修订：免费代理在完成与 E0 的相关性校准前只有观测权，没有 Action 准入/拒绝权；Mock Liberty 的简单/复杂合并分别以 source cover 全 NLDM 网格快 5%/10% 为先验。
 实施证据：[AES DIG v4 免费闭环](evidence/2026-09-16-aes-dig-v4-free-closure.md)。
 
 ## 1. 方法决定
@@ -492,13 +493,9 @@ local_slack_lower_bound
 model_uncertainty
 ```
 
-逻辑、物理、timing 等代理可以在同一个 LocalWindow 上分别运行；它们的原始指标并列保存，不先压成一个不可解释总分。准入不是“预测全局 WNS 为正”，而是：
+逻辑、物理、timing 等代理可以在同一个 LocalWindow 上分别运行；它们的原始指标并列保存，不先压成一个不可解释总分。每个代理只声明“按我的指标是否成功”、指标值、适用范围和不确定性。完成与 E0 Commercial Label 的相关性校准前，`metric_success=false` 不能拒绝 Action，`metric_success=true` 也不能证明收益。
 
-1. 逻辑等价和所有 root required time 是硬约束；
-2. 局部保守 margin 为正；
-3. 没有遗漏已知 path alternative；
-4. physical risk 在声明阈值内；
-5. Portfolio 能覆盖 primary frontier 或满足 slack-harvesting guard band。
+Action 的硬约束仍由非代理事实执行：逻辑等价、所有 outputs 有用途、source conflict、Site/权限、预算、CCEI 可实施性、proof 和 rollback。满足这些条件的 Action 在记录局部代理响应后进入 E0 calibration。Information Graph 将 proxy vector、阶段 graph delta 和 Commercial Label 绑定到同一 subgraph，后续再判断哪些因子具有稳定相关性。
 
 ## 8. Cell Demand 与 Drive Family
 
@@ -522,6 +519,14 @@ D1/D2/D4/D6/D8 是一个电气族，不是五个命名副本。Mock Library 必�
 - 不同 outputs 可声明不同 drive；
 - 与 foundry 中晶体管数量、结构和 drive 相近的 Cell 对齐量级；
 - 超出模型训练/校准范围时 fail closed。
+
+在尚无真实 characterization 的 calibration 阶段，合并 Cell 采用明确的物理先验：
+
+- 两颗 Cell 或简单 cover：candidate arc 在 source-cover 全 NLDM 网格上至少快 5%；
+- 三颗以上或复杂 cover：candidate arc 在 source-cover 全 NLDM 网格上至少快 10%；
+- 每个 slew/load 点独立计算，不从一个 transition 点推导整张表；
+- 多个 Action 共用一个 master 时，每个点取满足所有采用位置的最严格 target；
+- 当前 candidate 已经更快时不把它调慢；所有表标注为 optimistic mock，不冒充实测 characterization。
 
 ## 9. Custom Cell ECO Integrator（CCEI）
 
@@ -780,12 +785,12 @@ Action 可标记为：
 | DIG-03 | 通过 | baseline-place ↔ negative-postroute map 已生成；Opportunity region 只作为 candidate region |
 | DIG-04 | 有界通过 | OpenSTA 真实读取 Liberty/netlist/SDC/SPEF；2,000 path 上限不冒充完整；OpenTimer 未晋级 |
 | DIG-05 | 通过 | 389/389 完整结构 endpoint cones 与四象限 proposals；没有直接 admission |
-| DIG-06 | 通过并拒绝首个 Action | 同一 Cell 出现在 30 条 OpenSTA 路径；worst-per-pair 复算为 11/14 负向、均值 -0.656 ps，固定局部分支慢 7.060 ps |
+| DIG-06 | 观测链通过；旧拒绝决定已失效 | 同一 Cell 出现在 30 条 OpenSTA 路径；11/14 pair 负向等数据继续保留，但不再拥有 E0 决策权 |
 | DIG-07 | contract 通过，物化未完成 | D1～D8/非对称 output 单调性可拒绝错误 family；完整五档 Library/LC 未构建 |
 | DIG-08 | native 路径通过 | place-state anchored search 62 opportunities/50 selected；单项 CCEI apply/proof/rollback 通过；HAL 未安装且显式不晋级 |
 | DIG-09 | 配置探针通过 | Innovus 23.14 读回 useful skew=true、max delay=0.1 ns、full-flow/preCTS=true；完整 matched route 未运行 |
-| DIG-10 | 完成，结果为负 | AES free closure 形成 `opportunity -> negative local-proxy -> skip E0` lineage |
-| DIG-11 | 按门禁跳过 | 新完整 E0 job=0；旧 100-Cell 负样本作为 `commercial-response` 重放 |
+| DIG-10 | 完成观测，进入 calibration | AES free closure 形成 proxy observation；满足 proof/CCEI/预算的 Actions 全部放行 |
+| DIG-11 | 正在重新执行 | 使用 source-cover 5%/10% Mock Library、单/多输出 Portfolio 和分阶段 DIG delta 运行 matched E0 |
 | DIG-12 | Pack 内代码/Reader/文档已接入 | 保存 `place_checkpoint`；不新增 Runtime/Fabric；正式新 Pack 版本仍等待 DIG-07 与正向 Portfolio |
 
 上述“通过”只限定于对应机制出口。它不把免费代理负结果、旧商业结果或小型 CCEI seam
