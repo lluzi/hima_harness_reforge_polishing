@@ -20,6 +20,7 @@ from mine_timing_route import (  # noqa: E402
 )
 from mine_patterns import evaluate_cover_opportunity  # noqa: E402
 from library_richness import (  # noqa: E402
+    _free_factor_assessment,
     derive_cell_demands,
     evaluate_cumulative_gain,
     optimize_action_portfolio,
@@ -90,6 +91,16 @@ class EndpointFrontierTests(unittest.TestCase):
 
 
 class CoverAndPortfolioTests(unittest.TestCase):
+    def test_free_factor_assessment_is_scenario_order_independent(self):
+        scenario = lambda value: {"pairwise_relation": {"comparisons": [
+            {"metric": "F1.levels_removed", "relation": value},
+            {"metric": "F2.mapped_instance_count", "relation": "improved"},
+            {"metric": "F3.worst_delay_indicator_ps", "relation": "regressed"},
+        ]}}
+        forward = {"optimistic": scenario("improved"), "conservative": scenario("equal")}
+        reverse = dict(reversed(list(forward.items())))
+        self.assertEqual(_free_factor_assessment(forward), _free_factor_assessment(reverse))
+
     def test_baseline_payload_identity_uses_reader_newline_contract(self):
         document = {"schema": "lfr-baseline-evaluation/1", "status": "succeeded"}
         expected = __import__("hashlib").sha256(

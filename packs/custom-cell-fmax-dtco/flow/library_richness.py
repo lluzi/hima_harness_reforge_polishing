@@ -1053,8 +1053,10 @@ def _free_factor_assessment(
     for layer in FREE_FACTOR_LAYERS:
         rows = [
             {"scenario": scenario_name, **comparison}
-            for scenario_name, scenario in scenarios.items()
-            for comparison in scenario.get("pairwise_relation", {}).get("comparisons", [])
+            for scenario_name in sorted(scenarios)
+            for comparison in sorted(
+                scenarios[scenario_name].get("pairwise_relation", {}).get("comparisons", []),
+                key=lambda row: (str(row.get("metric")), str(row.get("relation"))))
             if comparison.get("metric", "").startswith(layer + ".")
         ]
         relations = {row["relation"] for row in rows}
