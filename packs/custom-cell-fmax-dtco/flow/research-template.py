@@ -3,7 +3,8 @@
 from pathlib import Path
 import sys
 
-FLOW = Path(sys.argv[1]).resolve() / "flow"
+WORKSPACE_ARG = 2 if len(sys.argv) >= 2 and sys.argv[1] == "--lfr-residual" else 1
+FLOW = Path(sys.argv[WORKSPACE_ARG]).resolve() / "flow"
 sys.path.insert(0, str(FLOW))
 from ai_research_runner import run, run_residual_research  # noqa: E402
 

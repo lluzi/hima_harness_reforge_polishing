@@ -156,6 +156,9 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
     ['full-mining-method.md', 'library-richness-evaluation.md', 'active-frontier-v5.md']);
   assert.deepEqual(workshop.argv, ['/usr/bin/python3', '${ENTRY}', '--lfr-residual', '${WORKSPACE}',
     '${WORKSPACE}/flow/research/research.json']);
+  assert.match(await readFile(path.join(packDir, 'flow/research-template.py'), 'utf8'),
+    /WORKSPACE_ARG = 2 if .*--lfr-residual.* else 1/,
+    'the residual entry resolves WORKSPACE after the mode flag');
   assert.ok(loaded.contract.workspace.copy.includes('library_richness.py'));
   assert.ok(graph.nodes.some((node) => node.id === 'research-candidates'));
   assert.ok(graph.nodes.some((node) => node.id === 'read-research-selection'));
