@@ -1,147 +1,140 @@
-# HimaHarness 0.3.0-trial.2：零背景 Agent 拟人试用任务
+# HimaHarness 0.3.0-trial.2：拟人试用、持续 Campaign 与 Bug Fix 任务
 
-## 你的角色
+## 任务目标
 
-你是一名第一次接触 HimaHarness 的 AI Coding Agent。把自己当作一名熟悉芯片设计和命令行、
-但从未看过 HimaHarness 源码、架构文档或内部测试的高级工程师。你的任务是实际使用产品，判断
-它能否自然地帮助你理解产品、安装 Pack、建立 Site、准备并启动一个 Campaign、观察运行状态。
+你是一名第一次接触 HimaHarness、具备一般调试能力的 AI Coding Agent。你要完成三个连续阶段：
 
-这是一项产品试用，不是源码审查。先通过可见界面和 HimaGuide 解决问题。只有界面路径已经失败、
-错误证据已经保存时，才可以查看日志或附录中的恢复卡。不要修改产品仓库、Pack 或 App bundle。
+1. 像真实的新用户一样，在不看源码的情况下理解和试用产品；
+2. 使用 HimaHarness、DeepSeek-V4.1-Flash 和 V5 Reference Pack 持续推进一个真实 Campaign；
+3. 产品 Bug 阻碍 Campaign 时，只在你自己的 Git worktree 中定位、修复、验证并提交。
 
-## 你拿到的材料
+业务目标是在 `aes_cipher_top` 上通过累积定制 Standard Cell Library，使 matched post-route
+Fmax 提升达到或超过 5%。这是本任务的核心检验：廉价开源模型能否在 Hima Harness 与 Pack 的
+脚手架下不断分析真实反馈、改进研究算法、扩充 Library，并代替一个跨领域小团队推进设计上限。
 
-交付目录：
+Coding Agent 是用户代理和产品调试者。候选发现、研究算法、Cell 方案、免费代理评估、商业 EDA
+验证和反馈迭代必须通过 Hima Harness 中可见的 Campaign Agent 与 Pack 执行。不要在产品之外手工
+完成研究，再把答案交给 Hima；那不能检验产品能力。
+
+## 交付材料
+
+试用目录：
 
 `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.2`
 
 其中包含：
 
-- `HimaHarness.app`：待试用的 macOS Apple Silicon App；
-- `Launch HimaHarness Trial.command`：隔离启动器，窗口固定打开在 Catsights 副屏；
-- `Reference Packs/custom-cell-fmax-dtco/`：待安装的 V5 Reference Pack；
-- `trial-manifest.json` 和 `SHA256SUMS.txt`：构建身份与文件校验；
-- 本文档的交付副本。
+- `HimaHarness.app`：macOS Apple Silicon App；
+- `Launch HimaHarness Trial.command`：隔离启动器，窗口固定在 Catsights 副屏；
+- `Reference Packs/custom-cell-fmax-dtco/`：V5 Reference Pack；
+- `trial-manifest.json`、`BUILD-RECEIPT.md`、`SHA256SUMS.txt`：构建与校验事实；
+- 本任务文档的交付副本。
 
-你只得到以下业务信息：
+业务入口：
 
-- 目标任务：在 `aes_cipher_top` 上通过累积定制 Standard Cell Library 推进最大频率；
-- 商业目标：matched post-route Fmax 提升 5%；
 - EDA Site SSH：`luzi@192.168.50.41`；
-- 推荐 Campaign workspace root：`/data/eda/project/hima_harness/polishing-runs`；
-- 本机已有可用的 OpenSSH 身份，不需要索要密码。
+- 推荐 workspace root：`/data/eda/project/hima_harness/polishing-runs`；
+- 目标 design：`aes_cipher_top`；
+- 目标：matched post-route Fmax improvement `>= 5%`；
+- 本机已有可用 OpenSSH 身份，不需要索要密码；
+- Hima product model 使用 App 当前配置的 DeepSeek-V4.1-Flash，不自行更换模型。
 
-## 预算与停止条件
+## 两种身份与一条红线
 
-最多使用 45 分钟和一次主 Agent 会话。Campaign 设置为一代、零重试、10 分钟 time box。
-本次评估产品使用体验，不要求跑完整商业 P&R，也不以达到 5% Fmax 作为通过条件。
+### 黑盒试用身份
 
-满足以下任一条件时停止继续尝试，保留现场并进入报告：
+阶段 A 只操作 App、HimaGuide 和可见 Campaign。此时不读源码、不改配置文件、不运行内部测试、
+不使用恢复卡。先保留一个真实新用户会遇到的完整路径。
 
-1. 相同界面动作连续失败两次，且错误信息没有提供新的可执行建议；
-2. 需要修改产品源码、Pack 内容或手工伪造 Site 文件才能继续；
-3. Campaign 已启动，并且你已经观察到完整运行图和至少一次真实状态变化；
-4. 10 分钟 Campaign time box 已用完；
-5. App 崩溃、无响应超过 90 秒，或无法安全停止正在运行的 Campaign。
+### 调试身份
 
-完成条件：你必须交付一份按时间排序的试用记录、关键截图或录像、恢复卡是否使用、最终结论和
-问题清单。只描述实际看见或实际执行的事实。
+完成阶段 A 的黑盒检查点后，产品 Bug 阻碍 Campaign 才进入阶段 B。先保存错误现场，再读取源码。
+所有代码修改、构建、测试和 commit 必须发生在独立 worktree：
+
+`/Users/lluzi/code/hima_harness_agent_trial_fix`
+
+### 红线
+
+以下路径保持只读：
+
+- `/Users/lluzi/code/hima_harness_reforge_polishing` 的 `main` checkout；
+- `/Users/lluzi/code/hima_harness_reforge_claude`；
+- `/Users/lluzi/code/himaharness`；
+- 已安装的 Reference Pack、正式 App bundle和已有 Campaign 证据。
+
+真实 Site 上不删除文件、不修改 licence server、网络、共享工具安装或他人作业。任何删除需求都作为
+阻塞报告。允许的写入只在 Campaign workspace、隔离 Trial Data 和你的 worktree 内。
 
 ## 证据纪律
 
-- 所有 App 操作和录制都在 Catsights 副屏进行，不占用主屏。
-- 从启动前开始录屏，直到 Campaign 状态被观察并安全暂停或停止。
-- 每个卡点记录：时间、当时页面、你的意图、执行动作、界面反馈、你下一步为什么这样选择。
-- 截图至少覆盖：首次界面、HimaGuide 产品回答、Pack 安装审阅、Campaign Configuration、
-  完整运行图、一个节点详情、停止后的状态。
-- 将“界面显示”“Agent 回答”“实际运行事实”分开记录。Agent 的自述不能替代运行状态。
-- 产品未解释清楚时，记录为发现；不要用你对源码或 Hima 内部设计的猜测替产品辩护。
+- App 操作和录制全部在 Catsights 副屏进行。
+- 从首次启动开始录屏。长时间 EDA 阶段可以停止连续录像，但每次状态检查和人工介入需要录像。
+- 分开记录“界面事实”“Agent 自述”“Ledger/Job/Reader/Judge 事实”“商业 EDA 事实”。
+- 每个卡点记录时间、页面、意图、动作、反馈、下一步依据。
+- Fmax、WNS、TNS、adoption、route retention 和 PPA 只引用实际报告或 final database Reader。
+- 失败结果、无收益候选、新瓶颈、拒绝和修复前现场都保留；不覆盖失败记录。
+- 一次商业失败不是产品 Bug。先检查 Pack 是否把 frontier response 反馈给下一轮研究。
 
-## 步骤 1：冷启动和产品认知
+完成条件：最终报告能够从每项结论追溯到截图、录像时间点、Run/Job/record id、报告或 Git commit。
+
+## 阶段 A：零背景黑盒试用
+
+### A1. 冷启动和产品认知
 
 1. 双击 `Launch HimaHarness Trial.command`，确认 App 出现在 Catsights。
-2. 接受应用内的测试提示，建立一个新会话。
-3. 不阅读其他手册，依次自然地询问 HimaGuide：
+2. 接受测试提示，建立新会话。
+3. 不阅读其他手册，依次询问 HimaGuide：
    - “你是什么产品？你能帮我完成什么？”
    - “什么是 HimaPack、Site 和 Campaign？它们之间是什么关系？”
    - “你现在带了哪些 Pack？我第一次使用应该怎么开始？”
-4. 观察回答是否直接、是否扫描无关代码、是否给出当前安装状态和可执行下一步。
+4. 观察回答是否直接，是否检索无关代码，是否说明当前安装状态和下一步。
 
-完成条件：三类问题都得到可理解的回答；你能用自己的话写出 HimaHarness 的用途和下一步。如果
-回答含糊、长时间检索或声称不存在的能力，保存证据后继续，不替它补答案。
+完成条件：你仅根据产品回答，能够写出 HimaHarness 的用途、三个核心概念和下一项可执行动作。
 
-## 步骤 2：安装并理解 Reference Pack
+### A2. 安装并理解 Reference Pack
 
 1. 打开对话旁的 **Campaign** 工作区。
-2. 在 **Campaign configuration** 的 Pack 区域使用 **Install a Pack**。
-3. 选择交付目录中的 `Reference Packs/custom-cell-fmax-dtco`。
-4. 在确认安装前阅读审阅页：检查 Pack id、版本、知识文件、方法文件和目标目录。
-5. 确认安装，回到 Configuration，选择 `custom-cell-fmax-dtco`。
-6. 先阅读 Pack 标题、状态和迷你运行图，再问 HimaGuide：
+2. 在 **Campaign configuration** 中使用 **Install a Pack**。
+3. 选择 `Reference Packs/custom-cell-fmax-dtco`。
+4. 安装前阅读文件审阅：Pack id、版本、知识、方法和目标目录。
+5. 确认安装，选择 `custom-cell-fmax-dtco`。
+6. 阅读标题、状态和迷你运行图，再询问：
    - “这个 Pack 接受什么输入、交付什么结果？”
-   - “它如何在失败后继续研究，而不是重复自动化流程？”
-   - “现有 V5 证据已经证明了什么，又没有证明什么？”
+   - “它如何在失败后继续研究，而不是重复固定自动化？”
+   - “现有 V5 证据证明了什么，又没有证明什么？”
 
-完成条件：安装成功；Pack 出现在选择器；版本为 `5.0.0`；你能看到方法图，并能区分 5% 目标、
-既有负结果和下一 Campaign 的研究任务。审阅页或 HimaGuide 隐藏这些边界时记录问题。
+完成条件：Pack 版本为 `5.0.0`；方法图可见；你能区分 5% Goal、既有 Fmax 负结果、次级 PPA
+收益和下一 Campaign 的剩余 Active Frontier。
 
-## 步骤 3：让产品建立 Site
+### A3. 让产品建立 Site
 
-1. 先只把 SSH destination `luzi@192.168.50.41` 和 workspace hint
-   `/data/eda/project/hima_harness/polishing-runs` 填入 Site 区域。
-2. 使用 **Discover with HimaGuide**，等待发现完成。
-3. 阅读发现结果：服务器身份、可用资源、工具名称、workspace 以及仍缺失的 Pack 输入。
+1. 只输入 SSH destination `luzi@192.168.50.41` 和 workspace hint
+   `/data/eda/project/hima_harness/polishing-runs`。
+2. 使用 **Discover with HimaGuide**。
+3. 阅读服务器、资源、工具和缺失输入的发现结果。
 4. 告诉 HimaGuide：
    “我要在这个 Site 上运行刚安装的 Pack，目标 design 是 aes_cipher_top。请主动检查还缺少哪些
-   输入，能自行发现的请自行发现；确实无法判断时一次只问我一个关键问题。”
-5. 优先让 HimaGuide 更新同一份 Campaign configuration。不要一开始手工填写全部路径。
+   输入；能自行发现的请自行发现，确实无法判断时一次只问我一个关键问题。”
+5. 优先让 HimaGuide 更新同一份 Campaign configuration，不预先手填全部路径。
 
-完成条件：App 保存一个可再次选择的 SSH Site；Configuration 清楚区分已绑定、未绑定和失败输入；
-HimaGuide 能推进准备，或明确指出一个具体且可行动的阻塞。若 10 分钟后仍无法形成可执行动作，
-保存证据并进入“恢复卡”。
+完成条件：Site 可再次选择；已绑定、未绑定、失败和 stale 状态清楚；HimaGuide 能推进准备，或明确
+提出一个可行动阻塞。经过一次完整自然尝试仍无法推进时，先记录 `ONBOARDING_BLOCKED`，再读取恢复卡。
 
-## 步骤 4：准备 Campaign
+### A4. 黑盒检查点
 
-在 Configuration 中核对并完成：
+在读取源码或修 Bug 前，先在 `Agent Trial Report.md` 写入：
 
-- Pack：`custom-cell-fmax-dtco`；
-- Site：刚发现并保存的 SSH Site；
-- Goal：`target_period_ns = 0.5`、`target_fmax_improvement_pct = 5`；
-- Strategy：保留 Pack 默认值，除非 HimaGuide根据现场证据提出理由；
-- Budget：generation limit `1`、retry allowance `0`、time box `10` 分钟；
-- Inputs：所有必需项均显示已绑定；
-- Knowledge：Pack 自带知识处于 ready；
-- Readiness：没有未解释的 unknown、stale discovery 或 Permit 阻塞。
+- 产品和 Pack 的理解；
+- Pack 安装、Site discovery 和 readiness 的实际结果；
+- 至少一张首次界面、Pack 审阅和 Configuration 截图；
+- 所有已发现问题；
+- 是否打开恢复卡。
 
-不要仅因为 **Confirm & start Campaign** 按钮可点就确认。先让 HimaGuide用自然语言复述将要运行的
-任务、唯一业务变量、预算、Site 和停止边界，再对照页面事实。
+完成条件：即使后续修复改变了产品，仍能重建原始用户经历。
 
-完成条件：Configuration 显示 ready；HimaGuide 的复述与页面一致；你知道确认后会启动什么。如果
-必须查看恢复卡才能达到 ready，在报告中把“自然准备失败”和“恢复后可运行”分别记录。
+## 恢复卡：仅在 A3 已记录 ONBOARDING_BLOCKED 后读取
 
-## 步骤 5：启动并观察 Campaign
-
-1. 点击 **Confirm & start Campaign** 一次。
-2. 确认同一个 Campaign 只有一个持久 Run，没有创建隐藏的第二个 Run。
-3. 在 Live view 中观察：
-   - 完整 reference graph，而不是只显示已执行节点；
-   - Goal、当前节点、节点状态、分支、回访边和注意事项；
-   - 至少一个节点从 awaiting/begun/working/ready 等状态发生真实变化；
-   - 点击节点后能看到其类型、输入、输出、执行事实或阻塞原因。
-4. 回到对话，询问 Campaign Agent：“你现在执行到哪里？依据是什么？下一步准备做什么？”
-5. 打开一个 Side Talk，进行一句与 Campaign 无关的普通 coding 对话，确认 Campaign 仍可独立运行，
-   Side Talk 没有自动取得 Campaign ownership。
-6. 在达到本次观察目标后，通过 UI 请求暂停或停止。确认运行图更新，并确认 Campaign Agent 在最近
-   一次回复后承认了控制请求。
-
-完成条件：完整图、状态变化、节点详情、对话解释、Side Talk 隔离和人工控制均有实际证据。Campaign
-若在首次业务节点前失败，也要保存节点和错误详情；不得把“Run 已创建”写成“Campaign 已成功运行”。
-
-## 恢复卡：只在步骤 3 明确卡住后读取
-
-使用恢复卡前，在记录中写下 `RECOVERY_CARD_OPENED`、打开时间、阻塞原因和已尝试动作。
-
-预验证输入如下：
+打开前记录 `RECOVERY_CARD_OPENED`、时间、阻塞原因和已尝试动作。
 
 | 输入 | 值 |
 | --- | --- |
@@ -154,46 +147,180 @@ HimaGuide 能推进准备，或明确指出一个具体且可行动的阻塞。�
 | `toolStack` | `/data/eda/project/hima_harness/polishing-inputs/aes-v5-reference-20260917/tools.json` |
 | `workspaceRoot` | `/data/eda/project/hima_harness/polishing-runs` |
 
-把这些值填入现有 Campaign configuration，不创建另一套 Site 管理方式。恢复卡只帮助区分现场发现问题
-和后续 Campaign 问题；使用它不能把自然 onboarding 判为通过。
+把值填入现有 Campaign configuration。使用恢复卡不能把自然 onboarding 判为通过。
+
+## 阶段 B：独立 Worktree Bug Fix
+
+### B1. 建立隔离工作区
+
+只有黑盒检查点完成后才执行：
+
+```bash
+git -C /Users/lluzi/code/hima_harness_reforge_polishing fetch origin
+git -C /Users/lluzi/code/hima_harness_reforge_polishing worktree add \
+  -b agent/hima-trial-bugfix \
+  /Users/lluzi/code/hima_harness_agent_trial_fix \
+  origin/main
+```
+
+进入 worktree 后核对：
+
+```bash
+pwd
+git branch --show-current
+git status --short
+git rev-parse HEAD
+```
+
+完成条件：目录是 `/Users/lluzi/code/hima_harness_agent_trial_fix`，分支是
+`agent/hima-trial-bugfix`，初始状态干净。分支已存在时停止创建，先检查已有 worktree，不覆盖它。
+
+### B2. 读取开发边界
+
+在 worktree 中先读：
+
+- `AGENTS.md`；
+- `docs/product-definition.md`；
+- `docs/agents/polishing-discipline.md`；
+- `docs/agents/model-policy.md`；
+- `docs/testing-strategy.md`。
+
+现有模块归属：
+
+| 问题 | 首先检查 |
+| --- | --- |
+| Desktop 启动、打包、窗口 | `packages/desktop/src/` |
+| Campaign UI、完整图、Side Talk | `packages/harness/src/client/` |
+| Pack 安装与升级 | `packages/harness/src/release.ts`、`PackOwnerPanel.tsx` |
+| Site discovery | `packages/harness/src/sites.ts`、`channel.ts`、`ConfigurationPage.tsx` |
+| Campaign configuration | `campaign-file.ts`、`workbench.ts`、`ConfigurationPage.tsx` |
+| Agent 执行与恢复 | `fabric.ts`、`node-turns.ts`、`recovery.ts`、`workshop.ts` |
+| DTCO 方法与研究反馈 | `packs/custom-cell-fmax-dtco/` |
+
+完成条件：每个 Bug 在修改前写明复现、实际/期望、根因证据、归属文件和最低测试。
+
+### B3. 修复纪律
+
+对每个阻塞 Bug 单独执行：
+
+1. 在 worktree 复现，不以原 App 的一次现象直接猜根因；
+2. 先运行能推翻假设的最低成本测试；
+3. 在现有模块内做最小修改；
+4. 运行相关 L0/L1/L2；涉及窗口时在 Catsights 运行一条定向 L3；
+5. 重新执行原用户路径；
+6. 一个 Bug 一个本地 commit，记录测试与限制；
+7. 只推送自己的分支：`git push -u origin agent/hima-trial-bugfix`；
+8. 不 push、merge、reset 或 rebase `main`，不创建 Release 或 tag。
+
+修复失败后重新建立根因，不连续盲改。错误修改未合入 main 时可直接 revert 自己的 commit，或丢弃
+worktree；不得用正式仓库中的文件覆盖 worktree 来制造“恢复”。
+
+已发布 Pack 带有 `VERSION.yml` seal。Pack 方法修改必须形成新版本，保留旧 Run 和旧 Pack 证据；
+不得手写或修补 seal。Workshop 研究代码、策略变化和累积 Library 属于同一 Campaign 的正常探索，
+不等于 Pack 方法修改。
+
+### B4. Bug 与研究负结果的分界
+
+以下通常是产品 Bug：崩溃、状态不一致、Site 明明可用却无法保存、Pack 安装失败、图与 Ledger 不符、
+停止无效、Reader 不能读取实际工具格式、反馈没有进入下一研究轮、同一动作产生隐藏 Run。
+
+以下本身不是 Bug：某轮没有 Fmax 收益、候选未采用、新 endpoint 接管、免费因子与 E0 不相关、算法
+假设被真实结果否定。遇到这些情况，应让 Campaign Agent 读取保留证据并生成下一轮研究算法。
+
+## 阶段 C：持续 Fmax Campaign
+
+### C1. 准备
+
+Configuration 必须满足：
+
+- Pack：`custom-cell-fmax-dtco`；
+- Site：已发现并保存的 SSH Site；
+- Goal：`target_period_ns = 0.5`、`target_fmax_improvement_pct = 5`；
+- Strategy：从 Pack 默认值开始，后续只由有证据的 Campaign 决策改变；
+- Budget：time box `360` 分钟、generation limit `8`、retry allowance `1`；
+- Inputs：全部已绑定；Knowledge：ready；Readiness：无未解释阻塞；
+- 模型：DeepSeek-V4.1-Flash；
+- Site job cap：不超过 5；每轮新 Cell 不超过 Pack 声明的 50。
+
+确认前，让 HimaGuide 复述 Goal、唯一业务变量、matched 条件、预算和停止条件。设置、工具、floorplan、
+pins、PG、DCAP、约束和分析视图必须 apple-to-apple；两臂唯一逻辑变量是累积 Custom Library。
+
+### C2. 启动与所有权
+
+1. 点击 **Confirm & start Campaign** 一次；
+2. 确认一个 Campaign 对应一个持久 Run；
+3. Campaign Agent 是执行 owner，Coding Agent 只观察和处理产品 Bug；
+4. Side Talk 可做普通工作，但不自动取得 ownership；
+5. App 或 Coding Agent 会话重启后恢复同一个 Run，不因等待创建新 Run。
+
+### C3. 研究迭代
+
+持续观察每一代：
+
+1. 机会挖掘覆盖完整 reg2reg Active Frontier、替代路径、dominator/reconvergence、逻辑深度、物理距离、
+   load/slew、单/多输出与非瓶颈 PPA recovery；
+2. F0 检查功能和生成可行性；F1/F2/F3 只报告免费指标，不替代 E0 决策；
+3. 一轮候选形成一个累积 Library，旧 Cell 与失败证据不删除、不重复生成；
+4. 商业验证读取综合 adoption、route retention、endpoint-complete timing graph 和 matched PPA；
+5. 未达到 5% 时，确认 commercial frontier response 回到下一轮 Workshop；
+6. 下一轮必须针对 remaining frontier、新 entrant、regression 或 adoption failure 形成多个有依据的新假设；
+7. 不把 240 次动作预算解释成 240 条商业 P&R，不并行铺开算法竞赛。
+
+每次 E0 后记录：Library id、累计 Cell 数、实际 adoption/retention、WNS/TNS/Fmax、area/wire/power、
+resolved endpoints、new entrants、remaining frontier、下一轮问题和证据引用。
+
+### C4. 停止条件
+
+持续到以下真实 ending 之一：
+
+1. **Goal met**：matched final database 证明 Custom Cell 在综合采用并在 route 后保留，Fmax 提升
+   `>= 5%`；
+2. **Research converged**：多轮后无新的有证据方向，Pack 按声明收敛；
+3. **Budget exhausted**：6 小时、8 代、Cell、Site 或商业 observation 预算用完；
+4. **Hard blocker**：必要输入、工具、Reader、证据身份或产品 Bug 无法在本 worktree 内安全解决。
+
+不要在“看到完整图”“完成一轮”或“一次 E0 失败”时结束。代码修复后优先恢复原 Run。Harness/Desktop
+Bug 可以恢复同一 Run；Pack 方法本身需要修改时，发布新 Pack 版本并开启新 Campaign，旧 Run 作为失败
+资产保留，不能伪装成同一方法的连续结果。
 
 ## 最终报告
 
-在交付目录新建 `Agent Trial Report.md`，使用以下结构：
+在试用目录写入 `Agent Trial Report.md`：
 
 ```markdown
-# HimaHarness 0.3.0-trial.2 Agent Trial Report
+# HimaHarness 0.3.0-trial.2 Trial and Bug Fix Report
 
 ## Verdict
-PASS / PARTIAL / FAIL，以及一句最关键的理由。
+MILESTONE_PASS / LOOP_WORKS_TARGET_MISS / PARTIAL / FAIL，以及最关键理由。
 
 ## Environment
-App version、manifest source SHA、macOS、显示器、开始/结束时间、实际模型、总 token/时间（可得时）。
+App、manifest SHA、macOS、显示器、模型、Site、开始/结束时间、token/时间（可得时）。
 
-## Journey
-按时间记录每个用户意图、界面动作、可见结果和下一步判断。
+## Black-box journey
+首次认知、Pack 安装、Site discovery、readiness；恢复卡使用前后的事实分开记录。
 
-## Product understanding
-只根据 App 和 HimaGuide，说明产品、Pack、Site、Campaign 和 Agent 的关系。
+## Campaign identity
+Campaign/Run id、Pack version/digest、Goal、初始 Strategy、预算、workspace、owner。
 
-## Milestone evidence
-Pack 安装、Site 建立、Configuration ready、Campaign 启动、完整图、状态变化、节点详情、Side Talk、停止通知。
+## Campaign generations
+逐代记录 Library、研究假设、免费指标、E0、frontier response、下一轮决策和证据。
 
-## Recovery
-是否打开恢复卡；如果打开，说明自然流程卡在哪里，恢复后走到了哪里。
+## Final commercial result
+matched identity、adoption、route retention、WNS/TNS/Fmax/PPA、endpoint frontier、claim limits。
 
-## Findings
-每项包含 severity、复现步骤、期望、实际、截图/录像时间点、是否阻塞。
+## Bugs and fixes
+每项列出复现、根因、修改文件、commit、测试、回滚方法、是否已推送 agent 分支。
 
 ## Trust assessment
-哪些结论由运行事实支持；哪些只是 Agent 自述；是否出现幻觉、隐藏动作或无法解释的权限请求。
+区分 UI、Agent 自述、Ledger、Reader/Judge 和商业 EDA 事实；记录幻觉、隐藏动作和权限异常。
 
 ## Recommendation
-是否建议交给一名不了解 HimaHarness 的芯片工程师试用，以及发布前最需要修复的三项问题。
+能否交给不了解 HimaHarness 的芯片工程师，以及 main 应 cherry-pick 的 commits。
 ```
 
-判定标准：
+判定：
 
-- **PASS**：不使用恢复卡即可安装 Pack、建立 Site、达到 ready、启动 Campaign，并完成步骤 5 的全部观察；
-- **PARTIAL**：使用恢复卡后完成 Campaign 观察，或一个非破坏性问题需要绕行；
-- **FAIL**：无法安装 Pack、无法建立 Site/ready、无法安全启动/停止、完整图不可用，或必须修改产品/Pack。
+- **MILESTONE_PASS**：不依赖产品外人工研究，Hima Campaign 以有效 matched E0 达到或突破 5%；
+- **LOOP_WORKS_TARGET_MISS**：自主反馈与多轮研究真实运行并积累知识，但预算内未达到 5%；
+- **PARTIAL**：依赖恢复卡或 worktree 修复后才运行，且研究闭环未完整结束；
+- **FAIL**：无法安装/准备/启动/恢复，完整图或所有权错误，证据不可信，或必须绕开 Hima 完成研究。
