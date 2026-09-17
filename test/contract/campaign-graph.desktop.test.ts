@@ -115,7 +115,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     await browser.wait(`!!document.querySelector('[data-hima-control="config-goal-target_period_ns"]')`);
     // The real title, never the stale one an earlier draft of this test carried (#41 task 7): the
     // Pack section states this Pack's own words, read fresh off its contract.
-    assert.ok((await d.wait('config-pack', 'Portable custom Cell Fmax Campaign with matched physical implementation', 10_000)).ok);
+    assert.ok((await d.wait('config-pack', 'V5 Active Frontier custom Cell Fmax reference Campaign', 10_000)).ok);
     assert.ok((await d.fill('config-goal-target_period_ns', '0.5')).ok);
     assert.ok((await d.fill('config-goal-target_fmax_improvement_pct', '5')).ok);
     assert.ok((await d.fill('config-site', 'local')).ok);
@@ -148,10 +148,10 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
 
     await browser.mark('[aria-label="New session"]', 'new-side-talk'); assert.ok((await d.click('new-side-talk')).ok);
     await browser.wait(`document.body.innerText.includes('New session') && [...document.querySelectorAll('[contenteditable="true"]')].some(e=>e.getBoundingClientRect().height>0)`);
-    await browser.mark('[contenteditable="true"]', 'side-composer'); assert.ok((await d.click('side-composer')).ok);
+    await browser.evaluate(`(() => { const e=[...document.querySelectorAll('[contenteditable="true"]')].find(e=>e.getBoundingClientRect().height>0); if(!e) throw new Error('no visible Side Talk composer'); e.setAttribute('data-hima-control','side-composer'); })()`);
+    assert.ok((await d.click('side-composer')).ok);
     await browser.send('Input.insertText', { text: 'Use ordinary coding to write a short Side Talk note, then tell me what you did.' });
-    await browser.wait(`!document.querySelector('[aria-label="Send message"]')?.disabled`);
-    await browser.mark('[aria-label="Send message"]', 'send-side-talk');
+    await browser.evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.getBoundingClientRect().height>0 && /start|send/i.test([e.textContent,e.getAttribute('aria-label')].join(' '))); if(!e) throw new Error('no visible Side Talk send control'); e.setAttribute('data-hima-control','send-side-talk'); })()`);
     assert.ok((await d.click('send-side-talk')).ok);
     await browser.wait(`document.body.innerText.includes('Side Talk completed ordinary conversation and coding')`, 15_000);
     // Task 8: the Side Talk conversation owns no Run of its own — no session-header chip for it,
@@ -176,9 +176,10 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     // owns the Run, not to whichever conversation happened to be open last.
     await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]') !== null`, 10_000);
     assert.ok((await d.click('open-workbench')).ok);
-    await browser.mark('[contenteditable="true"]', 'owner-composer'); assert.ok((await d.click('owner-composer')).ok);
+    await browser.evaluate(`(() => { const e=[...document.querySelectorAll('[contenteditable="true"]')].find(e=>e.getBoundingClientRect().height>0); if(!e) throw new Error('no visible owner composer'); e.setAttribute('data-hima-control','owner-composer'); })()`);
+    assert.ok((await d.click('owner-composer')).ok);
     await browser.send('Input.insertText', { text: `For Run ${runId}, hand off Campaign ownership to target ${sideSession} now.` });
-    await browser.wait(`!document.querySelector('[aria-label="Send message"]')?.disabled`); await browser.mark('[aria-label="Send message"]', 'send-owner-handoff');
+    await browser.evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.getBoundingClientRect().height>0 && /send/i.test([e.textContent,e.getAttribute('aria-label')].join(' '))); if(!e) throw new Error('no visible owner send control'); e.setAttribute('data-hima-control','send-owner-handoff'); })()`);
     assert.ok((await d.click('send-owner-handoff')).ok);
     await browser.wait(`document.body.innerText.includes('Campaign ownership was handed')`, 15_000);
     const handed = await (await api(host, cookie, `/hima/api/runs/${runId}`)).json() as RunView;
