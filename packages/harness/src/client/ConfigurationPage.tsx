@@ -24,7 +24,22 @@ import type { CampaignFileView, RunView, SiteHeadView } from '../remote.js';
 import type { PreparationView, StartChoices } from '../workbench.js';
 import { discoverSite, fetchCampaignFile, fetchSites, fetchStartChoices, saveCampaignFile, startCampaign } from './api.js';
 import { KindOutline } from './FabricNode.js';
-import { Glyph } from './glyphs.js';
+import { Glyph, type GlyphName } from './glyphs.js';
+
+/** C17: a state roundel — a glyph coloured by the same good/warn/bad vocabulary the rest of the
+ *  client already reads off `data-state` (`.hima-state-word`, `workbench-style.ts`) — so a person
+ *  scanning this page for what still needs attention reads colour, not only shape. */
+function StateRoundel({ state, glyph }: { state: 'good' | 'warn' | 'bad'; glyph: GlyphName }): ReactElement {
+  return <span className="hima-config-state-roundel" data-state={state}><Glyph name={glyph} /></span>;
+}
+
+/** C17: the sentence every section whose own content depends on a chosen Pack shows in its place —
+ *  Inputs, Goal and Strategy are all declared by the Pack's own contract, and an empty list there
+ *  silently rendering nothing (an eyebrow over a blank space) reads as broken rather than "not yet
+ *  applicable". */
+function AvailableOncePackChosen(): ReactElement {
+  return <p className="hima-muted">Available once a Pack is chosen.</p>;
+}
 
 export interface ConfigurationPageProps {
   readonly sessionId: string;
@@ -43,7 +58,7 @@ export interface ConfigurationPageProps {
 /** Place a draft in the composer without ever sending it, the way every "Ask HimaGuide" control in
  *  this product works (Global Constraints). Task 8 wires the shell's own composer through `askGuide`;
  *  absent that, this falls back to the native contenteditable the shell always renders one of. */
-function draftToGuide(text: string): void {
+export function draftToGuide(text: string): void {
   const composer = document.querySelector<HTMLElement>('[contenteditable="true"]');
   if (composer === null) return;
   composer.focus();
@@ -78,8 +93,16 @@ const withoutKey = <T extends Record<string, unknown>>(record: T, key: string): 
  *  Saving is debounced rather than fired on every keystroke — a person typing "2.25" is one edit, not
  *  four requests — and flushed at once on blur or Enter, which is when a person moving on to the next
  *  field expects this one to be settled. */
-function EditableField({ control, value, placeholder, disabled, onCommit, onFocusMark, onPending }: {
+function EditableField({ control, value, placeholder, disabled, ariaLabel, title, onCommit, onFocusMark, onPending }: {
   readonly control: string; readonly value: string; readonly placeholder?: string; readonly disabled?: boolean;
+  /** C17: every `EditableField` names itself for assistive tech — this document has no `<label
+   *  for>` of its own (the eyebrow beside a field is not programmatically associated with its
+   *  input), so this is the only text a screen reader has for the field at all. */
+  readonly ariaLabel: string;
+  /** C17: the full value, for a field (the Inputs grid's own narrow "value" column, most often) that
+   *  can visually truncate a long bound path — a native tooltip on hover reads it in full even when
+   *  the field itself cannot show it all. */
+  readonly title?: string;
   onCommit(next: string): void; onFocusMark?(): void;
   /** Told `true` the moment a keystroke has an unsaved debounce pending, `false` once it either
    *  flushes or is abandoned — how the page knows not to let Confirm read a proposal id an edit still
@@ -91,13 +114,18 @@ function EditableField({ control, value, placeholder, disabled, onCommit, onFocu
   const committed = useRef(value);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => { if (!focused) { setText(value); committed.current = value; } }, [value, focused]);
-  useEffect(() => () => clearTimeout(debounce.current), []);
+  // C17: an unmount while a debounce is still pending (the Pack owner panel replacing this page
+  // outright, a session switch) must still tell the caller the pending flag is over — otherwise
+  // `pendingFields` keeps this control's own name forever, and `ready` (which reads
+  // `pendingFields.size === 0`) never recovers even though nothing is actually mid-edit any more.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => { if (debounce.current !== undefined) { clearTimeout(debounce.current); onPending?.(false); } }, []);
   const settle = () => { if (debounce.current !== undefined) { clearTimeout(debounce.current); debounce.current = undefined; onPending?.(false); } };
   const flush = (next: string) => {
     settle();
     if (next !== committed.current) { committed.current = next; onCommit(next); }
   };
-  return <input data-hima-control={control} value={text} placeholder={placeholder} disabled={disabled}
+  return <input data-hima-control={control} value={text} placeholder={placeholder} disabled={disabled} aria-label={ariaLabel} title={title}
     onFocus={() => { setFocused(true); onFocusMark?.(); }}
     onChange={(event) => {
       const next = event.target.value; setText(next);
@@ -116,6 +144,14 @@ function ChangedMark({ path, changed }: { path: string; changed: ReadonlySet<str
 
 const rowProps = (path: string, changed: ReadonlySet<string>) => ({
   className: `hima-config-field-row${changed.has(path) ? ' hima-changed' : ''}`,
+  'data-hima-state-changed': String(changed.has(path)),
+});
+
+/** C17: the Inputs section's own row — a three-column grid (name | value | state) rather than the
+ *  wrapping flex row every other section's `rowProps` still draws — carrying the same "changed"
+ *  marking `rowProps` computes, under its own grid class. */
+const inputRowProps = (path: string, changed: ReadonlySet<string>) => ({
+  className: `hima-config-input-row${changed.has(path) ? ' hima-changed' : ''}`,
   'data-hima-state-changed': String(changed.has(path)),
 });
 
@@ -155,7 +191,14 @@ function MiniReferenceGraph({ graph }: { graph: PreparationView['referenceGraph'
   // full-size canvas, which for even the shortest single-row graph is over 200 units tall — mapped by
   // one fixed `k`, that is most of this preview's own height spent on empty margin, not method.
   const ys = [...scene.nodes.map((node) => node.y), scene.goal.y];
-  const top = Math.min(...ys) - MINI_GRAPH_Y_MARGIN;
+  // C17: a revisit edge draws its own arc (and generation badge) above the spine — `canvas-layout.ts`'s
+  // own `classifyEdge` pulls it up to 90 raw units past its endpoints — which the plain node/goal
+  // band above under-counts for a graph with a revisit edge, clipping the arc's own apex against
+  // this preview's own top edge. `min(node.y) − 70` is this preview's own fixed band extension for
+  // that case (a flat figure, not a per-edge apex computation — nothing here needs the exact bezier
+  // curve `layoutCanvas` draws, only room enough that it is never cut off).
+  const hasRevisit = scene.edges.some((edge) => edge.kind === 'revisit');
+  const top = hasRevisit ? Math.min(...scene.nodes.map((node) => node.y)) - 70 : Math.min(...ys) - MINI_GRAPH_Y_MARGIN;
   const bottom = Math.max(...ys) + MINI_GRAPH_Y_MARGIN;
   const left = 0;
   const right = scene.goal.x + MINI_GRAPH_X_MARGIN;
@@ -357,8 +400,11 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   // A failed save leaves `view` at its last successful read, which can still say `ready` about a
   // proposal the current draft has already moved past (the very edit that just failed to land) —
   // `error` is cleared the moment a fresh save is queued, so this only ever holds Confirm back for
-  // an edit that is genuinely unconfirmed on the Host.
-  const ready = proposal?.ready === true && settled && error === undefined;
+  // an edit that is genuinely unconfirmed on the Host. C17: a field whose last-typed text does not
+  // parse (`fieldErrors`) never saved at all — Confirm must not read a proposal as ready while a
+  // person is still looking at "Enter a number for '…'." beside a field HimaGuide's own preparation
+  // never actually saw.
+  const ready = proposal?.ready === true && settled && error === undefined && fieldErrors.size === 0;
   const siteName = draft.site !== undefined && 'name' in draft.site ? draft.site.name : '';
   const siteHead = sites.find((site) => site.name === siteName);
   const siteNeedsAttention = siteHead !== undefined && siteHead.readiness !== 'ready';
@@ -381,16 +427,14 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     commitField('site', (file) => ({ ...file, site: { name } }));
   };
 
-  const addKnowledge = async () => {
-    if (pickFolder) {
-      const picked = await pickFolder();
-      if (picked) commitField('knowledge', (file) => ({ ...file, knowledge: [...file.knowledge, picked] }));
-      return;
-    }
-    const path = knowledgePath.trim();
-    if (path === '') return;
+  /** C17: knowledge entries are always added by a typed path, never the native folder picker —
+   *  unlike a Pack's own source folder (`installPack`, a whole directory), a knowledge document is
+   *  one file, and `pickFolder` (a directory chooser) is the wrong tool for naming one. */
+  const addKnowledge = () => {
+    const value = knowledgePath.trim();
+    if (value === '') return;
     setKnowledgePath('');
-    commitField('knowledge', (file) => ({ ...file, knowledge: [...file.knowledge, path] }));
+    commitField('knowledge', (file) => ({ ...file, knowledge: [...file.knowledge, value] }));
   };
 
   const onConfirm = async () => {
@@ -417,7 +461,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     <section data-hima-region="config-name">
       <span className="hima-config-eyebrow">Name</span>
       <div {...rowProps('name', changed)}>
-        <EditableField control="config-name" value={draft.name ?? ''} placeholder="Untitled Campaign" onFocusMark={() => clearChanged('name')} onPending={trackPending('config-name')}
+        <EditableField control="config-name" value={draft.name ?? ''} placeholder="Untitled Campaign" ariaLabel="Campaign name" onFocusMark={() => clearChanged('name')} onPending={trackPending('config-name')}
           onCommit={(text) => commitField('name', (file) => ({ ...file, name: text === '' ? undefined : text }))} />
         <ChangedMark path="name" changed={changed} />
       </div>
@@ -426,7 +470,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     <section data-hima-region="config-pack">
       <span className="hima-config-eyebrow">Pack</span>
       <div {...rowProps('pack', changed)}>
-        <select data-hima-control="config-pack" value={draft.pack?.id ?? ''} onFocus={() => clearChanged('pack')}
+        <select data-hima-control="config-pack" aria-label="Pack" value={draft.pack?.id ?? ''} onFocus={() => clearChanged('pack')}
           onChange={(event) => { const id = event.target.value; clearChanged('pack'); commitField('pack', (file) => ({ ...file, pack: id === '' ? undefined : { id } })); }}>
           <option value="">Choose a Pack…</option>
           {choices?.packs.map((id) => <option key={id} value={id} disabled={choices?.cannotStart?.includes(id)}>{id}{choices?.marks?.[id] ? ` — ${choices.marks[id]}` : ''}</option>)}
@@ -446,7 +490,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     <section data-hima-region="config-site">
       <span className="hima-config-eyebrow">Site</span>
       <div {...rowProps('site', changed)}>
-        <select data-hima-control="config-site" value={siteName} onFocus={() => clearChanged('site')}
+        <select data-hima-control="config-site" aria-label="Site" value={siteName} onFocus={() => clearChanged('site')}
           onChange={(event) => { const name = event.target.value; clearChanged('site'); commitField('site', (file) => ({ ...file, site: name === '' ? undefined : { name } })); }}>
           <option value="">Choose a Site…</option>
           {sites.map((site) => <option key={site.name} value={site.name}>{site.name} — {site.kind}{site.readiness !== 'ready' ? ` (${site.readiness})` : ''}</option>)}
@@ -457,39 +501,54 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
           : null}
       </div>
       {proposal?.site ? <p className="hima-config-detail">{proposal.site.name} · {proposal.site.kind} · {proposal.site.resources.cores} cores · {proposal.site.resources.memoryGiB} GiB · {proposal.site.resources.parallelJobs} parallel job(s)</p> : null}
+      {/* C17: `align-items:flex-start` (`workbench-style.ts`) — a `flex-direction:column` container
+          otherwise stretches each labelled field to the row's own full width, which reads oddly for
+          two short-and-tall fields (an SSH destination line, a hints textarea) stacked in one column. */}
       {siteName === '' ? <div className="hima-config-site-new">
-        <label className="hima-config-site-new-label">SSH destination<input data-hima-control="config-site-ssh" value={sshDestination} placeholder="user@host" onChange={(event) => setSshDestination(event.target.value)} /></label>
-        <label className="hima-config-site-new-label">Discovery hints<textarea data-hima-control="config-site-hints" value={siteHints} placeholder="Workspace root, e.g. /work/hima" onChange={(event) => setSiteHints(event.target.value)} /></label>
+        <label className="hima-config-site-new-label">SSH destination<input data-hima-control="config-site-ssh" aria-label="SSH destination" value={sshDestination} placeholder="user@host" onChange={(event) => setSshDestination(event.target.value)} /></label>
+        <label className="hima-config-site-new-label">Discovery hints<textarea data-hima-control="config-site-hints" aria-label="Discovery hints" value={siteHints} placeholder="Workspace root, e.g. /work/hima" onChange={(event) => setSiteHints(event.target.value)} /></label>
         <button className="hima-button" data-hima-control="config-discover" disabled={sshDestination.trim() === '' || discovering} onClick={() => { void discoverNewSite(); }}>{discovering ? 'Discovering…' : 'Discover with HimaGuide'}</button>
       </div> : null}
     </section>
 
+    {/* C17: an aligned three-column grid (name | value | state) — `.hima-config-input-row`,
+        `workbench-style.ts` — rather than a wrapping flex row whose columns drifted out of line
+        from one input to the next. A bound value (whether typed by a person or resolved off the
+        Site's own binding) is shown as the field's real text; the placeholder is reserved for a
+        genuinely unbound input, never used to stand in for a value this page already knows. */}
     <section data-hima-region="config-inputs">
       <span className="hima-config-eyebrow">Inputs</span>
-      {(proposal?.inputs ?? []).map((input) => {
+      {draft.pack === undefined ? <AvailableOncePackChosen /> : (proposal?.inputs ?? []).map((input) => {
         const path = `inputs.${input.name}`;
         const state = input.source === 'file' ? 'bound by HimaGuide' : input.source === 'site' ? 'bound by Site' : 'unbound';
-        return <div key={input.name} data-hima-region={`config-input-${input.name}`} data-hima-state-bound={String(input.ready)} {...rowProps(path, changed)}>
-          <Glyph name={input.ready ? 'dot' : 'circle'} />
-          <strong>{input.name}</strong>
-          <EditableField control={`config-input-${input.name}`} value={draft.inputs[input.name] ?? ''} placeholder={input.value ?? ''} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-input-${input.name}`)}
+        const draftValue = draft.inputs[input.name];
+        const boundValue = draftValue ?? (input.ready ? input.value : undefined);
+        return <div key={input.name} data-hima-region={`config-input-${input.name}`} data-hima-state-bound={String(input.ready)} {...inputRowProps(path, changed)}>
+          <span className="hima-config-input-name">
+            <StateRoundel state={input.ready ? 'good' : 'warn'} glyph={input.ready ? 'dot' : 'circle'} />
+            <strong>{input.name}</strong>
+          </span>
+          <EditableField control={`config-input-${input.name}`} value={boundValue ?? ''} placeholder={input.ready ? undefined : input.value} title={boundValue}
+            ariaLabel={`Input ${input.name}`} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-input-${input.name}`)}
             onCommit={(text) => commitField(path, (file) => ({ ...file, inputs: text === '' ? withoutKey(file.inputs, input.name) : { ...file.inputs, [input.name]: text } }))} />
-          <span className="hima-small">{state}<ChangedMark path={path} changed={changed} /> · {input.description}</span>
-          {input.ready ? null : <button className="hima-button" data-hima-control={`config-ask-${input.name}`} onClick={() => ask(`Bind the input '${input.name}': ${input.description}.`)}>Ask HimaGuide</button>}
+          <span className="hima-config-input-state">{state}<ChangedMark path={path} changed={changed} /></span>
+          <span className="hima-config-input-desc">{input.description}
+            {input.ready ? null : <button className="hima-button" data-hima-control={`config-ask-${input.name}`} onClick={() => ask(`Bind the input '${input.name}': ${input.description}.`)}>Ask HimaGuide</button>}
+          </span>
         </div>;
       })}
     </section>
 
     <section data-hima-region="config-goal">
       <span className="hima-config-eyebrow">Goal</span>
-      {Object.entries(proposal?.goalDeclared ?? {}).map(([name, declared]) => {
+      {draft.pack === undefined ? <AvailableOncePackChosen /> : Object.entries(proposal?.goalDeclared ?? {}).map(([name, declared]) => {
         const path = `goal.${name}`;
         const label = declared.label + (declared.unit ? ` (${declared.unit})` : '');
         const hint = boundsHint(declared.min, declared.max, declared.precision);
         const packDefault = view?.preparation?.goal?.[name]?.default;
         return <div key={name} {...rowProps(path, changed)}>
           <span>{label}</span>
-          <EditableField control={`config-goal-${name}`} value={draft.goal[name] !== undefined ? String(draft.goal[name]) : ''}
+          <EditableField control={`config-goal-${name}`} value={draft.goal[name] !== undefined ? String(draft.goal[name]) : ''} ariaLabel={label}
             placeholder={packDefault !== undefined ? `default ${packDefault}` : 'required, not yet set'} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-goal-${name}`)}
             onCommit={(text) => commitNumericField(path, label, text, (file, value) => ({ ...file, goal: value === undefined ? withoutKey(file.goal, name) : { ...file.goal, [name]: value } }))} />
           <span className="hima-small">{hint}<ChangedMark path={path} changed={changed} /></span>
@@ -500,19 +559,19 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
 
     <section data-hima-region="config-strategy">
       <span className="hima-config-eyebrow">Strategy</span>
-      {Object.entries(view?.preparation?.strategy ?? {}).map(([name, knob]) => {
+      {draft.pack === undefined ? <AvailableOncePackChosen /> : Object.entries(view?.preparation?.strategy ?? {}).map(([name, knob]) => {
         const path = `strategy.${name}`;
         const label = view?.preparation?.words?.strategy[name]?.label ?? name;
         const current = draft.strategy[name];
         return <div key={name} {...rowProps(path, changed)}>
           <span>{label}</span>
           {knob.type === 'choice'
-            ? <select data-hima-control={`config-knob-${name}`} value={current !== undefined ? String(current) : ''} onFocus={() => clearChanged(path)}
+            ? <select data-hima-control={`config-knob-${name}`} aria-label={label} value={current !== undefined ? String(current) : ''} onFocus={() => clearChanged(path)}
                 onChange={(event) => { const value = event.target.value; commitField(path, (file) => ({ ...file, strategy: value === '' ? withoutKey(file.strategy, name) : { ...file.strategy, [name]: value } })); }}>
                 <option value="">Pack default: {knob.default}</option>
                 {knob.options.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
-            : <EditableField control={`config-knob-${name}`} value={current !== undefined ? String(current) : ''} placeholder={`Pack default ${knob.default}`} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-knob-${name}`)}
+            : <EditableField control={`config-knob-${name}`} value={current !== undefined ? String(current) : ''} placeholder={`Pack default ${knob.default}`} ariaLabel={label} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-knob-${name}`)}
                 onCommit={(text) => commitNumericField(path, label, text, (file, value) => ({ ...file, strategy: value === undefined ? withoutKey(file.strategy, name) : { ...file.strategy, [name]: value } }))} />}
           <span className="hima-small">{knob.type === 'number' ? boundsHint(knob.min, knob.max, knob.precision, knob.unit) : `choice · ${knob.options.join(', ')}`}<ChangedMark path={path} changed={changed} /></span>
           {fieldErrors.get(path) ? <span className="hima-notice" role="alert">{fieldErrors.get(path)}</span> : null}
@@ -527,7 +586,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         const declared = proposal?.budget[key];
         return <div key={key} {...rowProps(path, changed)}>
           <span>{label}</span>
-          <EditableField control={`config-budget-${key}`} value={draft.budget[key] !== undefined ? String(draft.budget[key]) : ''} placeholder={declared ? `${declared.source} default ${declared.value}` : ''} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-budget-${key}`)}
+          <EditableField control={`config-budget-${key}`} value={draft.budget[key] !== undefined ? String(draft.budget[key]) : ''} placeholder={declared ? `${declared.source} default ${declared.value}` : ''} ariaLabel={label} onFocusMark={() => clearChanged(path)} onPending={trackPending(`config-budget-${key}`)}
             onCommit={(text) => commitNumericField(path, label, text, (file, value) => ({ ...file, budget: value === undefined ? withoutKey(file.budget, key) : { ...file.budget, [key]: value } }))} />
           <span className="hima-small">{declared ? declared.source : ''}<ChangedMark path={path} changed={changed} /></span>
           {fieldErrors.get(path) ? <span className="hima-notice" role="alert">{fieldErrors.get(path)}</span> : null}
@@ -536,13 +595,18 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
       {proposal?.budget.jobCap !== undefined ? <p className="hima-small">Job cap · seats: {proposal.budget.jobCap}{proposal.budget.licences ? ` · ${Object.entries(proposal.budget.licences).map(([name, seats]) => `${name} ${seats}`).join(', ')}` : ''} · from Site, read-only</p> : null}
     </section>
 
+    {/* C17: knowledge entries are always a typed path — no `pickFolder` branch, ever, for this
+        control — plus `config-ask-knowledge`, which drafts a ready-to-send request to import
+        whichever documents the person names, exactly as every other "Ask HimaGuide" control here
+        drafts rather than sends. */}
     <section data-hima-region="config-knowledge">
       <span className="hima-config-eyebrow">Knowledge</span>
       <p>{proposal?.pack.knowledge.length ?? 0} Pack document(s) · {proposal?.knowledge.currentDocuments ?? 0} current document(s)</p>
-      {draft.knowledge.length > 0 ? <ul>{draft.knowledge.map((item, index) => <li key={index} className="hima-small hima-wrap">{item}</li>)}</ul> : null}
+      {draft.knowledge.length > 0 ? <ul>{draft.knowledge.map((item, index) => <li key={index} className="hima-small hima-wrap" title={item}>{item}</li>)}</ul> : null}
       <div className="hima-config-knowledge-add-row">
-        <button className="hima-button" data-hima-control="config-knowledge-add" onClick={() => { void addKnowledge(); }}>Add a document</button>
-        {pickFolder ? null : <input data-hima-control="config-knowledge-path" value={knowledgePath} placeholder="Path to a document" onChange={(event) => setKnowledgePath(event.target.value)} />}
+        <input data-hima-control="config-knowledge-path" aria-label="Path to a knowledge document" value={knowledgePath} placeholder="Path to a document" onChange={(event) => setKnowledgePath(event.target.value)} />
+        <button className="hima-button" data-hima-control="config-knowledge-add" onClick={addKnowledge}>Add a document</button>
+        <button className="hima-button" data-hima-control="config-ask-knowledge" onClick={() => ask('Import these documents as current knowledge for this Campaign: …')}>Ask HimaGuide</button>
       </div>
     </section>
 
@@ -550,15 +614,15 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
       <span className="hima-config-eyebrow">Readiness</span>
       {unknowns.length > 0 || error !== undefined ? <div role="alert">
         {unknowns.map((sentence, index) => <div key={index} className="hima-config-readiness-row">
-          <Glyph name="circle" />
+          <StateRoundel state="warn" glyph="circle" />
           <span>{sentence}</span>
           <button className="hima-button" data-hima-control={`config-ask-unknown-${index}`} onClick={() => ask(sentence)}>Ask HimaGuide</button>
         </div>)}
-        {error ? <div className="hima-config-readiness-row"><Glyph name="warning" /><span>{error}</span>
+        {error ? <div className="hima-config-readiness-row"><StateRoundel state="bad" glyph="warning" /><span>{error}</span>
           <button className="hima-button" data-hima-control="config-retry" onClick={retry}>Retry</button>
         </div> : null}
       </div> : null}
-      {ready ? <div className="hima-config-readiness-row"><Glyph name="check" /><span>Every check passes; confirming creates the Campaign.</span></div> : null}
+      {ready ? <div className="hima-config-readiness-row"><StateRoundel state="good" glyph="check" /><span>Every check passes; confirming creates the Campaign.</span></div> : null}
       <div className="hima-config-confirm-row">
         <button className="hima-button hima-primary" data-hima-control="config-confirm" disabled={!ready || starting} onClick={() => { void onConfirm(); }}>{starting ? 'Starting Campaign…' : 'Confirm and start Campaign'}</button>
         <span className="hima-small">enabled when every check passes</span>

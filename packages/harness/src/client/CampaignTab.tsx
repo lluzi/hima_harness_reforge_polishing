@@ -179,8 +179,17 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
   // — never on every poll, and never for a Run whose own `context.method` already has one — and kept
   // until either changes, so a Pack that gets uninstalled mid-poll still shows the graph fetched
   // while it was there rather than blanking a running Campaign.
-  const [fallback, setFallback] = useState<{ readonly key: string; readonly graph: PreparationView['referenceGraph'] | 'unavailable' }>();
+  //
+  // C19: the *installed* Pack answers this fetch with whatever version is on disk right now, which
+  // is not necessarily the version `run.packVersion` (the workspace's own preparation) actually ran
+  // — a Pack edited or reinstalled since this Campaign started. Drawing a newer/older Pack's own
+  // reference graph under an older Run's execution facts (node ids and edges a since-changed Pack
+  // may no longer declare the same way) would show a graph that never actually described this Run's
+  // own history, so the fetched result also carries the version it answered with, checked below
+  // against `run.packVersion` before it is ever handed to `sceneInputs`.
+  const [fallback, setFallback] = useState<{ readonly key: string; readonly graph: PreparationView['referenceGraph'] | 'unavailable'; readonly version?: string }>();
   const packId = view?.run.packId;
+  const packVersion = view?.run.packVersion;
   // Computed once (review C16) and reused everywhere this pair's own identity is compared — the
   // fetch effect below, and the two reads after it — rather than three separately-typed template
   // literals (one of which read `packId` un-defaulted) that happened to agree only because `packId`
@@ -193,14 +202,22 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
     const controller = new AbortController();
     void fetchStartChoices(packId, undefined, controller.signal).then((result) => {
       if (cancelled) return;
-      const graph = result.ok ? result.value.proposal?.referenceGraph ?? 'unavailable' as const : 'unavailable' as const;
-      setFallback({ key: fallbackKey, graph });
+      const proposal = result.ok ? result.value.proposal : undefined;
+      setFallback({ key: fallbackKey, graph: proposal?.referenceGraph ?? 'unavailable', version: proposal?.pack.version });
     });
     return () => { cancelled = true; controller.abort(); };
   }, [methodReference, packId, fallbackKey, fallback?.key]);
-  const fallbackGraph = fallback?.key === fallbackKey && fallback.graph !== 'unavailable' ? fallback.graph : undefined;
+  const fetched = fallback?.key === fallbackKey ? fallback : undefined;
+  const fetchedGraph = fetched !== undefined && fetched.graph !== 'unavailable' ? fetched.graph : undefined;
+  const fetchedUnavailable = fetched !== undefined && fetched.graph === 'unavailable';
+  // `packVersion` absent (a Run whose preparation predates this field, or one this workbench cannot
+  // read) is treated as "nothing to check against" — the installed Pack's own graph is shown rather
+  // than held back on a comparison this Run never recorded either side of.
+  const versionMatches = fetchedGraph !== undefined && (packVersion === undefined || fetched?.version === undefined || fetched.version === packVersion);
+  const fallbackGraph = versionMatches ? fetchedGraph : undefined;
   const reference = methodReference ?? fallbackGraph;
-  const packUnavailable = methodReference === undefined && fallback?.key === fallbackKey && fallback.graph === 'unavailable';
+  const packUnavailable = methodReference === undefined && fetchedUnavailable;
+  const packVersionMismatch = methodReference === undefined && fetchedGraph !== undefined && !versionMatches;
 
   // `sceneInputs`+`layoutCanvas` recompute only when the reference graph, the Run view or the
   // execution context actually change identity (a fresh poll) — not on every render this component
@@ -228,7 +245,9 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
             ? <div className="hima-empty">
                 <p>{packUnavailable && packId !== undefined
                   ? `The Pack ${packId} is not installed on this Host; the reference graph cannot be shown.`
-                  : context?.reason ?? 'Reading the reference graph…'}</p>
+                  : packVersionMismatch && packId !== undefined
+                    ? `The installed Pack ${packId}${fetched?.version === undefined ? '' : `@${fetched.version}`} does not match the version${packVersion === undefined ? '' : ` ${packVersion}`} this Campaign ran; the reference graph cannot be shown.`
+                    : context?.reason ?? 'Reading the reference graph…'}</p>
               </div>
             : <FabricCanvas runId={runId} scene={scene} entryNodeId={reference?.entry} view={view} context={context}
                 stale={stale} reducedMotion={reducedMotion} isOwner={isOwner} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}

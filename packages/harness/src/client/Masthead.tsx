@@ -57,13 +57,19 @@ export function Masthead({ name, view, context, stale, reducedMotion, isOwner, o
     : `elapsed ${duration(elapsedMs)} of a time box of ${duration(run.budget.timeBoxMs)}`;
   const budgetWord = context === undefined ? undefined : BUDGET_STANDING[context.budget.phase];
   const purposeMark = runPurposeMark(run?.purpose);
+  // C19: a Campaign with no name of its own (`name` absent — no Campaign file, or one that never
+  // set `name`) never falls back to the raw campaign id (a bare uuid-shaped identifier means nothing
+  // to a person reading this masthead) — `‹packId› · gen N` says what the Run actually is instead,
+  // the same two facts the sub-line beside it already reads off `run.currentNode`/`run.generation`,
+  // named here where a title is expected instead of an opaque id.
+  const fallbackTitle = run?.packId === undefined ? 'Campaign' : `${run.packId}${run.generation === undefined ? '' : ` · gen ${run.generation}`}`;
 
   return (
     <header className="hima-masthead" data-hima-region="campaign-masthead"
       data-hima-state-status={status ?? ''} data-hima-state-current={run?.currentNode ?? ''} data-hima-state-generation={run?.generation === undefined ? '' : String(run.generation)}
       data-hima-state-purpose={run?.purpose ?? 'campaign'}>
       <div className="hima-masthead-id">
-        <h2>{name ?? run?.campaignId ?? 'Campaign'}{purposeMark === undefined ? null : ` · ${purposeMark}`}</h2>
+        <h2>{name ?? fallbackTitle}{purposeMark === undefined ? null : ` · ${purposeMark}`}</h2>
         <p className="hima-masthead-sub">
           {said === undefined
             ? (view === undefined ? null : <span className="hima-masthead-seal">No Fabric state recorded</span>)

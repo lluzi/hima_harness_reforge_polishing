@@ -124,7 +124,9 @@ export const HIMA_STYLE = `
 .hima-canvas{position:relative;flex:1;min-height:0;min-width:0;background:var(--hima-soft);overflow:hidden}
 .hima-canvas svg{display:block;cursor:grab;touch-action:none}
 .hima-canvas-stale{opacity:.6}
-.hima-canvas-legend{position:absolute;left:var(--hima-sp-4);top:var(--hima-sp-3);display:flex;gap:var(--hima-sp-4);font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-3);pointer-events:none}
+/* C19: 13px (the --hima-fs-label step), not the 12px eyebrow floor — the legend is read
+   continuously while a person orients themselves on the canvas, not a one-glance label. */
+.hima-canvas-legend{position:absolute;left:var(--hima-sp-4);top:var(--hima-sp-3);display:flex;gap:var(--hima-sp-4);font-size:var(--hima-fs-label);color:var(--hima-ink-3);pointer-events:none}
 .hima-canvas-legend span{display:inline-flex;align-items:center;gap:var(--hima-sp-1)}
 .hima-legend-shape{fill:none;stroke:var(--hima-ink-3);stroke-width:1.3}
 .hima-canvas-tools{position:absolute;right:var(--hima-sp-3);bottom:var(--hima-sp-3);z-index:6;display:flex;gap:var(--hima-sp-1)}
@@ -343,12 +345,29 @@ export const HIMA_STYLE = `
 .hima-config-mini-edge-revisit{fill:none;stroke:var(--hima-accent);stroke-width:1;stroke-dasharray:3 2;vector-effect:non-scaling-stroke}
 .hima-config-mini-goal{fill:none;stroke:var(--hima-neutral);stroke-width:1.25;stroke-dasharray:3 2;vector-effect:non-scaling-stroke}
 .hima-config-empty-pack,.hima-config-knowledge-add-row{display:flex;gap:var(--hima-sp-2);align-items:center;flex-wrap:wrap}
-.hima-config-site-new{display:flex;flex-direction:column;gap:var(--hima-sp-2);margin-top:6px}
+.hima-config-site-new{display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-2);margin-top:6px}
 .hima-config-site-new-label{display:flex;flex-direction:column;gap:2px;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-2)}
 .hima-config-readiness-row{display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap}
 .hima-config-readiness-row{padding:2px 0}
 .hima-config-confirm-row{display:flex;align-items:center;gap:var(--hima-sp-3);margin-top:var(--hima-sp-2)}
 .hima-pill{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;background:var(--hima-soft);color:var(--hima-ink-2);font-size:var(--hima-fs-eyebrow);font-weight:600;margin-left:6px}
+/* C17: a state roundel — the Inputs section's own bound/unbound glyph, and every Readiness row's
+   own glyph — coloured by the same good/warn/bad vocabulary the .hima-state-word rule already
+   reads off data-state elsewhere, so a glance at this page's own colour (not only its shape) says
+   what still needs attention. */
+.hima-config-state-roundel{display:inline-flex;flex:none}
+.hima-config-state-roundel[data-state="good"]{color:var(--hima-good)}
+.hima-config-state-roundel[data-state="warn"]{color:var(--hima-warn)}
+.hima-config-state-roundel[data-state="bad"]{color:var(--hima-bad)}
+/* C17: the Inputs section's own aligned three-column grid (name | value | state), with the
+   description and its own "Ask HimaGuide" (when unbound) on a full-width row beneath — replacing
+   the wrapping flex row every other section still uses, whose columns drifted out of line from one
+   input to the next. */
+.hima-config-input-row{display:grid;grid-template-columns:minmax(96px,160px) minmax(0,1fr) minmax(112px,200px);gap:6px var(--hima-sp-3);align-items:center}
+.hima-config-input-row+.hima-config-input-row{margin-top:6px}
+.hima-config-input-name{display:flex;align-items:center;gap:var(--hima-sp-1);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hima-config-input-state{font-size:var(--hima-fs-label);color:var(--hima-ink-2);display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0}
+.hima-config-input-desc{grid-column:1/-1;display:flex;align-items:center;gap:var(--hima-sp-2);flex-wrap:wrap;font-size:var(--hima-fs-eyebrow);color:var(--hima-ink-3)}
 
 /* Shell integration (#41 task 8): the session-header Campaign chip, the tab title, the tab's own
    Diagnostics sheet and the HimaHarness settings section. */

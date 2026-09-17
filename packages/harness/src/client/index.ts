@@ -6,7 +6,7 @@ import { CampaignChip } from './CampaignChip.js';
 import { Glyph } from './glyphs.js';
 import { HimaRunCard, type ToolBlock } from './HimaRunCard.js';
 import { HimaWorkbench } from './HimaWorkbench.js';
-import { campaignEvents, statusSaid, useOwnedRun } from './owned-run.js';
+import { campaignEvents, statusSaid, STATUS_GLYPH, useOwnedRun } from './owned-run.js';
 import { SettingsSection } from './SettingsSection.js';
 import { HIMA_STYLE } from './workbench-style.js';
 
@@ -75,22 +75,25 @@ function AuthoringCard({ block, openAuthor }: { block: ToolBlock; openAuthor(id:
 
 /**
  * The Campaign tab's own chip title (#41 task 8): `Campaign · configure` for a session that owns no
- * Run at all, `Campaign · <dot glyph> ‹node›` (the running glyph, never a unicode character) while running,
- * `Campaign · waiting` badged while a person is needed, else `Campaign · ‹status word›` for an ended
- * or cancelled Run — the exact word `statusSaid` gives the chip, so the two never disagree.
- * Registered under the same key as the tab body (`sidebar.right.pane.tab.title`), so the shell
- * dispatches it beside `HimaWorkbench` and delivers it the same standard `sessionId` prop.
+ * Run at all, else `Campaign · <status glyph> ‹word›` — `‹word›` is the current node while running,
+ * `waiting` badged while a person is needed, else the status word `statusSaid` also gives the chip.
+ *
+ * C19: the glyph is `STATUS_GLYPH[status]`, the exact same lookup `CampaignChip` renders from — the
+ * two used to draw from two different places (this title hardcoded `'dot'` for running and drew no
+ * glyph at all for any other status), which could show two different shapes for the one Run. Sharing
+ * the one table is what keeps them able to agree at all. Registered under the same key as the tab
+ * body (`sidebar.right.pane.tab.title`), so the shell dispatches it beside `HimaWorkbench` and
+ * delivers it the same standard `sessionId` prop.
  */
 function CampaignTabTitle({ sessionId }: { sessionId: string }): ReactElement {
   const { run, stale } = useOwnedRun(sessionId);
   const status = run?.status;
   const body = run === undefined
     ? 'Campaign · configure'
-    : status === 'running'
-      ? createElement('span', null, 'Campaign ·', createElement(Glyph, { name: 'dot', size: 13 }), ` ${run.currentNode ?? 'running'}`)
-      : status === 'waiting'
-        ? createElement('span', null, 'Campaign · waiting', createElement('span', { className: 'hima-campaign-chip-badge', 'aria-hidden': true }))
-        : `Campaign · ${statusSaid(status)}`;
+    : createElement('span', null, 'Campaign ·',
+        createElement(Glyph, { name: status === undefined ? 'circle' : STATUS_GLYPH[status], size: 13 }),
+        ` ${status === 'running' ? (run.currentNode ?? 'running') : statusSaid(status)}`,
+        status === 'waiting' ? createElement('span', { className: 'hima-campaign-chip-badge', 'aria-hidden': true }) : null);
   // The shell mounts this outside `HimaWorkbench`'s own `.hima-root` tree (it is the tab strip's own
   // chip, not the tab body), so the token sheet's own `--hima-*` custom properties — the waiting
   // badge's `--hima-live` colour included — resolve only if this carries its own `.hima-root` scope
@@ -151,11 +154,17 @@ export function apply(ctx: ClientContext): void {
     guide: [{ order: 0, title: () => 'Hima Campaign', description: () => 'Preparation, execution, code and evidence beside the conversation.' }],
   }));
   const openRun = (runId?: string) => ctx.sidebarRight.openTab(WORKBENCH_KIND, runId === undefined ? undefined : { params: { runId } });
-  // `uiWorkspace` (the native folder picker) is looked up once, optionally: not every install runs
-  // the plugin that provides it, and this whole adapter must still mount without it (see `get` on
-  // `ClientContext`, above).
-  const uiWorkspace = ctx.get?.('uiWorkspace') as { pickDirectory(): Promise<string | null> } | undefined;
-  const pickFolder = uiWorkspace === undefined ? undefined : () => uiWorkspace.pickDirectory();
+  // C19: `uiWorkspace` (the native folder picker) is resolved lazily, inside the callback itself,
+  // every time a person actually asks to pick a folder — never once, eagerly, at `apply()` time.
+  // Plugin load order is not this adapter's own to control: a build where `uiWorkspace`'s own plugin
+  // registers *after* this one's `apply()` runs used to leave `pickFolder` permanently `undefined`
+  // for the rest of the session even once the service existed, because `ctx.get('uiWorkspace')` was
+  // read exactly once, before it had necessarily arrived. Reading it fresh inside the callback means
+  // a later-registering `uiWorkspace` is picked up the next time anything actually calls this.
+  const pickFolder = (): Promise<string | null> => {
+    const uiWorkspace = ctx.get?.('uiWorkspace') as { pickDirectory(): Promise<string | null> } | undefined;
+    return uiWorkspace === undefined ? Promise.resolve(null) : uiWorkspace.pickDirectory();
+  };
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: WORKBENCH_ID,
     inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id), pickFolder }),

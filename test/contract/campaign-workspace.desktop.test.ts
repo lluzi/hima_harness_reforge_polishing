@@ -280,6 +280,51 @@ async function bothThemes(t: TestContext, run: (theme: 'light' | 'dark') => Prom
   if (failures.length) throw new Error(failures.join('\n'));
 }
 
+/**
+ * A2: opens a fresh native session and its own workbench pane, sharing the one bootstrap sequence
+ * every "second session in this same window" state needs (state 6's own Side Talk today) — click
+ * "New session", wait for its composer to render, wait for `open-workbench` to enable, click it,
+ * then wait for that session's own `studio` region to actually mount.
+ *
+ * Diagnosed by running state 6 alone three times in a row (foreground, this sandbox): 2 of 3 runs
+ * failed, every time at the exact same step — `document.querySelector('[data-hima-region="studio"]')
+ * !== null` timing out — and every failure happened here, before a single Hima-specific assertion had
+ * even run (the very next line after this helper reads `data-hima-state-session`, which is where a
+ * genuine Fabric-state defect would instead surface). That is a session/dock-panel bootstrap race in
+ * this sandbox, not a rendering defect this task's own acceptance criteria are about, so it is
+ * hardened here with one bounded retry of the click-and-wait itself (max 2 attempts, logged) —
+ * never a retry of a Hima assertion, which must still fail loud and immediately if the state it
+ * reads is actually wrong.
+ */
+async function openNewSessionWorkbench(t: TestContext, d: BootedDriver, browser: Inspector, clickMark: string, openMark: string): Promise<void> {
+  const maxAttempts = 2;
+  // "New session" is clicked at most once: a first attempt's own click already creates the fresh
+  // session (confirmed by its own composer rendering, waited for below), so a naive retry that
+  // re-clicked it on a second attempt was itself found to break the second attempt — a second click
+  // on that same control while a session draft is already open dismisses it instead of opening
+  // another, which then leaves no `open-workbench` control for the retry's own mark to find at all
+  // (empirically: attempt 2 failed at that exact mark, "missing control", diagnosed while building
+  // this fix). Only the part that actually raced in three straight foreground runs — the wait for
+  // `studio` to mount after `open-workbench` is clicked — is retried, together with re-clicking
+  // `open-workbench` itself (idempotent: clicking an already-open tab's own opener again is a no-op
+  // on the same tab), never the "New session" bootstrap step and never a Hima-specific assertion.
+  await browser.mark('[aria-label="New session"]', clickMark);
+  assert.ok((await d.click(clickMark)).ok);
+  await browser.wait(`document.body.innerText.includes('New session') && [...document.querySelectorAll('[contenteditable="true"]')].some(e=>e.getBoundingClientRect().height>0)`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]')?.disabled`);
+      await browser.mark('[data-hima-control="open-workbench"]', openMark);
+      assert.ok((await d.click(openMark)).ok);
+      await browser.wait(`document.querySelector('[data-hima-region="studio"]') !== null`, 20_000);
+      return;
+    } catch (error) {
+      if (attempt >= maxAttempts) throw error;
+      t.diagnostic(`openNewSessionWorkbench: attempt ${String(attempt)}/${String(maxAttempts)} failed waiting for studio to mount (${(error as Error).message}); retrying the open-workbench click and wait once more, never the "New session" step and never a Hima assertion`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // State 1: Configuration page empty (no Pack, no Site).
 // ---------------------------------------------------------------------------------------------
@@ -464,12 +509,9 @@ test('state 6: a Side Talk viewing an owned Run sees who owns it and no business
       browser = await inspectWindow(port);
       const { ownerSessionId, runId } = await establishOwnerSession(d, browser);
 
-      await browser.mark('[aria-label="New session"]', 'new-side-talk'); assert.ok((await d.click('new-side-talk')).ok);
-      await browser.wait(`document.body.innerText.includes('New session') && [...document.querySelectorAll('[contenteditable="true"]')].some(e=>e.getBoundingClientRect().height>0)`);
-      await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]')?.disabled`);
-      await browser.mark('[data-hima-control="open-workbench"]', 'open-side-workbench');
-      assert.ok((await d.click('open-side-workbench')).ok);
-      await browser.wait(`document.querySelector('[data-hima-region="studio"]') !== null`);
+      // A2: hardened against the bootstrap race diagnosed above — one bounded retry of the click
+      // and studio-mount wait, never of the Hima assertion right after it.
+      await openNewSessionWorkbench(t, d, browser, 'new-side-talk', 'open-side-workbench');
       const sideSession = await browser.evaluate<string>(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session') || ''`);
       assert.ok(sideSession && sideSession !== ownerSessionId, 'the Side Talk is a genuinely different session');
 
@@ -601,13 +643,20 @@ test('state 7: a fifty-one node graph fits to width, scaled and label-hidden', a
       // width or the scene's own size — "labels must be visible the moment the canvas opens"
       // (`FabricCanvas.tsx`'s own fit effect: `Math.max(0.6, fit.scale)`). A dense reference graph
       // therefore always *opens* fitted exactly to that floor, readable, with the rest of a 51-node
-      // scene running off past the canvas's own edge. C7's own `canvas-fit` control is the escape
-      // hatch built for exactly this: it always fits to `fitToWidth`'s own natural scale (floored only
-      // at the interactive zoom's own 0.4), trading label visibility for showing the whole graph across
-      // the canvas's own width in one click, with no drift toward a corner to correct afterwards the
-      // way repeated wheel-zoom clicks would leave (`canvas-locate` is no longer needed here at all).
+      // scene running off past the canvas's own edge (the very defect this state exists to catch).
+      // A1: `canvas-fit` is the escape hatch, and a deliberate user action rather than the initial
+      // fit — it is floored at 0.15 (not the interactive zoom's own 0.4), low enough that this
+      // fixture's own ~54-node, ~4885-unit-wide scene actually fits inside a 760px pane
+      // ((760-32)/4885 ≈ 0.149 < 0.4) instead of clamping to 0.4 and still running a strip off the
+      // canvas's own right edge.
       assert.ok((await d.click('canvas-fit')).ok);
       await browser.wait(`Number(document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-scale')) < 0.6`, 10_000);
+      // The scale settles onto its final value across the same two-frame `requestAnimationFrame`
+      // dance the initial fit effect uses (no CSS transition to wait out here — `canvas-fit` calls
+      // `setTransform` directly) — reading it twice, a frame apart, confirms it before this state's
+      // own acceptance assertions and the capture read it.
+      const settledScale = await browser.evaluate<string>(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-scale') ?? ''))))`);
+      await browser.wait(`document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-scale') === ${JSON.stringify(settledScale)}`, 5_000);
       const graph = await d.read('campaign-graph'); assert.ok(graph.ok, JSON.stringify(graph));
       assert.ok(Number(graph.state.nodes) >= 48, JSON.stringify(graph));
       assert.ok(Number(graph.state.scale) < 0.6, JSON.stringify(graph));
@@ -617,6 +666,22 @@ test('state 7: a fifty-one node graph fits to width, scaled and label-hidden', a
         return getComputedStyle(group).visibility === 'hidden';
       })()`);
       assert.equal(labelsHidden, true, 'node labels hide below the 60% zoom floor');
+      // A1: the whole 51-node graph must actually show across the pane, not just report a scale
+      // below 0.6 — the rightmost node's own screen position (the reference graph's last node, by
+      // construction the one `canvas-fit` would otherwise leave running off the right edge) must
+      // land inside the canvas container's own visible bounds.
+      const lastNodeInBounds = await browser.evaluate<{ ok: boolean; nodeLeft?: number; containerRight?: number }>(`(() => {
+        const container = document.querySelector('[data-hima-region="campaign-graph"]');
+        if (!container) return { ok: false };
+        const containerRect = container.getBoundingClientRect();
+        const nodes = [...container.querySelectorAll('[data-hima-region^="campaign-node-"]')];
+        if (nodes.length === 0) return { ok: false };
+        let rightmost = nodes[0];
+        for (const candidate of nodes) if (candidate.getBoundingClientRect().left > rightmost.getBoundingClientRect().left) rightmost = candidate;
+        const nodeRect = rightmost.getBoundingClientRect();
+        return { ok: nodeRect.left >= containerRect.left && nodeRect.left <= containerRect.right, nodeLeft: nodeRect.left, containerRight: containerRect.right };
+      })()`);
+      assert.ok(lastNodeInBounds.ok, `the last node's own screen x should sit inside the canvas: ${JSON.stringify(lastNodeInBounds)}`);
       await capture(d, browser, `graph-51-node-${theme}`);
     } finally {
       await finish(d, browser);

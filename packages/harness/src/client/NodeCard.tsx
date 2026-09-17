@@ -37,6 +37,12 @@ export interface NodeCardProps {
   readonly anchor: { readonly x: number; readonly y: number };
   /** The canvas's own viewport, for clamping the card fully inside it. */
   readonly canvas: { readonly width: number; readonly height: number };
+  /** C19: reduced motion, or a stale snapshot — the same `motionOff` the canvas itself already
+   *  computed (`reducedMotion || stale`, `FabricCanvas.tsx`), never a second reading of either flag.
+   *  The Job tab's own live log poll stops while this is true: a stale card is already showing a
+   *  frozen fact, and polling a live tail underneath a "not current" snapshot only wastes a request
+   *  every 2s for lines nobody believes are still arriving. */
+  readonly motionOff: boolean;
   onClose(): void;
   openFiles(): void;
   readonly acting: Acting;
@@ -111,9 +117,12 @@ function useNodeLog(runId: string, nodeId: string, active: boolean): { readonly 
   return state;
 }
 
-function JobTab({ node, view, runId }: { node: PlacedNode; view: RunView; runId: string }): ReactElement {
+function JobTab({ node, view, runId, motionOff }: { node: PlacedNode; view: RunView; runId: string; motionOff: boolean }): ReactElement {
   const folded = jobFolded(view, node.id);
-  const running = node.current && node.state === 'running';
+  // C19: the live log poll never runs while stale/reduced-motion — a stale card is already showing
+  // a frozen fact, not a live one, so polling for fresh lines underneath it would only ever answer
+  // with output nobody watching believes is still current.
+  const running = node.current && node.state === 'running' && !motionOff;
   const log = useNodeLog(runId, node.id, running);
   const executions = Object.values(view.run.control?.executions ?? {}).filter((execution) => execution.nodeId === node.id);
   return (
@@ -246,10 +255,10 @@ function ClearanceTab({ node, view }: { node: PlacedNode; view: RunView }): Reac
   );
 }
 
-function TabContent({ tab, node, view, context, runId, openFiles }: { tab: NodeCardTabKey; node: PlacedNode; view: RunView; context?: ExecutionContext; runId: string; openFiles(): void }): ReactElement {
+function TabContent({ tab, node, view, context, runId, motionOff, openFiles }: { tab: NodeCardTabKey; node: PlacedNode; view: RunView; context?: ExecutionContext; runId: string; motionOff: boolean; openFiles(): void }): ReactElement {
   switch (tab) {
     case 'facts': return <FactsTab node={node} view={view} context={context} />;
-    case 'job': return <JobTab node={node} view={view} runId={runId} />;
+    case 'job': return <JobTab node={node} view={view} runId={runId} motionOff={motionOff} />;
     case 'code': return <CodeTab node={node} view={view} openFiles={openFiles} />;
     case 'knowledge': return <KnowledgeTab node={node} view={view} />;
     case 'evidence': return <EvidenceTab node={node} view={view} context={context} />;
@@ -330,7 +339,7 @@ function Footer({ node, view, owner, acting }: { node: PlacedNode; view: RunView
   );
 }
 
-export function NodeCard({ node, view, context, runId, owner, anchor, canvas, onClose, openFiles, acting }: NodeCardProps): ReactElement {
+export function NodeCard({ node, view, context, runId, owner, anchor, canvas, motionOff, onClose, openFiles, acting }: NodeCardProps): ReactElement {
   const tabs = TABS_BY_KIND[node.kind];
   const [tab, setTab] = useState<NodeCardTabKey>(tabs[0]!);
   useEffect(() => { setTab(TABS_BY_KIND[node.kind][0]!); }, [node.id, node.kind]);
@@ -370,7 +379,7 @@ export function NodeCard({ node, view, context, runId, owner, anchor, canvas, on
         ))}
       </nav>
       <div className="hima-node-card-content">
-        <TabContent tab={tab} node={node} view={view} context={context} runId={runId} openFiles={openFiles} />
+        <TabContent tab={tab} node={node} view={view} context={context} runId={runId} motionOff={motionOff} openFiles={openFiles} />
       </div>
       <Footer node={node} view={view} owner={owner} acting={acting} />
     </div>

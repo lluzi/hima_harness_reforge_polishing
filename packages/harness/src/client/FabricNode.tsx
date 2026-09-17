@@ -155,11 +155,19 @@ export interface FabricNodeProps {
    *  stale canvas stops every animation exactly as reduced motion does. */
   readonly reducedMotion: boolean;
   readonly selected: boolean;
+  /** A3: this node is the Run's own current node, sitting `available` while the Run's own status is
+   *  `running` — the Campaign Agent has not yet begun it. Drawn as the node's own caption line so a
+   *  screenshot of a "running" Run never shows a node that looks merely idle with no explanation. */
+  readonly awaitingAgent?: boolean;
   onSelect(id: string): void;
 }
 
-export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected, onSelect }: FabricNodeProps): ReactElement {
-  const running = node.current && node.state === 'running';
+export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected, awaitingAgent, onSelect }: FabricNodeProps): ReactElement {
+  // C19: the log-tail poll never runs while stale/reduced-motion (the caller hands this component
+  // `reducedMotion || stale` as one flag, `FabricCanvas.tsx`) — a stale node is already showing a
+  // frozen fact, not a live one, so polling for a fresh log line underneath it would only ever
+  // answer with output nobody watching believes is still current.
+  const running = node.current && node.state === 'running' && !reducedMotion;
   const logLine = useLastLogLine(runId, node.id, running);
   const labelY = HALF + 20;
   return (
@@ -200,6 +208,14 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
         <text className="hima-node-label" y={labelY} textAnchor="middle">{truncate(node.id)}<title>{node.id}</title></text>
         {node.caption === undefined ? null : (
           <text className="hima-node-caption" y={labelY + 15} textAnchor="middle">{truncate(node.caption)}<title>{node.caption}</title></text>
+        )}
+        {/* A3: drawn on its own line, below the Pack's own caption (if any) rather than replacing
+            it — a node's declared caption and "the Run is running but has not yet begun this node"
+            are two different facts, never folded into one truncated line. */}
+        {awaitingAgent !== true ? null : (
+          <text className="hima-node-caption" y={labelY + (node.caption === undefined ? 15 : 30)} textAnchor="middle">
+            awaiting the Campaign Agent<title>awaiting the Campaign Agent</title>
+          </text>
         )}
         {logLine === undefined ? null : <text className="hima-node-log" y={labelY + 30} textAnchor="middle">{truncate(logLine, 40)}<title>{logLine}</title></text>}
       </g>

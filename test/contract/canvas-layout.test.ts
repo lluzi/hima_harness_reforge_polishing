@@ -178,7 +178,7 @@ test("an open loop shifts the spine below it clear of the frame's own bottom edg
   const frameBottom = frame.y + frame.height;
   for (const id of ['mine-start', 'mine-end']) {
     const placed = open.nodes.find((n) => n.id === id)!;
-    assert.ok(placed.y >= frameBottom + 24, `${id}.y (${placed.y}) should sit at or past the frame's bottom edge plus clearance (${frameBottom + 24})`);
+    assert.ok(placed.y >= frameBottom + 24, `${id}.y (${placed.y}) should sit below the frame's bottom edge plus clearance (${frameBottom + 24})`);
     const insideFrame = placed.x > frame.x && placed.x < frame.x + frame.width && placed.y > frame.y && placed.y < frame.y + frame.height;
     assert.ok(!insideFrame, `${id} must not sit inside the loop's own frame box`);
   }

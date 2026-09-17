@@ -195,8 +195,15 @@ function autoDetectForkBranches(nodes: readonly LayoutNode[], edges: readonly La
     const outgoing = edges.filter((edge) => edge.from === candidate.id && !edge.revisit && edge.outcome === undefined);
     if (outgoing.length < 2) continue;
     const chains: string[][] = [];
+    // C19: a branch's own id is the head node it starts at — the first node HimaFabric actually
+    // enters on that branch — rather than an arbitrary declaration-order index, so a Run's own
+    // `run.fork`/`GenerationView.branches` (real branch ids, `scene.ts`'s own `forkOf`) and this
+    // auto-detected fallback agree on what a branch is called whenever the two happen to describe
+    // the same fork.
+    const heads: string[] = [];
     let joinId: string | undefined;
     for (const first of outgoing) {
+      heads.push(first.to);
       const chain: string[] = [];
       let cursor: string | undefined = first.to;
       const seen = new Set<string>();
@@ -210,7 +217,7 @@ function autoDetectForkBranches(nodes: readonly LayoutNode[], edges: readonly La
       }
       chains.push(chain);
     }
-    if (joinId !== undefined) return chains.map((chainNodes, i) => ({ id: String(i), nodes: chainNodes }));
+    if (joinId !== undefined) return chains.map((chainNodes, i) => ({ id: heads[i]!, nodes: chainNodes }));
   }
   return undefined;
 }

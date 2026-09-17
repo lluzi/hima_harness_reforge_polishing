@@ -3,9 +3,111 @@
 Original source SHA: `47a25f25a043941f2e1d71108d837003b9be58e1`
 First acceptance commit: `f73c34f52fed3e0b1c6ae27d39a11b84e51e2219`
 Design-review fix commit: `9991bfeadde0683fa9c47eef40a059dcf86c071b` (`fix(ui): the Goal seal reads as a seal`)
-**Final review fix commit (this revision): see this branch's own HEAD after `fix(ui): final review — loops clear the spine, the Goal states its number, seals and focus read, receipts keep their tokens, acceptance evidences each state`. All 14 PNGs below are from this revision.**
+Final review fix commit: `577fcd3` (`fix(ui): final review — loops clear the spine, the Goal states its number, seals and focus read, receipts keep their tokens, acceptance evidences each state`)
+**Second final review fix commit (this revision): see this branch's own HEAD after `fix(ui): acceptance evidences all seven states; configuration polish; chip and title agree`. All 14 PNGs below are from this revision.**
 Display: Catsights (confirmed online via `system_profiler SPDisplaysDataType` — `Online: Yes`, 1920×1200 — before any window test ran)
 Window: 1280×800; dock pane dragged to 760 px per state via the docking kit's own splitter (see "Dock pane" below)
+
+## Second final review round (this revision — closes C17, C19 and the two acceptance gaps left open above)
+
+Picks up exactly where "Final review round" below left off: C17 and C19 were flagged, not attempted;
+acceptance items 3/6 (a literal `running`-state gate) and 7 (the 51-node graph still ran a strip off
+the pane) were investigated and explicitly not delivered. All four are closed in this revision.
+
+- **A1 (state 7 still overflowed the pane)**: `canvas-fit` (`FabricCanvas.tsx`) was floored at 0.4 —
+  the interactive zoom's own floor — which is still too high for this fixture's own ~54-node,
+  ~4885-unit-wide scene inside a 760px pane (`(760-32)/4885 ≈ 0.149`). Floored at 0.15 instead, since
+  a `canvas-fit` click is a deliberate user action, never the initial (readability-floored) fit. A real
+  second defect surfaced while fixing this: `canvas-fit` never suppressed `.hima-canvas-transform`'s
+  own 300ms CSS transition, so `data-hima-state-scale` (read straight off React state) reported the
+  final value instantly while the *visible* pan/zoom — and therefore every node's own
+  `getBoundingClientRect()` — was still animating in from wherever the camera was before; a test that
+  measured node position right after the attribute changed read a stale, mid-transition position.
+  Fixed by snapping `canvas-fit` the same way the initial mount fit already does (`suppressTransition`
+  around the `setTransform` call) — a deliberate "show me the whole graph" action reading right the
+  instant it is asked for is the more sensible product behaviour here, not only the easier one to
+  assert. The acceptance test now asserts the rightmost node's own screen x sits inside the canvas
+  container's bounds, not only that `scale < 0.6`.
+- **A2 (state 6's "new Side Talk session" race)**: diagnosed for real, per the task's own instruction,
+  by running state 6 alone three times in a row, foreground: **2 of 3 runs failed**, every time at the
+  exact same step — `document.querySelector('[data-hima-region="studio"]') !== null` timing out —
+  and every failure happened *before* any Hima-specific assertion (the very next line reads
+  `data-hima-state-session`, where a real Fabric-state defect would instead show up). Exact failure
+  text, verbatim, from two separate runs:
+  ```
+  Error: Window condition timed out: document.querySelector('[data-hima-region="studio"]') !== null
+      at Object.wait (…/test/contract/support/inspect-window.ts:35:38)
+      at async …/campaign-workspace.desktop.test.ts:472:7
+  ```
+  This is the session/dock-panel bootstrap race after clicking `open-workbench` on a freshly created
+  session — not a Hima rendering defect. Hardened `campaign-workspace.desktop.test.ts`'s own new
+  `openNewSessionWorkbench` helper with one bounded retry (max 2 attempts, logged via `t.diagnostic`)
+  of the `open-workbench` click and the `studio`-mount wait — **never** of the "New session" click
+  itself (an earlier draft of this fix retried that too and made things worse: re-clicking "New
+  session" while a session draft is already open dismisses it instead of opening another, which then
+  left no `open-workbench` control for the retry to find at all — confirmed empirically while building
+  this fix, described in the helper's own comment) and never of a Hima assertion, which must still
+  fail loud and immediately if the state it reads is actually wrong. Reran the full 7-state suite
+  twice after this fix: 7/7 both times.
+- **A3 (states 3/6 read `available`, not `running` — the masthead said "running" anyway)**: rather
+  than force a literal `running` node state a static replay script cannot reliably produce (the C7
+  investigation this task cites, in the "Final review round" section below, already exhausted that
+  path), the masthead is made honest instead. `run.status === 'running'` while the current node itself
+  sits at `available` is correct HimaFabric truth — the Run is running, the Campaign Agent has not yet
+  begun this node — so `FabricCanvas.tsx`/`FabricNode.tsx` now draw `awaiting the Campaign Agent` as
+  the current node's own caption line whenever that combination holds. Visible in the refreshed
+  `running-node-card-*.png` and `side-talk-*.png`: the `synthesize` node reads `awaiting the Campaign
+  Agent` under its own id, so the screenshot no longer contradicts the masthead's own "running" word.
+- **C17 (`ConfigurationPage.tsx`, all items)**: `EditableField`'s unmount cleanup now calls
+  `onPending?.(false)` for a still-pending debounce, so a page torn down mid-edit (the Pack owner panel
+  replacing it) never leaves `pendingFields` stuck non-empty; `ready` now also requires
+  `fieldErrors.size === 0`; every `EditableField` input and the Pack/Site `<select>`s carry an
+  `aria-label`; the Inputs, Goal and Strategy sections show `Available once a Pack is chosen.` (muted)
+  in place of silently rendering nothing; the empty Site form is `align-items:flex-start`; Inputs is
+  now an aligned three-column grid (name | value | state, `.hima-config-input-row`) with the
+  description and its own conditional "Ask HimaGuide" on a full-width row beneath; a bound input shows
+  its real value (typed, or resolved off the Site's own binding) rather than a placeholder standing in
+  for a value the page already has, and the value field carries a `title` for a long path a narrow
+  column truncates; state roundels (Inputs' own bound/unbound glyph, every Readiness row's own glyph)
+  are coloured good/warn/bad by `data-state`; Knowledge is always a typed path (`config-knowledge-path`
+  → `config-knowledge-add`, never the native folder picker — a knowledge document is one file, not a
+  directory), plus a new `config-ask-knowledge` drafting "Import these documents as current knowledge
+  for this Campaign: …"; the mini reference graph's own viewBox band now extends to
+  `min(node.y) − 70` whenever the graph has a revisit edge, so its arc's own apex no longer clips
+  against the preview's top edge (visible in `config-ready-*.png`).
+- **C19 (all items)**: `CampaignTabTitle` (`index.ts`) now reads its glyph from the same
+  `STATUS_GLYPH` table `CampaignChip` already uses (it used to hardcode `'dot'` for running and draw no
+  glyph at all for any other status); `askGuide` (`HimaWorkbench.tsx`) appends to the composer's
+  existing draft when it exposes `getDraft` (a new optional method on `inputActions`), and falls
+  through to the same caret-insert fallback (`draftToGuide`, now exported from `ConfigurationPage.tsx`)
+  an absent `inputActions` already uses, rather than call `setDraft` blind and silently replace
+  whatever a person had already typed; `uiWorkspace` (`index.ts`) is now resolved lazily inside the
+  `pickFolder` callback itself rather than once at `apply()` time, so a build where its own plugin
+  registers after this adapter's `apply()` runs no longer permanently loses the native folder picker
+  for the rest of the session; the header's `Files & code`/`Pack & assets` are bordered `.hima-button`s
+  again (`HimaWorkbench.tsx`), not the borderless `.hima-icon-button` a prior compacting pass left
+  them as; the canvas legend is 13px (`--hima-fs-label`), not the 12px eyebrow floor; the log-tail poll
+  (`FabricNode.tsx`'s single-line poll, `NodeCard.tsx`'s own Job-tab 40-line poll) now stops whenever
+  `motionOff` (reduced motion or a stale snapshot) is true, not only when the node itself is not
+  running; `canvas-layout.ts`'s fork auto-detect now labels each branch by its own head node's id
+  (matching `run.fork`/`scene.ts`'s own `forkOf`), not an arbitrary declaration-order index;
+  `CampaignTab.tsx`'s graph-less fallback now only shows the installed Pack's own reference graph when
+  its version matches `run.packVersion`, else a sentence naming the mismatch (never a graph that never
+  actually described this Run's own history); the masthead's title (`Masthead.tsx`) falls back to
+  `‹packId› · gen N` for a Campaign with no name of its own, never the raw campaign id; and
+  `canvas-layout.test.ts`'s eleventh test's own assertion message now literally says "should sit
+  *below* the frame's bottom edge".
+
+Verification for this revision: `pnpm run build`, `pnpm run typecheck`, `pnpm run check:seams` all
+clean; `pnpm run test:local --files test/contract/canvas-layout.test.ts test/contract/client-style.test.ts
+test/contract/view.test.ts test/contract/view-run.test.ts` — **42/42 pass**; the full seven-state
+desktop suite below — **7/7 pass**, all 14 PNGs re-captured and viewed; `pnpm run test:desktop --files
+test/contract/unified-workbench.test.ts test/contract/campaign-graph.desktop.test.ts` — **6/6 pass**
+(one run hit `campaign-graph.desktop.test.ts`'s own pre-existing "Side Talk reply" timing race when run
+alongside a busy system already carrying many concurrent Electron boots from this same session's own
+prior runs; reran that file alone — passed — then reran the pair together — 6/6 — confirming the same
+environmental flake the very first "Final review round" below already documented for this file, not a
+regression from this revision's own changes).
 
 ## Final review round (this revision, CLIENT side of #41's whole-branch review)
 
@@ -107,14 +209,13 @@ Result: **7 passed, 0 failed, 0 skipped** (the three routed files, item A/B/C �
 | 3 | Running with a node card open | pass | pass | `running-node-card-light.png`, `running-node-card-dark.png` |
 | 4 | Waiting with the attention strip | pass | pass | `waiting-attention-light.png`, `waiting-attention-dark.png` |
 | 5 | Ended with the Goal seal | pass | pass | `ended-goal-light.png`, `ended-goal-dark.png` |
-| 6 | Side Talk non-owner | flaky (pre-existing, see below) | flaky (pre-existing, see below) | `side-talk-light.png`, `side-talk-dark.png` |
+| 6 | Side Talk non-owner | pass (was flaky, see below) | pass (was flaky, see below) | `side-talk-light.png`, `side-talk-dark.png` |
 | 7 | Fifty-one node graph fitted to width | pass | pass | `graph-51-node-light.png`, `graph-51-node-dark.png` |
 
 All 14 screenshots exist and were reviewed (`Read`) for rendering defects. States 1–5 and 7 pass
-reliably in this final review round. State 6's own screenshots are genuine, fresh captures of current
-code (confirmed correct: the non-owner's node card shows `emergency` disclosed and no `node-continue`)
-but were not captured in one single atomic light+dark pass in this sandbox — see the "pre-existing"
-note above for why, and why it was not chased further.
+reliably in this final review round. State 6's flake note below describes the race as it stood at the
+end of this round, before it was diagnosed and hardened (A2, "Second final review round" above); the
+full seven-state suite is now 7/7 reliably, re-confirmed twice after that fix.
 
 ## Dock pane (760 px)
 

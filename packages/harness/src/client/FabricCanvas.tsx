@@ -257,15 +257,28 @@ export function FabricCanvas({
     if (target === undefined) return;
     setTransform((previous) => ({ scale: previous.scale, tx: viewport.width / 2 - target.x * previous.scale, ty: viewport.height / 2 - target.y * previous.scale }));
   };
-  // C7 (acceptance state 7): the initial auto-fit never goes below 0.6 so a freshly-opened canvas
+  // C7/A1 (acceptance state 7): the initial auto-fit never goes below 0.6 so a freshly-opened canvas
   // still reads its labels (see the mount effect above); a very wide graph — the acceptance suite's
-  // own 51-node fixture — never fits that readably at all. `canvas-fit` is the escape hatch: it
-  // always uses `fitToWidth`'s own natural scale, floored only at the interactive zoom's own 0.4
-  // (`clampScale`'s own floor), so a person can deliberately trade label visibility for seeing the
-  // whole graph across the canvas's own width — the initial-fit readability floor never applies here.
+  // own 51-node fixture — never fits that readably at all. `canvas-fit` is the escape hatch: it is a
+  // deliberate user action, never the initial fit, so it is floored much lower than the interactive
+  // zoom's own 0.4 (`clampScale`'s own floor) — 0.15, low enough that a 51-node reference graph
+  // (~4885 units wide) still fits inside a 760px dock pane ((760-32)/4885 ≈ 0.149) rather than
+  // clamping to 0.4 and still running a strip off the canvas's own right edge. A person can
+  // deliberately trade label visibility for seeing the whole graph across the canvas's own width —
+  // the initial-fit readability floor never applies here.
   const fitAll = (): void => {
     const fit = fitToWidth(scene, viewport);
-    setTransform({ scale: Math.max(0.4, fit.scale), tx: fit.tx, ty: fit.ty });
+    // A1: snapped, never eased — the same `suppressTransition` dance the initial mount fit uses.
+    // Without it `.hima-canvas-transform`'s own 300ms CSS transition animates the pan/zoom, but
+    // `data-hima-state-scale` (read straight off React state, never the visually-interpolated CSS
+    // transform) reaches its final value instantly regardless — so a caller that waits on the
+    // attribute alone reads "done" while the *visible* transform, and every node's own
+    // `getBoundingClientRect()`, are still mid-flight from wherever the camera was before. A
+    // deliberate "show me the whole graph" action reading right the instant it is asked for is also
+    // the more sensible product behaviour here, not only the easier one to assert against.
+    setSuppressTransition(true);
+    setTransform({ scale: Math.max(0.15, fit.scale), tx: fit.tx, ty: fit.ty });
+    requestAnimationFrame(() => requestAnimationFrame(() => setSuppressTransition(false)));
   };
   // Whether the pointer actually moved past a hair's width since `onPointerDown` — a plain click
   // (down, no move, up) on the canvas's own background closes an open card; a drag that panned the
@@ -469,7 +482,13 @@ export function FabricCanvas({
             })}
             {scene.nodes.map((node) => (
               <FabricNode key={`${node.frame ?? ''}/${node.id}`} node={node} runId={runId} labelsVisible={labelsVisible}
-                reducedMotion={motionOff} selected={node.id === selectedNodeId} onSelect={onSelectNode} />
+                reducedMotion={motionOff} selected={node.id === selectedNodeId} onSelect={onSelectNode}
+                // A3: the Run's own status word (masthead) can honestly say "running" while the
+                // current node itself sits at `available` — HimaFabric truth, not a bug: the Run is
+                // running, the node awaits the Campaign Agent's own `hima_execute` turn to actually
+                // begin it. Without this the canvas looked like it contradicted the masthead; this
+                // caption says plainly what is actually true instead.
+                awaitingAgent={node.current && node.state === 'available' && run?.status === 'running'} />
             ))}
             <g data-hima-region="campaign-goal" data-hima-state-status={run?.status ?? ''} transform={`translate(${scene.goal.x},${scene.goal.y})`}>
               {ended ? (
@@ -531,6 +550,7 @@ export function FabricCanvas({
             node={selectedPlaced} view={view} context={context} runId={runId} owner={isOwner}
             anchor={anchorScreen}
             canvas={viewport}
+            motionOff={motionOff}
             onClose={() => onSelectNode(undefined)} openFiles={openFiles} acting={acting}
           />
         )}

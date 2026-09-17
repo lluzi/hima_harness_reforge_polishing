@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { fetchExecutionContext, fetchRun, type HimaResult } from './api.js';
 import { CampaignTab } from './CampaignTab.js';
-import { ConfigurationPage } from './ConfigurationPage.js';
+import { ConfigurationPage, draftToGuide } from './ConfigurationPage.js';
 import { Diagnostics } from './Diagnostics.js';
 import { useRunActions } from './HimaRunCard.js';
 import { campaignEvents, isOwner as isOwnerOf, useRunsList } from './owned-run.js';
@@ -23,8 +23,14 @@ export interface WorkbenchProps {
   useTabInfo(): { tab: { id: string; visible: boolean; navigation: { revision: number; params: unknown } } };
   openFiles(): void;
   /** The shell's own composer, for "Ask HimaGuide" (#41 task 8); absent falls back to the native
-   *  contenteditable `ConfigurationPage` already knows to write into. */
-  inputActions?: { setDraft(text: string): void };
+   *  contenteditable `ConfigurationPage` already knows to write into.
+   *
+   *  C19: `getDraft` is optional because not every shell version that offers `setDraft` also offers
+   *  a way to read the composer's own current text back — `askGuide` (below) only ever appends
+   *  through `setDraft` when it can first read what is already there; otherwise it drops straight to
+   *  the same caret-insert fallback an absent `inputActions` uses, rather than call `setDraft` blind
+   *  and silently discard whatever a person had already begun typing. */
+  inputActions?: { setDraft(text: string): void; getDraft?(): string };
   /** The native folder picker, when the shell's own `uiWorkspace` service is installed. */
   pickFolder?: () => Promise<string | null>;
 }
@@ -88,7 +94,15 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
     return () => { campaignEvents.removeEventListener('diagnostics', onDiagnostics); };
   }, [tab.id]);
 
-  const askGuide = inputActions ? (text: string) => { inputActions.setDraft(text); } : undefined;
+  // C19: append to whatever draft the composer already holds, never replace it silently — only
+  // possible when the composer also exposes `getDraft`; without it, this falls through to the exact
+  // same caret-insert fallback (`draftToGuide`) an absent `inputActions` prop already uses, which is
+  // always append-safe on a plain contenteditable regardless of what the shell exposes.
+  const askGuide = inputActions ? (text: string) => {
+    const existing = inputActions.getDraft?.();
+    if (existing === undefined) { draftToGuide(text); return; }
+    inputActions.setDraft(existing === '' ? text : `${existing}\n${text}`);
+  } : undefined;
 
   return <div className='hima-studio hima-root' data-hima-region='studio' data-hima-state-session={activeSessionId} data-hima-state-run={selected ?? ''} data-stale={snapshot.error !== undefined}>
     {/* C8: this is `sidebar.right.pane.tab`'s own root mount, a separate tree from `CampaignChip`,
@@ -120,8 +134,12 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         ? <button className='hima-button' data-hima-control='studio-configure' disabled={confirming} onClick={() => setSelected(undefined)}>Start another Campaign</button>
         : null}
       <div className='hima-studio-header-actions'>
-        <button className='hima-icon-button' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
-        <button className='hima-icon-button' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
+        {/* C19: bordered `.hima-button`s, not the borderless `.hima-icon-button` this row's earlier
+            compacting pass reached for — both read as text-only actions inside a row that already
+            carries a select and an icon-only refresh control, and the missing border made them easy
+            to miss beside those. Same markers, same visible text. */}
+        <button className='hima-button' onClick={openFiles} title='Open the native workspace files and code panel'>Files & code</button>
+        <button className='hima-button' data-hima-control='studio-pack-owner' onClick={() => setManagingPack((value) => !value)}>Pack & assets</button>
       </div>
     </header>
     {list.error ? <p className='hima-notice' role='status'>Run list unavailable: {list.error}</p> : null}
