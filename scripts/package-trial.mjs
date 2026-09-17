@@ -214,7 +214,10 @@ async function smokeVersionIsolatedTrialHome(app) {
       fail('the new trial adopted the prior trial ledger');
     }
     const versioned = path.join(userData, `trial-dsh-${trialVersion}`);
-    if (!existsSync(path.join(versioned, 'storages/hima_ledger.json'))) fail(`versioned trial home was not created at ${versioned}`);
+    if (!observed.stderr.includes(`DSH_HOME is ${versioned}`)
+        || !existsSync(path.join(versioned, 'profiles/hima/package.json'))) {
+      fail(`versioned trial home was not prepared at ${versioned}`);
+    }
     if (readFileSync(staleLedger, 'utf8') !== stale) fail('the prior trial ledger was changed during isolated startup');
     process.stdout.write(`package-trial: version-isolated home smoke passed (${path.basename(versioned)})\n`);
   } finally { rmSync(userData, { recursive: true, force: true }); }
