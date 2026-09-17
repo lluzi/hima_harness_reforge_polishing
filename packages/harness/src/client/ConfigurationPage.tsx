@@ -49,6 +49,14 @@ export interface ConfigurationPageProps {
   /** Opens the Pack owner panel; `location` is a folder `pickFolder` already picked, so the panel
    *  opens with its own "source folder" field already filled in rather than empty (review MINOR). */
   openPackOwner?: (location?: string) => void;
+  /** Bug 3 fix: bumped by `HimaWorkbench`'s own top-level "Refresh Run data" button. That button
+   *  previously only refreshed the Run list and a Run snapshot this page never renders (both no-ops
+   *  while no Run is selected, which is exactly when this page is mounted) — the readiness poll below
+   *  lived entirely inside this component's own effect and had no way to hear about it, so a stale
+   *  readiness row (e.g. a since-fixed campaign.yml key) survived the click and only cleared through
+   *  that row's own "Retry" button. Any change to this number re-runs the same poll `retry` already
+   *  triggers, immediately rather than waiting out the rest of the 3 s interval. */
+  refreshSignal?: number;
   /** Told `true` for as long as Confirm's own request is in flight, `false` once it settles either
    *  way — `HimaWorkbench` disables the Run picker while it is true (review MINOR: switching Runs
    *  mid-confirmation is not a case this page's own guard needs to also reason about). */
@@ -223,7 +231,7 @@ function MiniReferenceGraph({ graph }: { graph: PreparationView['referenceGraph'
 
 interface ServerSnapshot { readonly file: CampaignFile; readonly text: string; readonly mtimeMs?: number }
 
-export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, openPackOwner, onBusy }: ConfigurationPageProps): ReactElement {
+export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, openPackOwner, onBusy, refreshSignal }: ConfigurationPageProps): ReactElement {
   const ask = askGuide ?? draftToGuide;
   const [draft, setDraft] = useState<CampaignFile>();
   const [view, setView] = useState<CampaignFileView>();
@@ -309,7 +317,10 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     poll();
     const timer = setInterval(poll, 3000);
     return () => { clearInterval(timer); };
-  }, [sessionId]);
+    // `refreshSignal` (Bug 3 fix): a changed value re-runs this effect, which polls immediately and
+    // restarts the interval — the same "poll now" `retry` already does for one readiness row, now
+    // reachable from the page-level refresh button too.
+  }, [sessionId, refreshSignal]);
 
   const clearChanged = (path: string) => setChanged((prior) => { if (!prior.has(path)) return prior; const next = new Set(prior); next.delete(path); return next; });
   const clearFieldError = (path: string) => setFieldErrors((prior) => { if (!prior.has(path)) return prior; const next = new Map(prior); next.delete(path); return next; });

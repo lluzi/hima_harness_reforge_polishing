@@ -68,6 +68,12 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const [managingPackLocation, setManagingPackLocation] = useState<string>();
   const [confirming, setConfirming] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  // Bug 3 fix: the top-level "Refresh Run data" button used to only bump `snapshot`/`list`, both of
+  // which this page never reads while no Run is selected (`selected === undefined`, exactly the
+  // state `ConfigurationPage` renders in) — so on the Configuration page that click was a no-op, and
+  // a stale readiness row only cleared through its own row-level "Retry". This is handed to
+  // `ConfigurationPage` as `refreshSignal`, which its own poll effect re-runs on every change.
+  const [configRefresh, setConfigRefresh] = useState(0);
   const list = useRunsList();
   const read = useCallback((signal: AbortSignal) => fetchRun(selected!, signal), [selected]);
   const snapshot = usePollingRead(selected ?? '', read, selected !== undefined && tab.visible);
@@ -129,7 +135,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         {selected && !list.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
         {list.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
       </select>
-      <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); }}><Glyph name='retry' /></button>
+      <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); setConfigRefresh((n) => n + 1); }}><Glyph name='retry' /></button>
       {selected !== undefined
         ? <button className='hima-button' data-hima-control='studio-configure' disabled={confirming} onClick={() => setSelected(undefined)}>Start another Campaign</button>
         : null}
@@ -155,7 +161,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         ? <ConfigurationPage key={activeSessionId} sessionId={activeSessionId}
             askGuide={askGuide} pickFolder={pickFolder}
             openPackOwner={(location) => { setManagingPackLocation(location); setManagingPack(true); }}
-            onBusy={setConfirming}
+            onBusy={setConfirming} refreshSignal={configRefresh}
             onStarted={(started) => { setSelected(started.run.id); list.refresh(); }} />
         : <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />}
     {!diagnosticsOpen ? null : <Diagnostics view={view} isOwner={isOwner} acting={acting} readAt={snapshot.at} openOwner={openOwner} onClose={() => setDiagnosticsOpen(false)} />}
