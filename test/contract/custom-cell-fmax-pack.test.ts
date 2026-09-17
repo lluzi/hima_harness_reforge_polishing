@@ -738,6 +738,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     assert.equal(work.kind, 'accepted', work.reason);
     await waitUntil('the Pack input adapter finishes', () => host.ctx.hima.executionContext(started.run.id).executions.some(item => item.id === executionId && item.phase === 'ready'));
     const materialized = JSON.parse(await readFile(path.join(started.workspace, 'flow/inputs.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(materialized.designRoot, designRoot); assert.equal(materialized.DESIGN_ROOT, designRoot);
     assert.equal(materialized.designTop, 'held_out'); assert.equal(materialized.DESIGN_TOP, 'held_out');
     assert.equal(materialized.edaWrapper, '/usr/bin/true');
     assert.equal(materialized.MAX_NEW_CELLS, 50); assert.equal(materialized.MAX_CELLS, 200);

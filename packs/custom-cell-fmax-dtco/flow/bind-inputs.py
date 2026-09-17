@@ -225,6 +225,7 @@ def main():
     if not isinstance(ns.design_top, str) or not ns.design_top.strip() or "\n" in ns.design_top or "\r" in ns.design_top:
         raise ValueError("designTop must be one nonempty line")
     primary = {
+        "designRoot": str(design_root),
         "designTop": ns.design_top,
         "rtlGlob": ns.rtl_glob,
         "foundryDb": str(foundry_db),
@@ -233,6 +234,7 @@ def main():
         "edaWrapper": tools.get("EDA_WRAPPER"),
         "evidenceClass": "site-run",
         "DESIGN_TOP": ns.design_top,
+        "DESIGN_ROOT": str(design_root),
         "DESIGN_RTL_GLOB": ns.rtl_glob,
         "FOUNDRY_DB": str(foundry_db),
         "CONSTRAINTS_FILE": str(constraints),
