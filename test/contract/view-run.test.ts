@@ -355,7 +355,7 @@ test('the served HimaGuide bundle claims the tool-view key of both Hima tools an
       sidebarRightTabs: { register: () => () => undefined },
       layout: { toggleSidebar: () => undefined },
       slots: {
-        inject: (name, cb) => { assert.ok(['tool.call.toolview', 'sidebar.footer.action', 'sidebar.right.pane.tab', 'sidebar.brand.mark', 'sidebar.brand.name', 'conversation.hero.brand.mark'].includes(name), 'only existing native presentation slots are extended'); return cb(); },
+        inject: (name, cb) => { assert.ok(['tool.call.toolview', 'sidebar.footer.action', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title', 'sidebar.right.tab.menu.item', 'conversation.session.header.actions', 'settings.section', 'sidebar.brand.mark', 'sidebar.brand.name', 'conversation.hero.brand.mark'].includes(name), 'only existing native presentation slots are extended'); return cb(); },
         register: (declaration) => { registered.push({ name: declaration.name, ...('key' in declaration ? { key: declaration.key } : {}), ...('id' in declaration ? { id: declaration.id } : {}) }); return () => undefined; },
       },
     });
