@@ -58,7 +58,7 @@ export function PackOwnerPanel({ sessionId, initialPack, initialLocation, pickFo
           <span className='hima-owner-location-row'>
             <input data-hima-control='owner-location' value={location} onChange={event => { invalidate(); setLocation(event.target.value); }} />
             {pickFolder ? <button type='button' className='hima-icon-button' data-hima-control='owner-location-pick' aria-label='Choose a folder'
-              onClick={() => { void pickFolder().then((picked) => { if (picked !== null) { invalidate(); setLocation(picked); } }); }}><Glyph name='locate' /></button> : null}
+              onClick={() => { void pickFolder().then((picked) => { if (picked !== null) { invalidate(); setLocation(picked); } }).catch(() => {}); }}><Glyph name='locate' /></button> : null}
           </span>
         </label>
       </div>

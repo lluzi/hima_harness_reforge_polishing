@@ -409,8 +409,14 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   const siteHead = sites.find((site) => site.name === siteName);
   const siteNeedsAttention = siteHead !== undefined && siteHead.readiness !== 'ready';
 
+  // Bug: some hosts advertise `uiWorkspace` but only serve its "browse" capability, not
+  // "directoryPicker.pick" — `pickFolder()` then rejects instead of resolving `null`. Left
+  // uncaught, that rejection escaped this fire-and-forget async handler silently: the button
+  // looked dead (no dialog, no panel, no error) with nothing but an unhandled-rejection console
+  // entry to show for it. The owner panel's own text field is the documented fallback for a
+  // missing picker (see `PackOwnerPanel`'s `pickFolder` doc) — route a *failing* picker there too.
   const installPack = async () => {
-    if (pickFolder) { const picked = await pickFolder(); openPackOwner?.(picked ?? undefined); return; }
+    if (pickFolder) { const picked = await pickFolder().catch(() => null); openPackOwner?.(picked ?? undefined); return; }
     openPackOwner?.();
   };
 
