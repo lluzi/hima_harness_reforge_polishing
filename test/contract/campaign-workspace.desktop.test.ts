@@ -179,7 +179,21 @@ async function fillShipped(d: BootedDriver, browser: Inspector, target = '2.25')
 /** A one-line scripted reply, written as a fresh replay session/override pair inside a home: the
  *  only conversation turn most of this file's owner states need — "Keep this conversation as the
  *  Campaign Agent." answered with "Campaign Agent conversation is ready." (`campaign-graph.desktop
- *  .test.ts`'s own recipe). */
+ *  .test.ts`'s own recipe).
+ *
+ *  C7 investigation note: a genuinely `running` node (as opposed to a Run merely `status: 'running'`
+ *  with an unlaunched `currentNode`) needs a real Campaign Agent driving `hima_execute` turn by turn
+ *  — `begin` admits a node, then `work` actually launches its Job, and `work` requires the
+ *  `executionId` `begin`'s own receipt mints fresh per call (a `randomUUID()`), which a static
+ *  replay script cannot know ahead of time. `{{fromRequest:<regex>}}` can in principle extract it
+ *  from a later turn's own request (which by then carries the prior turn's tool result in its
+ *  history), and scripting exactly that was tried here; it did not resolve within a reasonable
+ *  number of iterations (the second scripted reply's own confirmation text never appeared), and
+ *  chasing the exact reason further — inside `fabric.ts`'s own execution-admission protocol, out of
+ *  this file's scope — was not a good trade against the rest of this review. States 3 and 6 below
+ *  therefore read whichever node `run.currentNode` already names (the entry, immediately after
+ *  Run creation) rather than gating on a literal `running` node-state read, which C7 asked for but
+ *  this fixture cannot yet reliably produce. */
 async function ownerReplayFiles(home: LocalHome | { readonly h: { readonly home: string } }): Promise<{ readonly file: string; readonly override: string }> {
   const dir = path.join(home.h.home, 'owner-replay'); await mkdir(dir, { recursive: true });
   const file = path.join(dir, 'session.jsonl');
@@ -348,15 +362,19 @@ test('state 3: a running Campaign opens its current node\'s card', async (t) => 
       await establishOwnerSession(d, browser);
       await browser.wait(`!!document.querySelector('[data-hima-region="campaign-graph"]')`, 15_000);
       await browser.wait(`document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-current') !== ''`, 20_000);
+      const graph = await d.read('campaign-graph'); assert.ok(graph.ok, JSON.stringify(graph));
+      const current = graph.state.current; assert.ok(current, JSON.stringify(graph));
       const width = await widenDockPane(browser);
       t.diagnostic(`state 3 (${theme}) dock pane width after drag: ${String(width)}px`);
       assert.ok(width >= 700, `dock pane widened to at least 700px: ${String(width)}`);
-      const graph = await d.read('campaign-graph'); assert.ok(graph.ok, JSON.stringify(graph));
-      const current = graph.state.current; assert.ok(current, JSON.stringify(graph));
       assert.ok((await d.click(`node-${current}`)).ok);
+      // C7: opening the card no longer needs a manual pan here — `FabricCanvas.tsx`'s own selection
+      // effect now pans the camera itself, so the selected node sits at 25% of the canvas width
+      // whenever the card (a fixed ~384px) would otherwise cover more than half of it. Waiting for the
+      // card's own region to report this node is the one wait that actually matters here; the earlier
+      // draft additionally re-read and re-asserted the same fact the wait had already established.
       await browser.wait(`document.querySelector('[data-hima-region="campaign-node-card"]')?.getAttribute('data-hima-state-node') === ${JSON.stringify(current)}`, 10_000);
       const card = await d.read('campaign-node-card'); assert.ok(card.ok, JSON.stringify(card));
-      assert.equal(card.state.node, current);
       await capture(d, browser, `running-node-card-${theme}`);
     } finally { await finish(d, browser); await home.h.dispose(); }
   });
@@ -464,7 +482,16 @@ test('state 6: a Side Talk viewing an owned Run sees who owns it and no business
       assert.equal(campaign.state.owner, 'side-talk');
       assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-chip"]') === null`), true, 'a Side Talk carries no Campaign identity of its own');
       assert.equal(await browser.evaluate(`!!document.querySelector('[data-hima-control="open-owner"]')`), true, 'one way to the owning conversation');
-      assert.equal(await browser.evaluate(`!!document.querySelector('[data-hima-control="node-continue"]')`), false, 'Continue is never offered to a non-owner');
+      // C7: open the current node's own card on this Side Talk view and check the footer it actually
+      // renders — "Continue is never offered to a non-owner" was previously only ever checked page-
+      // wide, never on the one surface (`NodeCard`'s own `Footer`) that draws the owner/non-owner
+      // split at all.
+      const graph = await d.read('campaign-graph'); assert.ok(graph.ok, JSON.stringify(graph));
+      const current = graph.state.current; assert.ok(current, JSON.stringify(graph));
+      assert.ok((await d.click(`node-${current}`)).ok);
+      await browser.wait(`document.querySelector('[data-hima-region="campaign-node-card"]')?.getAttribute('data-hima-state-node') === ${JSON.stringify(current)}`, 10_000);
+      assert.equal(await browser.evaluate(`!!document.querySelector('[data-hima-region="campaign-node-card"] [data-hima-region="emergency"]')`), true, 'the non-owner footer discloses its own Emergency section');
+      assert.equal(await browser.evaluate(`!!document.querySelector('[data-hima-region="campaign-node-card"] [data-hima-control="node-continue"]')`), false, 'Continue is never offered to a non-owner');
       await capture(d, browser, `side-talk-${theme}`);
     } finally { await finish(d, browser); await home.h.dispose(); }
   });
@@ -573,19 +600,14 @@ test('state 7: a fifty-one node graph fits to width, scaled and label-hidden', a
       // Fit-to-width opens no smaller than a 0.6 scale by deliberate design, whatever the pane's own
       // width or the scene's own size — "labels must be visible the moment the canvas opens"
       // (`FabricCanvas.tsx`'s own fit effect: `Math.max(0.6, fit.scale)`). A dense reference graph
-      // therefore always *opens* fitted exactly to that floor, readable; "fitted to width, scaled
-      // [below 0.6] and label-hidden" is the next, ordinary step past that — the same `canvas-zoom-
-      // out` control (`Global Constraints`' own toolbar) a person reaches for to see the whole 51-node
-      // graph at once. Three clicks (`zoomBy(1/1.2)` each) clear 0.6 from any starting point at most 1
-      // (`1 * (1/1.2)**3 ≈ 0.579`), the fit-to-width ceiling.
-      for (let clicked = 0; clicked < 3; clicked++) assert.ok((await d.click('canvas-zoom-out')).ok);
+      // therefore always *opens* fitted exactly to that floor, readable, with the rest of a 51-node
+      // scene running off past the canvas's own edge. C7's own `canvas-fit` control is the escape
+      // hatch built for exactly this: it always fits to `fitToWidth`'s own natural scale (floored only
+      // at the interactive zoom's own 0.4), trading label visibility for showing the whole graph across
+      // the canvas's own width in one click, with no drift toward a corner to correct afterwards the
+      // way repeated wheel-zoom clicks would leave (`canvas-locate` is no longer needed here at all).
+      assert.ok((await d.click('canvas-fit')).ok);
       await browser.wait(`Number(document.querySelector('[data-hima-region="campaign-graph"]')?.getAttribute('data-hima-state-scale')) < 0.6`, 10_000);
-      // Zooming keeps whatever point was under the cursor fixed (`zoomBy`'s own ratio math), which
-      // drifts the graph off toward a corner after three successive clicks with no cursor of a
-      // person's own driving them — "Locate current node" is the same toolbar's own answer to
-      // exactly that, and the composition a person would actually reach for before looking at the
-      // whole graph zoomed out.
-      assert.ok((await d.click('canvas-locate')).ok);
       const graph = await d.read('campaign-graph'); assert.ok(graph.ok, JSON.stringify(graph));
       assert.ok(Number(graph.state.nodes) >= 48, JSON.stringify(graph));
       assert.ok(Number(graph.state.scale) < 0.6, JSON.stringify(graph));

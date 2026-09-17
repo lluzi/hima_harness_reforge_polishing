@@ -275,7 +275,11 @@ test('preparation retries preserve drafts, pending starts cannot be replaced, an
     assert.ok((await d.wait('campaign-masthead', 'waiting', 25_000)).ok);
     const id = await currentRun(d);
     await capture(d, browser, 'dark-blocked');
+    // C10: the attention strip's own resume now confirms first, in the card's own words, exactly as
+    // pause/stop already did — one extra click on the confirm sentence's own control before the Run
+    // actually resumes.
     assert.ok((await d.click('resume')).ok);
+    assert.ok((await d.click('resume-confirm')).ok);
     assert.ok((await d.wait('campaign-masthead', 'running', 10_000)).ok);
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="cancel"]').disabled`), false, 'Cancel does not wait for the resumed continuation to finish');
     assert.ok((await d.fill('studio-run', probe.run.id)).ok);
@@ -283,7 +287,9 @@ test('preparation retries preserve drafts, pending starts cannot be replaced, an
     assert.ok((await d.fill('studio-run', id)).ok);
     assert.ok((await d.wait('campaign-masthead', 'running', 10_000)).ok);
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="cancel"]').disabled`), false);
+    // C10: same confirm-first gate as resume, above.
     assert.ok((await d.click('cancel')).ok);
+    assert.ok((await d.click('cancel-confirm')).ok);
     assert.ok((await d.wait('campaign-masthead', 'cancelled', 15_000)).ok);
     const ended = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
     assert.equal(ended.cancels.length, 1);

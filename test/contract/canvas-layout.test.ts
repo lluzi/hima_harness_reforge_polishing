@@ -23,7 +23,7 @@ test('a linear graph ranks along one spine at the mockup pitch and ends in a Goa
 
 test('the revisit edge is one arc above the spine carrying the generation count, lit from generation two', () => {
   const first = layoutCanvas(linear, { generation: 1 });
-  const third = layoutCanvas(linear, { generation: 3, states: { prepare: 'done', analyze: 'running' }, currentNode: 'analyze', progress: { analyze: 0.62 } });
+  const third = layoutCanvas(linear, { generation: 3, states: { prepare: 'done', analyze: 'running' }, currentNode: 'analyze' });
   const arc = (scene: ReturnType<typeof layoutCanvas>) => scene.edges.find((e) => e.kind === 'revisit')!;
   assert.equal(arc(first).badge?.count, 1); assert.equal(arc(first).lit, false);
   assert.equal(arc(third).badge?.count, 3); assert.equal(arc(third).lit, true);
@@ -31,7 +31,6 @@ test('the revisit edge is one arc above the spine carrying the generation count,
   assert.ok(arc(third).badge!.y >= 12, 'the badge stays on-canvas even when the spine arc apex is above y = 0');
   assert.equal(third.edges.find((e) => e.from === 'prepare')!.lit, true, 'a traversed edge lights once its source is done');
   assert.equal(third.nodes.find((n) => n.id === 'analyze')!.current, true);
-  assert.equal(third.nodes.find((n) => n.id === 'analyze')!.progress, 0.62);
 });
 
 test('a FAIL outcome to a wait node hangs the node one row down at a half rank', () => {
@@ -87,7 +86,21 @@ test('a fifty-one node graph fits to width and hides labels below sixty percent'
   const fit = fitToWidth(scene, { width: 760, height: 618 });
   assert.ok(fit.scale < 0.6 && fit.scale > 0);
   assert.equal(labelsVisibleAt(fit.scale), false); assert.equal(labelsVisibleAt(0.6), true);
-  assert.equal(fitToWidth(layoutCanvas(linear), { width: 760, height: 618 }).scale, 1);
+  // C12: a scene this wide is scaled down to exactly fill the viewport's own 32px-padded width
+  // (`scale` is chosen so `scene.width * scale === viewport.width - 32`), so it never has room left
+  // to centre and `tx` stays the fixed 16px gutter — the derivation below is by hand, not asserted
+  // generically, because it only holds once `fitted === viewport.width - 32` exactly.
+  assert.ok(Math.abs(scene.width * fit.scale - (760 - 32)) < 1e-9, 'a wide scene fits flush to the viewport width minus the 32px gutter');
+  assert.equal(fit.tx, 16, 'no room left to centre once the scene already fills the padded viewport');
+
+  // A narrow scene (the four-node `linear` fixture) never needs to scale down at all (`scale === 1`)
+  // and so has real room left over — by C12 it now centres horizontally rather than sitting flush
+  // left. Derivation: linear's own width is `goal.x + 96 = X0 + 4.5*PITCH + 96` (rule 9's own floor,
+  // the widest of this narrow scene) = 64 + 405 + 96 = 565; centred in a 760px viewport, tx = (760 -
+  // 565) / 2 = 97.5.
+  const linearFit = fitToWidth(layoutCanvas(linear), { width: 760, height: 618 });
+  assert.equal(linearFit.scale, 1);
+  assert.equal(linearFit.tx, 97.5);
 });
 
 // --- Fix-report regression tests (code review findings 1-3) -------------------------------------
@@ -146,6 +159,29 @@ test('an open loop widens the scene to contain its frame', () => {
   //     open.width = max(385, 445, 421) = 445.
   assert.equal(closed.width, 385);
   assert.equal(open.width, 445);
+});
+
+// Final review C1: `packs/aes-tsmc28-dtco` showed `mine-start` landing between loop nodes — the old
+// shift (`placed.box.height + 24`) grew the spine by the frame's own height, not by how far past the
+// spine's own deepest row the frame's bottom actually reaches, so a frame hung well below its own
+// anchor (`baseRow = exploreRow + 1.2`) could still end above where the shifted spine landed.
+test("an open loop shifts the spine below it clear of the frame's own bottom edge, not just by its own height", () => {
+  const graph: LayoutGraph = {
+    entry: 'a',
+    nodes: [node('a'), node('dig', 'explore'), node('mine-start'), node('mine-end')],
+    edges: [{ from: 'a', to: 'dig' }, { from: 'dig', to: 'mine-start' }, { from: 'mine-start', to: 'mine-end' }],
+    opens: { dig: 'deeper' },
+    loops: { deeper: { entry: 'd1', nodes: [node('d1')], edges: [] } },
+  };
+  const open = layoutCanvas(graph, { openLoop: { id: 'deeper', generation: 2 } });
+  const frame = open.frames.find((f) => f.kind === 'loop')!;
+  const frameBottom = frame.y + frame.height;
+  for (const id of ['mine-start', 'mine-end']) {
+    const placed = open.nodes.find((n) => n.id === id)!;
+    assert.ok(placed.y >= frameBottom + 24, `${id}.y (${placed.y}) should sit at or past the frame's bottom edge plus clearance (${frameBottom + 24})`);
+    const insideFrame = placed.x > frame.x && placed.x < frame.x + frame.width && placed.y > frame.y && placed.y < frame.y + frame.height;
+    assert.ok(!insideFrame, `${id} must not sit inside the loop's own frame box`);
+  }
 });
 
 test("a loop's own revisit badge sits on the loop's arc", () => {

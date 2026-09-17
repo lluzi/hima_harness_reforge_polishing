@@ -69,7 +69,9 @@ export function PackOwnerPanel({ sessionId, initialPack, initialLocation, pickFo
         <p className='hima-wrap'>Destination: <code>{review.to}</code></p>
         <p className='hima-small'>{review.files.length} files · {review.changes.length} changes · review <code title={review.reviewSha256}>{review.reviewSha256.slice(0, 12)}</code></p>
         <div className='hima-run-card-material-panel'><table><thead><tr><th className='hima-owner-file-column'>File</th><th className='hima-owner-bytes-column'>Bytes</th><th>SHA-256</th></tr></thead><tbody>{review.files.map(file => <tr key={file.path}><td className='hima-owner-file-cell'>{file.path}</td><td>{file.bytes}</td><td><code title={file.sha256}>{file.sha256.slice(0, 12)}</code></td></tr>)}</tbody></table></div>
-        <details className='hima-owner-manifest'><summary>Full manifest and changes</summary><pre className='hima-owner-manifest-json'>{JSON.stringify(review, null, 2)}</pre></details>
+        {/* C18: the raw JSON dump added nothing the table above does not already state in words —
+            every file, its bytes and its hash — so it is removed rather than kept as a second,
+            unreadable copy of the same review. */}
         <button className='hima-button hima-primary' data-hima-control='owner-confirm' onClick={() => { void submit(true); }}>Confirm these exact files</button>
       </div> : null}
     </fieldset>

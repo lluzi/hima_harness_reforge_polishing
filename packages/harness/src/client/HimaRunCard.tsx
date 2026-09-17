@@ -22,6 +22,7 @@ import type { SemanticValue } from '../semantics.js';
 import { bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
 import { actOnRun, controlRun, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
 import { Glyph } from './glyphs.js';
+import { HIMA_STYLE } from './workbench-style.js';
 
 /** The slice of the tool block this card reads. The owner passes the frozen call or result node. */
 export interface ToolBlock {
@@ -929,19 +930,30 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
     if (toolBlock.kind !== undefined && toolBlock.isError === true) {
       const said = toolText(toolBlock);
       return (
-        <div className="hima-run-card">
+        // C8: this is its own root mount (`tool.call.toolview`'s own slot render, not a subtree of
+        // `HimaWorkbench`'s own `.hima-root`), so it needs its own copy of the token sheet — without
+        // `hima-root`/`<style>` here, no `--hima-*` custom property resolves and the receipt draws
+        // with none of the dark glass, state colours or sizes the sheet defines at all.
+        <div className="hima-run-card hima-root">
+          <style>{HIMA_STYLE}</style>
           <div className="hima-run-card-error">this HimaHarness call failed</div>
           <div className="hima-muted hima-mono">{said === '' ? 'the tool reported an error with no text' : said}</div>
         </div>
       );
     }
-    return <div className="hima-run-card hima-muted">{toolBlock.kind === undefined ? 'working…' : 'this call reported no run'}</div>;
+    return (
+      <div className="hima-run-card hima-root hima-muted">
+        <style>{HIMA_STYLE}</style>
+        {toolBlock.kind === undefined ? 'working…' : 'this call reported no run'}
+      </div>
+    );
   }
   const status = state.view?.run.status;
   const statusWord = status === undefined ? NO_FABRIC_STATE : labelled(runStatusLabel, status).said;
   const notice = acting.refusal?.message ?? acting.notice ?? 'Nothing further to report for this run.';
   return (
-    <div className="hima-run-card" title={runId}>
+    <div className="hima-run-card hima-root" title={runId}>
+      <style>{HIMA_STYLE}</style>
       {state.error !== undefined ? <FailureRow error={state.error} /> : null}
       {state.view === undefined ? (state.error === undefined ? <div className="hima-muted">reading the run…</div> : null) : (
         <>

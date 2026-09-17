@@ -6,7 +6,7 @@ import type { ReactElement } from 'react';
 
 export type GlyphName =
   | 'check' | 'dot' | 'ring' | 'hourglass' | 'retry' | 'square' | 'bar' | 'diamond'
-  | 'circle' | 'octagon' | 'locate' | 'zoom-in' | 'zoom-out' | 'close' | 'arrow-right' | 'warning';
+  | 'circle' | 'octagon' | 'locate' | 'zoom-in' | 'zoom-out' | 'close' | 'arrow-right' | 'warning' | 'fit';
 
 /** The three glyphs drawn as a solid shape rather than an outlined stroke. */
 const FILLED = new Set<GlyphName>(['check', 'dot', 'square']);
@@ -58,6 +58,16 @@ function GlyphShape({ name }: { name: GlyphName }): ReactElement | null {
       return <path d="M4 4 12 12M12 4 4 12" strokeWidth={1.4} strokeLinecap="round" />;
     case 'arrow-right':
       return <path d="M2.5 8h9M8.3 4.3 12 8l-3.7 3.7" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />;
+    case 'fit':
+      // Four corner brackets pulled in from the grid's own edges — "fit the whole scene" reads as
+      // the inverse of a normal zoom glyph's own magnifier, so this one draws the frame a fit action
+      // settles the scene into rather than a lens.
+      return (
+        <path
+          d="M2 5.5V3a1 1 0 0 1 1-1h2.5M11.5 2H13a1 1 0 0 1 1 1v2.5M14 10.5V13a1 1 0 0 1-1 1h-2.5M5.5 14H3a1 1 0 0 1-1-1v-2.5"
+          strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"
+        />
+      );
     case 'warning':
       return (
         <>

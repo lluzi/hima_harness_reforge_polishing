@@ -8,6 +8,7 @@ import type { CanvasScene, Frame, PlacedEdge } from '../canvas-layout.js';
 import type { ExecutionContext } from '../fabric.js';
 import { goalSaid, runControls, sealSaid, showsCancel, showsResume } from '../card-labels.js';
 import type { RunView } from '../remote.js';
+import { NODE_CARD_WIDTH } from '../node-card-layout.js';
 import { FabricNode, HATCH_PATTERN_ID, KindOutline, truncate } from './FabricNode.js';
 import { Glyph } from './glyphs.js';
 import { NodeCard } from './NodeCard.js';
@@ -63,10 +64,15 @@ function Edge({ edge, firstLit, pulse }: { edge: PlacedEdge; firstLit: boolean; 
           <text y={4} textAnchor="middle">{edge.chip.text}</text>
         </g>
       )}
-      {edge.badge === undefined ? null : (
+      {/* C11: a revisit arc's own badge is only informative once the loop has actually gone around
+          more than once — a first-generation arc (`count === 1`) has nothing to count yet, so the
+          pill is suppressed rather than drawn as a redundant one-time badge. The multiplication sign
+          below is typography, not an icon standing in for a shape (Global Constraints' own icon rule
+          is about icons, never about this glyph). */}
+      {edge.badge === undefined || edge.badge.count < 2 ? null : (
         <g transform={`translate(${edge.badge.x},${edge.badge.y})`} className="hima-edge-badge">
           <rect x={-17} y={-9} width={34} height={18} rx={9} />
-          <text y={4} textAnchor="middle">{`x${String(edge.badge.count)}`}</text>
+          <text y={4} textAnchor="middle">{`×${String(edge.badge.count)}`}</text>
         </g>
       )}
     </g>
@@ -95,6 +101,20 @@ const edgeKey = (edge: PlacedEdge): string => `${edge.from}->${edge.to}:${edge.k
  *  card opened, then dragged over it). */
 const insideCard = (target: EventTarget | null): boolean => target instanceof Element && target.closest('.hima-node-card') !== null;
 
+/** C3: `goalSaid` returns one sentence (`"clock period 2.25 ns"`) that a flat 14-char truncation used
+ *  to cut wherever it landed — dropping the number itself as often as not. Split at the *last*
+ *  embedded number instead, so the roundel can draw a label line and a value+unit line separately and
+ *  the number is never the part that gets cut. Returns `undefined` for a goal word with no number at
+ *  all (a Pack's own choice knob, e.g. "mining profile dense"), which keeps the single-line rendering
+ *  the caller falls back to. */
+function splitGoalText(text: string): { readonly label: string; readonly value: string } | undefined {
+  const match = /^(.*?)(-?\d+(?:\.\d+)?(?:\s+\S+)?)$/.exec(text);
+  if (match === null) return undefined;
+  const label = match[1]!.trim();
+  const value = match[2]!.trim();
+  return label === '' ? undefined : { label, value };
+}
+
 export function FabricCanvas({
   runId, scene, entryNodeId, view, context, stale, reducedMotion, isOwner, selectedNodeId, onSelectNode, openOwner, openFiles, acting,
 }: FabricCanvasProps): ReactElement {
@@ -116,6 +136,10 @@ export function FabricCanvas({
   // True while the camera is jumping to its initial fit — suppresses `.hima-canvas-transform`'s own
   // eased transition for that one jump, which has nothing sensible to ease from.
   const [suppressTransition, setSuppressTransition] = useState(true);
+  // C10: the historical-run attention strip's own resume/cancel now confirm first, exactly as the
+  // node card and Diagnostics already do for pause/stop — one control at a time, never both open.
+  const [confirmingControl, setConfirmingControl] = useState<'resume' | 'cancel'>();
+  const toggleControl = (key: 'resume' | 'cancel') => setConfirmingControl((current) => (current === key ? undefined : key));
 
   const motionOff = reducedMotion || stale;
 
@@ -233,6 +257,16 @@ export function FabricCanvas({
     if (target === undefined) return;
     setTransform((previous) => ({ scale: previous.scale, tx: viewport.width / 2 - target.x * previous.scale, ty: viewport.height / 2 - target.y * previous.scale }));
   };
+  // C7 (acceptance state 7): the initial auto-fit never goes below 0.6 so a freshly-opened canvas
+  // still reads its labels (see the mount effect above); a very wide graph — the acceptance suite's
+  // own 51-node fixture — never fits that readably at all. `canvas-fit` is the escape hatch: it
+  // always uses `fitToWidth`'s own natural scale, floored only at the interactive zoom's own 0.4
+  // (`clampScale`'s own floor), so a person can deliberately trade label visibility for seeing the
+  // whole graph across the canvas's own width — the initial-fit readability floor never applies here.
+  const fitAll = (): void => {
+    const fit = fitToWidth(scene, viewport);
+    setTransform({ scale: Math.max(0.4, fit.scale), tx: fit.tx, ty: fit.ty });
+  };
   // Whether the pointer actually moved past a hair's width since `onPointerDown` — a plain click
   // (down, no move, up) on the canvas's own background closes an open card; a drag that panned the
   // canvas must never also close it.
@@ -285,6 +319,21 @@ export function FabricCanvas({
     if (selectedNodeId !== undefined && selectedPlaced === undefined) onSelectNode(undefined);
   }, [selectedNodeId, selectedPlaced, onSelectNode]);
 
+  // C7 (acceptance state 3): the node card is ~384px wide (`NODE_CARD_WIDTH`); anchored beside a
+  // node that already sits in the middle of a narrow canvas, it covers more than half the graph and
+  // hides most of what a person opened it to see beside. Only when the card would actually cover
+  // that much (its own fixed width past half the viewport) does selecting a node pan the camera so
+  // the node itself lands at 25% of the canvas width, clear of wherever `cardPosition` then puts the
+  // card (right of the node, or flipped left near the edge).
+  useEffect(() => {
+    if (selectedPlaced === undefined) return;
+    if (NODE_CARD_WIDTH <= viewport.width / 2) return;
+    setTransform((previous) => ({ ...previous, tx: viewport.width * 0.25 - selectedPlaced.x * previous.scale }));
+    // Only the just-selected node's own identity (and the viewport's own width) should trigger this
+    // one-time pan — a poll that moves nothing about the selection must never re-pan the camera.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlaced?.id, viewport.width]);
+
   // The selected node's own screen position: the outer `<svg>`'s own CTM (`getScreenCTM`) correctly
   // folds the viewBox's 8-unit pad (`-4 -4 ${width+8} ${height+8}`) and the `width="100%"` stretch
   // into "user unit → real screen pixel" — but that CTM stops at the svg's own boundary and knows
@@ -319,8 +368,14 @@ export function FabricCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlaced?.id, selectedPlaced?.x, selectedPlaced?.y, transform.scale, transform.tx, transform.ty, viewport.width, viewport.height]);
 
+  // C5: an ended Run's own execution context can still carry a stale `reason`/`budget.phase` from
+  // whatever fenced it last — the fence strip must only ever describe something the Run is doing
+  // right now, so it is gated on the Run still being active. A blocker (`kind: 'waiting'`) already
+  // implies `status === 'waiting'`, which is itself active, but the fence check is separate (it reads
+  // `context`, not `run.status` directly) and needs its own gate.
+  const active = run?.status === 'running' || run?.status === 'waiting';
   const blocker = run?.status === 'waiting' ? view?.blockers.at(-1) : undefined;
-  const fenceReason = context !== undefined && (context.budget.phase !== 'active' || context.reason !== undefined)
+  const fenceReason = active && context !== undefined && (context.budget.phase !== 'active' || context.reason !== undefined)
     ? context.reason ?? (context.budget.phase === 'exhausted' ? 'the Budget is exhausted' : 'the Budget is closing')
     : undefined;
   const attention = blocker !== undefined ? { kind: 'waiting' as const, reason: blocker.reason }
@@ -331,22 +386,47 @@ export function FabricCanvas({
       {attention === undefined ? null : (
         <div className={`hima-canvas-attention hima-canvas-attention-${attention.kind}`} data-hima-region="campaign-attention" data-hima-state-kind={attention.kind}>
           <span>{attention.reason}</span>
-          {attention.kind === 'waiting' && isOwner && run?.control?.owner !== undefined ? (
+          {/* C10: the masthead already carries its own "Open Campaign Agent" for the OWNER'S own
+              view of someone else's Run; here the gate names who the strip is for — the non-owner
+              (Side Talk) reading a waiting blocker on a Run they do not control, who has no other way
+              there. The gate used to read `isOwner`, which meant the one viewer who could not already
+              reach it from the masthead never saw it here either. */}
+          {attention.kind === 'waiting' && !isOwner && run?.control?.owner !== undefined ? (
             <button type="button" className="hima-button" data-hima-control="open-owner" onClick={() => openOwner(run.control!.owner)}>Open Campaign Agent</button>
           ) : null}
           {/* A historical automatic Run (`run.control === undefined`) is nobody's Side Talk
               (`run-ownership.ts`'s own `isOwner`), so the same bare human controls the transcript's
               own tool receipt offers such a Run (`RunControls`, `HimaRunCard.tsx`) belong in its own
               attention strip too: Continue while it waits, Stop whenever it is active, through the
-              same `actOnRun` route and the same `runControls` words (#41 task 9 item B). */}
+              same `actOnRun` route and the same `runControls` words (#41 task 9 item B). C10: each
+              now confirms first, in the card's own words, rather than acting the instant it is
+              clicked. */}
           {run?.control !== undefined ? null : (
             <>
               {showsResume(run?.status) ? (
-                <button type="button" className="hima-button" data-hima-control="resume" disabled={acting.inFlight !== undefined} onClick={() => acting.act('resume')}>{runControls.resume.said}</button>
+                <button type="button" className="hima-button" data-hima-control="resume" disabled={acting.inFlight !== undefined} onClick={() => toggleControl('resume')}>{runControls.resume.said}</button>
               ) : null}
               {showsCancel(run?.status) ? (
-                <button type="button" className="hima-button" data-hima-control="cancel" disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>{runControls.cancel.said}</button>
+                <button type="button" className="hima-button" data-hima-control="cancel" disabled={acting.inFlight === 'cancel'} onClick={() => toggleControl('cancel')}>{runControls.cancel.said}</button>
               ) : null}
+              {confirmingControl !== 'resume' ? null : (
+                <div className="hima-node-card-confirm" data-hima-region="resume-confirm">
+                  <p>New work starts again in this run.</p>
+                  <div className="hima-node-card-footer-row">
+                    <button type="button" className="hima-button hima-primary" data-hima-control="resume-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('resume'); setConfirmingControl(undefined); }}>Confirm resume</button>
+                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>Cancel</button>
+                  </div>
+                </div>
+              )}
+              {confirmingControl !== 'cancel' ? null : (
+                <div className="hima-node-card-confirm" data-hima-region="cancel-confirm">
+                  <p>This asks every Job this run holds to stop; work already running may take a moment to end.</p>
+                  <div className="hima-node-card-footer-row">
+                    <button type="button" className="hima-button hima-primary" data-hima-control="cancel-confirm" disabled={acting.inFlight !== undefined} onClick={() => { acting.act('cancel'); setConfirmingControl(undefined); }}>Confirm stop</button>
+                    <button type="button" className="hima-button" onClick={() => setConfirmingControl(undefined)}>Cancel</button>
+                  </div>
+                </div>
+              )}
               {acting.notice === undefined ? null : <span role="status">{acting.notice}</span>}
               {acting.refusal === undefined ? null : <span role="alert" data-hima-region="run-error">{acting.refusal.message}</span>}
             </>
@@ -394,20 +474,25 @@ export function FabricCanvas({
             <g data-hima-region="campaign-goal" data-hima-state-status={run?.status ?? ''} transform={`translate(${scene.goal.x},${scene.goal.y})`}>
               {ended ? (
                 <>
-                  <circle r={18} className="hima-goal-seal" />
+                  {/* C13: r=26 plus a second, concentric ring 4px past it (same colour, 2px stroke)
+                      — a done node's own filled shape is r=18 with no ring at all, so a sealed Goal
+                      must read as its own distinct mark rather than an oversized done node. */}
+                  <circle r={26} className="hima-goal-seal" />
+                  <circle r={30} className="hima-goal-seal-ring" />
                   <g className="hima-goal-seal-glyph" transform="translate(-8,-8)">
                     <Glyph name={run?.status === 'ended-goal-met' ? 'check' : 'square'} />
                   </g>
                   {/* The status word and the reason sit below the sealed roundel, on paper, never
                       inside the small filled circle: a 20 px display word and a 13 px reason line
-                      both fit a person's eye there but not inside an 18 px-radius shape, and drawing
+                      both fit a person's eye there but not inside the seal's own shape, and drawing
                       them centred on the roundel is what put white text half on paper and half
-                      spilling past the circle's own edge (PLS design review). */}
+                      spilling past the circle's own edge (PLS design review). Pushed down from the
+                      old 40/58 to 48/66 to clear the larger r=30 outer ring (C13). */}
                   {seal?.title === undefined ? null : (
-                    <text className="hima-goal-title" y={40} textAnchor="middle">{truncate(seal.title, 18)}<title>{seal.title}</title></text>
+                    <text className="hima-goal-title" y={48} textAnchor="middle">{truncate(seal.title, 18)}<title>{seal.title}</title></text>
                   )}
                   {seal?.reason === '' || seal?.reason === undefined ? null : (
-                    <text className="hima-goal-reason" y={58} textAnchor="middle">{truncate(seal.reason, 18)}<title>{seal.reason}</title></text>
+                    <text className="hima-goal-reason" y={66} textAnchor="middle">{truncate(seal.reason, 18)}<title>{seal.reason}</title></text>
                   )}
                 </>
               ) : (
@@ -415,7 +500,22 @@ export function FabricCanvas({
                   <circle r={22} className="hima-goal-roundel" />
                   <circle r={5} className="hima-goal-mark" />
                   <circle r={1.5} className="hima-goal-mark-dot" />
-                  {goalText === '' ? null : <text className="hima-goal-label" y={40} textAnchor="middle">{truncate(goalText, 14)}<title>{goalText}</title></text>}
+                  {/* C3: a flat 14-char truncation of `goalText` ("clock period 2.25 ns") cut the
+                      number itself as often as the label. Split at the last embedded number instead
+                      and draw two lines — the label, then the value with its unit, the value never
+                      truncated — falling back to the old single truncated line only for a goal word
+                      with no number in it at all (a Pack's own choice knob). */}
+                  {goalText === '' ? null : (() => {
+                    const split = splitGoalText(goalText);
+                    return split === undefined ? (
+                      <text className="hima-goal-label" y={40} textAnchor="middle">{truncate(goalText, 18)}<title>{goalText}</title></text>
+                    ) : (
+                      <>
+                        <text className="hima-goal-label" y={40} textAnchor="middle">{truncate(split.label, 18)}<title>{goalText}</title></text>
+                        <text className="hima-goal-value" y={56} textAnchor="middle">{split.value}<title>{goalText}</title></text>
+                      </>
+                    );
+                  })()}
                 </>
               )}
             </g>
@@ -444,6 +544,7 @@ export function FabricCanvas({
           <button type="button" className="hima-icon-button" data-hima-control="canvas-locate" aria-label="Locate current node" onClick={locate}><Glyph name="locate" /></button>
           <button type="button" className="hima-icon-button" data-hima-control="canvas-zoom-in" aria-label="Zoom in" onClick={() => zoomBy(1.2)}><Glyph name="zoom-in" /></button>
           <button type="button" className="hima-icon-button" data-hima-control="canvas-zoom-out" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.2)}><Glyph name="zoom-out" /></button>
+          <button type="button" className="hima-icon-button" data-hima-control="canvas-fit" aria-label="Fit the whole graph" onClick={fitAll}><Glyph name="fit" /></button>
         </div>
       </div>
       {/* Always rendered, regardless of which card — if any — is open: the node card's own Job tab is

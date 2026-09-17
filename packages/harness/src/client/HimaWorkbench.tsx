@@ -10,6 +10,8 @@ import { campaignEvents, isOwner as isOwnerOf, useRunsList } from './owned-run.j
 import { PackOwnerPanel } from './PackOwnerPanel.js';
 import { runPurposeMark } from '../card-labels.js';
 import { Glyph } from './glyphs.js';
+import { shortTime } from './time.js';
+import { HIMA_STYLE } from './workbench-style.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot; `tab.id` is the tab
  *  record's own stable identity, read here only to scope the `'diagnostics'` event (`owned-run.ts`)
@@ -50,8 +52,6 @@ function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<H
   return { ...current, refresh: useCallback(() => setRevision((n) => n + 1), []) };
 }
 
-const shortTime = (at: string | number): string => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
 export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, openOwner, inputActions, pickFolder }: WorkbenchProps): ReactElement {
   const activeSessionId = useSessions((state) => state.current) ?? sessionId;
   const { tab } = useTabInfo();
@@ -91,6 +91,12 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   const askGuide = inputActions ? (text: string) => { inputActions.setDraft(text); } : undefined;
 
   return <div className='hima-studio hima-root' data-hima-region='studio' data-hima-state-session={activeSessionId} data-hima-state-run={selected ?? ''} data-stale={snapshot.error !== undefined}>
+    {/* C8: this is `sidebar.right.pane.tab`'s own root mount, a separate tree from `CampaignChip`,
+        `CampaignTabTitle` and `WorkbenchEntry`, each of which already carries its own `<style>` copy
+        (`index.ts`) — this root carried `hima-root` but never the sheet itself, so no `--hima-*`
+        token actually resolved inside the whole Campaign tab body. Same hardening as the transcript
+        receipt (`HimaRunCard.tsx`). */}
+    <style>{HIMA_STYLE}</style>
     {/* The masthead and the session-header chip (`CampaignChip`) now carry Campaign's identity, so
         this header names no "Campaign workspace" heading of its own (Design bar) — one 40 px row:
         the CAMPAIGN picker at the left, `Files & code`/`Pack & assets` at the right. A separate,
@@ -133,7 +139,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
             openPackOwner={(location) => { setManagingPackLocation(location); setManagingPack(true); }}
             onBusy={setConfirming}
             onStarted={(started) => { setSelected(started.run.id); list.refresh(); }} />
-        : <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} refresh={() => { snapshot.refresh(); execution.refresh(); }} />}
+        : <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />}
     {!diagnosticsOpen ? null : <Diagnostics view={view} isOwner={isOwner} acting={acting} readAt={snapshot.at} openOwner={openOwner} onClose={() => setDiagnosticsOpen(false)} />}
   </div>;
 }

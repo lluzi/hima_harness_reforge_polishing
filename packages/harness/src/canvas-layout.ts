@@ -55,7 +55,6 @@ export interface LayoutFacts {
   readonly available?: readonly string[];
   readonly currentNode?: string;
   readonly generation?: number;
-  readonly progress?: Readonly<Record<string, number>>;
   readonly waitedForSlot?: readonly string[];
   readonly openLoop?: { readonly id: string; readonly generation: number };
   readonly fork?: { readonly node: string; readonly join: string; readonly branches: readonly { readonly id: string; readonly nodes: readonly string[] }[] };
@@ -70,7 +69,7 @@ export interface LayoutFacts {
 export interface PlacedNode {
   readonly id: string; readonly kind: NodeKind; readonly x: number; readonly y: number;
   readonly rank: number; readonly row: number; readonly state: NodeVisualState;
-  readonly caption?: string; readonly current: boolean; readonly progress?: number;
+  readonly caption?: string; readonly current: boolean;
   readonly waitedForSlot: boolean; readonly revised?: 'changed' | 'affected'; readonly frame?: string;
 }
 
@@ -433,7 +432,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
       return {
         id: node.id, kind: node.kind, x: p.x, y: p.y, rank: rankOf(node.id), row: rowOf(node.id),
         state: stateOf(node.id), caption: node.caption, current: node.id === facts?.currentNode,
-        progress: facts?.progress?.[node.id], waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id),
+        waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id),
         frame: frameId,
       };
     });
@@ -468,7 +467,18 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     // not the run row's `facts.generation` — the two count different things once the Run is inside it.
     const placed = placeSubgraph(loop, baseRank, baseRow, loopName, facts?.openLoop?.generation);
     loopFrames.push({ id: loopName, kind: 'loop', label, anchor: exploreId, open: true, ...placed.box });
-    loopShift.push({ exploreRank, extra: placed.box.height + 24 });
+    // The spine must clear the open frame's own bottom edge, not just grow by the frame's height: the
+    // frame hangs 1.2 rows below its anchor explore node, which can already sit several rows above the
+    // spine's own deepest row (`maxRow`), so `placed.box.height + 24` alone under-shifts and the spine
+    // lands inside the frame (verified on `packs/aes-tsmc28-dtco`, a `mine-start` node between loop
+    // nodes). The needed shift is the frame's own bottom (`box.y + box.height`, plus the same 24px
+    // clearance) measured against where the spine's own deepest row would otherwise sit
+    // (`PAD_Y + (maxRow - minRow) * ROW`) — clamped to never go negative, since a frame that already
+    // sits above the spine's own bottom needs no extra shift at all.
+    const spineBottom = PAD_Y + (maxRow - minRow) * ROW;
+    const frameBottom = placed.box.y + placed.box.height + 24;
+    const extra = Math.max(0, frameBottom - spineBottom);
+    loopShift.push({ exploreRank, extra });
     loopNodes.push(...placed.nodes);
     loopEdges.push(...placed.edges);
   }
@@ -480,7 +490,7 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
     const y = pass1Y.get(node.id)! + shiftBefore(rank);
     return {
       id: node.id, kind: node.kind, x, y, rank, row, state: stateOf(node.id), caption: node.caption,
-      current: node.id === facts?.currentNode, progress: facts?.progress?.[node.id],
+      current: node.id === facts?.currentNode,
       waitedForSlot: waitedForSlotOf(node.id), revised: revisedOf(node.id),
     };
   });
@@ -550,10 +560,15 @@ export function layoutCanvas(graph: LayoutGraph, facts?: LayoutFacts): CanvasSce
 }
 
 /** Rule 10: fit the scene's width into a viewport, centring it vertically (never above 16px from the
- * top) and never scaling up past 1. */
+ * top) and never scaling up past 1. C12: a scene narrower than the viewport at its own fitted scale
+ * (`scene.width * scale < viewport.width`) is also centred horizontally, rather than left flush
+ * against the 16px gutter — the gutter is a floor for a scene that fills or overflows the viewport,
+ * not a fixed left margin for one that does not. */
 export function fitToWidth(scene: CanvasScene, viewport: { width: number; height: number }): { scale: number; tx: number; ty: number } {
   const scale = Math.min(1, (viewport.width - 32) / scene.width);
-  return { scale, tx: 16, ty: Math.max(16, (viewport.height - scene.height * scale) / 2) };
+  const fitted = scene.width * scale;
+  const tx = fitted < viewport.width ? (viewport.width - fitted) / 2 : 16;
+  return { scale, tx, ty: Math.max(16, (viewport.height - scene.height * scale) / 2) };
 }
 
 /** The mockup's floor for reading a node's caption or an edge's chip: below 60% zoom, a label is

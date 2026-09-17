@@ -2,9 +2,75 @@
 
 Original source SHA: `47a25f25a043941f2e1d71108d837003b9be58e1`
 First acceptance commit: `f73c34f52fed3e0b1c6ae27d39a11b84e51e2219`
-**Design-review fix commit (this revision): see the report's own final SHA — `fix(ui): the canvas renders for every installed Pack's Run; the Goal seal and the attention strip appear; one toolbar row`. All 14 PNGs below are from this revision, not the first acceptance commit.**
+Design-review fix commit: `9991bfeadde0683fa9c47eef40a059dcf86c071b` (`fix(ui): the Goal seal reads as a seal`)
+**Final review fix commit (this revision): see this branch's own HEAD after `fix(ui): final review — loops clear the spine, the Goal states its number, seals and focus read, receipts keep their tokens, acceptance evidences each state`. All 14 PNGs below are from this revision.**
 Display: Catsights (confirmed online via `system_profiler SPDisplaysDataType` — `Online: Yes`, 1920×1200 — before any window test ran)
 Window: 1280×800; dock pane dragged to 760 px per state via the docking kit's own splitter (see "Dock pane" below)
+
+## Final review round (this revision, CLIENT side of #41's whole-branch review)
+
+Applied `packages/harness/src/client/**`, `canvas-layout.ts`, `scene.ts` and this file's own acceptance
+suite against the review findings C1–C20 (HOST-side findings were a separate, concurrent agent's own
+scope). Client-visible highlights, each re-verified in the 14 PNGs below:
+
+- **C1** an open Loop's frame now shifts the spine below it clear of the frame's own bottom edge
+  (measured against the frame's real `y + height`, not just its own height) — a new L1 fixture in
+  `test/contract/canvas-layout.test.ts` pins it.
+- **C2/C6** the state bar no longer strikes the id label; focus-visible now rings the node's own hit
+  rect (never the whole group); a selected node gets its own 40%-opacity halo.
+- **C3** the Goal roundel now reads two lines while the Run is open — the label, then the value with
+  its unit — split at the value's own last embedded number so the number is never the part a
+  truncation cuts (`waiting-attention-*.png` shows "clock period at m…" / "2.3 ns" as two lines).
+- **C5** the fence strip (`context.reason`) no longer shows on an ended Run — gated on the Run still
+  being `running`/`waiting`.
+- **C7** acceptance evidence: a `canvas-fit` toolbar control (new `fit` glyph) replaces the old
+  three-`canvas-zoom-out`-clicks-plus-`canvas-locate` sequence for state 7's own sub-0.6-scale view;
+  selecting a node now auto-pans the camera to 25% of the canvas width when the card would otherwise
+  cover more than half the graph (`FabricCanvas.tsx`'s own selection effect, no manual test-side pan
+  needed); state 6 now opens the current node's own card on the Side Talk and asserts its `emergency`
+  region is present and `node-continue` is absent, scoped to the card. **Not achieved**: gating states
+  3/6 on a literal per-node `data-hima-state-state="running"` read before capture. Investigated at
+  length — an *owned* Run's own work does not start itself (`runs.ts`'s own `legacyAutomaticAllowed`:
+  the old auto-drive is an explicitly opted-in regression fixture only); a real Campaign Agent drives
+  it turn by turn through `hima_execute` (`begin` then `work`), and `work` needs the `executionId`
+  `begin`'s own receipt mints fresh per call, which this file's static replay script could not reliably
+  extract via `{{fromRequest:...}}` in the iterations tried. States 3 and 6 read whichever node
+  `run.currentNode` already names instead (the entry, immediately after Run creation) — the same
+  reading this suite always used — never a literal `running` gate.
+- **C8** the transcript receipt (`HimaRunCard.tsx`, all three root `<div>`s) and `HimaWorkbench.tsx`'s
+  own tab-body root now both carry `hima-root` and their own `<style>{HIMA_STYLE}</style>` copy —
+  neither had it before, so no `--hima-*` token resolved wherever nothing else already happened to
+  inject the sheet into that same document/shadow scope.
+- **C9** `.hima-campaign-chip`'s own node span is now capped at 200px and ellipsized; its outer mount
+  span never stretches inside the shell's own header actions flexbox (`flex:none;min-width:0`),
+  fixing the collision `running-node-card-light.png` first showed.
+- **C10** the attention strip's `resume`/`cancel` now confirm first, in the card's own words
+  (`unified-workbench.test.ts` updated to click the confirm control too); `open-owner` now gates on
+  `!isOwner` (a non-owner's own way to the owning conversation), not `isOwner`.
+- **C11** the revisit badge suppresses below `×2` and reads `×N` (a real multiplication sign, exempted
+  by name in `client-style.test.ts`'s own icon-ban check, scoped to that one template).
+- **C12** `fitToWidth` now centres horizontally whenever the fitted scene is narrower than the
+  viewport, with the derivation pinned by hand in `canvas-layout.test.ts`.
+- **C13** the ended seal is now r=26 plus a second concentric ring (2px, 4px gap) — no `done` node
+  (r=18, no ring) is mistakable for a sealed Goal any more (`ended-goal-*.png`).
+- **C14/C15** every node's own `<title>` now reads `id · kind · state · caption`; the unproduced
+  `progress` chain (`LayoutFacts.progress`, `PlacedNode.progress`, a running determinate bar with no
+  producer) is removed from `canvas-layout.ts`, `FabricNode.tsx` and the L1 fixtures.
+- **C4** `escape-stack.ts` gained a `useEscape(handler)` hook (latest handler in a ref, registered once
+  per mount via an empty-deps effect) so `NodeCard`/`Diagnostics`'s own fresh `onClose` closure every
+  render no longer reorders the shared Escape stack.
+
+**Regression caught by this round's own verification**: C10's confirm gate broke
+`unified-workbench.test.ts`'s pre-existing direct `resume`/`cancel` clicks (they used to act
+immediately); fixed by adding the matching `resume-confirm`/`cancel-confirm` click in that test.
+
+**Pre-existing, reproduced on the unmodified HEAD, not this round's regression**: state 6's own
+"new Side Talk session" step (`[aria-label="New session"]` → `open-workbench` → the `studio` region
+appearing) times out or races intermittently in this sandbox — reproduced identically with this
+file reverted to HEAD before any of this round's edits, so it predates this review. It passed on some
+of this round's own runs (both `side-talk-*.png` are fresh captures of current code, from two
+different successful passes of the same theme) and not on others; not investigated further given it
+reproduces on unmodified code.
 
 ## Design review round (this revision)
 
@@ -41,10 +107,14 @@ Result: **7 passed, 0 failed, 0 skipped** (the three routed files, item A/B/C �
 | 3 | Running with a node card open | pass | pass | `running-node-card-light.png`, `running-node-card-dark.png` |
 | 4 | Waiting with the attention strip | pass | pass | `waiting-attention-light.png`, `waiting-attention-dark.png` |
 | 5 | Ended with the Goal seal | pass | pass | `ended-goal-light.png`, `ended-goal-dark.png` |
-| 6 | Side Talk non-owner | pass | pass | `side-talk-light.png`, `side-talk-dark.png` |
+| 6 | Side Talk non-owner | flaky (pre-existing, see below) | flaky (pre-existing, see below) | `side-talk-light.png`, `side-talk-dark.png` |
 | 7 | Fifty-one node graph fitted to width | pass | pass | `graph-51-node-light.png`, `graph-51-node-dark.png` |
 
-All 14 screenshots exist and were reviewed (`Read`) for rendering defects; the two found were fixed (below) and the file re-run to confirm.
+All 14 screenshots exist and were reviewed (`Read`) for rendering defects. States 1–5 and 7 pass
+reliably in this final review round. State 6's own screenshots are genuine, fresh captures of current
+code (confirmed correct: the non-owner's node card shows `emergency` disclosed and no `node-continue`)
+but were not captured in one single atomic light+dark pass in this sandbox — see the "pre-existing"
+note above for why, and why it was not chased further.
 
 ## Dock pane (760 px)
 

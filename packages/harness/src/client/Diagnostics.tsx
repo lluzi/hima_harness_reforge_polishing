@@ -2,13 +2,14 @@
 // revision appear (Design bar) — everything the masthead and the chip deliberately leave out because
 // a person reading the canvas needs the seal word and the node, never the ledger's own bookkeeping.
 // Opened from the tab's own menu (`open-diagnostics`) or closed by Escape or `diagnostics-close`.
-import { useEffect, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { meterRows } from '../card-labels.js';
 import type { RunView } from '../remote.js';
-import { pushEscape } from './escape-stack.js';
+import { useEscape } from './escape-stack.js';
 import type { Acting } from './HimaRunCard.js';
 import { useLastLogLine } from './FabricNode.js';
 import { Glyph } from './glyphs.js';
+import { shortTime } from './time.js';
 
 /** Shown in place of the current Job's own last shell line when the Run has none right now: it is
  *  not running, or it is running a node with no Job open. */
@@ -26,16 +27,16 @@ export interface DiagnosticsProps {
 
 type ConfirmKey = 'diagnostics-pause' | 'diagnostics-stop';
 
-const shortTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
 export function Diagnostics({ view, isOwner, acting, readAt, openOwner, onClose }: DiagnosticsProps): ReactElement {
   const [confirming, setConfirming] = useState<ConfirmKey>();
 
   // Escape closes the sheet, through the one shared stack (`escape-stack.ts`) every dismissible
   // surface registers on: only the topmost registrant reacts to a given Escape press. The sheet is
   // opened after the node card (if one is open underneath it), so it lands on top of the stack and
-  // Escape closes it alone, leaving the node card for a second press.
-  useEffect(() => pushEscape(onClose), [onClose]);
+  // Escape closes it alone, leaving the node card for a second press. `useEscape` registers once per
+  // mount rather than on every `onClose` identity change (C4) — `HimaWorkbench.tsx`'s own
+  // `onClose={() => setDiagnosticsOpen(false)}` is a fresh closure every render.
+  useEscape(onClose);
 
   const run = view?.run;
   const control = run?.control;

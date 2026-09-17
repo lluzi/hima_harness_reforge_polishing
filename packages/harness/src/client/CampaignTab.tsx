@@ -18,6 +18,7 @@ import {
   MaterialSection, ObservationRow, ReportBlockRow, RevisionSection, VerdictRow, WorkshopSection, type Acting,
 } from './HimaRunCard.js';
 import { Masthead } from './Masthead.js';
+import { shortTime } from './time.js';
 import { isOwner as isOwnerOf } from './owned-run.js';
 
 export interface CampaignTabProps {
@@ -34,7 +35,6 @@ export interface CampaignTabProps {
   readonly name?: string;
   openOwner(id: string): void;
   openFiles(): void;
-  refresh(): void;
 }
 
 type Section = 'live' | 'generations' | 'evidence' | 'report';
@@ -43,7 +43,6 @@ const SECTIONS: readonly { readonly key: Section; readonly said: string }[] = [
   { key: 'evidence', said: 'Evidence' }, { key: 'report', said: 'Report' },
 ];
 
-const shortTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 /** `prefers-reduced-motion`, tracked live: a stale snapshot already stops every animation, and this
  *  is the other half of the Global Constraints' "reduced motion... stop everything". */
@@ -182,22 +181,26 @@ export function CampaignTab({ sessionId, runId, view, context, acting, stale, re
   // while it was there rather than blanking a running Campaign.
   const [fallback, setFallback] = useState<{ readonly key: string; readonly graph: PreparationView['referenceGraph'] | 'unavailable' }>();
   const packId = view?.run.packId;
+  // Computed once (review C16) and reused everywhere this pair's own identity is compared — the
+  // fetch effect below, and the two reads after it — rather than three separately-typed template
+  // literals (one of which read `packId` un-defaulted) that happened to agree only because `packId`
+  // is checked non-`undefined` before either read is reached.
+  const fallbackKey = `${runId}:${packId ?? ''}`;
   useEffect(() => {
     if (methodReference !== undefined || packId === undefined) return;
-    const key = `${runId}:${packId}`;
-    if (fallback?.key === key) return;
+    if (fallback?.key === fallbackKey) return;
     let cancelled = false;
     const controller = new AbortController();
     void fetchStartChoices(packId, undefined, controller.signal).then((result) => {
       if (cancelled) return;
       const graph = result.ok ? result.value.proposal?.referenceGraph ?? 'unavailable' as const : 'unavailable' as const;
-      setFallback({ key, graph });
+      setFallback({ key: fallbackKey, graph });
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [methodReference, packId, runId, fallback?.key]);
-  const fallbackGraph = fallback?.key === `${runId}:${packId ?? ''}` && fallback.graph !== 'unavailable' ? fallback.graph : undefined;
+  }, [methodReference, packId, fallbackKey, fallback?.key]);
+  const fallbackGraph = fallback?.key === fallbackKey && fallback.graph !== 'unavailable' ? fallback.graph : undefined;
   const reference = methodReference ?? fallbackGraph;
-  const packUnavailable = methodReference === undefined && fallback?.key === `${runId}:${packId ?? ''}` && fallback.graph === 'unavailable';
+  const packUnavailable = methodReference === undefined && fallback?.key === fallbackKey && fallback.graph === 'unavailable';
 
   // `sceneInputs`+`layoutCanvas` recompute only when the reference graph, the Run view or the
   // execution context actually change identity (a fresh poll) — not on every render this component

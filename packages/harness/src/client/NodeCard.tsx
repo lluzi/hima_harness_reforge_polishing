@@ -21,7 +21,7 @@ import { cardPosition, NODE_CARD_HEIGHT, NODE_CARD_WIDTH, TABS_BY_KIND, type Nod
 import type { ObservationView, RunView } from '../remote.js';
 import { absentSaid, counted, jobFolded, loopsIn, strategySaid } from '../card-labels.js';
 import { fetchLogTail } from './api.js';
-import { pushEscape } from './escape-stack.js';
+import { useEscape } from './escape-stack.js';
 import { BlockerRow, CancelRow, DecisionRow, GenerationsTable, ObservationRow, VerdictRow, type Acting } from './HimaRunCard.js';
 import { Glyph } from './glyphs.js';
 
@@ -337,8 +337,10 @@ export function NodeCard({ node, view, context, runId, owner, anchor, canvas, on
 
   // Escape closes the card, through the one shared stack (`escape-stack.ts`) every dismissible
   // surface registers on: only the topmost registrant reacts to a given Escape press, so a sheet
-  // opened on top of this card (Diagnostics) closes on its own, never this card as well.
-  useEffect(() => pushEscape(onClose), [onClose]);
+  // opened on top of this card (Diagnostics) closes on its own, never this card as well. `useEscape`
+  // (not a raw `pushEscape` effect keyed on `onClose`) registers once per mount, so a fresh `onClose`
+  // closure every render (the caller never memoises it) never reorders the stack (C4).
+  useEscape(onClose);
 
   // Position is two numbers applied to the DOM element directly, in a layout effect — see the file
   // header for why this is not a JSX inline style prop. `useLayoutEffect` so the card never paints one

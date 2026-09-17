@@ -94,6 +94,15 @@ function CurrentRing({ node }: { node: PlacedNode }): ReactElement {
   return <g className="hima-node-current-ring"><KindOutline kind={node.kind} half={HALF + 4} /></g>;
 }
 
+/** The selected node's own halo — the same accent as `available`/`CurrentRing`, offset 6 px past the
+ *  node's own form at 40% opacity, so a selected node reads distinctly from the current-node ring
+ *  (which sits at 4 px, full opacity) without either one crowding the other when a person selects the
+ *  currently-running node. Drawn with the same `KindOutline` every other ring here shares, so the
+ *  halo always matches its own node's real shape. */
+function SelectedHalo({ node }: { node: PlacedNode }): ReactElement {
+  return <g className="hima-node-selected-halo"><KindOutline kind={node.kind} half={HALF + 6} /></g>;
+}
+
 /** The state glyph: a small mark centred on the node, layered over its own kind-shape. Absent for
  *  `pending`/`available`, whose hollow-or-accent stroke is the whole of what they say. */
 function StateGlyph({ node, motionOff }: { node: PlacedNode; motionOff: boolean }): ReactElement | null {
@@ -122,16 +131,17 @@ function StateGlyph({ node, motionOff }: { node: PlacedNode; motionOff: boolean 
   }
 }
 
-/** The determinate bar under a node whose state carries a fraction: a running node's own progress, or
- *  a blocked/cancelled node's spent allowance shown full.
- *
- *  `PlacedNode.progress` is reserved: nothing in `RunView`/`ExecutionContext` reports a running
- *  node's fractional progress today, so this bar never actually draws for `running` in practice — it
- *  draws the day a source for that number exists, without a second change here. */
+/** The determinate bar under a blocked or cancelled node: its spent allowance, shown full. There is
+ *  no running-node progress bar — nothing in `RunView`/`ExecutionContext` ever reports a running
+ *  node's fractional progress, so `PlacedNode` carries no `progress` field for this to read (removed
+ *  rather than kept as a chain with no producer). */
 function StateBar({ node }: { node: PlacedNode }): ReactElement | null {
-  const fraction = node.state === 'running' ? node.progress : node.state === 'blocked' || node.state === 'cancelled' ? 1 : undefined;
+  const fraction = node.state === 'blocked' || node.state === 'cancelled' ? 1 : undefined;
   if (fraction === undefined) return null;
-  return <g className={`hima-node-bar hima-node-bar-${node.state}`} transform={`translate(${-HALF},${HALF + 10})`}>
+  // `HALF + 4`, not `HALF + 10`: the id label sits at `HALF + 20` (`labelY` below), and a bar drawn
+  // any lower than +4 strikes through that 13px text (finding C2) — +4 clears the node's own shape
+  // with room to spare and stays well clear of the label line.
+  return <g className={`hima-node-bar hima-node-bar-${node.state}`} transform={`translate(${-HALF},${HALF + 4})`}>
     <rect className="hima-node-bar-track" width={NODE} height={3} rx={1.5} />
     <rect className="hima-node-bar-fill" width={NODE * Math.min(1, Math.max(0, fraction))} height={3} rx={1.5} />
   </g>;
@@ -173,7 +183,13 @@ export function FabricNode({ node, runId, labelsVisible, reducedMotion, selected
           paint over it, and it is what actually carries `data-hima-control`: the click marker and
           the node's own paint area are the same rectangle, so a driver's centre-of-bounding-box
           click always lands on it. */}
+      {/* US21: a person hovering the node's own group reads its id, kind and state at a glance,
+          plus its caption when the Pack gave it one — the same words the label and caption texts
+          below already show, gathered into one tooltip so hovering anywhere on the node (not only
+          its label text) reads them. */}
+      <title>{`${node.id} · ${node.kind} · ${node.state}${node.caption === undefined ? '' : ` · ${node.caption}`}`}</title>
       <rect data-hima-control={`node-${node.id}`} x={-HALF} y={-HALF} width={NODE} height={NODE} fill="transparent" pointerEvents="all" />
+      {selected ? <SelectedHalo node={node} /> : null}
       {node.current ? <CurrentRing node={node} /> : null}
       <NodeShape node={node} />
       <StateGlyph node={node} motionOff={reducedMotion} />

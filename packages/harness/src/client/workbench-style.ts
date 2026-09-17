@@ -45,6 +45,13 @@ export const HIMA_STYLE = `
 .hima-root *{box-sizing:border-box}
 .hima-root button,.hima-root input,.hima-root select{font:inherit}
 .hima-root :focus-visible{outline:2px solid var(--hima-accent);outline-offset:2px}
+/* C6: the node's own <g> carries tabIndex, so the UA's default focus-visible ring boxed the
+   whole group — node shape, id label and caption all together — rather than the node's own shape.
+   outline:none on the group defers to this file's own ring, drawn on the hit rect alone (the same
+   transparent rect that carries data-hima-control, first child of the group), at the same 2px
+   accent the general rule above already uses. */
+.hima-node:focus-visible{outline:none}
+.hima-node:focus-visible>rect[data-hima-control]{outline:2px solid var(--hima-accent);outline-offset:2px}
 .hima-button,.hima-icon-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:var(--hima-sp-2);border:1px solid var(--hima-line);border-radius:var(--hima-r-s);background:var(--hima-paper);color:var(--hima-ink);padding:var(--hima-sp-2) var(--hima-sp-3);min-height:32px;font-size:var(--hima-fs-body);cursor:pointer;white-space:nowrap}
 .hima-button:hover,.hima-icon-button:hover{background:var(--hima-soft)}
 .hima-button:disabled,.hima-icon-button:disabled{opacity:.5;cursor:default}
@@ -183,17 +190,31 @@ export const HIMA_STYLE = `
 .hima-node-log{font-size:var(--hima-fs-eyebrow);font-family:var(--hima-font-mono);fill:var(--hima-live);text-anchor:middle}
 .hima-node-labels-hidden{visibility:hidden}
 .hima-node-current-ring{fill:none;stroke:var(--hima-accent);stroke-width:2}
+/* C6: a selected node's own halo — the same accent available/CurrentRing already share, at 40%
+   opacity so it reads distinctly from the full-opacity current-node ring (4px offset) when a person
+   selects the currently-running node; the halo sits 6px past the node's own form. */
+.hima-node-selected-halo{fill:none;stroke:var(--hima-accent);stroke-width:2;opacity:.4}
 
 .hima-goal-roundel{fill:var(--hima-paper);stroke:var(--hima-neutral);stroke-width:1.4;stroke-dasharray:4 3}
 .hima-goal-mark{fill:none;stroke:var(--hima-neutral);stroke-width:1.4}
 .hima-goal-mark-dot{fill:var(--hima-neutral)}
 .hima-goal-label{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-ink-2);text-anchor:middle}
+.hima-goal-value{font-size:var(--hima-fs-label);font-weight:600;fill:var(--hima-ink);text-anchor:middle}
 .hima-goal-seal{stroke:none;fill:var(--hima-neutral)}
+/* C13: the seal's own second, concentric ring (2px, 4px gap past r=26) — never drawn by a done
+   node (r=18, no ring at all), so a sealed Goal reads as its own distinct mark rather than an
+   oversized done node. Coloured the same as the seal's own fill, per status, below. */
+.hima-goal-seal-ring{fill:none;stroke-width:2;stroke:var(--hima-neutral)}
 [data-hima-region="campaign-goal"][data-hima-state-status="ended-goal-met"] .hima-goal-seal{fill:var(--hima-good)}
+[data-hima-region="campaign-goal"][data-hima-state-status="ended-goal-met"] .hima-goal-seal-ring{stroke:var(--hima-good)}
 [data-hima-region="campaign-goal"][data-hima-state-status="ended-goal-not-met"] .hima-goal-seal,
 [data-hima-region="campaign-goal"][data-hima-state-status="ended-budget-exhausted"] .hima-goal-seal{fill:var(--hima-bad)}
+[data-hima-region="campaign-goal"][data-hima-state-status="ended-goal-not-met"] .hima-goal-seal-ring,
+[data-hima-region="campaign-goal"][data-hima-state-status="ended-budget-exhausted"] .hima-goal-seal-ring{stroke:var(--hima-bad)}
 [data-hima-region="campaign-goal"][data-hima-state-status="ended-converged"] .hima-goal-seal,
 [data-hima-region="campaign-goal"][data-hima-state-status="cancelled"] .hima-goal-seal{fill:var(--hima-warn)}
+[data-hima-region="campaign-goal"][data-hima-state-status="ended-converged"] .hima-goal-seal-ring,
+[data-hima-region="campaign-goal"][data-hima-state-status="cancelled"] .hima-goal-seal-ring{stroke:var(--hima-warn)}
 .hima-goal-seal-glyph{color:var(--hima-on-solid)}
 .hima-goal-title{font-size:var(--hima-fs-display);font-weight:650;fill:var(--hima-ink);text-anchor:middle}
 .hima-goal-reason{font-size:var(--hima-fs-label);fill:var(--hima-ink-2);text-anchor:middle}
@@ -295,8 +316,6 @@ export const HIMA_STYLE = `
 .hima-owner-file-column{width:56%}
 .hima-owner-bytes-column{width:16%}
 .hima-owner-file-cell{padding:8px 6px 8px 0;overflow-wrap:anywhere}
-.hima-owner-manifest{margin:12px 0}
-.hima-owner-manifest-json{max-height:220px;overflow:auto;font-size:var(--hima-fs-eyebrow)}
 
 /* The Configuration page (#41 task 7): the Campaign file rendered as one document, every section
    visible at once — never a wizard. A two-column grid per section (a 12 px tracked eyebrow naming
@@ -333,8 +352,15 @@ export const HIMA_STYLE = `
 
 /* Shell integration (#41 task 8): the session-header Campaign chip, the tab title, the tab's own
    Diagnostics sheet and the HimaHarness settings section. */
-.hima-campaign-chip{display:inline-flex;align-items:center;gap:var(--hima-sp-1);border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink-2);font-size:var(--hima-fs-label);line-height:1;padding:var(--hima-sp-1) var(--hima-sp-2);cursor:pointer}
+/* C9: hima-campaign-chip-wrap (the mount's own outer span) never stretches inside the shell's own
+   header actions flexbox — flex:none plus min-width:0 — so the chip sits at its own natural width
+   beside the shell's own header chips instead of colliding with them. The node span inside the chip
+   (hima-campaign-chip-node) is capped at 200px and ellipsized rather than left to grow unbounded on
+   a long node id, which was the other half of the same collision. */
+.hima-campaign-chip-wrap{display:inline-flex;flex:none;min-width:0}
+.hima-campaign-chip{display:inline-flex;align-items:center;gap:var(--hima-sp-1);border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink-2);font-size:var(--hima-fs-label);line-height:1;padding:var(--hima-sp-1) var(--hima-sp-2);cursor:pointer;min-width:0}
 .hima-campaign-chip:hover{background:var(--hima-soft);color:var(--hima-ink)}
+.hima-campaign-chip-node{max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hima-campaign-chip-badge{width:6px;height:6px;border-radius:50%;background:var(--hima-live);display:inline-block}
 .hima-tab-title{display:inline-flex;align-items:center;gap:var(--hima-sp-1)}
 .hima-campaign-chip[data-hima-state-stale="true"],.hima-tab-title[data-hima-state-stale="true"]{opacity:.55}

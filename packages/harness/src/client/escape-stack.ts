@@ -5,6 +5,8 @@
 // only the *topmost* handler and stops the event there. Two surfaces open at once (a node card, and
 // the Diagnostics sheet opened on top of it) therefore close one at a time, most-recently-opened
 // first, never both on the same key press.
+import { useEffect, useRef } from 'react';
+
 const stack: (() => void)[] = [];
 
 function onKeyDown(event: KeyboardEvent): void {
@@ -41,4 +43,28 @@ export function pushEscape(handler: () => void): () => void {
     const at = stack.lastIndexOf(handler);
     if (at !== -1) stack.splice(at, 1);
   };
+}
+
+/**
+ * The hook every dismissible surface (the node card, the Diagnostics sheet) should call instead of
+ * `useEffect(() => pushEscape(onClose), [onClose])` directly (review C4).
+ *
+ * `onClose` is almost always a fresh arrow function every render (`onClose={() => onSelectNode(
+ * undefined)}` in `FabricCanvas.tsx`, `onClose={() => setDiagnosticsOpen(false)}` in
+ * `HimaWorkbench.tsx`) — neither caller memoises it, and neither should have to just to register an
+ * Escape handler. Depending on `[onClose]` directly means every render pops this surface's own
+ * registration and pushes a fresh one, which reorders `stack` on every render rather than only on
+ * mount/unmount — two surfaces open at once could then close in whichever order they last happened to
+ * re-render in, not the order they were actually opened in.
+ *
+ * The fix is the standard "latest callback in a ref" shape: the *registration* (the one `pushEscape`
+ * call, and so this surface's own position in `stack`) happens exactly once, in an effect with `[]`
+ * deps, so `stack`'s order is mount order and nothing else. The ref is updated every render (in the
+ * render body, not an effect — no need to wait a tick for it), so the one long-lived closure `stack`
+ * holds always calls whatever the latest `onClose` actually is.
+ */
+export function useEscape(onClose: () => void): void {
+  const ref = useRef(onClose);
+  ref.current = onClose;
+  useEffect(() => pushEscape(() => { ref.current(); }), []);
 }

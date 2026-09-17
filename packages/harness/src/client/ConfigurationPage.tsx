@@ -11,11 +11,14 @@
 //
 // Polling every three seconds is how this page notices HimaGuide's own edits to the same file: a
 // changed `mtimeMs` whose text differs from the last text this session saw is marked field by field
-// (`changedFields`, `campaign-file.ts`) until the person focuses that field, which is this page's own
-// acknowledgement that they have seen it. The person's own edits save on blur or Enter, never on
+// (`changedFields`, `campaign-file-diff.ts` — a leaf module with no Node imports, safe for this
+// client bundle, that `campaign-file.ts` also re-exports for the Host's own side) until the person
+// focuses that field, which is this page's own acknowledgement that they have seen it. The person's
+// own edits save on blur or Enter, never on
 // every keystroke, so a field mid-edit is never fighting the poll for the caret.
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { CampaignFile } from '../campaign-file.js';
+import { changedFields } from '../campaign-file-diff.js';
 import { layoutCanvas, NODE, type NodeKind } from '../canvas-layout.js';
 import type { CampaignFileView, RunView, SiteHeadView } from '../remote.js';
 import type { PreparationView, StartChoices } from '../workbench.js';
@@ -45,25 +48,6 @@ function draftToGuide(text: string): void {
   if (composer === null) return;
   composer.focus();
   document.execCommand('insertText', false, text);
-}
-
-/** Every dotted path whose value differs between two Campaign files — the same rule `changedFields`
- *  (`campaign-file.ts`) states, restated here rather than imported: that module also opens `node:fs`
- *  at load, and any value import of it (even one pure function) would pull those Node builtins into
- *  this client bundle, which `scripts/build-client.mjs` cannot resolve for a browser target. */
-function diffCampaignFile(before: unknown, after: unknown): string[] {
-  const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null && !Array.isArray(value);
-  const changed: string[] = [];
-  const walk = (a: unknown, b: unknown, prefix: string): void => {
-    if (isPlainObject(a) && isPlainObject(b)) {
-      for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) walk(a[key], b[key], prefix === '' ? key : `${prefix}.${key}`);
-      return;
-    }
-    if (JSON.stringify(a) !== JSON.stringify(b)) changed.push(prefix);
-  };
-  walk(before, after, '');
-  return changed;
 }
 
 /** A field's own bounds hint (review item 3, US58): `unit · min–max · precision`, each part left out
@@ -268,7 +252,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     // Pack list can change on its own) but never adopt the file or mark anything changed.
     const isNewer = value.mtimeMs !== undefined && (previous.mtimeMs === undefined || value.mtimeMs > previous.mtimeMs);
     if (isNewer && value.text !== previous.text) {
-      const marks = diffCampaignFile(previous.file, value.file);
+      const marks = changedFields(previous.file, value.file);
       server.current = { file: value.file, text: value.text, mtimeMs: value.mtimeMs };
       adopt(value.file); setView(value);
       setChanged((prior) => new Set([...prior, ...marks]));
@@ -302,15 +286,14 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
    * a pure function of the file it is applied to, so a 409 can recompute the very same edit onto the
    * fresh file the Host just handed back (`result.error.current`) and retry once with that file's own
    * mtime — never a second, independently-reasoned write.
-   */
-  /**
-   * Save one edit, reading `expectedMtimeMs` off `server.current` at the moment the PUT is actually
-   * issued — inside the queued callback, never captured when this call was made (review: two fields
-   * committed back to back would otherwise each carry the mtime read *before either saved*, so the
-   * second request in the queue would always name a now-stale mtime and 409 as the common case,
-   * rather than only when something else genuinely changed the file first). Each save still reads
-   * whatever the *previous* save in this same queue already moved `server.current` to, so a
-   * successful chain of edits never conflicts with itself.
+   *
+   * `expectedMtimeMs` reads off `server.current` at the moment the PUT is actually issued — inside
+   * the queued callback, never captured when this call was made (review: two fields committed back
+   * to back would otherwise each carry the mtime read *before either saved*, so the second request in
+   * the queue would always name a now-stale mtime and 409 as the common case, rather than only when
+   * something else genuinely changed the file first). Each save still reads whatever the *previous*
+   * save in this same queue already moved `server.current` to, so a successful chain of edits never
+   * conflicts with itself.
    */
   const attemptSave = (path: string, updater: (file: CampaignFile) => CampaignFile, next: CampaignFile) => {
     setInFlight((count) => count + 1);
@@ -322,7 +305,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
         // HimaGuide's own changes are marked; the field this very save is retrying is not one of
         // them, even if it numerically differs — that field is the person's own unconfirmed edit,
         // not something to tell them arrived from elsewhere.
-        const marks = diffCampaignFile(server.current?.file ?? remote.file, remote.file).filter((changedPath) => changedPath !== path);
+        const marks = changedFields(server.current?.file ?? remote.file, remote.file).filter((changedPath) => changedPath !== path);
         server.current = { file: remote.file, text: remote.text, mtimeMs: remote.mtimeMs };
         if (marks.length > 0) setChanged((prior) => new Set([...prior, ...marks]));
         const retried = updater(remote.file);
@@ -351,12 +334,6 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     adopt(next);
     attemptSave(path, updater, next);
   };
-
-  /** A generic non-file `commit` for the two actions (discovering a new Site, adding a document) that
-   *  build their own next file directly rather than through one field's own updater — reconciliation
-   *  on a 409 simply reapplies the same fixed replacement, since neither reads the file it is based
-   *  on beyond spreading it. */
-  const commit = (path: string, next: (file: CampaignFile) => CampaignFile) => commitField(path, next);
 
   /** A number field's own commit (review MINOR): text that does not parse as a finite number shows
    *  "Enter a number for '‹label›'." beside the field and saves nothing — silently rounding, coercing
@@ -401,19 +378,19 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     const result = await discoverSite({ sessionId, name, ssh: { destination }, save: true, ...(workspaceRoot === undefined ? {} : { hints: { workspaceRoot } }) });
     setDiscovering(false);
     if (!result.ok) { setError(result.error.message); return; }
-    commit('site', (file) => ({ ...file, site: { name } }));
+    commitField('site', (file) => ({ ...file, site: { name } }));
   };
 
   const addKnowledge = async () => {
     if (pickFolder) {
       const picked = await pickFolder();
-      if (picked) commit('knowledge', (file) => ({ ...file, knowledge: [...file.knowledge, picked] }));
+      if (picked) commitField('knowledge', (file) => ({ ...file, knowledge: [...file.knowledge, picked] }));
       return;
     }
     const path = knowledgePath.trim();
     if (path === '') return;
     setKnowledgePath('');
-    commit('knowledge', (file) => ({ ...file, knowledge: [...file.knowledge, path] }));
+    commitField('knowledge', (file) => ({ ...file, knowledge: [...file.knowledge, path] }));
   };
 
   const onConfirm = async () => {
