@@ -124,6 +124,14 @@ _Avoid_: 一个随流程原地更新的可变图、只有阶段名称没有 chec
 连接 place 与 post-route DIG snapshots 的有证据 correspondence，允许一对一、一对多、多对一、semantic-region、ambiguity 和 absent；它把 Opportunity 投影为候选搜索区域，不直接产生 ECO target。
 _Avoid_: instance-name 字典、强制 point-to-point 映射、自动选择一个歧义匹配
 
+**Graph Annotation**:
+绑定一个 DIG snapshot hash 和明确 subgraph scope 的派生信息，可记录结构指标、Opportunity、局部代理、决策或商业响应；它追加新认识但不能覆盖 Innovus 基础事实。
+_Avoid_: 直接改写 graph facts、没有 producer/input identity 的缓存、把 proxy 写成商业事实
+
+**LocalWindow**:
+从一个 DIG snapshot 按 seed region、前后 trace、endpoint alternatives 和所需属性投影出的有界子图，是逻辑、物理和 timing 免费代理的共同输入。
+_Avoid_: 每个代理自行重读全设计、没有 boundary/external load 的截断网表、完整设计 QoR 预测
+
 **Endpoint Frontier**:
 同一 timing path group 内，slack 接近当前最差值的一组唯一寄存器 endpoint；它们共同决定当前瓶颈，不能用一条 timing path 代替。
 _Avoid_: top-N path 行、单个 endpoint、所有寄存器的无差别集合

@@ -272,7 +272,73 @@ DIG 不是只供 UI 展示。Framework 在其上执行有界、确定性的图�
 
 Centrality、community score 或相似度只能生成 proposal/priority，不能替代 STA、Boolean proof、physical gate 或 Commercial Label。
 
-### 5.5 完备性
+### 5.5 Graph Annotation Layers
+
+DIG 既是 Opportunity Mining 的输入，也是所有免费局部评估的共同计算底座。基础 graph snapshot 保持不可变；算法不修改 Innovus facts，而是向绑定 graph hash 和 subgraph scope 的 annotation layers 追加结果。
+
+Annotation 分为五类：
+
+| Layer | 内容 | 是否可覆盖基础事实 |
+| --- | --- | --- |
+| `derived-structure` | logic depth、cuts、dominators、reconvergence、community、distance、RC聚合 | 否 |
+| `opportunity` | candidate region、function demand、影响 endpoints、风险和拒绝原因 | 否 |
+| `local-proxy` | source/candidate cover、local STA、margin、load/slew、uncertainty | 否 |
+| `decision` | Action admission、Portfolio、Cell Demand、CCEI selected window | 否 |
+| `commercial-response` | adoption、实际 arc、path migration、placement response、最终 QoR | 否 |
+
+每条 annotation 至少包含：
+
+```text
+annotation_id / type / schema_version
+base_graph_sha256 / cross_phase_map_sha256
+producer_code_sha256 / method_version
+scope_nodes / scope_edges / phase
+inputs / units / assumptions
+value_vector / uncertainty / status
+source_annotation_ids
+run_id / iteration
+```
+
+同一对象可以在不同阶段、不同迭代拥有多条 annotation。旧结果不被覆盖；“当前采用哪一条”由明确的 graph snapshot、方法版本和 Portfolio 决定。推断、proxy 和 commercial fact 使用不同 layer，禁止把模型输出改写成 Innovus 基础事实。
+
+### 5.6 Local Window Projection
+
+局部代理不再各自重新读取全设计 netlist、DEF、SPEF 和 reports。它向 DIG 请求一个可复算的 bounded view：
+
+```text
+LocalWindow = project(
+  graph_snapshot,
+  seed_region,
+  backward_hops,
+  forward_hops,
+  endpoint_alternatives,
+  required_attributes
+)
+```
+
+投影结果包含 boundary pins/nets、source cells、external loads、local RC、coordinates、path alternatives、clock/data timing 和对应 hashes。不同代理只消费自己需要的字段；缺少必需字段时由 projection fail closed。
+
+代理输出写回原 subgraph 的 `local-proxy` annotation，因此：
+
+- 同一 Opportunity 的逻辑、物理、timing 评估共享对象身份；
+- CCEI 可直接读取已通过的 candidate region、Cell Demand 和风险；
+- place/post-route proxy 可以通过 CrossPhaseMap 对齐；
+- 下一轮系统辨识可查询 proxy 与 commercial response 的条件关系；
+- `opportunities.json`、`gain-evaluation.json` 等文件成为 graph annotation 的确定性 projections，不再是另一套事实权威。
+
+### 5.7 增量更新
+
+CCEI 或商业工具改变局部设计后，不需要重新计算全部派生指标。Framework 根据 changed nodes/nets 与影响传播范围使相关 annotations 失效，并只重算：
+
+- 修改窗口及其 fanin/fanout；
+- 受影响 endpoint alternatives；
+- 相邻 physical regions、RC 和 congestion；
+- 冲突的 Opportunities/Actions；
+- Portfolio marginal vectors。
+
+基础 snapshot 仍不可变；局部更新产生新的 snapshot/annotation set。失效标记必须保留原因和前序 annotation identity，不能原地擦除历史。
+
+### 5.8 完备性
 
 DIG manifest 明示：
 
@@ -331,7 +397,7 @@ Community、clustering、frequent subgraph 或 graph partitioning 只负责产�
 
 ## 7. 局部免费代理
 
-局部代理不运行完整设计全局预测。每个 Opportunity 建一个 bounded window：
+局部代理不运行完整设计全局预测，也不独立重建输入事实。每个 Opportunity 从 DIG 投影一个 hash-bound `LocalWindow`，代理读取该 view 并把结果写回同一 subgraph 的 annotation layer：
 
 - 原 source cells、boundary nets 和 external loads；
 - local placement、route geometry、SPEF R/C 和 vias；
@@ -354,7 +420,7 @@ local_slack_lower_bound
 model_uncertainty
 ```
 
-准入不是“预测全局 WNS 为正”，而是：
+逻辑、物理、timing 等代理可以在同一个 LocalWindow 上分别运行；它们的原始指标并列保存，不先压成一个不可解释总分。准入不是“预测全局 WNS 为正”，而是：
 
 1. 逻辑等价和所有 root required time 是硬约束；
 2. 局部保守 margin 为正；
@@ -523,7 +589,7 @@ CCEI 输出仍进入现有 workspace artifacts、CodeRecord、Reader 和 Commerc
 
 ## 12. 商业反馈与系统辨识
 
-每次 E0 都形成 Action-level 和 Portfolio-level response：
+每次 E0 都向对应 graph snapshot、Action subgraph 和 Portfolio 写入 `commercial-response` annotations，形成 Action-level 和 Portfolio-level response：
 
 ```text
 Action identity
@@ -556,7 +622,7 @@ Action 可标记为：
 - `safe-compaction`；
 - `unknown-insufficient-observation`。
 
-失败不会被压成一个负分数；分类结果是下一轮 Opportunity Mining 的输入。
+失败不会被压成一个负分数；分类结果通过 annotation lineage 成为下一轮 Opportunity Mining 的输入。系统辨识查询的是“同一 subgraph 上的 local-proxy annotation 与后续 commercial-response annotation”，不再用名字或散落报告人工拼接。
 
 ## 13. 现有代码架构中的修改地图
 
@@ -564,18 +630,18 @@ Action 可标记为：
 | --- | --- | --- |
 | `flow/domain/mine_timing_route.py` | 从 report parser 转为 DIG timing projection consumer；保留完整 endpoint alternatives、data/clock contribution 和 completeness | sampled report 继续可读，但不能开启 E0 |
 | `flow/domain/mine_patterns.py` | 在 DIG 上产生 timing、drive、fusion、multi-output、slack-harvesting proposals | Boolean boundary 与现有 generation contract |
-| `flow/domain/design_information_graph.py`（domain helper） | 规范化 place/post-route Innovus 导出束，形成同 schema 的不可变 graph snapshots | 仅是 Pack domain helper，不是 Runtime 组件 |
+| `flow/domain/design_information_graph.py`（domain helper） | 规范化 place/post-route导出束，形成不可变 snapshots、LocalWindow projection 和 annotation schema | 基础 facts 不被代理改写 |
 | `flow/domain/cross_phase_graph.py`（domain helper） | 构建 one-to-one/one-to-many/many-to-one/semantic-region correspondence 与 ambiguity | 输出映射证据，不产生 ECO target |
 | `flow/domain/innovus_dig_export.tcl`（tool adapter） | 从同一 checkpoint 写出 netlist/DEF/SDC/SPEF/timing/clock/census 与 manifest | 只读导出，不运行优化 |
 | `flow/domain/opensta_dig.tcl`（optional adapter） | 对导出束补充完整 timing graph 和局部 STA 查询 | 可选后端，不是 OpenROAD/P&R 依赖 |
 | `flow/domain/proxy_mapping.py` | 对 bounded window 做 local cover/STA，不输出全局 Fmax 预测 | Yosys/ABC 单输出 mapping 角色 |
 | `flow/domain/multi_output_resynth/` | 深化为 CCEI anchored local resynthesis：1～2级 trace、single/multi-root cut、物理 seed、局部 proof、rollback | 保留 directed 仅供 debug/replay，复用现有 discover 与 proof |
 | `flow/domain/_generation_projection.py` | 从 Cell Demand 生成非对称 drive family 和 delta-only views | cumulative Library 和旧 shard 不重做 |
-| `flow/library_richness.py` | 持有 Opportunity/Action response、trust region、system-identification labels | 现有 Action Portfolio 与 Commercial Label |
+| `flow/library_richness.py` | 持有 graph annotation lineage、Opportunity/Action response、trust region 和 system-identification labels | 现有 Action Portfolio 与 Commercial Label |
 | `flow/domain/init.tcl.tmpl`、`pnr.tcl.tmpl`、`mmmc.tcl.tmpl` | post-route export、early clock/useful skew、placed checkpoint 和 CCEI seam | matched floorplan/pin/uncertainty/DCCK/无 hold fix |
 | `flow/domain/shared_synth.tcl` | DC adoption arm 接入同一 frozen synthesis-eligible Library | 不负责 multi-output 自动 mapping |
 | `flow/stages.py` | 在现有 mine/generate/P&R职责内编排 DIG export、CCEI subphase 和两支路证据 | 不新增 Fabric node或第二控制者 |
-| `flow/read-stage.py` | 独立复算 DIG completeness、ECO census、clock/data contribution 和 Commercial Label | 不复制 optimizer 判断 |
+| `flow/read-stage.py` | 独立复算 DIG completeness、annotation provenance/projection、ECO census、clock/data contribution 和 Commercial Label | 不复制 optimizer 判断 |
 | `contract.yml` / Site tool binding | 声明 Innovus export/ECO 能力；OpenSTA 仅在启用时声明 pinned executable | 普通用户不承担知识/服务运维 |
 
 新增的四个 domain 文件是现有 Pack 工具内部 helper/adapter，不要求多个 Harness 模块适配，不构成架构扩张。
@@ -587,11 +653,11 @@ Action 可标记为：
 | 任务 | 依赖 | 主要文件 | 出口 |
 | --- | --- | --- | --- |
 | DIG-01 Dual Innovus export identity | 无 | P&R templates、`innovus_dig_export.tcl`、Readers | `S_place`/`S_postroute` 各自的 netlist/DEF/SDC/SPEF/Liberty/LEF/timing/clock/hash manifest；零优化副作用 |
-| DIG-02 Phase DIG snapshots | DIG-01 | `design_information_graph.py` | 两张同 schema、不可变、可复算的 place/post-route graphs，含 units、completeness 和对象 join |
+| DIG-02 Phase DIG snapshots | DIG-01 | `design_information_graph.py` | 两张不可变 graphs、annotation schema、LocalWindow projection、units、completeness 和对象 join |
 | DIG-03 Cross-phase graph mapping | DIG-02 | `cross_phase_graph.py` | correspondence relation、semantic-region、ambiguity、unmatched reason 和双 graph hashes |
 | DIG-04 Optional OpenSTA timing view | DIG-01/02 | `opensta_dig.tcl`、测试 fixture | 不改 OpenSTA 核心，补充多个 path alternatives、arrival/required 和局部 STA；可关闭 |
 | DIG-05 Opportunity quadrants | DIG-02（DIG-04 可选增强） | `mine_patterns.py`、`mine_timing_route.py` | post-route graph annotation；深/浅 × 长/短；timing 与 slack-harvesting proposals 分离 |
-| DIG-06 Local physical proxy | DIG-02/05（DIG-04 可选增强） | `proxy_mapping.py`、`library_richness.py` | bounded window 的 source/candidate cover、RC/load/slew、uncertainty；无全局 Fmax claim |
+| DIG-06 Graph-native local proxy | DIG-02/05（DIG-04 可选增强） | `proxy_mapping.py`、`library_richness.py` | 只读 LocalWindow；逻辑/物理/timing annotations 写回同一 subgraph；无全局 Fmax claim |
 | DIG-07 Drive family | DIG-05/06 | `_generation_projection.py`、generation/char adapters | D1/D2/D4/D6/D8与非对称 outputs；Liberty/SPICE/LEF电气和几何一致 |
 | DIG-08 CCEI anchored-resynthesis POC | DIG-02/03/06/07 | `multi_output_resynth/`、P&R template | anchors 定位、1～2级 trace、place-state single/multi-output重发现、seed、局部 legalization、proof、rollback |
 | DIG-09 Useful-skew matched method | DIG-01/08 | P&R/MMMC templates、Reader | baseline/generated同设置；100 ps策略真实生效；data/clock delta分解 |
@@ -602,7 +668,7 @@ Action 可标记为：
 ### 14.1 可并行边界
 
 - DIG-01 dual export 与 DIG-07 drive-family mock preparation可并行，但共享 Liberty/LEF identity 由 DIG-07 单一负责；
-- DIG-02 phase snapshots 完成后，DIG-03 cross-phase mapping 与 DIG-04 可选 OpenSTA timing view可并行；
+- DIG-02 snapshot/annotation/LocalWindow schema 冻结后，DIG-03 cross-phase mapping 与 DIG-04 可选 OpenSTA timing view可并行；
 - DIG-05 timing miner 与 slack-harvesting miner 可并行，共用冻结 DIG schema；
 - DIG-08 CCEI 的 graph projection 与 Innovus placement-seam probe 可并行，ECO writer 等待 correspondence schema 冻结；
 - `library_richness.py`、P&R templates 和 `stages.py` 各保持单一 owner；
@@ -613,6 +679,9 @@ Action 可标记为：
 ### L0：纯逻辑与 schema
 
 - heterogeneous node/edge identity、unit 和 hash；
+- 基础 facts immutable，proxy/decision/commercial annotations 分层且不可越权覆盖；
+- LocalWindow scope/hash/units/provenance 可复算，缺字段 fail closed；
+- annotation invalidation 只影响 changed subgraph 和传播范围；
 - place/post-route snapshots 不互相覆盖，CrossPhaseMap 绑定两端 graph hashes；
 - one-to-many、many-to-one、semantic-region、ambiguity 和 absent correspondence；
 - hyperedge fanout、physical distance、bbox、RC/via；
@@ -628,6 +697,7 @@ Action 可标记为：
 - synthetic LEF/Liberty/DEF/netlist/SDC/SPEF/timing facts形成同一 DIG；
 - netlist/DEF/SPEF对象 join 不依赖 OpenROAD；
 - 启用 OpenSTA 时，STA pin与 DIG instance/pin/net/坐标保持双向 identity；
+- logical/physical/timing proxies 共享一个 LocalWindow 并写回不同 annotation layers；
 - local proxy在已知两路径 endpoint 上触发 path migration；
 - community proposal 经过 required-time、sink divergence 和 locality gate；
 - 零商业工具、零 Desktop、零模型调用。
@@ -667,11 +737,11 @@ Desktop App 不参与 Framework 日常验证。
 第一里程碑不是立即达到 5%，而是用现有 AES 负样本证明以下闭环真实成立：
 
 1. 从同一 baseline flow 保存 `S_place` 与 `S_postroute` 两个身份一致的 bundle；
-2. Pack 形成两张不可变 DIG，并建立可审计的 cross-phase correspondence；
+2. Pack 形成两张不可变 DIG、annotation layers 和可复算 LocalWindow，并建立可审计的 cross-phase correspondence；
 3. post-route Opportunity 可以投影成 place candidate region，而不是精确 target instances；
 4. DIG 能解释 100-Cell 轮为何局部代理正向而 WNS 下降；
 5. Opportunity Mining 将 timing、drive、fusion 和 slack-harvesting 分开；
-6. 局部代理只给 local margin/trust region，不预测全局 MHz；
+6. 局部代理从 DIG 读取 LocalWindow、把并列指标写回原 subgraph，只给 local margin/trust region，不预测全局 MHz；
 7. CCEI 在同一 placed state原位实施并保留 ECO-only instances；
 8. baseline/generated 使用一致 early clock/useful skew；
 9. 一个 Commercial Label 能回写到 Action、Cell Demand 和下一轮 uncertainty。
@@ -682,7 +752,7 @@ Desktop App 不参与 Framework 日常验证。
 
 - 不建立第二套 Hima Runtime、Fabric graph 或商业试验调度器；
 - 不把 OpenROAD 变成第二条 P&R 链，不把 OpenSTA fork 直接嵌入产品作为第一方案；
-- 不要求客户部署独立知识或 DIG 服务；
+- 不要求客户部署独立知识、OpenROAD链路或外部 graph database 服务；
 - 不用 community score、adoption count、面积收益代替 Fmax；
 - 不把 DC free mapping 与 CCEI causal result 混成一个结论；
 - 不把 CCEI 产品路径实现成依赖精确 instance cluster 的 point-to-point ECO；
