@@ -76,7 +76,8 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
     'function-local-gate']));
   assert.ok(chain(['research-candidates', 'read-research-selection', 'merge']));
   assert.ok(edge('function-local-gate', 'research-candidates', 'PASS'));
-  assert.ok(edge('function-local-gate', 'next-research', 'FAIL'));
+  assert.ok(edge('function-local-gate', 'research-candidates', 'FAIL'),
+    'free-factor incompleteness remains evidence but cannot suppress the creative Workshop');
 
   assert.ok(chain(['merge', 'read-merge', 'generate', 'read-generate', 'layout', 'read-layout',
     'characterize', 'read-characterize', 'design-mapping-timing-evaluation',

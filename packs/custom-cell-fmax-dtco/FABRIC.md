@@ -9,6 +9,11 @@ characterize stages materialize only that delta. A second license-free evaluatio
 reference and augmented design-mapping/timing indicator vectors; the portfolio gate either revisits
 research or freezes the cumulative Library before the existing commercial chain.
 
+The function-local Judge records complete or incomplete free evidence, and both outcomes enter the
+same Workshop. This preserves the proxy observation without granting it veto authority. The
+Workshop must avoid candidates whose missing evidence it cannot resolve; deterministic downstream
+contracts remain the hard boundary.
+
 The commercial chain remains `compile` -> matched foundry/custom DC -> adoption gate -> matched
 foundry/custom APR -> verify -> compare -> final Judge. Both APR arms publish endpoint-complete V5
 frontiers under one frozen target. `compare` writes the commercial frontier response consumed by the

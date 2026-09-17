@@ -42,6 +42,13 @@ parallel factors are explicitly negative. A negative F3 alone, zero open-source 
 negative F1 alone remains evidence but cannot veto the Library. Admission means “worth observing”,
 never “expected to gain”. Missing evidence still fails closed because it is not a factor result.
 
+The function-local Judge records whether the full free metric vector is complete, but both PASS and
+FAIL enter the one `research-candidates` Workshop. This is not admission to generation or E0: it lets
+the Agent see which candidates lack a closed break-even window and select a different evidence-bound
+subset. Deterministic merge, generator contract, Boolean proof, conflict, budget and later Portfolio
+gates still fail closed. A free proxy result therefore cannot suppress research or silently become a
+commercial decision.
+
 E0 holds RTL, constraints, tool/core count, once-expanded core, frozen IO pins, PG mesh,
 deterministic checkerboard DCAP plan, effective-occupancy ceiling no greater than 85%, physical
 inputs, route settings and analysis view fixed. Tap and DCAP Cells count against occupancy and

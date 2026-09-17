@@ -318,8 +318,11 @@ edges:
   - from: function-local-gate
     to: research-candidates
     outcome: PASS
+  # V5 observation-only policy: an incomplete/negative free factor is retained
+  # but cannot suppress the one creative Workshop. Deterministic downstream
+  # generation/proof/budget gates still reject invalid selected candidates.
   - from: function-local-gate
-    to: next-research
+    to: research-candidates
     outcome: FAIL
   - from: research-candidates
     to: read-research-selection
