@@ -21,4 +21,12 @@ emits:
   - postroute_cell_area
   - route_instance_count
   - route_density
+  - effective_site_occupancy
+  - dcap_count
+  - pg_special_wire_count
+  - v5_setup_endpoint_count
+  - v5_active_frontier_count
+  - v5_q0
+  - v5_q_target
+  - v5_required_gain
   - congestion_overflow

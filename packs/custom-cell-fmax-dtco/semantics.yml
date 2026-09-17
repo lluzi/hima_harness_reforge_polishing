@@ -85,6 +85,45 @@ values:
   route_density:
     unit: percent
     description: Pure gate density number 6 from the retained Innovus summary report.
+  effective_site_occupancy:
+    unit: fraction
+    description: All instantiated standard-cell master area divided by the frozen placeable core area, including fixed tap and DCAP cells; must not exceed 0.85.
+  dcap_count:
+    unit: count
+    description: Fixed deterministic checkerboard DCAP instances admitted before placement.
+  pg_special_wire_count:
+    unit: count
+    description: PG special-wire objects observed after the matched ring/stripe/sroute method.
+  v5_setup_endpoint_count:
+    unit: count
+    description: Register data endpoints explicitly enumerated by the V5 endpoint-complete Innovus export.
+  v5_active_frontier_count:
+    unit: count
+    description: Endpoints at or beyond the frozen V5 q target under the arm's complete setup endpoint state.
+  v5_q0:
+    unit: ns
+    description: Worst endpoint required-period indicator q_e = period - slack.
+  v5_q_target:
+    unit: ns
+    description: Frozen reference target required-period indicator for the Campaign Fmax goal.
+  v5_required_gain:
+    unit: ns
+    description: Difference between the arm q0 and the frozen q target; it is not a per-Action prediction.
+  v5_frontier_reference_count:
+    unit: count
+    description: Reference endpoints at or beyond the frozen commercial q target.
+  v5_frontier_generated_count:
+    unit: count
+    description: Generated endpoints at or beyond the same frozen commercial q target.
+  v5_frontier_resolved_count:
+    unit: count
+    description: Reference active-frontier endpoints moved below the frozen target by the generated Portfolio.
+  v5_frontier_entrant_count:
+    unit: count
+    description: Endpoints newly entering the frozen frontier after the generated Portfolio.
+  v5_frontier_remaining_count:
+    unit: count
+    description: Generated endpoints still at or beyond the frozen q target and therefore explicit input to the next research generation.
   congestion_overflow:
     unit: count
     description: Congestion overflow when a verified report format is available; otherwise explicitly unknown.

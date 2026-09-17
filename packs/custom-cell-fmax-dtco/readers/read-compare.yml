@@ -25,3 +25,8 @@ emits:
   - verification_error_count
   - cell_checker_diagnostic_count
   - comparison_valid
+  - v5_frontier_reference_count
+  - v5_frontier_generated_count
+  - v5_frontier_resolved_count
+  - v5_frontier_entrant_count
+  - v5_frontier_remaining_count

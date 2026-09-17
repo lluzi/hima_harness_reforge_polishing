@@ -1181,6 +1181,20 @@ def values_for(record, workspace, stage):
                                   one(record, workspace, "postroute_gatecount_report"),
                                   one(record, workspace, "postroute_summary_report"))
         physical_v5 = v5_physical_facts(one(record, workspace, "v5_physical_facts"))
+        frontier_v5 = load(one(record, workspace, "v5_active_frontier"))
+        frontier_facts = facts.get("v5_active_frontier")
+        expected_frontier = {
+            "endpoint_count": frontier_v5.get("endpoint_count"),
+            "active_endpoint_count": frontier_v5.get("active_endpoint_count"),
+            "q0_ns": frontier_v5.get("q0_ns"),
+            "q_target_ns": frontier_v5.get("q_target_ns"),
+            "required_gain_ns": frontier_v5.get("required_gain_ns"),
+            "q_target_source": frontier_v5.get("q_target_source"),
+        }
+        if (frontier_v5.get("schema") != "hima.lfr-active-frontier/1"
+                or frontier_v5.get("endpoint_count") <= 0
+                or frontier_facts != expected_frontier):
+            raise ValueError("PnR V5 frontier facts disagree with retained endpoint evidence")
         for key, actual in (("hold_wns_ns", hold_wns), ("hold_violating_paths", hold_violating),
                             ("route_drc_violations", route_drc), ("connectivity_violations", connectivity)):
             if facts.get(key) != actual:
@@ -1202,6 +1216,11 @@ def values_for(record, workspace, stage):
                        number("effective_site_occupancy", physical_v5["effective_site_occupancy"][0], "fraction"),
                        number("dcap_count", int(physical_v5["dcap_count"][0])),
                        number("pg_special_wire_count", int(physical_v5["pg_special_wire_count"][0])),
+                       number("v5_setup_endpoint_count", int(frontier_v5["endpoint_count"])),
+                       number("v5_active_frontier_count", int(frontier_v5["active_endpoint_count"])),
+                       number("v5_q0", float(frontier_v5["q0_ns"]), "ns"),
+                       number("v5_q_target", float(frontier_v5["q_target_ns"]), "ns"),
+                       number("v5_required_gain", float(frontier_v5["required_gain_ns"]), "ns"),
                        unknown("congestion_overflow", "current Innovus summary has no verified congestion-overflow metric")])
     elif stage == "verify":
         diagnostic = 0
@@ -1237,6 +1256,11 @@ def values_for(record, workspace, stage):
                 unknown("adopted_instance_count", reason), unknown("verification_error_count", reason),
                 unknown("cell_checker_diagnostic_count", reason), unknown("comparison_valid", reason),
                 unknown("full_constraint_failures", reason),
+                unknown("v5_frontier_reference_count", reason),
+                unknown("v5_frontier_generated_count", reason),
+                unknown("v5_frontier_resolved_count", reason),
+                unknown("v5_frontier_entrant_count", reason),
+                unknown("v5_frontier_remaining_count", reason),
             ]
         # Re-derive the final observations from raw references copied into the comparison record.
         fview, fwns, _fviolating = timing(one(record, workspace, "foundry_final_db_timing", "inputs"),
@@ -1336,6 +1360,10 @@ def values_for(record, workspace, stage):
         fmax_improvement_pct = fmax_delta / foundry_fmax * 100.0
         fmax_improved = fmax_delta > 0
         facts = record.get("facts", {})
+        response = load(one(record, workspace, "v5_frontier_response"))
+        if (response.get("schema") != "hima.lfr-v5-commercial-frontier-response/1"
+                or response.get("response_sha256") != facts.get("v5_frontier_response_sha256")):
+            raise ValueError("V5 frontier response identity disagrees with compare facts")
         for key, actual in (("setup_wns", gwns), ("foundry_setup_wns", fwns),
                             ("setup_wns_delta", gwns - fwns),
                             ("adopted_instance_count", adopted), ("verification_error_count", errors),
@@ -1343,7 +1371,12 @@ def values_for(record, workspace, stage):
                             ("foundry_fmax_mhz", foundry_fmax), ("generated_fmax_mhz", generated_fmax),
                             ("fmax_delta_mhz", fmax_delta), ("fmax_improved", fmax_improved),
                             ("fmax_improvement_pct", fmax_improvement_pct),
-                            ("library_visible", visible)):
+                            ("library_visible", visible),
+                            ("v5_frontier_reference_count", response["reference_active_count"]),
+                            ("v5_frontier_generated_count", response["generated_active_count"]),
+                            ("v5_frontier_resolved_count", len(response["resolved_reference_endpoints"])),
+                            ("v5_frontier_entrant_count", len(response["new_frontier_entrants"])),
+                            ("v5_frontier_remaining_count", len(response["remaining_frontier"]))):
             if facts.get(key) != actual:
                 raise ValueError("comparison claim %s disagrees with raw evidence" % key)
         matched = facts.get("matched_conditions")
@@ -1378,6 +1411,11 @@ def values_for(record, workspace, stage):
             number("cell_checker_diagnostic_count", cell_checker_diagnostics),
             number("comparison_valid", int(comparison_valid)),
             number("full_constraint_failures", failures),
+            number("v5_frontier_reference_count", response["reference_active_count"]),
+            number("v5_frontier_generated_count", response["generated_active_count"]),
+            number("v5_frontier_resolved_count", len(response["resolved_reference_endpoints"])),
+            number("v5_frontier_entrant_count", len(response["new_frontier_entrants"])),
+            number("v5_frontier_remaining_count", len(response["remaining_frontier"])),
         ])
     else:
         raise ValueError("unsupported stage: " + stage)

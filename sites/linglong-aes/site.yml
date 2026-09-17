@@ -4,8 +4,13 @@ kind: ssh
 workspaceRoot: /data/eda/project/hima_harness/polishing-runs
 permit: ./permit.yml
 bindings:
-  flowRoot: /data/eda/project/hima_harness/polishing-inputs/aes-probe-748761b052d8
-  design: aes_cipher_top
+  designRoot: /data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes
+  rtlGlob: /data/eda/project/celluzi/OpenROAD-flow-scripts/flow/designs/src/aes/*.v
+  designTop: aes_cipher_top
+  constraints: /data/eda/project/hima_harness/polishing-inputs/aes-v5-reference-20260917/constraints.tcl
+  foundryLibrary: /data/eda/project/techlib/tsmc28/logic/tcbn28hpcplusbwp40p140_180b/AN61001_20180509/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp40p140_180a/tcbn28hpcplusbwp40p140tt0p9v25c.db
+  physicalInputs: /data/eda/project/hima_harness/polishing-inputs/aes-v5-reference-20260917/physical.json
+  toolStack: /data/eda/project/hima_harness/polishing-inputs/aes-v5-reference-20260917/tools.json
   workspaceRoot: /data/eda/project/hima_harness/polishing-runs
 ssh:
   destination: luzi@192.168.50.41
@@ -14,6 +19,8 @@ ssh:
 capacity:
   cores: 8
   memoryGiB: 16
-  parallelJobs: 1
+  parallelJobs: 5
   licences:
     Design-Compiler: 1
+    Library-Compiler: 1
+    Innovus: 1

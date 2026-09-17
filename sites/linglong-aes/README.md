@@ -1,17 +1,15 @@
-# AES pilot Site
+# Linglong AES V5 reference Site
 
-`site.yml` records the isolated Linglong binding used by the validated probe. Its `flowRoot`
-contains the Pack's `flow/` source plus Site-private `inputs.json`; writes go only to the separate
-polishing Campaign root. The original Design Zoo, libraries and previous Campaigns remain inputs.
+`site.yml` binds `custom-cell-fmax-dtco@5.0.0` to the verified `aes_cipher_top` inputs and the V5
+physical/tool profile under `/data/eda/project/hima_harness/polishing-inputs/aes-v5-reference-20260917`.
+Writes go only to the separate polishing Campaign root. Original RTL, libraries and prior Campaigns
+remain read-only inputs.
 
-For another Site, CAD stages the Pack's `flow/` directory, creates `inputs.json` with `design`,
-`rtlGlob`, `foundryDb`, `edaWrapper` as described in that directory's README, then adjusts this
-Site's paths, SSH destination, capacity and Permit. No credential or foundry library belongs in
-Pack method files. Copy this Site into the installed home's `hima/sites/` as a chosen name and
-keep its Permit path resolvable. The existing native Pack check reports contract/Permit gaps;
-actual file/tool/licence readiness requires Site preflight and the bounded test Run.
+For another Site, HimaGuide discovers the design, constraints, Library/physical views, EDA wrappers
+and free proxy tools, then writes equivalent Site-owned JSON profiles. No credential or foundry
+library belongs in Pack method files. Keep the Permit path resolvable; Pack check reports structural
+contract/Permit gaps, while the bounded test Run proves actual file/tool/licence readiness.
 
-The template grants one concurrent Job and one Design Compiler seat. The probe tool itself
-requests eight cores and a 600-second tool deadline. These are pilot limits, not measured host
-hardware specifications or OS-enforced memory isolation. `/usr/bin/python3` is the explicitly
-permitted Pack tool/reader wrapper; `/usr/local/bin/eda` is the Site's EDA launcher.
+The profile grants up to five Jobs while the licence map limits each commercial tool to one seat.
+It supplies the real PG/DCAP/85%-occupancy method, DCCK clock family, and hash-bound container
+Yosys/ABC executables. `/usr/bin/python3` and `/usr/local/bin/eda` remain the only permitted wrappers.

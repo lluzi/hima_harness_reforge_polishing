@@ -1,7 +1,7 @@
 id: custom-cell-fmax-dtco
-version: "1"
-title: Portable custom Cell Fmax Campaign with matched physical implementation
-status: development
+version: "5.0.0"
+title: V5 Active Frontier custom Cell Fmax reference Campaign
+status: released
 minimumHarnessVersion: 0.1.0
 ontology:
   aliases:
@@ -572,6 +572,8 @@ knowledge:
   - file: library-richness-evaluation.md
     purpose: F0 feasibility, parallel F1/F2/F3 factors and E0 expensive observation;
       pairwise-versus-frontier authority, cumulative Library evidence and residual research boundaries.
+  - file: active-frontier-v5.md
+    purpose: Endpoint-complete Active Frontier control, grounded innovation lenses, break-even reasoning and commercial feedback for every research generation.
   - file: site-profile.md
     purpose: Complete Site-local physical and tool profile fields, types, ownership, discovery sources and readiness rules used before a Campaign starts.
 goal:
@@ -637,7 +639,7 @@ workshops:
       remaining budget. Do not assign identity, alter the Goal or evidence, predict
       commercial QoR, launch EDA, create parallel validation arms, repeat a fixed ranking,
       or write Judge facts. Invalid output is retained as a refusal. A later revision must
-      answer new retained evidence; Run results never auto-promote into Pack knowledge.
+      answer new retained evidence, especially the hash-bound commercial frontier response. It must propose several grounded hypotheses before selecting a bounded program; Run results never auto-promote into Pack knowledge.
     directory: research/ai-discovery
     entry: entry.py
     language: python
@@ -667,6 +669,7 @@ workshops:
     knowledge:
       - full-mining-method.md
       - library-richness-evaluation.md
+      - active-frontier-v5.md
     produces: aiResearchSelection
     argv:
       - /usr/bin/python3

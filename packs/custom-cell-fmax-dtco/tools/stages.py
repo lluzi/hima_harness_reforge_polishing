@@ -53,6 +53,7 @@ from mine_patterns import (  # noqa: E402
 )
 import library_richness as lfr  # noqa: E402
 from mining_strategy_contract import STRATEGIES  # noqa: E402
+from innovus_timing_facts import build_active_frontier, parse_timing_report  # noqa: E402
 
 
 SCHEMA = "custom-cell-fmax-stage/1"
@@ -784,6 +785,21 @@ def stage_function_local(ctx):
     else:
         frontier = cold_frontier
         atomic_json(frontier_path, frontier)
+    commercial_response_path = expected_root / "commercial-response.json"
+    commercial_response = None
+    if commercial_response_path.is_file():
+        commercial_response = read_json(commercial_response_path)
+        if (commercial_response.get("schema")
+                != "hima.lfr-v5-commercial-frontier-response/1"
+                or commercial_response.get("status") != "observed"
+                or not isinstance(commercial_response.get("next_residual_question"), str)):
+            raise Rejected("prior commercial frontier response is invalid")
+        frontier = dict(frontier)
+        frontier["next_residual_question"] = {
+            "id": "commercial-frontier-" + str(len(history_paths) + 1),
+            "prompt": commercial_response["next_residual_question"],
+        }
+        atomic_json(frontier_path, frontier)
     evaluation_copy = expected_root / "evaluation.json"
     manifest_copy = expected_root / "manifest.json"
     if not history_paths or not evaluation_copy.is_file():
@@ -805,6 +821,8 @@ def stage_function_local(ctx):
                     "max_candidate_proposals": lfr_new_cell_budget(ctx),
                     "max_candidate_code_bytes": 65536},
     }
+    if commercial_response is not None:
+        context_inputs["commercial_response"] = ref(commercial_response_path)
     context_inputs_path = expected_root / "research-context.json"
     atomic_json(context_inputs_path, context_inputs)
     ctx.inputs.extend([
@@ -816,6 +834,9 @@ def stage_function_local(ctx):
     ctx.add_artifact(pool_path, "candidate_pool", "source-bound-candidate-pool")
     ctx.add_artifact(frontier_path, "portfolio_frontier", "license-free-cold-start-frontier")
     ctx.add_artifact(context_inputs_path, "research_context_inputs", "hash-bound-context-inputs")
+    if commercial_response is not None:
+        ctx.add_artifact(commercial_response_path, "v5_commercial_frontier_response",
+                         "prior-commercial-feedback")
     ctx.facts.update({"evaluationPhase": "function-local", "candidatePoolCount": len(exposed_ids),
                       "candidatePoolTotal": len(eligible_ids),
                       "candidatePoolTruncated": max(0, len(eligible_ids) - len(exposed_ids)),
@@ -2491,6 +2512,8 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
         gds = ctx.run_dir / (arm + ".gds")
         postroute_sdc = rpt / "postroute-active.sdc"
         postroute_netlist = rpt / "postroute-netlist.v"
+        endpoint_index = rpt / "setup-endpoints.tsv"
+        endpoint_report = rpt / "endpoint-worst-setup.rpt"
         pin_plan = ctx.run_dir / ("pins_" + arm + ".io")
         if arm == "generated" and fixed_pin_plan is not None:
             pin_setup = "loadIoFile {%s}\nsetPlaceMode -place_global_place_io_pins false" % fixed_pin_plan
@@ -2526,6 +2549,8 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
             "CLOCK_INVERTER_CELLS": ctx.binding("CCFMAX_CLOCK_INVERTER_CELLS"),
             "POSTROUTE_SDC": postroute_sdc,
             "POSTROUTE_NETLIST": postroute_netlist,
+            "ENDPOINT_INDEX": endpoint_index,
+            "ENDPOINT_REPORT": endpoint_report,
             "PIN_SETUP": pin_setup, "PIN_CAPTURE": pin_capture,
         })
         init_path, pnr_path = ctx.run_dir / ("init_" + arm + ".tcl"), ctx.run_dir / ("pnr_" + arm + ".tcl")
@@ -2536,6 +2561,8 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
                         "place_checkpoint_base": place_db,
                         "gds": gds, "postroute_sdc": postroute_sdc,
                         "postroute_netlist": postroute_netlist,
+                        "endpoint_index": endpoint_index,
+                        "endpoint_report": endpoint_report,
                         "pin_plan": pin_plan,
                         "dcap_plan": ctx.run_dir / ("dcap-plan-" + arm + ".tsv"),
                         "physical_facts": ctx.run_dir / ("rpt_" + arm) / "physical-facts.tsv",
@@ -2671,6 +2698,24 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     hold_summary = ctx.run_dir / ("rpt_" + arm) / "posthold" / "hold_hold.summary.gz"
     hold_paths = ctx.run_dir / ("rpt_" + arm) / "posthold" / "hold_all_hold.tarpt.gz"
     hold = parse_timing_summary(hold_summary, hold_paths, mode="Hold")
+    endpoint_timing, endpoint_clocks = parse_timing_report(
+        chosen["endpoint_report"], 100000, 1, 10.0, chosen["endpoint_index"])
+    period_ns = parse_sdc_period(chosen["postroute_sdc"])
+    frozen_q_target = None
+    if arm == "generated":
+        frozen_q_target = (foundry_record.get("facts", {})
+                           .get("v5_active_frontier", {}).get("q_target_ns"))
+        if not isinstance(frozen_q_target, (int, float)):
+            raise Rejected("foundry arm has no frozen V5 q target")
+    frontier = build_active_frontier(
+        endpoint_timing, period_ns, 0.05, 0.0, frozen_q_target)
+    endpoint_timing["active_frontier"] = frontier
+    timing_facts_path = ctx.run_dir / ("rpt_" + arm) / "timing-facts.json"
+    clock_facts_path = ctx.run_dir / ("rpt_" + arm) / "clock-facts.json"
+    frontier_path = ctx.run_dir / ("rpt_" + arm) / "active-frontier.json"
+    atomic_json(timing_facts_path, endpoint_timing)
+    atomic_json(clock_facts_path, endpoint_clocks)
+    atomic_json(frontier_path, frontier)
     route_drc = ctx.run_dir / ("rpt_" + arm) / "route.drc.rpt"
     connectivity = ctx.run_dir / ("rpt_" + arm) / "connectivity.rpt"
     power_report = ctx.run_dir / ("rpt_" + arm) / "power.rpt"
@@ -2696,6 +2741,12 @@ def stage_pnr(ctx, arm, utilization="0.60"):
                      (chosen["postroute_netlist"], "postroute_netlist"),
                      (chosen["postroute_sdc"], "postroute_sdc")):
         ctx.add_artifact(at, role, "innovus-output")
+    for at, role in ((chosen["endpoint_index"], "v5_setup_endpoint_index"),
+                     (chosen["endpoint_report"], "v5_endpoint_worst_setup_report"),
+                     (timing_facts_path, "v5_timing_facts"),
+                     (clock_facts_path, "v5_clock_facts"),
+                     (frontier_path, "v5_active_frontier")):
+        ctx.add_artifact(at, role, "innovus-endpoint-complete-evidence")
     publish_condition_identity(ctx, {
         "schema": "custom-cell-fmax-common-condition/1", "kind": "place-and-route",
         "commonInputs": held_identities(ctx.inputs, exact=(
@@ -2727,6 +2778,14 @@ def stage_pnr(ctx, arm, utilization="0.60"):
                       "floorplan_core_area_um2": (core_box[2] - core_box[0]) * (core_box[3] - core_box[1]),
                       "pin_plan_identity": plan_identity,
                       "v5_physical_identity": physical_identity,
+                      "v5_active_frontier": {
+                          "endpoint_count": frontier["endpoint_count"],
+                          "active_endpoint_count": frontier["active_endpoint_count"],
+                          "q0_ns": frontier["q0_ns"],
+                          "q_target_ns": frontier["q_target_ns"],
+                          "required_gain_ns": frontier["required_gain_ns"],
+                          "q_target_source": frontier["q_target_source"],
+                      },
                       **clock_tree,
                       "templateSha256": {name: sha_file(DOMAIN / name) for name in
                                          ("init.tcl.tmpl", "mmmc.tcl.tmpl", "pnr.tcl.tmpl")}})
@@ -3031,9 +3090,72 @@ def validate_condition_artifact(record, workspace, derived):
     return derived
 
 
+def compare_v5_frontiers(reference_timing, generated_timing, reference_frontier,
+                         generated_frontier):
+    """Build the compact commercial response that drives the next research generation."""
+    for name, timing in (("reference", reference_timing), ("generated", generated_timing)):
+        if (timing.get("schema") != "hima.innovus-timing-facts/1"
+                or timing.get("completeness") != "complete"):
+            raise Rejected("%s V5 timing facts are not endpoint-complete" % name)
+    q_target = reference_frontier.get("q_target_ns")
+    if (not isinstance(q_target, (int, float))
+            or generated_frontier.get("q_target_ns") != q_target
+            or generated_frontier.get("q_target_source") != "frozen-baseline-target"):
+        raise Rejected("generated V5 frontier does not use the frozen reference q target")
+    def endpoint_rows(document):
+        return {row["endpoint"]: float(row["worst_slack_ns"])
+                for row in document.get("endpoint_alternatives", [])}
+    left, right = endpoint_rows(reference_timing), endpoint_rows(generated_timing)
+    if not left or set(left) != set(right):
+        raise Rejected("V5 endpoint identities differ between comparison arms")
+    period = float(reference_frontier["period_ns"])
+    rows = [{"endpoint": endpoint, "reference_slack_ns": left[endpoint],
+             "generated_slack_ns": right[endpoint],
+             "delta_slack_ns": right[endpoint] - left[endpoint],
+             "reference_q_ns": period - left[endpoint],
+             "generated_q_ns": period - right[endpoint]}
+            for endpoint in sorted(left)]
+    reference_active = {row["endpoint"] for row in rows
+                        if row["reference_q_ns"] >= q_target - 1e-15}
+    generated_active = {row["endpoint"] for row in rows
+                        if row["generated_q_ns"] >= q_target - 1e-15}
+    remaining = sorted((row for row in rows if row["endpoint"] in generated_active),
+                       key=lambda row: (-row["generated_q_ns"], row["endpoint"]))
+    response = {
+        "schema": "hima.lfr-v5-commercial-frontier-response/1", "status": "observed",
+        "endpoint_count": len(rows), "period_ns": period,
+        "q_target_ns": float(q_target),
+        "reference_active_count": len(reference_active),
+        "generated_active_count": len(generated_active),
+        "resolved_reference_endpoints": sorted(reference_active - generated_active),
+        "new_frontier_entrants": sorted(generated_active - reference_active),
+        "remaining_frontier": remaining,
+        "improved_endpoint_count": sum(row["delta_slack_ns"] > 1e-12 for row in rows),
+        "worsened_endpoint_count": sum(row["delta_slack_ns"] < -1e-12 for row in rows),
+        "unchanged_endpoint_count": sum(abs(row["delta_slack_ns"]) <= 1e-12 for row in rows),
+        "violations_fixed": sum(left[row["endpoint"]] < 0 <= right[row["endpoint"]] for row in rows),
+        "new_violations": sum(right[row["endpoint"]] < 0 <= left[row["endpoint"]] for row in rows),
+        "largest_frontier_regressions": sorted(
+            (row for row in rows if row["endpoint"] in generated_active),
+            key=lambda row: (row["delta_slack_ns"], row["endpoint"]))[:32],
+        "largest_frontier_improvements": sorted(
+            (row for row in rows if row["endpoint"] in reference_active),
+            key=lambda row: (-row["delta_slack_ns"], row["endpoint"]))[:32],
+        "next_residual_question": (
+            "Find non-conflicting single-output, multi-output, drive-family, transistor-tuning or "
+            "physical-fusion actions that jointly reduce every remaining frozen-frontier alternative; "
+            "explain each proposal from complete endpoint influence and preserve prior non-frontier PPA gains."),
+        "claim_limits": {"per_action_causality": False, "commercial_qor_prediction": False,
+                         "single_pair_no_statistics": True},
+    }
+    response["response_sha256"] = canonical_json_sha(response)
+    return response
+
+
 def stage_compare(ctx):
     unknown_reasons = []
     observations = {}
+    frontier_response = None
     try:
         foundry_synth = prior(ctx, "foundry-synth")
         custom_synth = prior(ctx, "custom-synth")
@@ -3211,6 +3333,27 @@ def stage_compare(ctx):
             "analysisViews": {arm: pnr_rows[arm]["timing"]["analysisView"] for arm in pnr_rows},
             "measurementScope": "same requested period; setup slack and custom-instance census are re-read after restoring each final route database",
         })
+        reference_timing_path = artifact(foundry_pnr, ctx.workspace, "v5_timing_facts")
+        generated_timing_path = artifact(generated_pnr, ctx.workspace, "v5_timing_facts")
+        reference_frontier_path = artifact(foundry_pnr, ctx.workspace, "v5_active_frontier")
+        generated_frontier_path = artifact(generated_pnr, ctx.workspace, "v5_active_frontier")
+        frontier_response = compare_v5_frontiers(
+            read_json(reference_timing_path), read_json(generated_timing_path),
+            read_json(reference_frontier_path), read_json(generated_frontier_path))
+        ctx.inputs.extend([
+            file_ref(reference_timing_path, ctx.workspace, "foundry_v5_timing_facts", "innovus-endpoint-complete-evidence"),
+            file_ref(generated_timing_path, ctx.workspace, "generated_v5_timing_facts", "innovus-endpoint-complete-evidence"),
+            file_ref(reference_frontier_path, ctx.workspace, "foundry_v5_active_frontier", "derived-frontier"),
+            file_ref(generated_frontier_path, ctx.workspace, "generated_v5_active_frontier", "derived-frontier"),
+        ])
+        observations.update({
+            "v5_frontier_reference_count": frontier_response["reference_active_count"],
+            "v5_frontier_generated_count": frontier_response["generated_active_count"],
+            "v5_frontier_resolved_count": len(frontier_response["resolved_reference_endpoints"]),
+            "v5_frontier_entrant_count": len(frontier_response["new_frontier_entrants"]),
+            "v5_frontier_remaining_count": len(frontier_response["remaining_frontier"]),
+            "v5_frontier_response_sha256": frontier_response["response_sha256"],
+        })
     except (Rejected, ValueError, KeyError, IndexError, TypeError) as exc:
         unknown_reasons.append(str(exc))
         observations.update({"clock_period": None, "setup_wns": None, "foundry_setup_wns": None,
@@ -3225,6 +3368,14 @@ def stage_compare(ctx):
     comparison = ctx.run_dir / "comparison.json"
     atomic_json(comparison, observations)
     ctx.add_artifact(comparison, "comparison", "derived-from-held-postroute-evidence")
+    if frontier_response is not None:
+        response_path = ctx.run_dir / "frontier-response.json"
+        atomic_json(response_path, frontier_response)
+        persistent = ctx.flow / "library-richness" / "commercial-response.json"
+        persistent.parent.mkdir(parents=True, exist_ok=True)
+        persistent.write_bytes(response_path.read_bytes())
+        ctx.add_artifact(response_path, "v5_frontier_response",
+                         "derived-from-endpoint-complete-commercial-evidence")
     ctx.facts.update(observations)
 
 

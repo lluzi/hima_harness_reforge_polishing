@@ -15,6 +15,11 @@ documents:
     title: Layered Library richness evaluation and residual research method
     version: "1"
     mediaType: text/markdown
+  - id: active-frontier-v5
+    file: active-frontier-v5.md
+    title: Active Frontier v5 grounded innovation and commercial feedback
+    version: "1"
+    mediaType: text/markdown
   - id: site-profile
     file: site-profile.md
     title: Portable custom Cell Fmax Site profile

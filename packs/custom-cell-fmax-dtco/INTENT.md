@@ -27,7 +27,10 @@ free-factor condition whenever F1, F2 and F3 are not all explicitly negative. E0
 under the stated design and flow conditions to learn which indicators were useful in this case. It
 is never a target for proxy prediction accuracy, a fitted correction, an expected gain or a
 cross-design threshold. The current Campaign's business Goal remains at least 5% matched post-route
-Fmax improvement with the cumulative Library as the only arm variable.
+Fmax improvement with the cumulative Library Portfolio as the only logical arm variable. V5 treats
+the endpoint-complete Active Frontier as the control state: after every E0 miss, the commercial
+response names resolved endpoints, new entrants and the remaining frozen frontier, then the same
+Campaign returns to opportunity mining with a revised evidence-linked algorithm.
 
 The Campaign ends honestly with Goal met, research convergence, budget exhaustion, a valid negative
 commercial observation, or a hard blocker. A person must never have to guess which evidence layer a
@@ -81,18 +84,19 @@ Phase 2, but it does not copy or reimplement the Framework.
    with two exits by default rather than a Runtime constant. One frozen matched baseline is reused
    while its input and method identity remain unchanged; each admitted cumulative Library gets at
    most one corresponding custom-arm observation.
-10. What remains controlled in E0? — RTL, constraints, tool and core count, the once-expanded 25%
-    target-utilization floorplan, frozen IO-pin plan, physical inputs, route settings and analysis
-    view. Both synthesis arms use the same 50% clock uncertainty and reg2reg priority; both route
-    arms use the same 25% uncertainty plus 50 ps; DCCK buffer/inverter lists build both clock trees.
-    The cumulative custom Library is the only arm variable.
+10. What remains controlled in E0? — RTL, constraints, tool and core count, the once-expanded
+    floorplan, frozen IO pins, PG mesh, checkerboard DCAP plan, 85% effective-occupancy ceiling,
+    physical inputs, route settings and analysis view. Both synthesis arms use the same 50% clock
+    uncertainty and reg2reg priority; both route arms use the same 25% uncertainty plus 50 ps;
+    DCCK buffer/inverter lists build both clock trees. Ordinary filler is omitted in this setup-only
+    Campaign. The cumulative custom Library Portfolio is the declared logical arm difference.
 11. What constitutes success? — Generated masters must first be adopted by logic synthesis and be
     present in the final routed database. Only a complete matched E0 comparison showing at least the
     bound Fmax gain, with no known invalidating fault, reaches Goal met.
 12. How are failures used? — Function, local-structure, whole-design mapping, proxy-STA, generation,
-    commercial adoption and post-route failures remain distinct, hash-bound assets. They direct the
-    next residual study or support an honest ending; they never become a fabricated zero or a claim
-    of generalized failure.
+    commercial adoption and post-route failures remain distinct, hash-bound assets. A valid E0 miss
+    becomes a commercial frontier response and changes the next residual question in the same Run.
+    It never becomes a fabricated zero, per-Action causality or a claim of generalized failure.
 
 ## Ambiguities resolved
 

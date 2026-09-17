@@ -42,12 +42,19 @@ parallel factors are explicitly negative. A negative F3 alone, zero open-source 
 negative F1 alone remains evidence but cannot veto the Library. Admission means “worth observing”,
 never “expected to gain”. Missing evidence still fails closed because it is not a factor result.
 
-E0 holds RTL, constraints, tool/core count, once-expanded 25% target-utilization core, frozen IO pins,
-physical inputs, route settings and analysis view fixed. Both DC arms use 50% clock uncertainty and
+E0 holds RTL, constraints, tool/core count, once-expanded core, frozen IO pins, PG mesh,
+deterministic checkerboard DCAP plan, effective-occupancy ceiling no greater than 85%, physical
+inputs, route settings and analysis view fixed. Tap and DCAP Cells count against occupancy and
+ordinary filler is omitted in this setup-only Campaign. Both DC arms use 50% clock uncertainty and
 explicit high-weight reg2reg pressure. Both route arms use 25% uncertainty plus 50 ps. Both clock
-trees use only Site-declared DCCK buffer/inverter families. The cumulative custom Library is the sole
-arm variable. Generated masters must be adopted in synthesis and retained in the final route database.
-Unknowns cannot pass; rejected generated databases cannot run downstream.
+trees use only Site-declared DCCK buffer/inverter families. The cumulative custom Library Portfolio
+is the declared logical arm difference. Generated masters must be adopted in synthesis and retained
+in the final route database. Unknowns cannot pass; rejected generated databases cannot run downstream.
+
+Each P&R arm enumerates one worst setup path for every register data endpoint. The reference freezes
+`Q_target` from `q_e = period - slack`; the generated arm uses that same target. `compare` writes a
+hash-bound frontier response with resolved endpoints, new entrants, remaining frontier, regressions,
+improvements and violation migration. It does not assign per-Action causality.
 
 Knowledge shaping this section: `assert-the-checker-options.md`, `one-checker-per-session.md`,
 `attribute-by-database-relation.md`, `over-constrain-and-read-the-violation.md`,
@@ -169,6 +176,13 @@ Goal met only after the final commercial Judge PASS. Its converge block watches 
 multi-index frontier across consecutive rounds and stops only when no evidence-backed new direction
 or material frontier movement remains within the stated tolerance; missing evidence is a blocker,
 not convergence.
+
+After a sub-target E0, the revisit to `evaluation-baseline` retains the same persistent Run and
+cumulative Library. The next Workshop receives the hash-bound commercial frontier response and must
+answer its new residual question with several grounded hypotheses before selecting one bounded
+candidate program. It may investigate alternative-path coverage, dominators/reconvergence,
+single/multi-output simplification, drive families, transistor tuning, physical fusion and guarded
+non-frontier area recovery; the actual evidence decides which apply.
 
 Knowledge shaping this section: `end-honestly-in-more-than-one-way.md` defines reachable stopping
 choices; `knowledge/full-mining-method.md` bounds AI revision and preserves the fixed reference graph.

@@ -47,7 +47,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '1');
+  assert.equal(graph.version, '5.0.0');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -152,7 +152,7 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
   assert.equal(workshop.reads.includes('record_design_mapping_timing_evaluation'), false,
     'the cold-start Workshop cannot require evidence produced only after its own delta');
   assert.deepEqual(workshop.knowledge,
-    ['full-mining-method.md', 'library-richness-evaluation.md']);
+    ['full-mining-method.md', 'library-richness-evaluation.md', 'active-frontier-v5.md']);
   assert.deepEqual(workshop.argv, ['/usr/bin/python3', '${ENTRY}', '--lfr-residual', '${WORKSPACE}',
     '${WORKSPACE}/flow/research/research.json']);
   assert.ok(loaded.contract.workspace.copy.includes('library_richness.py'));
@@ -202,9 +202,9 @@ test('two different Site bindings fit the Pack and a missing production binding 
     licences: { 'Design-Compiler': 1, 'Library-Compiler': 1, Innovus: 1 },
   });
   const pack = loadPack(path.join(repoRoot, 'packs'), 'custom-cell-fmax-dtco');
-  assert.equal(packOverview(pack).status?.normalized, 'development');
+  assert.equal(packOverview(pack).status?.normalized, 'released');
   assert.equal(packOverview(pack).minimumHarnessVersion, '0.1.0');
-  assert.equal(packKnowledgeManifestOf(pack)?.documents.length, 4);
+  assert.equal(packKnowledgeManifestOf(pack)?.documents.length, 5);
   const knowledge = await searchPackKnowledge(pack, 'matched comparison custom cell adoption');
   assert.ok(knowledge.length > 0);
   assert.equal(knowledge[0]?.document.source, 'pack');

@@ -258,6 +258,34 @@ def _proposal(context: dict) -> dict:
 
 
 class ResidualResearchContextTests(unittest.TestCase):
+    def test_commercial_frontier_response_is_hash_bound_and_visible_to_research(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request = _request(root)
+            response = {
+                "schema": "hima.lfr-v5-commercial-frontier-response/1",
+                "status": "observed", "response_sha256": "a" * 64,
+                "q_target_ns": 0.53, "reference_active_count": 3,
+                "generated_active_count": 2,
+                "resolved_reference_endpoints": ["E0"],
+                "new_frontier_entrants": [],
+                "remaining_frontier": [{"endpoint": "E1", "generated_q_ns": 0.55}],
+                "largest_frontier_regressions": [{"endpoint": "E1", "delta_slack_ns": -0.01}],
+                "largest_frontier_improvements": [{"endpoint": "E0", "delta_slack_ns": 0.02}],
+                "improved_endpoint_count": 2, "worsened_endpoint_count": 1,
+                "violations_fixed": 1, "new_violations": 0,
+                "claim_limits": {"per_action_causality": False},
+            }
+            request["commercial_response"] = _write_json(
+                root, "commercial-response.json", response)
+            context = load_residual_research_context(request, evidence_root=root)
+            self.assertEqual(2, context["commercial_frontier_response"]["generated_active_count"])
+            self.assertEqual("E1", context["commercial_frontier_response"]["remaining_frontier"][0]["endpoint"])
+            self.assertIn("commercial_response", context["evidence"])
+            (root / "commercial-response.json").write_text("{}\n")
+            with self.assertRaisesRegex(ValueError, "changed after"):
+                load_residual_research_context(request, evidence_root=root)
+
     def test_cold_start_baseline_exposes_f0_f2_f3_without_qor_prediction(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

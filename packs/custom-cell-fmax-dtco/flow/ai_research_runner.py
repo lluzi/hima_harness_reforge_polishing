@@ -513,14 +513,14 @@ def _compact_candidate_pool(document, source_sha256):
 
 def build_residual_research_context(
         request, *, evaluation, frontier, manifest, history_documents, evidence,
-        candidate_pool=None):
+        candidate_pool=None, commercial_response=None):
     """Purely project verified documents into one compact FW-07 AI context."""
     if not isinstance(request, dict) or request.get("schema") != RESIDUAL_REQUEST_SCHEMA:
         raise ValueError("residual request schema is unsupported")
     required = {"schema", "round_id", "evaluation", "frontier", "manifest", "history",
                 "budgets", "next_residual_question"}
-    if not required.issubset(request) or set(request) - required != ({"candidate_pool"}
-                                                                     if "candidate_pool" in request else set()):
+    optional = {name for name in ("candidate_pool", "commercial_response") if name in request}
+    if not required.issubset(request) or set(request) - required != optional:
         raise ValueError("residual request has unexpected or missing fields")
     round_id = request.get("round_id")
     question = request.get("next_residual_question")
@@ -546,6 +546,8 @@ def build_residual_research_context(
     evidence_keys = {"evaluation", "frontier", "manifest", "history"}
     if "candidate_pool" in request:
         evidence_keys.add("candidate_pool")
+    if "commercial_response" in request:
+        evidence_keys.add("commercial_response")
     if (not isinstance(evidence, dict) or set(evidence) != evidence_keys
             or not isinstance(history_documents, list)
             or len(history_documents) != len(history_refs)
@@ -561,6 +563,11 @@ def build_residual_research_context(
             or evidence["candidate_pool"].get("sha256")
             != request["candidate_pool"].get("sha256")):
         raise ValueError("verified candidate_pool binding differs from the request")
+    if "commercial_response" in request and (
+            not isinstance(evidence["commercial_response"], dict)
+            or evidence["commercial_response"].get("sha256")
+            != request["commercial_response"].get("sha256")):
+        raise ValueError("verified commercial_response binding differs from the request")
     if any(
             not isinstance(held, dict)
             or held.get("sha256") != reference.get("sha256")
@@ -618,6 +625,37 @@ def build_residual_research_context(
                         "manifest": evidence["manifest"], "history": history}
     if "candidate_pool" in evidence:
         context_evidence["candidate_pool"] = evidence["candidate_pool"]
+    compact_response = None
+    if commercial_response is not None:
+        if (commercial_response.get("schema")
+                != "hima.lfr-v5-commercial-frontier-response/1"
+                or commercial_response.get("status") != "observed"):
+            raise ValueError("commercial response is not one observed V5 frontier response")
+        remaining = commercial_response.get("remaining_frontier")
+        if not isinstance(remaining, list) or len(remaining) > 4096:
+            raise ValueError("commercial response remaining frontier is invalid")
+        def compact_rows(name, limit):
+            rows = commercial_response.get(name) or []
+            if not isinstance(rows, list):
+                raise ValueError("commercial response %s is not an array" % name)
+            return rows[:limit]
+        compact_response = {
+            "response_sha256": commercial_response.get("response_sha256"),
+            "q_target_ns": commercial_response.get("q_target_ns"),
+            "reference_active_count": commercial_response.get("reference_active_count"),
+            "generated_active_count": commercial_response.get("generated_active_count"),
+            "resolved_reference_endpoints": compact_rows("resolved_reference_endpoints", 128),
+            "new_frontier_entrants": compact_rows("new_frontier_entrants", 128),
+            "remaining_frontier": remaining[:256],
+            "largest_frontier_regressions": compact_rows("largest_frontier_regressions", 32),
+            "largest_frontier_improvements": compact_rows("largest_frontier_improvements", 32),
+            "improved_endpoint_count": commercial_response.get("improved_endpoint_count"),
+            "worsened_endpoint_count": commercial_response.get("worsened_endpoint_count"),
+            "violations_fixed": commercial_response.get("violations_fixed"),
+            "new_violations": commercial_response.get("new_violations"),
+            "claim_limits": commercial_response.get("claim_limits"),
+        }
+        context_evidence["commercial_response"] = evidence["commercial_response"]
     context = {
         "schema": RESIDUAL_CONTEXT_SCHEMA,
         "round_id": round_id,
@@ -630,12 +668,14 @@ def build_residual_research_context(
         "cumulative_library": compact_manifest,
         "library_cost": normalized_frontier["library_cost"],
         "candidate_pool": compact_pool,
+        "commercial_frontier_response": compact_response,
         "failures": compact_manifest["known_failures"] + [
             {"round_id": row["round_id"], "detail": failure}
             for row in history for failure in row["failures"]
         ],
         "agent_scope": {
-            "may": ["propose_research_lenses", "author_bounded_candidate_code"],
+            "may": ["propose_research_lenses", "author_bounded_candidate_code",
+                    "respond_to_commercial_frontier"],
             "may_not": ["assign_candidate_identity", "alter_evidence", "alter_budget",
                         "write_judge_facts", "launch_commercial_eda"],
             "commercial_qor_prediction": False,
@@ -667,6 +707,12 @@ def load_residual_research_context(request, *, evidence_root):
         candidate_pool, candidate_pool_ref = _bound_json_reference(
             evidence_root, request.get("candidate_pool"), "candidate_pool",
             RESIDUAL_CANDIDATE_POOL_BYTES)
+    commercial_response = None
+    commercial_response_ref = None
+    if "commercial_response" in request:
+        commercial_response, commercial_response_ref = _bound_json_reference(
+            evidence_root, request.get("commercial_response"), "commercial_response",
+            RESIDUAL_CONTEXT_BYTES)
     history_documents = []
     history_evidence = []
     for index, reference in enumerate(history_refs):
@@ -678,10 +724,12 @@ def load_residual_research_context(request, *, evidence_root):
                       "manifest": manifest_ref, "history": history_evidence}
     if candidate_pool_ref is not None:
         bound_evidence["candidate_pool"] = candidate_pool_ref
+    if commercial_response_ref is not None:
+        bound_evidence["commercial_response"] = commercial_response_ref
     return build_residual_research_context(
         request, evaluation=evaluation, frontier=frontier, manifest=manifest,
         history_documents=history_documents, evidence=bound_evidence,
-        candidate_pool=candidate_pool,
+        candidate_pool=candidate_pool, commercial_response=commercial_response,
     )
 
 

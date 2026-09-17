@@ -90,6 +90,26 @@ class EndpointFrontierTests(unittest.TestCase):
 
 
 class CoverAndPortfolioTests(unittest.TestCase):
+    def test_v5_commercial_response_preserves_takeover_for_next_research(self):
+        timing = lambda rows: {
+            "schema": "hima.innovus-timing-facts/1", "completeness": "complete",
+            "endpoint_alternatives": [
+                {"endpoint": endpoint, "worst_slack_ns": slack}
+                for endpoint, slack in rows.items()],
+        }
+        reference = {"schema": "hima.lfr-active-frontier/1", "period_ns": 0.5,
+                     "q_target_ns": 0.53, "q_target_source": "derived-from-this-snapshot-q0"}
+        generated = {"schema": "hima.lfr-active-frontier/1", "period_ns": 0.5,
+                     "q_target_ns": 0.53, "q_target_source": "frozen-baseline-target"}
+        response = stages.compare_v5_frontiers(
+            timing({"E0": -0.05, "E1": -0.04, "E2": 0.01}),
+            timing({"E0": -0.01, "E1": -0.05, "E2": -0.04}),
+            reference, generated)
+        self.assertEqual(["E0"], response["resolved_reference_endpoints"])
+        self.assertEqual(["E2"], response["new_frontier_entrants"])
+        self.assertEqual(2, len(response["remaining_frontier"]))
+        self.assertIn("jointly reduce every remaining", response["next_residual_question"])
+
     def test_v5_whole_graph_search_models_alternative_takeover(self):
         state = {
             "schema": "hima.lfr-timing-graph-state/1",

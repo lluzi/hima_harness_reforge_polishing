@@ -25,6 +25,7 @@
 #   @@RPT_DIR@@ @@FINAL_DB@@ @@GDS_OUT@@ @@GDS_MAP@@ @@MERGE_GDS@@
 #   @@SWITCHING_ACTIVITY@@ @@CLOCK_BUFFER_CELLS@@ @@CLOCK_INVERTER_CELLS@@
 #   @@POSTROUTE_NETLIST@@ is the routed logical graph used by the next research generation
+#   @@ENDPOINT_INDEX@@ and @@ENDPOINT_REPORT@@ retain one worst setup path for every register data pin
 #   dedicated pin-setup and pin-capture lines implement baseline placement or generated-arm replay
 
 restoreDesign @@INIT_DB@@ @@DESIGN_TOP@@
@@ -169,6 +170,22 @@ puts "=== CCFMAX V5 NO ORDINARY FILLER @@ARM@@ ==="
 extractRC
 puts "=== CCFMAX POST-OPT SETUP @@ARM@@ ==="
 timeDesign -postRoute -outDir @@RPT_DIR@@/postopt -prefix post -numPaths 100 -expandReg2Reg -pathreports
+# Endpoint-complete V5 timing state. This is distinct from the bounded
+# human-readable path report above: every register data endpoint is named and
+# asked independently, so another path can take over without disappearing from
+# the next research generation.
+set _hima_endpoint_index [open {@@ENDPOINT_INDEX@@} w]
+puts $_hima_endpoint_index "# endpoint"
+set _hima_setup_endpoints [lsort [get_object_name [all_registers -data_pins]]]
+foreach _hima_endpoint $_hima_setup_endpoints { puts $_hima_endpoint_index $_hima_endpoint }
+close $_hima_endpoint_index
+file delete -force {@@ENDPOINT_REPORT@@}
+set _hima_active_view [lindex [all_analysis_views] 0]
+foreach _hima_endpoint $_hima_setup_endpoints {
+  report_timing -late -to [get_pins $_hima_endpoint] -max_paths 1 -nworst 1 \
+    -net -view $_hima_active_view >> {@@ENDPOINT_REPORT@@}
+}
+puts "=== CCFMAX V5 SETUP ENDPOINTS @@ARM@@ [llength $_hima_setup_endpoints] ==="
 puts "=== CCFMAX POST-OPT HOLD @@ARM@@ ==="
 timeDesign -postRoute -hold -outDir @@RPT_DIR@@/posthold -prefix hold
 # Export the active post-route constraints from this Innovus session. This command

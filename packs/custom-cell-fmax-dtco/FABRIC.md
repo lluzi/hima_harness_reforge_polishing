@@ -10,10 +10,12 @@ reference and augmented design-mapping/timing indicator vectors; the portfolio g
 research or freezes the cumulative Library before the existing commercial chain.
 
 The commercial chain remains `compile` -> matched foundry/custom DC -> adoption gate -> matched
-foundry/custom APR -> verify -> compare -> final Judge. A failed final commercial observation may
-return through the same `next-research` Explore node. A passing final Judge is the terminal path. The
-only revisit edge returns to `evaluation-baseline`, so each research generation evaluates the current
-cumulative Library before producing another delta.
+foundry/custom APR -> verify -> compare -> final Judge. Both APR arms publish endpoint-complete V5
+frontiers under one frozen target. `compare` writes the commercial frontier response consumed by the
+next Workshop. A failed final commercial observation returns through the same `next-research` Explore
+node. A passing final Judge is the terminal path. The only revisit edge returns to
+`evaluation-baseline`, so each research generation evaluates the current cumulative Library and the
+latest commercial response before producing another delta.
 
 There is one Campaign Run and one visible Campaign Agent. AI-authored code remains confined to the
 existing `research-candidates` Workshop; strategy revision and additive bounded research remain
@@ -22,16 +24,15 @@ commercial trial fan-out is introduced.
 
 ## Gaps
 
-The tool, output, Reader, rule and chooser references in this graph resolve. The three Framework
-phases and cumulative-Library freeze reuse the existing stage, record, artifact, Permit and Job
-surfaces; no Runtime component or second asset system was added.
+The tool, output, Reader, rule, chooser and commercial-feedback references in this graph resolve. The
+three Framework phases, cumulative-Library freeze and V5 frontier response reuse the existing stage,
+record, artifact, Permit and Job surfaces; no Runtime component or second asset system was added.
 
-The remaining gaps are validation facts. The Pack still needs one Harness-owned test Campaign whose
-Ledger holds its CodeRecord and refusal evidence. The retained pilot Library now passes the updated
-factor gate: F1 is positive, F2 is positive and F3 is mixed, so the three parallel free factors are
-not all explicitly negative. It is therefore eligible for E0, but no E0 job has yet run and the Pack
-cannot support a release seal. `loadPack` and `/hima pack check` passing establish structural fit,
-not release readiness or commercial benefit.
+The V5 reference method has one matched AES E0 with an honest 5% target miss: broad TNS/area/wire/power
+benefit did not move WNS. That evidence validates the feedback object and leaves the residual frontier
+as the next Campaign input. It does not promise cross-design benefit, physical closure or a future
+positive result. Release readiness additionally rests on the Harness-owned test Run named by TEST.md
+and the generated VERSION.yml seal.
 
 ## Reviews
 

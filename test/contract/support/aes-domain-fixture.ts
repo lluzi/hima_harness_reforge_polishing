@@ -189,6 +189,22 @@ elif tool == 'innovus':
             with gzip.open(summary, 'wt') as handle: handle.write(summary_text)
         if not (fixture_flow / 'synthetic-missing-timing-companion').exists():
             with gzip.open(paths, 'wt') as handle: handle.write(path_text)
+        endpoint_index = pathlib.Path(re.search(r'set _hima_endpoint_index \[open \{([^}]+)\} w\]', text).group(1))
+        endpoint_report = pathlib.Path(re.search(r'file delete -force \{([^}]+endpoint-worst-setup\.rpt)\}', text).group(1))
+        endpoint_index.parent.mkdir(parents=True, exist_ok=True)
+        endpoint_index.write_text('# endpoint\nstate_reg/D\n')
+        endpoint_top = re.search(r'^restoreDesign\s+\S+\s+(\S+)', text, re.M).group(1)
+        endpoint_report.write_text('''# Design : %s
+# Command : report_timing endpoint loop
+Path 1: SYNTHETIC Setup Check
+Endpoint: state_reg/D (^) checked
+Beginpoint: state_launch/Q (^) triggered
+Path Groups: {clk}
+Analysis View: view_%s
+= Required Time 0.500
+- Arrival Time %.3f
+= Slack Time %s
+''' % (endpoint_top, arm, 0.5 - float(wns), wns))
         hold_summary = pathlib.Path(report_dir) / 'posthold' / (prefix.replace('post', 'hold') + '_hold.summary.gz')
         hold_paths = pathlib.Path(report_dir) / 'posthold' / (prefix.replace('post', 'hold') + '_all_hold.tarpt.gz')
         hold_summary.parent.mkdir(parents=True, exist_ok=True)
