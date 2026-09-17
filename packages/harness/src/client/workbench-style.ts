@@ -194,8 +194,9 @@ export const HIMA_STYLE = `
 [data-hima-region="campaign-goal"][data-hima-state-status="ended-budget-exhausted"] .hima-goal-seal{fill:var(--hima-bad)}
 [data-hima-region="campaign-goal"][data-hima-state-status="ended-converged"] .hima-goal-seal,
 [data-hima-region="campaign-goal"][data-hima-state-status="cancelled"] .hima-goal-seal{fill:var(--hima-warn)}
-.hima-goal-title{font-size:var(--hima-fs-display);font-weight:650;fill:var(--hima-on-solid);text-anchor:middle}
-.hima-goal-reason{font-size:var(--hima-fs-label);fill:var(--hima-on-solid);text-anchor:middle}
+.hima-goal-seal-glyph{color:var(--hima-on-solid)}
+.hima-goal-title{font-size:var(--hima-fs-display);font-weight:650;fill:var(--hima-ink);text-anchor:middle}
+.hima-goal-reason{font-size:var(--hima-fs-label);fill:var(--hima-ink-2);text-anchor:middle}
 
 @media (prefers-reduced-motion: reduce){
   .hima-node-running-pulse{animation:none}

@@ -394,9 +394,21 @@ export function FabricCanvas({
             <g data-hima-region="campaign-goal" data-hima-state-status={run?.status ?? ''} transform={`translate(${scene.goal.x},${scene.goal.y})`}>
               {ended ? (
                 <>
-                  <circle r={22} className="hima-goal-seal" />
-                  <text className="hima-goal-title" y={5} textAnchor="middle">{seal?.title}</text>
-                  {seal?.reason === '' || seal?.reason === undefined ? null : <text className="hima-goal-reason" y={40} textAnchor="middle">{seal.reason}</text>}
+                  <circle r={18} className="hima-goal-seal" />
+                  <g className="hima-goal-seal-glyph" transform="translate(-8,-8)">
+                    <Glyph name={run?.status === 'ended-goal-met' ? 'check' : 'square'} />
+                  </g>
+                  {/* The status word and the reason sit below the sealed roundel, on paper, never
+                      inside the small filled circle: a 20 px display word and a 13 px reason line
+                      both fit a person's eye there but not inside an 18 px-radius shape, and drawing
+                      them centred on the roundel is what put white text half on paper and half
+                      spilling past the circle's own edge (PLS design review). */}
+                  {seal?.title === undefined ? null : (
+                    <text className="hima-goal-title" y={40} textAnchor="middle">{truncate(seal.title, 18)}<title>{seal.title}</title></text>
+                  )}
+                  {seal?.reason === '' || seal?.reason === undefined ? null : (
+                    <text className="hima-goal-reason" y={58} textAnchor="middle">{truncate(seal.reason, 18)}<title>{seal.reason}</title></text>
+                  )}
                 </>
               ) : (
                 <>
