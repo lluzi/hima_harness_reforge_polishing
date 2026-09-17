@@ -1,11 +1,12 @@
 # Post-route Design Information Graph 驱动的协同优化方法学 v4
 
-状态：免费闭环与小型 CCEI seam 已实现并验证；首个真实 local proxy 为负，完整 E0 按门禁跳过，尚未产生新 Fmax 收益。
+状态：observation-only 免费层、source-cover Mock Library、single/multi CCEI 与两轮 matched AES E0 已实现；最佳 Fmax +1.085%，Area/Power/Wire 有代价，5% 与完整 PPA 目标未完成。
 归属：`custom-cell-fmax-dtco` HimaPack 的 Library Function Richness 开发专线，继续由 GitHub Issue #40 跟踪。
 范围：升级现有 Framework、Pack domain tools、P&R adapter 和 Reader，不新增 Hima Runtime 组件、Fabric 动作、商业试验管理系统或对外交付件类型。
 修订：2026-09-16 纳入 OpenDB、SQLite、HAL、OpenSTA/OpenTimer、Yosys 和 LadybugDB 的技术选型；外部项目只作为现有 DIG/CCEI 深模块内可替换的 adapter/backend。
 决策修订：免费代理在完成与 E0 的相关性校准前只有观测权，没有 Action 准入/拒绝权；Mock Liberty 的简单/复杂合并分别以 source cover 全 NLDM 网格快 5%/10% 为先验。
 实施证据：[AES DIG v4 免费闭环](evidence/2026-09-16-aes-dig-v4-free-closure.md)。
+Owner 决策后的商业校准：[observation-only proxy 与相对 Mock Library E0](evidence/2026-09-16-aes-dig-v4-observation-calibration.md)。
 
 ## 1. 方法决定
 
@@ -748,6 +749,7 @@ Action 可标记为：
 | `flow/domain/multi_output_resynth/hal_backend.py`（adapter） | HAL project导入、Hima ID映射、LocalWindow图分析和 anchored candidate discovery | 不发布网表、不拥有proof、不能泄漏HAL ID |
 | `flow/domain/multi_output_resynth/netlist_eco.py` / `proof.py` | 继续负责可逆结构ECO、window/module/top proof和rollback | HAL不能绕过既有发布门 |
 | `flow/domain/_generation_projection.py` | 从 Cell Demand 生成非对称 drive family 和 delta-only views | cumulative Library 和旧 shard 不重做 |
+| `flow/domain/relative_mock_timing.py` | 在 source-cover 全 NLDM 网格上生成简单 5%/复杂 10% optimistic mock tables，并验证 emitted Liberty | 不把 Mock 标成 measured characterization；不从单 transition 外推 |
 | `flow/library_richness.py` | 持有 graph annotation lineage、Opportunity/Action response、trust region 和 system-identification labels | 现有 Action Portfolio 与 Commercial Label |
 | `flow/domain/init.tcl.tmpl`、`pnr.tcl.tmpl`、`mmmc.tcl.tmpl` | post-route export、early clock/useful skew、placed checkpoint 和 CCEI seam | matched floorplan/pin/uncertainty/DCCK/无 hold fix |
 | `flow/domain/shared_synth.tcl` | DC adoption arm 接入同一 frozen synthesis-eligible Library | 不负责 multi-output 自动 mapping |
@@ -786,11 +788,11 @@ Action 可标记为：
 | DIG-04 | 有界通过 | OpenSTA 真实读取 Liberty/netlist/SDC/SPEF；2,000 path 上限不冒充完整；OpenTimer 未晋级 |
 | DIG-05 | 通过 | 389/389 完整结构 endpoint cones 与四象限 proposals；没有直接 admission |
 | DIG-06 | 观测链通过；旧拒绝决定已失效 | 同一 Cell 出现在 30 条 OpenSTA 路径；11/14 pair 负向等数据继续保留，但不再拥有 E0 决策权 |
-| DIG-07 | contract 通过，物化未完成 | D1～D8/非对称 output 单调性可拒绝错误 family；完整五档 Library/LC 未构建 |
+| DIG-07 | 相对 Mock 主链通过 | 4 masters、72 tables 由 50 个 source covers 的全网格生成并通过 LC；完整 D1～D8 物理 family 仍未构建 |
 | DIG-08 | native 路径通过 | place-state anchored search 62 opportunities/50 selected；单项 CCEI apply/proof/rollback 通过；HAL 未安装且显式不晋级 |
 | DIG-09 | 配置探针通过 | Innovus 23.14 读回 useful skew=true、max delay=0.1 ns、full-flow/preCTS=true；完整 matched route 未运行 |
 | DIG-10 | 完成观测，进入 calibration | AES free closure 形成 proxy observation；满足 proof/CCEI/预算的 Actions 全部放行 |
-| DIG-11 | 正在重新执行 | 使用 source-cover 5%/10% Mock Library、单/多输出 Portfolio 和分阶段 DIG delta 运行 matched E0 |
+| DIG-11 | 两轮 calibration 完成 | 50-Action E0 Fmax +1.085%；商业正标签剪枝的 27-Action E0 仅 +0.540% 且 PPA 代价更高，证明局部标签不可直接相加 |
 | DIG-12 | Pack 内代码/Reader/文档已接入 | 保存 `place_checkpoint`；不新增 Runtime/Fabric；正式新 Pack 版本仍等待 DIG-07 与正向 Portfolio |
 
 上述“通过”只限定于对应机制出口。它不把免费代理负结果、旧商业结果或小型 CCEI seam
@@ -901,7 +903,7 @@ Desktop App 不参与 Framework 日常验证。
 8. baseline/generated 使用一致 early clock/useful skew；
 9. 一个 Commercial Label 能回写到 Action、Cell Demand 和下一轮 uncertainty。
 
-在该里程碑通过前，不启动新的完整 E0。5% 继续是 AES Campaign 的商业目标，由多轮经过系统辨识的正向 Action 累计实现，不写成 v4 第一阶段的机制验收数字。
+该机制里程碑已经通过。E0 现在承担早期 factor calibration：满足硬约束的 Actions 在记录免费响应后进入商业观察，proxy 在相关性被证明前不能阻止它。5% 继续是 AES Campaign 的商业目标，由多轮经过系统辨识的 Action 累计实现，不写成 v4 第一阶段的机制验收数字。
 
 ## 17. 明确不做的事情
 

@@ -64,7 +64,8 @@ def _resolve_net(contexts, modules, context, net):
 
 def build_ccei_plan(*, netlist_text, top, checkpoint, output_checkpoint,
                     opportunities, place_instances, power_net=None, ground_net=None,
-                    power_pin=None, ground_pin=None):
+                    power_pin=None, ground_pin=None, library_set=None,
+                    timing_liberties=()):
     modules, contexts = _contexts(netlist_text, top)
     occupied, actions = set(), []
     for opportunity in opportunities:
@@ -116,7 +117,10 @@ def build_ccei_plan(*, netlist_text, top, checkpoint, output_checkpoint,
     payload = {"schema": "hima.innovus-ccei-plan/1", "top": top,
                "checkpoint": str(checkpoint), "output_checkpoint": str(output_checkpoint),
                "actions": actions, "power": {"net": power_net, "pin": power_pin},
-               "ground": {"net": ground_net, "pin": ground_pin}}
+               "ground": {"net": ground_net, "pin": ground_pin},
+               "library_overlay": ({"library_set": library_set,
+                                    "timing_liberties": list(timing_liberties)}
+                                   if library_set and timing_liberties else None)}
     payload["plan_sha256"] = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
@@ -128,6 +132,13 @@ def render_apply_tcl(plan, placement_report):
         "# Hima CCEI apply plan %s" % plan["plan_sha256"],
         "restoreDesign %s %s" % (_tcl(plan["checkpoint"]), _tcl(plan["top"])),
     ]
+    overlay = plan.get("library_overlay")
+    if overlay:
+        lines.append("update_library_set -name %s -timing [list %s]" % (
+            _tcl(overlay["library_set"]),
+            " ".join(_tcl(path) for path in overlay["timing_liberties"])))
+        lines.append("puts \"=== HIMA CCEI LIBRARY OVERLAY %s ===\"" %
+                     overlay["library_set"])
     for action in plan["actions"]:
         lines.append("# opportunity %s anchored local resynthesis" % action["opportunity_id"])
         for source in action["source_instances"]:
@@ -212,6 +223,8 @@ def main():
     parser.add_argument("--ground-net")
     parser.add_argument("--power-pin")
     parser.add_argument("--ground-pin")
+    parser.add_argument("--library-set")
+    parser.add_argument("--timing-liberty", action="append", default=[])
     args = parser.parse_args()
     if args.max_actions < 1:
         raise CceiError("max-actions must be positive")
@@ -241,6 +254,7 @@ def main():
         opportunities=opportunities, place_instances=place_instances,
         power_net=args.power_net, ground_net=args.ground_net,
         power_pin=args.power_pin, ground_pin=args.ground_pin,
+        library_set=args.library_set, timing_liberties=args.timing_liberty,
     )
     plan["place_graph_sha256"] = snapshot[0]
     plan["resynthesis_result_sha256"] = hashlib.sha256(

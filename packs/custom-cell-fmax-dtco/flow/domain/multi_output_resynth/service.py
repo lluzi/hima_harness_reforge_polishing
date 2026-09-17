@@ -407,7 +407,9 @@ def _cone_value(net, leaves, assignment, graph, cells, memo, visiting):
     if net in visiting:
         raise ResynthesisError("combinational-cycle", "combinational cycle reaches %s" % net)
     instance = graph.instances[driver.instance]
-    cell = cells[instance.cell_type]
+    cell = cells.get(instance.cell_type)
+    if cell is None:
+        raise ResynthesisError("cut-crosses-hierarchy", "cut crosses module instance %s" % instance.name)
     if cell.is_seq:
         raise ResynthesisError("cut-crosses-register", "cut crosses sequential cell %s" % instance.name)
     ast = cell.outputs.get(driver.pin)
@@ -441,7 +443,10 @@ def _bounded_cuts(net, graph, cells, maximum_inputs, maximum_cuts, cache, active
         cache[net] = (trivial,)
         return cache[net]
     instance = graph.instances[driver.instance]
-    cell = cells[instance.cell_type]
+    cell = cells.get(instance.cell_type)
+    if cell is None:
+        cache[net] = (trivial,)
+        return cache[net]
     if cell.is_seq or len(cell.outputs) != 1:
         cache[net] = (trivial,)
         return cache[net]
@@ -495,7 +500,9 @@ def _discover_module(request, module, graph, cells, allowed, top_outputs, allowe
     for root, driver in sorted(graph.drivers.items()):
         if allowed_instances is not None and driver.instance not in allowed_instances:
             continue
-        cell = cells[driver.cell_type]
+        cell = cells.get(driver.cell_type)
+        if cell is None:
+            continue
         if cell.is_seq or len(cell.outputs) != 1:
             continue
         cuts = _bounded_cuts(root, graph, cells, max_inputs, max_cuts, cut_cache, set())
@@ -814,7 +821,8 @@ def run_request(request_path, result_path):
         directions.update({module: _module_pin_directions(text, module) for module in modules})
         graphs = {
             module: build_named_net_graph(
-                modules[module], directions, top_assign_aliases(text, module)
+                modules[module], directions, top_assign_aliases(text, module),
+                allow_missing_inputs_for=set(modules),
             )
             for module in subject_modules
         }

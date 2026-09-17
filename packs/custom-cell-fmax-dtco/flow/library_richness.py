@@ -2515,6 +2515,40 @@ def evaluate_cumulative_gain(request: Mapping[str, Any]) -> dict[str, object]:
     result["evaluation_payload_sha256"] = _sha256_bytes(_canonical_json(result))
     return result
 
+
+def summarize_proxy_success_rates(observations: Sequence[object]) -> dict[str, object]:
+    """Report proxy/E0 contingency rates without promoting a decision rule."""
+    if not isinstance(observations, Sequence) or isinstance(observations, (str, bytes)):
+        raise RoundRequestError("proxy observations must be an array")
+    factors: dict[str, dict[str, int]] = {}
+    for index, value in enumerate(observations):
+        row = _mapping(value, "observations[%d]" % index)
+        factor = _string(row.get("factor"), "observation.factor")
+        proxy = row.get("metric_success")
+        commercial = row.get("commercial_success")
+        if not isinstance(proxy, bool) or not isinstance(commercial, bool):
+            raise RoundRequestError("proxy/commercial success must be booleans")
+        counts = factors.setdefault(factor, {"tp": 0, "fp": 0, "tn": 0, "fn": 0})
+        counts["tp" if proxy and commercial else
+               "fp" if proxy and not commercial else
+               "tn" if not proxy and not commercial else "fn"] += 1
+    rows = []
+    for factor in sorted(factors):
+        counts = factors[factor]
+        total = sum(counts.values())
+        predicted_positive = counts["tp"] + counts["fp"]
+        predicted_negative = counts["tn"] + counts["fn"]
+        rows.append({
+            "factor": factor, "observations": total, **counts,
+            "commercial_success_rate_when_metric_positive": (
+                counts["tp"] / predicted_positive if predicted_positive else None),
+            "commercial_failure_rate_when_metric_negative": (
+                counts["tn"] / predicted_negative if predicted_negative else None),
+            "decision_authority": False,
+        })
+    return {"schema": "hima.free-proxy-success-rates/1", "factors": rows,
+            "policy": "observation-only-no-automatic-promotion"}
+
 def _main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", required=True, help="JSON request path")

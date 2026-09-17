@@ -6,6 +6,10 @@
 
 ## 结论
 
+后续 Owner 决策已取消免费代理的 E0 拒绝权。本报告中的 `skip E0` 是当时方法的历史记录，
+已由 append-only invalidation annotation 失效。新的 observation-only commercial calibration
+见 [AES DIG v4 商业校准](2026-09-16-aes-dig-v4-observation-calibration.md)。
+
 V4 的 Pack 内基础设施、真实 AES 双阶段图、graph-native Opportunity、place-state
 anchored resynthesis、单项 CCEI apply/rollback、Yosys proof、OpenSTA 局部代理与
 useful-skew 配置探针已经形成可执行闭环。完整 E0 没有运行：唯一送入 CCEI seam 的

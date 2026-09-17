@@ -269,7 +269,8 @@ def derive_master_factors(netlist_text, merged_liberty, resynthesis_result):
                        for module in modules})
     graphs = {
         module: build_named_net_graph(instances, directions,
-                                      top_assign_aliases(netlist_text, module))
+                                      top_assign_aliases(netlist_text, module),
+                                      allow_missing_inputs_for=set(modules))
         for module, instances in modules.items() if any(row["module"] == module for row in opportunities)
     }
     overrides = {}

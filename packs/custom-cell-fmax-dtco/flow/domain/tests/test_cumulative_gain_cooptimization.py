@@ -190,6 +190,18 @@ class CoverAndPortfolioTests(unittest.TestCase):
         self.assertEqual("commercial-calibration",
                          result["action_portfolio"]["selected_actions"][0]["admission"])
 
+    def test_proxy_success_rate_has_no_automatic_decision_authority(self):
+        from library_richness import summarize_proxy_success_rates
+        result = summarize_proxy_success_rates([
+            {"factor": "local_slack", "metric_success": True, "commercial_success": True},
+            {"factor": "local_slack", "metric_success": True, "commercial_success": False},
+            {"factor": "local_slack", "metric_success": False, "commercial_success": True},
+        ])
+        row = result["factors"][0]
+        self.assertEqual(row["commercial_success_rate_when_metric_positive"], 0.5)
+        self.assertFalse(row["decision_authority"])
+        self.assertEqual(result["policy"], "observation-only-no-automatic-promotion")
+
     def test_existing_stage_workspace_writes_the_five_internal_artifacts(self):
         state = _state({"E0": -0.1})
         request = {

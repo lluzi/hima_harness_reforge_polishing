@@ -341,6 +341,7 @@ endmodule
                 "renamed_sum": {"x": 10.0, "y": 20.0, "orientation": "R0"},
                 "renamed_carry": {"x": 14.0, "y": 20.0, "orientation": "R0"},
             }, power_net="VDD", ground_net="VSS", power_pin="VDD", ground_pin="VSS",
+            library_set="libs_generated", timing_liberties=["foundry.lib", "custom.lib"],
         )
         apply = render_apply_tcl(plan, "apply.place.rpt")
         rollback = render_rollback_tcl(plan, "rollback.enc", "rollback.place.rpt")
@@ -348,6 +349,7 @@ endmodule
         self.assertIn("deleteInst {renamed_sum}", apply)
         self.assertIn("attachTerm {HIMA_MO_", apply)
         self.assertIn("ecoPlace -fixPlacedInsts true", apply)
+        self.assertIn("update_library_set -name {libs_generated}", apply)
         self.assertIn("addInst -cell {XOR2} -inst {renamed_sum}", rollback)
 
     def test_hal_fallback_is_explicit_and_absent_anchor_fails_closed(self):

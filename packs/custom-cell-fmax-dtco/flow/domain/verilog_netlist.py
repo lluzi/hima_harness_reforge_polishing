@@ -276,7 +276,7 @@ def _canonical_aliases(aliases):
     return {net: root(net) for net in sorted(parent)}
 
 
-def build_named_net_graph(instances, pin_directions, aliases=()):
+def build_named_net_graph(instances, pin_directions, aliases=(), allow_missing_inputs_for=()):
     """Index named instance connections using Library-declared pin directions.
 
     ``pin_directions`` is ``{cell_type: {pin: input|output}}``. Unknown cells,
@@ -308,7 +308,7 @@ def build_named_net_graph(instances, pin_directions, aliases=()):
             pin for pin, direction in directions.items()
             if direction == "input" and pin not in instance.conns
         )
-        if missing:
+        if missing and instance.cell_type not in set(allow_missing_inputs_for):
             raise VerilogNetlistError(
                 "mapped instance %s is missing named pin connections %s"
                 % (instance.name, ", ".join(missing))

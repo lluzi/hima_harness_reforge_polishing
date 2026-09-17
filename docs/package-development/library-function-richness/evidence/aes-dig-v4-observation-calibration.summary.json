@@ -1,0 +1,155 @@
+{
+  "schema": "hima.dig-v4-observation-calibration-evidence/1",
+  "date": "2026-09-16",
+  "siteWorkspace": "/data/eda/project/hima_harness/polishing-runs/dig-v4-aes-export-20260916/calibration-e0-v1",
+  "methodPolicy": {
+    "freeProxyDecisionAuthority": false,
+    "proxyOutput": "metric vector, own-metric success and observed success rates",
+    "hardGates": [
+      "logical equivalence",
+      "all outputs used",
+      "source conflict",
+      "Site Permit",
+      "budget",
+      "CCEI applicability",
+      "proof",
+      "rollback"
+    ],
+    "automaticFactorPromotion": false
+  },
+  "mockLibrary": {
+    "policy": "per-grid source-cover relative target",
+    "simpleDelayGain": 0.05,
+    "complexDelayGain": 0.1,
+    "simpleActions": 41,
+    "complexActions": 9,
+    "masters": 4,
+    "tableOverrides": 72,
+    "libertySha256": "a61a0e05158908dc236595379ca52a6b60fc7c0805b21d209b3d1b4ebb5aad57",
+    "libraryCompiler": "T-2022.03",
+    "libraryCompilerStatus": "passed",
+    "measuredCharacterization": false
+  },
+  "sharedPlace": {
+    "snapshotId": "aes-digv4-calibration-v2-shared-place",
+    "graphSha256": "c0b08692a60c569e4c4c28635e44027ff49a13db6cc398cbde725dbe0b70949e",
+    "instances": 16275,
+    "customInstances": 0,
+    "usefulSkew": true,
+    "usefulSkewMaxAllowedDelayNs": 0.1
+  },
+  "portfolio50": {
+    "actions": 50,
+    "singleOutput": 13,
+    "multiOutput": 37,
+    "sourceInstances": 113,
+    "placeCustomInstances": 50,
+    "placeGraphSha256": "66db5073ef73a93a1ae3764bebe2faa08e5a50b19eab5555eb6d776bbaa4319d",
+    "planSha256": "a00f0c65a363162b22dbd081685815f2c3d7cc7e9f98ad00cec5de81b008cbb4",
+    "proofStatus": "proved",
+    "proofBackend": "yosys-hierarchical-plus-exhaustive-top-windows",
+    "patchEdits": 113,
+    "postrouteCustomInstances": 50,
+    "commercial": {
+      "reference": {
+        "wnsNs": -0.059,
+        "tnsNs": -6.962,
+        "violatingPaths": 283,
+        "fmaxMhz": 1788.9087656529518,
+        "areaUm2": 20175.5,
+        "wireUm": 173496.12,
+        "modeledPower": 24.67765062,
+        "routeDrc": 4
+      },
+      "generated": {
+        "wnsNs": -0.053,
+        "tnsNs": -6.675,
+        "violatingPaths": 288,
+        "fmaxMhz": 1808.3182640144664,
+        "areaUm2": 22055.7,
+        "wireUm": 181177.97,
+        "modeledPower": 26.36055749,
+        "routeDrc": 4
+      },
+      "delta": {
+        "wnsPs": 6.0,
+        "fmaxPercent": 1.0849909584086603,
+        "tnsNs": 0.287,
+        "violatingPaths": 5,
+        "areaPercent": 9.319223811057963,
+        "wirePercent": 4.427678267387192,
+        "powerPercent": 6.819558700762585
+      }
+    }
+  },
+  "informationGraphResponse": {
+    "referencePostrouteGraphSha256": "8a8077fd1a9330e9916c7d8e2a7812f3b0afa7c22c6caf7098e448878e40452e",
+    "generatedPostrouteGraphSha256": "5159ecce10208f8d0bb539d2a8f238528473d5ab9a95fd052593ab305ecceaa7",
+    "commonEndpoints": 391,
+    "improvedEndpoints": 194,
+    "worsenedEndpoints": 176,
+    "unchangedEndpoints": 21,
+    "meanSlackDeltaNs": 0.00028132992327365737,
+    "fixedViolations": 35,
+    "newViolations": 39,
+    "customPathEndpoints": 85,
+    "customPathEndpointMeanSlackDeltaNs": 0.002211764705882353,
+    "noncustomEndpointMeanSlackDeltaNs": -0.00025490196078431374,
+    "depthReducedEndpoints": 86,
+    "depthIncreasedEndpoints": 131,
+    "physicalSpanReducedEndpoints": 195,
+    "physicalSpanIncreasedEndpoints": 196,
+    "meanConeJaccard": 0.693430969962491,
+    "referenceWnsPath": {
+      "beginpoint": "sa12_reg_0_/Q",
+      "endpoint": "sa01_reg_5_/D",
+      "slackNs": -0.059,
+      "usesCustomCell": false
+    },
+    "generatedWnsPath": {
+      "beginpoint": "sa00_reg_2_/Q",
+      "endpoint": "sa30_reg_1_/D",
+      "slackNs": -0.053,
+      "usesCustomCell": false
+    }
+  },
+  "factorCalibration": {
+    "actionsWithPositiveMeanCommercialEndpointDelta": 24,
+    "actionsWithNegativeMeanCommercialEndpointDelta": 10,
+    "actionsAbsentFromReportedCustomPaths": 14,
+    "warning": "action-local commercial labels are not additive portfolio predictions"
+  },
+  "portfolio27Calibration": {
+    "selection": "24 first-E0 positive-mean actions plus 3 generated-WNS-cone actions",
+    "singleOutput": 8,
+    "multiOutput": 19,
+    "proofStatus": "proved",
+    "referencePostrouteGraphSha256": "8b2cd8bbb5f4528cc0d621af45749ef8c16b26b486b7676d36be49b9772751d4",
+    "generatedPostrouteGraphSha256": "bc87175bbc1513a17261a332f03be8a6904f91eea358fe99fcae8e17700745eb",
+    "referencePostrouteInstances": 27150,
+    "generatedPostrouteInstances": 27301,
+    "commercialDelta": {
+      "wnsPs": 3.0,
+      "fmaxPercent": 0.5395683453237377,
+      "tnsNs": -0.048,
+      "violatingPaths": -1,
+      "areaPercent": 13.552829740972294,
+      "wirePercent": 6.970254540677834,
+      "powerPercent": 8.827403526598875,
+      "routeDrc": -4
+    },
+    "outcome": "positive frequency but worse than portfolio50; false positive for naive action-label pruning"
+  },
+  "bestObserved": {
+    "portfolio": "portfolio50",
+    "fmaxPercent": 1.0849909584086603,
+    "ppaStatement": "performance improved; area, wire and modeled power worsened",
+    "fivePercentTargetReached": false
+  },
+  "claimLimits": {
+    "mockLibraryIsMeasured": false,
+    "crossDesignGeneralization": false,
+    "freeProxyValidated": false,
+    "fullPpaImprovement": false
+  }
+}
