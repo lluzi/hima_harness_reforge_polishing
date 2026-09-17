@@ -374,31 +374,59 @@ class DigStore:
         return [row[0] for row in rows]
 
 
-def store_projection(path, projection):
+def store_projection(path, projection, validated=False):
     """Create a complete store from a normalized deterministic projection."""
     from design_information_graph import validate_projection  # local import avoids a cycle
 
-    normalized = validate_projection(projection)
+    normalized = projection if validated else validate_projection(projection)
     snapshot = normalized["snapshot"]
     with DigStore(path) as store:
         store.add_snapshot(snapshot)
         identities = {}
-        for node in normalized["nodes"]:
-            node_id = store.add_node(snapshot["snapshot_id"], node["kind"],
-                                     node["native_identity"], node["attributes"],
-                                     node.get("geometry"))
-            identities[(node["kind"], node["native_identity"])] = node_id
-        for edge in normalized["edges"]:
-            store.add_edge(
-                snapshot["snapshot_id"], edge["kind"],
-                identities[(edge["source_kind"], edge["source_native_identity"])],
-                identities[(edge["target_kind"], edge["target_native_identity"])],
-                edge["attributes"],
-            )
-        for hyperedge in normalized["hyperedges"]:
-            members = [{"node_id": identities[(row["kind"], row["native_identity"])],
-                        "role": row["role"]} for row in hyperedge["members"]]
-            store.add_hyperedge(snapshot["snapshot_id"], hyperedge["kind"],
-                                hyperedge["native_identity"], members,
-                                hyperedge["attributes"])
+        # One transaction is essential at AES scale.  Public per-object helpers
+        # remain useful for incremental updates, but importing a snapshot must
+        # not fsync hundreds of thousands of times.
+        with store.connection:
+            for node in normalized["nodes"]:
+                node_id = hima_id(snapshot["snapshot_id"], node["kind"], node["native_identity"])
+                store.connection.execute(
+                    "INSERT INTO nodes(hima_id,snapshot_id,kind,native_identity,attributes_json) VALUES(?,?,?,?,?)",
+                    (node_id, snapshot["snapshot_id"], node["kind"], node["native_identity"],
+                     canonical_json(node["attributes"])),
+                )
+                identities[(node["kind"], node["native_identity"])] = node_id
+                if node.get("geometry") is not None:
+                    geometry_id = store.connection.execute(
+                        "INSERT INTO geometry_map(node_id) VALUES(?)", (node_id,)
+                    ).lastrowid
+                    geometry = node["geometry"]
+                    store.connection.execute(
+                        "INSERT INTO geometry_rtree VALUES(?,?,?,?,?)",
+                        (geometry_id, geometry["min_x"], geometry["max_x"],
+                         geometry["min_y"], geometry["max_y"]),
+                    )
+            for edge in normalized["edges"]:
+                source = identities[(edge["source_kind"], edge["source_native_identity"])]
+                target = identities[(edge["target_kind"], edge["target_native_identity"])]
+                payload = {"snapshot": snapshot["snapshot_id"], "kind": edge["kind"],
+                           "source": source, "target": target, "attributes": edge["attributes"]}
+                store.connection.execute(
+                    "INSERT INTO edges VALUES(?,?,?,?,?,?)",
+                    ("edge:" + sha256_json(payload), snapshot["snapshot_id"], edge["kind"],
+                     source, target, canonical_json(edge["attributes"])),
+                )
+            for hyperedge in normalized["hyperedges"]:
+                hyperedge_id = hima_id(snapshot["snapshot_id"], "hyperedge:" + hyperedge["kind"],
+                                       hyperedge["native_identity"])
+                store.connection.execute(
+                    "INSERT INTO hyperedges VALUES(?,?,?,?,?)",
+                    (hyperedge_id, snapshot["snapshot_id"], hyperedge["kind"],
+                     hyperedge["native_identity"], canonical_json(hyperedge["attributes"])),
+                )
+                for ordinal, row in enumerate(hyperedge["members"]):
+                    store.connection.execute(
+                        "INSERT INTO hyperedge_members VALUES(?,?,?,?)",
+                        (hyperedge_id, identities[(row["kind"], row["native_identity"])],
+                         row["role"], ordinal),
+                    )
     return snapshot

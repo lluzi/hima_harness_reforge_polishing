@@ -166,3 +166,62 @@ def write_projection(path, projection):
     normalized = validate_projection(projection)
     Path(path).write_text(json.dumps(normalized, indent=2, sort_keys=True) + "\n")
     return normalized
+
+
+def augment_timing_projection(physical_projection, timing_facts, clock_facts):
+    """Join bounded Innovus timing summaries to one physical projection.
+
+    Raw path tables stay in the hash-bound report.  The graph retains ordered
+    pin identity and a digest, rather than duplicating every formatted column.
+    """
+    if timing_facts.get("schema") != "hima.innovus-timing-facts/1":
+        raise DesignInformationGraphError("unsupported timing fact schema")
+    if clock_facts.get("schema") != "hima.innovus-clock-facts/1":
+        raise DesignInformationGraphError("unsupported clock fact schema")
+    result = json.loads(json.dumps(physical_projection))
+    snapshot = result.setdefault("snapshot", {})
+    completeness = timing_facts.get("completeness")
+    if completeness != "complete":
+        snapshot["completeness"] = "partial"
+    manifest = snapshot.setdefault("manifest", {})
+    manifest["timing_coverage_scope"] = timing_facts.get("coverage_scope")
+    manifest["timing_path_count"] = timing_facts.get("path_count")
+    manifest["timing_endpoint_count"] = timing_facts.get("endpoint_count")
+    known = {(row["kind"], row["native_identity"]) for row in result.get("nodes", [])}
+    endpoint_names = {row["endpoint"] for row in timing_facts.get("paths", [])}
+    for endpoint in sorted(endpoint_names):
+        rows = [row for row in timing_facts["paths"] if row["endpoint"] == endpoint]
+        identity = endpoint
+        result["nodes"].append({
+            "kind": "EndpointState", "native_identity": identity,
+            "attributes": {
+                "path_group": "internal-setup",
+                "worst_slack_ns": min(row["slack_ns"] for row in rows),
+                "path_alternative_count": len(rows),
+                "coverage_complete": completeness == "complete",
+            },
+        })
+        known.add(("EndpointState", identity))
+    for row in timing_facts.get("paths", []):
+        identity = "path:%s" % row["path_id"]
+        ordered_pins = list(row.get("ordered_pins", []))
+        result["nodes"].append({
+            "kind": "PathAlternative", "native_identity": identity,
+            "attributes": {
+                "beginpoint": row["beginpoint"], "endpoint": row["endpoint"],
+                "analysis_view": row["analysis_view"], "slack_ns": row["slack_ns"],
+                "arrival_time_ns": row["arrival_time_ns"],
+                "required_time_ns": row["required_time_ns"],
+                "launch_clock_latency_ns": row.get("launch_clock_latency_ns"),
+                "capture_clock_arrival_ns": row.get("capture_clock_arrival_ns"),
+                "ordered_pins": ordered_pins,
+                "ordered_pin_digest": sha256_json(ordered_pins),
+                "coverage_scope": timing_facts.get("coverage_scope"),
+            },
+        })
+        result["edges"].append({
+            "kind": "timing-alternative", "source_kind": "PathAlternative",
+            "source_native_identity": identity, "target_kind": "EndpointState",
+            "target_native_identity": row["endpoint"], "attributes": {},
+        })
+    return result

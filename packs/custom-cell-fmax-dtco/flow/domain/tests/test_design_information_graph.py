@@ -13,10 +13,12 @@ sys.path.insert(0, str(DOMAIN))
 
 from cross_phase_graph import build_cross_phase_map  # noqa: E402
 from build_dig_bundle import publish_bundle  # noqa: E402
+from innovus_timing_facts import parse_timing_report  # noqa: E402
 from design_information_graph import (  # noqa: E402
     DesignInformationGraphError,
     validate_bundle,
     validate_projection,
+    augment_timing_projection,
 )
 from dig_store import DigStore, DigStoreError, hima_id, store_projection  # noqa: E402
 
@@ -200,6 +202,60 @@ class DesignInformationGraphTests(unittest.TestCase):
             (root / "design.v").write_text("changed")
             with self.assertRaisesRegex(DesignInformationGraphError, "hash mismatch"):
                 validate_bundle(root)
+
+    def test_timing_facts_preserve_endpoint_alternatives_and_detect_saturation(self):
+        report = """#  Design: top
+#  Command: report_timing -max_paths 100 -nworst 2
+Path 1: VIOLATED Setup Check
+Endpoint: reg0/D checked
+Beginpoint: reg1/Q triggered
+Path Groups: {clk}
+Analysis View: view0
+Other End Arrival Time 0.050
+= Required Time 0.400
+- Arrival Time 0.420
+= Slack Time -0.020
+     + Clock Network Latency (Prop) 0.030
+| Pin | Edge | Net | Cell | Delay | Arrival | Required |
+| U0/A | ^ | n0 | AND2 | 0.010 | 0.300 | 0.400 |
+Path 2: MET Setup Check
+Endpoint: reg0/D checked
+Beginpoint: reg2/Q triggered
+Path Groups: {clk}
+Analysis View: view0
+Other End Arrival Time 0.050
+= Required Time 0.400
+- Arrival Time 0.395
+= Slack Time 0.005
+     + Clock Network Latency (Prop) 0.025
+| Pin | Edge | Net | Cell | Delay | Arrival | Required |
+| U1/A | ^ | n1 | OR2 | 0.009 | 0.290 | 0.400 |
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "timing.rpt"
+            path.write_text(report)
+            timing, clocks = parse_timing_report(path, max_paths=100, nworst=3,
+                                                 max_slack_ns=0.1)
+            self.assertEqual(timing["completeness"], "complete")
+            self.assertEqual(timing["endpoint_alternatives"][0]["alternatives"], [1, 2])
+            self.assertEqual(clocks["path_clock_contributions"][0]["data_arrival_ns"], 0.42)
+            saturated, _ = parse_timing_report(path, max_paths=100, nworst=2,
+                                                max_slack_ns=0.1)
+            self.assertEqual(saturated["completeness"], "partial")
+            self.assertEqual(saturated["coverage_scope"]["endpoint_limits_saturated"], ["reg0/D"])
+
+            physical = projection("post-1", "postroute")
+            # Remove the synthetic endpoint/path nodes: the timing adapter owns them.
+            physical["nodes"] = [row for row in physical["nodes"]
+                                 if row["kind"] not in {"EndpointState", "PathAlternative"}]
+            physical["edges"] = [row for row in physical["edges"]
+                                 if row["kind"] != "timing-alternative"]
+            joined = augment_timing_projection(physical, timing, clocks)
+            normalized = validate_projection(joined)
+            paths = [row for row in normalized["nodes"] if row["kind"] == "PathAlternative"]
+            endpoints = [row for row in normalized["nodes"] if row["kind"] == "EndpointState"]
+            self.assertEqual(len(paths), 2)
+            self.assertEqual(endpoints[0]["attributes"]["path_alternative_count"], 2)
 
 
 if __name__ == "__main__":
