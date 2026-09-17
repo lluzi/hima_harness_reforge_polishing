@@ -83,14 +83,15 @@ def _validate_hash(path, expected, label):
 def _validate_request(request, request_path):
     if request.get("schema") != REQUEST_SCHEMA:
         raise ResynthesisError("invalid-request", "unsupported request schema")
-    if request.get("operation") not in ("discover", "directed"):
-        raise ResynthesisError("invalid-request", "operation must be discover or directed")
+    if request.get("operation") not in ("discover", "directed", "anchored"):
+        raise ResynthesisError("invalid-request", "operation must be discover, directed or anchored")
     if request.get("action") not in ("analyze", "rewrite"):
         raise ResynthesisError("invalid-request", "action must be analyze or rewrite")
     scope = request.get("scope") or {}
     max_inputs = int(scope.get("maxInputs", 3))
     max_outputs = int(scope.get("maxOutputs", 2))
-    if max_inputs > (4 if request.get("operation") == "directed" else 3) or max_outputs > (3 if request.get("operation") == "directed" else 2):
+    expanded = request.get("operation") in ("directed", "anchored")
+    if max_inputs > (4 if expanded else 3) or max_outputs > (3 if expanded else 2):
         raise ResynthesisError(
             "unsupported-scope",
             "service supports at most 3 discovered or 4 directed inputs and 2 discovered or 3 directed outputs",
@@ -106,6 +107,19 @@ def _validate_request(request, request_path):
         )
     if request["operation"] == "directed" and not request.get("targets"):
         raise ResynthesisError("invalid-request", "directed operation requires targets")
+    if request["operation"] == "anchored":
+        hints = request.get("anchorHints")
+        if not isinstance(hints, list) or not hints:
+            raise ResynthesisError("invalid-request", "anchored operation requires anchorHints")
+        for index, hint in enumerate(hints):
+            if not isinstance(hint, dict) or not isinstance(hint.get("module"), str):
+                raise ResynthesisError("invalid-request", "anchorHints[%d] needs module" % index)
+            hops = hint.get("maxTraceHops", 2)
+            if not isinstance(hops, int) or isinstance(hops, bool) or hops not in (1, 2):
+                raise ResynthesisError("invalid-request", "anchor maxTraceHops must be 1 or 2")
+    backend = request.get("backend", "native_v1")
+    if backend not in ("native_v1", "hal_v0"):
+        raise ResynthesisError("invalid-request", "backend must be native_v1 or hal_v0")
     base = Path(request_path).resolve().parent
     netlist_row = request.get("netlist") or {}
     liberty_row = (request.get("library") or {}).get("liberty") or {}
@@ -468,7 +482,7 @@ def _bounded_cuts(net, graph, cells, maximum_inputs, maximum_cuts, cache, active
     return cache[net]
 
 
-def _discover_module(request, module, graph, cells, allowed, top_outputs):
+def _discover_module(request, module, graph, cells, allowed, top_outputs, allowed_instances=None):
     """Bounded multi-level cut index; never enumerates all root pairs."""
     scope = request.get("scope") or {}
     max_bucket = int(scope.get("maxBucketSize", 256))
@@ -479,12 +493,16 @@ def _discover_module(request, module, graph, cells, allowed, top_outputs):
     cut_cache = {}
     cut_count = 0
     for root, driver in sorted(graph.drivers.items()):
+        if allowed_instances is not None and driver.instance not in allowed_instances:
+            continue
         cell = cells[driver.cell_type]
         if cell.is_seq or len(cell.outputs) != 1:
             continue
         cuts = _bounded_cuts(root, graph, cells, max_inputs, max_cuts, cut_cache, set())
         for cut in cuts:
             if not cut["instances"]:  # the trivial root cut is not an opportunity
+                continue
+            if allowed_instances is not None and not set(cut["instances"]).issubset(allowed_instances):
                 continue
             cut_count += 1
             support_buckets[cut["leaves"]][cut["table"]].append({
@@ -583,6 +601,94 @@ def _discover(request, graphs, cells, allowed, module_outputs):
     return opportunities, totals
 
 
+def _anchor_region(graph, hint):
+    adjacency = {name: set() for name in graph.instances}
+    for net in set(graph.drivers) | set(graph.sinks):
+        driver = graph.drivers.get(net)
+        if driver is None:
+            # Do not connect unrelated consumers merely because they share a
+            # primary input.  Anchored trace follows driven logic edges.
+            continue
+        for sink in graph.sinks.get(net, ()):
+            if sink.instance == driver.instance:
+                continue
+            adjacency.setdefault(driver.instance, set()).add(sink.instance)
+            adjacency.setdefault(sink.instance, set()).add(driver.instance)
+    seeds = {name for name in hint.get("seedInstances", ()) if name in graph.instances}
+    for net in hint.get("stableNets", ()):
+        driver = graph.drivers.get(net)
+        if driver is not None:
+            seeds.add(driver.instance)
+        seeds.update(item.instance for item in graph.sinks.get(net, ()))
+    region, frontier = set(seeds), set(seeds)
+    for _ in range(int(hint.get("maxTraceHops", 2))):
+        frontier = {neighbor for node in frontier for neighbor in adjacency.get(node, ())} - region
+        region.update(frontier)
+    return region, sorted(seeds)
+
+
+def _anchored(request, graphs, cells, allowed, module_outputs):
+    opportunities, totals, seen = [], {
+        "cuts": 0, "leafBuckets": 0, "hashHits": 0, "pairChecks": 0,
+        "bucketOverflows": [], "candidateRefusals": [],
+        "maxCutsPerRoot": int((request.get("scope") or {}).get("maxCutsPerRoot", 32)),
+        "parallelWorkers": 1, "modules": [], "anchorRegions": [],
+    }, set()
+    for hint in request.get("anchorHints", ()):
+        module = hint["module"]
+        graph = graphs[module]
+        region, seeds = _anchor_region(graph, hint)
+        totals["anchorRegions"].append({
+            "module": module, "postrouteOpportunityId": hint.get("postrouteOpportunityId"),
+            "seedInstances": seeds, "regionInstanceCount": len(region),
+            "maxTraceHops": int(hint.get("maxTraceHops", 2)),
+            "candidateRegionHimaIds": list(hint.get("candidateRegionHimaIds", ())),
+        })
+        if not region:
+            totals["candidateRefusals"].append({
+                "code": "anchor-rebind-miss", "module": module,
+                "postrouteOpportunityId": hint.get("postrouteOpportunityId"),
+            })
+            continue
+        found, stats = _discover_module(
+            request, module, graph, cells, allowed, module_outputs[module],
+            allowed_instances=region,
+        )
+        accepted = []
+        for row in found:
+            if set(row["sourceInstances"]).issubset(region):
+                if row["opportunityId"] in seen:
+                    continue
+                seen.add(row["opportunityId"])
+                row = dict(row)
+                row["anchorEvidence"] = {
+                    "postrouteOpportunityId": hint.get("postrouteOpportunityId"),
+                    "seedInstances": seeds, "maxTraceHops": int(hint.get("maxTraceHops", 2)),
+                    "candidateRegionHimaIds": list(hint.get("candidateRegionHimaIds", ())),
+                    "reboundInPlaceState": True,
+                }
+                opportunities.append(row)
+                accepted.append(row["opportunityId"])
+        totals["modules"].append({"module": module, "cuts": stats["cuts"],
+                                  "leafBuckets": stats["leafBuckets"],
+                                  "hashHits": stats["hashHits"],
+                                  "pairChecks": stats["pairChecks"],
+                                  "anchoredAccepted": accepted})
+        for key in ("cuts", "leafBuckets", "hashHits", "pairChecks"):
+            totals[key] += stats[key]
+        totals["bucketOverflows"].extend(stats["bucketOverflows"])
+        totals["candidateRefusals"].extend(stats["candidateRefusals"])
+    if not opportunities:
+        raise ResynthesisError(
+            "anchor-rebind-miss",
+            "no selected Cell function was rediscovered inside the bounded place regions",
+            {"anchorRegions": totals["anchorRegions"],
+             "candidateRefusals": totals["candidateRefusals"][:100]},
+        )
+    totals["candidateRefusals"] = totals["candidateRefusals"][:100]
+    return opportunities, totals
+
+
 def _select(opportunities, maximum, selected_ids=None):
     occupied = set()
     selected = []
@@ -668,8 +774,27 @@ def run_request(request_path, result_path):
         modules = parse_modules(text)
         if request["top"] not in modules:
             raise ResynthesisError("missing-top", "netlist has no top module %s" % request["top"])
+        requested_backend = request.get("backend", "native_v1")
+        actual_backend = requested_backend
+        fallback = None
+        if requested_backend == "hal_v0":
+            from .hal_backend import availability
+            available = availability()
+            if not available["available"]:
+                if request.get("allowNativeFallback") is not True:
+                    raise ResynthesisError("backend-unavailable", available["reason"], available)
+                actual_backend = "native_v1"
+                fallback = available
+            else:
+                raise ResynthesisError(
+                    "backend-not-admitted",
+                    "HAL is installed but has not passed this request's admission comparison",
+                    available,
+                )
         if request["operation"] == "directed":
             subject_modules = sorted({target.get("module") for target in request.get("targets", ())})
+        elif request["operation"] == "anchored":
+            subject_modules = sorted({hint.get("module") for hint in request.get("anchorHints", ())})
         else:
             subject_modules = list((request.get("scope") or {}).get("modules") or [request["top"]])
         missing_modules = sorted(set(subject_modules) - set(modules))
@@ -691,6 +816,8 @@ def run_request(request_path, result_path):
         }
         if request["operation"] == "directed":
             opportunities, stats = _directed(request, graphs, cells, allowed, module_outputs)
+        elif request["operation"] == "anchored":
+            opportunities, stats = _anchored(request, graphs, cells, allowed, module_outputs)
         else:
             opportunities, stats = _discover(request, graphs, cells, allowed, module_outputs)
         maximum = int((request.get("scope") or {}).get("maxReplacements", 50))
@@ -698,6 +825,8 @@ def run_request(request_path, result_path):
         result = _result_base(
             netlist_hash, round((time.monotonic() - started) * 1000, 3), opportunities, selected, stats
         )
+        result["backend"] = {"requested": requested_backend, "actual": actual_backend,
+                             "fallback": fallback}
         if request["action"] == "rewrite":
             if not selected:
                 rewritten = text

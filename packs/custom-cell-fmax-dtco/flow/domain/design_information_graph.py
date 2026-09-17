@@ -188,9 +188,24 @@ def augment_timing_projection(physical_projection, timing_facts, clock_facts):
     manifest["timing_path_count"] = timing_facts.get("path_count")
     manifest["timing_endpoint_count"] = timing_facts.get("endpoint_count")
     known = {(row["kind"], row["native_identity"]) for row in result.get("nodes", [])}
-    endpoint_names = {row["endpoint"] for row in timing_facts.get("paths", [])}
+    unique_paths = {}
+    duplicate_paths = 0
+    for row in timing_facts.get("paths", []):
+        ordered_steps = list(row.get("ordered_steps", [
+            [pin, ""] for pin in row.get("ordered_pins", [])
+        ]))
+        identity = "path:%s:%s:%s" % (
+            row["beginpoint"], row["endpoint"], sha256_json(ordered_steps)
+        )
+        prior = unique_paths.get(identity)
+        if prior is None or row["slack_ns"] < prior["slack_ns"]:
+            unique_paths[identity] = row
+        if prior is not None:
+            duplicate_paths += 1
+    manifest["timing_duplicate_path_rows"] = duplicate_paths
+    endpoint_names = {row["endpoint"] for row in unique_paths.values()}
     for endpoint in sorted(endpoint_names):
-        rows = [row for row in timing_facts["paths"] if row["endpoint"] == endpoint]
+        rows = [row for row in unique_paths.values() if row["endpoint"] == endpoint]
         identity = endpoint
         result["nodes"].append({
             "kind": "EndpointState", "native_identity": identity,
@@ -202,9 +217,9 @@ def augment_timing_projection(physical_projection, timing_facts, clock_facts):
             },
         })
         known.add(("EndpointState", identity))
-    for row in timing_facts.get("paths", []):
-        identity = "path:%s" % row["path_id"]
+    for identity, row in sorted(unique_paths.items()):
         ordered_pins = list(row.get("ordered_pins", []))
+        ordered_steps = list(row.get("ordered_steps", [[pin, ""] for pin in ordered_pins]))
         result["nodes"].append({
             "kind": "PathAlternative", "native_identity": identity,
             "attributes": {
@@ -215,7 +230,8 @@ def augment_timing_projection(physical_projection, timing_facts, clock_facts):
                 "launch_clock_latency_ns": row.get("launch_clock_latency_ns"),
                 "capture_clock_arrival_ns": row.get("capture_clock_arrival_ns"),
                 "ordered_pins": ordered_pins,
-                "ordered_pin_digest": sha256_json(ordered_pins),
+                "ordered_steps": ordered_steps,
+                "ordered_pin_digest": sha256_json(ordered_steps),
                 "coverage_scope": timing_facts.get("coverage_scope"),
             },
         })
@@ -224,4 +240,42 @@ def augment_timing_projection(physical_projection, timing_facts, clock_facts):
             "source_native_identity": identity, "target_kind": "EndpointState",
             "target_native_identity": row["endpoint"], "attributes": {},
         })
+    return result
+
+
+def enrich_with_liberty(projection, liberty_paths):
+    """Attach function/sequential facts without making Liberty a graph store."""
+    from cell_need_miner.liberty import parse_skeleton
+
+    cells = {}
+    for path in liberty_paths:
+        for name, cell in parse_skeleton(str(path)).items():
+            prior = cells.get(name)
+            if prior is not None and (prior.inputs != cell.inputs or prior.outputs != cell.outputs
+                                      or prior.is_seq != cell.is_seq):
+                raise DesignInformationGraphError("conflicting Liberty definitions for %s" % name)
+            cells[name] = cell
+    result = json.loads(json.dumps(projection))
+    unknown = set()
+    for node in result.get("nodes", []):
+        if node.get("kind") != "Instance":
+            continue
+        master = node.get("attributes", {}).get("master")
+        cell = cells.get(master)
+        if cell is None:
+            unknown.add(master)
+            node["attributes"]["liberty_status"] = "missing"
+            continue
+        node["attributes"].update({
+            "liberty_status": "matched", "sequential": bool(cell.is_seq),
+            "input_pins": list(cell.inputs), "output_pins": list(cell.output_pins),
+            "output_functions": {
+                pin: (None if cell.outputs[pin] is None else repr(cell.outputs[pin]))
+                for pin in cell.output_pins
+            },
+        })
+    result.setdefault("snapshot", {}).setdefault("manifest", {})["liberty_enrichment"] = {
+        "libraries": [str(Path(path)) for path in liberty_paths],
+        "matched_cell_count": len(cells), "unknown_masters": sorted(value for value in unknown if value),
+    }
     return result

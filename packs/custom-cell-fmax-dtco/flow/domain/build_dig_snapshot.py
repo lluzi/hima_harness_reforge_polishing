@@ -7,11 +7,13 @@ import argparse
 import json
 from pathlib import Path
 
-from design_information_graph import augment_timing_projection, validate_bundle, write_projection
+from design_information_graph import (augment_timing_projection, enrich_with_liberty,
+                                      validate_bundle, write_projection)
 from dig_store import store_projection
 
 
-def build_snapshot(bundle_dir, physical_projection, database_path, output_projection):
+def build_snapshot(bundle_dir, physical_projection, database_path, output_projection,
+                   liberty_paths=()):
     bundle = validate_bundle(bundle_dir)
     manifest = bundle["manifest"]
     physical = json.loads(Path(physical_projection).read_text())
@@ -20,7 +22,8 @@ def build_snapshot(bundle_dir, physical_projection, database_path, output_projec
     physical["snapshot"]["bundle_sha256"] = bundle["bundle_sha256"]
     physical["snapshot"]["manifest"] = manifest
     physical["snapshot"]["completeness"] = manifest["completeness"]
-    projection = augment_timing_projection(physical, timing, clocks)
+    projection = enrich_with_liberty(physical, liberty_paths) if liberty_paths else physical
+    projection = augment_timing_projection(projection, timing, clocks)
     normalized = write_projection(output_projection, projection)
     store_projection(database_path, normalized, validated=True)
     return normalized["snapshot"]
@@ -32,9 +35,10 @@ def main():
     parser.add_argument("--physical-projection", required=True)
     parser.add_argument("--database", required=True)
     parser.add_argument("--projection", required=True)
+    parser.add_argument("--liberty", action="append", default=[])
     args = parser.parse_args()
     print(json.dumps(build_snapshot(args.bundle, args.physical_projection, args.database,
-                                    args.projection), indent=2, sort_keys=True))
+                                    args.projection, args.liberty), indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

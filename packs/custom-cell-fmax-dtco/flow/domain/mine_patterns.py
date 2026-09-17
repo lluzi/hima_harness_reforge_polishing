@@ -69,6 +69,32 @@ PORTFOLIO_SCHEMA = "hima.library-richness.portfolio/1"
 PORTFOLIO_CANDIDATE_SCHEMA = "hima.library-richness.portfolio-candidate/1"
 
 
+def classify_dig_opportunity(logic_depth, physical_span_um, *, deep_threshold=8,
+                             long_threshold_um=50.0, slack_harvest=False):
+    """Classify one graph proposal; classification never admits an ECO."""
+    if logic_depth < 0 or physical_span_um < 0:
+        raise ValueError("DIG opportunity axes must be nonnegative")
+    deep = logic_depth >= deep_threshold
+    long_wire = physical_span_um >= long_threshold_um
+    if slack_harvest and not deep and not long_wire:
+        strategy = "slack-harvesting-compaction"
+    elif deep and long_wire:
+        strategy = "partitioned-restructure-and-drive"
+    elif deep:
+        strategy = "single-multi-fusion-layer-removal"
+    elif long_wire:
+        strategy = "drive-family-or-local-replication"
+    else:
+        strategy = "bounded-local-logic"
+    return {
+        "logic_class": "deep" if deep else "shallow",
+        "physical_class": "long" if long_wire else "short",
+        "quadrant": ("deep" if deep else "shallow") + "-" + ("long" if long_wire else "short"),
+        "proposal_strategy": strategy,
+        "admitted": False,
+    }
+
+
 @dataclass
 class ClusterResult:
     module: str

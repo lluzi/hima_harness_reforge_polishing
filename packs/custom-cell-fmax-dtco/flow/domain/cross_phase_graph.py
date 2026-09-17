@@ -4,12 +4,17 @@
 from __future__ import annotations
 
 import json
+import argparse
+from pathlib import Path
 
-from dig_store import canonical_json, sha256_json
+from dig_store import DigStore, canonical_json, sha256_json
 
 
 class CrossPhaseError(ValueError):
     pass
+
+
+MAX_AMBIGUOUS_CANDIDATES = 16
 
 
 def _nodes(connection, snapshot_id):
@@ -20,20 +25,22 @@ def _nodes(connection, snapshot_id):
                 "WHERE snapshot_id=? ORDER BY kind,native_identity", (snapshot_id,))]
 
 
-def build_cross_phase_map(store, place_snapshot_id, postroute_snapshot_id):
-    connection = store.connection
-    place_snapshot = connection.execute(
+def build_cross_phase_map(store, place_snapshot_id, postroute_snapshot_id, post_store=None,
+                          persist=True):
+    place_connection = store.connection
+    post_connection = (post_store or store).connection
+    place_snapshot = place_connection.execute(
         "SELECT phase,graph_sha256 FROM snapshots WHERE snapshot_id=?", (place_snapshot_id,)
     ).fetchone()
-    post_snapshot = connection.execute(
+    post_snapshot = post_connection.execute(
         "SELECT phase,graph_sha256 FROM snapshots WHERE snapshot_id=?", (postroute_snapshot_id,)
     ).fetchone()
     if place_snapshot is None or place_snapshot[0] != "place":
         raise CrossPhaseError("place snapshot identity is invalid")
     if post_snapshot is None or post_snapshot[0] != "postroute":
         raise CrossPhaseError("post-route snapshot identity is invalid")
-    place = _nodes(connection, place_snapshot_id)
-    post = _nodes(connection, postroute_snapshot_id)
+    place = _nodes(place_connection, place_snapshot_id)
+    post = _nodes(post_connection, postroute_snapshot_id)
     exact = {(row["kind"], row["native_identity"]): row for row in place}
     signatures = {}
     for row in place:
@@ -63,7 +70,7 @@ def build_cross_phase_map(store, place_snapshot_id, postroute_snapshot_id):
                 "relation_type": "semantic-region", "confidence": 0.75,
                 "evidence": {"semantic_signature": signature}, "unmatched_reason": None,
             })
-        elif len(candidates) > 1:
+        elif 1 < len(candidates) <= MAX_AMBIGUOUS_CANDIDATES:
             for candidate in candidates:
                 correspondences.append({
                     "source_id": source["hima_id"], "target_id": candidate["hima_id"],
@@ -76,7 +83,11 @@ def build_cross_phase_map(store, place_snapshot_id, postroute_snapshot_id):
             correspondences.append({
                 "source_id": source["hima_id"], "target_id": None,
                 "relation_type": "absent", "confidence": 0.0,
-                "evidence": {}, "unmatched_reason": "no-identity-or-semantic-match",
+                "evidence": ({"semantic_signature": signature,
+                              "candidate_count": len(candidates)} if candidates else {}),
+                "unmatched_reason": ("semantic-signature-nonunique"
+                                     if len(candidates) > MAX_AMBIGUOUS_CANDIDATES
+                                     else "no-identity-or-semantic-match"),
             })
 
     target_sources = {}
@@ -97,17 +108,40 @@ def build_cross_phase_map(store, place_snapshot_id, postroute_snapshot_id):
                "correspondences": sorted(correspondences, key=canonical_json)}
     payload["map_sha256"] = sha256_json(payload)
     payload["map_id"] = "cross-phase:" + payload["map_sha256"]
-    with connection:
-        connection.execute(
-            "INSERT INTO cross_phase_maps VALUES(?,?,?,?,?,?)",
-            (payload["map_id"], place_snapshot_id, postroute_snapshot_id,
-             place_snapshot[1], post_snapshot[1], payload["map_sha256"]),
-        )
-        for row in payload["correspondences"]:
-            connection.execute(
-                "INSERT INTO correspondences VALUES(?,?,?,?,?,?,?)",
-                (payload["map_id"], row["source_id"], row["target_id"],
-                 row["relation_type"], row["confidence"], canonical_json(row["evidence"]),
-                 row["unmatched_reason"]),
+    if persist and post_store is not None:
+        raise CrossPhaseError("cross-database maps must be persisted as their hash-bound projection")
+    if persist:
+        with place_connection:
+            place_connection.execute(
+                "INSERT INTO cross_phase_maps VALUES(?,?,?,?,?,?)",
+                (payload["map_id"], place_snapshot_id, postroute_snapshot_id,
+                 place_snapshot[1], post_snapshot[1], payload["map_sha256"]),
             )
+            for row in payload["correspondences"]:
+                place_connection.execute(
+                    "INSERT INTO correspondences VALUES(?,?,?,?,?,?,?)",
+                    (payload["map_id"], row["source_id"], row["target_id"],
+                     row["relation_type"], row["confidence"], canonical_json(row["evidence"]),
+                     row["unmatched_reason"]),
+                )
     return payload
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--place-database", required=True)
+    parser.add_argument("--postroute-database", required=True)
+    parser.add_argument("--place-snapshot", required=True)
+    parser.add_argument("--postroute-snapshot", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+    with DigStore(args.place_database) as place, DigStore(args.postroute_database) as post:
+        mapping = build_cross_phase_map(place, args.place_snapshot, args.postroute_snapshot,
+                                        post_store=post, persist=False)
+    Path(args.output).write_text(json.dumps(mapping, indent=2, sort_keys=True) + "\n")
+    print(json.dumps({"map_id": mapping["map_id"], "map_sha256": mapping["map_sha256"],
+                      "correspondence_count": len(mapping["correspondences"])}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

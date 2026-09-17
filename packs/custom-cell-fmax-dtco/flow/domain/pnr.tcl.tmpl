@@ -25,7 +25,17 @@
 restoreDesign @@INIT_DB@@ @@DESIGN_TOP@@
 setMultiCpuUsage -localCpu @@MULTI_CPU@@
 file mkdir @@RPT_DIR@@
-setAnalysisMode -analysisType onChipVariation -cppr both
+setAnalysisMode -analysisType onChipVariation -cppr both -usefulSkew true
+
+# Matched Early Clock / useful-skew policy.  0.100 is in ns and therefore
+# bounds borrowed slack to 100 ps.  Both arms are generated from this template.
+setOptMode -opt_skew true -opt_skew_pre_cts true \
+  -opt_skew_ccopt standard -opt_skew_post_route true
+setUsefulSkewMode -opt_skew_max_allowed_delay 0.100 \
+  -opt_skew_apply_delay_limits_to_full_flow true \
+  -opt_skew_delay_pre_cts true
+puts "=== CCFMAX USEFUL_SKEW_ENABLED [getAnalysisMode -usefulSkew] ==="
+puts "=== CCFMAX USEFUL_SKEW_MAX_ALLOWED_DELAY [getUsefulSkewMode -opt_skew_max_allowed_delay] ns ==="
 
 # Keep the clock tree on the Site-declared balanced clock Cells. These are
 # common A/B inputs; the generated data-path library remains the sole arm

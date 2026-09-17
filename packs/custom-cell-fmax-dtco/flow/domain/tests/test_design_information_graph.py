@@ -14,6 +14,10 @@ sys.path.insert(0, str(DOMAIN))
 from cross_phase_graph import build_cross_phase_map  # noqa: E402
 from build_dig_bundle import publish_bundle  # noqa: E402
 from innovus_timing_facts import parse_timing_report  # noqa: E402
+from mine_patterns import classify_dig_opportunity  # noqa: E402
+from mine_timing_route import mine_dig_endpoint_opportunities  # noqa: E402
+from proxy_mapping import RequestError, evaluate_dig_local_window  # noqa: E402
+from _generation_projection import validate_drive_family  # noqa: E402
 from design_information_graph import (  # noqa: E402
     DesignInformationGraphError,
     validate_bundle,
@@ -82,6 +86,41 @@ def projection(snapshot_id, phase, renamed=False, ambiguous=False, completeness=
                             {"kind": "Instance", "native_identity": "top/U_B", "role": "sink"},
                         ]}],
     }
+
+
+def cone_projection():
+    nodes = [
+        {"kind": "Instance", "native_identity": "src", "attributes": {
+            "master": "DFF", "sequential": True, "x": 0.0, "y": 0.0}},
+        {"kind": "Instance", "native_identity": "logic", "attributes": {
+            "master": "AND2", "sequential": False, "x": 10.0, "y": 0.0}},
+        {"kind": "Instance", "native_identity": "sink", "attributes": {
+            "master": "DFF", "sequential": True, "x": 20.0, "y": 0.0}},
+        {"kind": "Pin", "native_identity": "src/Q", "attributes": {
+            "instance": "src", "pin": "Q", "direction": "output"}},
+        {"kind": "Pin", "native_identity": "logic/A", "attributes": {
+            "instance": "logic", "pin": "A", "direction": "input"}},
+        {"kind": "Pin", "native_identity": "logic/Y", "attributes": {
+            "instance": "logic", "pin": "Y", "direction": "output"}},
+        {"kind": "Pin", "native_identity": "sink/D", "attributes": {
+            "instance": "sink", "pin": "D", "direction": "input"}},
+        {"kind": "Net", "native_identity": "n0", "attributes": {}},
+        {"kind": "Net", "native_identity": "n1", "attributes": {}},
+        {"kind": "EndpointState", "native_identity": "sink/D", "attributes": {
+            "worst_slack_ns": -0.02, "path_alternative_count": 2}},
+    ]
+    return {"schema": "hima.design-information-graph-projection/1", "snapshot": {
+        "snapshot_id": "cone-post", "phase": "postroute", "design_name": "cone",
+        "top_module": "top", "bundle_sha256": "bundle", "completeness": "complete",
+        "units": {"distance": "um", "time": "ns", "capacitance": "pF",
+                  "resistance": "ohm"}}, "nodes": nodes, "edges": [], "hyperedges": [
+        {"kind": "driver-to-sinks", "native_identity": "n0", "attributes": {},
+         "members": [{"kind": "Pin", "native_identity": "src/Q", "role": "driver"},
+                     {"kind": "Pin", "native_identity": "logic/A", "role": "sink"}]},
+        {"kind": "driver-to-sinks", "native_identity": "n1", "attributes": {},
+         "members": [{"kind": "Pin", "native_identity": "logic/Y", "role": "driver"},
+                     {"kind": "Pin", "native_identity": "sink/D", "role": "sink"}]},
+    ]}
 
 
 class DesignInformationGraphTests(unittest.TestCase):
@@ -161,6 +200,30 @@ class DesignInformationGraphTests(unittest.TestCase):
                 exact = hima_id("post-1", "Instance", "top/U_B")
                 self.assertEqual(by_source[exact][0]["relation_type"], "one-to-one")
                 self.assertEqual(len(mapping["map_sha256"]), 64)
+
+    def test_cross_phase_map_does_not_expand_high_frequency_empty_semantics(self):
+        place = projection("place-1", "place")
+        post = projection("post-1", "postroute", renamed=True)
+        # More candidates than the ambiguity cap must produce one refusal row,
+        # not a quadratic correspondence set.
+        for index in range(20):
+            place["nodes"].append({
+                "kind": "PhysicalRegion", "native_identity": "filler-%d" % index,
+                "attributes": {"semantic_signature": "common-empty"},
+            })
+        post["nodes"].append({"kind": "PhysicalRegion", "native_identity": "new-filler",
+                              "attributes": {"semantic_signature": "common-empty"}})
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "dig.sqlite"
+            store_projection(database, place)
+            store_projection(database, post)
+            with DigStore(database) as store:
+                mapping = build_cross_phase_map(store, "place-1", "post-1")
+                rows = [row for row in mapping["correspondences"]
+                        if row["source_id"] == hima_id("post-1", "PhysicalRegion", "new-filler")]
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["relation_type"], "absent")
+                self.assertEqual(rows[0]["unmatched_reason"], "semantic-signature-nonunique")
 
     def test_complete_bundle_cannot_hide_missing_postroute_spef(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -255,7 +318,66 @@ Other End Arrival Time 0.050
             paths = [row for row in normalized["nodes"] if row["kind"] == "PathAlternative"]
             endpoints = [row for row in normalized["nodes"] if row["kind"] == "EndpointState"]
             self.assertEqual(len(paths), 2)
+            self.assertNotEqual(paths[0]["native_identity"], "path:1")
             self.assertEqual(endpoints[0]["attributes"]["path_alternative_count"], 2)
+
+    def test_graph_native_opportunity_uses_complete_cone_and_never_auto_admits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "dig.sqlite"
+            store_projection(database, cone_projection())
+            with DigStore(database) as store:
+                report = mine_dig_endpoint_opportunities(
+                    store, "cone-post", deep_threshold=1, long_threshold_um=15.0
+                )
+            self.assertEqual(report["status"], "complete")
+            self.assertEqual(report["complete_endpoint_cone_count"], 1)
+            row = report["proposals"][0]
+            self.assertEqual(row["logic_depth"], 1)
+            self.assertEqual(row["quadrant"], "deep-short")
+            self.assertFalse(row["admitted"])
+            self.assertFalse(report["claim_limits"]["commercial_qor_prediction"])
+        self.assertEqual(
+            classify_dig_opportunity(2, 80.0)["proposal_strategy"],
+            "drive-family-or-local-replication",
+        )
+
+    def test_graph_local_proxy_keeps_parallel_factors_and_fails_closed(self):
+        window = {"schema": "hima.dig-local-window/1", "window_id": "w1",
+                  "base_graph_sha256": "g1"}
+        candidate = {"logic_levels_removed": 1, "source_arc_delay_ns": 0.05,
+                     "candidate_arc_delay_ns": 0.03, "removed_net_rc_ns": 0.01,
+                     "removed_vias": 2, "input_cap_delta_pf": 0.001,
+                     "output_slew_delta_ns": -0.005, "width_delta_um": 0.5,
+                     "area_delta_um2": 1.0, "power_delta_mw": 0.01,
+                     "sink_divergence_um": 2.0, "pin_access_risk": 0.2,
+                     "endpoint_alternative_coverage": {"path0": True, "path1": True},
+                     "model_uncertainty_ns": 0.005}
+        result = evaluate_dig_local_window(window, candidate)
+        self.assertEqual(result["status"], "admitted-local-only")
+        self.assertEqual(result["local_slack_lower_bound_ns"], 0.025)
+        self.assertFalse(result["claim_limits"]["global_fmax_prediction"])
+        rejected = evaluate_dig_local_window(
+            window, {**candidate, "endpoint_alternative_coverage": {"path0": False}}
+        )
+        self.assertEqual(rejected["status"], "rejected")
+        with self.assertRaises(RequestError):
+            evaluate_dig_local_window(window, {"logic_levels_removed": 1})
+
+    def test_drive_family_requires_real_monotonic_electrical_geometry(self):
+        rows = []
+        for index, drive in enumerate(("D1", "D2", "D4", "D6", "D8"), start=1):
+            rows.append({"drive": drive, "inputs": ["A", "B"], "outputs": ["Y0", "Y1"],
+                         "function_digest": "f", "input_cap_pf": 0.001 * index,
+                         "width_um": float(index), "area_um2": 2.0 * index,
+                         "power_mw": 0.01 * index, "max_load_pf": 0.01 * index,
+                         "output_resistance_ohm": {"Y0": 1000.0 / index,
+                                                   "Y1": 1200.0 / index}})
+        accepted = validate_drive_family(rows)
+        self.assertTrue(accepted["asymmetric_outputs"])
+        bad = json.loads(json.dumps(rows))
+        bad[-1]["input_cap_pf"] = 0.0001
+        with self.assertRaisesRegex(ValueError, "monotonic"):
+            validate_drive_family(bad)
 
 
 if __name__ == "__main__":

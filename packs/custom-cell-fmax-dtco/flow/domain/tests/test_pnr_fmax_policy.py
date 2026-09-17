@@ -20,6 +20,16 @@ class PnrFmaxPolicyTests(unittest.TestCase):
             template.index("timeDesign -postRoute -hold"),
         )
 
+    def test_early_clock_useful_skew_is_matched_and_bounded_to_100ps(self):
+        template = (DOMAIN / "pnr.tcl.tmpl").read_text()
+        self.assertIn("-usefulSkew true", template)
+        self.assertIn("-opt_skew_pre_cts true", template)
+        self.assertIn("-opt_skew_ccopt standard", template)
+        self.assertIn("-opt_skew_post_route true", template)
+        self.assertIn("-opt_skew_max_allowed_delay 0.100", template)
+        self.assertIn("-opt_skew_apply_delay_limits_to_full_flow true", template)
+        self.assertLess(template.index("setUsefulSkewMode"), template.index("place_opt_design"))
+
 
 if __name__ == "__main__":
     unittest.main()

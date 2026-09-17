@@ -59,6 +59,136 @@ ALGORITHMS = (
 )
 
 
+def mine_dig_endpoint_opportunities(store, snapshot_id, *, deep_threshold=8,
+                                    long_threshold_um=50.0, max_nodes_per_cone=5000):
+    """Mine complete structural endpoint cones from a DIG, not a path list."""
+    connection = store.connection
+    instance_rows = connection.execute(
+        "SELECT hima_id,native_identity,attributes_json FROM nodes "
+        "WHERE snapshot_id=? AND kind='Instance'", (snapshot_id,)
+    ).fetchall()
+    instances = {row[0]: {"name": row[1], **json.loads(row[2])} for row in instance_rows}
+    instance_by_name = {row["name"]: node_id for node_id, row in instances.items()}
+    pin_rows = connection.execute(
+        "SELECT hima_id,native_identity,attributes_json FROM nodes "
+        "WHERE snapshot_id=? AND kind='Pin'", (snapshot_id,)
+    ).fetchall()
+    pins = {row[0]: {"name": row[1], **json.loads(row[2])} for row in pin_rows}
+    pin_by_name = {row["name"]: node_id for node_id, row in pins.items()}
+    endpoints = [(row[0], row[1], json.loads(row[2])) for row in connection.execute(
+        "SELECT hima_id,native_identity,attributes_json FROM nodes "
+        "WHERE snapshot_id=? AND kind='EndpointState' ORDER BY native_identity",
+        (snapshot_id,),
+    )]
+    members = connection.execute(
+        "SELECT h.hyperedge_id,m.node_id,m.role FROM hyperedges h "
+        "JOIN hyperedge_members m ON m.hyperedge_id=h.hyperedge_id "
+        "WHERE h.snapshot_id=? ORDER BY h.hyperedge_id,m.ordinal", (snapshot_id,)
+    ).fetchall()
+    by_net = defaultdict(list)
+    for hyperedge_id, node_id, role in members:
+        by_net[hyperedge_id].append((node_id, role))
+    predecessors, successors = defaultdict(set), defaultdict(set)
+    physical_edges = {}
+    for rows in by_net.values():
+        driver_pins = [pins[node_id] for node_id, role in rows
+                       if role == "driver" and node_id in pins and pins[node_id].get("instance")]
+        sink_pins = [pins[node_id] for node_id, role in rows
+                     if role == "sink" and node_id in pins and pins[node_id].get("instance")]
+        if len(driver_pins) != 1:
+            continue
+        driver = instance_by_name.get(driver_pins[0]["instance"])
+        if driver is None:
+            continue
+        for sink_pin in sink_pins:
+            sink = instance_by_name.get(sink_pin["instance"])
+            if sink is None or sink == driver:
+                continue
+            predecessors[sink].add(driver)
+            successors[driver].add(sink)
+            left, right = instances[driver], instances[sink]
+            if all(isinstance(row.get(axis), (int, float)) for row in (left, right)
+                   for axis in ("x", "y")):
+                physical_edges[(driver, sink)] = math.hypot(
+                    float(left["x"]) - float(right["x"]),
+                    float(left["y"]) - float(right["y"]),
+                )
+
+    endpoint_cones, incomplete = [], []
+    influence = defaultdict(set)
+    for endpoint_id, endpoint_name, endpoint_attrs in endpoints:
+        pin_id = pin_by_name.get(endpoint_name)
+        sink_name = pins.get(pin_id, {}).get("instance") if pin_id else None
+        sink = instance_by_name.get(sink_name) if sink_name else None
+        if sink is None:
+            incomplete.append({"endpoint": endpoint_name, "reason": "endpoint-pin-not-in-physical-graph"})
+            continue
+        cone, frontier = set(), set(predecessors.get(sink, ()))
+        overflow = False
+        while frontier:
+            node = frontier.pop()
+            if node in cone:
+                continue
+            cone.add(node)
+            if len(cone) > max_nodes_per_cone:
+                overflow = True
+                break
+            if not instances[node].get("sequential"):
+                frontier.update(set(predecessors.get(node, ())) - cone)
+        if overflow:
+            incomplete.append({"endpoint": endpoint_name, "reason": "cone-node-limit"})
+            continue
+        combinational = {node for node in cone if not instances[node].get("sequential")}
+        memo, active = {}, set()
+
+        def depth(node):
+            if node in memo:
+                return memo[node]
+            if node in active:
+                raise ValueError("combinational cycle in DIG endpoint cone")
+            active.add(node)
+            value = 1 + max((depth(parent) for parent in predecessors.get(node, ())
+                             if parent in combinational), default=0)
+            active.remove(node)
+            memo[node] = value
+            return value
+
+        logic_depth = max((depth(node) for node in combinational), default=0)
+        distances = [distance for (left, right), distance in physical_edges.items()
+                     if left in cone and (right in cone or right == sink)]
+        span = max(distances, default=0.0)
+        total_wire = sum(distances)
+        for node in cone:
+            influence[node].add(endpoint_id)
+        classification = mapped_core.classify_dig_opportunity(
+            logic_depth, span, deep_threshold=deep_threshold,
+            long_threshold_um=long_threshold_um,
+            slack_harvest=float(endpoint_attrs.get("worst_slack_ns", 0.0)) > 0.05,
+        )
+        endpoint_cones.append({
+            "endpoint_id": endpoint_id, "endpoint": endpoint_name,
+            "sink_instance_id": sink, "cone_instance_ids": sorted(cone),
+            "combinational_instance_count": len(combinational),
+            "sequential_boundary_count": len(cone - combinational),
+            "logic_depth": logic_depth, "max_physical_span_um": round(span, 6),
+            "summed_edge_span_um": round(total_wire, 6),
+            "worst_slack_ns": endpoint_attrs.get("worst_slack_ns"),
+            **classification,
+        })
+    for row in endpoint_cones:
+        row["max_shared_endpoint_influence"] = max(
+            (len(influence[node]) for node in row["cone_instance_ids"]), default=0
+        )
+    return {
+        "schema": "hima.dig-opportunity-proposals/1", "snapshot_id": snapshot_id,
+        "base_graph_sha256": store.graph_sha256(snapshot_id),
+        "status": "complete" if not incomplete else "partial",
+        "endpoint_count": len(endpoints), "complete_endpoint_cone_count": len(endpoint_cones),
+        "incomplete_endpoints": incomplete, "proposals": endpoint_cones,
+        "claim_limits": {"commercial_qor_prediction": False, "eco_admission": False},
+    }
+
+
 def _pareto_order(items, metrics):
     """Return deterministic non-dominated layers for mixed search objectives."""
     remaining = list(items)

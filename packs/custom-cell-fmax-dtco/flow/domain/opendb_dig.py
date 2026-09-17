@@ -9,6 +9,7 @@ the adapter.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -47,6 +48,8 @@ def import_projection(lefs, def_path, snapshot, physical_odb):
         raise RuntimeError("OpenDB save/reload changed object counts")
     dbu = float(block.getDbUnitsPerMicron())
     nodes, edges, hyperedges = [], [], []
+    instance_nodes = {}
+    instance_connections = {}
     seen_pins = set()
     issues = []
     for inst in sorted(block.getInsts(), key=lambda item: item.getName()):
@@ -55,13 +58,17 @@ def import_projection(lefs, def_path, snapshot, physical_odb):
         x, y = inst.getLocation()
         width, height = master.getWidth() / dbu, master.getHeight() / dbu
         x, y = x / dbu, y / dbu
-        nodes.append({
+        instance_node = {
             "kind": "Instance", "native_identity": name,
             "attributes": {"master": master.getName(), "x": x, "y": y,
-                           "placement_status": str(inst.getPlacementStatus())},
+                           "placement_status": str(inst.getPlacementStatus()),
+                           "orientation": str(inst.getOrient())},
             "geometry": {"min_x": x, "max_x": x + width,
                          "min_y": y, "max_y": y + height},
-        })
+        }
+        nodes.append(instance_node)
+        instance_nodes[name] = instance_node
+        instance_connections[name] = []
         for iterm in sorted(inst.getITerms(), key=lambda item: item.getMTerm().getName()):
             pin_name = name + "/" + iterm.getMTerm().getName()
             direction = _direction(iterm.getMTerm())
@@ -92,6 +99,9 @@ def import_projection(lefs, def_path, snapshot, physical_odb):
             pin_name = iterm.getInst().getName() + "/" + iterm.getMTerm().getName()
             direction = _direction(iterm.getMTerm())
             role = "driver" if direction == "output" else "sink"
+            instance_connections[iterm.getInst().getName()].append(
+                (iterm.getMTerm().getName(), name, role)
+            )
             members.append({"kind": "Pin", "native_identity": pin_name, "role": role})
             edges.append({"kind": "pin-net", "source_kind": "Pin",
                           "source_native_identity": pin_name, "target_kind": "Net",
@@ -111,6 +121,13 @@ def import_projection(lefs, def_path, snapshot, physical_odb):
                                "members": members})
         else:
             issues.append({"net": name, "reason": "driver-count", "count": driver_count})
+    for name, rows in instance_connections.items():
+        boundary = sorted(rows)
+        instance_nodes[name]["attributes"]["boundary_connections"] = boundary
+        if boundary:
+            instance_nodes[name]["attributes"]["semantic_signature"] = hashlib.sha256(
+                json.dumps(boundary, separators=(",", ":")).encode()
+            ).hexdigest()
     projection = {"schema": "hima.design-information-graph-projection/1",
                   "snapshot": {**snapshot, "manifest": {**snapshot.get("manifest", {}),
                                                           "opendb_issues": issues,

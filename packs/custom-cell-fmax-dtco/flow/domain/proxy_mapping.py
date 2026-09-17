@@ -36,6 +36,49 @@ class RequestError(ValueError):
     """A request cannot be executed without guessing or losing provenance."""
 
 
+def evaluate_dig_local_window(window, candidate):
+    """Evaluate parallel local factors without inventing a global Fmax score."""
+    if window.get("schema") != "hima.dig-local-window/1":
+        raise RequestError("local proxy requires a DIG LocalWindow")
+    required = {
+        "logic_levels_removed", "source_arc_delay_ns", "candidate_arc_delay_ns",
+        "removed_net_rc_ns", "removed_vias", "input_cap_delta_pf",
+        "output_slew_delta_ns", "width_delta_um", "area_delta_um2",
+        "power_delta_mw", "sink_divergence_um", "pin_access_risk",
+        "endpoint_alternative_coverage", "model_uncertainty_ns",
+    }
+    missing = required - set(candidate)
+    if missing:
+        raise RequestError("local proxy candidate missing: %s" % sorted(missing))
+    numeric = required - {"endpoint_alternative_coverage"}
+    if any(not isinstance(candidate[name], (int, float)) or isinstance(candidate[name], bool)
+           or not math.isfinite(float(candidate[name])) for name in numeric):
+        raise RequestError("local proxy metrics must be finite numbers")
+    coverage = candidate["endpoint_alternative_coverage"]
+    if not isinstance(coverage, dict) or not coverage or not all(coverage.values()):
+        status, reasons = "rejected", ["incomplete-endpoint-alternative-coverage"]
+    else:
+        conservative_margin = (float(candidate["source_arc_delay_ns"])
+                               - float(candidate["candidate_arc_delay_ns"])
+                               + float(candidate["removed_net_rc_ns"])
+                               - float(candidate["model_uncertainty_ns"]))
+        reasons = [] if conservative_margin > 0 else ["non-positive-local-margin"]
+        if float(candidate["pin_access_risk"]) > 1.0:
+            reasons.append("pin-access-risk-out-of-range")
+        status = "admitted-local-only" if not reasons else "rejected"
+    conservative_margin = (float(candidate["source_arc_delay_ns"])
+                           - float(candidate["candidate_arc_delay_ns"])
+                           + float(candidate["removed_net_rc_ns"])
+                           - float(candidate["model_uncertainty_ns"]))
+    return {
+        "schema": "hima.dig-local-proxy/1", "window_id": window.get("window_id"),
+        "base_graph_sha256": window.get("base_graph_sha256"), "status": status,
+        "rejection_reasons": reasons, "local_slack_lower_bound_ns": round(conservative_margin, 12),
+        "value_vector": dict(candidate),
+        "claim_limits": {"global_fmax_prediction": False, "commercial_qor": False},
+    }
+
+
 def _canonical_json(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import unicodedata
@@ -39,6 +40,49 @@ EVIDENCE_TRANSITIONS = {
     "final-benefit": set(),
     "proxy-rejected": set(),
 }
+
+DRIVE_FAMILY_ORDER = ("D1", "D2", "D4", "D6", "D8")
+
+
+def validate_drive_family(variants):
+    """Validate an electrical/geometric family instead of name-only clones."""
+    if not isinstance(variants, list):
+        raise ValueError("drive family must be an array")
+    by_drive = {row.get("drive"): row for row in variants if isinstance(row, dict)}
+    if set(by_drive) != set(DRIVE_FAMILY_ORDER) or len(variants) != len(by_drive):
+        raise ValueError("drive family must contain exactly D1/D2/D4/D6/D8")
+    ordered = [by_drive[name] for name in DRIVE_FAMILY_ORDER]
+    identities = {(tuple(row.get("inputs", ())), tuple(row.get("outputs", ())),
+                   row.get("function_digest")) for row in ordered}
+    if len(identities) != 1:
+        raise ValueError("drive variants must preserve one pin/function identity")
+    increasing = ("input_cap_pf", "width_um", "area_um2", "power_mw", "max_load_pf")
+    for field in increasing:
+        values = [row.get(field) for row in ordered]
+        if not all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                   and math.isfinite(float(value)) and float(value) > 0 for value in values):
+            raise ValueError("drive family %s must contain positive finite values" % field)
+        if any(float(right) < float(left) for left, right in zip(values, values[1:])):
+            raise ValueError("drive family %s must be monotonic nondecreasing" % field)
+    output_names = tuple(ordered[0].get("outputs", ()))
+    resistance = {}
+    for output in output_names:
+        values = [(row.get("output_resistance_ohm") or {}).get(output) for row in ordered]
+        if not all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                   and math.isfinite(float(value)) and float(value) > 0 for value in values):
+            raise ValueError("drive family output %s lacks resistance envelope" % output)
+        if any(float(right) > float(left) for left, right in zip(values, values[1:])):
+            raise ValueError("drive family output resistance must decrease with drive")
+        resistance[output] = [float(value) for value in values]
+    if len(output_names) > 1 and all(
+            resistance[output] == resistance[output_names[0]] for output in output_names[1:]):
+        asymmetric = False
+    else:
+        asymmetric = len(output_names) > 1
+    return {"schema": "hima.drive-family-validation/1", "status": "accepted",
+            "drives": list(DRIVE_FAMILY_ORDER), "outputs": list(output_names),
+            "asymmetric_outputs": asymmetric,
+            "claim_limits": {"characterized": False, "commercial_timing": False}}
 
 
 def canonical_cell_name(candidate_id, output_name):

@@ -83,7 +83,9 @@ def parse_timing_report(path, max_paths, nworst, max_slack_ns):
     for row in paths:
         points = row.pop("points")
         ordered_pins = [point["pin"] for point in points]
+        ordered_steps = [[point["pin"], point["edge"]] for point in points]
         row["ordered_pins"] = ordered_pins
+        row["ordered_steps"] = ordered_steps
         row["point_count"] = len(points)
         # Detailed columns remain in the hash-bound raw Innovus report.  The
         # common graph needs stable ordered identity and a tamper-evident key.

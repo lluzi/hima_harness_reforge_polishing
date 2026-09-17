@@ -16,6 +16,7 @@ sys.path.insert(0, str(DOMAIN))
 from multi_output_resynth.netlist_eco import rollback_text  # noqa: E402
 from multi_output_resynth.proof import write_cell_models  # noqa: E402
 from multi_output_resynth.service import run_request  # noqa: E402
+from innovus_ccei import build_ccei_plan, render_apply_tcl, render_rollback_tcl  # noqa: E402
 from cell_need_miner.liberty import parse_skeleton  # noqa: E402
 
 
@@ -295,6 +296,68 @@ endmodule
 
 
 class MultiOutputResynthTests(unittest.TestCase):
+    def test_anchored_rediscovers_renamed_function_and_excludes_outside_decoy(self):
+        netlist = '''module top(input a, input b, output sum, output carry, output p, output q);
+  XOR2 renamed_sum (.A(a), .B(b), .Y(sum));
+  AND2 renamed_carry (.A(a), .B(b), .Y(carry));
+  XOR2 decoy_sum (.A(a), .B(b), .Y(p));
+  AND2 decoy_carry (.A(a), .B(b), .Y(q));
+endmodule
+'''
+        work = Workspace(self, netlist, operation="anchored")
+        self.addCleanup(work.close)
+        work.data["anchorHints"] = [{
+            "module": "top", "seedInstances": ["old_sum", "old_carry"],
+            "stableNets": ["sum", "carry"], "maxTraceHops": 1,
+            "postrouteOpportunityId": "post-opp-1",
+            "candidateRegionHimaIds": ["hima:region-1"],
+        }]
+        result = work.write()
+        self.assertEqual(result["status"], "succeeded", result)
+        self.assertEqual(result["backend"]["actual"], "native_v1")
+        selected = result["selectedReplacements"]
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(set(selected[0]["sourceInstances"]), {"renamed_sum", "renamed_carry"})
+        self.assertTrue(selected[0]["anchorEvidence"]["reboundInPlaceState"])
+
+        plan = build_ccei_plan(
+            netlist_text=netlist, top="top", checkpoint="place.enc.dat",
+            output_checkpoint="ccei.enc", opportunities=selected,
+            place_instances={
+                "renamed_sum": {"x": 10.0, "y": 20.0, "orientation": "R0"},
+                "renamed_carry": {"x": 14.0, "y": 20.0, "orientation": "R0"},
+            }, power_net="VDD", ground_net="VSS", power_pin="VDD", ground_pin="VSS",
+        )
+        apply = render_apply_tcl(plan, "apply.place.rpt")
+        rollback = render_rollback_tcl(plan, "rollback.enc", "rollback.place.rpt")
+        self.assertIn("-loc {12.000000 20.000000}", apply)
+        self.assertIn("deleteInst {renamed_sum}", apply)
+        self.assertIn("attachTerm {HIMA_MO_", apply)
+        self.assertIn("ecoPlace -fixPlacedInsts true", apply)
+        self.assertIn("addInst -cell {XOR2} -inst {renamed_sum}", rollback)
+
+    def test_hal_fallback_is_explicit_and_absent_anchor_fails_closed(self):
+        work = Workspace(self, HA, operation="anchored")
+        self.addCleanup(work.close)
+        work.data["backend"] = "hal_v0"
+        work.data["allowNativeFallback"] = True
+        work.data["anchorHints"] = [{"module": "top", "seedInstances": ["u_sum"],
+                                     "stableNets": ["sum", "carry"], "maxTraceHops": 1}]
+        with mock.patch("multi_output_resynth.hal_backend.shutil.which", return_value=None):
+            result = work.write()
+        self.assertEqual(result["status"], "succeeded", result)
+        self.assertEqual(result["backend"]["requested"], "hal_v0")
+        self.assertEqual(result["backend"]["actual"], "native_v1")
+        self.assertFalse(result["backend"]["fallback"]["available"])
+
+        missed = Workspace(self, HA, operation="anchored")
+        self.addCleanup(missed.close)
+        missed.data["anchorHints"] = [{"module": "top", "seedInstances": ["gone"],
+                                       "stableNets": ["missing"], "maxTraceHops": 1}]
+        refusal = missed.write()
+        self.assertEqual(refusal["status"], "refused")
+        self.assertEqual(refusal["refusal"]["code"], "anchor-rebind-miss")
+
     def test_directed_four_input_vector_is_supported(self):
         netlist = '''module top(input a, input b, input c, input d, output p, output q);
   AND2 u0 (.A(a), .B(b), .Y(n0));
