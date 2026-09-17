@@ -17,6 +17,7 @@ GitHub tracker: [#40 — Build and integrate the Library Function Richness Frame
 - [Methodology v2 implementation specification](methodology-v2.zh-CN.md)
 - [累计收益驱动的协同优化方法学 v3](cumulative-gain-cooptimization-v3.zh-CN.md)
 - [Post-route Design Information Graph 驱动的协同优化方法学 v4](postroute-design-information-graph-methodology-v4.zh-CN.md)
+- [Information Graph 数据库与开源基础设施选型](information-graph-database-technology-selection.zh-CN.md)
 - [Multi-output netlist resynthesizer specification](multi-output-resynthesizer.zh-CN.md)
 - [Multi-output resynthesizer isolated POC evidence](evidence/2026-09-16-multi-output-resynthesizer-poc.md)
 - [AES ten-cell multi-output logical ECO](evidence/2026-09-16-aes-10mo-logical-eco.md)

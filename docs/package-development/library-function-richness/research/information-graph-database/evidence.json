@@ -1,0 +1,136 @@
+{
+  "schema": "hima.information-graph-database-research-evidence/1",
+  "date": "2026-09-16",
+  "items": [
+    {
+      "id": "E01",
+      "claim": "OpenDB is a BSD-3 physical-design database based on LEF/DEF, supports fast binary save/load, persistent object IDs across save/restore, and exact-state comparison.",
+      "source": "https://github.com/The-OpenROAD-Project/OpenROAD/blob/master/src/odb/README.md",
+      "kind": "primary-project-doc",
+      "limits": "OID persistence applies within save/restore of one database, not across independent place/post-route imports."
+    },
+    {
+      "id": "E02",
+      "claim": "OpenDB exposes bool/string/int/double dbProperty objects on database objects.",
+      "source": "https://github.com/The-OpenROAD-Project/OpenDB/blob/master/include/opendb/db.h",
+      "kind": "primary-source-api",
+      "limits": "Scalar named properties are not by themselves a versioned multi-producer annotation/provenance model."
+    },
+    {
+      "id": "E03",
+      "claim": "OpenROAD can read LEF/DEF or Verilog, link a design, and read/write binary OpenDB databases through Tcl; Python support is more limited for Verilog.",
+      "source": "https://github.com/The-OpenROAD-Project/OpenROAD/blob/master/src/README.md",
+      "kind": "primary-project-doc",
+      "limits": "Commercial Innovus export fidelity still requires a real AES import test."
+    },
+    {
+      "id": "E04",
+      "claim": "HAL provides a graph-based gate-level netlist core, Verilog/VHDL and Liberty parsers, C++/Python APIs, plugins, project persistence and an igraph graph-algorithm plugin under MIT.",
+      "source": "https://github.com/emsec/hal",
+      "kind": "primary-project-doc",
+      "limits": "HAL is oriented to hardware reverse engineering and does not natively provide our DEF/SPEF/SDC commercial timing model."
+    },
+    {
+      "id": "E05",
+      "claim": "HAL's graph plugin converts gates/nets into an igraph-backed NetlistGraph and maps graph vertices back to gates.",
+      "source": "https://github.com/emsec/hal/wiki/Graph-Algorithms",
+      "kind": "primary-project-doc",
+      "limits": "Multi-sink nets are translated into multiple edges; our DIG must retain hyperedge identity separately."
+    },
+    {
+      "id": "E06",
+      "claim": "HAL can store gate placement coordinates when its gate-library data mapping is configured.",
+      "source": "https://github.com/emsec/hal/wiki/Gate-Library",
+      "kind": "primary-project-doc",
+      "limits": "Placement metadata is not a replacement for a complete DEF/route/parasitic database."
+    },
+    {
+      "id": "E07",
+      "claim": "HAL has a resynthesis plugin that can resynthesize selected subgraphs through Yosys against a target library.",
+      "source": "https://github.com/emsec/hal/wiki/Resynthesis",
+      "kind": "primary-project-doc",
+      "limits": "The plugin is opt-in, requires Yosys, destroys original correspondence on subgraph resynthesis, and its target library must be a subset of the imported library."
+    },
+    {
+      "id": "E08",
+      "claim": "HAL has no prebuilt binaries, officially tests Ubuntu 22.04/24.04 and treats macOS support as experimental.",
+      "source": "https://github.com/emsec/hal/wiki/Building-HAL",
+      "kind": "primary-project-doc",
+      "limits": "This raises adoption/build cost for our macOS plus Rocky/Alma environment."
+    },
+    {
+      "id": "E09",
+      "claim": "OpenTimer reads Liberty, Verilog, SDC and SPEF, exposes graph/path timing and incremental C++ APIs, and uses MIT licensing.",
+      "source": "https://github.com/OpenTimer/OpenTimer",
+      "kind": "primary-project-doc",
+      "limits": "It is a timing engine, not a physical database or annotation store; feature/correlation coverage versus Innovus must be measured."
+    },
+    {
+      "id": "E10",
+      "claim": "iSTA reads DEF/Verilog, SDC, SPEF/SDF and Liberty and supports NLDM/Elmore plus CCS/AOCV-related analysis features.",
+      "source": "https://ieda.oscc.cc/en/tools/ieda-tools/ista.html",
+      "kind": "primary-project-doc",
+      "limits": "iEDA is a much larger integrated infrastructure and was not found installed locally; API and import fidelity require a separate build POC."
+    },
+    {
+      "id": "E11",
+      "claim": "iEDA provides an integrated database/platform/tool infrastructure under MulanPSL-2.0 and uses iDB to read LEF/DEF for physical tools.",
+      "source": "https://github.com/OSCC-Project/iEDA",
+      "kind": "primary-project-doc",
+      "limits": "The integrated scope can duplicate Innovus/OpenDB responsibilities and increase adoption cost."
+    },
+    {
+      "id": "E12",
+      "claim": "UHDM/Surelog provides a serializable IEEE SystemVerilog/VPI elaborated object model with C++ navigation.",
+      "source": "https://github.com/chipsalliance/UHDM",
+      "kind": "primary-project-doc",
+      "limits": "It targets HDL elaboration, not post-route physical/timing data, so it is not a DIG core candidate."
+    },
+    {
+      "id": "E13",
+      "claim": "SQLite includes deterministic JSON functions by default in current releases, JSONB storage, R*Tree spatial indexing and recursive CTE support.",
+      "source": "https://www.sqlite.org/json1.html",
+      "secondary_sources": [
+        "https://www.sqlite.org/rtree.html",
+        "https://www.sqlite.org/lang_with.html"
+      ],
+      "kind": "primary-project-doc",
+      "limits": "SQLite is not an EDA parser and complex graph analytics normally need an in-memory graph projection or extension."
+    },
+    {
+      "id": "E14",
+      "claim": "LadybugDB is an active MIT-licensed embedded property graph database with Cypher, columnar storage, CSR adjacency and Python/Node/C++ binaries.",
+      "source": "https://github.com/LadybugDB/ladybug",
+      "kind": "primary-project-doc",
+      "limits": "It is a young Kuzu successor and has no EDA object model; deterministic evidence export and schema evolution need validation."
+    },
+    {
+      "id": "E15",
+      "claim": "Kuzu is archived and read-only as of October 2025, despite its attractive embedded property-graph feature set.",
+      "source": "https://github.com/kuzudb/kuzu",
+      "kind": "primary-repository-state",
+      "limits": "Existing releases remain usable, but an archived dependency is unsuitable for a new core."
+    },
+    {
+      "id": "E16",
+      "claim": "Linglong's existing celluzi/IIC-OSIC container provides OpenROAD 26Q2-2270-g4c26918f5, OpenSTA, Yosys and Python-enabled OpenDB; dbProperty bindings are callable.",
+      "source": "local-probe:/data/eda/project/hima_harness/polishing-runs/probe_odb_api_20260916.py",
+      "kind": "local-read-only-probe",
+      "limits": "Version availability is verified; import of our retained proprietary AES exports has not yet been run."
+    },
+    {
+      "id": "E17",
+      "claim": "The current macOS Python environment includes SQLite 3.51.0 with JSON and RTree, while python-igraph, NetworkX and DuckDB are not installed.",
+      "source": "local-probe:python3-sqlite-runtime-2026-09-16",
+      "kind": "local-read-only-probe",
+      "limits": "Missing packages can be bundled later; this observation only describes the current host."
+    },
+    {
+      "id": "E18",
+      "claim": "OpenSTA exposes a timing-graph based STA engine, standard timing inputs, incremental updates and a Network Adapter API for an external netlist database.",
+      "source": "https://github.com/parallaxsw/OpenSTA/blob/master/doc/StaApi.md",
+      "kind": "primary-project-api-doc",
+      "limits": "API capability does not establish numerical or ranking correlation with Innovus on the retained AES design."
+    }
+  ]
+}
