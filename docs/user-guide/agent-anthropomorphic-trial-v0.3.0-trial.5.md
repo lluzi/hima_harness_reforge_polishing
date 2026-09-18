@@ -1,5 +1,9 @@
 # HimaHarness 0.3.0-trial.5：拟人试用、持续 Campaign 与 Bug Fix 任务
 
+> 历史协议：本任务已由 trial.5 执行。下一位 Agent 不应重复其中的故意 Workshop
+> 拒绝试验，也不能使用内置的 Pack 5.1.0 开始新 Campaign。下一轮使用
+> [Pack 5.1.1 Campaign 续测指导书](agent-campaign-continuation-pack-v5.1.1.md)。
+
 ## 任务目标
 
 你是一名第一次接触 HimaHarness、具备一般调试能力的 AI Coding Agent。你要完成三个连续阶段：
