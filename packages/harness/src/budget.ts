@@ -4,9 +4,13 @@
 // seats is the job cap's, beside the other scarcity of the Site; what a Run held of them is here,
 // with every other meter.)
 //
-// Agent-owned Runs keep charging their total time box while paused. Historical human waits retain
-// their old allowance only through a fixed adoption offset; subsequent pauses do not enlarge it. Every
-// number here is computed from what the ledger already holds and never from a driving process's
+// Agent-owned Runs keep charging their total time box while an ordinary human `pause` stands open —
+// nothing of the design or the Site is waiting on a person then, so nothing is exempt. A Hard blocker
+// or a Pack Wait node is different (CONTEXT.md: "a Hard blocker is by definition a failure only a
+// person can clear"): the minutes a Run stands at one, and the one-time historical allowance a
+// pre-owned Run's adoption verified, both widen the deadline the same way, through `run.meters.waitedMs`
+// (`advance`, `waitedMsOf`) — `ownedWaitedMs` is what every owned-Run admission gate reads it through.
+// Every number here is computed from what the ledger already holds and never from a driving process's
 // memory, which is what lets a second host pick a Run up and compute the same deadline, the same
 // attempt number and the same allowance the first one would have.
 import { nodeRecordsIn, givesUpLaunch } from './ledger.js';
@@ -37,9 +41,14 @@ export const defaultGenerationLimit = 6;
 export const defaultAttemptLimit = 1000;
 
 /**
- * When the original time box runs out. Owned Runs retain only the historical wait allowance
- * verified at adoption; new pauses keep counting. Unowned regression Runs use their old wait term.
+ * When the original time box runs out, widened by whatever wait term the caller hands it.
  * `undefined` for a Run with no Budget, which spends nothing.
+ *
+ * The caller decides what "waited" means for the Run it holds: an owned Run's admission gates pass
+ * `ownedWaitedMs(run)`, the ledger-persisted `Math.max(waitedMsOf(...), legacy adoption offset)` that
+ * already accounts for every Hard blocker or Wait node a person has cleared; the legacy automatic
+ * drive and its resume pass `waitedMsOf` fresh off the records it is about to act on. Both read this
+ * one function so a Run is never held to two different deadlines by two different callers.
  *
  * **The deadline, stated once.** Everything that asks whether a Run may go on asks it here — the loop
  * at the top of every turn, the poll waiting on a Job, the wait for one of the Site's job slots, and
@@ -47,8 +56,7 @@ export const defaultAttemptLimit = 1000;
  * different deadlines by two of those is a Run whose Budget means nothing.
  */
 const deadlineOf = (run: RunRecord, waitedMs: number): number | undefined =>
-  run.budget === undefined ? undefined : Date.parse(run.createdAt) + run.budget.timeBoxMs
-    + (run.control === undefined ? waitedMs : run.control.adoption?.legacyWaitedMs ?? 0);
+  run.budget === undefined ? undefined : Date.parse(run.createdAt) + run.budget.timeBoxMs + waitedMs;
 
 export type BudgetPhase = 'active' | 'closing' | 'exhausted';
 export interface BudgetStanding {
@@ -97,6 +105,17 @@ export const attemptLimitSpent = (run: RunRecord): boolean => {
 
 export const endAttemptLimit = (ledger: Ledger, runId: string): Promise<RunRecord> =>
   advance(ledger, runId, { endedBy: 'attempt-limit' }, { status: 'ended-budget-exhausted' });
+
+/**
+ * The wait term an Agent-owned Run's own admission gates should widen its deadline by: `advance`
+ * already computes and persists this on every write (`run.meters.waitedMs`, from `waitedMsOf` and any
+ * adoption offset, `Math.max`-ratcheted so it never falls back), so a gate reads the same number the
+ * row itself carries rather than assuming a Run in its own `control` never waited on a person. A Hard
+ * blocker or a Pack Wait node is a failure only a person can clear (CONTEXT.md; `waitedMsOf` above);
+ * the minutes spent standing at one are not minutes the design or the Site spent, and must not read as
+ * spent time box here any more than they do at legacy `resumeRun`'s own deadline check.
+ */
+export const ownedWaitedMs = (run: RunRecord): number => run.meters?.waitedMs ?? 0;
 
 /** Remaining wall time uses the same deadline as admission and Job polling. */
 export const timeBoxRemainingMs = (run: RunRecord, waitedMs: number): number | undefined => {

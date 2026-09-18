@@ -30,7 +30,7 @@ import { pathsOf, type Site } from './sites.js';
 import { currentRecordsIn, type KnowledgeRecord, type Ledger } from './ledger.js';
 import { packKnowledgeManifestOf, type Pack, type PackWorkshop } from './packs.js';
 import type { SemanticDeclaration } from './semantics.js';
-import { experimentBudgetSpent, reserveResearchWrite } from './budget.js';
+import { experimentBudgetSpent, ownedWaitedMs, reserveResearchWrite } from './budget.js';
 import { existingRun } from './runs.js';
 
 /** One tool as `ctx.tools.register` takes it: whatever `defineTool` makes of a definition. */
@@ -438,7 +438,7 @@ export async function writeIntoWorkshop(scope: WorkshopScope, asked: string, con
   });
   receipt = reserved;
   if (!reserved.allowed) return refused(reserved.reason!);
-  const reserveStarted = (): boolean => experimentBudgetSpent(existingRun(scope.ledger, scope.runId), 0);
+  const reserveStarted = (): boolean => { const r = existingRun(scope.ledger, scope.runId); return experimentBudgetSpent(r, ownedWaitedMs(r)); };
   const bad = badWritePath(asked);
   if (bad !== undefined) return refused(`a workshop writes only inside its own directory: ${bad}`);
 

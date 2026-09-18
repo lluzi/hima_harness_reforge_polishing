@@ -120,6 +120,59 @@ test('retry allowance blocks the failed node until its human owner clears that n
   }
 });
 
+// A live trial found a Hard blocker that could never be cleared: once the wall clock had run past
+// the Campaign's `timeBoxMs` while a node sat blocked waiting on a person, `hima_execute continue`
+// refused every human clearance too, so `retryAllowance` could never actually be spent and the Run
+// could only end `ended-budget-exhausted`. `waitedMsOf` (budget.ts) already credits exactly this
+// wait back to the deadline — "a Hard blocker is by definition a failure only a person can clear" —
+// but the owned-Run admission gates in `executionAction` read a hardcoded `0` instead of the ledger's
+// own `run.meters.waitedMs`, so the credit was computed and never spent. This is the regression test
+// for that fix: a slow human, arriving after the tiny time box below would otherwise look spent,
+// still gets an accepted clearance and a working `begin` afterward.
+test('a human clearing a Hard blocker is not refused merely because the time box looks spent while the node sat blocked', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0.01, failures: 9 });
+  assert.ok(home);
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    // The box is real but short: well past enough to cover the fast local failing attempts below,
+    // and much shorter than the deliberate wait the test then holds the block open for.
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, retryAllowance: 2, timeBoxMs: 1500, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    let counter = 0;
+    const act = (action: 'begin' | 'work' | 'continue', executionId?: string, origin: 'agent' | 'human' = 'agent') => {
+      const control = host.ctx.hima.executionContext(runId!).run.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), action, executionId, nodeId: started.run.currentNode, origin, expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: `slow-clear-${++counter}` });
+    };
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const begun = await act('begin');
+      assert.equal(begun.kind, 'accepted');
+      const executionId = begun.receipt?.executionId;
+      assert.ok(executionId);
+      assert.equal((await act('work', executionId)).kind, 'accepted');
+      await waitUntil('the failed attempt is recorded', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === executionId && execution.phase === 'failed'), 8000);
+    }
+    assert.deepEqual(host.ctx.hima.executionContext(runId).available, [], 'the node is now a Hard blocker');
+    // The human investigates slowly: this alone would put `Date.now()` well past `createdAt +
+    // timeBoxMs`, which is exactly the moment the live trial's operator could not get `continue` to
+    // do anything at all.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const cleared = await act('continue', undefined, 'human');
+    assert.equal(cleared.kind, 'accepted', 'a Hard blocker clearance must not be refused by the flat time-box gate a plain continue still uses');
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'resumed' }).length, 1);
+    const resumed = host.ctx.hima.executionContext(runId).run;
+    assert.ok((resumed.meters?.waitedMs ?? 0) >= 1900, 'the closed wait is credited back to the Run the same way waitedMsOf computes it');
+    const next = await act('begin');
+    assert.equal(next.kind, 'accepted', 'new work may begin again once the blocked wait widens the deadline, not just the clearance receipt');
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});
+
 for (const restart of [false, true]) test(`the total time box expires while paused${restart ? ' with the Agent offline after Host restart' : ' without any next Agent action'}`, async (t) => {
   const home = await localHome(t, { sleepSeconds: 0.01 });
   assert.ok(home);

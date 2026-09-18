@@ -95,6 +95,7 @@ import {
   timeBoxRemainingMs,
   timeBoxSpentAt,
   waitedMsOf,
+  ownedWaitedMs,
 } from './budget.js';
 import { closeLoop, loopGenerationLimit, openLoop, opensALoop, revisitInLoop } from './loops.js';
 import { openForkAt, runFork } from './forks.js';
@@ -1606,7 +1607,8 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
   let applied = earlier.find((record) => record.event === 'applied');
   if (applied === undefined) {
     try {
-      if (experimentBudgetSpent(existingRun(deps.ledger, run.id), 0)) throw new RunStartError('the Campaign entered its closing reserve before revision bytes could be written; the charged request remains on the ledger and no revision was applied');
+      const beforeWrite = existingRun(deps.ledger, run.id);
+      if (experimentBudgetSpent(beforeWrite, ownedWaitedMs(beforeWrite))) throw new RunStartError('the Campaign entered its closing reserve before revision bytes could be written; the charged request remains on the ledger and no revision was applied');
       const assets = await applyWorkspaceRevision(loadSite(deps.sitesDir, run.siteId), workspace.workspace, proposal.revisionId, workspaceChanges);
       applied = await deps.ledger.appendRevision(run.id, { revisionId: proposal.revisionId, version: proposed.version,
         event: 'applied', proposalDigest, methodIdentity, sourceIdentity, inputIdentity, environmentIdentity,
@@ -1786,8 +1788,8 @@ async function growthAction(deps: FabricDeps, snapshot: RunRecord, req: Executio
     return answer('accepted', { receipt, data: receipt.data });
   }
 
-  const hardTimeSpent = timeBoxSpent(run, 0);
-  if (!hardTimeSpent && experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve; no growth budget remains');
+  const hardTimeSpent = timeBoxSpent(run, ownedWaitedMs(run));
+  if (!hardTimeSpent && experimentBudgetSpent(run, ownedWaitedMs(run))) return no('the Campaign is in its closing reserve; no growth budget remains');
 
   const parsed = growthProposal.safeParse(req.proposal);
   if (!parsed.success) return no(`invalid growth proposal: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'proposal'} ${issue.message}`).join('; ')}`);
@@ -1981,7 +1983,7 @@ function unclearedFailure(run: RunRecord, scope: string): NodeExecution | undefi
 
 export function executionContext(deps: FabricDeps, runId: string): ExecutionContext {
   const run = existingRun(deps.ledger, runId);
-  const standing = budgetStanding(run, 0);
+  const standing = budgetStanding(run, ownedWaitedMs(run));
   const executions = Object.values(run.control?.executions ?? {});
   const revisions = revisionRecordsIn(deps.ledger, runId);
   const evidence = currentRecordsIn(deps.ledger.records({ runId })).filter(record => ['workspace', 'observation', 'verdict', 'code', 'knowledge'].includes(record.type)).slice(-128)
@@ -2061,7 +2063,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     if (!reading && control.stop !== undefined) return no('this Run has a stop request; new business actions are fenced until its actual Job facts resolve');
     if (run.status !== 'running' && !reading) return no('this Run is not active');
     if (req.action === 'analyze') {
-      if (timeBoxSpent(run, 0)) return no('the Campaign hard time box is exhausted; no new model analysis can be recorded');
+      if (timeBoxSpent(run, ownedWaitedMs(run))) return no('the Campaign hard time box is exhausted; no new model analysis can be recorded');
       if (!req.nodeId || !executionContext(deps, run.id).nodes.some(node => node.id === req.nodeId)) return no('analysis must name a node of this Run');
       const parsed = researchAnalysis.safeParse(req.analysis);
       if (!parsed.success) return no(`analysis needs a bounded question, hypotheses, comparisons, claims, limitations and nextExperiments: ${parsed.error.message}`);
@@ -2089,7 +2091,13 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
         receipt = { ...receipt, owner: target, epoch: control.epoch + 1 };
       } else if (req.action === 'pause') changed = { paused: [...new Set([...control.paused, scope])] };
       else {
-        if (timeBoxSpent(run, 0)) return no('the Campaign time box is exhausted; continuing does not reset it');
+        // A human clearing a Hard blocker or a Pack Wait node is not itself new business work — it
+        // only records who cleared what, and (`clearExecutionBlocker` -> `advance`) widens the time box
+        // by the wait `waitedMsOf` credits it. Gating the clearance itself on the *current* flat
+        // `timeBoxSpent` would be circular: the box can look spent only because this same node has sat
+        // blocked, and refusing the one action that closes that wait would make `retryAllowance`
+        // unspendable exactly the way a Hard blocker must never be (CONTEXT.md). Whether *new* node
+        // work may begin afterward remains `begin`'s own, unchanged, `timeBoxSpent` gate below.
         const blocked = unclearedFailure(run, scope);
         if (blocked !== undefined) {
           if (req.origin !== 'human') return no('the failed node needs a human clearance of its blocker; an Agent continue cannot grant another retry allowance');
@@ -2107,7 +2115,9 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
           receipt = { ...receipt, executionId: waiting.id };
           await clearExecutionBlocker(deps, run, req, digest, waiting, scope, receipt);
           return answer('accepted', { receipt });
-        } else changed = { paused: control.paused.filter((paused) => paused !== scope) };
+        }
+        if (timeBoxSpent(run, ownedWaitedMs(run))) return no('the Campaign time box is exhausted; continuing does not reset it');
+        changed = { paused: control.paused.filter((paused) => paused !== scope) };
       }
       await recordExecutionAction(deps, run, req, digest, changed, receipt);
       const notifiedOwner = req.action === 'handoff' ? receipt.owner! : control.owner;
@@ -2120,10 +2130,10 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     }
     if (req.action === 'work' || req.action === 'complete' || req.action === 'write' || reading) return actOnExecution(deps, run, req, digest);
     if (req.action !== 'begin') return no('this execution operation is not implemented');
-    if (timeBoxSpent(run, 0)) return no('the Campaign hard time box is exhausted; no new node execution may begin');
+    if (timeBoxSpent(run, ownedWaitedMs(run))) return no('the Campaign hard time box is exhausted; no new node execution may begin');
     const runtimePack = executionPack(deps, run);
     const requestedNode = req.nodeId === undefined ? undefined : positionOf(runtimePack, req.nodeId)?.node;
-    if (requestedNode?.kind === 'act' && experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve; no new experimental act may begin');
+    if (requestedNode?.kind === 'act' && experimentBudgetSpent(run, ownedWaitedMs(run))) return no('the Campaign is in its closing reserve; no new experimental act may begin');
     if (requestedNode?.kind === 'act' && attemptLimitSpent(run)) return no('the Campaign attempt limit is exhausted; no new act execution may begin');
     if (req.nodeId !== undefined) {
       const paused = executionPauseReason(executionPack(deps, run), run, req.nodeId);
@@ -2167,10 +2177,15 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
 
 async function clearExecutionBlocker(deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest,
   digest: string, execution: NodeExecution, scope: string, receipt: ExecutionReceipt): Promise<void> {
-  await recordExecutionAction(deps, run, req, digest, {}, receipt, {}, 'admitted');
   const blocker = deps.ledger.records({ runId: run.id, type: 'blocker' }).findLast((record) => record.type === 'blocker' && record.nodeId === execution.nodeId);
+  // The `resumed` record is written before `recordExecutionAction`'s own `advance` call, not after:
+  // `advance` recomputes `run.meters.waitedMs` from `waitedMsOf`, which pairs a `blocker` with the
+  // `resumed` that closes it (CONTEXT.md; `waitedMsOf` in budget.ts). Writing it first is what lets
+  // this same clearance widen the deadline every later gate reads through `ownedWaitedMs`, instead of
+  // that credit only landing on some unrelated later write.
   await deps.ledger.appendResumed(run.id, { nodeId: execution.nodeId, who: `human in conversation ${req.actor}`,
     ...(blocker === undefined ? {} : { clears: blocker.id }) });
+  await recordExecutionAction(deps, existingRun(deps.ledger, run.id), req, digest, {}, receipt, {}, 'admitted');
   const control = existingRun(deps.ledger, run.id).control!;
   await deps.ledger.advanceRun(run.id, { control: { ...control,
     paused: control.paused.filter((paused) => paused !== scope && paused !== execution.nodeId),
@@ -2227,7 +2242,8 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
     beforeLaunch: async (offered: LaunchIntent) => {
       const revalidate = () => {
         if (deps.stopSignal?.aborted) throw new RunStartError('the Host stopped before this Job was launched');
-        if (experimentBudgetSpent(existingRun(deps.ledger, run.id), 0)) throw new RunStartError('the Campaign entered its closing reserve before this Job was launched');
+        const atLaunch = existingRun(deps.ledger, run.id);
+        if (experimentBudgetSpent(atLaunch, ownedWaitedMs(atLaunch))) throw new RunStartError('the Campaign entered its closing reserve before this Job was launched');
       };
       revalidate();
       const intent = launchIntentSchema.parse(offered);
@@ -2265,22 +2281,58 @@ export function trackExecutionTask(deps: FabricDeps, identity: string, work: () 
   void task.finally(() => { if (tasks.get(identity) === task) tasks.delete(identity); });
 }
 
-/** One abortable deadline on the existing fact-work tracker; it never launches business work. */
+/** A node only a person can clear is standing open right now — a Hard blocker with no clearance yet,
+ *  or a Pack Wait node nobody has cleared. Same test `unclearedFailure` already answers for `begin`'s
+ *  admission gate, plus its Wait-node counterpart, reused here so the deadline watchdog below and the
+ *  admission gates agree about what "still blocked" means. */
+function hasOpenHumanClearance(run: RunRecord): boolean {
+  if (unclearedFailure(run, '*') !== undefined) return true;
+  return Object.values(run.control?.executions ?? {}).some((execution) =>
+    execution.kind === 'wait' && execution.phase === 'ready' && execution.humanClearance === undefined
+    && execution.generation === (run.generation ?? 1) && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation);
+}
+
+/** How often the deadline watchdog re-checks a Run that looks time-boxed out but is actually standing
+ *  at an open Hard blocker or Wait node: short enough that a clearance is noticed promptly, long
+ *  enough not to matter while nothing is open. */
+const deadlineBlockedPollMs = 300;
+
+async function sleepOrAbort(ms: number, stopSignal: AbortSignal | undefined): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const done = () => { clearTimeout(timer); stopSignal?.removeEventListener('abort', done); resolve(); };
+    const timer = setTimeout(done, Math.min(ms, 2_147_483_647));
+    timer.unref();
+    stopSignal?.addEventListener('abort', done, { once: true });
+    if (stopSignal?.aborted) done();
+  });
+}
+
+/**
+ * One abortable deadline on the existing fact-work tracker; it never launches business work.
+ *
+ * The remaining term is read through `ownedWaitedMs`, the same widened deadline every admission gate
+ * in `executionAction` now reads (#A1 live-trial finding): a Run standing at a Hard blocker or Wait
+ * node only a person can clear is not spending its time box (`waitedMsOf`, budget.ts), so this
+ * watchdog must not end the Run out from under a clearance that has not landed yet. While the node is
+ * still open, the loop polls instead of firing `requestExecutionBudgetStop` — a slow human is exactly
+ * who a Hard blocker exists for, not a reason to scrap the Run before they arrive.
+ */
 export function scheduleExecutionDeadline(deps: FabricDeps, runId: string): void {
   const run = existingRun(deps.ledger, runId);
   if (run.control === undefined || (run.status !== 'running' && run.status !== 'waiting')) return;
   trackExecutionTask(deps, `deadline:${runId}`, async () => {
-    let remaining = timeBoxRemainingMs(existingRun(deps.ledger, runId), 0);
-    if (remaining === undefined) return;
-    while (remaining > 0 && !deps.stopSignal?.aborted) {
-      await new Promise<void>((resolve) => {
-        const done = () => { clearTimeout(timer); deps.stopSignal?.removeEventListener('abort', done); resolve(); };
-        const timer = setTimeout(done, Math.min(remaining!, 2_147_483_647));
-        timer.unref();
-        deps.stopSignal?.addEventListener('abort', done, { once: true });
-        if (deps.stopSignal?.aborted) done();
-      });
-      remaining = timeBoxRemainingMs(existingRun(deps.ledger, runId), 0) ?? 0;
+    for (;;) {
+      if (deps.stopSignal?.aborted) return;
+      const current = existingRun(deps.ledger, runId);
+      if (current.control === undefined || (current.status !== 'running' && current.status !== 'waiting')) return;
+      const remaining = timeBoxRemainingMs(current, ownedWaitedMs(current));
+      if (remaining === undefined) return;
+      if (remaining <= 0) {
+        if (!hasOpenHumanClearance(current)) break;
+        await sleepOrAbort(deadlineBlockedPollMs, deps.stopSignal);
+        continue;
+      }
+      await sleepOrAbort(remaining, deps.stopSignal);
     }
     if (!deps.stopSignal?.aborted) await controlling(deps, runId, () => requestExecutionBudgetStop(deps, runId));
   });
@@ -2359,7 +2411,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   if (execution.generation !== run.generation || execution.loopId !== run.loop?.id || execution.loopGeneration !== run.loop?.generation) return no('this execution belongs to an earlier generation or Loop');
   const paused = executionPauseReason(executionPack(deps, run), run, execution.nodeId);
   if (paused !== undefined && (req.action === 'work' || req.action === 'complete')) return no(paused);
-  if (experimentBudgetSpent(run, 0) && (req.action === 'write' || req.action === 'work' && (execution.kind === 'act' || timeBoxSpent(run, 0)))) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no experiment or Workshop write may start');
+  if (experimentBudgetSpent(run, ownedWaitedMs(run)) && (req.action === 'write' || req.action === 'work' && (execution.kind === 'act' || timeBoxSpent(run, ownedWaitedMs(run))))) return no('the Campaign is in its closing reserve or has exhausted its hard time box; no experiment or Workshop write may start');
   if (execution.inputThroughSeq === undefined || execution.inputDigest !== inputIdentity(deps, run, execution.inputThroughSeq)) return no('the execution input version no longer matches the Run');
   let ctx: Driving;
   try { ctx = executionDriving(deps, run, execution); } catch (error) { return no((error as Error).message); }
@@ -2389,7 +2441,8 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
       return executionAnswer(deps, run.id, 'accepted', { receipt });
     } catch (error) {
       if (error instanceof LaunchNotDispatchedError) {
-        const exhausted = experimentBudgetSpent(existingRun(deps.ledger, run.id), 0);
+        const afterFault = existingRun(deps.ledger, run.id);
+        const exhausted = experimentBudgetSpent(afterFault, ownedWaitedMs(afterFault));
         // Only Jobs' pre-dispatch boundary can establish this fact. Errors after sending the
         // launch command keep their intent below, even when no launch receipt was persisted.
         await updateExecution(deps, run.id, execution.id, { phase: 'failed', intent: undefined,
@@ -2401,7 +2454,7 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
       return executionAnswer(deps, run.id, 'accepted', { receipt, reason: `work was admitted but its effect is uncertain; do not repeat the launch: ${(error as Error).message}` });
     }
   }
-  if (timeBoxSpent(run, 0) && node.kind === 'explore') return no('the Campaign hard time box is exhausted; an unfinished strategy analysis cannot be committed as a completed Explore decision');
+  if (timeBoxSpent(run, ownedWaitedMs(run)) && node.kind === 'explore') return no('the Campaign hard time box is exhausted; an unfinished strategy analysis cannot be committed as a completed Explore decision');
   return completeAdmittedNode(ctx, req, execution, digest);
 }
 
@@ -2467,7 +2520,7 @@ async function completeAdmittedNode(ctx: Driving, req: ExecutionActionRequest, e
     let chosen: DecisionRecord['chosen'];
     let rationale: DecisionRecord['rationale'] = {};
     if (req.decision === 'next-strategy') {
-      if (experimentBudgetSpent(run, 0)) return no('the Campaign is in its closing reserve; a new experimental strategy cannot be admitted');
+      if (experimentBudgetSpent(run, ownedWaitedMs(run))) return no('the Campaign is in its closing reserve; a new experimental strategy cannot be admitted');
       if (req.strategy === undefined || Object.keys(req.strategy).length === 0) return no('next-strategy needs the actual Strategy to try');
       const admitted = strategyFrom(ctx.pack.contract.strategy, { ...run.strategy, ...req.strategy });
       if ('error' in admitted) return no(admitted.error);
@@ -2542,7 +2595,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
   const writes = req.action === 'write';
   const initializes = execution.workshop === undefined;
   if (writes && execution.phase !== 'begun') return no('this executable version is already in use or has a result; changing an active or historical file is not an accepted revision');
-  if ((writes || initializes) && (run.status !== 'running' || experimentBudgetSpent(run, 0) || run.control?.stop !== undefined || Object.values(run.control?.requests ?? {}).some((request) => request.receipt.action === 'continue' && request.state !== 'done'))) return no('the Run cannot prepare or write a new Workshop version after it ended or entered its closing reserve');
+  if ((writes || initializes) && (run.status !== 'running' || experimentBudgetSpent(run, ownedWaitedMs(run)) || run.control?.stop !== undefined || Object.values(run.control?.requests ?? {}).some((request) => request.receipt.action === 'continue' && request.state !== 'done'))) return no('the Run cannot prepare or write a new Workshop version after it ended or entered its closing reserve');
   if (writes && (typeof req.path !== 'string' || typeof req.content !== 'string')) return no('write needs a relative path and the actual file content');
   const mutates = writes || initializes;
   const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
