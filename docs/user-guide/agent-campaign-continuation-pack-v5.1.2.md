@@ -1,38 +1,36 @@
-# HimaHarness Pack 5.1.1：真实 Campaign 续测与 Bug Fix 任务
-
-> 历史协议：本任务已经执行并暴露了三个后续 blocker。下一轮使用
-> [Pack 5.1.2 Campaign 续测指导书](agent-campaign-continuation-pack-v5.1.2.md)。
+# HimaHarness Pack 5.1.2：真实 Campaign 续测与 Bug Fix 任务
 
 ## 任务
 
 你接手的是一次新的真实 Campaign，不是继续 trial.5 的旧 Run。使用现有
-HimaHarness 0.3.0-trial.5 App、DeepSeek-V4.1-Flash 和 Reference Pack 5.1.1，在
+HimaHarness 0.3.0-trial.6 App、DeepSeek-V4.1-Flash 和 Reference Pack 5.1.2，在
 `aes_cipher_top` 上持续探索累积 Custom Cell Library，争取 matched post-route Fmax
 提升达到或超过 5%。
 
-trial.5 已证明免费挖掘分支可以并行、Workshop 可以自动改写重试、Library Compiler
-许可证可用。它在 `foundry-synth` 失败，因为 Pack 5.1.0 把 Liberty 文本传给了只接受
-二进制 `.db` 的 Design Compiler。Pack 5.1.1 修复了这个输入绑定。你的首个验收出口是
-证明修复进入真实 Campaign，随后继续 E0、P&R 和反馈迭代。
+trial.5 已证明免费挖掘分支可以并行、Workshop 可以自动改写重试。Pack 5.1.1 随后真实
+通过 LC、DC、custom synthesis 和 adoption，但又暴露了 rich Permit 无法 rediscover、
+多输出 Cell 身份分裂，以及 `M7` 被传给 Innovus 整数参数并空等超时三个问题。trial.6 与
+Pack 5.1.2 修复这三个 blocker。你的首个验收出口是验证它们进入真实 Campaign，随后完成
+两臂 P&R、E0、反馈迭代和 5% Goal 判断。
 
 ## 固定身份
 
 | 项目 | 值 |
 | --- | --- |
-| App | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.5/HimaHarness.app` |
-| 启动器 | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.5/launch-hima-trial.command` |
+| App | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.6/HimaHarness.app` |
+| 启动器 | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.6/launch-hima-trial.command` |
 | Pack 来源 | `/Users/lluzi/code/hima_harness_reforge_polishing/packs/custom-cell-fmax-dtco` |
-| Pack version | `5.1.1` |
-| Pack method digest | `bfd586716af5b2e11921e7aa43fbcd97f558df57ef06dafbf73aff508c369d3c` |
-| Pack release | `https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/custom-cell-fmax-dtco-v5.1.1` |
+| Pack version | `5.1.2` |
+| Pack method digest | `5d40668963df062b55ac2323a056784993d0a0fe630e9fa7110d6f027518b717` |
+| Pack release | `https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/custom-cell-fmax-dtco-v5.1.2` |
 | Site | `luzi@192.168.50.41` |
 | Workspace root | `/data/eda/project/hima_harness/polishing-runs` |
 | Design top | `aes_cipher_top` |
 | Model | App 当前配置的 `DeepSeek-V4.1-Flash` |
 
 主仓库、已发布 Pack、App bundle 和旧 Run 证据保持只读。产品 Bug 只在独立 worktree
-`/Users/lluzi/code/hima_harness_agent_trial_fix_v6`、分支
-`agent/hima-trial-bugfix-v6` 中修改。Site 上只写 Campaign workspace 或明确的隔离临时目录，
+`/Users/lluzi/code/hima_harness_agent_trial_fix_v7`、分支
+`agent/hima-trial-bugfix-v7` 中修改。Site 上只写 Campaign workspace 或明确的隔离临时目录，
 不删除文件，不修改共享 EDA、许可证、网络或他人作业。
 
 ## 步骤 1：启动并安装正确 Pack
@@ -40,7 +38,7 @@ trial.5 已证明免费挖掘分支可以并行、Workshop 可以自动改写重
 在 Catsights 副屏运行：
 
 ```bash
-cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.5"
+cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.6"
 ./launch-hima-trial.command
 ```
 
@@ -49,9 +47,9 @@ cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-tr
 
 安装后同时核对：
 
-- 页面显示 version `5.1.1`；
+- 页面显示 version `5.1.2`；
 - `VERSION.yml` 的 method digest 与上表一致；
-- 当前 Campaign configuration 选择的是 5.1.1，而不是 App 内置的 5.1.0；
+- 当前 Campaign configuration 选择的是 5.1.2；
 - 旧 5.1.0 Run 保持历史状态，不被恢复成新 Pack 的 Run。
 
 完成条件：已安装 Pack 的 version 和 digest 两项都匹配。任一不匹配时记录
@@ -59,7 +57,9 @@ cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-tr
 
 ## 步骤 2：让 HimaGuide准备 Site
 
-先让 HimaGuide 做 discovery 和 readiness。只有自然准备受阻后，才使用以下恢复信息：
+先对已保存 Site 执行 rediscover，再让 HimaGuide 做 readiness。rediscover 必须保留已审阅的
+九个以上 read roots、实际 workspace、wrapper 和绑定，并真正联系 Site；不再接受
+`expected array to have <=8 items`。只有自然准备受阻后，才使用以下恢复信息：
 
 | 输入 | Site 值 |
 | --- | --- |
@@ -75,8 +75,8 @@ cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-tr
 `physicalInputs` 必须声明 `FOUNDRY_DB_FILE`，并指向与上述 Liberty 匹配的 `.db`。让
 HimaGuide 读取并核对，不要把 `.db` 再填进 `foundryLibrary`。保存 Site 后重新打开 readiness。
 
-完成条件：Readiness 无未解释阻塞；Site 显示 DC、LC、Innovus 各一席许可证，job cap 不超过
-5；HimaGuide 能说明 `.lib` 和 `.db` 的不同消费者。
+完成条件：记录 `RICH_SITE_REDISCOVER_PASS`；Readiness 无未解释阻塞；Site 显示 DC、LC、
+Innovus 各一席许可证，job cap 不超过 5；HimaGuide 能说明 `.lib` 和 `.db` 的不同消费者。
 
 ## 步骤 3：创建唯一的新 Campaign
 
@@ -92,9 +92,9 @@ HimaGuide 读取并核对，不要把 `.db` 再填进 `foundryLibrary`。保存 
 version/digest、workspace 和当前节点。一个 Campaign 只对应一个持久 Run；发生等待或 App 重启时
 恢复该 Run，不复制 Run。
 
-完成条件：新 Run 的 Pack identity 是 5.1.1，且当前节点从 `bind-inputs` 正常推进。
+完成条件：新 Run 的 Pack identity 是 5.1.2，且当前节点从 `bind-inputs` 正常推进。
 
-## 步骤 4：修复验收出口
+## 步骤 4：5.1.2 修复验收出口
 
 依次取得以下事实：
 
@@ -106,9 +106,17 @@ version/digest、workspace 和当前节点。一个 Campaign 只对应一个持�
 2. `compile` 通过，Library Compiler 的真实 invocation 和 `lc_accepted = 1` 可追溯。
 3. `foundry-synth` 使用 `FOUNDRY_DB`，Design Compiler 正常产生非空 `base.dc.v`。
 4. 当前 Run 不出现 `DB-1: File is not a DB file`。
+5. 若 Workshop 选择多输出候选，`design-mapping-timing-evaluation` 必须把每个 request 识别为
+   一颗 `_MO` Cell 和多个 output pins，不得出现 `Cell identity mismatch`；累计 Library 也只能
+   记录这一颗 physical Cell。
+6. `pnr-foundry` 和 `pnr-generated` 的实际 init 脚本向
+   `-routeTopRoutingLayer` 传正整数，不传 `M7`；两臂都越过 init 并继续 placement/route。
+7. 任意 Innovus Tcl 错误必须在几十秒内以非零状态返回，日志保留 `HIMA_BATCH_ERROR` 和原始
+   Tcl 错误；不得空等到 `PNR_TIMEOUT_SEC=7200`。
 
-完成条件：四项全部成立，记录 `SPLIT_LIBRARY_FIX_PASS`。任何一项失败都记录准确的节点、Job、
-命令、退出码、日志和绑定值，不继续 P&R 掩盖失败。
+完成条件：1–4 记录 `SPLIT_LIBRARY_FIX_PASS`；自然出现多输出候选时记录
+`MULTI_OUTPUT_IDENTITY_PASS`；6–7 记录 `INNOVUS_BATCH_INIT_PASS`。任何一项失败都记录准确的
+节点、Job、命令、退出码、日志和绑定值，不继续后续阶段掩盖失败。
 
 ## 步骤 5：继续自主研究闭环
 
@@ -133,8 +141,8 @@ version/digest、workspace 和当前节点。一个 Campaign 只对应一个持�
 ```bash
 git -C /Users/lluzi/code/hima_harness_reforge_polishing fetch origin
 git -C /Users/lluzi/code/hima_harness_reforge_polishing worktree add \
-  -b agent/hima-trial-bugfix-v6 \
-  /Users/lluzi/code/hima_harness_agent_trial_fix_v6 \
+  -b agent/hima-trial-bugfix-v7 \
+  /Users/lluzi/code/hima_harness_agent_trial_fix_v7 \
   origin/main
 ```
 
@@ -147,13 +155,13 @@ rebase 或 push `main`，不得创建 release/tag。Pack 方法变化必须形�
 
 写入一个新的报告文件，不覆盖 trial.5 的历史报告：
 
-`/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.5/Agent Trial Report 5.1.1.md`
+`/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.6/Agent Trial Report.md`
 
 报告至少包含：
 
 - App、Pack version/digest、模型、Site、时间与 Catsights 录屏位置；
 - 新 Campaign/Run/owner/workspace 身份；
-- 四项 split-library 修复验收事实；
+- rich Permit、split-library、多输出身份和 Innovus batch/init 修复验收事实；
 - 每代 Library、假设、免费指标、E0、frontier response 和下一决策；
 - 最终 adoption、route retention、WNS/TNS/Fmax/PPA 与 5% Goal 判断；
 - 每个 Bug 的复现、根因、修改文件、commit、测试和回滚；
@@ -164,4 +172,4 @@ rebase 或 push `main`，不得创建 release/tag。Pack 方法变化必须形�
 - `MILESTONE_PASS`：matched final database 证明采用、route retention 和 Fmax 提升至少 5%；
 - `LOOP_WORKS_TARGET_MISS`：多轮闭环真实结束，但预算内未达到 5%；
 - `PARTIAL`：修复验收通过，完整研究闭环尚未结束；
-- `FAIL`：5.1.1 仍无法穿过修复出口，或产品事实不可信。
+- `FAIL`：5.1.2 仍无法穿过修复出口，或产品事实不可信。

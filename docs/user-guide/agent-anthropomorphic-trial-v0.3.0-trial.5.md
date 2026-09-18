@@ -2,7 +2,7 @@
 
 > 历史协议：本任务已由 trial.5 执行。下一位 Agent 不应重复其中的故意 Workshop
 > 拒绝试验，也不能使用内置的 Pack 5.1.0 开始新 Campaign。下一轮使用
-> [Pack 5.1.1 Campaign 续测指导书](agent-campaign-continuation-pack-v5.1.1.md)。
+> [Pack 5.1.2 Campaign 续测指导书](agent-campaign-continuation-pack-v5.1.2.md)。
 
 ## 任务目标
 
