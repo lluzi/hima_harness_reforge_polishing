@@ -135,7 +135,7 @@ export const timeBoxSpent = (run: RunRecord, waitedMs: number): boolean => timeB
 
 /**
  * How long this Run has spent waiting on a person, in milliseconds, read from its records alone: for
- * each resume, the time from the Hard blocker it cleared.
+ * each resume, the time from the Hard blocker or explicit Pack Wait it cleared.
  *
  * The Budget meters the design and the EDA environment, never the person (CONTEXT.md, Budget; a Hard
  * blocker is by definition a failure only a person can clear). A node that blocks at minute five of
@@ -143,10 +143,11 @@ export const timeBoxSpent = (run: RunRecord, waitedMs: number): boolean => timeB
  * nothing of the design was running in between, and nothing of the Site was held. So the deadline is
  * `createdAt + timeBoxMs + waitedMs`, and this is that second term.
  *
- * A blocker with no resume after it is a wait still open and counts nothing yet: nothing runs while
- * it stands, so nothing is being charged, and the resume that closes it is what makes it count. Each
- * resume is paired with the last blocker written since the previous resume, which is the same pair
- * `resumeRun` itself re-enters a Run on, so the two can never disagree about which wait was which.
+ * A blocker/Wait with no resume after it is a wait still open and counts nothing yet: nothing runs
+ * while it stands, so nothing is being charged, and the resume that closes it is what makes it
+ * count. A Hard blocker has a dedicated `blocker` record. A Pack Wait has the `node/blocked` record
+ * written when its owned execution enters that declared Wait node; its `resumed.nodeId` names that
+ * same node. Pairing both from durable records keeps a later Host on the same deadline.
  */
 export function waitedMsOf(ledger: Ledger, runId: string): number {
   const records = ledger.records({ runId });
@@ -155,8 +156,13 @@ export function waitedMsOf(ledger: Ledger, runId: string): number {
   for (const resumed of records) {
     if (resumed.type !== 'resumed') continue;
     const blocker = records.findLast((r) => r.type === 'blocker' && r.seq > since && r.seq < resumed.seq);
+    const packWait = blocker === undefined
+      ? records.findLast((r) => r.type === 'node' && r.kind === 'wait' && r.state === 'blocked'
+        && r.nodeId === resumed.nodeId && r.seq > since && r.seq < resumed.seq)
+      : undefined;
     since = resumed.seq;
-    if (blocker) waited += Math.max(0, Date.parse(resumed.at) - Date.parse(blocker.at));
+    const opened = blocker ?? packWait;
+    if (opened) waited += Math.max(0, Date.parse(resumed.at) - Date.parse(opened.at));
   }
   return waited;
 }

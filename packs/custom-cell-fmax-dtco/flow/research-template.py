@@ -6,7 +6,7 @@ import sys
 WORKSPACE_ARG = 2 if len(sys.argv) >= 2 and sys.argv[1] == "--lfr-residual" else 1
 FLOW = Path(sys.argv[WORKSPACE_ARG]).resolve() / "flow"
 sys.path.insert(0, str(FLOW))
-from ai_research_runner import run, run_residual_research  # noqa: E402
+from ai_research_runner import residual_evidence_sha256, run, run_residual_research  # noqa: E402
 
 
 def residual_research(context):
@@ -28,6 +28,11 @@ def residual_research(context):
          "language": "python", "entrypoint": "propose_candidates",
          "source": "def propose_candidates(residual, budget): ..."},
        "stop_reason": str}
+
+    Call ``residual_evidence_sha256(context)`` and cite one or more values from that returned list
+    in every lens. Those hashes identify the residual evaluation/frontier/manifest/candidate-pool
+    evidence accepted by the validator. Do not copy Workshop input-record hashes from a transcript:
+    they identify the capture operation, not the residual evidence object.
 
     The candidate program is a pure proposal function.  It receives residual
     data and the deterministic budget object, performs no file/process/network I/O,

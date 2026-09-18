@@ -77,13 +77,19 @@ There is one `research-candidates` Workshop after all six method-evidence routes
 different ways to propose or rank Cells, not separate algorithms that receive their own EDA trials. Read each compact
 `research_ROUTE` view, the probe, `researchTemplate`, and this method. Read a full raw/source file
 when a hypothesis needs its detailed occurrence or Boolean proof. Copy `researchTemplate` as
-`entry.py` and implement only `research(candidates, context)`. The fixed
+`entry.py` and implement only `residual_research(context)`. The fixed
 `ai_research_runner.py` reads every complete raw file, folds Boolean/interface-equivalent requests into
 one candidate with `source_methods` and `method_rankings`, supplies the current design/top, explicit
 reg2reg pressure, source phase, current/remaining gain, build budget, timing-family evidence,
 mechanically derived theoretical upper bounds and retained synthesis/adoption feedback, validates the returned
 hypotheses and exact source identities, writes all six route projections, and calls the independent
-reader. The runner is I/O scaffolding; the authored `research()` function is the research asset.
+reader. The runner is I/O scaffolding; the authored residual function is the research asset.
+
+For every lens, call `residual_evidence_sha256(context)` from the fixed runner and cite one or more
+of the returned values in `evidence_sha256`. Those are the accepted residual evaluation, frontier,
+manifest, candidate-pool and history identities. Workshop capture-record hashes are a different
+identity layer and are not valid lens citations. A validator refusal names the exact malformed field
+so the next revision can correct it without reading the protected runner source.
 For model compatibility, every candidate also carries stable `route`, `evidence`, `interface`,
 `equivalence_digest` and `implementation_route` aliases. The full `discovery_evidence` and
 `generator_contract` remain beside them; do not reconstruct or guess aliases from raw nesting.

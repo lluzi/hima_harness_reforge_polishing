@@ -159,23 +159,33 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ sessionId, name: 'lab-a' }),
       });
-      const previewBody = await preview.json() as { result: { site: { ssh?: { destination: string } } }; saved?: unknown };
+      const previewBody = await preview.json() as { result: { site: { ssh?: { destination: string } }; permit: { allowedReadRoots: string[]; allowedWriteRoots: string[] } }; saved?: unknown; reviewId?: string };
       assert.equal(preview.status, 200, JSON.stringify(previewBody));
       assert.equal(previewBody.result.site.ssh?.destination, 'engineer@lab.example.com', 'the saved Site\'s own destination is reused, never asked again');
       assert.equal(previewBody.saved, undefined, 'a preview (save left false) writes nothing');
+      assert.ok(previewBody.reviewId, 'a browser preview receives a Host-held identity for these exact reviewed facts');
+      assert.deepEqual(previewBody.result.permit.allowedReadRoots, ['/work']);
+      assert.deepEqual(previewBody.result.permit.allowedWriteRoots, ['/work/hima']);
       const beforeSaveMtime = (await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs;
 
-      // The person's own save of that reviewed draft: a second, identical call with save:true is the
-      // only thing that writes the Site and Permit files.
+      // Make any second discovery fail. Save must persist the Host-held preview above, not rerun
+      // probes and write facts the person never reviewed.
+      await writeFile(tableFile, JSON.stringify({ connect: { fail: 'the Site changed after review' } }));
       const saved = await api(f.host, f.cookie, '/hima/api/sites/discover', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId, name: 'lab-a', save: true }),
+        body: JSON.stringify({ sessionId, name: 'lab-a', reviewId: previewBody.reviewId, save: true }),
       });
       const savedBody = await saved.json() as { saved?: SiteHeadView };
       assert.equal(saved.status, 200, JSON.stringify(savedBody));
       assert.ok(savedBody.saved, JSON.stringify(savedBody));
       assert.equal(savedBody.saved!.name, 'lab-a');
       assert.ok((await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs >= beforeSaveMtime, 'the reviewed rediscovery actually replaced the saved Site file');
+
+      const replay = await api(f.host, f.cookie, '/hima/api/sites/discover', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, name: 'lab-a', reviewId: previewBody.reviewId, save: true }),
+      });
+      assert.equal(replay.status, 400, 'a reviewed draft is consumed once and cannot be replayed');
 
       // A rediscover naming a Site this Host has never saved is still the caller's own mistake, not
       // an unexplained 500 — the same 400/"ssh" contract Case 7 already holds a brand-new Site to.

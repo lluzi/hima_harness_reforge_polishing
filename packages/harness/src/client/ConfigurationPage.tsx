@@ -254,7 +254,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   // Permit file (by design: the person is the one who may grant a Permit's authority, never the
   // model). This holds a freshly rediscovered, *unsaved* draft for this page's own review, mirroring
   // the Pack install review-then-confirm pattern (`PackOwnerPanel`) rather than saving automatically.
-  const [siteRediscovery, setSiteRediscovery] = useState<{ readonly name: string; readonly result: SiteDiscoveryResult } | undefined>();
+  const [siteRediscovery, setSiteRediscovery] = useState<{ readonly name: string; readonly result: SiteDiscoveryResult; readonly reviewId: string } | undefined>();
   const [knowledgePath, setKnowledgePath] = useState('');
   // Which fields have an unsaved debounce pending, and how many saves are on the wire right now —
   // together, whether it is safe to say this page is ready: a Host answer that called the file ready
@@ -446,7 +446,8 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
     const name = host.replace(/[^A-Za-z0-9_.-]/g, '-').replace(/^[^A-Za-z]+/, 'site-');
     setDiscovering(true); setError(undefined);
     const workspaceRoot = siteHints.trim() || undefined;
-    const result = await discoverSite({ sessionId, name, ssh: { destination }, save: true, ...(workspaceRoot === undefined ? {} : { hints: { workspaceRoot } }) });
+    const result = await discoverSite({ sessionId, name, pack: draft.pack?.id, ssh: { destination }, save: true,
+      ...(workspaceRoot === undefined ? {} : { hints: { workspaceRoot, allowedReadRoots: [workspaceRoot], allowedWriteRoots: [workspaceRoot] } }) });
     setDiscovering(false);
     if (!result.ok) { setError(result.error.message); return; }
     commitField('site', (file) => ({ ...file, site: { name } }));
@@ -457,10 +458,11 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   const rediscoverSite = async () => {
     if (siteName === '') return;
     setDiscovering(true); setError(undefined);
-    const result = await discoverSite({ sessionId, name: siteName, save: false });
+    const result = await discoverSite({ sessionId, name: siteName, pack: draft.pack?.id, save: false });
     setDiscovering(false);
     if (!result.ok) { setError(result.error.message); return; }
-    setSiteRediscovery({ name: siteName, result: result.value.result });
+    if (result.value.reviewId === undefined) { setError('Site rediscovery returned no review identity; nothing was saved.'); return; }
+    setSiteRediscovery({ name: siteName, result: result.value.result, reviewId: result.value.reviewId });
   };
 
   /** The person's own save of the draft `rediscoverSite` produced: a second, identical discovery
@@ -470,7 +472,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
   const saveSiteRediscovery = async () => {
     if (siteRediscovery === undefined) return;
     setDiscovering(true); setError(undefined);
-    const result = await discoverSite({ sessionId, name: siteRediscovery.name, save: true });
+    const result = await discoverSite({ sessionId, name: siteRediscovery.name, reviewId: siteRediscovery.reviewId, save: true });
     setDiscovering(false);
     if (!result.ok) { setError(result.error.message); return; }
     setSiteRediscovery(undefined);
@@ -559,6 +561,9 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
       {proposal?.site ? <p className="hima-config-detail">{proposal.site.name} · {proposal.site.kind} · {proposal.site.resources.cores} cores · {proposal.site.resources.memoryGiB} GiB · {proposal.site.resources.parallelJobs} parallel job(s)</p> : null}
       {siteRediscovery !== undefined && siteRediscovery.name === siteName ? <div className="hima-config-site-draft" data-hima-region="config-site-rediscovery">
         <p className="hima-config-detail">Rediscovered {siteRediscovery.result.unknowns.length} unknown(s){siteRediscovery.result.conflicts.length > 0 ? `, ${siteRediscovery.result.conflicts.length} conflict(s)` : ''} — not saved yet.</p>
+        <p className="hima-small">Read roots: {siteRediscovery.result.permit.allowedReadRoots.join(', ') || 'none'}</p>
+        <p className="hima-small">Write roots: {siteRediscovery.result.permit.allowedWriteRoots.join(', ') || 'none'}</p>
+        <p className="hima-small">Wrappers: {siteRediscovery.result.permit.allowedWrappers.join(', ') || 'none'}</p>
         {siteRediscovery.result.unknowns.map((sentence, index) => <p key={index} className="hima-small">{sentence}</p>)}
         {siteRediscovery.result.conflicts.map((sentence, index) => <p key={index} className="hima-small">{sentence}</p>)}
         <button className="hima-button hima-primary" data-hima-control="config-site-rediscover-save" disabled={discovering} onClick={() => { void saveSiteRediscovery(); }}>{discovering ? 'Saving…' : 'Save reviewed Site'}</button>

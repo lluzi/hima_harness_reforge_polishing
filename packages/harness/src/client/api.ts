@@ -92,7 +92,7 @@ export const fetchSites = (signal?: AbortSignal): Promise<HimaResult<{ sites: re
 
 /** Learn a Site through the caller's own SSH identity (#41 task 4): a preview when `save` is left
  *  false or absent, a saved Site and Permit file when it is true. No credential is read or stored. */
-export function discoverSite(body: SiteDiscoverBody, signal?: AbortSignal): Promise<HimaResult<{ result: SiteDiscoveryResult; saved?: SiteHeadView }>> {
+export function discoverSite(body: SiteDiscoverBody, signal?: AbortSignal): Promise<HimaResult<{ result: SiteDiscoveryResult; saved?: SiteHeadView; reviewId?: string }>> {
   return runRequest(siteDiscoverPath(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
 }
 

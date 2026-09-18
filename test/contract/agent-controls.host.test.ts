@@ -138,7 +138,7 @@ test('a human clearing a Hard blocker is not refused merely because the time box
     const owner = await createRootAgent(host.ctx, home.h.workspace);
     // The box is real but short: well past enough to cover the fast local failing attempts below,
     // and much shorter than the deliberate wait the test then holds the block open for.
-    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, retryAllowance: 2, timeBoxMs: 1500, ownerSessionId: String(owner.id) });
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, retryAllowance: 2, timeBoxMs: 10_000, ownerSessionId: String(owner.id) });
     assert.equal(started.kind, 'ran');
     if (started.kind !== 'ran') return;
     runId = started.run.id;
@@ -159,14 +159,57 @@ test('a human clearing a Hard blocker is not refused merely because the time box
     // The human investigates slowly: this alone would put `Date.now()` well past `createdAt +
     // timeBoxMs`, which is exactly the moment the live trial's operator could not get `continue` to
     // do anything at all.
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 10_500));
     const cleared = await act('continue', undefined, 'human');
     assert.equal(cleared.kind, 'accepted', 'a Hard blocker clearance must not be refused by the flat time-box gate a plain continue still uses');
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'resumed' }).length, 1);
     const resumed = host.ctx.hima.executionContext(runId).run;
-    assert.ok((resumed.meters?.waitedMs ?? 0) >= 1900, 'the closed wait is credited back to the Run the same way waitedMsOf computes it');
+    assert.ok((resumed.meters?.waitedMs ?? 0) >= 10_400, 'the closed wait is credited back to the Run the same way waitedMsOf computes it');
     const next = await act('begin');
     assert.equal(next.kind, 'accepted', 'new work may begin again once the blocked wait widens the deadline, not just the clearance receipt');
+    const revision = await host.ctx.hima.executionAction({
+      runId, actor: String(owner.id), action: 'revise', revision: {} as never, origin: 'agent',
+      expectedEpoch: next.context.run.control!.epoch, expectedRevision: next.context.run.control!.revision,
+      requestId: 'slow-clear-invalid-revision',
+    });
+    assert.match(revision.reason ?? '', /invalid revision request/, 'revision reaches its own schema gate instead of the uncredited original deadline');
+    const worked = await act('work', next.receipt?.executionId);
+    assert.equal(worked.kind, 'accepted', 'the credited wait reaches the actual Job path, not only begin admission');
+    await waitUntil('post-clearance Job settles through its ordinary observer', () => {
+      const settled = host.ctx.hima.executionContext(runId!).executions.find((item) => item.id === next.receipt?.executionId);
+      return settled !== undefined && settled.phase !== 'working' && settled.result?.kind !== 'budget-exhausted';
+    }, 8000);
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});
+
+test('an explicit Pack Wait credits the person wait before later work is budgeted', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0.01 });
+  assert.ok(home);
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, timeBoxMs: 2500, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    await host.ctx.hima.ledger.advanceRun(runId, { currentNode: 'blocked' });
+    let counter = 0;
+    const act = (action: 'begin' | 'work' | 'continue', executionId?: string, origin: 'agent' | 'human' = 'agent') => {
+      const control = host.ctx.hima.executionContext(runId!).run.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), action, executionId,
+        nodeId: 'blocked', origin, expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: `pack-wait-${++counter}` });
+    };
+    const begun = await act('begin'); assert.equal(begun.kind, 'accepted');
+    assert.equal((await act('work', begun.receipt?.executionId)).kind, 'accepted');
+    await waitUntil('Pack Wait is ready for a person', () => host.ctx.hima.executionContext(runId!).executions.some((item) => item.id === begun.receipt?.executionId && item.phase === 'ready'));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    assert.equal((await act('continue', undefined, 'human')).kind, 'accepted');
+    const resumed = host.ctx.hima.executionContext(runId).run;
+    assert.ok((resumed.meters?.waitedMs ?? 0) >= 2900, `the Pack Wait node record is paired with the human resume: ${JSON.stringify({ waitedMs: resumed.meters?.waitedMs, records: host.ctx.hima.ledger.records({ runId }) })}`);
   } finally {
     if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
     await host.dispose(); await home.h.dispose();

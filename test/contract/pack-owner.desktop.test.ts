@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { localHome } from './support/fabric.ts';
+import { createEmptyHome } from './support/dsh-home.ts';
 import { packsDirOf } from './support/pack.ts';
 import { bootDriver } from './support/driver.ts';
 import { freePort } from './support/boot-host.ts';
@@ -56,4 +57,34 @@ test('owner reviews selected knowledge files and confirms the exact local sharin
     assert.deepEqual(await readFile(path.join(destination, relative)), await readFile(source));
   } catch (error) { t.diagnostic(await browser.evaluate<string>('document.body.innerText')); throw error; }
   finally { browser.close(); await d.dispose(); await home.h.dispose(); }
+});
+
+test('a rejected native Pack folder picker opens the manual review path instead of leaving Install inert', async (t) => {
+  const home = await createEmptyHome();
+  const port = await freePort();
+  const d = await bootDriver(t, { existing: home, remoteDebuggingPort: port, theme: 'light', window: { width: 1440, height: 960 },
+    env: { HIMA_TEST_SILENT_AGENT: '1' } });
+  if (!d) { await home.dispose(); return; }
+  const browser = await inspectWindow(port);
+  try {
+    await d.open('/');
+    await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
+    await browser.markText('button', 'Continue', 'notice-continue'); assert.ok((await d.click('notice-continue')).ok);
+    await browser.wait(`document.body.innerText.includes('Configure later')`);
+    await browser.markText('button', 'Configure later', 'pack-picker-models-later'); assert.ok((await d.click('pack-picker-models-later')).ok);
+    const host = await d.host(); assert.ok(host.ok); const cookie = await d.cookie();
+    const workspace = await api(host, cookie, '/api/workspace/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+      type: 'client-request', rpcId: 'pack-picker-workspace', method: 'workspace/create', payload: { args: { request: { path: home.workspace } } },
+    }) });
+    assert.equal((await workspace.json() as { result: { ok: boolean } }).result.ok, true);
+    await browser.wait(`document.querySelector('[role="treegrid"], [role="tree"]')?.textContent.includes('workspace') || [...document.querySelectorAll('[role="row"]')].some(e=>e.textContent.trim()==='workspace')`);
+    await browser.markText('button', 'New Session', 'pack-picker-new-session'); assert.ok((await d.click('pack-picker-new-session')).ok);
+    await browser.wait(`!document.querySelector('[data-hima-control="open-workbench"]').disabled`);
+    assert.ok((await d.click('open-workbench')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="config-install-pack"]')`);
+    assert.ok((await d.click('config-install-pack')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="pack-owner"]') && !!document.querySelector('[data-hima-control="owner-location"]')`, 15_000);
+    assert.equal(await browser.evaluate(`document.querySelector('[data-hima-control="owner-location"]').value`), '', 'manual source entry remains available after picker rejection');
+  } catch (error) { t.diagnostic(await browser.evaluate<string>('document.body.innerText')); throw error; }
+  finally { browser.close(); await d.dispose(); await home.dispose(); }
 });

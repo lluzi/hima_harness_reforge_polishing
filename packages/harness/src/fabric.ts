@@ -1487,7 +1487,7 @@ async function revisionAction(deps: FabricDeps, snapshot: RunRecord, req: Execut
   const answer = (kind: ExecutionActionResult['kind'], reason?: string, receipt?: ExecutionReceipt): ExecutionActionResult => ({
     kind, context: executionContext(deps, snapshot.id), ...(reason === undefined ? {} : { reason }), ...(receipt === undefined ? {} : { receipt, data: receipt.data }),
   });
-  if (experimentBudgetSpent(snapshot, 0)) return answer('refused', 'the Campaign is in its closing reserve or has exhausted its hard time box; no revision may start');
+  if (experimentBudgetSpent(snapshot, ownedWaitedMs(snapshot))) return answer('refused', 'the Campaign is in its closing reserve or has exhausted its hard time box; no revision may start');
   if (attemptLimitSpent(snapshot)) return answer('refused', 'the Campaign attempt limit is exhausted; revision cannot create another act attempt');
   const parsed = revisionProposal.safeParse(req.revision);
   if (!parsed.success) return answer('refused', `invalid revision request: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'revision'} ${issue.message}`).join('; ')}`);
@@ -2237,7 +2237,7 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
   return {
     deps: { ...deps, beforeSlotClaim: (siteName) => reconcileExecutionIntents(deps, siteName) },
     runId: run.id, site, pack, bindings: boundInputs(pack, site), workspace: prepared.workspace,
-    campaignId: run.campaignId, waitedMs: 0, nonblocking: true, executionId: execution.id,
+    campaignId: run.campaignId, waitedMs: ownedWaitedMs(run), nonblocking: true, executionId: execution.id,
     ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
     beforeLaunch: async (offered: LaunchIntent) => {
       const revalidate = () => {

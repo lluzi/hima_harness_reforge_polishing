@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.0.0"
+version: "5.0.1"
 title: V5 Active Frontier custom Cell Fmax reference Campaign
 status: released
 minimumHarnessVersion: 0.1.0
@@ -35,8 +35,9 @@ inputs:
       timeouts and the discovered Yosys/ABC executable identities used by the layered structural
       evaluation proxy. HimaGuide constructs it from Site discovery; the user does not write Pack YAML."
   - name: workspaceRoot
-    description: Where Campaign workspaces are created. The Site's Permit must allow
-      writes under it; nothing the pack does writes anywhere else.
+    description: Where Campaign workspaces are created and their recorded results are read back.
+      The Site's Permit must allow both reads and writes under it; nothing the pack does writes
+      anywhere else.
 outputs:
   - name: probe
     path: flow/probe.json

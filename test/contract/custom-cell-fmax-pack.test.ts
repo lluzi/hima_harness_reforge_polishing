@@ -47,7 +47,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.0.0');
+  assert.equal(graph.version, '5.0.1');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -229,6 +229,15 @@ test('two different Site bindings fit the Pack and a missing production binding 
     licences: { 'Design-Compiler': 1, 'Library-Compiler': 1, Innovus: 1 },
   });
   assert.match(checkPack(pack, loadSite(missing.sitesDir, missing.name)).errors.join('\n'), /physicalInputs/);
+
+  const noWorkspaceRead = await writeLocalSite(h, {
+    bindings: { ...bindings, physicalInputs: path.join(h.workspace, 'physicalInputs') },
+    allowedReadRoots: [], allowedWriteRoots: [], allowedWrappers: ['/usr/bin/python3'],
+    licences: { 'Design-Compiler': 1, 'Library-Compiler': 1, Innovus: 1 },
+  });
+  const permitErrors = checkPack(pack, loadSite(noWorkspaceRead.sitesDir, noWorkspaceRead.name)).errors.join('\n');
+  assert.match(permitErrors, /workspaceRoot.*permitted read roots/, 'preparation catches the read permission before a node reads its own record');
+  assert.match(permitErrors, /workspaceRoot.*permitted write roots/, 'preparation catches the write permission before a node creates work');
 });
 
 test('the probe identity accepts different tops and makes its data identity depend on current RTL', async (t) => {

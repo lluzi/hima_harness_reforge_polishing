@@ -623,6 +623,8 @@ export interface SiteHeadView {
 export interface SiteDiscoverBody {
   readonly sessionId: string;
   readonly name: string;
+  /** Selected Pack whose declared wrappers/commands discovery should verify and propose. */
+  readonly pack?: string;
   /** Left absent, this rediscovers a saved ssh Site's own destination/jumps and permitted roots — the
    *  Configuration page's "Rediscover" control on an existing Site uses this so a person never
    *  retypes a destination the Site already has on file (bug 2: previously the only rediscover path
@@ -630,6 +632,9 @@ export interface SiteDiscoverBody {
    *  to this Host still names its own destination here. */
   readonly ssh?: { readonly destination: string; readonly jumps?: readonly string[] };
   readonly hints?: SiteDiscoveryRequest['hints'];
+  /** Opaque Host-held preview identity returned by a prior save:false request. Saving this identity
+   *  persists those exact reviewed facts instead of probing the Site a second time. */
+  readonly reviewId?: string;
   /** Persist the discovered profile as the ordinary Site and Permit files `loadSite` reads. Left
    *  false (or absent), this is a preview: the caller reviews `result` and discovers again to save. */
   readonly save?: boolean;
@@ -694,7 +699,7 @@ export interface RemoteOperations {
    * reads (#41 task 4). Deliberately not a Campaign action: it creates no Run, workspace, Job or
    * Ledger row.
    */
-  discoverSite?(request: Omit<SiteDiscoverBody, 'sessionId'>): Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView }>;
+  discoverSite?(request: SiteDiscoverBody): Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView; readonly reviewId?: string }>;
   /**
    * The tail of the Job the named node currently has open on this Run, for any viewer (#41 task 4):
    * unlike `hima_execute read @job-log`, this needs no owned execution. `lines` is empty and
@@ -1909,10 +1914,10 @@ async function sitesDiscoverOperation(ops: RemoteOperations, req: IncomingMessag
   const sessionId = requiredString(body, 'sessionId');
   if (!ops.validateSession?.(sessionId)) throw new BadRequest('select a live conversation on this Host before discovering a Site');
   if (ops.discoverSite === undefined) return failure(500, 'hima/internal', 'Site discovery is unavailable on this Host');
-  const allowed = ['sessionId', 'name', 'ssh', 'hints', 'save'];
+  const allowed = ['sessionId', 'name', 'pack', 'ssh', 'hints', 'save', 'reviewId'];
   if (Object.keys(body).some((key) => !allowed.includes(key))) throw new BadRequest(`unknown Site discovery field; expected one of ${allowed.join(', ')}`);
   try {
-    return ok(await ops.discoverSite(body as unknown as Omit<SiteDiscoverBody, 'sessionId'>));
+    return ok(await ops.discoverSite(body as unknown as SiteDiscoverBody));
   } catch (err) {
     // Only a request-shape failure is the caller's mistake and answered as one, in the sentence its
     // own schema states. Everything else — `SiteUnreadableError` included — propagates to the

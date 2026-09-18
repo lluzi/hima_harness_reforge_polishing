@@ -683,8 +683,13 @@ class ResidualResearchContextTests(unittest.TestCase):
             **duplicate_lenses["research_lenses"][0],
             "name": "Reconvergent_Cut",
         })
-        with self.assertRaisesRegex(ValueError, "evidence-bound"):
+        with self.assertRaisesRegex(ValueError, "repeats canonical name"):
             validate_residual_research_proposal(duplicate_lenses, context)
+
+        wrong_identity = _proposal(context)
+        wrong_identity["research_lenses"][0]["evidence_sha256"] = ["0" * 64]
+        with self.assertRaisesRegex(ValueError, r"outside the residual context.*residual_evidence_sha256"):
+            validate_residual_research_proposal(wrong_identity, context)
 
         huge_stop = _proposal(context)
         huge_stop["stop_reason"] = "x" * (1024 * 1024)

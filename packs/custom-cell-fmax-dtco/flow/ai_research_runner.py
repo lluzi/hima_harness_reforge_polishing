@@ -1141,6 +1141,20 @@ def execute_candidate_program(program, context, *, allowed_lenses, candidate_reg
     return proposals, provenance
 
 
+def residual_evidence_sha256(context):
+    """Exact residual-evidence identities that a research lens may cite."""
+    evidence = context.get("evidence", {}) if isinstance(context, dict) else {}
+    if not isinstance(evidence, dict):
+        return []
+    direct = [row.get("sha256") for key, row in evidence.items()
+              if key != "history" and isinstance(row, dict)]
+    history = evidence.get("history", [])
+    historical = [row.get("sha256") for row in history if isinstance(row, dict)] \
+        if isinstance(history, list) else []
+    return sorted({value for value in direct + historical
+                   if isinstance(value, str) and value})
+
+
 def validate_residual_research_proposal(proposal, context):
     """Validate model creativity while retaining deterministic ownership."""
     if not isinstance(proposal, dict) or set(proposal) != {
@@ -1150,10 +1164,7 @@ def validate_residual_research_proposal(proposal, context):
     maximum = context["budgets"]["max_research_lenses"]
     if not isinstance(lenses, list) or not 1 <= len(lenses) <= maximum:
         raise ValueError("research_lenses exceeds its deterministic budget")
-    source_hashes = {
-        row["sha256"] for key, row in context["evidence"].items()
-        if key != "history"
-    } | {row["sha256"] for row in context["evidence"]["history"]}
+    source_hashes = set(residual_evidence_sha256(context))
     normalized = []
     names = set()
     for index, lens in enumerate(lenses):
@@ -1164,12 +1175,16 @@ def validate_residual_research_proposal(proposal, context):
         question = _bounded_text(lens["question"], "research lens question")
         evidence = lens["evidence_sha256"]
         layers = lens["target_metric_layers"]
-        if (name in names
-                or not isinstance(evidence, list) or not evidence
-                or any(value not in source_hashes for value in evidence)
-                or not isinstance(layers, list) or not layers
+        if name in names:
+            raise ValueError("research lens %d repeats canonical name %s" % (index, name))
+        if not isinstance(evidence, list) or not evidence:
+            raise ValueError("research lens %d needs evidence_sha256 from residual_evidence_sha256(context)" % index)
+        unknown = [value for value in evidence if value not in source_hashes]
+        if unknown:
+            raise ValueError("research lens %d cites evidence_sha256 outside the residual context; use residual_evidence_sha256(context): %s" % (index, ", ".join(map(str, unknown[:3]))))
+        if (not isinstance(layers, list) or not layers
                 or any(value not in {"F0", "F1", "F2", "F3"} for value in layers)):
-            raise ValueError("research lens %d is not evidence-bound to F0-F3" % index)
+            raise ValueError("research lens %d target_metric_layers must be a non-empty subset of F0, F1, F2 and F3" % index)
         names.add(name)
         normalized.append({
             "name": name, "question": question,

@@ -19,6 +19,7 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { Service, type Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 // Type-only: these take the `ctx.commands` and `ctx.tools` declaration merges the registrations below
@@ -442,6 +443,9 @@ export default class Hima extends Service {
   reconciled!: Promise<ReconcileOutcome[]>;
   private notificationsActive = false;
   private readonly factStop = new AbortController();
+  /** Browser-only Site drafts awaiting the same person's explicit Save. The reviewed result stays
+   *  on the Host, so saving cannot silently rerun probes and persist facts the person never saw. */
+  private readonly siteDiscoveryReviews = new Map<string, { readonly owner: string; readonly name: string; readonly result: SiteDiscoveryResult }>();
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'hima');
@@ -484,7 +488,7 @@ export default class Hima extends Service {
           readCampaignFile: (id) => this.readCampaignFileOf(id),
           writeCampaignFile: (id, file, expectedMtimeMs) => this.writeCampaignFileOf(id, file, expectedMtimeMs),
           sites: () => this.sites(),
-          discoverSite: (request) => this.discoverSite(request),
+          discoverSite: ({ sessionId, ...request }) => this.discoverSite(request, sessionId),
           jobLogTail: (runId, nodeId, lines) => this.jobLogTail(runId, nodeId, lines),
           packTransfer: (request) => {
             const installed = path.resolve(this.config.packsDir, validPackId.parse(request.pack));
@@ -724,7 +728,15 @@ export default class Hima extends Service {
    * `HIMA_TEST_DISCOVERY_STANDIN`; every other Host reaches the real Site over `SshChannel`, exactly
    * as `discoverSshSite`'s own default already does.
    */
-  private async discoverSite(request: Omit<SiteDiscoverBody, 'sessionId'>): Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView }> {
+  private async discoverSite(request: Omit<SiteDiscoverBody, 'sessionId'>, reviewOwner?: string): Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView; readonly reviewId?: string }> {
+    if (request.save === true && request.reviewId !== undefined) {
+      const reviewed = this.siteDiscoveryReviews.get(request.reviewId);
+      if (reviewed === undefined || reviewOwner === undefined || reviewed.owner !== reviewOwner || reviewed.name !== request.name) {
+        throw new BadRequest('the reviewed Site draft is absent or belongs to another conversation; rediscover and review it again');
+      }
+      this.siteDiscoveryReviews.delete(request.reviewId);
+      return { result: reviewed.result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, reviewed.result)) };
+    }
     // Bug 2 fix: an omitted `ssh` rediscovers an already-saved ssh Site's own destination, jumps and
     // permitted roots — exactly the input `rediscoverInput` already computes for `hima_site
     // rediscover`'s tool call, now reachable from this route too so the Configuration page can offer
@@ -735,7 +747,20 @@ export default class Hima extends Service {
       throw new BadRequest(`"ssh" is required to discover a new Site; no saved ssh Site named "${request.name}" exists to rediscover`);
     }
     const ssh = request.ssh ?? reuse!.ssh;
-    const hints = request.hints ?? reuse?.hints;
+    const selectedPack = request.pack === undefined ? undefined : loadPack(this.config.packsDir, request.pack);
+    const requestedHints = selectedPack === undefined ? request.hints : {
+      ...request.hints,
+      allowedWrappers: [...new Set([...(request.hints?.allowedWrappers ?? []), ...selectedPack.contract.environment.wrappers])],
+      toolCommands: [...new Set([...(request.hints?.toolCommands ?? []), ...selectedPack.contract.environment.commands])],
+    };
+    const hints = requestedHints === undefined ? reuse?.hints : {
+      ...reuse?.hints,
+      ...requestedHints,
+      allowedReadRoots: [...new Set([...(reuse?.hints.allowedReadRoots ?? []), ...(requestedHints.allowedReadRoots ?? [])])],
+      allowedWriteRoots: [...new Set([...(reuse?.hints.allowedWriteRoots ?? []), ...(requestedHints.allowedWriteRoots ?? [])])],
+      allowedWrappers: [...new Set([...(reuse?.hints.allowedWrappers ?? []), ...(requestedHints.allowedWrappers ?? [])])],
+      toolCommands: [...new Set([...(reuse?.hints.toolCommands ?? []), ...(requestedHints.toolCommands ?? [])])],
+    };
     // Held to the schema before anything here dereferences `ssh` (#41 task 4 review round
     // 3, minor 2): a request body naming `ssh` as something other than an object is the caller's own
     // request-shape mistake — thrown here as the `ZodError` the route's own catch already turns into
@@ -746,7 +771,15 @@ export default class Hima extends Service {
     const channelFor = testDiscoveryChannelFor() ?? ((name: string, ssh: SshTarget) => new SshChannel(name, ssh));
     const resolvedSsh = { destination: parsed.data.ssh.destination, ...(parsed.data.ssh.jumps.length === 0 ? {} : { jumps: [...parsed.data.ssh.jumps] }) };
     const result = await discoverSshSite({ name: parsed.data.name, ssh: resolvedSsh, hints: parsed.data.hints }, channelFor);
-    if (request.save !== true) return { result };
+    if (request.save !== true) {
+      if (reviewOwner === undefined) return { result };
+      const reviewId = randomUUID();
+      for (const [id, draft] of this.siteDiscoveryReviews) {
+        if (draft.owner === reviewOwner && draft.name === request.name) this.siteDiscoveryReviews.delete(id);
+      }
+      this.siteDiscoveryReviews.set(reviewId, { owner: reviewOwner, name: request.name, result });
+      return { result, reviewId };
+    }
     return { result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, result)) };
   }
 
@@ -762,8 +795,11 @@ export default class Hima extends Service {
       ssh: { destination: site.ssh.destination, ...(site.ssh.jumps.length === 0 ? {} : { jumps: [...site.ssh.jumps] }) },
       hints: {
         workspaceRoot: site.workspaceRoot,
-        allowedReadRoots: [...site.permitRules.allowedReadRoots],
-        allowedWriteRoots: [...site.permitRules.allowedWriteRoots],
+        // A saved workspaceRoot is already the Site owner's declared Campaign location. When an old
+        // profile has no roots, propose that one minimal root for both reading Campaign outputs and
+        // writing new work; the browser still shows the proposal and only the person can save it.
+        allowedReadRoots: site.permitRules.allowedReadRoots.length === 0 ? [site.workspaceRoot] : [...site.permitRules.allowedReadRoots],
+        allowedWriteRoots: site.permitRules.allowedWriteRoots.length === 0 ? [site.workspaceRoot] : [...site.permitRules.allowedWriteRoots],
         allowedWrappers: [...site.permitRules.allowedWrappers],
       },
     };
