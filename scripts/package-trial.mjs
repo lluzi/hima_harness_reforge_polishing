@@ -1,7 +1,7 @@
 // Build a bounded, unsigned macOS arm64 trial app. This intentionally produces no
 // archive or network release: GitHub publication happens only after acceptance.
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -110,6 +110,66 @@ function verify(app) {
     }
   } finally { rmSync(runtimeData, { recursive: true, force: true }); }
   process.stdout.write(`package-trial: verified ${app}\n`);
+}
+
+function writeComputerUseLauncher(output) {
+  const launcher = path.join(output, 'launch-hima-trial.command');
+  writeFileSync(launcher, `#!/bin/zsh
+set -euo pipefail
+
+kit_dir="\${0:A:h}"
+trial_data="$kit_dir/Trial Data"
+trial_workspace="$kit_dir/Trial Workspace"
+app="$kit_dir/HimaHarness.app"
+log="$trial_data/launcher.log"
+
+if [[ ! -d "$app" ]]; then
+  print -u2 "HimaHarness.app is missing beside this launcher: $app"
+  exit 1
+fi
+
+# GitHub/browser downloads attach quarantine metadata. This trial has no Apple Developer ID,
+# so Finder/LaunchServices rejects the otherwise valid ad-hoc signature. Remove only quarantine;
+# keep every file byte and verify the bundle signature before executing it.
+/usr/bin/xattr -dr com.apple.quarantine "$app" 2>/dev/null || true
+/usr/bin/codesign --verify --deep --strict "$app"
+
+mkdir -p "$trial_data/dsh" "$trial_workspace"
+export HIMA_USER_DATA="$trial_data"
+export DSH_HOME="$trial_data/dsh"
+export DSH_AGENTS_HOME="$trial_data/dsh/agents"
+export HIMA_WORKSPACE="$trial_workspace"
+export HIMA_DRIVER_DISPLAY="Catsights"
+export DSH_TELEMETRY_DISABLED="1"
+
+{
+  print "HimaHarness ${trialVersion} Computer Use launcher"
+  print "App: $app"
+  print "HIMA_USER_DATA: $HIMA_USER_DATA"
+  print "DSH_HOME: $DSH_HOME"
+  print "HIMA_WORKSPACE: $HIMA_WORKSPACE"
+  print "Display: $HIMA_DRIVER_DISPLAY"
+  print "Mode: ordinary GUI (no --driver)"
+} | tee -a "$log"
+
+exec "$app/Contents/MacOS/HimaHarness" "$@" > >(tee -a "$log") 2> >(tee -a "$log" >&2)
+`);
+  chmodSync(launcher, 0o755);
+  writeFileSync(path.join(output, 'COMPUTER-USE-START.md'), `# Start HimaHarness with Claude Code Computer Use
+
+The App is ad-hoc signed because this machine has no Apple Developer ID identity. Start the downloaded
+trial from a shell so the kit can remove only macOS download quarantine, verify the unchanged bundle,
+create isolated Trial Data and place the window on Catsights:
+
+\`\`\`bash
+cd "/path/to/extracted/HimaHarness-${trialVersion}"
+zsh ./launch-hima-trial.command
+\`\`\`
+
+Keep that shell running. When the window title is \`HimaHarness\`, bind Claude Code Computer Use to
+that app and follow \`Agent Trial Instructions.md\`. Do not open the inner \`.app\` directly through
+Finder or LaunchServices; Gatekeeper will reject this non-notarized trial.
+`);
 }
 
 function smokeRelocatedHost(app) {
@@ -302,6 +362,7 @@ if (args.includes('--help') || args.includes('-h')) {
     verify(app);
     await smokeVersionIsolatedTrialHome(app);
     smokeRelocatedHost(app);
+    writeComputerUseLauncher(output);
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }

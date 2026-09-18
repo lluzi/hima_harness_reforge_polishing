@@ -3,7 +3,7 @@
 ## 任务
 
 你接手的是一次新的真实 Campaign，不是继续 trial.5 的旧 Run。使用现有
-HimaHarness 0.3.0-trial.6 App、DeepSeek-V4.1-Flash 和 Reference Pack 5.1.2，在
+HimaHarness 0.3.0-trial.7 App、DeepSeek-V4.1-Flash 和 Reference Pack 5.1.2，在
 `aes_cipher_top` 上持续探索累积 Custom Cell Library，争取 matched post-route Fmax
 提升达到或超过 5%。
 
@@ -17,8 +17,8 @@ Pack 5.1.2 修复这三个 blocker。你的首个验收出口是验证它们进�
 
 | 项目 | 值 |
 | --- | --- |
-| App | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.6/HimaHarness.app` |
-| 启动器 | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.6/launch-hima-trial.command` |
+| App | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.7/HimaHarness.app` |
+| 启动器 | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.7/launch-hima-trial.command` |
 | Pack 来源 | `/Users/lluzi/code/hima_harness_reforge_polishing/packs/custom-cell-fmax-dtco` |
 | Pack version | `5.1.2` |
 | Pack method digest | `5d40668963df062b55ac2323a056784993d0a0fe630e9fa7110d6f027518b717` |
@@ -38,8 +38,8 @@ Pack 5.1.2 修复这三个 blocker。你的首个验收出口是验证它们进�
 在 Catsights 副屏运行：
 
 ```bash
-cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.6"
-./launch-hima-trial.command
+cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.7"
+zsh ./launch-hima-trial.command
 ```
 
 打开 **Pack & assets**，选择 **Install tested method upgrade**，Pack ID 使用
@@ -155,7 +155,7 @@ rebase 或 push `main`，不得创建 release/tag。Pack 方法变化必须形�
 
 写入一个新的报告文件，不覆盖 trial.5 的历史报告：
 
-`/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.6/Agent Trial Report.md`
+`/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.7/Agent Trial Report.md`
 
 报告至少包含：
 

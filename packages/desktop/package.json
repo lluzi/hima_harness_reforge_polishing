@@ -1,7 +1,7 @@
 {
   "name": "@hima/desktop",
   "productName": "HimaHarness",
-  "version": "0.3.0-trial.6",
+  "version": "0.3.0-trial.7",
   "private": true,
   "description": "The HimaHarness desktop window: one native window around the dsh hima profile",
   "type": "module",
