@@ -2539,14 +2539,18 @@ export function checkPack(pack: Pack, site: Site): PackCheck {
   const folder = pack.folder;
   const errors: string[] = [];
   const fail = <T>(entry: T, message: string): T => { errors.push(message); return entry; };
+  // Preparation creates the Campaign under the Pack binding, including a Campaign-file override;
+  // `site.workspaceRoot` is only the Site's fallback. Check the path that `prepareWorkspace` will
+  // actually use so readiness cannot approve one root and fail later on another.
+  const campaignWorkspaceRoot = site.bindings.workspaceRoot ?? site.workspaceRoot;
   const permitsWorkspace = (roots: readonly string[]): boolean => roots.some((root) =>
-    site.workspaceRoot === root || site.workspaceRoot.startsWith(root.endsWith('/') ? root : `${root}/`));
+    campaignWorkspaceRoot === root || campaignWorkspaceRoot.startsWith(root.endsWith('/') ? root : `${root}/`));
 
   if (!permitsWorkspace(site.permitRules.allowedReadRoots)) {
-    errors.push(`site ${site.name} workspaceRoot is outside its permitted read roots: add ${site.workspaceRoot} to allowedReadRoots before the Campaign reads its own records`);
+    errors.push(`site ${site.name} workspaceRoot is outside its permitted read roots: add ${campaignWorkspaceRoot} to allowedReadRoots before the Campaign reads its own records`);
   }
   if (!permitsWorkspace(site.permitRules.allowedWriteRoots)) {
-    errors.push(`site ${site.name} workspaceRoot is outside its permitted write roots: add ${site.workspaceRoot} to allowedWriteRoots before the Campaign creates work`);
+    errors.push(`site ${site.name} workspaceRoot is outside its permitted write roots: add ${campaignWorkspaceRoot} to allowedWriteRoots before the Campaign creates work`);
   }
 
   const minimumHarnessVersion = pack.contract.minimumHarnessVersion;

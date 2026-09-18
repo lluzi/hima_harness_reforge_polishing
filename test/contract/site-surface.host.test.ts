@@ -31,9 +31,18 @@ process.env.HIMA_TEST_SILENT_AGENT = '1';
  * nothing about what `synth` does; it only asks make to say where it is doing it.
  */
 const logTailPackId = 'log-tail-probe';
+const discoveryRequirementsPackId = 'discovery-requirements-probe';
 async function installLogTailPack(h: HimaHome): Promise<void> {
   await installPack(h);
   await writePackVariant(packsDirOf(h), logTailPackId, [['EDA_CONTAINER_NAME=hima-${CAMPAIGN}', 'EDA_CONTAINER_NAME=hima-${CAMPAIGN}\n      - -w']]);
+}
+
+async function installDiscoveryRequirementsPack(h: HimaHome): Promise<void> {
+  await installPack(h);
+  await writePackVariant(packsDirOf(h), discoveryRequirementsPackId, [[
+    'environment:\n  wrappers:\n    - make',
+    'environment:\n  wrappers:\n    - make\n  commands:\n    - make',
+  ]]);
 }
 
 interface Fixture { readonly h: HimaHome; readonly host: BootedHost; readonly cookie: string; readonly site: LocalSite; readonly flow: StandinFlow }
@@ -131,12 +140,13 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
   const table = {
     'uname -s': { code: 0, stdout: 'Linux' },
     'which tmux': { code: 0, stdout: '/usr/bin/tmux\n' },
+    'which make': { code: 0, stdout: '/usr/bin/make\n' },
   };
   const tableFile = path.join(os.tmpdir(), `hima-discovery-standin-${randomUUID()}.json`);
   await writeFile(tableFile, JSON.stringify(table));
   process.env.HIMA_TEST_DISCOVERY_STANDIN = tableFile;
   try {
-    const f = await bootedFixture(t);
+    const f = await bootedFixture(t, { pack: installDiscoveryRequirementsPack });
     if (!f) return;
     try {
       const sessionId = await createLiveSession(f.host, f.cookie, f.h.workspace);
@@ -157,7 +167,7 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       // preview — nothing written — while `save` is left false.
       const preview = await api(f.host, f.cookie, '/hima/api/sites/discover', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId, name: 'lab-a' }),
+        body: JSON.stringify({ sessionId, name: 'lab-a', pack: discoveryRequirementsPackId }),
       });
       const previewBody = await preview.json() as { result: { site: { ssh?: { destination: string } }; permit: { allowedReadRoots: string[]; allowedWriteRoots: string[] } }; saved?: unknown; reviewId?: string };
       assert.equal(preview.status, 200, JSON.stringify(previewBody));
@@ -166,6 +176,8 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       assert.ok(previewBody.reviewId, 'a browser preview receives a Host-held identity for these exact reviewed facts');
       assert.deepEqual(previewBody.result.permit.allowedReadRoots, ['/work']);
       assert.deepEqual(previewBody.result.permit.allowedWriteRoots, ['/work/hima']);
+      assert.deepEqual((previewBody.result.permit as { allowedWrappers?: string[] }).allowedWrappers, ['make'], 'the selected Pack proposes its declared wrapper');
+      assert.ok((previewBody.result as { site: { discovery?: { facts: { probe: string[]; code: number }[] } } }).site.discovery?.facts.some((fact) => fact.code === 0 && fact.probe.join(' ') === 'which make'), 'the selected Pack command is actually probed');
       const beforeSaveMtime = (await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs;
 
       // Make any second discovery fail. Save must persist the Host-held preview above, not rerun

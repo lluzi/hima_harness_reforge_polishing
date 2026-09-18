@@ -238,6 +238,15 @@ test('two different Site bindings fit the Pack and a missing production binding 
   const permitErrors = checkPack(pack, loadSite(noWorkspaceRead.sitesDir, noWorkspaceRead.name)).errors.join('\n');
   assert.match(permitErrors, /workspaceRoot.*permitted read roots/, 'preparation catches the read permission before a node reads its own record');
   assert.match(permitErrors, /workspaceRoot.*permitted write roots/, 'preparation catches the write permission before a node creates work');
+
+  const overriddenWorkspace = path.join(os.tmpdir(), 'campaign-workspace-outside-site-permit');
+  const outside = await writeLocalSite(h, {
+    bindings: { ...bindings, physicalInputs: path.join(h.workspace, 'physicalInputs'), workspaceRoot: overriddenWorkspace },
+    allowedReadRoots: [h.workspace], allowedWriteRoots: [h.workspace], allowedWrappers: ['/usr/bin/python3'],
+    licences: { 'Design-Compiler': 1, 'Library-Compiler': 1, Innovus: 1 },
+  });
+  const outsideErrors = checkPack(pack, loadSite(outside.sitesDir, outside.name)).errors.join('\n');
+  assert.match(outsideErrors, new RegExp(overriddenWorkspace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'readiness names the effective workspace binding, not the permitted Site fallback');
 });
 
 test('the probe identity accepts different tops and makes its data identity depend on current RTL', async (t) => {
