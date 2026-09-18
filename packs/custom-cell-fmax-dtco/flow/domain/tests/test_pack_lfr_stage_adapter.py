@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,8 @@ FLOW = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(FLOW))
 
 import stages  # noqa: E402
+from library_richness import _portfolio_candidate_cells  # noqa: E402
+from domain._generation_projection import expected_generation_jobs  # noqa: E402
 
 
 class _Context:
@@ -37,6 +40,51 @@ class _Context:
 
 
 class PackLfrStageAdapterTests(unittest.TestCase):
+    def test_innovus_route_layer_name_is_rendered_as_an_integer(self):
+        self.assertEqual(7, stages.innovus_route_layer_index("M7"))
+        self.assertEqual(8, stages.innovus_route_layer_index(8))
+        for value in ("M0", "M7A", "metal7", 0, True):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(stages.Rejected, "routing layer"):
+                    stages.innovus_route_layer_index(value)
+
+    def test_innovus_batch_wrapper_turns_tcl_errors_into_process_failure(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = root / "init_foundry.tcl"
+            source.write_text("error {fixture failure}\n")
+            wrapper = stages.innovus_batch_wrapper(root, source, "init-foundry")
+            text = wrapper.read_text()
+            self.assertIn("catch {source {%s}}" % source.resolve(), text)
+            self.assertIn("HIMA_BATCH_ERROR", text)
+            self.assertRegex(text, r"(?m)^\s*exit 1$")
+            self.assertRegex(text, r"(?m)^exit 0$")
+            executed = subprocess.run(
+                ["/usr/bin/tclsh", str(wrapper)], capture_output=True, text=True)
+            self.assertEqual(1, executed.returncode)
+            self.assertIn("HIMA_BATCH_ERROR: fixture failure", executed.stderr)
+
+    def test_multi_output_candidate_uses_the_one_generated_cell_identity(self):
+        request = {
+            "candidate_id": "CAND_FUNCTIONAL_DIVERSITY_MAPPED_MULTI_0066",
+            "implementation_plan": {"route": "multi_output_resynthesis"},
+            "generator_contract": {"interface": {
+                "inputs": [{"name": "A"}, {"name": "B"}],
+                "outputs": [
+                    {"name": "Y0", "liberty_function": "A & B"},
+                    {"name": "Y1", "liberty_function": "A | B"},
+                ],
+            }},
+        }
+        jobs = expected_generation_jobs({"generation_requests": [request]})
+        self.assertEqual(["XS_FUNCTIONAL_DIVERSITY_MAPPED_MULTI_0066_MO"],
+                         [job["cell_name"] for job in jobs])
+        self.assertEqual(
+            [job["cell_name"] for job in jobs],
+            _portfolio_candidate_cells(
+                {"source_generation_request": request}, "multi-output fixture"),
+        )
+
     def test_cumulative_library_paths_are_declared_arm_only_script_inputs(self):
         liberty = "/workspace/flow/library/cumulative-custom.lib"
         lef = "/workspace/flow/library/cumulative-custom.lef"

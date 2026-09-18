@@ -20,6 +20,10 @@ only bound a 1-2 hop search. The engine must rediscover the single/multi-output 
 current place netlist, prove the window and select non-overlapping replacements. Do not use `directed`
 mode as the Campaign product path and do not turn source names into point-to-point ECO targets.
 
+A multi-output generation request materializes one physical `_MO` Cell with several output pins.
+Generation, cumulative-shard identity, free mapping census and portfolio validation all use that one
+projected Cell identity; output pin names never become separate physical Cells.
+
 CCEI applies only proved place-state windows in the same placed checkpoint. It seeds the new Cell at
 the source centroid, reconnects every signal/PG pin, checks census, sets dont-touch for ECO-only Cells,
 runs local `ecoPlace`, records placement changes and retains rollback. Baseline and generated

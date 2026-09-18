@@ -92,6 +92,11 @@ else:
     raise SystemExit(9)
 script = pathlib.Path(args[args.index('-f') + 1] if '-f' in args else args[args.index('-files') + 1])
 text = script.read_text()
+if tool == 'innovus':
+    wrapped = re.search(r'catch \{source \{([^}]+)\}\}', text)
+    if wrapped:
+        script = pathlib.Path(wrapped.group(1))
+        text = script.read_text()
 if tool == 'lc_shell':
     out = pathlib.Path(re.search(r'write_lib -format db \S+ -output \{([^}]+)\}', text).group(1))
     out.parent.mkdir(parents=True, exist_ok=True); out.write_bytes(b'SYNTHETIC DB\n')

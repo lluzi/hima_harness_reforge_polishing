@@ -166,6 +166,14 @@ def expected_generation_jobs(patterns):
     return jobs
 
 
+def physical_cell_names(request):
+    """Return the exact physical Cells one generation request materializes."""
+    return [
+        job["cell_name"]
+        for job in expected_generation_jobs({"generation_requests": [request]})
+    ]
+
+
 def _canonical_json(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
@@ -519,11 +527,7 @@ def append_cumulative_shard(root, manifest, shard_id, requests, artifacts=None):
         candidate_id = request.get("candidate_id")
         if not isinstance(candidate_id, str) or not IDENTIFIER.fullmatch(candidate_id):
             raise ValueError("Library shard has an invalid candidate id")
-        interface = request["generator_contract"]["interface"]
-        physical = [
-            canonical_cell_name(candidate_id, output["name"])
-            for output in interface["outputs"]
-        ]
+        physical = physical_cell_names(request)
         if existing_physical.intersection(physical) or any(
                 name in prior["physicalCellNames"] for prior in rows for name in physical):
             raise ValueError(

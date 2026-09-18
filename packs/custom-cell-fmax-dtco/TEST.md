@@ -1,16 +1,16 @@
-# Custom Cell Fmax DTCO V5.1.1 split library binding smoke
+# Custom Cell Fmax DTCO V5.1.2 Campaign-blocker smoke
 
 ## Site
 
 Site local with publication-only stand-in bindings. No model, SSH or commercial EDA was invoked.
-The retained trial.5 evidence separately demonstrates a real Library Compiler pass and a corrected
-Design Compiler scratch invocation; this smoke makes no new QoR claim.
+Exact trial inputs were validated separately: the real multi-output request passed the free evaluator,
+and the isolated Innovus init passed with integer route level while a controlled Tcl error failed fast.
 
 ## Run
 
-run: run-69403a72-aaae-43d6-9e33-6c9f98e88a5b
+run: run-e2ac29cb-c7f5-4ada-bb5c-94498f1a7da3
 
-The Harness loaded custom-cell-fmax-dtco@5.1.1 with method digest bfd586716af5b2e11921e7aa43fbcd97f558df57ef06dafbf73aff508c369d3c, prepared its
+The Harness loaded custom-cell-fmax-dtco@5.1.2 with method digest 5d40668963df062b55ac2323a056784993d0a0fe630e9fa7110d6f027518b717, prepared its
 Pack workspace and exposed bind-inputs.
 
 ## Ending
@@ -34,6 +34,5 @@ none
 
 ## Disagreements
 
-Trial.5 stopped because 5.1.0 collapsed Liberty text and compiled DB into one binding. Version 5.1.1
-preserves the two Site paths; the existing commercial result remains evidence of the defect and its
-minimal DC isolation, not a claim that this publication smoke completed P&R.
+The retained 5.1.1 Campaign stopped before matched P&R. Version 5.1.2 fixes the reproduced blockers;
+this publication smoke does not claim that both P&R arms or the 5% Goal have completed.

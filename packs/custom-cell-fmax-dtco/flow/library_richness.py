@@ -23,7 +23,7 @@ if str(DOMAIN_DIR) not in sys.path:
     sys.path.insert(0, str(DOMAIN_DIR))
 
 from proxy_mapping import map_reference_and_augmented  # type: ignore  # noqa: E402
-from _generation_projection import validate_cumulative_manifest  # type: ignore  # noqa: E402
+from _generation_projection import physical_cell_names, validate_cumulative_manifest  # type: ignore  # noqa: E402
 from cell_need_miner.liberty_timing import (  # type: ignore  # noqa: E402
     LibertyTimingError,
     analyze_mapped_netlist_reg2reg,
@@ -281,19 +281,13 @@ def _portfolio_candidate_cells(candidate: Mapping[str, Any], name: str) -> list[
     outputs = interface.get("outputs")
     if not isinstance(outputs, list) or not outputs:
         raise RoundRequestError(f"{name} has no generator output identity")
-    directory = str(DOMAIN_DIR)
-    if directory not in sys.path:
-        sys.path.insert(0, directory)
-    from mine_patterns import canonical_cell_name  # type: ignore
-
-    result = []
     for index, raw_output in enumerate(outputs):
         output = _mapping(raw_output, f"{name}.outputs[{index}]")
-        result.append(canonical_cell_name(
-            candidate_id,
-            _string(output.get("name"), f"{name}.outputs[{index}].name"),
-        ))
-    return sorted(result)
+        _string(output.get("name"), f"{name}.outputs[{index}].name")
+    try:
+        return sorted(physical_cell_names(source))
+    except ValueError as error:
+        raise RoundRequestError(f"{name} has invalid generation identity: {error}") from error
 
 
 def _f1_vector(evaluation: Mapping[str, Any], name: str) -> tuple[dict[str, float], dict[str, float]]:

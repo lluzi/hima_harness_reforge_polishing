@@ -2364,6 +2364,43 @@ def floorplan_utilization(value):
     return "%.3f" % parsed
 
 
+def innovus_route_layer_index(value):
+    """Normalize the Site's M7-style layer name to Innovus's integer route level."""
+    if isinstance(value, bool):
+        raise Rejected("Innovus maximum routing layer must be a positive integer or M<number>")
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        match = re.fullmatch(r"M?([1-9][0-9]*)", value.strip(), re.IGNORECASE)
+        if match is None:
+            raise Rejected("Innovus maximum routing layer must be a positive integer or M<number>")
+        parsed = int(match.group(1))
+    else:
+        raise Rejected("Innovus maximum routing layer must be a positive integer or M<number>")
+    if parsed <= 0:
+        raise Rejected("Innovus maximum routing layer must be a positive integer or M<number>")
+    return parsed
+
+
+def innovus_batch_wrapper(directory, script, tag):
+    """Wrap an Innovus Tcl file so a script error exits instead of opening an idle prompt."""
+    source = Path(script).resolve()
+    if "}" in str(source) or not source.is_file() or source.is_symlink():
+        raise Rejected("Innovus batch source must be one plain brace-safe Tcl file")
+    if not isinstance(tag, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", tag):
+        raise Rejected("Innovus batch wrapper tag is invalid")
+    wrapper = Path(directory).resolve() / ("batch-" + tag + ".tcl")
+    wrapper.write_text(
+        "if {[catch {source {%s}} hima_error hima_options]} {\n"
+        "  puts stderr \"HIMA_BATCH_ERROR: $hima_error\"\n"
+        "  if {[dict exists $hima_options -errorinfo]} { puts stderr [dict get $hima_options -errorinfo] }\n"
+        "  exit 1\n"
+        "}\n"
+        "exit 0\n" % source
+    )
+    return wrapper
+
+
 def clock_tree_identity(netlist, buffer_cells, inverter_cells):
     """Audit CCOpt-inserted clock instances in the saved routed netlist."""
     buffers = str(buffer_cells).split()
@@ -2506,7 +2543,7 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
             "DESIGN_TOP": ctx.binding("DESIGN_TOP"),
             "MMMC_FILE": mmmc_path, "PWR_NET": ctx.binding("CCFMAX_POWER_PIN"),
             "GND_NET": ctx.binding("CCFMAX_GROUND_PIN"), "PROCESS_NODE": ctx.binding("CCFMAX_PROCESS_NODE"),
-            "MAX_ROUTE_LAYER": ctx.binding("CCFMAX_MAX_ROUTE_LAYER"), "INIT_DB": init_db,
+            "MAX_ROUTE_LAYER": innovus_route_layer_index(ctx.binding("CCFMAX_MAX_ROUTE_LAYER")), "INIT_DB": init_db,
             "GENERATED_LIB_CELL_PATTERN": ctx.binding("GENERATED_LIB_CELL_PATTERN"), "ARM": arm,
             "PLACE_SITE": place_site,
             "FLOORPLAN_COMMAND": floorplan_command,
@@ -2627,7 +2664,9 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     wrapper = str(ctx.file_binding("EDA_WRAPPER", "tool-wrapper"))
     init_links = checkpoint_allowed_links(ctx.inputs, ctx.workspace,
                                           chosen["init"], chosen["mmmc"], arm, "init")
-    init_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["init"])], cwd=ctx.run_dir,
+    init_batch = innovus_batch_wrapper(ctx.run_dir, chosen["init"], "init-" + arm)
+    ctx.add_artifact(init_batch, "innovus_batch_wrapper:init:" + arm, "generated-tool-input")
+    init_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(init_batch)], cwd=ctx.run_dir,
                        timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="init-" + arm)
     text = init_log.read_text(errors="replace")
     if tool_error_lines(text):
@@ -2653,7 +2692,9 @@ def stage_pnr(ctx, arm, utilization="0.60"):
                                       "init_checkpoint", init_links, "init")
     if str(init_restore) not in chosen["pnr"].read_text(errors="replace"):
         raise Rejected("PnR script does not restore the validated init checkpoint directory")
-    pnr_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(chosen["pnr"])], cwd=ctx.run_dir,
+    pnr_batch = innovus_batch_wrapper(ctx.run_dir, chosen["pnr"], "pnr-" + arm)
+    ctx.add_artifact(pnr_batch, "innovus_batch_wrapper:pnr:" + arm, "generated-tool-input")
+    pnr_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(pnr_batch)], cwd=ctx.run_dir,
                       timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="pnr-" + arm)
     pnr_text = pnr_log.read_text(errors="replace")
     if tool_error_lines(pnr_text):

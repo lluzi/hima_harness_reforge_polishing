@@ -59,7 +59,7 @@ from cell_need_miner.generator_contract import (  # noqa: E402
 )
 from cell_need_miner.liberty import parse_skeleton  # noqa: E402
 from cell_need_miner.npn import npn_canonical, reduce_support  # noqa: E402
-from _generation_projection import canonical_cell_name  # noqa: E402
+from _generation_projection import physical_cell_names  # noqa: E402
 from verilog_netlist import GENERIC_PREFIX, parse_modules  # noqa: E402
 
 REPORT_SCHEMA = "xspace_cell-pattern-search/v2"
@@ -909,15 +909,7 @@ def mapper_evidence_from_mapping_result(request, result_path, expected_sha256):
     outputs = interface.get("outputs") if isinstance(interface, dict) else None
     if not isinstance(candidate_id, str) or not isinstance(outputs, list) or not outputs:
         raise ValueError("generation request cannot derive candidate Cell identity")
-    output_names = []
-    for output in outputs:
-        name = output.get("name") if isinstance(output, dict) else None
-        if not isinstance(name, str) or not name:
-            raise ValueError("generation request output name is invalid")
-        output_names.append(name)
-    candidate_cells = [
-        canonical_cell_name(candidate_id, output) for output in output_names
-    ]
+    candidate_cells = physical_cell_names(request)
     leaked = {
         cell: normalized["reference"]["census"].get(cell, 0)
         for cell in candidate_cells

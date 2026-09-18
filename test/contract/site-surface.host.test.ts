@@ -160,6 +160,13 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
         }),
       });
       assert.equal(first.status, 200, await first.text());
+      const richReadRoots = Array.from({ length: 9 }, (_, index) => `/work/reference-${String(index + 1)}`);
+      await writeFile(path.join(f.site.sitesDir, 'lab-a.permit.yml'), [
+        'allowedReadRoots:', ...richReadRoots.map((root) => `  - ${root}`),
+        'allowedWriteRoots:', '  - /work/hima',
+        'allowedWrappers:', '  - make',
+        'forbidden:', '  - deletions', '',
+      ].join('\n'));
 
       // A rediscover of that same saved Site (Configuration page's "Rediscover" button): the body
       // names only `name`, and the route must reuse the Site's own destination and permitted roots
@@ -174,7 +181,8 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       assert.equal(previewBody.result.site.ssh?.destination, 'engineer@lab.example.com', 'the saved Site\'s own destination is reused, never asked again');
       assert.equal(previewBody.saved, undefined, 'a preview (save left false) writes nothing');
       assert.ok(previewBody.reviewId, 'a browser preview receives a Host-held identity for these exact reviewed facts');
-      assert.deepEqual(previewBody.result.permit.allowedReadRoots, ['/work']);
+      assert.deepEqual(previewBody.result.permit.allowedReadRoots, richReadRoots,
+        'rediscovery preserves a reviewed rich Permit instead of rejecting its saved roots');
       assert.deepEqual(previewBody.result.permit.allowedWriteRoots, ['/work/hima']);
       assert.deepEqual((previewBody.result.permit as { allowedWrappers?: string[] }).allowedWrappers, ['make'], 'the selected Pack proposes its declared wrapper');
       assert.deepEqual(previewBody.result.site.capacity.licences, { 'Design-Compiler': 1 }, 'the reviewed draft reserves the Pack-declared minimum seat without probing a vendor tool');

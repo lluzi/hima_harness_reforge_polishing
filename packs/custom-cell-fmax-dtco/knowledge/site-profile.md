@@ -33,7 +33,7 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `CCFMAX_CLOCK_BUFFER_CELLS`, `CCFMAX_CLOCK_INVERTER_CELLS` | whitespace-separated DCCK Cell names | Site-valid balanced clock buffer and inverter masters shared by both CCOpt runs. Every name must start with `DCCK`; the routed netlist independently proves actual `CTS_` use. |
 | `CCFMAX_TAP_INTERVAL` | positive integer | Site method's tap interval. |
 | `CCFMAX_PROCESS_NODE` | positive number | Innovus process setting used by both arms. |
-| `CCFMAX_MAX_ROUTE_LAYER` | one-line text | Common maximum routing layer. |
+| `CCFMAX_MAX_ROUTE_LAYER` | `M<number>` name | Common maximum routing layer. The stage adapter converts the reviewed Site name (for example `M7`) to the positive integer required by Innovus `-routeTopRoutingLayer`; invalid names stop before tool launch. |
 | `CCFMAX_RC_TEMPERATURE` | finite number above absolute zero | Common extraction temperature. |
 | `CCFMAX_SWITCHING_ACTIVITY` | number in `[0,1]` | Common activity used for the retained power report. |
 | `CCFMAX_POWER_TEMPLATE_BASE_CELL` | one-line text | Baseline cell used by the prediction adapter. |

@@ -48,6 +48,7 @@ export const sshSchema = z.object({
 export type SshTarget = z.infer<typeof sshSchema>;
 
 const absolutePosixPath = z.string().regex(/^\//, 'a discovered Site path must be absolute');
+const maximumDiscoveryRoots = 64;
 
 /** The small amount of non-secret direction a person may give discovery. It is intentionally not a
  * free-form command, environment, credential, or YAML escape hatch. */
@@ -56,8 +57,11 @@ export const siteDiscoveryRequestSchema = z.object({
   ssh: sshSchema,
   hints: z.object({
     workspaceRoot: absolutePosixPath.optional(),
-    allowedReadRoots: z.array(absolutePosixPath).max(8).default([]),
-    allowedWriteRoots: z.array(absolutePosixPath).max(8).default([]),
+    // Rediscovery reuses the Site owner's already-reviewed Permit. Real EDA Sites commonly span
+    // PDK, RTL, constraints, tools and several project roots, so the discovery transport must hold
+    // that existing profile rather than rejecting it at the old eight-root UI hint ceiling.
+    allowedReadRoots: z.array(absolutePosixPath).max(maximumDiscoveryRoots).default([]),
+    allowedWriteRoots: z.array(absolutePosixPath).max(maximumDiscoveryRoots).default([]),
     allowedWrappers: z.array(z.string().min(1)).max(16).default([]),
     /** Executable names requested by the selected Pack; discovery never invents vendor tools. */
     toolCommands: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/)).max(32).default([]),
