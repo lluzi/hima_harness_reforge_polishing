@@ -1,39 +1,36 @@
-# HimaHarness Pack 5.1.2：真实 Campaign 续测与 Bug Fix 任务
-
-> 历史协议：trial.7 已完成并发现新的 PnR density、Site binding 与失败诊断问题。下一轮使用
-> [Pack 5.1.3 Campaign 续测指导书](agent-campaign-continuation-pack-v5.1.3.md)。
+# HimaHarness Pack 5.1.3：真实 Campaign 续测与 Bug Fix 任务
 
 ## 任务
 
 你接手的是一次新的真实 Campaign，不是继续 trial.5 的旧 Run。使用现有
-HimaHarness 0.3.0-trial.7 App、DeepSeek-V4.1-Flash 和 Reference Pack 5.1.2，在
+HimaHarness 0.3.0-trial.8 App、DeepSeek-V4.1-Flash 和 Reference Pack 5.1.3，在
 `aes_cipher_top` 上持续探索累积 Custom Cell Library，争取 matched post-route Fmax
 提升达到或超过 5%。
 
-trial.5 已证明免费挖掘分支可以并行、Workshop 可以自动改写重试。Pack 5.1.1 随后真实
-通过 LC、DC、custom synthesis 和 adoption，但又暴露了 rich Permit 无法 rediscover、
-多输出 Cell 身份分裂，以及 `M7` 被传给 Innovus 整数参数并空等超时三个问题。trial.6 与
-Pack 5.1.2 修复这三个 blocker。你的首个验收出口是验证它们进入真实 Campaign，随后完成
-两臂 P&R、E0、反馈迭代和 5% Goal 判断。
+前序试用已证明免费挖掘分支、Workshop、LC、DC、custom synthesis 和 adoption。trial.7
+继续暴露了三项产品问题：原 0.25-utilization core 在 clock/timing optimization 中超过
+100% density；Site rediscover 会把已有 bindings 清空；Hard blocker 只显示截断日志，无法
+直接读取 Pack 已写出的结构化失败记录。trial.8 与 Pack 5.1.3 修复这些问题。你的首个验收
+出口是验证它们进入真实 Campaign，随后完成两臂 P&R、E0、反馈迭代和 5% Goal 判断。
 
 ## 固定身份
 
 | 项目 | 值 |
 | --- | --- |
-| App | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.7/HimaHarness.app` |
-| 启动器 | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.7/launch-hima-trial.command` |
+| App | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.8/HimaHarness.app` |
+| 启动器 | `/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.8/launch-hima-trial.command` |
 | Pack 来源 | `/Users/lluzi/code/hima_harness_reforge_polishing/packs/custom-cell-fmax-dtco` |
-| Pack version | `5.1.2` |
-| Pack method digest | `5d40668963df062b55ac2323a056784993d0a0fe630e9fa7110d6f027518b717` |
-| Pack release | `https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/custom-cell-fmax-dtco-v5.1.2` |
+| Pack version | `5.1.3` |
+| Pack method digest | `dd239e62ff69291cb4f15373264951e6af01e4ab743318ce976a4d750dff8aee` |
+| Pack release | `https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/custom-cell-fmax-dtco-v5.1.3` |
 | Site | `luzi@192.168.50.41` |
 | Workspace root | `/data/eda/project/hima_harness/polishing-runs` |
 | Design top | `aes_cipher_top` |
 | Model | App 当前配置的 `DeepSeek-V4.1-Flash` |
 
 主仓库、已发布 Pack、App bundle 和旧 Run 证据保持只读。产品 Bug 只在独立 worktree
-`/Users/lluzi/code/hima_harness_agent_trial_fix_v7`、分支
-`agent/hima-trial-bugfix-v7` 中修改。Site 上只写 Campaign workspace 或明确的隔离临时目录，
+`/Users/lluzi/code/hima_harness_agent_trial_fix_v8`、分支
+`agent/hima-trial-bugfix-v8` 中修改。Site 上只写 Campaign workspace 或明确的隔离临时目录，
 不删除文件，不修改共享 EDA、许可证、网络或他人作业。
 
 ## 步骤 1：启动并安装正确 Pack
@@ -41,7 +38,7 @@ Pack 5.1.2 修复这三个 blocker。你的首个验收出口是验证它们进�
 在 Catsights 副屏运行：
 
 ```bash
-cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.7"
+cd "/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.8"
 zsh ./launch-hima-trial.command
 ```
 
@@ -50,9 +47,9 @@ zsh ./launch-hima-trial.command
 
 安装后同时核对：
 
-- 页面显示 version `5.1.2`；
+- 页面显示 version `5.1.3`；
 - `VERSION.yml` 的 method digest 与上表一致；
-- 当前 Campaign configuration 选择的是 5.1.2；
+- 当前 Campaign configuration 选择的是 5.1.3；
 - 旧 5.1.0 Run 保持历史状态，不被恢复成新 Pack 的 Run。
 
 完成条件：已安装 Pack 的 version 和 digest 两项都匹配。任一不匹配时记录
@@ -61,7 +58,7 @@ zsh ./launch-hima-trial.command
 ## 步骤 2：让 HimaGuide准备 Site
 
 先对已保存 Site 执行 rediscover，再让 HimaGuide 做 readiness。rediscover 必须保留已审阅的
-九个以上 read roots、实际 workspace、wrapper 和绑定，并真正联系 Site；不再接受
+九个以上 read roots、实际 workspace、wrapper 和全部既有 bindings，并真正联系 Site；不再接受
 `expected array to have <=8 items`。只有自然准备受阻后，才使用以下恢复信息：
 
 | 输入 | Site 值 |
@@ -95,9 +92,9 @@ Innovus 各一席许可证，job cap 不超过 5；HimaGuide 能说明 `.lib` �
 version/digest、workspace 和当前节点。一个 Campaign 只对应一个持久 Run；发生等待或 App 重启时
 恢复该 Run，不复制 Run。
 
-完成条件：新 Run 的 Pack identity 是 5.1.2，且当前节点从 `bind-inputs` 正常推进。
+完成条件：新 Run 的 Pack identity 是 5.1.3，且当前节点从 `bind-inputs` 正常推进。
 
-## 步骤 4：5.1.2 修复验收出口
+## 步骤 4：5.1.3 修复验收出口
 
 依次取得以下事实：
 
@@ -112,10 +109,13 @@ version/digest、workspace 和当前节点。一个 Campaign 只对应一个持�
 5. 若 Workshop 选择多输出候选，`design-mapping-timing-evaluation` 必须把每个 request 识别为
    一颗 `_MO` Cell 和多个 output pins，不得出现 `Cell identity mismatch`；累计 Library 也只能
    记录这一颗 physical Cell。
-6. `pnr-foundry` 和 `pnr-generated` 的实际 init 脚本向
-   `-routeTopRoutingLayer` 传正整数，不传 `M7`；两臂都越过 init 并继续 placement/route。
+6. `pnr-foundry` 和 `pnr-generated` 必须报告：requested utilization `0.25`、effective
+   utilization `0.125`、area expansion `2`、正整数 route-layer index；两臂复用同一冻结 core
+   与 pin plan。Placement 与 optimization max density 均为 `0.85`。
 7. 任意 Innovus Tcl 错误必须在几十秒内以非零状态返回，日志保留 `HIMA_BATCH_ERROR` 和原始
    Tcl 错误；不得空等到 `PNR_TIMEOUT_SEC=7200`。
+8. 若任意节点 Hard block，blocker tail 必须包含 `HIMA_STAGE_DIAGNOSTIC`，至少给出 stage、
+   status、facts 和 execution identity；Agent 不应再依赖登录 Site 才能看见失败阶段事实。
 
 完成条件：1–4 记录 `SPLIT_LIBRARY_FIX_PASS`；自然出现多输出候选时记录
 `MULTI_OUTPUT_IDENTITY_PASS`；6–7 记录 `INNOVUS_BATCH_INIT_PASS`。任何一项失败都记录准确的
@@ -144,8 +144,8 @@ version/digest、workspace 和当前节点。一个 Campaign 只对应一个持�
 ```bash
 git -C /Users/lluzi/code/hima_harness_reforge_polishing fetch origin
 git -C /Users/lluzi/code/hima_harness_reforge_polishing worktree add \
-  -b agent/hima-trial-bugfix-v7 \
-  /Users/lluzi/code/hima_harness_agent_trial_fix_v7 \
+  -b agent/hima-trial-bugfix-v8 \
+  /Users/lluzi/code/hima_harness_agent_trial_fix_v8 \
   origin/main
 ```
 
@@ -158,7 +158,7 @@ rebase 或 push `main`，不得创建 release/tag。Pack 方法变化必须形�
 
 写入一个新的报告文件，不覆盖 trial.5 的历史报告：
 
-`/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.7/Agent Trial Report.md`
+`/Users/lluzi/code/hima_harness_reforge_polishing/.hima-tmp/ui-trial-0.3.0-trial.8/Agent Trial Report.md`
 
 报告至少包含：
 
@@ -175,4 +175,4 @@ rebase 或 push `main`，不得创建 release/tag。Pack 方法变化必须形�
 - `MILESTONE_PASS`：matched final database 证明采用、route retention 和 Fmax 提升至少 5%；
 - `LOOP_WORKS_TARGET_MISS`：多轮闭环真实结束，但预算内未达到 5%；
 - `PARTIAL`：修复验收通过，完整研究闭环尚未结束；
-- `FAIL`：5.1.2 仍无法穿过修复出口，或产品事实不可信。
+- `FAIL`：5.1.3 仍无法穿过修复出口，或产品事实不可信。
