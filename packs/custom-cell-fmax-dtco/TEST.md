@@ -1,24 +1,24 @@
-# Custom Cell Fmax DTCO V5.0.1 maintenance release smoke
+# Custom Cell Fmax DTCO V5.1.0 control-path smoke
 
 ## Site
 
-Site `local` with a publication-only stand-in binding. No model, EDA executable, SSH connection or commercial flow was invoked.
+Site `local` with a publication-only stand-in binding and free-task job cap 5. No model, SSH or commercial EDA was invoked.
 
 ## Run
 
-run: run-6c63ea67-5c67-4aec-b7cb-09344412e03b
+run: run-852ffaad-244d-4647-8f0e-af402f7e9d56
 
-The Harness loaded `custom-cell-fmax-dtco@5.0.1`, installed the exact method digest `b791ade8a117e1380ef1b0ca19f32d7e7cc3aec1d304f1c0fd3005f001220d7f`, resolved the local Site, created the Pack workspace and exposed `bind-inputs`.
+The Harness loaded `custom-cell-fmax-dtco@5.1.0`, method digest `fcfb95d123c044cf14a23465812f4317f472df6123082043d333ffcb37c12e24`, created the Pack workspace and exposed `bind-inputs`.
 
 ## Ending
 
 status: ended-budget-exhausted
 
-The smoke ended at the publication boundary before any business node ran. This proves install, preparation, ownership and graph admission only.
+The smoke ended before node work. It proves install, preparation, ownership and graph admission only.
 
 ## Generations
 
-Generation 1 opened with zero Jobs, observations, verdicts or commercial EDA claims.
+Generation 1 opened with zero Jobs, observations, verdicts or commercial claims.
 
 ## Code
 
@@ -30,4 +30,4 @@ none
 
 ## Disagreements
 
-The frozen V5 commercial evidence remains historical calibration. This maintenance smoke does not claim Fmax improvement or repeat P&R.
+The prior matched V5 commercial result remains historical calibration; this control-path smoke does not claim Fmax improvement.

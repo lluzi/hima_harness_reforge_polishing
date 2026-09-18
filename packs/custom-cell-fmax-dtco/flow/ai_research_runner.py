@@ -797,8 +797,10 @@ def _validate_candidate_ast(tree):
                  ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
                  ast.Lambda, ast.Yield, ast.YieldFrom, ast.Await, ast.NamedExpr,
                  ast.JoinedStr, ast.FormattedValue)
-    if any(isinstance(node, forbidden) for node in ast.walk(tree)):
-        raise ValueError("candidate_program must use the bounded pure-Python subset")
+    rejected = next((node for node in ast.walk(tree) if isinstance(node, forbidden)), None)
+    if rejected is not None:
+        raise ValueError("candidate_program forbids %s at line %s; use the documented bounded pure-Python subset (single function)" %
+                         (type(rejected).__name__, getattr(rejected, "lineno", "?")))
     functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
     if len(functions) != 1:
         raise ValueError("candidate_program cannot define nested helper functions")
@@ -841,8 +843,9 @@ def _validate_candidate_ast(tree):
                 inspect_loops(list(ast.iter_child_nodes(node)), enclosing)
 
     inspect_loops(function.body)
-    if sum(loop_bounds) > RESIDUAL_MAX_STATIC_ITERATIONS * 2:
-        raise ValueError("candidate_program aggregate loop budget is too large")
+    if sum(loop_bounds) > RESIDUAL_MAX_STATIC_ITERATIONS * 4:
+        raise ValueError("candidate_program aggregate static loop budget exceeds %d" %
+                         (RESIDUAL_MAX_STATIC_ITERATIONS * 4))
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range":
             bound = _range_bound(node, literal_lengths)
@@ -861,33 +864,15 @@ def _validate_candidate_ast(tree):
         if isinstance(node, ast.BinOp):
             if not isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod)):
                 raise ValueError("candidate_program uses a nonessential binary operator")
-            operands = []
-            for value in (node.left, node.right):
-                if (not isinstance(value, ast.Constant)
-                        or not isinstance(value.value, (int, float))
-                        or isinstance(value.value, bool)
-                        or isinstance(value.value, int) and abs(value.value).bit_length() > 64
-                        or isinstance(value.value, float) and not math.isfinite(value.value)):
-                    raise ValueError("candidate_program arithmetic must use bounded numeric literals")
-                operands.append(value.value)
-            left, right = operands
+            right = node.right.value if isinstance(node.right, ast.Constant) else None
             if isinstance(node.op, (ast.Div, ast.FloorDiv, ast.Mod)) and right == 0:
                 raise ValueError("candidate_program arithmetic divides by zero")
-            operation = {
-                ast.Add: lambda: left + right,
-                ast.Sub: lambda: left - right,
-                ast.Mult: lambda: left * right,
-                ast.Div: lambda: left / right,
-                ast.FloorDiv: lambda: left // right,
-                ast.Mod: lambda: left % right,
-            }[type(node.op)]
-            try:
-                result = operation()
-            except (OverflowError, ValueError, ZeroDivisionError) as error:
-                raise ValueError("candidate_program arithmetic exceeds its numeric bound") from error
-            if ((isinstance(result, int) and abs(result).bit_length() > 64)
-                    or isinstance(result, float) and not math.isfinite(result)):
-                raise ValueError("candidate_program arithmetic exceeds its numeric bound")
+            if isinstance(node.op, ast.Mult):
+                for value, count in ((node.left, node.right), (node.right, node.left)):
+                    oversized = isinstance(count, ast.Constant) and isinstance(count.value, int) and count.value > 4096
+                    if oversized and (isinstance(value, (ast.List, ast.Tuple, ast.Set))
+                            or isinstance(value, ast.Constant) and isinstance(value.value, (str, bytes))):
+                        raise ValueError("candidate_program contains static memory amplification")
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             if (not isinstance(node.operand, ast.Constant)
                     or not isinstance(node.operand.value, (int, float))

@@ -12,6 +12,55 @@ import { budgetStandingAt, researchWriteTotals } from '@hima/harness';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 
+test('an Agent-owned Workshop code failure stays in the coding loop without human clearance', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  const packDir = path.join(home.h.home, 'hima/packs/authored-workshop');
+  await mkdir(packDir, { recursive: true });
+  for (const file of ['contract.yml', 'graph.yml', 'semantics.yml', 'readers', 'rules', 'tools', 'knowledge']) {
+    await cp(path.join(repoRoot, 'test/fixtures/pipeline/workshop', file), path.join(packDir, file), { recursive: true });
+  }
+  await writeFile(path.join(packDir, 'PACK.md'), '# Workshop authoring retry fixture\n');
+  await writeFile(path.join(home.flow.root, 'numbers.txt'), '3\n7\n11\n');
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 },
+      ownerSessionId: String(owner.id), retryAllowance: 1 });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    let serial = 0;
+    const act = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => {
+      const control = host.ctx.hima.ledger.run(runId!)!.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), expectedEpoch: control.epoch,
+        expectedRevision: control.revision, requestId: `authoring-retry-${++serial}`, action, ...fields });
+    };
+    const begun = await act('begin', { nodeId: 'analyze' });
+    assert.equal(begun.kind, 'accepted', begun.reason);
+    assert.deepEqual(begun.data, { nextAction: 'recommend', reason: 'read the admitted Workshop contract and inputs before writing or running code' });
+    const executionId = begun.receipt?.executionId; assert.ok(executionId);
+    assert.equal((await act('recommend', { executionId })).kind, 'accepted');
+    assert.equal((await act('write', { executionId, path: 'entry.sh', content: 'exit 7\n' })).kind, 'accepted');
+    assert.equal((await act('work', { executionId })).kind, 'accepted');
+    await waitUntil('the failed authored program returns to the coding loop', () => {
+      const execution = host.ctx.hima.executionContext(runId!).executions.find((item) => item.id === executionId);
+      return execution?.phase === 'failed';
+    }, 10_000, 25);
+    const after = host.ctx.hima.executionContext(runId);
+    const failed = after.executions.find((item) => item.id === executionId)!;
+    assert.equal(failed.result?.kind, 'retrying');
+    assert.ok(after.available.includes('analyze'), 'the owner may open the next authored version without a person');
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'blocker' }).length, 0);
+    const revised = await act('begin', { nodeId: 'analyze' });
+    assert.equal(revised.kind, 'accepted', revised.reason);
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});
+
 test('a closing reserve stays inside the hard box and admits analysis while refusing new node work', async (t) => {
   const epoch = Date.parse('2026-09-13T00:00:00.000Z');
   const run = {

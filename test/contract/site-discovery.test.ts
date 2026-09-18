@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { discoverSiteFacts, siteDiscoveryProbes, discoveryIsStale, loadSite, saveDiscoveredSite } from '@hima/harness';
+import { discoverSshSite, discoverSiteFacts, siteDiscoveryProbes, discoveryIsStale, loadSite, saveDiscoveredSite } from '@hima/harness';
 import type { Channel, ExecResult, SiteDiscoveryResult } from '@hima/harness';
 
 const request = {
@@ -45,6 +45,21 @@ test('discovery executes exactly the fixed safe probe list and keeps missing com
   assert.deepEqual(seen, [...siteDiscoveryProbes.map((probe) => [...probe]), ['which', 'genus']]);
   assert.equal(facts.find((fact) => fact.probe.join(' ') === 'which genus')?.code, 1, 'a missing tool is an explicit fact, not a fallback shell command');
   assert.ok(seen.every(([verb]) => !['rm', 'mkdir', 'tee', 'cp', 'sh', 'bash', 'sudo'].includes(verb!)), 'discovery contains neither writes nor an unbounded shell');
+});
+
+test('discovery derives real capacity while bounding free parallel work to five Jobs', async () => {
+  const channel: Channel = {
+    siteName: 'lab-a', realpath: async (p) => p, absent: async () => true, readFile: async () => new Uint8Array(),
+    exec: async (argv): Promise<ExecResult> => {
+      const key = argv.join(' ');
+      const stdout = key === 'getconf _NPROCESSORS_ONLN' ? '32\n'
+        : key === 'cat -- /proc/meminfo' ? 'MemTotal:       125829120 kB\nMemFree: 1 kB\n'
+          : key === 'uname -s' ? 'Linux\n' : key === 'tmux -V' ? 'tmux 3.4\n' : '';
+      return { code: 0, stdout: Buffer.from(stdout), stderr: '' };
+    },
+  };
+  const discovered = await discoverSshSite(request, () => channel);
+  assert.deepEqual(discovered.site.capacity, { cores: 32, memoryGiB: 120, parallelJobs: 5, licences: {} });
 });
 
 test('a saved draft is an ordinary loadable Site, redacts credential-shaped remote output, and stale input is visible', async () => {

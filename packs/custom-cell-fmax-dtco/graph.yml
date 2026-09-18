@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.0.1"
+version: "5.1.0"
 entry: bind-inputs
 nodes:
   - id: bind-inputs
@@ -281,26 +281,36 @@ edges:
     to: read-evaluation-baseline
   - from: read-evaluation-baseline
     to: mine-timing-criticality
+  - from: read-evaluation-baseline
+    to: mine-timing-context
+  - from: read-evaluation-baseline
+    to: mine-structure-frequency
+  - from: read-evaluation-baseline
+    to: mine-structure-compaction
+  - from: read-evaluation-baseline
+    to: mine-mapper-compatibility
+  - from: read-evaluation-baseline
+    to: mine-functional-diversity
   - from: mine-timing-criticality
     to: select-timing-criticality
   - from: select-timing-criticality
-    to: mine-timing-context
+    to: merge-join
   - from: mine-timing-context
     to: select-timing-context
   - from: select-timing-context
-    to: mine-structure-frequency
+    to: merge-join
   - from: mine-structure-frequency
     to: select-structure-frequency
   - from: select-structure-frequency
-    to: mine-structure-compaction
+    to: merge-join
   - from: mine-structure-compaction
     to: select-structure-compaction
   - from: select-structure-compaction
-    to: mine-mapper-compatibility
+    to: merge-join
   - from: mine-mapper-compatibility
     to: select-mapper-compatibility
   - from: select-mapper-compatibility
-    to: mine-functional-diversity
+    to: merge-join
   - from: mine-functional-diversity
     to: select-functional-diversity
   - from: select-functional-diversity

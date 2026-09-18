@@ -267,10 +267,11 @@ if (args.includes('--help') || args.includes('-h')) {
         && !parts.join('/').includes('node_modules/.pnpm/node_modules/@hima/desktop');
     } });
     assertSourceTreeIsSafe(path.join(root, 'profiles'));
-    assertSourceTreeIsSafe(path.join(root, 'packs'));
+    assertSourceTreeIsSafe(path.join(root, trialPackRelative));
     assertTrialPackAssets(path.join(root, 'packs'));
     cpSync(path.join(root, 'profiles'), path.join(resource, 'profiles'), { recursive: true });
-    cpSync(path.join(root, 'packs'), path.join(resource, 'packs'), { recursive: true, filter: (source) => {
+    mkdirSync(path.join(resource, 'packs'), { recursive: true });
+    cpSync(path.join(root, trialPackRelative), path.join(resource, trialPackRelative), { recursive: true, filter: (source) => {
       const name = path.basename(source);
       return !name.startsWith('.') && name !== 'run-assets' && name !== '.evidence';
     } });

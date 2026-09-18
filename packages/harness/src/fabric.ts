@@ -2160,7 +2160,8 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     const retry = retryStanding(deps.ledger, run.id, node.id);
     const revised = context.executions.some((execution) => execution.nodeId === node.id && execution.supersededBy !== undefined);
     const currentFailures = context.executions.filter((execution) => execution.nodeId === node.id && execution.supersededBy === undefined && execution.phase === 'failed').length;
-    if ((!revised && retry.spent > retry.allowance) || (revised && currentFailures > retry.allowance)) return no('this node has spent its retry allowance; a human must clear its blocker');
+    const workshopAuthoring = node.kind === 'act' && node.parameters.workshop !== undefined;
+    if (!workshopAuthoring && ((!revised && retry.spent > retry.allowance) || (revised && currentFailures > retry.allowance))) return no('this node has spent its retry allowance; a human must clear its blocker');
     const execution: NodeExecution = {
       id: `execution-${randomUUID()}`, nodeId: node.id, kind: node.kind,
       generation: run.generation ?? 1, attempt: attemptOf(deps.ledger, run.id, node.id),
@@ -2169,9 +2170,12 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
       ...(run.fork === undefined ? {} : { branchId: Object.entries(run.fork.branches).find(([, branch]) => branch.state !== 'done' && branch.currentNode === node.id)?.[0] }),
       ...(run.loop === undefined ? {} : { loopId: run.loop.id, loopGeneration: run.loop.generation }),
     };
-    const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id };
+    const receipt: ExecutionReceipt = { requestId: req.requestId, action: req.action, executionId: execution.id,
+      ...(node.kind === 'act' && node.parameters.workshop !== undefined
+        ? { data: { nextAction: 'recommend', reason: 'read the admitted Workshop contract and inputs before writing or running code' } }
+        : {}) };
     await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: execution } }, receipt, node.kind === 'act' ? { attempts: 1 } : {});
-    return answer('accepted', { receipt });
+    return answer('accepted', { receipt, ...(receipt.data === undefined ? {} : { data: receipt.data }) });
   });
 }
 

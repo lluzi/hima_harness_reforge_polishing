@@ -1,8 +1,9 @@
 ## Files written
 
 LFR-PACK-03 replaces the opening licensed synthesis probe with one fixed reference graph. After
-`bind-inputs`, the graph establishes a license-free evaluation baseline and runs the six existing
-high-influence mining views in a deterministic sequence. Their join builds and reads the function/local indicator portfolio and
+`bind-inputs`, the graph establishes a license-free evaluation baseline and forks the six independent
+high-influence mining views. They hold no EDA licence and may occupy up to the Site job cap in
+parallel; each branch retains its own mine/read evidence before the existing join. Their join builds and reads the function/local indicator portfolio and
 the hash-bound residual context before it opens the existing `research-candidates` Workshop. The
 existing merge, generate, layout and
 characterize stages materialize only that delta. A second license-free evaluation compares the

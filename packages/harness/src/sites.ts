@@ -158,6 +158,21 @@ function unknownsFrom(facts: readonly SiteDiscoveryFact[]): string[] {
   return unknowns;
 }
 
+/** Capacity already observed by the fixed discovery probes. Missing or malformed facts stay at a
+ * conservative one; usable facts are bounded into the current product's five-Job Site cap. */
+function capacityFrom(facts: readonly SiteDiscoveryFact[]): { cores: number; memoryGiB: number; parallelJobs: number } {
+  const textOf = (...probe: string[]): string | undefined => facts.find((fact) =>
+    fact.code === 0 && fact.probe.length === probe.length && fact.probe.every((word, at) => word === probe[at]))?.stdout.trim();
+  const parsedCores = Number.parseInt(textOf('getconf', '_NPROCESSORS_ONLN') ?? '', 10);
+  const cores = Number.isSafeInteger(parsedCores) && parsedCores > 0 ? parsedCores : 1;
+  const memTotalKb = /^MemTotal:\s+(\d+)\s+kB$/m.exec(textOf('cat', '--', '/proc/meminfo') ?? '')?.[1];
+  const parsedMemoryKb = Number.parseInt(memTotalKb ?? '', 10);
+  const memoryGiB = Number.isSafeInteger(parsedMemoryKb) && parsedMemoryKb > 0
+    ? Math.max(1, Math.round(parsedMemoryKb / 104857.6) / 10)
+    : 1;
+  return { cores, memoryGiB, parallelJobs: Math.max(1, Math.min(5, cores)) };
+}
+
 /**
  * Learn a draft Site profile through SshChannel's closed probe vocabulary. This is deliberately not
  * a Campaign action: it creates no Run, workspace, Job, or Ledger record.
@@ -190,9 +205,10 @@ export async function discoverSshSite(
     allowedWrappers: request.hints.allowedWrappers,
     forbidden: ['deletions'],
   };
+  const capacity = capacityFrom(facts);
   return {
     site: { name: request.name, kind: 'ssh', workspaceRoot, permit: `./${request.name}.permit.yml`, bindings: {}, ssh: request.ssh,
-      discovery, capacity: { cores: 1, memoryGiB: 1, parallelJobs: 1, licences: {} } },
+      discovery, capacity: { ...capacity, licences: {} } },
     permit,
     unknowns,
     conflicts,

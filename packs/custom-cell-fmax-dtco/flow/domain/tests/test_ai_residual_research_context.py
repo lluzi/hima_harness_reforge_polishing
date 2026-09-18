@@ -616,7 +616,6 @@ class ResidualResearchContextTests(unittest.TestCase):
             "def propose_candidates(residual, budget):\n    return [x for x in range(4)]\n",
             "def propose_candidates(residual, budget):\n    return list(range(1000000000))\n",
             "def propose_candidates(residual, budget):\n    x = 'a'\n    return [f'{x}{x}']\n",
-            "def propose_candidates(residual, budget):\n    x = 'a'\n    return ['%s%s' % (x, x)]\n",
             "def propose_candidates(residual, budget):\n    return [1 << 8000000000]\n",
         )
         for source in sources:
@@ -625,6 +624,32 @@ class ResidualResearchContextTests(unittest.TestCase):
             with self.assertRaisesRegex(
                     ValueError, "amplification|bounded|loop|operator|arithmetic|pure-Python"):
                 validate_residual_research_proposal(proposal, context)
+
+    def test_normal_ranking_arithmetic_and_three_sequential_bounded_passes_are_authorable(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            context = load_residual_research_context(_request(root), evidence_root=root)
+        proposal = _proposal(context)
+        proposal["candidate_program"]["source"] = (
+            "def propose_candidates(residual, budget):\n"
+            "    pool = residual['candidate_pool']['proposals']\n"
+            "    scores = [0.0] * 128\n"
+            "    for index in range(128):\n"
+            "        if index >= len(pool):\n"
+            "            break\n"
+            "        scores[index] = index * 8 + 1\n"
+            "    total = 0.0\n"
+            "    for index in range(128):\n"
+            "        total = total + scores[index]\n"
+            "    output = []\n"
+            "    for index in range(1):\n"
+            "        output.append({'lens': 'reconvergent-cut',\n"
+            "                       'transformation': {'proposal_key': pool[0]['proposal_key']},\n"
+            "                       'rationale': 'bounded ranking score ' + str(total)})\n"
+            "    return output\n"
+        )
+        validated = validate_residual_research_proposal(proposal, context)
+        self.assertRegex(validated["candidate_program"]["sha256"], r"^[0-9a-f]{64}$")
 
     def test_oversized_hash_bound_evidence_fails_before_json_read(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -47,6 +47,32 @@ def residual_research(context):
     transformation must select one of its ``proposal_key`` values. The runner
     resolves that key to the immutable production generation request after the
     model process exits; the model never reads or assigns its candidate ID.
+
+    The embedded ``candidate_program.source`` uses this authorable subset:
+
+    * define exactly ``propose_candidates(residual, budget)``; no imports,
+      helpers, classes, ``while``, comprehensions, lambda or f-strings;
+    * use ``range(<integer literal>)`` loops of at most 128 iterations; the
+      aggregate static loop budget is 512; break when ``index >= len(pool)``;
+    * ordinary variable numeric arithmetic and string concatenation are valid;
+      file/process/dynamic-code calls and private attributes remain forbidden;
+    * calls are limited to the fixed safe builtins and ``append/get/items/keys/values``.
+
+    Start from this shape and replace the scoring/selection body with evidence-driven logic::
+
+      def propose_candidates(residual, budget):
+          pool = residual["candidate_pool"]["proposals"]
+          output = []
+          for index in range(128):
+              if index >= len(pool):
+                  break
+              row = pool[index]
+              key = row.get("proposal_key")
+              if isinstance(key, str) and key:
+                  output.append({"lens": "declared-lens",
+                                 "transformation": {"proposal_key": key},
+                                 "rationale": "evidence-derived reason"})
+          return output
     """
     raise NotImplementedError("Author one data-dependent residual research turn here")
 

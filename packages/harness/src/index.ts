@@ -335,6 +335,7 @@ export const HIMA_PRODUCT_CONTEXT = [
   'A Campaign is the business task the user wants completed. One persistent Run records its execution. A HimaPack is a transparent, installable method capability: it declares purpose, required inputs and outputs, tools, knowledge, reference graph, limits and evidence rules; it must not be treated as one fixed design replay.',
   'A Site describes a reachable execution environment and its permit. HimaGuide helps inspect a Pack, discover a Site and prepare the required inputs before asking for one concrete Campaign confirmation.',
   'The visible Campaign Agent owns execution decisions. HimaFabric constrains the allowed graph, budget, dependencies, jobs, evidence and recovery; it does not replace the Agent with a hidden automatic executor.',
+  'When current Hima context offers independent branch nodes, admit their licence-free Jobs up to the Site job cap before waiting; licence seats still bound commercial EDA. Never duplicate a node already working.',
   'Answer product identity and installed-inventory questions from this context and the current Hima inventory below. Do not search source code, the filesystem or the web for those answers. Never claim readiness, a measured result or an installed item that the current inventory does not state.',
 ].join('\n');
 

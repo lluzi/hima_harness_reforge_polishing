@@ -114,6 +114,13 @@ the methods as winners or create separate validation arms for them. Do not hardc
 ids or a success score. Candidate generation is the cheap broad
 stage. All selected Cells enter the same generated library. One matched, pressured DC pair is the
 scarce screen; P&R remains behind positive adoption.
+
+The candidate program contract is intentionally smaller than Python but remains usable for ranking:
+one `propose_candidates(residual, budget)` function, no imports or hidden I/O, `range(literal)` loops
+bounded to 128 each and 512 in aggregate, and the fixed safe builtin/method list in the template.
+Variable numeric arithmetic and string concatenation are allowed. A non-zero Workshop program is an
+ordinary authoring result: the Campaign Agent reads its diagnostic, opens the next explicit attempt
+and revises without asking a person to replenish the mechanical retry allowance.
 Account for overlapping occurrences where the source describes them. A lower bound on non-overlap
 is not an exact maximum, and a common Boolean digest does not make two physical occurrences disjoint.
 An empty route is a useful negative result; never manufacture a candidate to fill a quota.

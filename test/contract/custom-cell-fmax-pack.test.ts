@@ -47,7 +47,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.0.1');
+  assert.equal(graph.version, '5.1.0');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -69,8 +69,12 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
 
   const routes = ['timing-criticality', 'timing-context', 'structure-frequency', 'structure-compaction',
     'mapper-compatibility', 'functional-diversity'];
-  assert.ok(chain(['read-evaluation-baseline', ...routes.flatMap((route) =>
-    [`mine-${route}`, `select-${route}`]), 'merge-join']));
+  for (const route of routes) {
+    assert.ok(edge('read-evaluation-baseline', `mine-${route}`), `${route} starts as an independent free branch`);
+    assert.ok(chain([`mine-${route}`, `select-${route}`, 'merge-join']), `${route} retains its own observation before the join`);
+  }
+  assert.equal(graph.edges.filter((candidate) => candidate.from === 'read-evaluation-baseline').length, routes.length,
+    'all six licence-free mining routes are available together instead of serialized');
   assert.ok(edge('merge-join', 'function-local-evaluation', 'PASS'));
   assert.ok(chain(['function-local-evaluation', 'read-function-local-evaluation',
     'function-local-gate']));

@@ -655,6 +655,15 @@ interface FailedAttempt {
  * resume really does grant a fresh allowance and a second process would count the same way.
  */
 async function settleFailedAttempt(ctx: Driving, node: PackNode, attempt: number, failure: FailedAttempt): Promise<Step> {
+  // An Agent-owned Workshop is a coding loop. A non-zero authored program is evidence for the next
+  // revision, not a mechanical Site failure that needs a person to grant another retry. Keep the
+  // node available and let the Run's existing research-write, attempt and time budgets bound it.
+  if (ctx.nonblocking === true && node.kind === 'act' && node.parameters.workshop !== undefined && failure.exitCode !== undefined) {
+    const session = failure.jobSession === undefined ? {} : { jobSession: failure.jobSession };
+    await appendNode(ctx, node, 'retrying', attempt, { ...session,
+      reason: `${failure.reason}; the Workshop code may be revised by its owning Campaign Agent without human clearance` });
+    return { kind: 'retrying' };
+  }
   const { spent, allowance, exhausted } = retryStanding(ctx.deps.ledger, ctx.runId, node.id);
   const session = failure.jobSession === undefined ? {} : { jobSession: failure.jobSession };
   if (!exhausted) {
