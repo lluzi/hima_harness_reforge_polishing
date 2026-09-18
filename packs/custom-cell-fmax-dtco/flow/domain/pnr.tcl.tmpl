@@ -19,7 +19,7 @@
 #
 # Placeholders: @@ARM@@ @@INIT_DB@@ @@PLACE_DB@@ @@DESIGN_TOP@@ @@MULTI_CPU@@ @@TAP_CELL@@ @@TAP_INTERVAL@@
 #   @@DCAP_CELL@@ @@DCAP_ROW_STRIDE@@ @@DCAP_X_PITCH_UM@@ @@DCAP_EDGE_MARGIN_UM@@
-#   @@DCAP_PLAN@@ @@MAX_EFFECTIVE_DENSITY@@ @@PG_HORIZONTAL_LAYER@@ @@PG_VERTICAL_LAYER@@
+#   @@DCAP_PLAN@@ @@MAX_EFFECTIVE_DENSITY@@ @@FLOORPLAN_UTILIZATION@@ @@PG_HORIZONTAL_LAYER@@ @@PG_VERTICAL_LAYER@@
 #   @@PG_RING_WIDTH_UM@@ @@PG_RING_SPACING_UM@@ @@PG_STRIPE_WIDTH_UM@@
 #   @@PG_STRIPE_SPACING_UM@@ @@PG_STRIPE_SET_DISTANCE_UM@@ @@PG_STRIPE_START_OFFSET_UM@@
 #   @@RPT_DIR@@ @@FINAL_DB@@ @@GDS_OUT@@ @@GDS_MAP@@ @@MERGE_GDS@@
@@ -54,6 +54,34 @@ set_ccopt_property inverter_cells $_ccfmax_clock_inverters
 set_ccopt_property use_inverters true
 puts "=== CCFMAX CTS BUFFER CELLS $_ccfmax_clock_buffers ==="
 puts "=== CCFMAX CTS INVERTER CELLS $_ccfmax_clock_inverters ==="
+
+# --- pre-placement standard-cell area budget ---------------------------------------
+# Every standard cell fixed into this core before logic placement consumes the same
+# area the effective-density ceiling bounds.  The init stage sized the floorplan for
+# @@FLOORPLAN_UTILIZATION@@ of the logic area, so the fixed tap/DCAP plan is checked
+# against the ceiling here: a plan that cannot fit is a planning error, not a long
+# Innovus placement that ends in IMPSP-2002/IMPSP-2021.
+proc _hima_standard_cell_area {} {
+  set _area 0.0
+  foreach _size [dbGet top.insts.cell.size] {
+    set _width [lindex $_size 0]
+    set _height [lindex $_size 1]
+    if {[string is double -strict $_width] && [string is double -strict $_height]} {
+      set _area [expr {$_area + $_width * $_height}]
+    }
+  }
+  return $_area
+}
+set _hima_budget_core_box [lindex [dbGet top.fPlan.coreBox] 0]
+if {[llength $_hima_budget_core_box] != 4} {
+  error "V5 floorplan has no unique four-coordinate core box"
+}
+set _hima_budget_core_area [expr {([lindex $_hima_budget_core_box 2] - [lindex $_hima_budget_core_box 0]) * ([lindex $_hima_budget_core_box 3] - [lindex $_hima_budget_core_box 1])}]
+set _hima_logic_occupancy [expr {[_hima_standard_cell_area] / $_hima_budget_core_area}]
+if {$_hima_logic_occupancy > (@@MAX_EFFECTIVE_DENSITY@@ + 1.0e-9)} {
+  error "V5 logic occupancy $_hima_logic_occupancy already exceeds @@MAX_EFFECTIVE_DENSITY@@ before any fixed cell was added (requested floorplan utilization @@FLOORPLAN_UTILIZATION@@)"
+}
+puts "=== CCFMAX V5 LOGIC OCCUPANCY @@ARM@@ $_hima_logic_occupancy ==="
 
 # --- profile-declared well taps, before placement ---
 addWellTap -cell @@TAP_CELL@@ -cellInterval @@TAP_INTERVAL@@ -prefix WELLTAP
@@ -97,6 +125,11 @@ foreach _hima_box $_hima_rows {
 }
 close $_hima_dcap_plan
 puts "=== CCFMAX V5 DCAP COUNT @@ARM@@ $_hima_dcap_count ==="
+set _hima_planned_occupancy [expr {[_hima_standard_cell_area] / $_hima_budget_core_area}]
+if {$_hima_planned_occupancy > (@@MAX_EFFECTIVE_DENSITY@@ + 1.0e-9)} {
+  error "V5 planned site occupancy $_hima_planned_occupancy exceeds @@MAX_EFFECTIVE_DENSITY@@ before placement: the fixed tap/DCAP plan does not fit the core sized for utilization @@FLOORPLAN_UTILIZATION@@"
+}
+puts "=== CCFMAX V5 PLANNED OCCUPANCY @@ARM@@ $_hima_planned_occupancy ==="
 
 # A real, matched block-level power grid.  IR/EM signoff is outside this
 # experiment; the grid establishes actual routing/resource competition.
@@ -120,14 +153,7 @@ if {[llength $_hima_frozen_core_box] != 4} {
 place_opt_design
 # Compute the effective standard-cell occupancy from every instantiated master,
 # including fixed DCAP/tap cells.  Pure-gate density remains a separate report.
-set _hima_occupied_area 0.0
-foreach _hima_size [dbGet top.insts.cell.size] {
-  set _hima_width [lindex $_hima_size 0]
-  set _hima_height [lindex $_hima_size 1]
-  if {[string is double -strict $_hima_width] && [string is double -strict $_hima_height]} {
-    set _hima_occupied_area [expr {$_hima_occupied_area + $_hima_width * $_hima_height}]
-  }
-}
+set _hima_occupied_area [_hima_standard_cell_area]
 set _hima_core_box $_hima_frozen_core_box
 set _hima_core_area [expr {([lindex $_hima_core_box 2] - [lindex $_hima_core_box 0]) * ([lindex $_hima_core_box 3] - [lindex $_hima_core_box 1])}]
 set _hima_effective_occupancy [expr {$_hima_occupied_area / $_hima_core_area}]
