@@ -127,6 +127,8 @@ def materialize_profile(document):
     )
     for name in file_fields:
         document[name] = plain_file(document.get(name), name)
+    if document.get("FOUNDRY_DB_FILE") not in (None, ""):
+        document["FOUNDRY_DB_FILE"] = plain_file(document["FOUNDRY_DB_FILE"], "FOUNDRY_DB_FILE")
     for name in directory_fields:
         document[name] = plain_dir(document.get(name), name)
     for name in line_fields:
@@ -211,14 +213,22 @@ def main():
     flow = workspace / "flow"
     design_root = Path(ns.design_root).resolve()
     constraints = Path(ns.constraints).resolve()
-    foundry_db = Path(ns.foundry_library).resolve()
+    foundry_library = Path(ns.foundry_library).resolve()
     rtl = sorted(Path(item).resolve() for item in glob.glob(ns.rtl_glob))
     if not design_root.is_dir() or not rtl or any(not item.is_file() or item.is_symlink() or not item.is_relative_to(design_root) for item in rtl):
         raise ValueError("rtlGlob must resolve to plain files within designRoot")
-    if not constraints.is_file() or constraints.is_symlink() or not foundry_db.is_file() or foundry_db.is_symlink():
+    if not constraints.is_file() or constraints.is_symlink() or not foundry_library.is_file() or foundry_library.is_symlink():
         raise ValueError("constraints and foundryLibrary must be plain files")
+    # A Site may stage the compiled foundry DB separately from the Liberty text. DC cannot read
+    # Liberty, and the licence-free mining/characterize stages cannot read a binary DB, so one
+    # path cannot serve both: FOUNDRY_DB_FILE names the DB when the Site has one, and falls back
+    # to the legacy single-path derivation otherwise.
     physical = plain_json(ns.physical_inputs, "physicalInputs")
     tools = plain_json(ns.tool_stack, "toolStack")
+    if physical.get("FOUNDRY_DB_FILE") not in (None, ""):
+        foundry_db = Path(plain_file(physical["FOUNDRY_DB_FILE"], "FOUNDRY_DB_FILE"))
+    else:
+        foundry_db = foundry_library
     overlap = set(physical) & set(tools)
     if overlap:
         raise ValueError("physicalInputs and toolStack redefine: " + ", ".join(sorted(overlap)))

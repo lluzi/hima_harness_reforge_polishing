@@ -65,7 +65,7 @@ adoption, pnr-foundry, pnr-generated, verify or compare. `read-stage.py REPORT O
 observations from the retained artifacts. Selection readers use `select-timing-criticality` etc.
 
 The physical and tool profiles additionally declare `evidenceClass: site-run` and flat bindings for the
-Site's Liberty/skeleton/LEF/QRC/GDS/map, bool2cmos, layout technology/rules/rails,
+Site's Liberty and optional separate compiled DB, skeleton/LEF/QRC/GDS/map, bool2cmos, layout technology/rules/rails,
 characterization helpers and three learned models, LC/DC/Innovus wrapper and explicit limits.
 Missing inputs are rejected. `synthetic-fixture` is exclusively for labelled local tests.
 The paired physical arms use the current `periodNs`, explicitly shared and rechecked. DC applies

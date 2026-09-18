@@ -70,7 +70,7 @@ Knowledge shaping this section: `assert-the-checker-options.md`, `one-checker-pe
 ## Run contract
 
 The Site binds a read-only design root, an explicit RTL file selection, elaboration top, constraints,
-foundry Liberty/DB, physical inputs, tool stack and writable Campaign workspace. HimaGuide may discover
+foundry Liberty plus its optional separate compiled DB, physical inputs, tool stack and writable Campaign workspace. HimaGuide may discover
 and construct these bindings; users do not write Pack YAML. No Pack-owned top, design, process path,
 customer command or precomputed candidate is allowed.
 

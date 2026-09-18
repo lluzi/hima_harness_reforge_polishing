@@ -1,20 +1,24 @@
-# Custom Cell Fmax DTCO V5.1.0 control-path smoke
+# Custom Cell Fmax DTCO V5.1.1 split library binding smoke
 
 ## Site
 
-Site `local` with a publication-only stand-in binding and free-task job cap 5. No model, SSH or commercial EDA was invoked.
+Site local with publication-only stand-in bindings. No model, SSH or commercial EDA was invoked.
+The retained trial.5 evidence separately demonstrates a real Library Compiler pass and a corrected
+Design Compiler scratch invocation; this smoke makes no new QoR claim.
 
 ## Run
 
-run: run-852ffaad-244d-4647-8f0e-af402f7e9d56
+run: run-69403a72-aaae-43d6-9e33-6c9f98e88a5b
 
-The Harness loaded `custom-cell-fmax-dtco@5.1.0`, method digest `fcfb95d123c044cf14a23465812f4317f472df6123082043d333ffcb37c12e24`, created the Pack workspace and exposed `bind-inputs`.
+The Harness loaded custom-cell-fmax-dtco@5.1.1 with method digest bfd586716af5b2e11921e7aa43fbcd97f558df57ef06dafbf73aff508c369d3c, prepared its
+Pack workspace and exposed bind-inputs.
 
 ## Ending
 
 status: ended-budget-exhausted
 
-The smoke ended before node work. It proves install, preparation, ownership and graph admission only.
+The publication smoke was closed before node work. It proves install, ownership, graph admission and
+release identity only.
 
 ## Generations
 
@@ -30,4 +34,6 @@ none
 
 ## Disagreements
 
-The prior matched V5 commercial result remains historical calibration; this control-path smoke does not claim Fmax improvement.
+Trial.5 stopped because 5.1.0 collapsed Liberty text and compiled DB into one binding. Version 5.1.1
+preserves the two Site paths; the existing commercial result remains evidence of the defect and its
+minimal DC isolation, not a claim that this publication smoke completed P&R.

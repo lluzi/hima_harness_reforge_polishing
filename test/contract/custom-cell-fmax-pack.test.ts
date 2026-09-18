@@ -47,7 +47,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.1.0');
+  assert.equal(graph.version, '5.1.1');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -682,8 +682,10 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
   const h = await createHimaHome(); t.after(() => h.dispose());
   const designRoot = path.join(h.home, 'held-out-design'); await mkdir(designRoot);
   const rtl = path.join(designRoot, 'top.v'), constraints = path.join(designRoot, 'constraints.tcl');
-  const foundry = path.join(designRoot, 'foundry.db'), physical = path.join(designRoot, 'physical.json'), tools = path.join(designRoot, 'tools.json');
-  await writeFile(rtl, 'module held_out(input clk); endmodule\n'); await writeFile(constraints, 'create_clock -name clk -period 1 [get_ports clk]\n'); await writeFile(foundry, 'fixture\n');
+  const foundryLib = path.join(designRoot, 'foundry.lib'), foundryDb = path.join(designRoot, 'foundry.db');
+  const physical = path.join(designRoot, 'physical.json'), tools = path.join(designRoot, 'tools.json');
+  await writeFile(rtl, 'module held_out(input clk); endmodule\n'); await writeFile(constraints, 'create_clock -name clk -period 1 [get_ports clk]\n');
+  await writeFile(foundryLib, 'library (fixture) {}\n'); await writeFile(foundryDb, 'fixture compiled db\n');
   const profile = path.join(designRoot, 'profile'); const helper = path.join(profile, 'helpers');
   await mkdir(helper, { recursive: true });
   await Promise.all(['estimate_lib.py', 'mock_char.py'].map((name) => writeFile(path.join(helper, name), `# fixture ${name}\n`)));
@@ -692,7 +694,8 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
   await Promise.all(profileFiles.map((name) => writeFile(path.join(profile, name), `fixture ${name}\n`)));
   const proxyToolSha256 = sha256(await readFile('/usr/bin/true'));
   const physicalProfile = {
-    CLOCK_NAME: 'clk', FOUNDRY_LIB: path.join(profile, 'foundry.lib'), FOUNDRY_LEF: path.join(profile, 'foundry.lef'),
+    CLOCK_NAME: 'clk', FOUNDRY_LIB: foundryLib, FOUNDRY_DB_FILE: foundryDb,
+    FOUNDRY_LEF: path.join(profile, 'foundry.lef'),
     FOUNDRY_QRC_TECH: path.join(profile, 'qrc'), FOUNDRY_GDS: path.join(profile, 'foundry.gds'), TECH_LEF: path.join(profile, 'tech.lef'),
     BOOL2CMOS_CMD: 'python3 -m bool2cmos.cli', BOOL2CMOS_CWD: profile, BOOL2CMOS_PDK_PROFILE: path.join(profile, 'pdk.json'),
     LIBERTY_SKELETON: path.join(profile, 'skeleton.lib'), LIBRECELL_TECH_PY: path.join(profile, 'tech.py'),
@@ -732,24 +735,40 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
   const rejectedWorkspace = path.join(h.workspace, 'rejected-bind'); await mkdir(path.join(rejectedWorkspace, 'flow'), { recursive: true });
   const rejected = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
     '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundry, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
   assert.notEqual(rejected.status, 0); assert.match(rejected.stderr, /CCFMAX_TAP_INTERVAL/);
   const ordinaryClockProfile = { ...physicalProfile, CCFMAX_CLOCK_BUFFER_CELLS: 'BUFFD8FIXTURE' };
   await writeFile(physical, JSON.stringify(ordinaryClockProfile));
   const rejectedClock = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
     '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundry, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
   assert.notEqual(rejectedClock.status, 0); assert.match(rejectedClock.stderr, /CCFMAX_CLOCK_BUFFER_CELLS.*DCCK-prefixed/);
   await writeFile(physical, JSON.stringify(physicalProfile));
   await writeFile(tools, JSON.stringify({ ...toolProfile, LFR_ABC_SHA256: '0'.repeat(64) }));
   const rejectedProxyIdentity = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
     '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
-    '--foundry-library', foundry, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
   assert.notEqual(rejectedProxyIdentity.status, 0); assert.match(rejectedProxyIdentity.stderr, /LFR_ABC_SHA256 does not match/);
   await writeFile(tools, JSON.stringify(toolProfile));
+  await writeFile(physical, JSON.stringify({ ...physicalProfile, FOUNDRY_DB: foundryDb }));
+  const rejectedAmbiguousDb = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
+    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
+    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+  assert.notEqual(rejectedAmbiguousDb.status, 0); assert.match(rejectedAmbiguousDb.stderr, /redefine Campaign identity: FOUNDRY_DB/);
+  const legacyPhysicalProfile = { ...physicalProfile }; delete (legacyPhysicalProfile as Record<string, unknown>).FOUNDRY_DB_FILE;
+  await writeFile(physical, JSON.stringify(legacyPhysicalProfile));
+  const legacyWorkspace = path.join(h.workspace, 'legacy-single-library-bind');
+  await mkdir(path.join(legacyWorkspace, 'flow'), { recursive: true });
+  const legacy = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', legacyWorkspace,
+    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
+    '--foundry-library', foundryDb, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+  assert.equal(legacy.status, 0, legacy.stderr);
+  const legacyMaterialized = JSON.parse(await readFile(path.join(legacyWorkspace, 'flow/inputs.json'), 'utf8')) as Record<string, unknown>;
+  assert.equal(legacyMaterialized.FOUNDRY_DB, await realpath(foundryDb));
+  await writeFile(physical, JSON.stringify(physicalProfile));
   const destination = path.join(h.home, 'hima/packs/custom-cell-fmax-dtco');
   installPackMethod({ from: packDir, to: destination });
-  await writeLocalSite(h, { bindings: { designRoot, rtlGlob: rtl, designTop: 'held_out', constraints, foundryLibrary: foundry,
+  await writeLocalSite(h, { bindings: { designRoot, rtlGlob: rtl, designTop: 'held_out', constraints, foundryLibrary: foundryLib,
     physicalInputs: physical, toolStack: tools, workspaceRoot: h.workspace }, allowedReadRoots: [h.home, h.workspace],
     allowedWriteRoots: [h.workspace], allowedWrappers: ['/usr/bin/python3'], licences: { 'Design-Compiler': 1, 'Library-Compiler': 1, Innovus: 1 } });
   const host = await bootInProcess(h);
@@ -774,6 +793,9 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     assert.equal(materialized.designRoot, canonicalDesignRoot); assert.equal(materialized.DESIGN_ROOT, canonicalDesignRoot);
     assert.equal(materialized.designTop, 'held_out'); assert.equal(materialized.DESIGN_TOP, 'held_out');
     assert.equal(materialized.edaWrapper, '/usr/bin/true');
+    assert.equal(materialized.FOUNDRY_LIB, await realpath(foundryLib));
+    assert.equal(materialized.FOUNDRY_DB, await realpath(foundryDb));
+    assert.equal(materialized.foundryDb, await realpath(foundryDb));
     assert.equal(materialized.MAX_NEW_CELLS, 50); assert.equal(materialized.MAX_CELLS, 200);
     assert.equal(materialized.MAX_ROUTE_CANDIDATES, 40);
     assert.equal(materialized.LFR_YOSYS_SHA256, proxyToolSha256);

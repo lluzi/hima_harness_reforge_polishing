@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.1.0"
+version: "5.1.1"
 title: V5 Active Frontier custom Cell Fmax reference Campaign
 status: released
 minimumHarnessVersion: 0.1.0
@@ -25,7 +25,9 @@ inputs:
   - name: constraints
     description: "Site-bound timing constraints used identically by both comparison arms."
   - name: foundryLibrary
-    description: "Site-bound Liberty/DB inputs for the baseline library."
+    description: "Site-bound baseline Liberty text. A Site with a separate compiled Design Compiler
+      database declares FOUNDRY_DB_FILE in physicalInputs; legacy single-file Sites may still pass
+      their compiled DB here."
   - name: physicalInputs
     description: "Site-bound LEF, extraction, layer-map, row-site, tap/filler, DCCK clock-tree Cells and process
       profile plus the per-round and cumulative Library bounds used identically by both route arms.
