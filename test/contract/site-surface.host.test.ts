@@ -169,7 +169,7 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ sessionId, name: 'lab-a', pack: discoveryRequirementsPackId }),
       });
-      const previewBody = await preview.json() as { result: { site: { ssh?: { destination: string } }; permit: { allowedReadRoots: string[]; allowedWriteRoots: string[] } }; saved?: unknown; reviewId?: string };
+      const previewBody = await preview.json() as { result: { site: { ssh?: { destination: string }; capacity: { licences: Record<string, number> } }; permit: { allowedReadRoots: string[]; allowedWriteRoots: string[] } }; saved?: unknown; reviewId?: string };
       assert.equal(preview.status, 200, JSON.stringify(previewBody));
       assert.equal(previewBody.result.site.ssh?.destination, 'engineer@lab.example.com', 'the saved Site\'s own destination is reused, never asked again');
       assert.equal(previewBody.saved, undefined, 'a preview (save left false) writes nothing');
@@ -177,6 +177,7 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       assert.deepEqual(previewBody.result.permit.allowedReadRoots, ['/work']);
       assert.deepEqual(previewBody.result.permit.allowedWriteRoots, ['/work/hima']);
       assert.deepEqual((previewBody.result.permit as { allowedWrappers?: string[] }).allowedWrappers, ['make'], 'the selected Pack proposes its declared wrapper');
+      assert.deepEqual(previewBody.result.site.capacity.licences, { 'Design-Compiler': 1 }, 'the reviewed draft reserves the Pack-declared minimum seat without probing a vendor tool');
       assert.ok((previewBody.result as { site: { discovery?: { facts: { probe: string[]; code: number }[] } } }).site.discovery?.facts.some((fact) => fact.code === 0 && fact.probe.join(' ') === 'which make'), 'the selected Pack command is actually probed');
       const beforeSaveMtime = (await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs;
 

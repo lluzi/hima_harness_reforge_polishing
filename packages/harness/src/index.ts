@@ -771,7 +771,18 @@ export default class Hima extends Service {
     if (!parsed.success) throw parsed.error;
     const channelFor = testDiscoveryChannelFor() ?? ((name: string, ssh: SshTarget) => new SshChannel(name, ssh));
     const resolvedSsh = { destination: parsed.data.ssh.destination, ...(parsed.data.ssh.jumps.length === 0 ? {} : { jumps: [...parsed.data.ssh.jumps] }) };
-    const result = await discoverSshSite({ name: parsed.data.name, ssh: resolvedSsh, hints: parsed.data.hints }, channelFor);
+    const discovered = await discoverSshSite({ name: parsed.data.name, ssh: resolvedSsh, hints: parsed.data.hints }, channelFor);
+    // A selected Pack states the licence seats one of its Jobs needs. Discovery cannot check out a
+    // vendor licence safely, so the reviewed Site draft reserves the smallest declared count rather
+    // than claiming a measured pool. The person's Save remains the authority boundary.
+    const requiredLicences: Record<string, number> = {};
+    for (const operation of [...(selectedPack?.contract.tools ?? []), ...(selectedPack?.contract.workshops ?? [])]) {
+      for (const [licence, count] of Object.entries(operation.licences)) {
+        requiredLicences[licence] = Math.max(requiredLicences[licence] ?? 0, count);
+      }
+    }
+    const result = selectedPack === undefined ? discovered : { ...discovered, site: { ...discovered.site,
+      capacity: { ...discovered.site.capacity, licences: requiredLicences } } };
     if (request.save !== true) {
       if (reviewOwner === undefined) return { result };
       const reviewId = randomUUID();
