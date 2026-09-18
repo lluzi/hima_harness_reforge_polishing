@@ -39,7 +39,7 @@ import {
 } from './packs.js';
 import { jobKill, jobStatus, jobTail, waitForNextPoll, type LaunchRequest, type JobDeps, type JobKillResult, type JobStatusResult } from './jobs.js';
 import { appendReading, observeForPack } from './observe.js';
-import { pathsOf, type Site } from './sites.js';
+import { loadSite, pathsOf, type Site } from './sites.js';
 import { channelFor, mustRun } from './channel.js';
 import { decideRead, decideWrite } from './shell.js';
 import { readingDocument, type Semantics, type SemanticDeclaration } from './semantics.js';
@@ -675,7 +675,9 @@ async function settleFailedAttempt(ctx: Driving, node: PackNode, attempt: number
   }
   const reason = `${failure.reason}; node ${node.id} has now failed ${counted(spent, 'time')} and spent its retry allowance of ${allowance}`;
   const tailed = failure.jobSession === undefined ? undefined : await tailOfJob(ctx, failure.jobSession);
-  const logTail = tailed?.ok === true ? tailed.text : undefined;
+  const diagnostic = failure.jobSession === undefined ? undefined : await failedStageDiagnostic(ctx, node, failure.jobSession);
+  const combinedTail = [tailed?.ok === true ? tailed.text : undefined, diagnostic].filter((item): item is string => item !== undefined).join('\n');
+  const logTail = combinedTail === '' ? undefined : combinedTail;
   // An absent key, never an undefined one: a failure with no exit status and no log says so by omission.
   const exit = failure.exitCode === undefined ? {} : { lastExitCode: failure.exitCode };
   const tail = logTail === undefined ? {} : { logTail };
@@ -683,6 +685,44 @@ async function settleFailedAttempt(ctx: Driving, node: PackNode, attempt: number
   await ctx.deps.ledger.appendBlocker(ctx.runId, { nodeId: node.id, attempts: attempt, ...inBranch, ...exit, ...tail, reason });
   await appendNode(ctx, node, 'blocked', attempt, { ...session, reason });
   return { kind: 'hard-blocker' };
+}
+
+/** Retain the Pack stage's structured failure record beside the ordinary Job-log tail. */
+async function failedStageDiagnostic(ctx: Driving, node: PackNode, session: string): Promise<string | undefined> {
+  const launch = ctx.deps.ledger.records({ runId: ctx.runId }).findLast((record) =>
+    record.type === 'job' && record.event === 'launched' && record.job.session === session);
+  if (launch?.type !== 'job' || launch.event !== 'launched') return undefined;
+  try {
+    const site = loadSite(ctx.deps.sitesDir, launch.siteId);
+    const channel = channelFor(site);
+    const at = pathsOf(site).join(launch.job.workspace, flowDirName, 'records', `${node.id}.json`);
+    const permitted = await decideRead(site, at, channel);
+    if (!permitted.ok) return `HIMA_STAGE_DIAGNOSTIC unavailable: ${permitted.reason}`;
+    const bytes = await channel.readFile(permitted.absPath);
+    if (bytes.byteLength > 1024 * 1024) return `HIMA_STAGE_DIAGNOSTIC unavailable: ${at} exceeds 1 MiB`;
+    const document = JSON.parse(Buffer.from(bytes).toString('utf8')) as Record<string, unknown>;
+    if (document.stage !== node.id) return `HIMA_STAGE_DIAGNOSTIC unavailable: ${permitted.absPath} names stage ${String(document.stage)}`;
+    const facts = document.facts !== null && typeof document.facts === 'object' && !Array.isArray(document.facts)
+      ? Object.fromEntries(Object.entries(document.facts as Record<string, unknown>).map(([key, value]) =>
+        [key, key === 'tool_failure_reason' && typeof value === 'string' ? value.slice(0, 2000) : value]))
+      : document.facts;
+    const executions = Array.isArray(document.executions) ? document.executions.map((value) => {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+      const row = value as Record<string, unknown>;
+      return { argv: row.argv, exitCode: row.exitCode, elapsedSeconds: row.elapsedSeconds, log: row.log };
+    }) : document.executions;
+    const artifacts = Array.isArray(document.artifacts) ? document.artifacts.map((value) => {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+      const row = value as Record<string, unknown>;
+      return { role: row.role, path: row.path, sha256: row.sha256, bytes: row.bytes };
+    }) : document.artifacts;
+    const summary = { path: permitted.absPath, stage: document.stage, status: document.status, facts, executions, artifacts };
+    let rendered = JSON.stringify(summary);
+    if (rendered.length > 12_000) rendered = JSON.stringify({ ...summary, artifacts: Array.isArray(artifacts) ? `${artifacts.length} artifacts retained at ${permitted.absPath}` : artifacts });
+    return `HIMA_STAGE_DIAGNOSTIC ${rendered}`;
+  } catch (error) {
+    return `HIMA_STAGE_DIAGNOSTIC unavailable: ${(error as Error).message}`;
+  }
 }
 
 /**

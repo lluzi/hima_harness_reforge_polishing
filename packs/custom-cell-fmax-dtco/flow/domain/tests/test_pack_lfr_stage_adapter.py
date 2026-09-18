@@ -40,6 +40,21 @@ class _Context:
 
 
 class PackLfrStageAdapterTests(unittest.TestCase):
+    def test_floorplan_area_is_doubled_from_the_failure_baseline(self):
+        self.assertEqual("0.125000", stages.expanded_floorplan_utilization("0.25"))
+        self.assertEqual("0.250000", stages.expanded_floorplan_utilization("0.5"))
+
+    def test_failed_pnr_log_retains_density_control_facts(self):
+        markers = stages.pnr_density_markers("\n".join([
+            "=== CCFMAX V5 PLANNED OCCUPANCY foundry 0.4305 ===",
+            "=== CCFMAX V5 FIXED CELL AREA foundry 13685.112 ===",
+            "**ERROR: fixture",
+        ]), "foundry")
+        self.assertEqual({
+            "planned_occupancy": 0.4305,
+            "fixed_cell_area_um2": 13685.112,
+        }, markers)
+
     def test_innovus_route_layer_name_is_rendered_as_an_integer(self):
         self.assertEqual(7, stages.innovus_route_layer_index("M7"))
         self.assertEqual(8, stages.innovus_route_layer_index(8))

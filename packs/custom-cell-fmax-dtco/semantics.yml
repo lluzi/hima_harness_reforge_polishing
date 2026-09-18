@@ -87,7 +87,19 @@ values:
     description: Pure gate density number 6 from the retained Innovus summary report.
   effective_site_occupancy:
     unit: fraction
-    description: All instantiated standard-cell master area divided by the frozen placeable core area, including fixed tap and DCAP cells; must not exceed 0.85.
+    description: All instantiated standard-cell master area divided by the frozen placeable core area, including fixed tap and DCAP cells; values above 1.0 are invalid.
+  floorplan_requested_utilization:
+    unit: fraction
+    description: Strategy utilization requested by the Campaign before the fixed area-expansion policy.
+  floorplan_effective_utilization:
+    unit: fraction
+    description: Utilization actually passed to Innovus after applying the Pack's fixed floorplan-area expansion.
+  floorplan_area_expansion:
+    unit: ratio
+    description: Frozen core-area multiplier applied identically to the foundry and generated arms.
+  innovus_route_top_layer_index:
+    unit: count
+    description: Positive integer route layer level rendered into Innovus routeTopRoutingLayer.
   dcap_count:
     unit: count
     description: Fixed deterministic checkerboard DCAP instances admitted before placement.

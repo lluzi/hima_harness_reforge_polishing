@@ -15,7 +15,7 @@
 // only; the reference site is #17.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type HimaHome } from './support/dsh-home.ts';
 // The pieces every fabric suite composes; this file's own sleep and poll are wrapped around them.
@@ -159,6 +159,18 @@ test('a job told to fail four times against an allowance of three blocks with a 
   const { h, host, dispose } = local;
   let sessions: string[] = [];
   try {
+    const makefile = path.join(local.flow.root, 'Makefile');
+    const continuation = '\\';
+    const failureExit = `\t   exit 3; ${continuation}`;
+    const recordedFailure = [
+      `\t   mkdir -p "$(WORKSPACE_ROOT)/flow/records"; ${continuation}`,
+      `\t   printf '%s\\n' '{"stage":"synthesize","status":"tool-failure","facts":{"failure_code":"fixture-stage-record"}}' > "$(WORKSPACE_ROOT)/flow/records/synthesize.json"; ${continuation}`,
+      failureExit,
+    ].join('\n');
+    await writeFile(makefile, (await readFile(makefile, 'utf8')).replace(
+      failureExit,
+      recordedFailure,
+    ));
     const started = await himaCommand(
       host,
       h.workspace,
@@ -195,6 +207,8 @@ test('a job told to fail four times against an allowance of three blocks with a 
     assert.ok(blocker.logTail && blocker.logTail.length > 0, `the tail of the failed job's own log is on the record: ${JSON.stringify(blocker.logTail)}`);
     assert.match(blocker.logTail, /synth/, `and it is that job's log: ${blocker.logTail}`);
     assert.match(blocker.logTail, /Error 3/, `carrying what the recipe itself failed with, which the exit code alone cannot say: ${blocker.logTail}`);
+    assert.match(blocker.logTail, /HIMA_STAGE_DIAGNOSTIC/, blocker.logTail);
+    assert.match(blocker.logTail, /fixture-stage-record/, blocker.logTail);
     assert.equal(
       nodeRecords(host, runId).find((r) => r.nodeId === 'synthesize' && r.state === 'blocked')?.reason,
       blocker.reason,

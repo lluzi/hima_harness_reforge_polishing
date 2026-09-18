@@ -22,6 +22,10 @@ emits:
   - route_instance_count
   - route_density
   - effective_site_occupancy
+  - floorplan_requested_utilization
+  - floorplan_effective_utilization
+  - floorplan_area_expansion
+  - innovus_route_top_layer_index
   - dcap_count
   - pg_special_wire_count
   - v5_setup_endpoint_count

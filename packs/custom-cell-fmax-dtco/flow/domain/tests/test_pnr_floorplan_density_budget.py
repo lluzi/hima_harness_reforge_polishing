@@ -28,8 +28,9 @@ Mechanism the three tests below pin down, at the level the method itself is writ
    therefore count against the 85% effective occupancy budget") is therefore asserted
    but not enforced before placement.
 
-These tests are intentionally satisfied by a *pre-placement* budget guard; they do not
-prescribe where that guard lives.
+The current method doubles the failure-baseline area, sets placement/optimization max density to
+the reviewed 0.85 value, and reserves the hard checks for physically impossible occupancy above
+100%. These tests pin that policy without attempting to predict Innovus local density.
 """
 
 from pathlib import Path
@@ -64,28 +65,29 @@ def pnr_stage_substitution_block():
 
 
 class PnrFloorplanDensityBudgetTests(unittest.TestCase):
-    def test_density_ceiling_is_consulted_before_fixed_dcap_cells_are_inserted(self):
+    def test_fixed_cell_area_is_observed_with_the_common_density_cap(self):
         template = pnr_template_without_comments()
-        first_ceiling_use = template.index("MAX_EFFECTIVE_DENSITY")
-        first_fixed_cell = template.index("addInst -cell")
-        self.assertLess(
-            first_ceiling_use,
-            first_fixed_cell,
-            "the effective-density ceiling is first used after the fixed DCAP "
-            "checkerboard has already been inserted, so the pre-placement plan is "
-            "not bounded by it",
-        )
+        required = [
+            "set _hima_logic_area [_hima_standard_cell_area]",
+            "set _hima_fixed_cell_area [expr {$_hima_planned_area - $_hima_logic_area}]",
+            "set _hima_planned_occupancy [expr {$_hima_planned_area / $_hima_budget_core_area}]",
+        ]
+        for command in required:
+            with self.subTest(command=command):
+                self.assertIn(command, template)
+        self.assertIn("setPlaceMode -place_global_max_density @@MAX_EFFECTIVE_DENSITY@@", template)
+        self.assertIn("setOptMode -opt_max_density @@MAX_EFFECTIVE_DENSITY@@", template)
 
     def test_preplacement_occupancy_guard_precedes_place_opt_design(self):
         template = pnr_template_without_comments()
-        comparison = template.index("> (@@MAX_EFFECTIVE_DENSITY@@")
+        comparison = template.index("> (1.0 + 1.0e-9)")
         self.assertLess(
             comparison,
             template.index("place_opt_design"),
-            "the only occupancy comparison against the ceiling runs after "
-            "place_opt_design, so a design that cannot fit is only reported once "
-            "Innovus has already failed to legalize it",
+            "a physically impossible plan above 100% must be rejected before placement",
         )
+        self.assertIn("V5 post-CTS effective site occupancy exceeds", template)
+        self.assertIn("V5 final effective site occupancy exceeds", template)
 
     def test_pnr_stage_is_given_the_floorplan_utilization_it_must_budget_against(self):
         substitution = pnr_stage_substitution_block()

@@ -47,7 +47,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.1.2');
+  assert.equal(graph.version, '5.1.3');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -862,7 +862,9 @@ test('held-out flat bindings accept only a matched final-database custom-Cell Fm
     assert.doesNotMatch(text, /setPlaceMode[^\n]*baseline placement/,
       'multi-line pin placeholders must not expand into a template comment');
   }
-  assert.equal(foundryPnr.facts.floorplan_utilization, 0.25);
+  assert.equal(foundryPnr.facts.floorplan_requested_utilization, 0.25);
+  assert.equal(foundryPnr.facts.floorplan_utilization, 0.125);
+  assert.equal(foundryPnr.facts.floorplan_area_expansion, 2);
   assert.deepEqual(generatedPnr.facts.floorplan_core_box, foundryPnr.facts.floorplan_core_box);
   assert.deepEqual(generatedPnr.facts.pin_plan_identity, foundryPnr.facts.pin_plan_identity);
   assert.equal(compare.facts.fmax_improved, true);

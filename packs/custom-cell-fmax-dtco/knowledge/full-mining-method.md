@@ -175,8 +175,11 @@ not remove mapping pressure; each emitted route SDC uses the same 25% uncertaint
 P&R arms restrict CCOpt to the same Site-declared DCCK buffer and inverter lists and enable inverter
 use for rise/fall balancing. The saved routed netlist must prove that every `CTS_` instance uses one
 of those declared DCCK masters. Logic-synthesis
-adoption is a prerequisite for P&R. The foundry arm establishes one 25% target-utilization core and
-IO-pin plan; the generated arm reuses that exact core box and pin identity. Only the admitted generated library is added in the custom arm. The earlier probe is mining
+adoption is a prerequisite for P&R. The foundry arm doubles the strategy-sized density-failure
+floorplan area (`effective utilization = requested utilization / 2`) and establishes one core and
+IO-pin plan; the generated arm reuses that exact core box and pin identity. Placement and optimization
+share the Site-declared 85% maximum density, while the Pack records planned, post-CTS and final
+effective occupancy and rejects an impossible result above 100%. Only the admitted generated library is added in the custom arm. The earlier probe is mining
 input, not the matched physical reference. Clock/WNS must be reread after restoring each final route
 database with the same analysis view and constraint chain. Never substitute DC slack. The comparison
 may report the explicit STA-derived closed period (`requested period - setup slack`) and corresponding

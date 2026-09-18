@@ -17,7 +17,7 @@ import { killSessions } from './support/fabric.ts';
 import { installPack, packsDirOf, writePackVariant } from './support/pack.ts';
 import { writeLocalSite, type LocalSite } from './support/site.ts';
 import { writeStandinFlow, type StandinFlow } from './support/standin-flow.ts';
-import { discoverSshSite, nodeLogTail, saveDiscoveredSite, SiteUnreadableError, type Channel } from '@hima/harness';
+import { discoverSshSite, loadSite, nodeLogTail, saveDiscoveredSite, SiteUnreadableError, type Channel } from '@hima/harness';
 import type { JobDeps, LogTailView, RunView, SiteHeadView } from '@hima/harness';
 
 process.env.HIMA_TEST_SILENT_AGENT = '1';
@@ -161,6 +161,9 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       });
       assert.equal(first.status, 200, await first.text());
       const richReadRoots = Array.from({ length: 9 }, (_, index) => `/work/reference-${String(index + 1)}`);
+      const savedSiteFile = path.join(f.site.sitesDir, 'lab-a.yml');
+      await writeFile(savedSiteFile, (await readFile(savedSiteFile, 'utf8')).replace(
+        'bindings: {}', 'bindings:\n  designRoot: /work/reference-1/design\n  workspaceRoot: /work/hima'));
       await writeFile(path.join(f.site.sitesDir, 'lab-a.permit.yml'), [
         'allowedReadRoots:', ...richReadRoots.map((root) => `  - ${root}`),
         'allowedWriteRoots:', '  - /work/hima',
@@ -176,7 +179,7 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ sessionId, name: 'lab-a', pack: discoveryRequirementsPackId }),
       });
-      const previewBody = await preview.json() as { result: { site: { ssh?: { destination: string }; capacity: { licences: Record<string, number> } }; permit: { allowedReadRoots: string[]; allowedWriteRoots: string[] } }; saved?: unknown; reviewId?: string };
+      const previewBody = await preview.json() as { result: { site: { ssh?: { destination: string }; bindings: Record<string, string>; capacity: { licences: Record<string, number> } }; permit: { allowedReadRoots: string[]; allowedWriteRoots: string[] } }; saved?: unknown; reviewId?: string };
       assert.equal(preview.status, 200, JSON.stringify(previewBody));
       assert.equal(previewBody.result.site.ssh?.destination, 'engineer@lab.example.com', 'the saved Site\'s own destination is reused, never asked again');
       assert.equal(previewBody.saved, undefined, 'a preview (save left false) writes nothing');
@@ -184,6 +187,9 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       assert.deepEqual(previewBody.result.permit.allowedReadRoots, richReadRoots,
         'rediscovery preserves a reviewed rich Permit instead of rejecting its saved roots');
       assert.deepEqual(previewBody.result.permit.allowedWriteRoots, ['/work/hima']);
+      assert.deepEqual(previewBody.result.site.bindings,
+        { designRoot: '/work/reference-1/design', workspaceRoot: '/work/hima' },
+        'rediscovery retains the saved Site bindings instead of replacing them with an empty map');
       assert.deepEqual((previewBody.result.permit as { allowedWrappers?: string[] }).allowedWrappers, ['make'], 'the selected Pack proposes its declared wrapper');
       assert.deepEqual(previewBody.result.site.capacity.licences, { 'Design-Compiler': 1 }, 'the reviewed draft reserves the Pack-declared minimum seat without probing a vendor tool');
       assert.ok((previewBody.result as { site: { discovery?: { facts: { probe: string[]; code: number }[] } } }).site.discovery?.facts.some((fact) => fact.code === 0 && fact.probe.join(' ') === 'which make'), 'the selected Pack command is actually probed');
@@ -200,6 +206,8 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       assert.equal(saved.status, 200, JSON.stringify(savedBody));
       assert.ok(savedBody.saved, JSON.stringify(savedBody));
       assert.equal(savedBody.saved!.name, 'lab-a');
+      assert.deepEqual(loadSite(f.site.sitesDir, 'lab-a').bindings,
+        { designRoot: '/work/reference-1/design', workspaceRoot: '/work/hima' });
       assert.ok((await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs >= beforeSaveMtime, 'the reviewed rediscovery actually replaced the saved Site file');
 
       const replay = await api(f.host, f.cookie, '/hima/api/sites/discover', {

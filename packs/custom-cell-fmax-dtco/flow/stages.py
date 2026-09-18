@@ -2364,6 +2364,15 @@ def floorplan_utilization(value):
     return "%.3f" % parsed
 
 
+FLOORPLAN_AREA_EXPANSION = 2.0
+
+
+def expanded_floorplan_utilization(value):
+    """Convert the reviewed strategy utilization into a core with twice the area."""
+    requested = float(floorplan_utilization(value))
+    return "%.6f" % (requested / FLOORPLAN_AREA_EXPANSION)
+
+
 def innovus_route_layer_index(value):
     """Normalize the Site's M7-style layer name to Innovus's integer route level."""
     if isinstance(value, bool):
@@ -2399,6 +2408,31 @@ def innovus_batch_wrapper(directory, script, tag):
         "exit 0\n" % source
     )
     return wrapper
+
+
+def pnr_density_markers(text, arm):
+    """Read bounded density-control facts from the Innovus log, including failed runs."""
+    labels = {
+        "LOGIC OCCUPANCY": "logic_occupancy",
+        "PLANNED OCCUPANCY": "planned_occupancy",
+        "FIXED CELL AREA": "fixed_cell_area_um2",
+        "EFFECTIVE OCCUPANCY": "placed_effective_occupancy",
+        "POST-CTS EFFECTIVE OCCUPANCY": "post_cts_effective_occupancy",
+        "FINAL EFFECTIVE OCCUPANCY": "final_effective_occupancy",
+    }
+    result = {}
+    for label, key in labels.items():
+        rows = re.findall(
+            r"(?m)^=== CCFMAX V5 %s %s ([0-9.eE+-]+) ===$" %
+            (re.escape(label), re.escape(arm)), text)
+        if len(rows) > 1:
+            raise Rejected("Innovus log repeats density marker " + label)
+        if rows:
+            value = float(rows[0])
+            if not math.isfinite(value):
+                raise Rejected("Innovus density marker is not finite: " + label)
+            result[key] = value
+    return result
 
 
 def clock_tree_identity(netlist, buffer_cells, inverter_cells):
@@ -2481,8 +2515,8 @@ def physical_plan_identity(dcap_plan, physical_facts):
     if required - set(facts):
         raise Rejected("physical facts are incomplete")
     occupancy = facts["effective_site_occupancy"]["value"]
-    if not 0.0 < occupancy <= 0.85:
-        raise Rejected("effective site occupancy is outside (0, 0.85]")
+    if not 0.0 < occupancy <= 1.0:
+        raise Rejected("effective site occupancy is outside (0, 1]")
     if int(facts["dcap_count"]["value"]) != len(rows):
         raise Rejected("physical facts DCAP count disagrees with the plan")
     if facts["pg_special_wire_count"]["value"] <= 0:
@@ -2516,6 +2550,8 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
                                "layout-admitted-algorithm-output"))
     site = {name: ctx.file_binding(name) for name in
             ("TECH_LEF", "FOUNDRY_LEF", "FOUNDRY_LIB", "FOUNDRY_QRC_TECH", "FOUNDRY_GDS", "CCFMAX_GDS_MAP")}
+    route_layer_index = innovus_route_layer_index(ctx.binding("CCFMAX_MAX_ROUTE_LAYER"))
+    ctx.facts["innovus_route_top_layer_index"] = route_layer_index
     texts = {}
     outputs = {}
     for arm, synth in (("foundry", foundry_synth), ("generated", custom_synth)):
@@ -2543,7 +2579,7 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
             "DESIGN_TOP": ctx.binding("DESIGN_TOP"),
             "MMMC_FILE": mmmc_path, "PWR_NET": ctx.binding("CCFMAX_POWER_PIN"),
             "GND_NET": ctx.binding("CCFMAX_GROUND_PIN"), "PROCESS_NODE": ctx.binding("CCFMAX_PROCESS_NODE"),
-            "MAX_ROUTE_LAYER": innovus_route_layer_index(ctx.binding("CCFMAX_MAX_ROUTE_LAYER")), "INIT_DB": init_db,
+            "MAX_ROUTE_LAYER": route_layer_index, "INIT_DB": init_db,
             "GENERATED_LIB_CELL_PATTERN": ctx.binding("GENERATED_LIB_CELL_PATTERN"), "ARM": arm,
             "PLACE_SITE": place_site,
             "FLOORPLAN_COMMAND": floorplan_command,
@@ -2630,7 +2666,8 @@ def build_arm_files(ctx, utilization, fixed_pin_plan=None, fixed_core_box=None, 
 
 
 def stage_pnr(ctx, arm, utilization="0.60"):
-    utilization = floorplan_utilization(utilization)
+    requested_utilization = floorplan_utilization(utilization)
+    utilization = expanded_floorplan_utilization(requested_utilization)
     fixed_pin_plan = None
     fixed_core_box = None
     fixed_floorplan = None
@@ -2646,7 +2683,9 @@ def stage_pnr(ctx, arm, utilization="0.60"):
         ctx.inputs.append(file_ref(fixed_floorplan, ctx.workspace, "fixed_floorplan", "innovus-output"))
     outputs, generated_lef, generated_lib = build_arm_files(
         ctx, utilization, fixed_pin_plan, fixed_core_box, fixed_floorplan)
+    ctx.facts["floorplan_requested_utilization"] = float(requested_utilization)
     ctx.facts["floorplan_utilization"] = float(utilization)
+    ctx.facts["floorplan_area_expansion"] = FLOORPLAN_AREA_EXPANSION
     chosen = outputs[arm]
     ctx.inputs.extend([
         file_ref(chosen["input_sdc"], ctx.workspace, "pnr_input_sdc", "design-compiler-output"),
@@ -2698,8 +2737,12 @@ def stage_pnr(ctx, arm, utilization="0.60"):
     pnr_log = ctx.run([wrapper, "innovus", "-no_gui", "-files", str(pnr_batch)], cwd=ctx.run_dir,
                       timeout=int(ctx.binding("PNR_TIMEOUT_SEC")), tag="pnr-" + arm)
     pnr_text = pnr_log.read_text(errors="replace")
+    density_markers = pnr_density_markers(pnr_text, arm)
+    ctx.facts.update(density_markers)
     if tool_error_lines(pnr_text):
-        raise ToolFailure("Innovus P&R error in %s: %s" % (pnr_log, " | ".join(tool_error_lines(pnr_text)[:8])))
+        raise ToolFailure("Innovus P&R error in %s; density context %s: %s" % (
+            pnr_log, json.dumps(density_markers, sort_keys=True),
+            " | ".join(tool_error_lines(pnr_text)[:8])))
     route_version = innovus_version(pnr_text)
     if init_version != route_version:
         raise Rejected("Innovus init and route tool versions differ")
@@ -2808,7 +2851,9 @@ def stage_pnr(ctx, arm, utilization="0.60"):
             for kind in ("mmmc", "init", "pnr")
         ).encode()),
         "tool": init_version,
-        "floorplanUtilization": float(utilization),
+        "floorplanUtilization": float(ctx.facts["floorplan_requested_utilization"]),
+        "floorplanEffectiveUtilization": float(utilization),
+        "floorplanAreaExpansion": float(ctx.facts["floorplan_area_expansion"]),
         "floorplanCoreBox": core_box,
         "pinPlan": plan_identity,
         "placeSite": str(ctx.binding("PLACE_SITE")),
@@ -3097,9 +3142,14 @@ def derived_pnr_condition(record, workspace, arm):
                                 {"generated_liberty", "generated_lef"})
     facts = record.get("facts", {})
     utilization = facts.get("floorplan_utilization")
+    requested_utilization = facts.get("floorplan_requested_utilization")
+    area_expansion = facts.get("floorplan_area_expansion")
     core_box = facts.get("floorplan_core_box")
     pin_plan = facts.get("pin_plan_identity")
-    if (not isinstance(utilization, (int, float)) or not 0.2 <= float(utilization) <= 0.8
+    if (not isinstance(requested_utilization, (int, float)) or not 0.2 <= float(requested_utilization) <= 0.8
+            or not isinstance(area_expansion, (int, float)) or float(area_expansion) < 1.0
+            or not isinstance(utilization, (int, float)) or not 0.0 < float(utilization) <= float(requested_utilization)
+            or not math.isclose(float(utilization), float(requested_utilization) / float(area_expansion), rel_tol=0, abs_tol=1e-6)
             or not isinstance(core_box, list) or len(core_box) != 4
             or not all(isinstance(value, (int, float)) and math.isfinite(value) for value in core_box)
             or core_box[2] <= core_box[0] or core_box[3] <= core_box[1]
@@ -3125,7 +3175,9 @@ def derived_pnr_condition(record, workspace, arm):
             normalized_arm_script(scripts[kind].read_text(), excluded) for kind in ("mmmc", "init", "pnr")
         ).encode()),
         "tool": init_tool,
-        "floorplanUtilization": float(utilization),
+        "floorplanUtilization": float(requested_utilization),
+        "floorplanEffectiveUtilization": float(utilization),
+        "floorplanAreaExpansion": float(area_expansion),
         "floorplanCoreBox": core_box,
         "pinPlan": pin_plan,
         "placeSite": place_site,

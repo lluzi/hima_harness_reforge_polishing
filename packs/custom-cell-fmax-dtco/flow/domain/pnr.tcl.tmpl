@@ -77,9 +77,10 @@ if {[llength $_hima_budget_core_box] != 4} {
   error "V5 floorplan has no unique four-coordinate core box"
 }
 set _hima_budget_core_area [expr {([lindex $_hima_budget_core_box 2] - [lindex $_hima_budget_core_box 0]) * ([lindex $_hima_budget_core_box 3] - [lindex $_hima_budget_core_box 1])}]
-set _hima_logic_occupancy [expr {[_hima_standard_cell_area] / $_hima_budget_core_area}]
-if {$_hima_logic_occupancy > (@@MAX_EFFECTIVE_DENSITY@@ + 1.0e-9)} {
-  error "V5 logic occupancy $_hima_logic_occupancy already exceeds @@MAX_EFFECTIVE_DENSITY@@ before any fixed cell was added (requested floorplan utilization @@FLOORPLAN_UTILIZATION@@)"
+set _hima_logic_area [_hima_standard_cell_area]
+set _hima_logic_occupancy [expr {$_hima_logic_area / $_hima_budget_core_area}]
+if {$_hima_logic_occupancy > (1.0 + 1.0e-9)} {
+  error "V5 logic occupancy $_hima_logic_occupancy exceeds 100% before any fixed cell was added (requested floorplan utilization @@FLOORPLAN_UTILIZATION@@)"
 }
 puts "=== CCFMAX V5 LOGIC OCCUPANCY @@ARM@@ $_hima_logic_occupancy ==="
 
@@ -125,11 +126,17 @@ foreach _hima_box $_hima_rows {
 }
 close $_hima_dcap_plan
 puts "=== CCFMAX V5 DCAP COUNT @@ARM@@ $_hima_dcap_count ==="
-set _hima_planned_occupancy [expr {[_hima_standard_cell_area] / $_hima_budget_core_area}]
-if {$_hima_planned_occupancy > (@@MAX_EFFECTIVE_DENSITY@@ + 1.0e-9)} {
-  error "V5 planned site occupancy $_hima_planned_occupancy exceeds @@MAX_EFFECTIVE_DENSITY@@ before placement: the fixed tap/DCAP plan does not fit the core sized for utilization @@FLOORPLAN_UTILIZATION@@"
+set _hima_planned_area [_hima_standard_cell_area]
+set _hima_fixed_cell_area [expr {$_hima_planned_area - $_hima_logic_area}]
+if {$_hima_fixed_cell_area < 0} {
+  error "V5 fixed tap/DCAP area is invalid"
+}
+set _hima_planned_occupancy [expr {$_hima_planned_area / $_hima_budget_core_area}]
+if {$_hima_planned_occupancy > (1.0 + 1.0e-9)} {
+  error "V5 planned site occupancy $_hima_planned_occupancy exceeds 100% before placement: the fixed tap/DCAP plan does not fit the core sized for utilization @@FLOORPLAN_UTILIZATION@@"
 }
 puts "=== CCFMAX V5 PLANNED OCCUPANCY @@ARM@@ $_hima_planned_occupancy ==="
+puts "=== CCFMAX V5 FIXED CELL AREA @@ARM@@ $_hima_fixed_cell_area ==="
 
 # A real, matched block-level power grid.  IR/EM signoff is outside this
 # experiment; the grid establishes actual routing/resource competition.
@@ -146,6 +153,7 @@ puts "=== CCFMAX V5 PG MESH @@ARM@@ @@PG_HORIZONTAL_LAYER@@/@@PG_VERTICAL_LAYER@
 
 @@PIN_SETUP@@
 setPlaceMode -place_global_max_density @@MAX_EFFECTIVE_DENSITY@@
+setOptMode -opt_max_density @@MAX_EFFECTIVE_DENSITY@@
 set _hima_frozen_core_box [lindex [dbGet top.fPlan.coreBox] 0]
 if {[llength $_hima_frozen_core_box] != 4} {
   error "V5 floorplan has no unique four-coordinate core box"
@@ -157,8 +165,8 @@ set _hima_occupied_area [_hima_standard_cell_area]
 set _hima_core_box $_hima_frozen_core_box
 set _hima_core_area [expr {([lindex $_hima_core_box 2] - [lindex $_hima_core_box 0]) * ([lindex $_hima_core_box 3] - [lindex $_hima_core_box 1])}]
 set _hima_effective_occupancy [expr {$_hima_occupied_area / $_hima_core_area}]
-if {$_hima_effective_occupancy > (@@MAX_EFFECTIVE_DENSITY@@ + 1.0e-9)} {
-  error "V5 effective site occupancy exceeds @@MAX_EFFECTIVE_DENSITY@@: $_hima_effective_occupancy"
+if {$_hima_effective_occupancy > (1.0 + 1.0e-9)} {
+  error "V5 effective site occupancy exceeds 100%: $_hima_effective_occupancy"
 }
 set _hima_physical_facts [open {@@PHYSICAL_FACTS@@} w]
 puts $_hima_physical_facts "metric\tvalue\tunit"
@@ -175,7 +183,18 @@ puts "=== CCFMAX V5 EFFECTIVE OCCUPANCY @@ARM@@ $_hima_effective_occupancy ==="
 saveDesign @@PLACE_DB@@
 puts "=== CCFMAX PLACE CHECKPOINT @@ARM@@ @@PLACE_DB@@ ==="
 @@PIN_CAPTURE@@
-clock_opt_design
+# Split CTS construction from post-CTS setup optimization. Innovus's monolithic
+# clock_opt_design can drive an unconstrained internal optimization into a density
+# collapse. The doubled floorplan supplies headroom without imposing a local
+# max-density setting; the explicit postCTS pass retains setup optimization and
+# useful-skew policy, followed by the common effective-occupancy result check.
+clock_opt_design -cts
+optDesign -postCTS -setup
+set _hima_post_cts_occupancy [expr {[_hima_standard_cell_area] / $_hima_core_area}]
+if {$_hima_post_cts_occupancy > (1.0 + 1.0e-9)} {
+  error "V5 post-CTS effective site occupancy exceeds 100%: $_hima_post_cts_occupancy"
+}
+puts "=== CCFMAX V5 POST-CTS EFFECTIVE OCCUPANCY @@ARM@@ $_hima_post_cts_occupancy ==="
 setNanoRouteMode -routeWithTimingDriven true
 setNanoRouteMode -envResistanceFromCapTable true
 routeDesign -globalDetail
@@ -185,6 +204,21 @@ puts "=== CCFMAX PRE-OPT TIMING @@ARM@@ ==="
 timeDesign -postRoute -outDir @@RPT_DIR@@/preopt -prefix pre
 setOptMode -fixFanoutLoad true
 optDesign -postRoute -setup
+set _hima_final_occupied_area [_hima_standard_cell_area]
+set _hima_final_effective_occupancy [expr {$_hima_final_occupied_area / $_hima_core_area}]
+if {$_hima_final_effective_occupancy > (1.0 + 1.0e-9)} {
+  error "V5 final effective site occupancy exceeds 100%: $_hima_final_effective_occupancy"
+}
+set _hima_physical_facts [open {@@PHYSICAL_FACTS@@} w]
+puts $_hima_physical_facts "metric\tvalue\tunit"
+puts $_hima_physical_facts "occupied_standard_cell_area\t$_hima_final_occupied_area\tum2"
+puts $_hima_physical_facts "core_area\t$_hima_core_area\tum2"
+puts $_hima_physical_facts "effective_site_occupancy\t$_hima_final_effective_occupancy\tfraction"
+puts $_hima_physical_facts "dcap_count\t$_hima_dcap_count\tcount"
+puts $_hima_physical_facts "pg_special_wire_count\t[llength [dbGet top.nets.sWires]]\tcount"
+close $_hima_physical_facts
+reportDensityMap > {@@DENSITY_REPORT@@}
+puts "=== CCFMAX V5 FINAL EFFECTIVE OCCUPANCY @@ARM@@ $_hima_final_effective_occupancy ==="
 # Fmax is the primary objective. Hold remains an observed secondary result,
 # but this Campaign never spends post-route optimization effort repairing it
 # at the expense of setup timing.

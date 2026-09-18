@@ -1,16 +1,15 @@
-# Custom Cell Fmax DTCO V5.1.2 Campaign-blocker smoke
+# Custom Cell Fmax DTCO V5.1.3 density-policy smoke
 
 ## Site
 
 Site local with publication-only stand-in bindings. No model, SSH or commercial EDA was invoked.
-Exact trial inputs were validated separately: the real multi-output request passed the free evaluator,
-and the isolated Innovus init passed with integer route level while a controlled Tcl error failed fast.
+Trial.7 supplied the retained real density failure; this smoke makes no new QoR claim.
 
 ## Run
 
-run: run-e2ac29cb-c7f5-4ada-bb5c-94498f1a7da3
+run: run-3e33ef86-b0fd-4a2a-9afb-67e9deacad2f
 
-The Harness loaded custom-cell-fmax-dtco@5.1.2 with method digest 5d40668963df062b55ac2323a056784993d0a0fe630e9fa7110d6f027518b717, prepared its
+The Harness loaded custom-cell-fmax-dtco@5.1.3 with method digest dd239e62ff69291cb4f15373264951e6af01e4ab743318ce976a4d750dff8aee, prepared its
 Pack workspace and exposed bind-inputs.
 
 ## Ending
@@ -34,5 +33,5 @@ none
 
 ## Disagreements
 
-The retained 5.1.1 Campaign stopped before matched P&R. Version 5.1.2 fixes the reproduced blockers;
-this publication smoke does not claim that both P&R arms or the 5% Goal have completed.
+The final 2x-area/0.85-density method follows the user's decision and has not run complete commercial
+P&R. The next real Campaign must establish both-arm completion and the 5% Goal.

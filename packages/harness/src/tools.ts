@@ -357,7 +357,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     readonly discover: (request: Omit<SiteDiscoverBody, 'sessionId' | 'save'>) => Promise<{ readonly result: SiteDiscoveryResult; readonly saved?: SiteHeadView }>;
     /** A saved ssh Site's own destination/jumps and its Permit's own roots, for `rediscover` (#41
      *  task 4 review, important 3, minor 9): undefined when there is no such saved ssh Site to reuse. */
-    readonly rediscoverInput: (name: string) => { readonly ssh: SiteDiscoverBody['ssh']; readonly hints: NonNullable<SiteDiscoverBody['hints']> } | undefined;
+    readonly rediscoverInput: (name: string) => { readonly ssh: SiteDiscoverBody['ssh']; readonly hints: NonNullable<SiteDiscoverBody['hints']>; readonly bindings: Readonly<Record<string, string>> } | undefined;
   }): ToolDefinition[] {
   return [
     ...author ? [defineTool({

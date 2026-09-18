@@ -298,8 +298,8 @@ def v5_physical_facts(path):
                 "dcap_count", "pg_special_wire_count"}
     if required - set(rows):
         raise ValueError("V5 physical facts are incomplete")
-    if not 0 < rows["effective_site_occupancy"][0] <= 0.85:
-        raise ValueError("V5 effective occupancy is outside (0, 0.85]")
+    if not 0 < rows["effective_site_occupancy"][0] <= 1.0:
+        raise ValueError("V5 effective occupancy is outside (0, 1]")
     if rows["dcap_count"][0] <= 0 or rows["pg_special_wire_count"][0] <= 0:
         raise ValueError("V5 physical baseline lacks DCAP or PG resources")
     return rows
@@ -550,9 +550,14 @@ def derived_pnr_condition(record, workspace, arm):
     init_text = scripts["init"].read_text(errors="replace")
     facts = record.get("facts", {})
     utilization = facts.get("floorplan_utilization")
+    requested_utilization = facts.get("floorplan_requested_utilization")
+    area_expansion = facts.get("floorplan_area_expansion")
     core_box = facts.get("floorplan_core_box")
     pin_plan = facts.get("pin_plan_identity")
-    if (not isinstance(utilization, (int, float)) or not 0.2 <= float(utilization) <= 0.8
+    if (not isinstance(requested_utilization, (int, float)) or not 0.2 <= float(requested_utilization) <= 0.8
+            or not isinstance(area_expansion, (int, float)) or float(area_expansion) < 1.0
+            or not isinstance(utilization, (int, float)) or not 0.0 < float(utilization) <= float(requested_utilization)
+            or not math.isclose(float(utilization), float(requested_utilization) / float(area_expansion), rel_tol=0, abs_tol=1e-6)
             or not isinstance(core_box, list) or len(core_box) != 4
             or not all(isinstance(value, (int, float)) and math.isfinite(value) for value in core_box)
             or core_box[2] <= core_box[0] or core_box[3] <= core_box[1]
@@ -577,7 +582,9 @@ def derived_pnr_condition(record, workspace, arm):
             normalized_arm_script(scripts[kind].read_text(), excluded) for kind in ("mmmc", "init", "pnr")
         ).encode()).hexdigest(),
         "tool": init_tool,
-        "floorplanUtilization": float(utilization),
+        "floorplanUtilization": float(requested_utilization),
+        "floorplanEffectiveUtilization": float(utilization),
+        "floorplanAreaExpansion": float(area_expansion),
         "floorplanCoreBox": core_box,
         "pinPlan": pin_plan,
         "placeSite": place_site,
@@ -1218,6 +1225,10 @@ def values_for(record, workspace, stage):
                        number("postroute_cell_area", secondary["postroute_cell_area_um2"], "um2"),
                        number("route_instance_count", secondary["route_instance_count"]), number("route_density", secondary["route_density_pct"], "percent"),
                        number("effective_site_occupancy", physical_v5["effective_site_occupancy"][0], "fraction"),
+                       number("floorplan_requested_utilization", float(facts["floorplan_requested_utilization"]), "fraction"),
+                       number("floorplan_effective_utilization", float(facts["floorplan_utilization"]), "fraction"),
+                       number("floorplan_area_expansion", float(facts["floorplan_area_expansion"]), "ratio"),
+                       number("innovus_route_top_layer_index", int(facts["innovus_route_top_layer_index"])),
                        number("dcap_count", int(physical_v5["dcap_count"][0])),
                        number("pg_special_wire_count", int(physical_v5["pg_special_wire_count"][0])),
                        number("v5_setup_endpoint_count", int(frontier_v5["endpoint_count"])),

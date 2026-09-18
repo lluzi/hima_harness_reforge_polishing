@@ -772,6 +772,10 @@ export default class Hima extends Service {
     const channelFor = testDiscoveryChannelFor() ?? ((name: string, ssh: SshTarget) => new SshChannel(name, ssh));
     const resolvedSsh = { destination: parsed.data.ssh.destination, ...(parsed.data.ssh.jumps.length === 0 ? {} : { jumps: [...parsed.data.ssh.jumps] }) };
     const discovered = await discoverSshSite({ name: parsed.data.name, ssh: resolvedSsh, hints: parsed.data.hints }, channelFor);
+    const withSavedBindings = reuse === undefined ? discovered : {
+      ...discovered,
+      site: { ...discovered.site, bindings: { ...reuse.bindings } },
+    };
     // A selected Pack states the licence seats one of its Jobs needs. Discovery cannot check out a
     // vendor licence safely, so the reviewed Site draft reserves the smallest declared count rather
     // than claiming a measured pool. The person's Save remains the authority boundary.
@@ -781,8 +785,8 @@ export default class Hima extends Service {
         requiredLicences[licence] = Math.max(requiredLicences[licence] ?? 0, count);
       }
     }
-    const result = selectedPack === undefined ? discovered : { ...discovered, site: { ...discovered.site,
-      capacity: { ...discovered.site.capacity, licences: requiredLicences } } };
+    const result = selectedPack === undefined ? withSavedBindings : { ...withSavedBindings, site: { ...withSavedBindings.site,
+      capacity: { ...withSavedBindings.site.capacity, licences: requiredLicences } } };
     if (request.save !== true) {
       if (reviewOwner === undefined) return { result };
       const reviewId = randomUUID();
@@ -798,7 +802,7 @@ export default class Hima extends Service {
   /** The `hima_site rediscover` input (#41 task 4 review, important 3, minor 9): a saved ssh Site's
    *  own destination and jumps, and its Permit's own roots as hints — undefined for a Site this
    *  Host cannot load, or one of kind `local`, which has no destination to rediscover at all. */
-  private rediscoverInput(name: string): { readonly ssh: SiteDiscoverBody['ssh']; readonly hints: NonNullable<SiteDiscoverBody['hints']> } | undefined {
+  private rediscoverInput(name: string): { readonly ssh: SiteDiscoverBody['ssh']; readonly hints: NonNullable<SiteDiscoverBody['hints']>; readonly bindings: Readonly<Record<string, string>> } | undefined {
     let site: Site;
     try { site = loadSite(this.config.sitesDir, name); }
     catch { return undefined; }
@@ -814,6 +818,7 @@ export default class Hima extends Service {
         allowedWriteRoots: site.permitRules.allowedWriteRoots.length === 0 ? [site.workspaceRoot] : [...site.permitRules.allowedWriteRoots],
         allowedWrappers: [...site.permitRules.allowedWrappers],
       },
+      bindings: { ...site.bindings },
     };
   }
 
