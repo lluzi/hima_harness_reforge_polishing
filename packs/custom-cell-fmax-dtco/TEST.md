@@ -1,15 +1,15 @@
-# Custom Cell Fmax DTCO V5.1.8 materialized-portfolio identity smoke
+# Custom Cell Fmax DTCO V5.1.9 materialized-portfolio identity smoke
 
 ## Site
 
 Site local with publication-only stand-in bindings. No model, SSH or commercial EDA was invoked.
-Trial.12 supplies the retained namespaced-portfolio failure; this smoke makes no new QoR claim.
+Trial.13 supplies the retained generation-5 cumulative-cap failure; this smoke makes no new QoR claim.
 
 ## Run
 
-run: run-7fb74533-8f65-4465-a632-fb5cf9346e4c
+run: run-1dc7b4b4-a9d1-45a7-9f1d-54a139b60570
 
-The Harness loaded custom-cell-fmax-dtco@5.1.8, prepared its Campaign workspace and admitted its reference graph.
+The Harness loaded custom-cell-fmax-dtco@5.1.9, prepared its Campaign workspace and admitted its reference graph.
 
 ## Ending
 
@@ -31,4 +31,4 @@ none
 
 ## Disagreements
 
-The immutable-function join was replayed locally against trial.12's retained 40-candidate failure scene, but it has not yet completed a real second-generation E0. The next Campaign owns that evidence, later-generation continuation and the 5% Goal.
+Trial.13 completed four commercial generations before generation 5 deterministically reached MAX_CELLS=160. V5.1.9 moves the eight-generation capacity requirement into Campaign input readiness; the next Campaign owns full commercial continuation and the 5% Goal.

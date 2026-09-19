@@ -38,7 +38,7 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `CCFMAX_POWER_TEMPLATE_BASE_CELL` | one-line text | Baseline cell used by the prediction adapter. |
 | `GENERATED_LIBRARY_NAME`, `GENERATED_LIB_CELL_PATTERN` | one-line text | Generated library identity and exact master pattern used for visibility/adoption checks. |
 | `MAX_NEW_CELLS` | integer `1..50` | Maximum new Cell delta admitted in one Library-richness round. It does not count already retained shards. HimaGuide defaults to the Pack's tested breadth and only asks when the Site has a stricter resource limit. |
-| `MAX_CELLS` | positive integer | Cumulative custom-Library hard cap across immutable shards. This is no longer the per-round generation breadth; it must be at least `MAX_NEW_CELLS`. HimaGuide derives it from `MAX_NEW_CELLS` and the Pack's bounded research-round budget rather than asking the engineer for a Cell count. |
+| `MAX_CELLS` | positive integer | Cumulative custom-Library hard cap across immutable shards. This is no longer the per-round generation breadth. It must be at least `MAX_NEW_CELLS × 8` for this Pack's bounded eight-generation append-only campaign; with the reference 50-Cell round budget the minimum is 400. HimaGuide derives and checks it before Campaign creation rather than asking the engineer for a Cell count. |
 | `MAX_ROUTE_CANDIDATES` | integer `1..40` | Per-method raw evidence bound; equivalent proposals are folded before AI research and never create separate DC/APR arms. |
 
 ## Tool and adapter inputs

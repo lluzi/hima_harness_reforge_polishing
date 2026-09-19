@@ -40,6 +40,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   type GraphNode = { id: string; kind: 'act' | 'judge' | 'explore' | 'wait'; parameters: {
     tool?: string; observes?: string; workshop?: string; arguments?: Record<string, unknown>;
     rules?: string[]; chooser?: string; growth?: boolean;
+    converge?: { generationLimit?: number };
   } };
   type GraphEdge = { from: string; to: string; outcome?: string; revisit?: boolean };
   const graph = parse(await readFile(path.join(packDir, 'graph.yml'), 'utf8')) as {
@@ -47,7 +48,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.1.8');
+  assert.equal(graph.version, '5.1.9');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -96,6 +97,8 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
     'read-verify', 'compare', 'read-compare', 'final-judge']));
   assert.ok(edge('final-judge', 'next-research', 'FAIL'));
   assert.ok(edge('next-research', 'evaluation-baseline', undefined, true));
+  assert.equal(node.get('next-research')?.parameters.converge?.generationLimit, 8,
+    'the graph generation bound stays aligned with bind-inputs cumulative-capacity readiness');
 
   assert.deepEqual(graph.nodes.flatMap((item) => item.kind === 'act' && item.parameters.workshop !== undefined
     ? [item.parameters.workshop] : []), ['research-candidates']);
@@ -724,7 +727,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     CCFMAX_PG_RING_WIDTH_UM: 0.4, CCFMAX_PG_RING_SPACING_UM: 0.4,
     CCFMAX_PG_STRIPE_WIDTH_UM: 0.2, CCFMAX_PG_STRIPE_SPACING_UM: 0.2,
     CCFMAX_PG_STRIPE_SET_DISTANCE_UM: 20, CCFMAX_PG_STRIPE_START_OFFSET_UM: 4,
-    MAX_NEW_CELLS: 50, MAX_CELLS: 200, MAX_ROUTE_CANDIDATES: 40,
+    MAX_NEW_CELLS: 50, MAX_CELLS: 400, MAX_ROUTE_CANDIDATES: 40,
     GENERATION_TIMEOUT_SEC: 30, ABSTRACT_TIMEOUT_SEC: 30, CHARACTERIZE_TIMEOUT_SEC: 30, LC_TIMEOUT_SEC: 30, MULTI_CPU: 1,
     PNR_TIMEOUT_SEC: 30, DRC_LIMIT: 1000, VERIFY_TIMEOUT_SEC: 30,
   };
@@ -750,6 +753,12 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
     '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
   assert.notEqual(rejectedClock.status, 0); assert.match(rejectedClock.stderr, /CCFMAX_CLOCK_BUFFER_CELLS.*DCCK-prefixed/);
+  await writeFile(physical, JSON.stringify({ ...physicalProfile, MAX_CELLS: 160 }));
+  const rejectedCumulativeCapacity = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
+    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
+    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+  assert.notEqual(rejectedCumulativeCapacity.status, 0);
+  assert.match(rejectedCumulativeCapacity.stderr, /MAX_CELLS.*at least 400.*8-generation/);
   await writeFile(physical, JSON.stringify(physicalProfile));
   await writeFile(tools, JSON.stringify({ ...toolProfile, LFR_ABC_SHA256: '0'.repeat(64) }));
   const rejectedProxyIdentity = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
@@ -803,7 +812,7 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     assert.equal(materialized.FOUNDRY_LIB, await realpath(foundryLib));
     assert.equal(materialized.FOUNDRY_DB, await realpath(foundryDb));
     assert.equal(materialized.foundryDb, await realpath(foundryDb));
-    assert.equal(materialized.MAX_NEW_CELLS, 50); assert.equal(materialized.MAX_CELLS, 200);
+    assert.equal(materialized.MAX_NEW_CELLS, 50); assert.equal(materialized.MAX_CELLS, 400);
     assert.equal(materialized.MAX_ROUTE_CANDIDATES, 40);
     assert.equal(materialized.GENERATION_TIMEOUT_SEC, 3600);
     assert.equal(materialized.GENERATION_TIMEOUT_SEC_REQUESTED, 30);

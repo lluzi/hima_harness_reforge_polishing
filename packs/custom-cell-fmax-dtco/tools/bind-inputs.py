@@ -14,6 +14,13 @@ import shlex
 from pathlib import Path
 
 
+# Keep this aligned with graph.yml next-research.converge.generationLimit.  The
+# cumulative Library is append-only, so readiness must cover every bounded
+# generation before a Campaign starts rather than hard-blocking after hours of
+# valid commercial work.
+PACK_GENERATION_LIMIT = 8
+
+
 def plain_json(path, label):
     at = Path(path).resolve()
     if not at.is_file() or at.is_symlink():
@@ -177,6 +184,11 @@ def materialize_profile(document):
     document["MAX_CELLS"] = positive_integer(document.get("MAX_CELLS"), "MAX_CELLS")
     if document["MAX_NEW_CELLS"] > document["MAX_CELLS"]:
         raise ValueError("MAX_NEW_CELLS cannot exceed the MAX_CELLS cumulative Library cap")
+    minimum_cumulative_capacity = document["MAX_NEW_CELLS"] * PACK_GENERATION_LIMIT
+    if document["MAX_CELLS"] < minimum_cumulative_capacity:
+        raise ValueError(
+            "MAX_CELLS must be at least %d for the Pack's %d-generation append-only Library budget"
+            % (minimum_cumulative_capacity, PACK_GENERATION_LIMIT))
     for name in ("LFR_YOSYS_BIN", "LFR_ABC_BIN"):
         document[name] = executable_file(document.get(name), name)
     for name in ("LFR_YOSYS", "LFR_ABC"):

@@ -73,8 +73,9 @@ The paired physical arms use the current `periodNs`, explicitly shared and reche
 the strategy-sized density-failure floorplan area, then freezes the core box and IO-pin plan for exact
 reuse by the generated arm. Placement and optimization use the common 85% max-density setting;
 planned, post-CTS and final effective occupancy remain recorded, and values above 100% are refused.
-`MAX_CELLS` is a Site-declared 1..50
-generation budget and `MAX_ROUTE_CANDIDATES` is at most 40 per method. Six mechanical methods build
+`MAX_NEW_CELLS` is the Site-declared 1..50 per-round bound. `MAX_CELLS` is the cumulative
+append-only Library cap and must cover all eight bounded generations (`8 × MAX_NEW_CELLS`).
+`MAX_ROUTE_CANDIDATES` is at most 40 per method. Six mechanical methods build
 source evidence that is folded into one Boolean/interface-unique pool before the AI sees it. One
 AI-authored ranking fills the common build allocation; all selected Cells share one generated library,
 one DC pair and one APR pair. Adoption is mapped back to every source method. All timeouts, eight-core

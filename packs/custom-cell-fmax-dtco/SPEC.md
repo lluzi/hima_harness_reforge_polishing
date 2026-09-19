@@ -96,7 +96,11 @@ DTO with the namespaced request and independently recomputes the strict F0/F1 po
 actual Library delta. A route-local candidate label is never used as the cross-stage identity, and
 the Workshop can choose another eligible portfolio without bypassing equivalence,
 generation-feasibility or local-structure checks. `MAX_NEW_CELLS` is 1..50 per research round. It does not change the meaning of the old
-`MAX_CELLS`; a separate measured cumulative cap limits storage and mapping cost. The 12-hour
+`MAX_CELLS`; a separate measured cumulative cap limits storage and mapping cost. Because the Library
+is append-only and the reference graph permits eight generations, Campaign Preparation requires
+`MAX_CELLS >= 8 × MAX_NEW_CELLS` (400 at the reference 50-Cell round budget). An insufficient Site
+profile is rejected before a Campaign starts rather than becoming a deterministic late-generation
+Hard blocker. The 12-hour
 Campaign time box, 480 infrastructure act-attempt ceiling, final 15-minute closing reserve and Site
 Job cap of at most five remain explicit; they do not authorize 480 commercial routes. Commercial
 validation has a default two-exit Campaign budget, not a Runtime constant. A frozen E0 baseline may be
