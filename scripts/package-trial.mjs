@@ -340,7 +340,10 @@ if (args.includes('--help') || args.includes('-h')) {
     mkdirSync(path.join(resource, 'node/bin'), { recursive: true });
     cpSync(node24, path.join(resource, 'node/bin/node'));
     const sourceSha = run('git', ['rev-parse', 'HEAD']).trim();
-    const dirty = run('git', ['status', '--porcelain']).trim() !== '';
+    // Release identity concerns tracked source plus untracked product inputs (checked above).
+    // Unrelated user-owned scratch directories such as `tmp/` must not make a byte-identical
+    // committed product look dirty in its receipt.
+    const dirty = run('git', ['status', '--porcelain', '--untracked-files=no']).trim() !== '';
     const diffSha256 = createHash('sha256').update(run('git', ['diff', '--binary', 'HEAD'])).digest('hex');
     const info = path.join(app, 'Contents/Info.plist');
     const plist = readFileSync(info, 'utf8')
