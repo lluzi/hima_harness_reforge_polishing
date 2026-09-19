@@ -221,6 +221,51 @@ class PackLfrStageAdapterTests(unittest.TestCase):
         self.assertIn("cell (A)", blocks[0])
         self.assertIn('values ("{1, 2}")', blocks[1])
 
+    def test_mapping_library_rejects_a_cross_shard_cell_name_collision(self):
+        # trial.11: a generation-2 delta and a generation-1 cumulative shard can
+        # legally both name a Cell "XS_TIMING_CONTEXT_A2_SINGLE_0001_Y" (candidate
+        # ids are per-round labels, not globally unique, see
+        # _generation_projection.canonical_cell_name's docstring) while the two
+        # Cells are physically different (different area/leakage). Composing them
+        # into one augmented mapping Library used to concatenate both blocks
+        # silently; the *last* one wins wherever a tool keys Cells by name
+        # (cell_need_miner.liberty.parse_skeleton does exactly that), so the
+        # mapper picks up whichever shard happened to be read last. This must
+        # fail closed with the colliding name named in the error instead.
+        with tempfile.TemporaryDirectory() as folder:
+            workspace = Path(folder)
+            (workspace / "flow").mkdir()
+            foundry = workspace / "foundry.lib"
+            foundry.write_text('library (foundry) {\n  cell (AND2) { area : 1.0; }\n}\n')
+            gen1 = workspace / "gen1-shard.lib"
+            gen1.write_text(
+                'library (gen1) {\n'
+                '  cell ("XS_TIMING_CONTEXT_A2_SINGLE_0001_Y") { area : 1.6789; }\n'
+                '}\n'
+            )
+            gen2 = workspace / "gen2-delta.lib"
+            gen2.write_text(
+                'library (gen2) {\n'
+                '  cell ("XS_TIMING_CONTEXT_A2_SINGLE_0001_Y") { area : 1.26323; }\n'
+                '}\n'
+            )
+
+            class _MappingContext:
+                def __init__(self):
+                    self.workspace = workspace
+                    self.run_dir = workspace / "flow" / "run-fixture"
+                    self.run_dir.mkdir(parents=True, exist_ok=True)
+                    self.inputs = []
+
+                def file_binding(self, name):
+                    assert name == "FOUNDRY_LIB"
+                    return foundry
+
+            with self.assertRaisesRegex(
+                stages.Rejected, "XS_TIMING_CONTEXT_A2_SINGLE_0001_Y"
+            ):
+                stages._mapping_library(_MappingContext(), "augmented.lib", [gen1, gen2])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -846,6 +846,9 @@ def stage_function_local(ctx):
                       "commercialEdaExecuted": False, "researchContextReady": True})
 
 
+_LIBERTY_CELL_NAME = re.compile(r'^\s*cell\s*\(\s*"?(?P<name>[^)"]+)"?\s*\)')
+
+
 def _liberty_cell_blocks(text):
     blocks = []
     start_re = re.compile(r"(?m)^\s*cell\s*\(")
@@ -892,10 +895,24 @@ def _mapping_library(ctx, name, generated_libraries):
     if closing < 0:
         raise Rejected("foundry Liberty has no closing library group")
     blocks = []
+    seen_cell_names = {}
     for library in generated_libraries:
         ctx.inputs.append(file_ref(library, ctx.workspace, "mapping_library_delta:" + library.name,
                                    "learned-model-prediction"))
-        blocks.extend(_liberty_cell_blocks(library.read_text(errors="replace")))
+        library_blocks = _liberty_cell_blocks(library.read_text(errors="replace"))
+        for block in library_blocks:
+            match = _LIBERTY_CELL_NAME.match(block)
+            cell_name = match.group("name") if match else None
+            if cell_name is not None:
+                if cell_name in seen_cell_names:
+                    raise Rejected(
+                        "augmented mapping Library has Cell %r in both %s and %s; "
+                        "candidate ids are per-round labels, not globally unique, "
+                        "so two generations produced different Cells under the "
+                        "same physical name" % (
+                            cell_name, seen_cell_names[cell_name], library.name))
+                seen_cell_names[cell_name] = library.name
+        blocks.extend(library_blocks)
     target = ctx.run_dir / name
     target.write_text(text[:closing] + "\n/* Hima cumulative custom Cell delta. */\n"
                       + "\n".join(blocks) + "\n" + text[closing:])
