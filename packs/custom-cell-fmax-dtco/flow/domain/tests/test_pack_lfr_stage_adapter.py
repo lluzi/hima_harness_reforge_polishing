@@ -16,7 +16,10 @@ sys.path.insert(0, str(FLOW))
 
 import stages  # noqa: E402
 from library_richness import _portfolio_candidate_cells  # noqa: E402
-from domain._generation_projection import expected_generation_jobs  # noqa: E402
+from domain._generation_projection import (  # noqa: E402
+    empty_cumulative_manifest,
+    expected_generation_jobs,
+)
 
 
 class _Context:
@@ -29,9 +32,18 @@ class _Context:
         self.inputs_doc = {"MAX_NEW_CELLS": 50}
         self.evidence_class = "synthetic-fixture"
         self._pool = pool
+        self._manifest = self.flow / "library/cumulative-manifest.json"
+        self._manifest.parent.mkdir(parents=True, exist_ok=True)
+        self._manifest.write_text(json.dumps(empty_cumulative_manifest({
+            "source": "/foundry.lib", "bytes": 1, "sha256": "0" * 64,
+        })))
 
     def binding(self, name):
-        return {"MAX_NEW_CELLS": 50, "LFR_CANDIDATE_POOL": str(self._pool)}[name]
+        return {
+            "MAX_NEW_CELLS": 50,
+            "LFR_CANDIDATE_POOL": str(self._pool),
+            "LFR_CUMULATIVE_LIBRARY_MANIFEST": str(self._manifest),
+        }[name]
 
     def add_artifact(self, path, role, source_type="tool-output"):
         ref = stages.file_ref(path, self.workspace, role, source_type)
@@ -106,6 +118,24 @@ class PackLfrStageAdapterTests(unittest.TestCase):
             _portfolio_candidate_cells(
                 {"source_generation_request": request}, "multi-output fixture"),
         )
+
+    def test_generation_namespace_makes_physical_cell_names_unique_across_shards(self):
+        fixture = (FLOW / "domain/tests/fixtures/lfr-pre-mapping-portfolio.production.json")
+        portfolio = json.loads(fixture.read_text())
+        request = portfolio["candidate_evaluations"][0]["candidate"]["source_generation_request"]
+
+        generation_1 = stages.namespace_generation_requests([request], "0001")
+        generation_2 = stages.namespace_generation_requests([request], "0002")
+        names_1 = {row["cell_name"] for row in expected_generation_jobs({
+            "generation_requests": generation_1,
+        })}
+        names_2 = {row["cell_name"] for row in expected_generation_jobs({
+            "generation_requests": generation_2,
+        })}
+
+        self.assertRegex(generation_1[0]["candidate_id"], r"_G0001$")
+        self.assertRegex(generation_2[0]["candidate_id"], r"_G0002$")
+        self.assertTrue(names_1.isdisjoint(names_2))
 
     def test_cumulative_library_paths_are_declared_arm_only_script_inputs(self):
         liberty = "/workspace/flow/library/cumulative-custom.lib"
@@ -194,7 +224,10 @@ class PackLfrStageAdapterTests(unittest.TestCase):
             stages.stage_merge(ctx)
             merged = json.loads((workspace / "flow/mining/merged.json").read_text())
             self.assertEqual(merged["strategy_id"], "residual_research_delta")
-            self.assertEqual(merged["generation_requests"], [request])
+            self.assertEqual(
+                stages.namespace_generation_requests([request], "0001"),
+                merged["generation_requests"],
+            )
             self.assertEqual(ctx.facts["retained_candidate_count"], 0)
 
             tampered = json.loads(json.dumps(request))

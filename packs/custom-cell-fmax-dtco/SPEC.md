@@ -86,7 +86,11 @@ The workspace holds `flow/library/baseline-reference.json`, immutable
 `flow/library/shards/NNNN/` directories and `flow/library/cumulative-manifest.json`. The transition is
 `L(k+1) = L(k) union delta(k)`. Old shard bytes and deliverables are verified and reused; commercial
 exit deterministically assembles the cumulative Liberty/LEF once when a downstream tool requires a
-single file. `MAX_NEW_CELLS` is 1..50 per research round. It does not change the meaning of the old
+single file. Before materialization, every new candidate id receives the next immutable shard
+namespace (`G0001`, `G0002`, ...); physical Liberty/SPICE/LEF Cell names therefore cannot alias a
+different Cell from an earlier generation. Exact function reuse remains governed by the full
+function identity, while cumulative-manifest and assembled-Liberty collision checks fail closed as
+independent defenses. `MAX_NEW_CELLS` is 1..50 per research round. It does not change the meaning of the old
 `MAX_CELLS`; a separate measured cumulative cap limits storage and mapping cost. The 12-hour
 Campaign time box, 480 infrastructure act-attempt ceiling, final 15-minute closing reserve and Site
 Job cap of at most five remain explicit; they do not authorize 480 commercial routes. Commercial

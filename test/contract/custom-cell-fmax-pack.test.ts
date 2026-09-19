@@ -47,7 +47,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.1.6');
+  assert.equal(graph.version, '5.1.7');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -386,6 +386,12 @@ mods=m.parse_modules(pathlib.Path(sys.argv[2]).read_text());print(json.dumps(m.p
   assert.equal(read.run.status, 0, read.run.stderr);
   assert.deepEqual(JSON.parse(await readFile(read.out, 'utf8')).values.map((value: any) => value.type),
     ['research_hypothesis_count', 'selected_count', 'retained_candidate_count', 'theoretical_gain_upper_pct']);
+  await mkdir(path.join(flow, 'library'), { recursive: true });
+  await writeFile(path.join(flow, 'library/cumulative-manifest.json'), JSON.stringify({
+    schema: 'custom-cell-cumulative-library/1',
+    baselineReference: { source: 'held-out-foundry.lib', bytes: 1, sha256: '0'.repeat(64) },
+    shards: [], functions: [],
+  }, null, 2) + '\n');
   const merged = fixture.run('merge'); assert.equal(merged.status, 0, merged.stderr);
   const mergedReport = JSON.parse(await readFile(path.join(flow, 'mining/merged.json'), 'utf8'));
   assert.equal(mergedReport.search_bound.validation_flow_count, 1);

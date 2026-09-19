@@ -31,6 +31,7 @@ sys.path.insert(0, str(DOMAIN))
 from cell_need_miner.generator_contract import validate_generation_request  # noqa: E402
 from _cell_adoption_projection import project_attributed_texts  # noqa: E402
 from _generation_projection import (  # noqa: E402
+    IDENTIFIER,
     advance_function_state,
     append_cumulative_shard,
     empty_cumulative_manifest,
@@ -609,7 +610,7 @@ def stage_evaluation_baseline(ctx):
     ctx.add_artifact(netlist, "baseline_mapped_netlist", "license-free-mapping-output")
     ctx.add_artifact(timing_path, "baseline_proxy_reg2reg", "license-free-proxy-sta")
     library_root = ctx.flow / "library"
-    manifest_path = Path(str(ctx.binding("LFR_CUMULATIVE_LIBRARY_MANIFEST"))).resolve()
+    manifest_path = (ctx.flow / "library" / "cumulative-manifest.json").resolve()
     if manifest_path != (library_root / "cumulative-manifest.json").resolve():
         raise Rejected("cumulative Library manifest binding differs from the Pack-owned path")
     if manifest_path.exists():
@@ -1516,6 +1517,40 @@ def collision_safe_candidate_id(candidate_id, equivalence_digest, used):
     return "%s_%s" % (candidate_id, suffix)
 
 
+def namespace_generation_requests(requests, shard_id):
+    """Give every newly materialized request an immutable shard namespace.
+
+    Miner candidate ids are deliberately local ranking labels and may repeat in
+    a later round.  Physical Cell names are derived from those ids, so the
+    append-only Library must add the next shard id before generation.  Exact
+    function reuse is filtered separately by ``function_identity``; a repeated
+    label for a different function is disambiguated inside the same shard by
+    the existing digest rule.
+    """
+    if not isinstance(shard_id, str) or not re.fullmatch(r"[0-9]{4}", shard_id):
+        raise Rejected("generation request namespace needs a four-digit shard id")
+    if not isinstance(requests, list):
+        raise Rejected("generation requests must be an array before namespacing")
+    result, used = [], set()
+    for index, request in enumerate(requests):
+        if not isinstance(request, dict):
+            raise Rejected("generation request %d is not an object" % index)
+        row = json.loads(json.dumps(request))
+        candidate_id = row.get("candidate_id")
+        if not isinstance(candidate_id, str) or not IDENTIFIER.fullmatch(candidate_id):
+            raise Rejected("generation request %d has an invalid candidate id" % index)
+        try:
+            key = function_identity(row)["key"]
+        except ValueError as exc:
+            raise Rejected(str(exc)) from exc
+        scoped = "%s_G%s" % (candidate_id, shard_id)
+        row["candidate_id"] = collision_safe_candidate_id(scoped, key, used)
+        used.add(row["candidate_id"])
+        result.append(row)
+    expected_generation_jobs({"generation_requests": result})
+    return result
+
+
 def method_rankings(rows):
     result = {}
     for row in rows:
@@ -1557,6 +1592,12 @@ def stage_merge(ctx):
     budget = lfr_new_cell_budget(ctx)
     if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= 50:
         raise Rejected("MAX_NEW_CELLS must be within 1..50")
+    manifest_path = (ctx.flow / "library" / "cumulative-manifest.json").resolve()
+    manifest = read_json(manifest_path)
+    validate_cumulative_manifest(manifest)
+    shard_id = "%04d" % (len(manifest["shards"]) + 1)
+    ctx.inputs.append(file_ref(manifest_path, ctx.workspace, "cumulative_library_manifest",
+                               "campaign-library-state"))
     research_path = ctx.flow / "research" / "research.json"
     if not research_path.is_file() or research_path.is_symlink():
         raise Rejected("AI research report is absent before merge")
@@ -1593,6 +1634,7 @@ def stage_merge(ctx):
         identities = [function_identity(request)["key"] for request in selected]
         if len(identities) != len(set(identities)):
             raise Rejected("residual research selected a duplicate function identity")
+        selected = namespace_generation_requests(selected, shard_id)
         merged = {
             "report_schema": "xspace_cell-pattern-search/v2",
             "strategy_id": "residual_research_delta", "source_graph": "license-free-baseline-mapped",
@@ -1604,7 +1646,8 @@ def stage_merge(ctx):
                                          "retained_candidate_count": 0},
             "provenance": {"researchSha256": sha_file(research_path),
                            "candidatePoolSha256": sha_file(pool_path),
-                           "proposalKeys": sorted(proposal_keys)},
+                           "proposalKeys": sorted(proposal_keys),
+                           "physicalCellNamespace": "G" + shard_id},
             "limitations": ["This is one cumulative-Library delta, not a commercial QoR prediction."],
         }
         held = ctx.run_dir / "merged.json"
@@ -1749,6 +1792,8 @@ def stage_merge(ctx):
         selected.append(row)
     if len(selected) != len(retained) + min(budget - len(retained), len(grouped)):
         raise Rejected("AI research did not fill the one unified Cell screen")
+    selected[len(retained):] = namespace_generation_requests(
+        selected[len(retained):], shard_id)
     selected_ids = [row.get("candidate_id") for row in selected]
     if len(selected_ids) != len(set(selected_ids)):
         raise Rejected("distinct Boolean equivalence classes collide on candidate_id")
