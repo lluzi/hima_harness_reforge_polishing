@@ -714,6 +714,21 @@ class ResidualResearchContextTests(unittest.TestCase):
 
         self.assertEqual(2, len(context["evidence"]["history"]))
 
+    def test_history_round_document_still_rejects_above_document_byte_limit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request = _request(root)
+            payload = b"{" + b" " * (8 * 1024 * 1024) + b"}\n"
+            path = root / "round-0000-oversized.json"
+            path.write_bytes(payload)
+            request["history"].insert(0, {
+                "path": path.name,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            })
+
+            with self.assertRaisesRegex(ValueError, "evidence file byte limit"):
+                load_residual_research_context(request, evidence_root=root)
+
     def test_large_candidate_pool_is_compacted_before_context_limit(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

@@ -1,15 +1,15 @@
-# Custom Cell Fmax DTCO V5.1.5 onsite-inspiration loop-routing smoke
+# Custom Cell Fmax DTCO V5.1.6 onsite-inspiration loop-routing smoke
 
 ## Site
 
 Site local with publication-only stand-in bindings. No model, SSH or commercial EDA was invoked.
-Trial.9 supplies the retained matched E0 goal miss and routing failure; this smoke makes no new QoR claim.
+Trial.10 supplies the retained cross-generation trace and history-read failure; this smoke makes no new QoR claim.
 
 ## Run
 
-run: run-cdb30fd4-efe7-4b63-b772-e79bd41b7b41
+run: run-578d2dbf-836a-4a37-9c45-6576863a9638
 
-The Harness loaded custom-cell-fmax-dtco@5.1.5, prepared its Campaign workspace and admitted its reference graph.
+The Harness loaded custom-cell-fmax-dtco@5.1.6, prepared its Campaign workspace and admitted its reference graph.
 
 ## Ending
 
@@ -31,4 +31,4 @@ none
 
 ## Disagreements
 
-The onsite-inspiration and corrected goal-miss revisit have not run a real second generation. The next Campaign owns that evidence and the 5% Goal.
+The corrected history read has not yet completed a real second generation. The next Campaign owns that evidence, later-generation continuation and the 5% Goal.
