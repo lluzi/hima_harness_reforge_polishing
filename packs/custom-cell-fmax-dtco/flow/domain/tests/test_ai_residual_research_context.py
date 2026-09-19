@@ -687,6 +687,33 @@ class ResidualResearchContextTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "evidence file byte limit"):
                 load_residual_research_context(request, evidence_root=root)
 
+    def test_history_round_document_admits_up_to_the_document_byte_limit(self):
+        # A real 50-Cell portfolio round can legitimately exceed the 512 KiB
+        # RESIDUAL_CONTEXT_BYTES bound that other, smaller evidence kinds use;
+        # history documents are written with RESIDUAL_DOCUMENT_BYTES (8 MiB,
+        # see ai_research_runner.py's own comment above that constant) and
+        # must be readable back at the same size on a later generation.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request = _request(root)
+            payload = json.dumps(
+                {"round_id": "round-0001", "status": "screened",
+                 "failures": ["F1 reconvergence coverage unchanged"],
+                 "stop_reason": "residual structure remains"},
+                sort_keys=True,
+            ).encode()
+            payload += b" " * (600 * 1024)
+            path = root / "round-0000-large.json"
+            path.write_bytes(payload)
+            request["history"].insert(0, {
+                "path": path.name,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            })
+
+            context = load_residual_research_context(request, evidence_root=root)
+
+        self.assertEqual(2, len(context["evidence"]["history"]))
+
     def test_large_candidate_pool_is_compacted_before_context_limit(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

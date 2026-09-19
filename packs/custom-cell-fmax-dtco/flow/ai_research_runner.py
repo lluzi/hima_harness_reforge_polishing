@@ -722,7 +722,8 @@ def load_residual_research_context(request, *, evidence_root):
     history_evidence = []
     for index, reference in enumerate(history_refs):
         document, held = _bound_json_reference(
-            evidence_root, reference, "history[%d]" % index)
+            evidence_root, reference, "history[%d]" % index,
+            RESIDUAL_DOCUMENT_BYTES)
         history_documents.append(document)
         history_evidence.append(held)
     bound_evidence = {"evaluation": evaluation_ref, "frontier": frontier_ref,
