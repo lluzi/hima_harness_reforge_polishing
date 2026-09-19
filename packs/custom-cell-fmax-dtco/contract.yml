@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.1.4"
+version: "5.1.5"
 title: V5 Active Frontier custom Cell Fmax reference Campaign
 status: released
 minimumHarnessVersion: 0.1.0
@@ -643,6 +643,11 @@ workshops:
       commercial QoR, launch EDA, create parallel validation arms, repeat a fixed ranking,
       or write Judge facts. The returned list must never exceed
       budget["max_candidate_proposals"]; slice or stop the loop at that exact runtime value.
+      Include one onsite-inspiration lens as the sequential seventh strategy above the six
+      fixed miners. It analyzes their combined evidence and, from generation two onward,
+      must cite and respond to the current commercial frontier response. It may contribute
+      at most budget["max_onsite_inspiration_proposals"] proposals to the same cumulative
+      Library and the same E0 validation; it never opens a separate commercial arm.
       Invalid output is retained as a refusal. A later revision must
       answer new retained evidence, especially the hash-bound commercial frontier response. It must propose several grounded hypotheses before selecting a bounded program; Run results never auto-promote into Pack knowledge.
     directory: research/ai-discovery

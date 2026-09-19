@@ -4,7 +4,9 @@ LFR-PACK-03 replaces the opening licensed synthesis probe with one fixed referen
 `bind-inputs`, the graph establishes a license-free evaluation baseline and forks the six independent
 high-influence mining views. They hold no EDA licence and may occupy up to the Site job cap in
 parallel; each branch retains its own mine/read evidence before the existing join. Their join builds and reads the function/local indicator portfolio and
-the hash-bound residual context before it opens the existing `research-candidates` Workshop. The
+the hash-bound residual context before it opens the existing `research-candidates` Workshop. That
+Workshop is also the sequential seventh `onsite-inspiration` strategy: it analyzes the six fixed
+views and later commercial feedback, while remaining inside the existing Workshop boundary. The
 existing merge, generate, layout and
 characterize stages materialize only that delta. A second license-free evaluation compares the
 reference and augmented design-mapping/timing indicator vectors; the portfolio gate either revisits

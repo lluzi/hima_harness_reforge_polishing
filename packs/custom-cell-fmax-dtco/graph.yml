@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.1.4"
+version: "5.1.5"
 entry: bind-inputs
 nodes:
   - id: bind-inputs
@@ -247,8 +247,8 @@ nodes:
     kind: judge
     parameters:
       rules:
-        - comparison-evidence-valid
         - fmax-improvement-at-least-target
+        - comparison-evidence-valid
         - fmax-improved
         - clock-period-at-most
       bind:

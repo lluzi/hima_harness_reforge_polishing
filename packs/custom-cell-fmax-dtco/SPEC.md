@@ -154,9 +154,10 @@ and F3 are not all explicitly negative. Its PASS authorizes one scarce E0 observ
 gain prediction and does not state that any individual Cell passed.
 
 The commercial adoption gate still requires at least one generated master in the custom synthesis
-netlist. The final Judge applies `comparison-evidence-valid`,
-`fmax-improvement-at-least-target`, `fmax-improved` and `clock-period-at-most` in that order. Only all
-four PASS on the same matched E0 record can support Goal met. Each verdict cites the exact evaluation,
+netlist. The final Judge applies `fmax-improvement-at-least-target` first because the current Harness
+uses the first rule as the node's routing outcome, followed by `comparison-evidence-valid`,
+`fmax-improved` and `clock-period-at-most`. A target miss therefore reaches `next-research`; a missing
+mandatory fact remains UNDETERMINED. Only all four PASS on the same matched E0 record can support Goal met. Each verdict cites the exact evaluation,
 manifest, mapped netlist or restored final database/report bytes from which it was read. A missing
 mandatory fact is UNDETERMINED and routes to the blocker; no inner evaluation PASS can replace E0.
 
@@ -228,9 +229,13 @@ observations. It reads detailed sources by their retained hashes when a hypothes
 
 The Campaign Agent implements only the bounded research function in `research-template.py`.
 `ai_research_runner.py` owns I/O, membership, Boolean/interface identity, source and code hashes,
-schema, timeout and budget. The Workshop forms at least three evidence-linked research lenses,
+schema, timeout and budget. The Workshop includes the sequential `onsite-inspiration` lens as a
+seventh strategy above the six fixed miners. It reads their combined evidence and, after the first
+E0, must cite the current commercial frontier response. It may contribute at most ten proposals to
+the same 50-Cell round Portfolio and never creates another commercial arm. The Workshop forms evidence-linked research lenses,
 explains which structural indices each should change, and produces exact source-linked candidate
-identities. Its Reader emits `research_hypothesis_count` and `selected_count`; later deterministic
+identities. Its Reader emits `research_hypothesis_count`, `selected_count` and
+`onsite_inspiration_selected_count`; later deterministic
 evaluation, not the Workshop, emits all F0-F3/E0 facts.
 
 The Workshop may write candidate/portfolio code and suggest the next search region. It may not embed

@@ -47,7 +47,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.1.4');
+  assert.equal(graph.version, '5.1.5');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -104,7 +104,8 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
     ['proxy-metric-vector-complete', 'proxy-pairwise-relation-valid', 'portfolio-frontier-member',
       'e0-library-validation-candidate']);
   assert.deepEqual(node.get('final-judge')?.parameters.rules,
-    ['comparison-evidence-valid', 'fmax-improvement-at-least-target', 'fmax-improved', 'clock-period-at-most']);
+    ['fmax-improvement-at-least-target', 'comparison-evidence-valid', 'fmax-improved', 'clock-period-at-most'],
+    'the first rule is the branch outcome: a valid goal miss must revisit research');
 });
 
 test('the portable Pack has no AES, process-node, or customer-flow binding and declares Site-owned production inputs', async () => {
@@ -167,7 +168,7 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
   assert.ok(graph.nodes.some((node) => node.id === 'research-candidates'));
   assert.ok(graph.nodes.some((node) => node.id === 'read-research-selection'));
   assert.deepEqual((graph.nodes.find((node) => node.id === 'final-judge')?.parameters as any)?.rules,
-    ['comparison-evidence-valid', 'fmax-improvement-at-least-target', 'fmax-improved', 'clock-period-at-most']);
+    ['fmax-improvement-at-least-target', 'comparison-evidence-valid', 'fmax-improved', 'clock-period-at-most']);
   const pnrTemplate = await readFile(path.join(packDir, 'flow/domain/pnr.tcl.tmpl'), 'utf8');
   assert.match(pnrTemplate, /^saveNetlist @@POSTROUTE_NETLIST@@$/m);
   assert.match(pnrTemplate, /^set_ccopt_property buffer_cells \$_ccfmax_clock_buffers$/m);

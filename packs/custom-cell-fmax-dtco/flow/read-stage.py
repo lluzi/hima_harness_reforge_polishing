@@ -301,7 +301,7 @@ def v5_physical_facts(path):
     if not 0 < rows["effective_site_occupancy"][0] <= 1.0:
         raise ValueError("V5 effective occupancy is outside (0, 1]")
     if rows["dcap_count"][0] != 0 or rows["pg_special_wire_count"][0] <= 0:
-        raise ValueError("V5.1.4 physical baseline must disable DCAP and retain PG resources")
+        raise ValueError("V5.1 physical baseline must disable DCAP and retain PG resources")
     return rows
 
 
@@ -1573,8 +1573,11 @@ def read_residual_ai_research(report, out, document):
     retained = context.get("cumulative_library", {}).get("function_count")
     if isinstance(retained, bool) or not isinstance(retained, int) or retained < 0:
         raise ValueError("residual context has no cumulative Library function count")
+    onsite = sum(row.get("lens") == "onsite-inspiration" for row in proposals)
     values = [number("research_hypothesis_count", len(document["research_lenses"])),
-              number("selected_count", len(proposals)), number("retained_candidate_count", retained),
+              number("selected_count", len(proposals)),
+              number("onsite_inspiration_selected_count", onsite),
+              number("retained_candidate_count", retained),
               unknown("theoretical_gain_upper_pct", "residual research does not estimate commercial gain", "percent")]
     out.write_text(json.dumps({"values": values}, sort_keys=True) + "\n")
 

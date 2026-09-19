@@ -230,6 +230,7 @@ def _request(root: Path) -> dict:
         "budgets": {
             "max_research_lenses": 4,
             "max_candidate_proposals": 8,
+            "max_onsite_inspiration_proposals": 2,
             "max_candidate_code_bytes": 4096,
         },
         "next_residual_question": (
@@ -239,13 +240,24 @@ def _request(root: Path) -> dict:
 
 
 def _proposal(context: dict) -> dict:
+    onsite_evidence = [context["evidence"]["evaluation"]["sha256"]]
+    if "commercial_response" in context["evidence"]:
+        onsite_evidence.append(context["evidence"]["commercial_response"]["sha256"])
     return {
-        "research_lenses": [{
-            "name": "reconvergent-cut",
-            "question": context["next_residual_question"],
-            "evidence_sha256": [context["evidence"]["evaluation"]["sha256"]],
-            "target_metric_layers": ["F1", "F2", "F3"],
-        }],
+        "research_lenses": [
+            {
+                "name": "reconvergent-cut",
+                "question": context["next_residual_question"],
+                "evidence_sha256": [context["evidence"]["evaluation"]["sha256"]],
+                "target_metric_layers": ["F1", "F2", "F3"],
+            },
+            {
+                "name": "onsite-inspiration",
+                "question": "Which evidence-backed local strategy is missing from the six fixed miners?",
+                "evidence_sha256": onsite_evidence,
+                "target_metric_layers": ["F1", "F2", "F3"],
+            },
+        ],
         "candidate_program": {
             "language": "python",
             "entrypoint": "propose_candidates",
@@ -286,6 +298,16 @@ class ResidualResearchContextTests(unittest.TestCase):
             self.assertEqual(2, context["commercial_frontier_response"]["generated_active_count"])
             self.assertEqual("E1", context["commercial_frontier_response"]["remaining_frontier"][0]["endpoint"])
             self.assertIn("commercial_response", context["evidence"])
+            validated = validate_residual_research_proposal(_proposal(context), context)
+            onsite = next(row for row in validated["research_lenses"]
+                          if row["name"] == "onsite-inspiration")
+            self.assertIn(context["evidence"]["commercial_response"]["sha256"],
+                          onsite["evidence_sha256"])
+            missing_citation = _proposal(context)
+            missing_citation["research_lenses"][1]["evidence_sha256"] = [
+                context["evidence"]["evaluation"]["sha256"]]
+            with self.assertRaisesRegex(ValueError, "must cite the current commercial"):
+                validate_residual_research_proposal(missing_citation, context)
             (root / "commercial-response.json").write_text("{}\n")
             with self.assertRaisesRegex(ValueError, "changed after"):
                 load_residual_research_context(request, evidence_root=root)
@@ -699,6 +721,24 @@ class ResidualResearchContextTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "JSON array"):
             execute_candidate_program(program, context, allowed_lenses={"reconvergent-cut"})
 
+    def test_onsite_inspiration_has_a_separate_bounded_share_of_the_common_portfolio(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            context = load_residual_research_context(_request(root), evidence_root=root)
+        proposal = _proposal(context)
+        proposal["candidate_program"]["source"] = (
+            "def propose_candidates(residual, budget):\n"
+            "    return [\n"
+            "      {'lens': 'onsite-inspiration', 'transformation': {'slot': 1}, 'rationale': 'one'},\n"
+            "      {'lens': 'onsite-inspiration', 'transformation': {'slot': 2}, 'rationale': 'two'},\n"
+            "      {'lens': 'onsite-inspiration', 'transformation': {'slot': 3}, 'rationale': 'three'}]\n"
+        )
+        program = validate_residual_research_proposal(proposal, context)["candidate_program"]
+        with self.assertRaisesRegex(ValueError, "onsite-inspiration proposals exceed"):
+            execute_candidate_program(
+                program, context,
+                allowed_lenses={"reconvergent-cut", "onsite-inspiration"})
+
     def test_normalized_duplicate_lenses_proposals_and_large_stop_are_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -710,6 +750,11 @@ class ResidualResearchContextTests(unittest.TestCase):
         })
         with self.assertRaisesRegex(ValueError, "repeats canonical name"):
             validate_residual_research_proposal(duplicate_lenses, context)
+
+        missing_onsite = _proposal(context)
+        missing_onsite["research_lenses"] = missing_onsite["research_lenses"][:1]
+        with self.assertRaisesRegex(ValueError, "must include the onsite-inspiration"):
+            validate_residual_research_proposal(missing_onsite, context)
 
         wrong_identity = _proposal(context)
         wrong_identity["research_lenses"][0]["evidence_sha256"] = ["0" * 64]

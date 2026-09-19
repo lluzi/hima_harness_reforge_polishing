@@ -20,6 +20,9 @@ characterized. AI studies the current residual graph, complete metric vector, fr
 manifest and retained failures, then writes a bounded research algorithm for the next delta. The
 deterministic Framework owns identity, Boolean checks, metrics, budgets, artifact hashes and
 independent rereading.
+The same Workshop carries a sequential `onsite-inspiration` strategy above the six fixed miners. It
+may contribute at most ten evidence-linked proposals to the common round Portfolio and, after E0,
+must ground that strategy in the current commercial frontier response.
 
 Matched Design Compiler and Innovus results are E0 design-QoR observations. The gate judges one
 candidate Library, not one Cell. Complete F0 evidence and a current Library frontier member pass the

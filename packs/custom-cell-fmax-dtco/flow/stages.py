@@ -821,6 +821,7 @@ def stage_function_local(ctx):
         "next_residual_question": frontier["next_residual_question"]["prompt"],
         "budgets": {"max_research_lenses": 12,
                     "max_candidate_proposals": lfr_new_cell_budget(ctx),
+                    "max_onsite_inspiration_proposals": min(10, lfr_new_cell_budget(ctx)),
                     "max_candidate_code_bytes": 65536},
     }
     if commercial_response is not None:
@@ -2522,7 +2523,7 @@ def physical_plan_identity(physical_facts):
     if not 0.0 < occupancy <= 1.0:
         raise Rejected("effective site occupancy is outside (0, 1]")
     if int(facts["dcap_count"]["value"]) != 0:
-        raise Rejected("V5.1.4 physical facts prove unexpected DCAP insertion")
+        raise Rejected("V5.1 physical facts prove unexpected DCAP insertion")
     if facts["pg_special_wire_count"]["value"] <= 0:
         raise Rejected("physical facts prove no PG special wires")
     return {"dcapPolicy": "disabled", "dcapCount": 0,
@@ -2861,7 +2862,7 @@ def stage_pnr(ctx, arm, utilization="0.60"):
                       "route_drc_violations": route_drc_count, "connectivity_violations": connectivity_count,
                       **secondary, "congestion_overflow": None,
                       "congestion_unknown_reason": "current Innovus summary has no verified congestion-overflow metric",
-                      "arm_scripts_matched": True, "toolVersion": init_version,
+                      "toolVersion": init_version,
                       "place_site": str(ctx.binding("PLACE_SITE")),
                       "floorplan_core_box": core_box,
                       "floorplan_core_area_um2": (core_box[2] - core_box[0]) * (core_box[3] - core_box[1]),

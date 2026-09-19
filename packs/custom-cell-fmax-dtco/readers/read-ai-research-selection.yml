@@ -11,5 +11,6 @@ reportKind: lfr-ai-residual-research/1
 emits:
   - research_hypothesis_count
   - selected_count
+  - onsite_inspiration_selected_count
   - retained_candidate_count
   - theoretical_gain_upper_pct

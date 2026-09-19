@@ -29,6 +29,13 @@ def residual_research(context):
          "source": "def propose_candidates(residual, budget): ..."},
        "stop_reason": str}
 
+    One lens must be named ``onsite-inspiration``. It is the sequential seventh
+    strategy above the six fixed miners: analyze their combined evidence and, when
+    present, the prior ``commercial_frontier_response`` before proposing a locally
+    grounded selection policy. In later generations this lens must cite the current
+    commercial-response evidence hash. It shares the one Library and E0 arm with all
+    other lenses; it never creates a separate commercial experiment.
+
     Call ``residual_evidence_sha256(context)`` and cite one or more values from that returned list
     in every lens. Those hashes identify the residual evaluation/frontier/manifest/candidate-pool
     evidence accepted by the validator. Do not copy Workshop input-record hashes from a transcript:
@@ -42,6 +49,10 @@ def residual_research(context):
     in an isolated, resource-limited Python subprocess and revalidates the JSON.
     The runner owns hashes, schema, identity and budget; this function cannot
     launch commercial EDA or write Judge facts.
+    At most ``budget["max_onsite_inspiration_proposals"]`` returned rows may name
+    the ``onsite-inspiration`` lens. Use those slots only when the evidence supports
+    a concrete opportunity; the remaining proposal budget stays available to the
+    evidence-driven fixed-route lenses.
 
     When ``context.candidate_pool.proposals`` is non-empty, every returned
     transformation must select one of its ``proposal_key`` values. The runner

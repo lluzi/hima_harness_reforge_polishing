@@ -89,6 +89,11 @@ mechanically derived theoretical upper bounds and retained synthesis/adoption fe
 hypotheses and exact source identities, writes all six route projections, and calls the independent
 reader. The runner is I/O scaffolding; the authored residual function is the research asset.
 
+The Workshop must include an `onsite-inspiration` lens. This is the sequential seventh strategy,
+not a seventh commercial branch. It analyzes the six fixed views together and, in later generations,
+the current commercial frontier response. It may label at most ten proposals in the common round
+Portfolio; all resulting Cells still enter the same cumulative Library and one matched E0.
+
 For every lens, call `residual_evidence_sha256(context)` from the fixed runner and cite one or more
 of the returned values in `evidence_sha256`. Those are the accepted residual evaluation, frontier,
 manifest, candidate-pool and history identities. Workshop capture-record hashes are a different

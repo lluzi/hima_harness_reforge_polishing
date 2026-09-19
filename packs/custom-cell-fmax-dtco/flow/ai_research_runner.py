@@ -50,6 +50,7 @@ RESIDUAL_DOCUMENT_BYTES = 8 * 1024 * 1024
 RESIDUAL_TEXT_BYTES = 8192
 RESIDUAL_NAME_BYTES = 256
 RESIDUAL_MAX_STATIC_ITERATIONS = 128
+ONSITE_INSPIRATION_LENS = "onsite-inspiration"
 
 _RESIDUAL_EXECUTOR = r'''#!/usr/bin/env python3
 import json
@@ -530,12 +531,14 @@ def build_residual_research_context(
     question = _bounded_text(question, "next_residual_question")
     budgets = request.get("budgets")
     if not isinstance(budgets, dict) or set(budgets) != {
-            "max_research_lenses", "max_candidate_proposals", "max_candidate_code_bytes"}:
+            "max_research_lenses", "max_candidate_proposals",
+            "max_onsite_inspiration_proposals", "max_candidate_code_bytes"}:
         raise ValueError("residual budgets are incomplete")
     limits = {}
     for name, lower, upper in (
             ("max_research_lenses", 1, 12),
             ("max_candidate_proposals", 1, 50),
+            ("max_onsite_inspiration_proposals", 1, 10),
             ("max_candidate_code_bytes", 256, 65536)):
         value = budgets.get(name)
         if isinstance(value, bool) or not isinstance(value, int) or not lower <= value <= upper:
@@ -1080,6 +1083,9 @@ def execute_candidate_program(program, context, *, allowed_lenses, candidate_reg
         envelope["proposals"], budget=context["budgets"]["max_candidate_proposals"],
         allowed_lenses=set(allowed_lenses),
     )
+    onsite_count = sum(row["lens"] == ONSITE_INSPIRATION_LENS for row in proposals)
+    if onsite_count > context["budgets"]["max_onsite_inspiration_proposals"]:
+        raise ValueError("onsite-inspiration proposals exceed their deterministic budget")
     candidate_registry = candidate_registry or {}
     selected_keys = set()
     attached = []
@@ -1176,6 +1182,13 @@ def validate_residual_research_proposal(proposal, context):
             "evidence_sha256": sorted(set(evidence)),
             "target_metric_layers": sorted(set(layers)),
         })
+    if ONSITE_INSPIRATION_LENS not in names:
+        raise ValueError("research_lenses must include the onsite-inspiration strategy")
+    commercial = context.get("evidence", {}).get("commercial_response")
+    if isinstance(commercial, dict):
+        onsite = next(row for row in normalized if row["name"] == ONSITE_INSPIRATION_LENS)
+        if commercial.get("sha256") not in onsite["evidence_sha256"]:
+            raise ValueError("onsite-inspiration must cite the current commercial frontier response")
     stop = _bounded_text(proposal["stop_reason"], "stop_reason")
     program = _validate_candidate_program(
         proposal["candidate_program"], context["budgets"]["max_candidate_code_bytes"])
