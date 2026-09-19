@@ -137,6 +137,23 @@ class PackLfrStageAdapterTests(unittest.TestCase):
         self.assertRegex(generation_2[0]["candidate_id"], r"_G0002$")
         self.assertTrue(names_1.isdisjoint(names_2))
 
+    def test_namespaced_library_delta_keeps_the_strict_function_local_gate(self):
+        fixture = (FLOW / "domain/tests/fixtures/lfr-pre-mapping-portfolio.production.json")
+        portfolio = json.loads(fixture.read_text())
+        request = portfolio["candidate_evaluations"][0]["candidate"]["source_generation_request"]
+        namespaced = stages.namespace_generation_requests([request], "0001")
+
+        filtered = stages._filtered_portfolio(portfolio, namespaced)
+
+        self.assertEqual(
+            [namespaced[0]["candidate_id"]],
+            [row["candidate_id"] for row in filtered["selected"]],
+        )
+        self.assertEqual(
+            namespaced[0],
+            filtered["candidate_evaluations"][0]["candidate"]["source_generation_request"],
+        )
+
     def test_cumulative_library_paths_are_declared_arm_only_script_inputs(self):
         liberty = "/workspace/flow/library/cumulative-custom.lib"
         lef = "/workspace/flow/library/cumulative-custom.lef"

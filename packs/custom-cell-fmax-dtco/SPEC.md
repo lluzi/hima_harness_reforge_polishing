@@ -90,7 +90,12 @@ single file. Before materialization, every new candidate id receives the next im
 namespace (`G0001`, `G0002`, ...); physical Liberty/SPICE/LEF Cell names therefore cannot alias a
 different Cell from an earlier generation. Exact function reuse remains governed by the full
 function identity, while cumulative-manifest and assembled-Liberty collision checks fail closed as
-independent defenses. `MAX_NEW_CELLS` is 1..50 per research round. It does not change the meaning of the old
+independent defenses. At the pre-mapping gate, the materialized shard identity rejoins its original
+function/local portfolio by immutable Boolean/interface identity. The gate rebuilds the candidate
+DTO with the namespaced request and independently recomputes the strict F0/F1 portfolio over the
+actual Library delta. A route-local candidate label is never used as the cross-stage identity, and
+the Workshop can choose another eligible portfolio without bypassing equivalence,
+generation-feasibility or local-structure checks. `MAX_NEW_CELLS` is 1..50 per research round. It does not change the meaning of the old
 `MAX_CELLS`; a separate measured cumulative cap limits storage and mapping cost. The 12-hour
 Campaign time box, 480 infrastructure act-attempt ceiling, final 15-minute closing reserve and Site
 Job cap of at most five remain explicit; they do not authorize 480 commercial routes. Commercial

@@ -958,11 +958,50 @@ def _retained_shard_libraries(ctx, manifest):
     return libraries
 
 
-def _filtered_portfolio(portfolio, admitted_ids):
-    evaluations = [row["candidate"] for row in portfolio.get("candidate_evaluations", [])
-                   if row.get("candidate_id") in admitted_ids]
-    if not evaluations:
-        raise Rejected("no function/local portfolio candidate survived materialization")
+def _filtered_portfolio(portfolio, admitted_requests):
+    """Rebuild the strict F0/F1 gate with materialized shard identities.
+
+    Candidate ids are route-local research labels.  ``stage_merge`` gives every
+    materialized request a physical shard namespace so cumulative Libraries
+    cannot alias Cells across generations.  The immutable Boolean/interface
+    identity, rather than the renamed label, therefore joins the Workshop
+    delta back to the function/local portfolio.
+    """
+    if not isinstance(admitted_requests, list) or not admitted_requests:
+        raise Rejected("materialized delta has no generation requests")
+    available = {}
+    for index, row in enumerate(portfolio.get("candidate_evaluations", [])):
+        candidate = row.get("candidate") if isinstance(row, dict) else None
+        source = candidate.get("source_generation_request") if isinstance(candidate, dict) else None
+        if not isinstance(source, dict):
+            raise Rejected("function/local portfolio candidate %d is malformed" % index)
+        try:
+            key = function_identity(source)["key"]
+        except ValueError as exc:
+            raise Rejected(str(exc)) from exc
+        if key in available:
+            raise Rejected("function/local portfolio repeats a Boolean/interface identity")
+        available[key] = candidate
+    evaluations = []
+    admitted_ids = set()
+    for index, request in enumerate(admitted_requests):
+        if not isinstance(request, dict):
+            raise Rejected("materialized generation request %d is malformed" % index)
+        candidate_id = request.get("candidate_id")
+        if not isinstance(candidate_id, str) or candidate_id in admitted_ids:
+            raise Rejected("materialized delta repeats or omits a candidate id")
+        try:
+            key = function_identity(request)["key"]
+        except ValueError as exc:
+            raise Rejected(str(exc)) from exc
+        if key not in available:
+            raise Rejected("no function/local portfolio candidate survived materialization")
+        try:
+            evaluations.append(portfolio_candidate_from_generation_request(
+                request, stage="pre_mapping"))
+        except ValueError as exc:
+            raise Rejected("cannot project materialized function/local candidate: %s" % exc) from exc
+        admitted_ids.add(candidate_id)
     filtered = select_candidate_portfolio(
         evaluations, len(evaluations), stage="pre_mapping",
         design_proxy_evidence=portfolio["design_proxy_evidence"],
@@ -1000,8 +1039,7 @@ def stage_design_mapping_timing(ctx):
     manifest = read_json(manifest_path)
     validate_cumulative_manifest(manifest)
     portfolio = read_json(Path(str(ctx.binding("LFR_LOCAL_PORTFOLIO"))))
-    admitted_ids = {request["candidate_id"] for request in all_requests}
-    portfolio = _filtered_portfolio(portfolio, admitted_ids)
+    portfolio = _filtered_portfolio(portfolio, all_requests)
     selected_ids = {row["candidate_id"] for row in portfolio["selected"]}
     requests = [request for request in all_requests if request["candidate_id"] in selected_ids]
     if len(manifest["functions"]) + len(requests) > int(ctx.binding("MAX_CELLS")):
