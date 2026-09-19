@@ -122,6 +122,8 @@ scarce screen; P&R remains behind positive adoption.
 The candidate program contract is intentionally smaller than Python but remains usable for ranking:
 one `propose_candidates(residual, budget)` function, no imports or hidden I/O, `range(literal)` loops
 bounded to 128 each and 512 in aggregate, and the fixed safe builtin/method list in the template.
+The returned array must be bounded by `budget["max_candidate_proposals"]`; a broad source pool is
+never permission to return every row. Stop appending at the bound or slice the final list to it.
 Variable numeric arithmetic and string concatenation are allowed. A non-zero Workshop program is an
 ordinary authoring result: the Campaign Agent reads its diagnostic, opens the next explicit attempt
 and revises without asking a person to replenish the mechanical retry allowance.

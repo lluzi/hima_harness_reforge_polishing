@@ -85,7 +85,7 @@ Phase 2, but it does not copy or reimplement the Framework.
    while its input and method identity remain unchanged; each admitted cumulative Library gets at
    most one corresponding custom-arm observation.
 10. What remains controlled in E0? — RTL, constraints, tool and core count, the floorplan expanded
-    once to 200% of the density-failure baseline area, frozen IO pins, PG mesh, checkerboard DCAP plan, 85%
+    once to 200% of the density-failure baseline area, frozen IO pins, PG mesh, no DCAP insertion, 85%
     effective-occupancy ceiling,
     physical inputs, route settings and analysis view. Both synthesis arms use the same 50% clock
     uncertainty and reg2reg priority; both route arms use the same 25% uncertainty plus 50 ps;

@@ -48,11 +48,18 @@ class PackLfrStageAdapterTests(unittest.TestCase):
         markers = stages.pnr_density_markers("\n".join([
             "=== CCFMAX V5 PLANNED OCCUPANCY foundry 0.4305 ===",
             "=== CCFMAX V5 FIXED CELL AREA foundry 13685.112 ===",
+            "**ERROR: (IMPSP-2021): Could not legalize <53> instances",
+            "VERIFY DRC did not complete: Number of violations hits the Error Limit [100000]",
+            "2857352 geometry drc markers are saved",
             "**ERROR: fixture",
         ]), "foundry")
         self.assertEqual({
             "planned_occupancy": 0.4305,
             "fixed_cell_area_um2": 13685.112,
+            "route_drc_violations": 2857352,
+            "innovus_process_exit_code": 0,
+            "innovus_batch_error_count": 0,
+            "innovus_failure_class": "placement-legalization+route-drc-overflow",
         }, markers)
 
     def test_innovus_route_layer_name_is_rendered_as_an_integer(self):

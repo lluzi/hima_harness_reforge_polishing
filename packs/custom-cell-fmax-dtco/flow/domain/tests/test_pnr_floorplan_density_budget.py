@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproduction: the fixed tap/DCAP plan is not bounded by the floorplan density budget.
+"""Regression: the P&R method must not populate the core with fixed DCAP cells.
 
 Observed failure (trial.7, Run run-b8bddd3f-f41a-45ef-a448-4972e029026b):
 
@@ -11,26 +11,10 @@ Observed failure (trial.7, Run run-b8bddd3f-f41a-45ef-a448-4972e029026b):
               **ERROR: (IMPSP-2021): Could not legalize <4661> instances in the design.
               **ERROR: (IMPSP-9022): Command 'refinePlace' completed with some error(s).
 
-Mechanism the three tests below pin down, at the level the method itself is written in:
-
-1. `flow/domain/init.tcl.tmpl` sizes the core from the logic-only netlist area at
-   `utilization` (`floorPlan -site <site> -r 1.0 <utilization> 2.0 2.0 2.0 2.0`,
-   built in `flow/stages.py:build_arm_files`), so a core utilisation of 0.25 leaves
-   three quarters of a four-times-logic core free.
-2. `flow/domain/pnr.tcl.tmpl` then fixes well taps (`addWellTap`, line 59) and a
-   DCAP checkerboard (`addInst`, lines 66-99) into that core *before* placement. The
-   checkerboard's only bounds are the row box, `@@DCAP_ROW_STRIDE@@` and
-   `@@DCAP_X_PITCH_UM@@`; nothing relates the area it consumes to the core area or to
-   `@@MAX_EFFECTIVE_DENSITY@@`.
-3. The single comparison against `@@MAX_EFFECTIVE_DENSITY@@` (line 134) runs **after**
-   `place_opt_design` (line 120), as an `error` raised once placement has already
-   failed. The template's own comment ("DCAPs are fixed before logic placement and
-   therefore count against the 85% effective occupancy budget") is therefore asserted
-   but not enforced before placement.
-
-The current method doubles the failure-baseline area, sets placement/optimization max density to
-the reviewed 0.85 value, and reserves the hard checks for physically impossible occupancy above
-100%. These tests pin that policy without attempting to predict Innovus local density.
+Trial.8 inserted 33,215 fixed DCAP instances, reached 99.6% effective occupancy and
+produced millions of DRC markers. The current method doubles the failure-baseline area,
+sets placement/optimization max density to the reviewed 0.85 value, inserts no DCAP,
+and reserves hard checks for physically impossible occupancy above 100%.
 """
 
 from pathlib import Path
@@ -65,6 +49,12 @@ def pnr_stage_substitution_block():
 
 
 class PnrFloorplanDensityBudgetTests(unittest.TestCase):
+    def test_no_dcap_instances_are_inserted(self):
+        template = pnr_template_without_comments()
+        self.assertNotIn("addInst -cell {@@DCAP_CELL@@}", template)
+        self.assertNotIn("HIMA_DCAP_R%03d_C%04d", template)
+        self.assertIn("set _hima_dcap_count 0", template)
+
     def test_fixed_cell_area_is_observed_with_the_common_density_cap(self):
         template = pnr_template_without_comments()
         required = [
@@ -94,7 +84,7 @@ class PnrFloorplanDensityBudgetTests(unittest.TestCase):
         self.assertIn(
             "utilization",
             substitution,
-            "the stage that fixes taps and DCAPs is not given the floorplan "
+            "the stage that fixes taps is not given the floorplan "
             "utilization chosen by the init stage, so it cannot compute the "
             "residual area those fixed cells may consume",
         )

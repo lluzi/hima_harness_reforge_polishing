@@ -4,7 +4,7 @@
 # ordering is the Site profile's declared ordering, including the current physical-method
 # assumptions:
 #   addWellTap  the declared tap cell and interval are valid for this library before placement
-#   deterministic DCAP checkerboard reserves real placement resources before placement
+#   DCAP insertion is intentionally disabled; trial.8 proved a checkerboard can consume the core
 #   ordinary filler is intentionally omitted for this setup-only Campaign
 #   streamOut   GDS, using the site-bound layer map
 # Every site path is a placeholder that flow/bin/build_arm_scripts.py fills from the run input
@@ -18,8 +18,7 @@
 # session that has already run one is incremental and under-reports.
 #
 # Placeholders: @@ARM@@ @@INIT_DB@@ @@PLACE_DB@@ @@DESIGN_TOP@@ @@MULTI_CPU@@ @@TAP_CELL@@ @@TAP_INTERVAL@@
-#   @@DCAP_CELL@@ @@DCAP_ROW_STRIDE@@ @@DCAP_X_PITCH_UM@@ @@DCAP_EDGE_MARGIN_UM@@
-#   @@DCAP_PLAN@@ @@MAX_EFFECTIVE_DENSITY@@ @@FLOORPLAN_UTILIZATION@@ @@PG_HORIZONTAL_LAYER@@ @@PG_VERTICAL_LAYER@@
+#   @@MAX_EFFECTIVE_DENSITY@@ @@FLOORPLAN_UTILIZATION@@ @@PG_HORIZONTAL_LAYER@@ @@PG_VERTICAL_LAYER@@
 #   @@PG_RING_WIDTH_UM@@ @@PG_RING_SPACING_UM@@ @@PG_STRIPE_WIDTH_UM@@
 #   @@PG_STRIPE_SPACING_UM@@ @@PG_STRIPE_SET_DISTANCE_UM@@ @@PG_STRIPE_START_OFFSET_UM@@
 #   @@RPT_DIR@@ @@FINAL_DB@@ @@GDS_OUT@@ @@GDS_MAP@@ @@MERGE_GDS@@
@@ -58,7 +57,7 @@ puts "=== CCFMAX CTS INVERTER CELLS $_ccfmax_clock_inverters ==="
 # --- pre-placement standard-cell area budget ---------------------------------------
 # Every standard cell fixed into this core before logic placement consumes the same
 # area the effective-density ceiling bounds.  The init stage sized the floorplan for
-# @@FLOORPLAN_UTILIZATION@@ of the logic area, so the fixed tap/DCAP plan is checked
+# @@FLOORPLAN_UTILIZATION@@ of the logic area, so the fixed tap plan is checked
 # against the ceiling here: a plan that cannot fit is a planning error, not a long
 # Innovus placement that ends in IMPSP-2002/IMPSP-2021.
 proc _hima_standard_cell_area {} {
@@ -88,52 +87,19 @@ puts "=== CCFMAX V5 LOGIC OCCUPANCY @@ARM@@ $_hima_logic_occupancy ==="
 addWellTap -cell @@TAP_CELL@@ -cellInterval @@TAP_INTERVAL@@ -prefix WELLTAP
 puts "=== CCFMAX well taps placed @@ARM@@ ==="
 
-# The two arms derive the same frozen checkerboard from the same floorplan
-# rows and Site inputs.  DCAPs are fixed before logic placement and therefore
-# count against the 85% effective occupancy budget instead of filling leftover
-# whitespace after timing optimization.
-set _hima_dcap_plan [open {@@DCAP_PLAN@@} w]
-puts $_hima_dcap_plan "instance\tmaster\tx\ty\trow_index\tphase"
-set _hima_rows [dbGet top.fPlan.rows.box]
-set _hima_row_index 0
+# Trial.8 inserted 33,215 fixed DCAP instances and consumed nearly the whole core.
+# This reference method therefore inserts no DCAP.  Power planning remains real through
+# the matched ring/stripe/sroute mesh, and both arms retain the zero count as evidence.
 set _hima_dcap_count 0
-foreach _hima_box $_hima_rows {
-  if {($_hima_row_index % @@DCAP_ROW_STRIDE@@) == 0} {
-    set _hima_x0 [lindex $_hima_box 0]
-    set _hima_y [lindex $_hima_box 1]
-    set _hima_x1 [lindex $_hima_box 2]
-    set _hima_phase [expr {($_hima_row_index / @@DCAP_ROW_STRIDE@@) % 2}]
-    set _hima_x [expr {$_hima_x0 + @@DCAP_EDGE_MARGIN_UM@@ + $_hima_phase * @@DCAP_X_PITCH_UM@@ / 2.0}]
-    set _hima_dcap_width [dbGet [dbGet -p1 head.libCells.name {@@DCAP_CELL@@}].size_x]
-    if {$_hima_dcap_width eq "" || $_hima_dcap_width <= 0} {
-      error "V5 DCAP master has no positive physical width: @@DCAP_CELL@@"
-    }
-    while {($_hima_x + $_hima_dcap_width) <= ($_hima_x1 - @@DCAP_EDGE_MARGIN_UM@@)} {
-      set _hima_candidate_box [list $_hima_x $_hima_y \
-        [expr {$_hima_x + $_hima_dcap_width}] [expr {$_hima_y + [dbGet [dbGet -p1 head.libCells.name {@@DCAP_CELL@@}].size_y]}]]
-      if {[llength [dbQuery -area $_hima_candidate_box -objType inst]] == 0} {
-        set _hima_name [format "HIMA_DCAP_R%03d_C%04d" $_hima_row_index $_hima_dcap_count]
-        addInst -cell {@@DCAP_CELL@@} -inst $_hima_name -loc [list $_hima_x $_hima_y] -place_status fixed
-        globalNetConnect {@@PWR_NET@@} -type pgpin -pin {@@PWR_NET@@} -inst $_hima_name
-        globalNetConnect {@@GND_NET@@} -type pgpin -pin {@@GND_NET@@} -inst $_hima_name
-        puts $_hima_dcap_plan "$_hima_name\t@@DCAP_CELL@@\t$_hima_x\t$_hima_y\t$_hima_row_index\t$_hima_phase"
-        incr _hima_dcap_count
-      }
-      set _hima_x [expr {$_hima_x + @@DCAP_X_PITCH_UM@@}]
-    }
-  }
-  incr _hima_row_index
-}
-close $_hima_dcap_plan
 puts "=== CCFMAX V5 DCAP COUNT @@ARM@@ $_hima_dcap_count ==="
 set _hima_planned_area [_hima_standard_cell_area]
 set _hima_fixed_cell_area [expr {$_hima_planned_area - $_hima_logic_area}]
 if {$_hima_fixed_cell_area < 0} {
-  error "V5 fixed tap/DCAP area is invalid"
+  error "V5 fixed tap area is invalid"
 }
 set _hima_planned_occupancy [expr {$_hima_planned_area / $_hima_budget_core_area}]
 if {$_hima_planned_occupancy > (1.0 + 1.0e-9)} {
-  error "V5 planned site occupancy $_hima_planned_occupancy exceeds 100% before placement: the fixed tap/DCAP plan does not fit the core sized for utilization @@FLOORPLAN_UTILIZATION@@"
+  error "V5 planned site occupancy $_hima_planned_occupancy exceeds 100% before placement: the fixed tap plan does not fit the core sized for utilization @@FLOORPLAN_UTILIZATION@@"
 }
 puts "=== CCFMAX V5 PLANNED OCCUPANCY @@ARM@@ $_hima_planned_occupancy ==="
 puts "=== CCFMAX V5 FIXED CELL AREA @@ARM@@ $_hima_fixed_cell_area ==="
@@ -160,7 +126,7 @@ if {[llength $_hima_frozen_core_box] != 4} {
 }
 place_opt_design
 # Compute the effective standard-cell occupancy from every instantiated master,
-# including fixed DCAP/tap cells.  Pure-gate density remains a separate report.
+# including fixed tap cells.  Pure-gate density remains a separate report.
 set _hima_occupied_area [_hima_standard_cell_area]
 set _hima_core_box $_hima_frozen_core_box
 set _hima_core_area [expr {([lindex $_hima_core_box 2] - [lindex $_hima_core_box 0]) * ([lindex $_hima_core_box 3] - [lindex $_hima_core_box 1])}]
@@ -223,9 +189,9 @@ puts "=== CCFMAX V5 FINAL EFFECTIVE OCCUPANCY @@ARM@@ $_hima_final_effective_occ
 # but this Campaign never spends post-route optimization effort repairing it
 # at the expense of setup timing.
 
-# Ordinary filler is not inserted in this Campaign.  The fixed checkerboard
-# DCAP plan is the only non-functional row occupant beyond tap/endcap policy.
+# Ordinary filler and DCAP are not inserted in this Campaign.
 puts "=== CCFMAX V5 NO ORDINARY FILLER @@ARM@@ ==="
+puts "=== CCFMAX V5 NO DCAP INSERTION @@ARM@@ ==="
 
 extractRC
 puts "=== CCFMAX POST-OPT SETUP @@ARM@@ ==="

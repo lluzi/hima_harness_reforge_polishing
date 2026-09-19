@@ -85,6 +85,18 @@ test('retry allowance blocks the failed node until its human owner clears that n
     }
     assert.equal(sessionsOf(host, runId).length, 2);
     const blocked = host.ctx.hima.executionContext(runId);
+    const jobRecords = host.ctx.hima.ledger.records({ runId, type: 'job' });
+    let expectedLicenceMs = 0;
+    for (const launch of jobRecords) {
+      if (launch.type !== 'job' || launch.event !== 'launched') continue;
+      const finished = jobRecords.find((record) => record.type === 'job' && record.event === 'finished'
+        && record.job.session === launch.job.session);
+      if (finished?.type === 'job' && finished.event === 'finished') {
+        expectedLicenceMs += Math.max(0, Date.parse(finished.at) - Date.parse(launch.at));
+      }
+    }
+    assert.equal(blocked.run.meters?.licenceMs?.['Design-Compiler'], expectedLicenceMs,
+      'the final failed owner execution refreshes the licence meter without needing another action');
     assert.equal(blocked.run.currentNode, started.run.currentNode, 'a failure does not make a business move into Pack wait');
     assert.deepEqual(blocked.available, []);
     assert.equal((await act('begin')).kind, 'refused');

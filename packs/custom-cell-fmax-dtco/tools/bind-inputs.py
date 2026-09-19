@@ -115,7 +115,7 @@ def materialize_profile(document):
         "CCFMAX_CONTAINER_MOUNT_POINT", "CCFMAX_LCLAYOUT_ACTIVATE",
         "CCFMAX_POWER_PIN", "CCFMAX_GROUND_PIN", "CCFMAX_POWER_TEMPLATE_BASE_CELL",
         "GENERATED_LIBRARY_NAME", "GENERATED_LIB_CELL_PATTERN", "CCFMAX_MAX_ROUTE_LAYER",
-        "CCFMAX_TAP_CELL", "CCFMAX_FILLER_CELLS", "CCFMAX_DCAP_CELL", "PLACE_SITE",
+        "CCFMAX_TAP_CELL", "CCFMAX_FILLER_CELLS", "PLACE_SITE",
         "CCFMAX_PG_HORIZONTAL_LAYER", "CCFMAX_PG_VERTICAL_LAYER",
     )
     positive_integer_fields = (
@@ -123,7 +123,6 @@ def materialize_profile(document):
         "CHARACTERIZE_TIMEOUT_SEC", "LC_TIMEOUT_SEC", "SYNTH_TIMEOUT_SEC", "MULTI_CPU",
         "CCFMAX_TAP_INTERVAL", "PNR_TIMEOUT_SEC", "DRC_LIMIT", "VERIFY_TIMEOUT_SEC",
         "LFR_PROXY_TIMEOUT_SEC", "LFR_PROXY_CPU_COUNT", "LFR_PROXY_MEMORY_MB",
-        "CCFMAX_DCAP_ROW_STRIDE",
     )
     for name in file_fields:
         document[name] = plain_file(document.get(name), name)
@@ -152,8 +151,23 @@ def materialize_profile(document):
             raise ValueError
     except ValueError as exc:
         raise ValueError("BOOL2CMOS_CMD must be one parseable command") from exc
+    timeout_floors = {
+        "GENERATION_TIMEOUT_SEC": 3600,
+        "ABSTRACT_TIMEOUT_SEC": 3600,
+        "CHARACTERIZE_TIMEOUT_SEC": 3600,
+        "LC_TIMEOUT_SEC": 3600,
+        "SYNTH_TIMEOUT_SEC": 7200,
+        "PNR_TIMEOUT_SEC": 14400,
+        "VERIFY_TIMEOUT_SEC": 7200,
+        "LFR_PROXY_TIMEOUT_SEC": 3600,
+    }
     for name in positive_integer_fields:
-        document[name] = positive_integer(document.get(name), name)
+        requested = positive_integer(document.get(name), name)
+        if name in timeout_floors:
+            document[f"{name}_REQUESTED"] = requested
+            document[name] = max(requested, timeout_floors[name])
+        else:
+            document[name] = requested
     if document["MAX_ROUTE_CANDIDATES"] > 40:
         raise ValueError("MAX_ROUTE_CANDIDATES must be within 1..40")
     document["MAX_NEW_CELLS"] = positive_integer(
@@ -179,7 +193,6 @@ def materialize_profile(document):
     document["CCFMAX_RC_TEMPERATURE"] = positive_number(document.get("CCFMAX_RC_TEMPERATURE"), "CCFMAX_RC_TEMPERATURE", -273.15)
     document["CCFMAX_PROCESS_NODE"] = positive_number(document.get("CCFMAX_PROCESS_NODE"), "CCFMAX_PROCESS_NODE")
     for name in (
-        "CCFMAX_DCAP_X_PITCH_UM", "CCFMAX_DCAP_EDGE_MARGIN_UM",
         "CCFMAX_PG_RING_WIDTH_UM", "CCFMAX_PG_RING_SPACING_UM",
         "CCFMAX_PG_STRIPE_WIDTH_UM", "CCFMAX_PG_STRIPE_SPACING_UM",
         "CCFMAX_PG_STRIPE_SET_DISTANCE_UM", "CCFMAX_PG_STRIPE_START_OFFSET_UM",

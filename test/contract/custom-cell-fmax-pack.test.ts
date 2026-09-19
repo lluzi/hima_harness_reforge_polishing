@@ -47,7 +47,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.1.3');
+  assert.equal(graph.version, '5.1.4');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -778,8 +778,8 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
       goal: { target_period_ns: 1, target_fmax_improvement_pct: 5 },
       strategy: { periodNs: 1, floorplanUtilization: 0.5, algorithmRevision: 0 }, ownerSessionId: String(owner.id), generationLimit: 1 });
     assert.equal(started.kind, 'ran', JSON.stringify(started)); if (started.kind !== 'ran') return;
-    assert.equal(started.run.budget?.timeBoxMs, 21_600_000,
-      'the bounded four-generation method owns its reviewed six-hour box');
+    assert.equal(started.run.budget?.timeBoxMs, 43_200_000,
+      'the bounded eight-generation method owns its reviewed twelve-hour box');
     assert.equal(started.run.currentNode, 'bind-inputs');
     const begin = await host.ctx.hima.executionAction({ runId: started.run.id, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0,
       requestId: 'bind-begin', action: 'begin', nodeId: 'bind-inputs' });
@@ -798,6 +798,12 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     assert.equal(materialized.foundryDb, await realpath(foundryDb));
     assert.equal(materialized.MAX_NEW_CELLS, 50); assert.equal(materialized.MAX_CELLS, 200);
     assert.equal(materialized.MAX_ROUTE_CANDIDATES, 40);
+    assert.equal(materialized.GENERATION_TIMEOUT_SEC, 3600);
+    assert.equal(materialized.GENERATION_TIMEOUT_SEC_REQUESTED, 30);
+    assert.equal(materialized.SYNTH_TIMEOUT_SEC, 7200);
+    assert.equal(materialized.PNR_TIMEOUT_SEC, 14400);
+    assert.equal(materialized.PNR_TIMEOUT_SEC_REQUESTED, 30);
+    assert.equal(materialized.VERIFY_TIMEOUT_SEC, 7200);
     assert.equal(materialized.LFR_YOSYS_SHA256, proxyToolSha256);
     assert.equal(materialized.LFR_MAPPING_PROFILE, 'lfr-yosys-abc-deterministic/1');
     assert.equal(materialized.LFR_PROXY_STA_PROFILE, 'lfr-round-evaluation/3:proxy-sta');

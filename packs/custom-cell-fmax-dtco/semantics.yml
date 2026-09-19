@@ -87,7 +87,7 @@ values:
     description: Pure gate density number 6 from the retained Innovus summary report.
   effective_site_occupancy:
     unit: fraction
-    description: All instantiated standard-cell master area divided by the frozen placeable core area, including fixed tap and DCAP cells; values above 1.0 are invalid.
+    description: All instantiated standard-cell master area divided by the frozen placeable core area, including fixed tap cells; values above 1.0 are invalid. V5.1.4 inserts no DCAP.
   floorplan_requested_utilization:
     unit: fraction
     description: Strategy utilization requested by the Campaign before the fixed area-expansion policy.
@@ -102,7 +102,7 @@ values:
     description: Positive integer route layer level rendered into Innovus routeTopRoutingLayer.
   dcap_count:
     unit: count
-    description: Fixed deterministic checkerboard DCAP instances admitted before placement.
+    description: DCAP instances present under the Pack method; V5.1.4 requires this to be zero.
   pg_special_wire_count:
     unit: count
     description: PG special-wire objects observed after the matched ring/stripe/sroute method.

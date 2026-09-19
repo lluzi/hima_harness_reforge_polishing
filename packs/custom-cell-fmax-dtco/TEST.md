@@ -1,23 +1,21 @@
-# Custom Cell Fmax DTCO V5.1.3 density-policy smoke
+# Custom Cell Fmax DTCO V5.1.4 no-DCAP and budget smoke
 
 ## Site
 
 Site local with publication-only stand-in bindings. No model, SSH or commercial EDA was invoked.
-Trial.7 supplied the retained real density failure; this smoke makes no new QoR claim.
+Trial.8 supplies the retained real DCAP/DRC failure; this smoke makes no new QoR claim.
 
 ## Run
 
-run: run-3e33ef86-b0fd-4a2a-9afb-67e9deacad2f
+run: run-fa2905a5-041d-430f-9403-77b38df13b97
 
-The Harness loaded custom-cell-fmax-dtco@5.1.3 with method digest dd239e62ff69291cb4f15373264951e6af01e4ab743318ce976a4d750dff8aee, prepared its
-Pack workspace and exposed bind-inputs.
+The Harness loaded custom-cell-fmax-dtco@5.1.4, prepared its Campaign workspace and admitted its reference graph.
 
 ## Ending
 
 status: ended-budget-exhausted
 
-The publication smoke was closed before node work. It proves install, ownership, graph admission and
-release identity only.
+The publication smoke was closed at the attempt-limit meter before node work. It proves installation, ownership, graph admission and method identity only.
 
 ## Generations
 
@@ -33,5 +31,4 @@ none
 
 ## Disagreements
 
-The final 2x-area/0.85-density method follows the user's decision and has not run complete commercial
-P&R. The next real Campaign must establish both-arm completion and the 5% Goal.
+The no-DCAP/12-hour-budget method has not run complete commercial P&R. The next real Campaign owns both-arm E0 and the 5% Goal.

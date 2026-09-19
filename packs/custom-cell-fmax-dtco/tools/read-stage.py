@@ -300,8 +300,8 @@ def v5_physical_facts(path):
         raise ValueError("V5 physical facts are incomplete")
     if not 0 < rows["effective_site_occupancy"][0] <= 1.0:
         raise ValueError("V5 effective occupancy is outside (0, 1]")
-    if rows["dcap_count"][0] <= 0 or rows["pg_special_wire_count"][0] <= 0:
-        raise ValueError("V5 physical baseline lacks DCAP or PG resources")
+    if rows["dcap_count"][0] != 0 or rows["pg_special_wire_count"][0] <= 0:
+        raise ValueError("V5.1.4 physical baseline must disable DCAP and retain PG resources")
     return rows
 
 

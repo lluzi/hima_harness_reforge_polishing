@@ -34,18 +34,18 @@ class PnrFmaxPolicyTests(unittest.TestCase):
         self.assertLess(template.index("clock_opt_design -cts"), template.index("optDesign -postCTS -setup"))
         self.assertNotIn("\nclock_opt_design\n", template)
 
-    def test_v5_reserves_pg_dcap_and_density_before_full_placement(self):
+    def test_v5_reserves_pg_and_density_without_inserting_dcap(self):
         template = (DOMAIN / "pnr.tcl.tmpl").read_text()
         executable = "\n".join(line for line in template.splitlines()
                                if not line.lstrip().startswith("#"))
         self.assertIn("addRing -nets", template)
         self.assertIn("addStripe -nets", template)
         self.assertIn("sroute -connect {corePin floatingStripe}", template)
-        self.assertIn("HIMA_DCAP_R%03d_C%04d", template)
+        self.assertNotIn("addInst -cell {@@DCAP_CELL@@}", executable)
+        self.assertNotIn("HIMA_DCAP_R%03d_C%04d", executable)
+        self.assertIn("set _hima_dcap_count 0", executable)
         self.assertIn("setPlaceMode -place_global_max_density @@MAX_EFFECTIVE_DENSITY@@", executable)
         self.assertIn("setOptMode -opt_max_density @@MAX_EFFECTIVE_DENSITY@@", executable)
-        self.assertLess(template.index("HIMA_DCAP_R%03d_C%04d"),
-                        template.index("place_opt_design"))
         self.assertLess(template.index("addStripe -nets"), template.index("place_opt_design"))
         self.assertNotIn("addFiller -cell", template)
         self.assertIn("NO ORDINARY FILLER", template)

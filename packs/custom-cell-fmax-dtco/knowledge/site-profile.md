@@ -26,8 +26,7 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `PLACE_SITE` | one-line text | Innovus row/site name from the technology LEF. It is never assumed to be `core`. |
 | `CCFMAX_POWER_PIN`, `CCFMAX_GROUND_PIN` | one-line text | Power and ground rail names from the library/technology profile. |
 | `CCFMAX_TAP_CELL`, `CCFMAX_FILLER_CELLS` | one-line text | Site-valid tap master and legacy filler declaration. V5 does not insert ordinary filler; the retained filler field preserves profile compatibility. |
-| `CCFMAX_DCAP_CELL`, `CCFMAX_DCAP_ROW_STRIDE`, `CCFMAX_DCAP_X_PITCH_UM`, `CCFMAX_DCAP_EDGE_MARGIN_UM` | master, integer and positive distances | Site-valid DCAP and deterministic checkerboard plan inputs. Both arms derive and hash the same collision-free plan before placement. |
-| `CCFMAX_MAX_EFFECTIVE_DENSITY` | fraction | Final effective standard-cell occupancy ceiling, including logic, clock, DCAP and tap cells; V5 rejects values above 0.85. |
+| `CCFMAX_MAX_EFFECTIVE_DENSITY` | fraction | Common placement and optimization density target, including logic, clock and tap cells; the Pack rejects configured values above 0.85 and inserts no DCAP. |
 | `CCFMAX_PG_HORIZONTAL_LAYER`, `CCFMAX_PG_VERTICAL_LAYER` | layer names | Site-qualified block-level PG ring/stripe layers. |
 | `CCFMAX_PG_RING_WIDTH_UM`, `CCFMAX_PG_RING_SPACING_UM`, `CCFMAX_PG_STRIPE_WIDTH_UM`, `CCFMAX_PG_STRIPE_SPACING_UM`, `CCFMAX_PG_STRIPE_SET_DISTANCE_UM`, `CCFMAX_PG_STRIPE_START_OFFSET_UM` | positive distances | Matched PG geometry inputs. They establish routing-resource competition; IR/EM and final DRC remain separate gates. |
 | `CCFMAX_CLOCK_BUFFER_CELLS`, `CCFMAX_CLOCK_INVERTER_CELLS` | whitespace-separated DCCK Cell names | Site-valid balanced clock buffer and inverter masters shared by both CCOpt runs. Every name must start with `DCCK`; the routed netlist independently proves actual `CTS_` use. |
@@ -61,8 +60,8 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `CCFMAX_CONTAINER_HOST_ROOT` | plain directory | Host root mounted for the Campaign. |
 | `CCFMAX_CONTAINER_MOUNT_POINT`, `CCFMAX_LCLAYOUT_ACTIVATE` | one-line text | Container-side mount and activation paths. |
 | `CCFMAX_CHARMODEL_HELPER_DIR` | one or more colon-separated plain directories | Helper path; exactly one `estimate_lib.py` and one `mock_char.py` must resolve. |
-| `GENERATION_TIMEOUT_SEC`, `ABSTRACT_TIMEOUT_SEC`, `CHARACTERIZE_TIMEOUT_SEC` | positive integers | Bounds for generation, abstract layout and prediction. |
-| `LC_TIMEOUT_SEC`, `SYNTH_TIMEOUT_SEC`, `PNR_TIMEOUT_SEC`, `VERIFY_TIMEOUT_SEC` | positive integers | Bounds for real EDA invocations. |
+| `GENERATION_TIMEOUT_SEC`, `ABSTRACT_TIMEOUT_SEC`, `CHARACTERIZE_TIMEOUT_SEC` | positive integers | Site requests for generation, abstract layout and prediction. The Pack raises each effective bound to at least 3600 seconds. |
+| `LC_TIMEOUT_SEC`, `SYNTH_TIMEOUT_SEC`, `PNR_TIMEOUT_SEC`, `VERIFY_TIMEOUT_SEC` | positive integers | Site requests for real EDA invocations. Effective minima are 3600, 7200, 14400 and 7200 seconds respectively; the 12-hour Campaign deadline remains the outer bound. |
 | `MULTI_CPU` | positive integer | Common CPU count passed to both arms. |
 | `DRC_LIMIT` | positive integer | Explicit uncapped verification limit; reaching the cap invalidates the result. |
 

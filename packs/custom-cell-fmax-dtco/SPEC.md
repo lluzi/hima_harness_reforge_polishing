@@ -50,9 +50,9 @@ gates still fail closed. A free proxy result therefore cannot suppress research 
 commercial decision.
 
 E0 holds RTL, constraints, tool/core count, once-expanded core, frozen IO pins, PG mesh,
-deterministic checkerboard DCAP plan, effective-occupancy ceiling no greater than 85%, physical
-inputs, route settings and analysis view fixed. Tap and DCAP Cells count against occupancy and
-ordinary filler is omitted in this setup-only Campaign. Both DC arms use 50% clock uncertainty and
+no-DCAP policy, placement/optimization density target no greater than 85%, physical
+inputs, route settings and analysis view fixed. Tap Cells count against occupancy; DCAP and
+ordinary filler are omitted in this setup-only Campaign. Both DC arms use 50% clock uncertainty and
 explicit high-weight reg2reg pressure. Both route arms use 25% uncertainty plus 50 ps. Both clock
 trees use only Site-declared DCCK buffer/inverter families. The cumulative custom Library Portfolio
 is the declared logical arm difference. Generated masters must be adopted in synthesis and retained
@@ -87,9 +87,9 @@ The workspace holds `flow/library/baseline-reference.json`, immutable
 `L(k+1) = L(k) union delta(k)`. Old shard bytes and deliverables are verified and reused; commercial
 exit deterministically assembles the cumulative Liberty/LEF once when a downstream tool requires a
 single file. `MAX_NEW_CELLS` is 1..50 per research round. It does not change the meaning of the old
-`MAX_CELLS`; a separate measured cumulative cap limits storage and mapping cost. The existing six-hour
-Campaign time box, 240 infrastructure act-attempt ceiling, final five-minute closing reserve and Site
-Job cap of at most five remain explicit; they do not authorize 240 commercial routes. Commercial
+`MAX_CELLS`; a separate measured cumulative cap limits storage and mapping cost. The 12-hour
+Campaign time box, 480 infrastructure act-attempt ceiling, final 15-minute closing reserve and Site
+Job cap of at most five remain explicit; they do not authorize 480 commercial routes. Commercial
 validation has a default two-exit Campaign budget, not a Runtime constant. A frozen E0 baseline may be
 reused only while every input and method identity remains unchanged.
 

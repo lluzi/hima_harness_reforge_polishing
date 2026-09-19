@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.1.3"
+version: "5.1.4"
 title: V5 Active Frontier custom Cell Fmax reference Campaign
 status: released
 minimumHarnessVersion: 0.1.0
@@ -10,9 +10,9 @@ ontology:
     matchedComparison: [A/B, apple-to-apple comparison]
 knowledgeManifest: knowledge/manifest.yml
 budget:
-  timeBoxMs: 21600000
-  closingReserveMs: 300000
-  attemptLimit: 240
+  timeBoxMs: 43200000
+  closingReserveMs: 900000
+  attemptLimit: 480
 inputs:
   - name: designRoot
     description: "Read-only design root containing the RTL and constraints named by
@@ -641,7 +641,9 @@ workshops:
       the current residual graph, Pareto frontier, cumulative Library, known failures and
       remaining budget. Do not assign identity, alter the Goal or evidence, predict
       commercial QoR, launch EDA, create parallel validation arms, repeat a fixed ranking,
-      or write Judge facts. Invalid output is retained as a refusal. A later revision must
+      or write Judge facts. The returned list must never exceed
+      budget["max_candidate_proposals"]; slice or stop the loop at that exact runtime value.
+      Invalid output is retained as a refusal. A later revision must
       answer new retained evidence, especially the hash-bound commercial frontier response. It must propose several grounded hypotheses before selecting a bounded program; Run results never auto-promote into Pack knowledge.
     directory: research/ai-discovery
     entry: entry.py

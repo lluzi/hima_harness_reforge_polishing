@@ -2224,7 +2224,7 @@ export async function updateExecution(deps: FabricDeps, runId: string, execution
   const execution = control.executions[executionId];
   if (execution === undefined) throw new RunStartError('the admitted execution disappeared');
   const request = requestId === undefined ? undefined : control.requests[requestId];
-  await deps.ledger.advanceRun(runId, { control: {
+  await advance(deps.ledger, runId, {}, { control: {
     ...control, executions: { ...control.executions, [executionId]: { ...execution, ...change } },
     ...(requestId === undefined || request === undefined ? {} : { requests: { ...control.requests, [requestId]: { ...request, state: requestState } } }),
   } });
