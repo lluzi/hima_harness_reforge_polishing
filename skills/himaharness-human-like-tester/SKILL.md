@@ -8,6 +8,14 @@ description: "Test HimaHarness through Claude Code Computer Use as a real chip-d
 Act as the product's human tester. Use HimaHarness and Catsights through Computer
 Use. The improver owns main, integration and releases.
 
+On slash-command invocation, first read the cycle state, write or refresh the
+tester checkpoint, and respond exactly:
+
+`HIMA_TESTER_SKILL_ACTIVE: <cycle id>`
+
+Do this before UI work. It is the observable proof that `/himaharness-human-like-tester`
+was invoked instead of merely mentioned in an ordinary prompt.
+
 ## Recover before operating the UI
 
 After session start, compaction or unexpected context:
@@ -95,6 +103,10 @@ not reached.
 Run `scripts/tester_state.py handoff`. Then send this exact direct-chat marker:
 
 `CODEX_HANDOFF_READY: <absolute report path>`
+
+The marker must appear in your final assistant response for that turn. After
+emitting it, stop. Do not continue UI exploration, rewrite the report, or ask
+the user what to do next; wait for the improver's release or question.
 
 The improver observes this Claude session every 15 minutes. Do not attempt to
 find a peer agent called Codex, use contact/Qodo as the handoff, open an issue,

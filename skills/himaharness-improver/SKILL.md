@@ -48,11 +48,19 @@ Make the task executable by a second-tier model:
 - put expected actions, assertions, evidence paths, limits and report location
   in the manual rather than relying on this conversation.
 
-Write the cycle state, then send one English direct-chat message to the existing
-Claude session. Begin with `HIMA_TEST_TASK_V1` and include the absolute manual
-path plus released identities. State that it is an explicit user-authorized
-instruction. This prevents contact or compact output from masquerading as the
-task.
+Write the cycle state, then activate the Claude skill through the actual Claude
+Code slash-command path:
+
+1. Send `/himaharness-human-like-tester` as its own direct user chat message.
+2. Wait for `HIMA_TESTER_SKILL_ACTIVE: <cycle id>` and verify a fresh tester
+   checkpoint exists. Ordinary prose saying the skill was read is insufficient.
+3. Send the English `HIMA_TEST_TASK_V1` envelope with the absolute manual path
+   and released identities. State that it is an explicit user-authorized
+   instruction.
+
+If the slash command is unknown, stop dispatch and repair the Claude skill
+installation; do not fall back to pasting the skill body into chat. This visible
+handshake prevents contact or compact output from masquerading as the task.
 
 ## Monitor without competing
 
@@ -72,6 +80,13 @@ active. On each check:
 
 Do not poll raw logs repeatedly. Use the Claude status, immutable report and
 targeted evidence named by the report.
+
+Every heartbeat also runs `cycle_state.py show`. A valid new
+`tester-handoff.json` is an actionable handoff even when Claude failed to print
+the marker. Consume it immediately, then tell Claude that the chat marker was
+missing. The file fallback prevents a lost assistant message from stalling the
+loop; the marker remains required because it makes the handoff visible to a
+human reviewer.
 
 ## Integrate a tester handoff
 

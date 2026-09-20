@@ -30,7 +30,15 @@ Cycle phases:
 synonym for a Run paused at a safe technical boundary; record that in the tester
 checkpoint.
 
-## Direct task envelope
+## Slash activation and direct task envelope
+
+First send this as a standalone direct user message:
+
+```text
+/himaharness-human-like-tester
+```
+
+Require `HIMA_TESTER_SKILL_ACTIVE: <cycle id>` before sending the task.
 
 Send to Claude as a direct chat message, never through contact output:
 
@@ -59,6 +67,9 @@ CODEX_HANDOFF_READY: /absolute/path/to/report.md
 
 The marker announces evidence; it does not authorize the improver to trust the
 fix. The improver still reproduces and reviews it.
+
+The heartbeat reads `tester-handoff.json` as a fallback if the visible marker is
+lost. A file-only handoff is processed but recorded as a protocol defect.
 
 ## Compact recovery
 
