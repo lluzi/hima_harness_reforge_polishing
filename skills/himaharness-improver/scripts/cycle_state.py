@@ -61,8 +61,22 @@ def current() -> dict:
 
 def command_init(args) -> None:
     path = root() / "cycle.json"
-    if path.exists() and read(path).get("phase") not in TERMINAL:
-        raise SystemExit("an unfinished cycle already exists")
+    if path.exists():
+        previous = read(path)
+        if previous.get("phase") not in TERMINAL:
+            raise SystemExit("an unfinished cycle already exists")
+        history = root() / "history"
+        history.mkdir(parents=True, exist_ok=True)
+        prefix = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + str(
+            previous.get("cycleId") or "cycle")
+        for name in ("cycle.json", "tester-checkpoint.json", "tester-handoff.json"):
+            source = root() / name
+            if source.is_file():
+                shutil.copy2(source, history / (prefix + "-" + name))
+        for name in ("tester-checkpoint.json", "tester-handoff.json"):
+            owned = root() / name
+            if owned.is_file():
+                owned.unlink()
     document = {
         "schema": "hima.improver-cycle/1", "cycleId": args.cycle_id,
         "phase": "PREPARING", "createdAt": now(), "updatedAt": now(),
