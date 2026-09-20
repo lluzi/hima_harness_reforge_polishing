@@ -1,0 +1,4 @@
+interface:
+  display_name: "HimaHarness Improver"
+  short_description: "Coordinate tester-driven HimaHarness improvement cycles"
+  default_prompt: "Use $himaharness-improver to run the next tester, fix, release, and retest cycle."

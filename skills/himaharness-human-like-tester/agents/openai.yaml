@@ -1,0 +1,4 @@
+interface:
+  display_name: "HimaHarness Human-like Tester"
+  short_description: "Operate HimaHarness like a human and report evidence"
+  default_prompt: "Use $himaharness-human-like-tester to execute the assigned HimaHarness trial through Computer Use."
