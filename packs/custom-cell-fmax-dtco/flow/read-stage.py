@@ -1142,7 +1142,7 @@ def values_for(record, workspace, stage):
         values.append(number("cell_demand_count", len(demand_rows)))
         values.append(number("cell_demand_met_count", met_count))
         values.append(number("cell_demand_unmet_count", len(demand_rows) - met_count))
-        values.append(number("cell_demand_coverage_pct", 100.0 * met_count / len(demand_rows)))
+        values.append(number("cell_demand_coverage_pct", 100.0 * met_count / len(demand_rows), "percent"))
         values.append(number("mock_liberty_calibration_accepted", int(status == "accepted")))
     elif stage == "compile":
         log = logs(record, workspace, "lc_log").read_text(errors="replace")
