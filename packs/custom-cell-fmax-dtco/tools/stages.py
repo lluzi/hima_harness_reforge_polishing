@@ -1135,8 +1135,10 @@ def stage_design_mapping_timing(ctx):
     frontier_request = {
         "schema": "lfr-frontier-request/1", "library_manifest": projected,
         "library_manifest_sha256": canonical_json_sha(projected),
-        "budgets": {"max_rounds": 4, "max_new_library_cells": int(ctx.binding("MAX_CELLS")),
-                    "max_generation_units": float(ctx.binding("MAX_CELLS")), "plateau_rounds": 2},
+        "budgets": {"max_rounds": 4,
+                    "max_new_library_cells": int(ctx.binding("MAX_CELLS")) * len(DRIVE_FAMILY_ORDER),
+                    "max_generation_units": float(ctx.binding("MAX_CELLS")) * len(DRIVE_FAMILY_ORDER),
+                    "plateau_rounds": 2},
         "rounds": [*rounds, current_round],
         "next_residual_question": {
             "id": "round-" + round_id + "-residual",
