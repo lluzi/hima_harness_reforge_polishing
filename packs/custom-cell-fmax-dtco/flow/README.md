@@ -9,6 +9,12 @@ V5.2 keeps the existing graph and makes three existing seams concrete:
 - `characterize` anchors D1 to foundry CDL/Liberty topology depth, scales the
   larger drives electrically and writes `mock-liberty-calibration.json`.
 
+`layout` groups the five drive variants by Boolean family. It runs one real D1
+topology placement, reuses the resulting column count for the four larger mock
+abstracts, and processes up to five independent families concurrently. For 50
+single-output demands this reduces placement-solver calls from 250 to 50; the
+four derived LEFs still receive distinct scaled geometry and metadata.
+
 These are admission gates. Commercial STA and matched P&R remain the E0 result.
 
 Run `/usr/bin/python3 <workspace>/flow/probe.py --workspace <workspace> --period <ns>`.

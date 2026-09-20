@@ -230,6 +230,10 @@ def main():
     ap.add_argument("--power-pin", required=True, help="power rail name; a site input")
     ap.add_argument("--ground-pin", required=True, help="ground rail name; a site input")
     ap.add_argument("--placement-timeout", type=int, default=120)
+    ap.add_argument("--placement-columns", type=int,
+                    help="reuse a verified D1 topology placement for another drive variant")
+    ap.add_argument("--placement-source-cell",
+                    help="physical Cell whose placement columns are being reused")
     ap.add_argument("--drive-scale", type=float, default=1.0,
                     help="physical width multiplier for D1/D2/D4/D6/D8")
     ap.add_argument("-o", "--outdir", required=True)
@@ -251,12 +255,18 @@ def main():
 
     if not 1 <= a.placement_timeout <= 900:
         ap.error("placement timeout must be within 1..900 seconds")
-    cols = placement_columns(a.netlist, a.tech, cell, a.placement_timeout)
-    if cols is None:                       # placement itself failed: fall back to the device bound
-        cols = max(sum(1 for d in devs if d.kind == "n"), sum(1 for d in devs if d.kind == "p"))
-        src = "device-count bound (placement unavailable)"
+    if a.placement_columns is not None:
+        if a.placement_columns < 1 or not a.placement_source_cell:
+            ap.error("reused placement needs positive columns and a source Cell")
+        cols = a.placement_columns
+        src = "reused topology placement from %s" % a.placement_source_cell
     else:
-        src = "lclayout placement"
+        cols = placement_columns(a.netlist, a.tech, cell, a.placement_timeout)
+        if cols is None:                   # placement itself failed: fall back to the device bound
+            cols = max(sum(1 for d in devs if d.kind == "n"), sum(1 for d in devs if d.kind == "p"))
+            src = "device-count bound (placement unavailable)"
+        else:
+            src = "lclayout placement"
 
     # Width in whole SITEs. Compute in INTEGER site counts, never by repeatedly adding a float:
     # a site count derived by float division evaluates to 1.9999... and a `while width/cpp < n`
@@ -566,6 +576,8 @@ def main():
     meta = {"cell": cell, "width_um": W / 1000.0, "height_um": H / 1000.0,
             "columns": cols, "column_source": src, "sites": W // cpp_nm,
             "drive_scale": a.drive_scale,
+            "placement_reused": a.placement_columns is not None,
+            "placement_source_cell": a.placement_source_cell,
             "devices": len(devs), "inputs": ins, "outputs": outs,
             "pin_x_um": sorted(round((p[0] + p[2]) / 2000.0, 4) for p in pins.values()),
             "pin_y_um": {s: round((p[1] + p[3]) / 2000.0, 4) for s, p in pins.items()},

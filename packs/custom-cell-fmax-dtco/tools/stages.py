@@ -1999,31 +1999,60 @@ def stage_layout(ctx):
     power, ground = str(ctx.binding("CCFMAX_POWER_PIN")), str(ctx.binding("CCFMAX_GROUND_PIN"))
     abstract_timeout = int(ctx.binding("ABSTRACT_TIMEOUT_SEC"))
     placement_timeout = max(1, min(120, abstract_timeout - 10))
-    built = []
-    attempts = []
-    for index, cell in enumerate(cells):
+    manifest_rows = []
+    family_names = set()
+    for cell in cells:
         drive_match = re.search(r"_(D1|D2|D4|D6|D8)$", cell.stem)
         if drive_match is None:
             raise Rejected("generated Cell has no physical drive suffix: " + cell.stem)
-        physical_scale = drive_scale(drive_match.group(1))
-        out = ctx.run_dir / cell.stem
-        argv = ["/usr/bin/python3", str(DOMAIN / "abstract_cell.py"), "--netlist", str(cell),
-                "--tech", str(tech), "--rule-deck", str(rules), "--power-pin", power,
-                "--ground-pin", ground, "--drive-scale", str(physical_scale),
-                "--placement-timeout", str(placement_timeout), "-o", str(out)]
-        diagnostic = None
-        try:
-            ctx.run(argv, env=env, timeout=abstract_timeout, tag="layout-%02d" % index)
-            code = 0
-        except ToolFailure as exc:
-            code = int(ctx.executions[-1]["exitCode"])
-            diagnostic = str(exc)
-        lef, meta = out / (cell.stem + ".lef"), out / (cell.stem + ".abstract.json")
-        complete = code == 0 and lef.is_file() and meta.is_file()
-        if code == 0 and not complete:
+        drive = drive_match.group(1)
+        family = cell.stem[:drive_match.start()]
+        family_names.add(family)
+        manifest_rows.append({
+            "cell": cell.stem, "drive": drive, "drive_scale": drive_scale(drive),
+            "family": family, "netlist": str(cell), "out": str(ctx.run_dir / cell.stem),
+        })
+    manifest_path = ctx.run_dir / "layout-family-manifest.json"
+    atomic_json(manifest_path, manifest_rows)
+    result_path = ctx.run_dir / "layout-family-results.json"
+    workers = max(1, min(5, int(ctx.binding("MULTI_CPU")), len(family_names)))
+    argv = ["/usr/bin/python3", str(DOMAIN / "layout_family_batch.py"),
+            "--manifest", str(manifest_path), "--result", str(result_path),
+            "--abstract-cell", str(DOMAIN / "abstract_cell.py"),
+            "--tech", str(tech), "--rule-deck", str(rules),
+            "--power-pin", power, "--ground-pin", ground,
+            "--placement-timeout", str(placement_timeout),
+            "--cell-timeout", str(abstract_timeout), "--workers", str(workers)]
+    ctx.run(argv, env=env, timeout=abstract_timeout, tag="layout-family-batch")
+    batch_execution = ctx.executions.pop()
+    batch_log = dict(batch_execution["log"])
+    batch_log["role"] = "layout_family_batch_log"
+    ctx.artifacts.append(batch_log)
+    result = read_json(result_path)
+    rows = result.get("results") if isinstance(result, dict) else None
+    if (not isinstance(result, dict) or result.get("schema") != "hima.layout-family-batch/1"
+            or not isinstance(rows, list) or len(rows) != len(cells)):
+        raise ToolFailure("layout family batch emitted no complete result manifest")
+    ctx.add_artifact(manifest_path, "layout_family_manifest", "generated-tool-input")
+    ctx.add_artifact(result_path, "layout_family_results", "nested-tool-evidence")
+    built, attempts = [], []
+    for row in rows:
+        log = Path(str(row.get("log") or ""))
+        ctx.executions.append({
+            "argv": row.get("argv") or ["layout-family-refused"],
+            "cwd": str(ctx.run_dir), "exitCode": int(row.get("returncode")),
+            "elapsedSeconds": float(row.get("elapsed_seconds") or 0.0),
+            "log": file_ref(log, ctx.workspace, "layout:%s_log" % row.get("cell_name"),
+                            "tool-log") if log.is_file() else batch_log,
+        })
+        lef, meta = Path(str(row.get("lef"))), Path(str(row.get("meta")))
+        complete = row.get("complete") is True and lef.is_file() and meta.is_file()
+        diagnostic = row.get("diagnostic")
+        if row.get("returncode") == 0 and not complete:
             diagnostic = "abstract generator returned success without LEF and metadata"
-        attempts.append({"cell_name": cell.stem, "exit_code": code, "admitted": complete,
-                         "diagnostic": diagnostic})
+        attempts.append({"cell_name": row.get("cell_name"),
+                         "exit_code": int(row.get("returncode")),
+                         "admitted": complete, "diagnostic": diagnostic})
         if complete:
             built.append((lef, meta))
     attempt_path = ctx.run_dir / "layout-attempts.json"
@@ -2034,7 +2063,10 @@ def stage_layout(ctx):
         ctx.add_artifact(meta, "abstract_metadata:" + lef.stem, "generated-abstract-metadata")
     refused = [row for row in attempts if not row["admitted"]]
     ctx.facts.update({"layout_attempt_count": len(attempts), "abstract_cell_count": len(built),
-                      "layout_refused_count": len(refused), "layout_refusals": refused})
+                      "layout_refused_count": len(refused), "layout_refusals": refused,
+                      "layout_family_count": len(family_names), "layout_workers": workers,
+                      "placement_solver_runs": len(family_names),
+                      "placement_reuse_count": len(cells) - len(family_names)})
     if not built:
         raise ToolFailure("no candidate produced a complete abstract LEF/metadata pair")
 

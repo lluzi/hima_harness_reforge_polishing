@@ -295,6 +295,14 @@ Sparse specialty-cell anchors are bounded by the observed depth-one delay times
 logic depth, preventing a rare delay cell from making every deep Boolean Cell
 artificially slow.
 
+Mock physical abstraction solves placement once for each Boolean family at D1.
+D2/D4/D6/D8 reuse that topology column count and expand the existing site/pin
+geometry by their declared drive scale; they do not repeat the same topology
+search under a different suffix. Independent families run concurrently with a
+hard maximum of five workers. The layout record preserves every physical Cell's
+command, log, exit and metadata, and names the D1 source for every reused
+variant. This changes execution cost only; each physical LEF remains distinct.
+
 Residual Research consumes one typed candidate/commercial-response schema.
 Candidate code cannot use `dict.get`, so an absent or misspelled field fails
 instead of becoming zero. With commercial feedback, the runner replays the same
