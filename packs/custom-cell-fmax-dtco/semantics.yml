@@ -28,6 +28,9 @@ values:
     unit: count
     description: "predicted cell count: independently read evidence; missing facts
       stay unknown."
+  cell_demand_count:
+    unit: count
+    description: Cell Demands whose Mock Liberty calibration confirms at least one drive in the D1/D2/D4/D6/D8 family meets the demand.
   lc_accepted:
     unit: count
     description: "lc accepted: independently read evidence; missing facts stay unknown."
