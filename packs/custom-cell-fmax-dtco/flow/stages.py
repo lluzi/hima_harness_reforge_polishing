@@ -31,6 +31,7 @@ sys.path.insert(0, str(DOMAIN))
 from cell_need_miner.generator_contract import validate_generation_request  # noqa: E402
 from _cell_adoption_projection import project_attributed_texts  # noqa: E402
 from _generation_projection import (  # noqa: E402
+    DRIVE_FAMILY_ORDER,
     IDENTIFIER,
     advance_function_state,
     append_cumulative_shard,
@@ -1095,7 +1096,7 @@ def stage_design_mapping_timing(ctx):
                 "F3.negative_slack_mass_indicator_ps", "F3.path_family_coverage",
             ],
         },
-        "budgets": {"max_candidate_cells": lfr_new_cell_budget(ctx),
+        "budgets": {"max_candidate_cells": lfr_new_cell_budget(ctx) * len(DRIVE_FAMILY_ORDER),
                     "max_augmented_mapped_instances": max(1, baseline_instances * 2)},
     }
     request_path = ctx.run_dir / "round-request.json"
