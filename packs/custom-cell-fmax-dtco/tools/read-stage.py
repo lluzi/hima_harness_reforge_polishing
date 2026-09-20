@@ -1540,7 +1540,8 @@ def read_residual_ai_research(report, out, document):
     )
     required = {"schema", "status", "round_id", "context_sha256", "evidence",
                 "next_residual_question", "budgets", "research_lenses", "candidate_program",
-                "candidate_proposals", "candidate_execution", "stop_reason", "claims", "output_sha256"}
+                "candidate_proposals", "candidate_execution", "feedback_ab", "stop_reason",
+                "claims", "output_sha256"}
     if set(document) != required or document.get("status") != "proposed":
         raise ValueError("residual AI research document has unexpected fields or status")
     canonical_payload_sha(document, "output_sha256")
