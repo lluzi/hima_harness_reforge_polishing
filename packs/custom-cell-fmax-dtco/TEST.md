@@ -1,4 +1,4 @@
-# Custom Cell Fmax DTCO V5.2.1 low-cost release smoke
+# Custom Cell Fmax DTCO V5.2.2 low-cost release smoke
 
 ## Site
 
@@ -6,9 +6,9 @@ Publication-only local Site. No model or commercial Campaign Job was launched by
 
 ## Run
 
-run: run-d58e46dc-c07d-4fbb-8b02-2a69718cb14b
+run: run-c793a59e-a50b-4f11-ace9-098e3b314e1b
 
-The Harness installed custom-cell-fmax-dtco@5.2.1, prepared its immutable graph and bound the release to method digest 5c6a86445128e05f464399ac9c0ecf3ec95e4af182d37f15d83c8058465067c2.
+The Harness installed custom-cell-fmax-dtco@5.2.2, prepared its immutable graph and bound the release to method digest 94dbbf9b996f8ab5c816d77ab8732e33d921357c67e30e0e747008392cf621d8.
 
 ## Ending
 
