@@ -1,14 +1,14 @@
-# Custom Cell Fmax DTCO V5.2.5 recovery-routing smoke
+# Custom Cell Fmax DTCO V5.2.6 Reader unit smoke
 
 ## Site
 
-Publication-only local Site. No model or commercial Campaign Job was launched by this Run. Trial.18 supplies the retained real-Site rejection: 10 of 50 Cell Demands missed every drive and Pack 5.2.4 dead-ended at characterize after two retries.
+Publication-only local Site. No model or commercial Campaign Job was launched by this Run. Trial.19 supplies the retained real-Site Reader refusal: cell_demand_coverage_pct was emitted in count while its declared semantic unit is percent.
 
 ## Run
 
-run: run-8bfe1e1e-8d95-47fa-8079-0b78aa439208
+run: run-2653ba76-ab5a-4d8e-b130-91114e41db35
 
-The Harness loaded custom-cell-fmax-dtco@5.2.5, prepared its immutable graph and bound the release to method digest e46ed5f0772b1b70977b066675d6c7061473b4dc010d6890455f486158b8d7a5.
+The Harness loaded custom-cell-fmax-dtco@5.2.6, prepared its immutable graph and bound the release to method digest cc454ca01bd425c01e0719051a16cf5be924fbc1ef15be1d5225ede7b806d308.
 
 ## Ending
 
@@ -18,7 +18,7 @@ The publication smoke ended before node work. It proves installation, ownership,
 
 ## Generations
 
-No research generation or matched P&R was claimed. Domain tests prove a complete rejected calibration exits as evidence, the Reader independently reproduces its demand counts and coverage, and the calibration gate routes FAIL through a calibration-specific Explore decision into the next generation. Pack contract tests prove the graph and its rules/chooser load through the existing Harness architecture.
+No research generation or matched P&R was claimed. Domain tests prove the Reader emits cell_demand_coverage_pct in percent, preserves accepted/rejected calibration evidence and keeps the calibration recovery graph loadable through the existing Harness architecture.
 
 ## Code
 
@@ -30,4 +30,4 @@ none
 
 ## Disagreements
 
-Trial.18 remains immutable on 5.2.4. Pack 5.2.5 has not yet exercised the recovery route on the real Site; trial.19 owns that validation and the continued 5% Fmax Campaign goal.
+Trial.19 remains immutable on 5.2.5. Pack 5.2.6 has not yet exercised the Reader correction or rejected-calibration recovery route on the real Site; trial.20 owns that validation and the continued 5% Fmax Campaign goal.
