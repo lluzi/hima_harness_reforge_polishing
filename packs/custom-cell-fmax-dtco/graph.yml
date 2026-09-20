@@ -429,6 +429,9 @@ edges:
     to: final-judge
   - from: final-judge
     to: next-research
+    outcome: PASS
+  - from: final-judge
+    to: next-research
     outcome: FAIL
   - from: next-research
     to: evaluation-baseline
