@@ -63,6 +63,7 @@
     "test/contract/pipeline-finalize.test.ts",
     "test/contract/input-admission.host.test.ts",
     "test/contract/agent-execution.host.test.ts",
+    "test/contract/notification-coalescing.host.test.ts",
     "test/contract/node-jobs.host.test.ts",
     "test/contract/conversation-execution.host.test.ts",
     "test/contract/ledger-import.test.ts",

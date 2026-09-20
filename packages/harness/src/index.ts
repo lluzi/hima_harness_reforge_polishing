@@ -16,7 +16,7 @@
 //
 // It is also the bundle's surface: everything a caller outside `packages/harness/src` imports from
 // `@hima/harness` is exported or re-exported here, whichever module it now lives in.
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { createUserMessage, type MessageId } from '@deepseek-ai/dsh-llm';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -443,6 +443,10 @@ export default class Hima extends Service {
    */
   reconciled!: Promise<ReconcileOutcome[]>;
   private notificationsActive = false;
+  /** One ordinary execution-fact wake-up per owner/Run while it is still pending in dsh's inbox.
+   *  The ledger remains the fact authority; replacing this hint loses no execution evidence and
+   *  prevents a fast Run from producing more durable turns than its Agent can consume. */
+  private readonly pendingProgressNotifications = new Map<string, MessageId>();
   private readonly factStop = new AbortController();
   /** Browser-only Site drafts awaiting the same person's explicit Save. The reviewed result stays
    *  on the Host, so saving cannot silently rerun probes and persist facts the person never saw. */
@@ -473,6 +477,7 @@ export default class Hima extends Service {
     this.judge = createJudge(this.ledger, this.config.packsDir);
     this.ctx.effect(() => async () => {
       this.notificationsActive = false;
+      this.pendingProgressNotifications.clear();
       this.factStop.abort();
       await drainExecutionObservers(this.ledger);
       await this.reconciled?.catch(() => undefined);
@@ -858,7 +863,21 @@ export default class Hima extends Service {
         const agent = this.ctx.get('agents')?.list().find((item) => String(item.id) === owner);
         if (!agent) return { status: 'owner-unavailable', message: 'The control fact is recorded; the owning Campaign Agent is not currently live.' };
         try {
-          agent.followup(createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `Hima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context to inspect the actual Job and evidence. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] }));
+          const message = createUserMessage({ source: { kind: 'plugin', plugin: 'hima' }, content: [{ type: 'text', text: `Hima recorded new execution facts for Run ${runId}, execution ${executionId}. ${detail ?? 'Read hima_context once to inspect every current Job and evidence fact. You remain this Run\'s conversational owner.'} Respect pause and user instructions; this notification grants no new authority or budget.` }] });
+          if (detail === undefined) {
+            const key = `${owner}\u0000${runId}`;
+            const pending = this.pendingProgressNotifications.get(key);
+            if (pending !== undefined && agent.inbox.replace(pending, message)) {
+              this.pendingProgressNotifications.set(key, message.id);
+              return { status: 'queued', message: 'The control fact is recorded and the pending Campaign progress notification was updated.' };
+            }
+            agent.followup(message);
+            this.pendingProgressNotifications.set(key, message.id);
+            return { status: 'queued', message: 'The control fact is recorded and one Campaign progress notification was queued.' };
+          }
+          // Human stop/pause/continue/handoff and Campaign-open messages carry explicit detail and
+          // remain separate, immediate turns; they must never be hidden behind progress coalescing.
+          agent.followup(message);
           return { status: 'queued', message: 'The control fact is recorded and the Campaign Agent notification was queued.' };
         } catch (error) {
           this.ctx.logger.warn(`Campaign Agent notification failed after control was recorded: ${(error as Error).message}`);

@@ -624,7 +624,10 @@ export async function cancelRun(deps: FabricDeps, runId: string, requestedReason
           ...(reason === undefined ? {} : { reason }), ...(session === undefined ? {} : { session }) },
       } } }),
     } });
-    deps.notify?.(control.owner, runId, stop.requestId ?? `stop:${runId}`);
+    deps.notify?.(control.owner, runId, stop.requestId ?? `stop:${runId}`,
+      confirmed
+        ? 'The requested Campaign stop is complete. Acknowledge the final state and start no further node.'
+        : `The requested Campaign stop could not be confirmed${reason === undefined ? '' : `: ${reason}`}. Read current facts and ask the user before any further action.`);
   });
   if (fault !== undefined) throw fault;
   return { ...result!, run: existingRun(deps.ledger, runId) };
