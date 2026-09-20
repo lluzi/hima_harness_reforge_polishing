@@ -35,6 +35,14 @@ def test_every_emitted_value_kind_is_declared_in_semantics():
         )
 
 
+def test_characterize_reader_manifest_declares_every_value_it_emits():
+    manifest = (PACK_ROOT / "readers/read-characterize.yml").read_text()
+    emitted = set(re.findall(r"(?m)^  - ([a-z_][a-z0-9_]*)$", manifest))
+    assert {"predicted_cell_count", "cell_demand_count"} <= emitted, (
+        "read-characterize.yml must declare both values emitted by the characterize branch"
+    )
+
+
 def test_flow_and_tools_read_stage_emit_the_same_value_kinds():
     flow_emitted = _emitted_value_kinds(PACK_ROOT / "flow/read-stage.py")
     tools_emitted = _emitted_value_kinds(PACK_ROOT / "tools/read-stage.py")
