@@ -22,7 +22,8 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `CHARMODEL_TIMING_MODEL`, `CHARMODEL_POWER_MODEL`, `CHARMODEL_AREA_MODEL` | plain files | Identified learned models. Their results remain predictions. |
 | `BOOL2CMOS_PDK_PROFILE` | plain file | Generator PDK profile used to build candidate transistor netlists. |
 | `PROCESS_FAMILY`, `CELL_ARCHITECTURE_REF`, `CHARACTERIZATION_PROFILE_REF` | one-line text | Provenance labels for the selected PDK/library/method profiles. |
-| `DRIVE_STRENGTH`, `VT_CLASS` | one-line text | Target library class for generated candidates. |
+| `DRIVE_STRENGTH`, `VT_CLASS` | one-line text | Legacy Site naming hint and VT class. V5.2 owns the physical D1/D2/D4/D6/D8 family. |
+| `FOUNDRY_CDL` | regular file | CDL/SPICE deck matching `FOUNDRY_LIB`; used read-only to derive topology-depth anchors for Mock Liberty. |
 | `PLACE_SITE` | one-line text | Innovus row/site name from the technology LEF. It is never assumed to be `core`. |
 | `CCFMAX_POWER_PIN`, `CCFMAX_GROUND_PIN` | one-line text | Power and ground rail names from the library/technology profile. |
 | `CCFMAX_TAP_CELL`, `CCFMAX_FILLER_CELLS` | one-line text | Site-valid tap master and legacy filler declaration. V5 does not insert ordinary filler; the retained filler field preserves profile compatibility. |

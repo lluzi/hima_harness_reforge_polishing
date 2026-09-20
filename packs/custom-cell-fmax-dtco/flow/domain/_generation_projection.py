@@ -144,20 +144,40 @@ def expected_generation_jobs(patterns):
             vector_outputs.append({"output_name": name, "liberty_function": function})
         if len(output_names) != len(set(output_names)) or set(input_names) & set(output_names):
             raise ValueError("generation request %s pin names are not unique" % candidate_id)
+        implementation = (request.get("generator_contract") or {}).get(
+            "implementation_request") or {}
+        drives = implementation.get("drive_strengths")
+        # Historical evidence fixtures predate explicit drive intent.  They
+        # retain their one unsuffixed physical identity for read-only replay;
+        # the production merge seam rejects anything except the full family.
+        if drives is None:
+            drives = ["LEGACY"]
+        if not isinstance(drives, list) or not drives:
+            raise ValueError("generation request %s has invalid drive intent" % candidate_id)
+        full_drive_family = drives == list(DRIVE_FAMILY_ORDER)
         if route == "multi_output_resynthesis":
-            cell_name = "XS_%s_MO" % str(candidate_id).replace("CAND_", "")
-            projected = [{
-                "candidate_id": candidate_id, "cell_name": cell_name,
+            base_name = "XS_%s_MO" % str(candidate_id).replace("CAND_", "")
+            logical = [{
+                "candidate_id": candidate_id, "base_cell_name": base_name,
                 "inputs": list(input_names), "outputs": vector_outputs,
                 "multi_output": True,
             }]
         else:
-            projected = [{
+            logical = [{
                 "candidate_id": candidate_id,
-                "cell_name": canonical_cell_name(candidate_id, row["output_name"]),
+                "base_cell_name": canonical_cell_name(candidate_id, row["output_name"]),
                 "inputs": list(input_names), "outputs": [row], "multi_output": False,
                 **row,
             } for row in vector_outputs]
+        projected = []
+        for row in logical:
+            for drive in (DRIVE_FAMILY_ORDER if full_drive_family else drives):
+                projected.append({
+                    **row,
+                    "drive": drive,
+                    "cell_name": ("%s_%s" % (row["base_cell_name"], drive)
+                                  if full_drive_family else row["base_cell_name"]),
+                })
         for job in projected:
             if not IDENTIFIER.fullmatch(job["cell_name"]) or job["cell_name"] in cells:
                 raise ValueError("generation requests do not produce unique legal Cell names")

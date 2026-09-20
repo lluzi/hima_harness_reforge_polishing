@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.1.9"
+version: "5.2.0"
 title: V5 Active Frontier custom Cell Fmax reference Campaign
 status: released
 minimumHarnessVersion: 0.1.0
@@ -29,7 +29,7 @@ inputs:
       database declares FOUNDRY_DB_FILE in physicalInputs; legacy single-file Sites may still pass
       their compiled DB here."
   - name: physicalInputs
-    description: "Site-bound LEF, extraction, layer-map, row-site, tap/filler, DCCK clock-tree Cells and process
+    description: "Site-bound foundry CDL/Liberty pair, LEF, extraction, layer-map, row-site, tap/filler, DCCK clock-tree Cells and process
       profile plus the per-round and cumulative Library bounds used identically by both route arms.
       Every path and scalar consumed by the method is validated before the Campaign writes inputs.json."
   - name: toolStack
@@ -122,6 +122,10 @@ outputs:
     path: flow/records/merge.json
     reader: read-merge
     description: Fresh merge stage evidence; reader verifies held raw artifacts.
+  - name: cellDemands
+    path: flow/mining/cell-demands.json
+    description: "Research-bound Cell Demand ledger with pins, functions, truth tables,
+      required delay, target endpoints, intervention and the D1/D2/D4/D6/D8 family."
   - name: record_generate
     path: flow/records/generate.json
     reader: read-generate
@@ -133,7 +137,8 @@ outputs:
   - name: record_characterize
     path: flow/records/characterize.json
     reader: read-characterize
-    description: Predicted characterization of exactly the layout-admitted Cell subset, plus its source-attributed candidate manifest; reader verifies held raw artifacts.
+    description: "Topology-anchored Mock Liberty characterization of the layout-admitted
+      D1/D2/D4/D6/D8 subset, including foundry CDL/Liberty anchors and Demand meet/miss evidence."
   - name: record_compile
     path: flow/records/compile.json
     reader: read-compile

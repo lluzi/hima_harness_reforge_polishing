@@ -277,3 +277,32 @@ version.
 Knowledge shaping this section: `what-a-golden-flow-is.md` separates calibration references from
 customer requirements; `knowledge/full-mining-method.md` and `knowledge/site-profile.md` define the
 existing Pack knowledge boundary.
+
+
+Every selected Boolean function is one logical demand and five physical Cells:
+`D1`, `D2`, `D4`, `D6` and `D8`. The generator scales MOS widths in SPICE;
+abstract layout therefore derives distinct width/area and the Mock Liberty layer
+derives distinct input capacitance, maximum load and output resistance. A suffix
+without those electrical/geometric differences is rejected.
+
+D1 Mock Liberty delay is calibrated from transistor-derived logic depth and
+pull-up/pull-down stack weakness against the Site-bound foundry CDL and matching
+Liberty. `flow/domain/mock_liberty_policy.json` owns one explicit
+`global_delay_scale`; it is the only uniform optimism adjustment. D2/D4/D6/D8
+are deterministic electrical scalings of calibrated D1. The report remains
+modelled evidence and never claims measured characterization or commercial QoR.
+Sparse specialty-cell anchors are bounded by the observed depth-one delay times
+logic depth, preventing a rare delay cell from making every deep Boolean Cell
+artificially slow.
+
+Residual Research consumes one typed candidate/commercial-response schema.
+Candidate code cannot use `dict.get`, so an absent or misspelled field fails
+instead of becoming zero. With commercial feedback, the runner replays the same
+frozen candidate program with and without the response and records the selection
+delta plus the Agent's explanation.
+
+Every selected proposal becomes a `hima.cell-demand/1` record containing input
+and output pins, functions, complete truth table, recommended required delay,
+target endpoints, intervention type and physical drive family. Characterization
+passes only when at least one drive meets each Demand; otherwise the Campaign
+returns to Research before LC/STA/P&R.

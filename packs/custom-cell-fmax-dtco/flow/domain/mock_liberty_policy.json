@@ -1,0 +1,12 @@
+{
+  "schema": "hima.mock-liberty-policy/1",
+  "global_delay_scale": 0.85,
+  "p_series_penalty_per_extra": 0.08,
+  "n_series_penalty_per_extra": 0.08,
+  "drive_intrinsic_exponent": 0.15,
+  "per_stage_anchor_cap": 1.0,
+  "reference_slew_ns": 0.02,
+  "reference_load_pf": 0.003,
+  "max_reference_cells": 512,
+  "min_anchor_cells": 2
+}

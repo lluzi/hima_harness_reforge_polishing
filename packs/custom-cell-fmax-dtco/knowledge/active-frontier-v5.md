@@ -1,5 +1,24 @@
 # Active Frontier v5: grounded innovation and commercial feedback
 
+## V5.2 Cell Demand and electrical family
+
+Commercial feedback must end in a concrete Cell Demand, not a request for more
+generic functions. A Demand identifies pins, Boolean functions and truth table,
+the endpoints that motivated it, the intervention class and a recommended
+maximum arc delay. The next generation can therefore say that a named arc at a
+named endpoint consumed a measured amount of delay and needs sizing, stack
+optimization or an alternative topology.
+
+Each demanded function is delivered as D1/D2/D4/D6/D8. D1 is topology calibrated
+against the Site foundry CDL/Liberty; larger drives change device width, abstract
+area, input capacitance, maximum load and output resistance. The Pack-owned
+global delay scale is explicit and auditable. Meeting a Mock Demand is necessary
+to spend E0, but it is not proof of commercial benefit.
+
+Research uses exact typed fields. Missing feedback is an error. The same frozen
+candidate program is replayed with and without the latest commercial response;
+selection change, or the stated reason for no change, is retained as evidence.
+
 This Pack optimizes one Campaign, not one timing path and not one Cell. Its persistent control state is
 an endpoint-complete timing graph, a cumulative custom Library, the evidence for every attempted Action,
 and one frozen commercial target. The Campaign Agent uses that state to create new research algorithms;

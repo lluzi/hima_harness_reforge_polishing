@@ -48,6 +48,7 @@ import subprocess
 import sys
 import time
 import uuid
+import math
 
 import sys
 # Site-bound helper modules (estimate_lib / mock_char / charmodel). The authoritative copy
@@ -97,6 +98,15 @@ def select_staggered_pin_tracks(tracks, pin_height, rail_lo, rail_hi, rail_spaci
     if len(legal) <= 3:
         return legal
     return list(dict.fromkeys((legal[0], legal[len(legal) // 2], legal[-1])))
+
+
+def scaled_site_count(columns, signal_count, drive_scale):
+    """Turn one topology placement into a monotonic physical drive envelope."""
+    if (isinstance(columns, bool) or not isinstance(columns, int) or columns < 1
+            or isinstance(signal_count, bool) or not isinstance(signal_count, int)
+            or signal_count < 1 or not math.isfinite(drive_scale) or drive_scale < 1.0):
+        raise ValueError("invalid columns, signal count or drive scale")
+    return max(int(math.ceil((columns + 1) * drive_scale)), signal_count + 1)
 
 
 def load_rule_deck(path):
@@ -220,8 +230,12 @@ def main():
     ap.add_argument("--power-pin", required=True, help="power rail name; a site input")
     ap.add_argument("--ground-pin", required=True, help="ground rail name; a site input")
     ap.add_argument("--placement-timeout", type=int, default=120)
+    ap.add_argument("--drive-scale", type=float, default=1.0,
+                    help="physical width multiplier for D1/D2/D4/D6/D8")
     ap.add_argument("-o", "--outdir", required=True)
     a = ap.parse_args()
+    if not math.isfinite(a.drive_scale) or a.drive_scale < 1.0:
+        ap.error("drive scale must be finite and at least 1")
     deck = load_rule_deck(a.rule_deck)
 
     name, ports, devs = MC.parse_netlist(a.netlist)
@@ -249,8 +263,9 @@ def main():
     # loop then over-increments, which produced half-site cells -- both an inflated area and an
     # illegal LEF, because SIZE must be a whole site multiple.
     cpp_nm = int(deck["site_width_nm"])
-    sites = cols + 1                      # placed columns + one boundary column for the dummy poly
-    sites = max(sites, len(signals) + 1)  # every pin needs its own CPP column (M1.S.1 to neighbours)
+    sites = scaled_site_count(cols, len(signals), a.drive_scale)
+    # placed columns + boundary/parallel-device capacity for electrical drive intent;
+    # every pin still needs its own CPP column (M1.S.1 to neighbours).
     W = sites * cpp_nm
     H = int(deck["row_height_nm"])
     assert W % cpp_nm == 0, "width %d nm is not a whole number of %d nm sites" % (W, cpp_nm)
@@ -550,6 +565,7 @@ def main():
 
     meta = {"cell": cell, "width_um": W / 1000.0, "height_um": H / 1000.0,
             "columns": cols, "column_source": src, "sites": W // cpp_nm,
+            "drive_scale": a.drive_scale,
             "devices": len(devs), "inputs": ins, "outputs": outs,
             "pin_x_um": sorted(round((p[0] + p[2]) / 2000.0, 4) for p in pins.values()),
             "pin_y_um": {s: round((p[1] + p[3]) / 2000.0, 4) for s, p in pins.items()},

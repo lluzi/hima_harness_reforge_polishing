@@ -102,16 +102,25 @@ class PackLfrStageAdapterTests(unittest.TestCase):
         request = {
             "candidate_id": "CAND_FUNCTIONAL_DIVERSITY_MAPPED_MULTI_0066",
             "implementation_plan": {"route": "multi_output_resynthesis"},
-            "generator_contract": {"interface": {
-                "inputs": [{"name": "A"}, {"name": "B"}],
-                "outputs": [
-                    {"name": "Y0", "liberty_function": "A & B"},
-                    {"name": "Y1", "liberty_function": "A | B"},
-                ],
-            }},
+            "generator_contract": {
+                "implementation_request": {"drive_strengths": [
+                    "D1", "D2", "D4", "D6", "D8"]},
+                "interface": {
+                    "inputs": [{"name": "A"}, {"name": "B"}],
+                    "outputs": [
+                        {"name": "Y0", "liberty_function": "A & B"},
+                        {"name": "Y1", "liberty_function": "A | B"},
+                    ],
+                }},
         }
         jobs = expected_generation_jobs({"generation_requests": [request]})
-        self.assertEqual(["XS_FUNCTIONAL_DIVERSITY_MAPPED_MULTI_0066_MO"],
+        self.assertEqual([
+            "XS_FUNCTIONAL_DIVERSITY_MAPPED_MULTI_0066_MO_D1",
+            "XS_FUNCTIONAL_DIVERSITY_MAPPED_MULTI_0066_MO_D2",
+            "XS_FUNCTIONAL_DIVERSITY_MAPPED_MULTI_0066_MO_D4",
+            "XS_FUNCTIONAL_DIVERSITY_MAPPED_MULTI_0066_MO_D6",
+            "XS_FUNCTIONAL_DIVERSITY_MAPPED_MULTI_0066_MO_D8",
+        ],
                          [job["cell_name"] for job in jobs])
         self.assertEqual(
             [job["cell_name"] for job in jobs],
@@ -122,7 +131,10 @@ class PackLfrStageAdapterTests(unittest.TestCase):
     def test_generation_namespace_makes_physical_cell_names_unique_across_shards(self):
         fixture = (FLOW / "domain/tests/fixtures/lfr-pre-mapping-portfolio.production.json")
         portfolio = json.loads(fixture.read_text())
-        request = portfolio["candidate_evaluations"][0]["candidate"]["source_generation_request"]
+        request = json.loads(json.dumps(
+            portfolio["candidate_evaluations"][0]["candidate"]["source_generation_request"]))
+        request["generator_contract"]["implementation_request"]["drive_strengths"] = [
+            "D1", "D2", "D4", "D6", "D8"]
 
         generation_1 = stages.namespace_generation_requests([request], "0001")
         generation_2 = stages.namespace_generation_requests([request], "0002")
@@ -218,7 +230,10 @@ class PackLfrStageAdapterTests(unittest.TestCase):
     def test_residual_research_can_only_materialize_a_hash_bound_pool_request(self):
         fixture = (FLOW / "domain/tests/fixtures/lfr-pre-mapping-portfolio.production.json")
         portfolio = json.loads(fixture.read_text())
-        request = portfolio["candidate_evaluations"][0]["candidate"]["source_generation_request"]
+        request = json.loads(json.dumps(
+            portfolio["candidate_evaluations"][0]["candidate"]["source_generation_request"]))
+        request["generator_contract"]["implementation_request"]["drive_strengths"] = [
+            "D1", "D2", "D4", "D6", "D8"]
         with tempfile.TemporaryDirectory() as raw:
             workspace = Path(raw)
             (workspace / "flow/research").mkdir(parents=True)
@@ -233,6 +248,9 @@ class PackLfrStageAdapterTests(unittest.TestCase):
                 "schema": "lfr-ai-residual-research/1",
                 "candidate_proposals": [{
                     "transformation": {"proposal_key": "proposal:fixture"},
+                    "cell_demand": {"schema": "hima.cell-demand/1",
+                                    "demand_id": "DEMAND_FIXTURE",
+                                    "required_delay_ns": 0.04},
                     "generation_request_sha256": digest,
                     "generation_request": request,
                 }],
@@ -253,6 +271,9 @@ class PackLfrStageAdapterTests(unittest.TestCase):
                 "schema": "lfr-ai-residual-research/1",
                 "candidate_proposals": [{
                     "transformation": {"proposal_key": "proposal:fixture"},
+                    "cell_demand": {"schema": "hima.cell-demand/1",
+                                    "demand_id": "DEMAND_FIXTURE",
+                                    "required_delay_ns": 0.04},
                     "generation_request_sha256": stages.canonical_json_sha(tampered),
                     "generation_request": tampered,
                 }],

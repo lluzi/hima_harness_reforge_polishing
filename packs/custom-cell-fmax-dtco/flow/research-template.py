@@ -27,6 +27,7 @@ def residual_research(context):
        "candidate_program": {
          "language": "python", "entrypoint": "propose_candidates",
          "source": "def propose_candidates(residual, budget): ..."},
+       "feedback_interpretation": str,
        "stop_reason": str}
 
     One lens must be named ``onsite-inspiration``. It is the sequential seventh
@@ -58,6 +59,19 @@ def residual_research(context):
     transformation must select one of its ``proposal_key`` values. The runner
     resolves that key to the immutable production generation request after the
     model process exits; the model never reads or assigns its candidate ID.
+    The transformation must also declare ``required_delay_ns`` (positive),
+    ``target_endpoints`` and one ``intervention`` from new-function, sizing,
+    stack-optimization, alternative-topology or physical-fusion. The runner
+    combines those fields with the immutable generator contract to create the
+    formal Cell Demand ledger consumed by Mock Liberty calibration.
+
+    Candidate and commercial-response objects are typed. Access documented
+    fields with ``row["field"]``. ``dict.get`` is rejected so a misspelled or
+    absent feedback field cannot silently become zero. When commercial feedback
+    exists, the runner executes the same frozen candidate program once with and
+    once without that response and records the exact selection A/B. Explain in
+    ``feedback_interpretation`` why the selection changed or why it correctly did
+    not change.
 
     The embedded ``candidate_program.source`` uses this authorable subset:
 
@@ -67,7 +81,7 @@ def residual_research(context):
       aggregate static loop budget is 512; break when ``index >= len(pool)``;
     * ordinary variable numeric arithmetic and string concatenation are valid;
       file/process/dynamic-code calls and private attributes remain forbidden;
-    * calls are limited to the fixed safe builtins and ``append/get/items/keys/values``.
+    * calls are limited to the fixed safe builtins and ``append/items/keys/values``.
 
     Start from this shape and replace the scoring/selection body with evidence-driven logic::
 
@@ -78,10 +92,14 @@ def residual_research(context):
               if index >= len(pool):
                   break
               row = pool[index]
-              key = row.get("proposal_key")
+              key = row["proposal_key"]
               if isinstance(key, str) and key:
                   output.append({"lens": "declared-lens",
-                                 "transformation": {"proposal_key": key},
+                                 "transformation": {
+                                     "proposal_key": key,
+                                     "required_delay_ns": 0.035,
+                                     "target_endpoints": ["top/reg/D"],
+                                     "intervention": "new-function"},
                                  "rationale": "evidence-derived reason"})
           return output
     """

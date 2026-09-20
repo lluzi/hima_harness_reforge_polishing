@@ -1,5 +1,16 @@
 # custom Cell Fmax probe and full custom Cell method
 
+V5.2 keeps the existing graph and makes three existing seams concrete:
+
+- mining emits the full `D1/D2/D4/D6/D8` intent and `generate` materializes
+  distinct transistor widths;
+- residual Research produces `flow/mining/cell-demands.json`, consumes typed
+  feedback and records a frozen-pool feedback A/B;
+- `characterize` anchors D1 to foundry CDL/Liberty topology depth, scales the
+  larger drives electrically and writes `mock-liberty-calibration.json`.
+
+These are admission gates. Commercial STA and matched P&R remain the E0 result.
+
 Run `/usr/bin/python3 <workspace>/flow/probe.py --workspace <workspace> --period <ns>`.
 This performs **one** DC synthesis, with a 600-second subprocess deadline and eight cores.
 Each invocation gets a fresh `flow/probes/trial-<uuid>/`; no previous trial is overwritten.

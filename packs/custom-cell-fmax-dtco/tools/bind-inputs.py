@@ -110,7 +110,7 @@ def clock_cell_list(value, label):
 def materialize_profile(document):
     """Validate every flat binding consumed by stages.py before writing inputs.json."""
     file_fields = (
-        "FOUNDRY_LIB", "FOUNDRY_LEF", "FOUNDRY_QRC_TECH", "FOUNDRY_GDS", "TECH_LEF",
+        "FOUNDRY_LIB", "FOUNDRY_CDL", "FOUNDRY_LEF", "FOUNDRY_QRC_TECH", "FOUNDRY_GDS", "TECH_LEF",
         "BOOL2CMOS_PDK_PROFILE", "LIBERTY_SKELETON", "LIBRECELL_TECH_PY", "GEOMETRY_RULE_DECK",
         "CHARMODEL_TIMING_MODEL", "CHARMODEL_POWER_MODEL", "CHARMODEL_AREA_MODEL", "CCFMAX_GDS_MAP",
         "EDA_WRAPPER", "CCFMAX_CONTAINER_RUNTIME",

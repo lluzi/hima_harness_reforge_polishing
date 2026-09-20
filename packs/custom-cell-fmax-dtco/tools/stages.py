@@ -55,6 +55,7 @@ from mine_patterns import (  # noqa: E402
 import library_richness as lfr  # noqa: E402
 from mining_strategy_contract import STRATEGIES  # noqa: E402
 from innovus_timing_facts import build_active_frontier, parse_timing_report  # noqa: E402
+from drive_family import drive_scale, scale_spice_drive  # noqa: E402
 
 
 SCHEMA = "custom-cell-fmax-stage/1"
@@ -1371,7 +1372,8 @@ def route_args(ctx, route, output, netlist, skeleton, liberty, timing_report):
         "--process-family", str(ctx.binding("PROCESS_FAMILY")),
         "--cell-architecture-ref", str(ctx.binding("CELL_ARCHITECTURE_REF")),
         "--characterization-profile-ref", str(ctx.binding("CHARACTERIZATION_PROFILE_REF")),
-        "--drive-strength", str(ctx.binding("DRIVE_STRENGTH")),
+        *(value for drive in ("D1", "D2", "D4", "D6", "D8")
+          for value in ("--drive-strength", drive)),
         "--vt-class", str(ctx.binding("VT_CLASS")),
     ]
     if spec["engine"] == "timing":
@@ -1651,6 +1653,7 @@ def stage_merge(ctx):
             raise Rejected("function/local candidate pool has no generation requests")
         allowed = {canonical_json_sha(request): request for request in pool_requests}
         selected = []
+        selected_demands = []
         proposal_keys = set()
         for index, proposal in enumerate(proposals):
             if not isinstance(proposal, dict):
@@ -1668,11 +1671,32 @@ def stage_merge(ctx):
             errors = validate_generation_request(request)
             if errors or (request.get("implementation_plan") or {}).get("route") not in BUILDABLE_ROUTES:
                 raise Rejected("residual research selected an invalid/unbuildable generation request")
+            if ((request.get("generator_contract") or {}).get("implementation_request") or {}).get(
+                    "drive_strengths") != ["D1", "D2", "D4", "D6", "D8"]:
+                raise Rejected("residual research must request the complete D1/D2/D4/D6/D8 family")
+            demand = proposal.get("cell_demand")
+            if (not isinstance(demand, dict) or demand.get("schema") != "hima.cell-demand/1"
+                    or not isinstance(demand.get("required_delay_ns"), (int, float))
+                    or isinstance(demand.get("required_delay_ns"), bool)
+                    or float(demand["required_delay_ns"]) <= 0):
+                raise Rejected("residual research proposal has no valid Cell Demand")
             selected.append(json.loads(json.dumps(request)))
+            selected_demands.append(json.loads(json.dumps(demand)))
         identities = [function_identity(request)["key"] for request in selected]
         if len(identities) != len(set(identities)):
             raise Rejected("residual research selected a duplicate function identity")
         selected = namespace_generation_requests(selected, shard_id)
+        for request, demand in zip(selected, selected_demands):
+            demand["candidate_id"] = request["candidate_id"]
+            demand["physical_cells"] = [job["cell_name"] for job in expected_generation_jobs({
+                "generation_requests": [request],
+            })]
+        demand_document = {
+            "schema": "hima.cell-demand-ledger/1", "status": "declared",
+            "shard_id": shard_id, "demand_count": len(selected_demands),
+            "demands": selected_demands,
+            "research_sha256": sha_file(research_path),
+        }
         merged = {
             "report_schema": "xspace_cell-pattern-search/v2",
             "strategy_id": "residual_research_delta", "source_graph": "license-free-baseline-mapped",
@@ -1693,13 +1717,19 @@ def stage_merge(ctx):
         target = ctx.flow / "mining" / "merged.json"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(held.read_bytes())
+        demand_path = ctx.run_dir / "cell-demands.json"
+        atomic_json(demand_path, demand_document)
+        published_demands = ctx.flow / "mining" / "cell-demands.json"
+        published_demands.write_bytes(demand_path.read_bytes())
         ctx.inputs.extend([
             file_ref(research_path, ctx.workspace, "ai_residual_research", "agent-research"),
             file_ref(pool_path, ctx.workspace, "candidate_pool", "source-bound-candidate-pool"),
         ])
         ctx.add_artifact(held, "merged_patterns", "algorithm-output")
+        ctx.add_artifact(demand_path, "cell_demands", "agent-demand-contract")
         ctx.facts.update({"candidate_count": len(selected), "retained_candidate_count": 0,
-                          "research_schema": research["schema"]})
+                          "research_schema": research["schema"],
+                          "cell_demand_count": len(selected_demands)})
         return
     if (research.get("schema") != "custom-cell-fmax-ai-research/1"
             or not isinstance(research.get("selected"), list)
@@ -1917,9 +1947,14 @@ def stage_generate(ctx):
             code = 0
         except ToolFailure:
             code = ctx.executions[-1]["exitCode"]
+        if code == 0 and target.is_file():
+            target.write_text(scale_spice_drive(
+                target.read_text(errors="replace"), source_cell=job["cell_name"],
+                target_cell=job["cell_name"], drive=job["drive"]))
         structural = target.is_file() and spice_netlist_is_structural(target.read_text(errors="replace"), job["cell_name"])
         attempts.append({"candidate_id": job["candidate_id"], "cell_name": job["cell_name"],
-                         "returncode": code, "structural": structural})
+                         "drive": job["drive"], "returncode": code,
+                         "structural": structural})
     attempts_path = ctx.run_dir / "attempts.json"
     atomic_json(attempts_path, attempts)
     ctx.add_artifact(attempts_path, "generation_attempts", "tool-evidence")
@@ -1967,10 +2002,15 @@ def stage_layout(ctx):
     built = []
     attempts = []
     for index, cell in enumerate(cells):
+        drive_match = re.search(r"_(D1|D2|D4|D6|D8)$", cell.stem)
+        if drive_match is None:
+            raise Rejected("generated Cell has no physical drive suffix: " + cell.stem)
+        physical_scale = drive_scale(drive_match.group(1))
         out = ctx.run_dir / cell.stem
         argv = ["/usr/bin/python3", str(DOMAIN / "abstract_cell.py"), "--netlist", str(cell),
                 "--tech", str(tech), "--rule-deck", str(rules), "--power-pin", power,
-                "--ground-pin", ground, "--placement-timeout", str(placement_timeout), "-o", str(out)]
+                "--ground-pin", ground, "--drive-scale", str(physical_scale),
+                "--placement-timeout", str(placement_timeout), "-o", str(out)]
         diagnostic = None
         try:
             ctx.run(argv, env=env, timeout=abstract_timeout, tag="layout-%02d" % index)
@@ -2040,10 +2080,19 @@ def stage_characterize(ctx):
     ctx.inputs.append(file_ref(merged, ctx.workspace, "merged_patterns", "algorithm-output"))
     ctx.add_artifact(admitted_path, "characterized_patterns", "layout-admitted-algorithm-output")
     base = ctx.file_binding("FOUNDRY_LIB")
+    foundry_cdl = ctx.file_binding("FOUNDRY_CDL", "foundry-cdl-topology-reference")
     timing = ctx.file_binding("CHARMODEL_TIMING_MODEL", "learned-model")
     power = ctx.file_binding("CHARMODEL_POWER_MODEL", "learned-model")
     area = ctx.file_binding("CHARMODEL_AREA_MODEL", "learned-model")
     out = ctx.run_dir / "generated.lib"
+    calibration_report = ctx.run_dir / "mock-liberty-calibration.json"
+    demand_path = artifact(prior(ctx, "merge"), ctx.workspace, "cell_demands")
+    calibration_policy = DOMAIN / "mock_liberty_policy.json"
+    ctx.inputs.extend([
+        file_ref(foundry_cdl, ctx.workspace, "FOUNDRY_CDL", "site-input"),
+        file_ref(demand_path, ctx.workspace, "cell_demands", "agent-demand-contract"),
+        file_ref(calibration_policy, ctx.workspace, "mock_liberty_policy", "pack-method"),
+    ])
     env = helper_env(ctx)
     for module in ("estimate_lib.py", "mock_char.py"):
         matches = [Path(folder) / module for folder in env["CCFMAX_CHARMODEL_HELPER_DIR"].split(":")
@@ -2060,6 +2109,8 @@ def stage_characterize(ctx):
             "--base", str(base), "--timing-model", str(timing), "--power-model", str(power),
             "--area-model", str(area), "--power-pin", env["CCFMAX_POWER_PIN"],
             "--ground-pin", env["CCFMAX_GROUND_PIN"], "--library-name", str(ctx.binding("GENERATED_LIBRARY_NAME")),
+            "--foundry-cdl", str(foundry_cdl), "--calibration-policy", str(calibration_policy),
+            "--cell-demands", str(demand_path), "--calibration-report", str(calibration_report),
             "--prediction-dir", str(prediction_dir), "--prediction-executions", str(prediction_manifest),
             "-o", str(out)]
     ctx.run(argv, env=env, timeout=int(ctx.binding("CHARACTERIZE_TIMEOUT_SEC")), tag="charmodel")
@@ -2069,6 +2120,12 @@ def stage_characterize(ctx):
     if predicted_names != {cell.stem for cell in admitted_cells}:
         raise ToolFailure("learned-model Liberty does not exactly cover the generated Cell set")
     ctx.add_artifact(out, "generated_liberty", "learned-model-prediction")
+    calibration = read_json(calibration_report)
+    if (calibration.get("schema") != "hima.mock-liberty-calibration/1"
+            or calibration.get("status") != "accepted"):
+        raise ToolFailure("Mock Liberty calibration gate did not accept every Cell Demand")
+    ctx.add_artifact(calibration_report, "mock_liberty_calibration",
+                     "topology-anchored-mock-evidence")
     ctx.add_artifact(prediction_manifest, "prediction_executions", "nested-tool-evidence")
     nested = read_json(prediction_manifest)
     if not isinstance(nested, list) or len(nested) != len(admitted_cells):
@@ -2084,7 +2141,10 @@ def stage_characterize(ctx):
         ctx.executions.append(entry)
         ctx.add_artifact(prediction, "prediction:" + str(row.get("cell")), "learned-model-prediction")
     ctx.facts.update({"predicted_cell_count": len(predicted_names), "characterization_type": "learned-model-prediction",
-                      "measured_characterization": False})
+                      "measured_characterization": False,
+                      "mock_liberty_calibration_status": calibration["status"],
+                      "cell_demand_count": len(calibration["cell_demands"]),
+                      "drive_family": ["D1", "D2", "D4", "D6", "D8"]})
 
 
 def stage_compile(ctx):

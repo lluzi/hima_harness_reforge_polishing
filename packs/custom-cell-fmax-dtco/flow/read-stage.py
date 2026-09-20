@@ -1107,7 +1107,25 @@ def values_for(record, workspace, stage):
         expected = {job["cell_name"] for job in expected_generation_jobs(patterns)}
         if actual != expected or record.get("facts", {}).get("predicted_cell_count") != len(actual):
             raise ValueError("predicted Liberty differs from the layout-admitted candidate set")
+        calibration = load(one(record, workspace, "mock_liberty_calibration"))
+        variants = calibration.get("drive_variants") if isinstance(calibration, dict) else None
+        families = calibration.get("electrical_families") if isinstance(calibration, dict) else None
+        demands = calibration.get("cell_demands") if isinstance(calibration, dict) else None
+        if (calibration.get("schema") != "hima.mock-liberty-calibration/1"
+                or calibration.get("status") != "accepted"
+                or not isinstance(variants, list)
+                or {row.get("cell") for row in variants if isinstance(row, dict)} != actual
+                or not isinstance(families, list) or not families
+                or any(not isinstance(row, dict)
+                       or row.get("drives") != ["D1", "D2", "D4", "D6", "D8"]
+                       for row in families)
+                or not isinstance(demands, dict) or not demands
+                or any(row.get("met_by_any_drive") is not True for row in demands.values())
+                or record.get("facts", {}).get("mock_liberty_calibration_status") != "accepted"
+                or record.get("facts", {}).get("cell_demand_count") != len(demands)):
+            raise ValueError("Mock Liberty calibration or Cell Demand gate is not reproducible")
         values.append(number("predicted_cell_count", len(actual)))
+        values.append(number("cell_demand_count", len(demands)))
     elif stage == "compile":
         log = logs(record, workspace, "lc_log").read_text(errors="replace")
         db = one(record, workspace, "generated_db")

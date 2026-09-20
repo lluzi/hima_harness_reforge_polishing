@@ -76,6 +76,13 @@ for _p in _os.environ.get("CCFMAX_CHARMODEL_HELPER_DIR", "").split(":"):
 import estimate_lib as EL  # noqa: E402
 import mock_char as MC    # noqa: E402  parse_netlist, for the ports the model produces no arc for
 from cell_need_miner.liberty_timing import derive_timing_sense  # noqa: E402
+from mock_liberty_calibration import (  # noqa: E402
+    build_reference_depth_anchors,
+    calibrate_prediction,
+    demand_result,
+    load_policy,
+    validate_electrical_families,
+)
 
 # .subckt ports that are supply nets, not signal pins. bool2cmos writes `vdd`/`gnd`; the wider set
 # is here so a netlist from another generator does not silently get its rails declared as pins.
@@ -216,6 +223,14 @@ def main():
     ap.add_argument("--power-model", required=True,
                     help="site-bound learned power model; --no-power disables power emission")
     ap.add_argument("--area-model", required=True, help="site-bound learned area model")
+    ap.add_argument("--foundry-cdl", required=True,
+                    help="site-bound foundry CDL used only for topology-depth anchors")
+    ap.add_argument("--calibration-policy", required=True,
+                    help="Pack-owned global Mock Liberty calibration policy")
+    ap.add_argument("--cell-demands", required=True,
+                    help="hash-retained Cell Demand ledger from AI research")
+    ap.add_argument("--calibration-report", required=True,
+                    help="output report for anchors, drive envelopes and demand checks")
     ap.add_argument("--prediction-dir", required=True,
                     help="Campaign-private directory for one prediction and log per cell")
     ap.add_argument("--prediction-executions", required=True,
@@ -251,6 +266,18 @@ def main():
     if "voltage_name" not in PG_BLOCK:
         sys.exit("could not lift pg_pin groups from the base cell")
     am = json.load(open(a.area_model))
+    policy = load_policy(a.calibration_policy)
+    reference = build_reference_depth_anchors(a.foundry_cdl, a.base, policy)
+    demand_document = json.load(open(a.cell_demands))
+    if (demand_document.get("schema") != "hima.cell-demand-ledger/1"
+            or not isinstance(demand_document.get("demands"), list)):
+        sys.exit("Cell Demand ledger has an unsupported schema")
+    demands_by_cell = {}
+    for demand in demand_document["demands"]:
+        for cell in demand.get("physical_cells") or []:
+            if cell in demands_by_cell:
+                sys.exit("Cell Demand ledger repeats physical Cell %s" % cell)
+            demands_by_cell[cell] = demand
 
     prediction_dir = os.path.abspath(a.prediction_dir)
     os.makedirs(prediction_dir, exist_ok=False)
@@ -260,6 +287,9 @@ def main():
     n_undeclared = 0
     cells_undeclared = []
     leaks = []
+    d1_cache = {}
+    calibration_rows = []
+    demand_rows = []
     for sp in sorted(glob.glob(os.path.join(a.netlist_dir, "*.sp"))):
         name = os.path.basename(sp)[:-3]
         fns = cell_function(sp)
@@ -282,6 +312,11 @@ def main():
             if r.returncode:
                 bad.append((name, (r.stderr or r.stdout).strip().splitlines()[-1][:70])); continue
             pred = json.load(open(prediction_path))
+            pred, family, drive, drive_factor = calibrate_prediction(
+                pred, sp, policy, reference, d1_cache)
+            with open(prediction_path, "w") as handle:
+                json.dump(pred, handle, indent=2, sort_keys=True)
+                handle.write("\n")
         except Exception as exc:                                  # noqa: BLE001
             bad.append((name, str(exc)[:70])); continue
 
@@ -289,7 +324,14 @@ def main():
         if not arcs:
             bad.append((name, "model produced no timing arcs")); continue
         ndev = sum(1 for ln in open(sp) if ln[:1] in "mM")
-        area = am["slope"] * ndev + am["intercept"]
+        area = (am["slope"] * ndev + am["intercept"]) * drive_factor
+        demand = demands_by_cell.get(name)
+        if demand is None:
+            raise ValueError("generated Cell %s is absent from the Cell Demand ledger" % name)
+        demand_rows.append(demand_result(
+            name, pred, float(demand["required_delay_ns"]),
+            slew_ns=policy["reference_slew_ns"],
+            load_pf=policy["reference_load_pf"]))
 
         # capacitance per pin is the MEAN over that pin's arcs, not whichever arc happened to be
         # first: a pin that drives two outputs gets two independent predictions of the same
@@ -298,6 +340,19 @@ def main():
         for arc in arcs:
             caps.setdefault(arc["in_pin"], []).append(arc["scalars"].get("cap", 0.002))
             outs.setdefault(arc["out_pin"], []).append(arc)
+        calibration_rows.append({
+            "cell": name, "family": family, "drive": drive,
+            "drive_scale": drive_factor, "area_um2": area,
+            "input_capacitance_pf": {
+                pin: statistics.fmean(values) for pin, values in caps.items()
+            },
+            "max_load_pf": {
+                pin: min(arc["index_2"][-1] for arc in rows) for pin, rows in outs.items()
+            },
+            "output_resistance_ns_per_pf": pred["mock_calibration"].get(
+                "output_resistance_ns_per_pf", {}),
+            "topology": pred["mock_calibration"],
+        })
 
         # The top of the characterised slew axis, taken from THIS cell's own tables. Every
         # generated pin declares max_transition here and not at the constant this emitter used to
@@ -495,6 +550,32 @@ def main():
     with open(a.prediction_executions, "w") as handle:
         json.dump(prediction_rows, handle, indent=2, sort_keys=True)
         handle.write("\n")
+    demand_by_id = {}
+    for demand in demand_document["demands"]:
+        rows = [row for row in demand_rows if row["cell"] in demand["physical_cells"]]
+        demand_by_id[demand["demand_id"]] = {
+            "required_delay_ns": demand["required_delay_ns"],
+            "physical_cells": rows,
+            "met_by_any_drive": any(row["meets"] for row in rows),
+        }
+    electrical_families = validate_electrical_families(calibration_rows)
+    report = {
+        "schema": "hima.mock-liberty-calibration/1",
+        "status": "accepted" if demand_by_id and all(
+            row["met_by_any_drive"] for row in demand_by_id.values()) else "rejected",
+        "policy": policy,
+        "reference": reference,
+        "drive_variants": calibration_rows,
+        "electrical_families": electrical_families,
+        "cell_demands": demand_by_id,
+        "claim_limits": {"measured_characterization": False,
+                         "commercial_qor_prediction": False},
+    }
+    with open(a.calibration_report, "w") as handle:
+        json.dump(report, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    if report["status"] != "accepted":
+        sys.exit("ERROR: Mock Liberty calibration does not meet every Cell Demand")
     print("\n%d cells -> %s   (%d skipped)" % (len(ok), a.out, len(bad)))
     if do_power and n_leak_default:
         print("ERROR: %d cells DROPPED because their leakage prediction failed" % n_leak_default)

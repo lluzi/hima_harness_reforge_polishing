@@ -448,6 +448,21 @@ def _compact_candidate_pool(document, source_sha256):
         interface = contract.get("interface") or {}
         target_profile = contract.get("target_library_profile") or {}
         implementation = json.loads(json.dumps(contract.get("implementation_request") or {}))
+        if (not isinstance(equivalence.get("digest"), str)
+                or not isinstance(equivalence.get("input_order"), list)
+                or not isinstance(equivalence.get("output_order"), list)
+                or not isinstance(equivalence.get("output_truth_tables_hex"), dict)):
+            raise ValueError("candidate_pool generation request %d lacks typed equivalence fields"
+                             % index)
+        if (not isinstance(interface.get("inputs"), list)
+                or not isinstance(interface.get("outputs"), list)
+                or not interface["outputs"]):
+            raise ValueError("candidate_pool generation request %d lacks a typed interface"
+                             % index)
+        if (not isinstance(target_profile.get("process_family"), str)
+                or not isinstance(target_profile.get("cell_architecture_ref"), str)):
+            raise ValueError("candidate_pool generation request %d lacks a typed target profile"
+                             % index)
         for field in ("drive_strengths", "vt_classes"):
             values = implementation.get(field)
             if not isinstance(values, list) or not values or any(
@@ -455,6 +470,9 @@ def _compact_candidate_pool(document, source_sha256):
                 raise ValueError("candidate_pool generation request %d has invalid %s"
                                  % (index, field))
             implementation[field] = sorted(set(values))
+        if implementation["drive_strengths"] != ["D1", "D2", "D4", "D6", "D8"]:
+            raise ValueError("candidate_pool generation request %d lacks the full drive family"
+                             % index)
         plan = request.get("implementation_plan") or {}
         route = plan.get("route")
         if route not in BUILDABLE_ROUTES:
@@ -490,6 +508,7 @@ def _compact_candidate_pool(document, source_sha256):
             raise ValueError("candidate_pool contains duplicate deterministic proposal identity")
         registry[proposal_key] = json.loads(json.dumps(request))
         compact.append({
+            "schema": "hima.lfr-research-candidate/1",
             "proposal_key": proposal_key,
             "equivalence": {
                 "digest": equivalence.get("digest"),
@@ -511,7 +530,66 @@ def _compact_candidate_pool(document, source_sha256):
             "evidence_source_sha256": source_sha256,
         })
     return {"source_sha256": source_sha256, "count": len(compact),
+            "proposal_schema": "hima.lfr-research-candidate/1",
             "proposals": compact}, registry
+
+
+def _compact_commercial_response(document):
+    """Validate the exact typed feedback surface exposed to candidate programs."""
+    if (not isinstance(document, dict)
+            or document.get("schema") != "hima.lfr-v5-commercial-frontier-response/1"
+            or document.get("status") != "observed"):
+        raise ValueError("commercial response is not one observed V5 frontier response")
+    numeric = ("q_target_ns", "reference_active_count", "generated_active_count",
+               "improved_endpoint_count", "worsened_endpoint_count",
+               "violations_fixed", "new_violations")
+    for name in numeric:
+        value = document.get(name)
+        if name.endswith("_ns"):
+            _finite_metric(value, "commercial_response." + name)
+        elif isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("commercial response %s must be a non-negative integer" % name)
+
+    def endpoint_names(name, limit):
+        rows = document.get(name)
+        if (not isinstance(rows, list) or len(rows) > 4096
+                or any(not isinstance(value, str) or not value for value in rows)):
+            raise ValueError("commercial response %s is not a typed endpoint array" % name)
+        return rows[:limit]
+
+    def endpoint_rows(name, limit):
+        rows = document.get(name)
+        fields = {"endpoint", "reference_slack_ns", "generated_slack_ns",
+                  "delta_slack_ns", "reference_q_ns", "generated_q_ns"}
+        if not isinstance(rows, list) or len(rows) > 4096:
+            raise ValueError("commercial response %s is not an array" % name)
+        result = []
+        for index, row in enumerate(rows[:limit]):
+            if not isinstance(row, dict) or set(row) != fields or not isinstance(
+                    row["endpoint"], str) or not row["endpoint"]:
+                raise ValueError("commercial response %s[%d] is malformed" % (name, index))
+            result.append({"endpoint": row["endpoint"], **{
+                field: _finite_metric(row[field], "commercial_response.%s.%s" % (name, field))
+                for field in sorted(fields - {"endpoint"})}})
+        return result
+
+    response_sha = document.get("response_sha256")
+    if not isinstance(response_sha, str) or not SHA256.fullmatch(response_sha):
+        raise ValueError("commercial response has no typed response_sha256")
+    claim_limits = document.get("claim_limits")
+    if not isinstance(claim_limits, dict):
+        raise ValueError("commercial response claim_limits is not an object")
+    return {
+        "schema": "hima.lfr-commercial-feedback/1",
+        "response_sha256": response_sha,
+        **{name: document[name] for name in numeric},
+        "resolved_reference_endpoints": endpoint_names("resolved_reference_endpoints", 128),
+        "new_frontier_entrants": endpoint_names("new_frontier_entrants", 128),
+        "remaining_frontier": endpoint_rows("remaining_frontier", 256),
+        "largest_frontier_regressions": endpoint_rows("largest_frontier_regressions", 32),
+        "largest_frontier_improvements": endpoint_rows("largest_frontier_improvements", 32),
+        "claim_limits": claim_limits,
+    }
 
 
 def build_residual_research_context(
@@ -632,34 +710,7 @@ def build_residual_research_context(
         context_evidence["candidate_pool"] = evidence["candidate_pool"]
     compact_response = None
     if commercial_response is not None:
-        if (commercial_response.get("schema")
-                != "hima.lfr-v5-commercial-frontier-response/1"
-                or commercial_response.get("status") != "observed"):
-            raise ValueError("commercial response is not one observed V5 frontier response")
-        remaining = commercial_response.get("remaining_frontier")
-        if not isinstance(remaining, list) or len(remaining) > 4096:
-            raise ValueError("commercial response remaining frontier is invalid")
-        def compact_rows(name, limit):
-            rows = commercial_response.get(name) or []
-            if not isinstance(rows, list):
-                raise ValueError("commercial response %s is not an array" % name)
-            return rows[:limit]
-        compact_response = {
-            "response_sha256": commercial_response.get("response_sha256"),
-            "q_target_ns": commercial_response.get("q_target_ns"),
-            "reference_active_count": commercial_response.get("reference_active_count"),
-            "generated_active_count": commercial_response.get("generated_active_count"),
-            "resolved_reference_endpoints": compact_rows("resolved_reference_endpoints", 128),
-            "new_frontier_entrants": compact_rows("new_frontier_entrants", 128),
-            "remaining_frontier": remaining[:256],
-            "largest_frontier_regressions": compact_rows("largest_frontier_regressions", 32),
-            "largest_frontier_improvements": compact_rows("largest_frontier_improvements", 32),
-            "improved_endpoint_count": commercial_response.get("improved_endpoint_count"),
-            "worsened_endpoint_count": commercial_response.get("worsened_endpoint_count"),
-            "violations_fixed": commercial_response.get("violations_fixed"),
-            "new_violations": commercial_response.get("new_violations"),
-            "claim_limits": commercial_response.get("claim_limits"),
-        }
+        compact_response = _compact_commercial_response(commercial_response)
         context_evidence["commercial_response"] = evidence["commercial_response"]
     context = {
         "schema": RESIDUAL_CONTEXT_SCHEMA,
@@ -913,7 +964,10 @@ def _validate_candidate_program(program, byte_budget):
         "isinstance", "len", "list", "max", "min", "range", "reversed",
         "round", "set", "sorted", "str", "sum", "tuple", "zip",
     }
-    allowed_methods = {"append", "get", "items", "keys", "values"}
+    # Candidate and commercial feedback documents are typed.  ``dict.get`` is
+    # intentionally absent: trial.13 showed that misspelled feedback fields
+    # otherwise become silent zeroes and make a non-adaptive program look valid.
+    allowed_methods = {"append", "items", "keys", "values"}
     if (any(isinstance(node, ast.Name) and node.id in blocked_names for node in ast.walk(tree))
             or any(isinstance(node, ast.Attribute) and node.attr in blocked_names
                    for node in ast.walk(tree))
@@ -1091,7 +1145,8 @@ def execute_candidate_program(program, context, *, allowed_lenses, candidate_reg
     selected_keys = set()
     attached = []
     for index, proposal in enumerate(proposals):
-        proposal_key = proposal["transformation"].get("proposal_key")
+        transformation = proposal["transformation"]
+        proposal_key = transformation.get("proposal_key")
         if candidate_registry and not isinstance(proposal_key, str):
             raise ValueError("candidate proposal %d must select one proposal_key" % index)
         if proposal_key is None:
@@ -1101,10 +1156,39 @@ def execute_candidate_program(program, context, *, allowed_lenses, candidate_reg
             raise ValueError("candidate proposal %d selects an unknown proposal_key" % index)
         if proposal_key in selected_keys:
             raise ValueError("candidate program selects one proposal_key more than once")
+        required_delay = transformation.get("required_delay_ns")
+        endpoints = transformation.get("target_endpoints")
+        intervention = transformation.get("intervention")
+        if (isinstance(required_delay, bool)
+                or not isinstance(required_delay, (int, float))
+                or not math.isfinite(float(required_delay)) or required_delay <= 0):
+            raise ValueError("candidate proposal %d has no positive required_delay_ns" % index)
+        if (not isinstance(endpoints, list) or not endpoints
+                or any(not isinstance(value, str) or not value for value in endpoints)):
+            raise ValueError("candidate proposal %d has invalid target_endpoints" % index)
+        if intervention not in {"new-function", "sizing", "stack-optimization",
+                                "alternative-topology", "physical-fusion"}:
+            raise ValueError("candidate proposal %d has invalid Cell Demand intervention" % index)
         selected_keys.add(proposal_key)
         generation_request = json.loads(json.dumps(candidate_registry[proposal_key]))
+        contract = generation_request["generator_contract"]
+        cell_demand = {
+            "schema": "hima.cell-demand/1",
+            "demand_id": "DEMAND_" + proposal_key.split(":", 1)[-1][:24].upper(),
+            "proposal_key": proposal_key,
+            "input_pins": [row["name"] for row in contract["interface"]["inputs"]],
+            "output_pins": [row["name"] for row in contract["interface"]["outputs"]],
+            "functions": {row["name"]: row["liberty_function"]
+                          for row in contract["interface"]["outputs"]},
+            "truth_table": contract["truth_table"],
+            "required_delay_ns": float(required_delay),
+            "target_endpoints": list(endpoints),
+            "intervention": intervention,
+            "drive_family": ["D1", "D2", "D4", "D6", "D8"],
+        }
         attached.append({
             **proposal,
+            "cell_demand": cell_demand,
             "generation_request_sha256": _sha(_canonical_json(generation_request)),
             "generation_request": generation_request,
         })
@@ -1150,8 +1234,9 @@ def residual_evidence_sha256(context):
 def validate_residual_research_proposal(proposal, context):
     """Validate model creativity while retaining deterministic ownership."""
     if not isinstance(proposal, dict) or set(proposal) != {
-            "research_lenses", "candidate_program", "stop_reason"}:
-        raise ValueError("residual research must return lenses, candidate_program and stop_reason")
+            "research_lenses", "candidate_program", "feedback_interpretation", "stop_reason"}:
+        raise ValueError(
+            "residual research must return lenses, candidate_program, feedback_interpretation and stop_reason")
     lenses = proposal["research_lenses"]
     maximum = context["budgets"]["max_research_lenses"]
     if not isinstance(lenses, list) or not 1 <= len(lenses) <= maximum:
@@ -1191,10 +1276,12 @@ def validate_residual_research_proposal(proposal, context):
         if commercial.get("sha256") not in onsite["evidence_sha256"]:
             raise ValueError("onsite-inspiration must cite the current commercial frontier response")
     stop = _bounded_text(proposal["stop_reason"], "stop_reason")
+    feedback_interpretation = _bounded_text(
+        proposal["feedback_interpretation"], "feedback_interpretation")
     program = _validate_candidate_program(
         proposal["candidate_program"], context["budgets"]["max_candidate_code_bytes"])
     return {"research_lenses": normalized, "candidate_program": program,
-            "stop_reason": stop}
+            "feedback_interpretation": feedback_interpretation, "stop_reason": stop}
 
 
 def run_residual_research(research, workspace, output):
@@ -1209,6 +1296,25 @@ def run_residual_research(research, workspace, output):
         allowed_lenses=[row["name"] for row in proposal["research_lenses"]],
         candidate_registry=candidate_registry,
     )
+    feedback_ab = {"performed": False, "selection_changed": None,
+                   "without_feedback_proposal_keys": [],
+                   "with_feedback_proposal_keys": [],
+                   "interpretation": proposal["feedback_interpretation"]}
+    if context.get("commercial_frontier_response") is not None:
+        neutral = json.loads(json.dumps(context))
+        neutral["commercial_frontier_response"] = None
+        without, without_execution = execute_candidate_program(
+            proposal["candidate_program"], neutral,
+            allowed_lenses=[row["name"] for row in proposal["research_lenses"]],
+            candidate_registry=candidate_registry,
+        )
+        before = [row["transformation"]["proposal_key"] for row in without]
+        after = [row["transformation"]["proposal_key"] for row in candidate_proposals]
+        feedback_ab = {"performed": True, "selection_changed": before != after,
+                       "without_feedback_proposal_keys": before,
+                       "with_feedback_proposal_keys": after,
+                       "without_feedback_execution": without_execution,
+                       "interpretation": proposal["feedback_interpretation"]}
     document = {
         "schema": RESIDUAL_OUTPUT_SCHEMA,
         "status": "proposed",
@@ -1221,6 +1327,7 @@ def run_residual_research(research, workspace, output):
         "candidate_program": proposal["candidate_program"],
         "candidate_proposals": candidate_proposals,
         "candidate_execution": candidate_execution,
+        "feedback_ab": feedback_ab,
         "stop_reason": proposal["stop_reason"],
         "claims": {
             "commercial_qor_prediction": False,

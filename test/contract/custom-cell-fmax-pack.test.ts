@@ -48,7 +48,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.1.9');
+  assert.equal(graph.version, '5.2.0');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -699,12 +699,13 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
   const profile = path.join(designRoot, 'profile'); const helper = path.join(profile, 'helpers');
   await mkdir(helper, { recursive: true });
   await Promise.all(['estimate_lib.py', 'mock_char.py'].map((name) => writeFile(path.join(helper, name), `# fixture ${name}\n`)));
-  const profileFiles = ['foundry.lib', 'foundry.lef', 'qrc', 'foundry.gds', 'tech.lef', 'pdk.json',
+  const profileFiles = ['foundry.lib', 'foundry.spi', 'foundry.lef', 'qrc', 'foundry.gds', 'tech.lef', 'pdk.json',
     'skeleton.lib', 'tech.py', 'rules.json', 'timing.json', 'power.json', 'area.json', 'map'];
   await Promise.all(profileFiles.map((name) => writeFile(path.join(profile, name), `fixture ${name}\n`)));
   const proxyToolSha256 = sha256(await readFile('/usr/bin/true'));
   const physicalProfile = {
-    CLOCK_NAME: 'clk', FOUNDRY_LIB: foundryLib, FOUNDRY_DB_FILE: foundryDb,
+    CLOCK_NAME: 'clk', FOUNDRY_LIB: foundryLib, FOUNDRY_CDL: path.join(profile, 'foundry.spi'),
+    FOUNDRY_DB_FILE: foundryDb,
     FOUNDRY_LEF: path.join(profile, 'foundry.lef'),
     FOUNDRY_QRC_TECH: path.join(profile, 'qrc'), FOUNDRY_GDS: path.join(profile, 'foundry.gds'), TECH_LEF: path.join(profile, 'tech.lef'),
     BOOL2CMOS_CMD: 'python3 -m bool2cmos.cli', BOOL2CMOS_CWD: profile, BOOL2CMOS_PDK_PROFILE: path.join(profile, 'pdk.json'),

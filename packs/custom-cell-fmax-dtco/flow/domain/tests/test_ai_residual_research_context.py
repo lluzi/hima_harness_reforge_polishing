@@ -53,7 +53,8 @@ def _candidate_pool():
         strategy_id="residual_pool", process_family="test_process",
         cell_architecture_ref="test_architecture",
         characterization_profile_ref="test_characterization",
-        drive_strength=["X1"], vt_class=["SVT"], model_type=["NLDM"],
+        drive_strength=["D1", "D2", "D4", "D6", "D8"],
+        vt_class=["SVT"], model_type=["NLDM"],
     )
     requests, _statistics = _route_requests(
         {"top": [instance]}, {"AND": cell}, [critical], {}, {}, {"AND": 2.0}, arguments
@@ -261,11 +262,12 @@ def _proposal(context: dict) -> dict:
         "candidate_program": {
             "language": "python",
             "entrypoint": "propose_candidates",
-            "source": (
+                "source": (
                 "def propose_candidates(residual, budget):\n"
-                "    return residual.get('cuts', [])[:budget['max_candidate_proposals']]\n"
+                "    return []\n"
             ),
         },
+        "feedback_interpretation": "No commercial response exists in the fixture.",
         "stop_reason": "One bounded lens addresses the stated residual question.",
     }
 
@@ -285,9 +287,21 @@ class ResidualResearchContextTests(unittest.TestCase):
                 "generated_active_count": 2,
                 "resolved_reference_endpoints": ["E0"],
                 "new_frontier_entrants": [],
-                "remaining_frontier": [{"endpoint": "E1", "generated_q_ns": 0.55}],
-                "largest_frontier_regressions": [{"endpoint": "E1", "delta_slack_ns": -0.01}],
-                "largest_frontier_improvements": [{"endpoint": "E0", "delta_slack_ns": 0.02}],
+                "remaining_frontier": [{"endpoint": "E1", "reference_slack_ns": -0.04,
+                                         "generated_slack_ns": -0.05,
+                                         "delta_slack_ns": -0.01,
+                                         "reference_q_ns": 0.54,
+                                         "generated_q_ns": 0.55}],
+                "largest_frontier_regressions": [{"endpoint": "E1", "reference_slack_ns": -0.04,
+                                                   "generated_slack_ns": -0.05,
+                                                   "delta_slack_ns": -0.01,
+                                                   "reference_q_ns": 0.54,
+                                                   "generated_q_ns": 0.55}],
+                "largest_frontier_improvements": [{"endpoint": "E0", "reference_slack_ns": -0.02,
+                                                    "generated_slack_ns": 0.0,
+                                                    "delta_slack_ns": 0.02,
+                                                    "reference_q_ns": 0.52,
+                                                    "generated_q_ns": 0.50}],
                 "improved_endpoint_count": 2, "worsened_endpoint_count": 1,
                 "violations_fixed": 1, "new_violations": 0,
                 "claim_limits": {"per_action_causality": False},
@@ -338,11 +352,11 @@ class ResidualResearchContextTests(unittest.TestCase):
 
     def test_candidate_pool_identity_separates_drive_variants_and_rejects_exact_duplicate(self):
         pool = _candidate_pool()
-        x1 = pool["generation_requests"][0]
-        x2 = copy.deepcopy(x1)
-        x2["candidate_id"] = x1["candidate_id"] + "_X2"
-        x2["generator_contract"]["implementation_request"]["drive_strengths"] = ["X2"]
-        pool["generation_requests"] = [x1, x2]
+        svt = pool["generation_requests"][0]
+        hvt = copy.deepcopy(svt)
+        hvt["candidate_id"] = svt["candidate_id"] + "_HVT"
+        hvt["generator_contract"]["implementation_request"]["vt_classes"] = ["HVT"]
+        pool["generation_requests"] = [svt, hvt]
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             request = _request(root)
@@ -353,13 +367,13 @@ class ResidualResearchContextTests(unittest.TestCase):
             rows = context["candidate_pool"]["proposals"]
             self.assertEqual(2, len({row["proposal_key"] for row in rows}))
             self.assertEqual(
-                [["X1"], ["X2"]],
-                sorted(row["implementation_request"]["drive_strengths"] for row in rows),
+                [["HVT"], ["SVT"]],
+                sorted(row["implementation_request"]["vt_classes"] for row in rows),
             )
             self.assertTrue(all(row["target_library_profile"] for row in rows))
 
             duplicate = copy.deepcopy(pool)
-            duplicate["generation_requests"] = [x1, copy.deepcopy(x1)]
+            duplicate["generation_requests"] = [svt, copy.deepcopy(svt)]
             duplicate["generation_requests"][1]["candidate_id"] += "_DUPLICATE_NAME_ONLY"
             request["candidate_pool"] = _write_json(root, "candidate-pool.json", duplicate)
             with self.assertRaisesRegex(ValueError, "duplicate deterministic proposal identity"):
@@ -434,7 +448,10 @@ class ResidualResearchContextTests(unittest.TestCase):
         def program_for(keys):
             rows = [
                 {"lens": "reconvergent-cut",
-                 "transformation": {"proposal_key": key, "variant": index},
+                 "transformation": {"proposal_key": key, "variant": index,
+                                    "required_delay_ns": 0.04,
+                                    "target_endpoints": ["top/reg/D"],
+                                    "intervention": "new-function"},
                  "rationale": "select one immutable production candidate"}
                 for index, key in enumerate(keys)
             ]
@@ -470,7 +487,10 @@ class ResidualResearchContextTests(unittest.TestCase):
         proposal["candidate_program"]["source"] = (
             "def propose_candidates(residual, budget):\n"
             "    return [{\"lens\": \"reconvergent-cut\",\n"
-            "             \"transformation\": {\"proposal_key\": \"%s\"},\n"
+            "             \"transformation\": {\"proposal_key\": \"%s\",\n"
+            "                                    \"required_delay_ns\": 0.04,\n"
+            "                                    \"target_endpoints\": [\"top/reg/D\"],\n"
+            "                                    \"intervention\": \"new-function\"},\n"
             "             \"rationale\": \"select source-bound Boolean function\"}]\n"
             % proposal_key
         )
@@ -569,6 +589,20 @@ class ResidualResearchContextTests(unittest.TestCase):
             context = load_residual_research_context(_request(root), evidence_root=root)
         result = validate_residual_research_proposal(_proposal(context), context)
         self.assertRegex(result["candidate_program"]["sha256"], r"^[0-9a-f]{64}$")
+
+    def test_candidate_program_cannot_silently_default_a_missing_feedback_field(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            context = load_residual_research_context(_request(root), evidence_root=root)
+        result = validate_residual_research_proposal(_proposal(context), context)
+        proposal = _proposal(context)
+        proposal["candidate_program"]["source"] = (
+            "def propose_candidates(residual, budget):\n"
+            "    value = residual['commercial_frontier_response'].get('misspelled', 0)\n"
+            "    return []\n"
+        )
+        with self.assertRaisesRegex(ValueError, "file, process or dynamic-code"):
+            validate_residual_research_proposal(proposal, context)
         replayed = _proposal(context)
         replayed["candidate_program"] = result["candidate_program"]
         self.assertEqual(
