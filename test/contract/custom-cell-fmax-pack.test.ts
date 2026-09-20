@@ -48,7 +48,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.2.6');
+  assert.equal(graph.version, '5.2.7');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -100,6 +100,8 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   assert.ok(chain(['pnr-foundry', 'read-pnr-foundry', 'pnr-generated', 'read-pnr-generated', 'verify',
     'read-verify', 'compare', 'read-compare', 'final-judge']));
   assert.ok(edge('final-judge', 'next-research', 'FAIL'));
+  assert.ok(edge('final-judge', 'next-research', 'PASS'),
+    'a successful final judge must reach the goal-met chooser instead of falling through as goal-not-met');
   assert.ok(edge('next-research', 'evaluation-baseline', undefined, true));
   assert.equal(node.get('next-research')?.parameters.converge?.generationLimit, 8,
     'the graph generation bound stays aligned with bind-inputs cumulative-capacity readiness');

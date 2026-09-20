@@ -1,14 +1,14 @@
-# Custom Cell Fmax DTCO V5.2.6 Reader unit smoke
+# Custom Cell Fmax DTCO V5.2.7 final-judge goal routing smoke
 
 ## Site
 
-Publication-only local Site. No model or commercial Campaign Job was launched by this Run. Trial.19 supplies the retained real-Site Reader refusal: cell_demand_coverage_pct was emitted in count while its declared semantic unit is percent.
+Publication-only local Site. No model or commercial Campaign Job was launched by this Run. Trial.20 supplies retained real-Site evidence: 9.73% matched Fmax improvement, all four final-judge rules PASS, and an erroneous ended-goal-not-met status caused by the missing PASS edge.
 
 ## Run
 
-run: run-2653ba76-ab5a-4d8e-b130-91114e41db35
+run: run-03f6294a-eac7-44e6-9354-ca5b1a7ac3cd
 
-The Harness loaded custom-cell-fmax-dtco@5.2.6, prepared its immutable graph and bound the release to method digest cc454ca01bd425c01e0719051a16cf5be924fbc1ef15be1d5225ede7b806d308.
+The Harness loaded custom-cell-fmax-dtco@5.2.7, prepared its immutable graph and bound the release to method digest 57bba1e2fc9192c28bbfb5ce91299d6ab1cbc6eda0ea3216b9247e5b2355a9d8.
 
 ## Ending
 
@@ -18,7 +18,7 @@ The publication smoke ended before node work. It proves installation, ownership,
 
 ## Generations
 
-No research generation or matched P&R was claimed. Domain tests prove the Reader emits cell_demand_coverage_pct in percent, preserves accepted/rejected calibration evidence and keeps the calibration recovery graph loadable through the existing Harness architecture.
+No research generation or matched P&R was claimed. Domain and contract tests prove final-judge PASS routes to the existing next-research chooser, whose PASS/PASS clause records goalMet true; the FAIL edge continues to another research generation.
 
 ## Code
 
@@ -30,4 +30,4 @@ none
 
 ## Disagreements
 
-Trial.19 remains immutable on 5.2.5. Pack 5.2.6 has not yet exercised the Reader correction or rejected-calibration recovery route on the real Site; trial.20 owns that validation and the continued 5% Fmax Campaign goal.
+Trial.20 remains immutable on 5.2.6. Pack 5.2.7 has not yet exercised the corrected terminal route on the real Site; trial.21 owns that validation while the 9.73% matched business result remains preserved evidence, not a rewritten Run status.
