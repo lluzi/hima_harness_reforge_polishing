@@ -30,7 +30,19 @@ values:
       stay unknown."
   cell_demand_count:
     unit: count
-    description: Cell Demands whose Mock Liberty calibration confirms at least one drive in the D1/D2/D4/D6/D8 family meets the demand.
+    description: Total Cell Demands independently reread from the Mock Liberty calibration report.
+  cell_demand_met_count:
+    unit: count
+    description: Cell Demands met by at least one D1/D2/D4/D6/D8 drive variant.
+  cell_demand_unmet_count:
+    unit: count
+    description: Cell Demands not met by any D1/D2/D4/D6/D8 drive variant and returned to Research.
+  cell_demand_coverage_pct:
+    unit: percent
+    description: Percentage of Cell Demands met by at least one calibrated drive variant.
+  mock_liberty_calibration_accepted:
+    unit: count
+    description: One only when every Cell Demand is met; zero keeps the complete rejection evidence and routes to another Research generation.
   lc_accepted:
     unit: count
     description: "lc accepted: independently read evidence; missing facts stay unknown."

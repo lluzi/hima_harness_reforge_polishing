@@ -38,8 +38,10 @@ def test_every_emitted_value_kind_is_declared_in_semantics():
 def test_characterize_reader_manifest_declares_every_value_it_emits():
     manifest = (PACK_ROOT / "readers/read-characterize.yml").read_text()
     emitted = set(re.findall(r"(?m)^  - ([a-z_][a-z0-9_]*)$", manifest))
-    assert {"predicted_cell_count", "cell_demand_count"} <= emitted, (
-        "read-characterize.yml must declare both values emitted by the characterize branch"
+    assert {"predicted_cell_count", "cell_demand_count", "cell_demand_met_count",
+            "cell_demand_unmet_count", "cell_demand_coverage_pct",
+            "mock_liberty_calibration_accepted"} <= emitted, (
+        "read-characterize.yml must declare every value emitted by the characterize branch"
     )
 
 

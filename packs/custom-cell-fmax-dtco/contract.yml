@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.2.4"
+version: "5.2.5"
 title: V5 Active Frontier custom Cell Fmax reference Campaign
 status: released
 minimumHarnessVersion: 0.1.0
@@ -138,7 +138,8 @@ outputs:
     path: flow/records/characterize.json
     reader: read-characterize
     description: "Topology-anchored Mock Liberty characterization of the layout-admitted
-      D1/D2/D4/D6/D8 subset, including foundry CDL/Liberty anchors and Demand meet/miss evidence."
+      D1/D2/D4/D6/D8 subset, including foundry CDL/Liberty anchors and Demand meet/miss evidence.
+      A complete rejection is read and judged so the Campaign returns to Research instead of crashing."
   - name: record_compile
     path: flow/records/compile.json
     reader: read-compile

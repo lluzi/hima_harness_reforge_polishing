@@ -11,3 +11,7 @@ reportKind: custom-cell-fmax-stage/1
 emits:
   - predicted_cell_count
   - cell_demand_count
+  - cell_demand_met_count
+  - cell_demand_unmet_count
+  - cell_demand_coverage_pct
+  - mock_liberty_calibration_accepted

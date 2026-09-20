@@ -1,0 +1,11 @@
+id: mock-liberty-calibration-accepted
+version: "1"
+title: Every Cell Demand is met by at least one calibrated drive variant
+requires:
+  - type: mock_liberty_calibration_accepted
+subject:
+  type: mock_liberty_calibration_accepted
+predicate:
+  op: eq
+  threshold: 1
+  unit: count

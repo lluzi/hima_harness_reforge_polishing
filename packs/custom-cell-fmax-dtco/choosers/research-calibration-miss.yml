@@ -1,0 +1,17 @@
+# A rejected Mock Liberty gate is evidence, not a tool crash. This chooser carries the
+# independently reread coverage into the decision and advances the existing research revision.
+id: research-calibration-miss
+version: "1"
+title: Revise the research strategy after concrete Cell Demand misses
+parameter:
+  name: revisionStep
+  unit: count
+reads:
+  coverage:
+    type: cell_demand_coverage_pct
+    unit: percent
+decide:
+  - when:
+      constraint: FAIL
+    next:
+      algorithmRevision: revisionStep

@@ -48,7 +48,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.2.4');
+  assert.equal(graph.version, '5.2.5');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -85,7 +85,11 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
     'free-factor incompleteness remains evidence but cannot suppress the creative Workshop');
 
   assert.ok(chain(['merge', 'read-merge', 'generate', 'read-generate', 'layout', 'read-layout',
-    'characterize', 'read-characterize', 'design-mapping-timing-evaluation',
+    'characterize', 'read-characterize', 'calibration-gate']));
+  assert.ok(edge('calibration-gate', 'design-mapping-timing-evaluation', 'PASS'));
+  assert.ok(edge('calibration-gate', 'calibration-research', 'FAIL'));
+  assert.ok(edge('calibration-research', 'evaluation-baseline', undefined, true));
+  assert.ok(chain(['design-mapping-timing-evaluation',
     'read-design-mapping-timing-evaluation', 'portfolio-gate']));
   assert.ok(edge('portfolio-gate', 'freeze-cumulative-library', 'PASS'));
   assert.ok(edge('portfolio-gate', 'next-research', 'FAIL'));
@@ -102,7 +106,10 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
 
   assert.deepEqual(graph.nodes.flatMap((item) => item.kind === 'act' && item.parameters.workshop !== undefined
     ? [item.parameters.workshop] : []), ['research-candidates']);
-  assert.deepEqual(graph.nodes.filter((item) => item.kind === 'explore').map((item) => item.id), ['next-research']);
+  assert.deepEqual(graph.nodes.filter((item) => item.kind === 'explore').map((item) => item.id),
+    ['calibration-research', 'next-research']);
+  assert.deepEqual(node.get('calibration-gate')?.parameters.rules,
+    ['mock-liberty-calibration-accepted', 'cell-demand-feedback-available']);
   assert.deepEqual(node.get('portfolio-gate')?.parameters.rules,
     ['proxy-metric-vector-complete', 'proxy-pairwise-relation-valid', 'portfolio-frontier-member',
       'e0-library-validation-candidate']);
@@ -152,6 +159,21 @@ test('the portable Pack has no AES, process-node, or customer-flow binding and d
   });
   assert.deepEqual((choose(pressure, { ...chooserInput, observation: observation(-0.05),
     constraint: verdict('FAIL', 'reg2reg-pressure-at-least-100ps') }) as any).chosen.strategy.periodNs, 0.45);
+  const calibration = resolveChooser(loaded, 'research-calibration-miss', 'the reading').chooser;
+  const calibrationDecision = choose(calibration, {
+    bound: { revisionStep: 1 }, knobs: loaded.contract.strategy,
+    strategy: { periodNs: 0.5, floorplanUtilization: 0.25, algorithmRevision: 0 },
+    observation: { id: 'calibration-observation', values: [
+      { type: 'cell_demand_coverage_pct', unit: 'percent', value: 80 },
+    ] } as any,
+    constraint: verdict('FAIL', 'mock-liberty-calibration-accepted'),
+    goal: verdict('PASS', 'cell-demand-feedback-available'),
+  });
+  assert.deepEqual(calibrationDecision, {
+    ok: true,
+    chosen: { strategy: { periodNs: 0.5, floorplanUtilization: 0.25, algorithmRevision: 1 } },
+    rationale: { coverage: 80, revisionStep: 1 },
+  }, 'a complete calibration miss becomes a recorded next-generation research decision');
   assert.deepEqual(loaded.contract.workshops.map((workshop) => workshop.id), ['research-candidates'],
     'one cross-route AI research moment replaces six narrow selector moments');
   const workshop = loaded.contract.workshops[0]!;

@@ -1,0 +1,11 @@
+id: cell-demand-feedback-available
+version: "1"
+title: Calibration retained at least one concrete Cell Demand result for Research
+requires:
+  - type: cell_demand_count
+subject:
+  type: cell_demand_count
+predicate:
+  op: gte
+  threshold: 1
+  unit: count

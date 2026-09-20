@@ -2153,9 +2153,11 @@ def stage_characterize(ctx):
         raise ToolFailure("learned-model Liberty does not exactly cover the generated Cell set")
     ctx.add_artifact(out, "generated_liberty", "learned-model-prediction")
     calibration = read_json(calibration_report)
+    demands = calibration.get("cell_demands") if isinstance(calibration, dict) else None
     if (calibration.get("schema") != "hima.mock-liberty-calibration/1"
-            or calibration.get("status") != "accepted"):
-        raise ToolFailure("Mock Liberty calibration gate did not accept every Cell Demand")
+            or calibration.get("status") not in {"accepted", "rejected"}
+            or not isinstance(demands, dict) or not demands):
+        raise ToolFailure("Mock Liberty calibration emitted no complete, routable Cell Demand report")
     ctx.add_artifact(calibration_report, "mock_liberty_calibration",
                      "topology-anchored-mock-evidence")
     ctx.add_artifact(prediction_manifest, "prediction_executions", "nested-tool-evidence")
@@ -2172,10 +2174,15 @@ def stage_characterize(ctx):
             raise ToolFailure("nested learned-model predictor failed")
         ctx.executions.append(entry)
         ctx.add_artifact(prediction, "prediction:" + str(row.get("cell")), "learned-model-prediction")
+    met_demand_count = sum(row.get("met_by_any_drive") is True for row in demands.values())
     ctx.facts.update({"predicted_cell_count": len(predicted_names), "characterization_type": "learned-model-prediction",
                       "measured_characterization": False,
                       "mock_liberty_calibration_status": calibration["status"],
-                      "cell_demand_count": len(calibration["cell_demands"]),
+                      "mock_liberty_calibration_accepted": int(calibration["status"] == "accepted"),
+                      "cell_demand_count": len(demands),
+                      "cell_demand_met_count": met_demand_count,
+                      "cell_demand_unmet_count": len(demands) - met_demand_count,
+                      "cell_demand_coverage_pct": 100.0 * met_demand_count / len(demands),
                       "drive_family": ["D1", "D2", "D4", "D6", "D8"]})
 
 

@@ -1111,21 +1111,39 @@ def values_for(record, workspace, stage):
         variants = calibration.get("drive_variants") if isinstance(calibration, dict) else None
         families = calibration.get("electrical_families") if isinstance(calibration, dict) else None
         demands = calibration.get("cell_demands") if isinstance(calibration, dict) else None
+        status = calibration.get("status") if isinstance(calibration, dict) else None
+        demand_rows = list(demands.values()) if isinstance(demands, dict) else []
+        met_count = sum(row.get("met_by_any_drive") is True for row in demand_rows
+                        if isinstance(row, dict))
+        expected_status = "accepted" if demand_rows and met_count == len(demand_rows) else "rejected"
         if (calibration.get("schema") != "hima.mock-liberty-calibration/1"
-                or calibration.get("status") != "accepted"
+                or status not in {"accepted", "rejected"} or status != expected_status
                 or not isinstance(variants, list)
                 or {row.get("cell") for row in variants if isinstance(row, dict)} != actual
                 or not isinstance(families, list) or not families
                 or any(not isinstance(row, dict)
                        or row.get("drives") != ["D1", "D2", "D4", "D6", "D8"]
                        for row in families)
-                or not isinstance(demands, dict) or not demands
-                or any(row.get("met_by_any_drive") is not True for row in demands.values())
-                or record.get("facts", {}).get("mock_liberty_calibration_status") != "accepted"
-                or record.get("facts", {}).get("cell_demand_count") != len(demands)):
+                or not demand_rows or any(not isinstance(row, dict)
+                    or not isinstance(row.get("physical_cells"), list)
+                    or not row.get("physical_cells")
+                    or row.get("met_by_any_drive")
+                    is not any(cell.get("meets") is True for cell in row.get("physical_cells", [])
+                               if isinstance(cell, dict)) for row in demand_rows)
+                or record.get("facts", {}).get("mock_liberty_calibration_status") != status
+                or record.get("facts", {}).get("mock_liberty_calibration_accepted") != int(status == "accepted")
+                or record.get("facts", {}).get("cell_demand_count") != len(demand_rows)
+                or record.get("facts", {}).get("cell_demand_met_count") != met_count
+                or record.get("facts", {}).get("cell_demand_unmet_count") != len(demand_rows) - met_count
+                or record.get("facts", {}).get("cell_demand_coverage_pct")
+                != 100.0 * met_count / len(demand_rows)):
             raise ValueError("Mock Liberty calibration or Cell Demand gate is not reproducible")
         values.append(number("predicted_cell_count", len(actual)))
-        values.append(number("cell_demand_count", len(demands)))
+        values.append(number("cell_demand_count", len(demand_rows)))
+        values.append(number("cell_demand_met_count", met_count))
+        values.append(number("cell_demand_unmet_count", len(demand_rows) - met_count))
+        values.append(number("cell_demand_coverage_pct", 100.0 * met_count / len(demand_rows)))
+        values.append(number("mock_liberty_calibration_accepted", int(status == "accepted")))
     elif stage == "compile":
         log = logs(record, workspace, "lc_log").read_text(errors="replace")
         db = one(record, workspace, "generated_db")

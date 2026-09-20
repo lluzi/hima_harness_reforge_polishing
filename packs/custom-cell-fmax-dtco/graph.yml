@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.2.4"
+version: "5.2.5"
 entry: bind-inputs
 nodes:
   - id: bind-inputs
@@ -132,6 +132,18 @@ nodes:
     kind: act
     parameters:
       observes: record_characterize
+  - id: calibration-gate
+    kind: judge
+    parameters:
+      rules:
+        - mock-liberty-calibration-accepted
+        - cell-demand-feedback-available
+  - id: calibration-research
+    kind: explore
+    parameters:
+      chooser: research-calibration-miss
+      bind:
+        revisionStep: 1
   - id: design-mapping-timing-evaluation
     kind: act
     parameters:
@@ -353,7 +365,16 @@ edges:
   - from: characterize
     to: read-characterize
   - from: read-characterize
+    to: calibration-gate
+  - from: calibration-gate
     to: design-mapping-timing-evaluation
+    outcome: PASS
+  - from: calibration-gate
+    to: calibration-research
+    outcome: FAIL
+  - from: calibration-research
+    to: evaluation-baseline
+    revisit: true
   - from: design-mapping-timing-evaluation
     to: read-design-mapping-timing-evaluation
   - from: read-design-mapping-timing-evaluation
