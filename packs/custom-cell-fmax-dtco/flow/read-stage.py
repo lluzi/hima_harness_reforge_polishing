@@ -1554,13 +1554,18 @@ def read_residual_ai_research(report, out, document):
     for field in ("round_id", "context_sha256", "evidence", "next_residual_question", "budgets"):
         if document.get(field) != context.get(field):
             raise ValueError("residual AI research differs from verified context: " + field)
+    feedback = document["feedback_ab"]
+    if not isinstance(feedback, dict) or not isinstance(feedback.get("interpretation"), str):
+        raise ValueError("residual AI research feedback interpretation is absent")
     normalized = validate_residual_research_proposal({
         "research_lenses": document["research_lenses"],
         "candidate_program": document["candidate_program"],
+        "feedback_interpretation": feedback["interpretation"],
         "stop_reason": document["stop_reason"],
     }, context)
-    if any(normalized[key] != document[key] for key in normalized):
-        raise ValueError("residual AI research proposal is not canonical")
+    for key in ("research_lenses", "candidate_program", "stop_reason"):
+        if normalized[key] != document[key]:
+            raise ValueError("residual AI research proposal is not canonical")
     execution, proposals = document.get("candidate_execution"), document.get("candidate_proposals")
     if not isinstance(execution, dict) or not isinstance(proposals, list):
         raise ValueError("residual candidate execution/proposals are absent")
