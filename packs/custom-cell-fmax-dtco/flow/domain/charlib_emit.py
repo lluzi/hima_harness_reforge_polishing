@@ -78,6 +78,7 @@ import mock_char as MC    # noqa: E402  parse_netlist, for the ports the model p
 from cell_need_miner.liberty_timing import derive_timing_sense  # noqa: E402
 from mock_liberty_calibration import (  # noqa: E402
     build_reference_depth_anchors,
+    calibrated_max_capacitance,
     calibrate_prediction,
     demand_result,
     load_policy,
@@ -267,7 +268,8 @@ def main():
         sys.exit("could not lift pg_pin groups from the base cell")
     am = json.load(open(a.area_model))
     policy = load_policy(a.calibration_policy)
-    reference = build_reference_depth_anchors(a.foundry_cdl, a.base, policy)
+    reference = build_reference_depth_anchors(
+        a.foundry_cdl, a.base, policy, reference_drive_cell=_anchor)
     demand_document = json.load(open(a.cell_demands))
     if (demand_document.get("schema") != "hima.cell-demand-ledger/1"
             or not isinstance(demand_document.get("demands"), list)):
@@ -347,7 +349,7 @@ def main():
                 pin: statistics.fmean(values) for pin, values in caps.items()
             },
             "max_load_pf": {
-                pin: min(arc["index_2"][-1] for arc in rows) for pin, rows in outs.items()
+                pin: calibrated_max_capacitance(pred, rows) for pin, rows in outs.items()
             },
             "output_resistance_ns_per_pf": pred["mock_calibration"].get(
                 "output_resistance_ns_per_pf", {}),
@@ -431,7 +433,7 @@ def main():
             # across the library: the old constant licensed the small cells 3.4% past the last
             # column of their own table and capped the large ones at 56% of theirs. Where a pin's
             # arcs disagree, the SMALLEST top wins -- beyond it at least one arc is extrapolating.
-            max_cap = min(arc["index_2"][-1] for arc in oarcs)
+            max_cap = calibrated_max_capacitance(pred, oarcs)
             timings = ""
             for arc in oarcs:
                 t = arc.get("tables", {})

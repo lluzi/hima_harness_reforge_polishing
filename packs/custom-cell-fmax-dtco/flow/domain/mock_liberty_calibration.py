@@ -23,6 +23,7 @@ from drive_family import drive_scale
 DRIVE_SUFFIX = re.compile(r"^(?P<base>.+)_(?P<drive>D1|D2|D4|D6|D8)$")
 _VALUES = re.compile(r'\bvalues\s*\((.*?)\)\s*;', re.S)
 _NUMBER = re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?")
+_DRIVE_ORDER = ("D1", "D2", "D4", "D6", "D8")
 
 
 def load_policy(path):
@@ -123,11 +124,93 @@ def _cell_nominal_delay(liberty, cell, *, blocks=None, slew_ns=0.02, load_pf=0.0
     return statistics.median(positive) if positive else None
 
 
-def build_reference_depth_anchors(cdl_path, liberty_path, policy):
-    """Return median foundry delay by transistor-derived logic depth."""
+def _reference_drive_signature(cell):
+    """Infer the Site library's drive token from its declared D1 template Cell.
+
+    The suffix remains Site data: for ``ND2D1BWP40P140`` this returns the
+    marker ``D`` and suffix ``BWP40P140`` without carrying either name in the
+    Pack.  A Site whose naming convention cannot be inferred must fail closed
+    instead of silently mixing drive strengths into the D1 anchor.
+    """
+    match = re.fullmatch(
+        r"(?P<prefix>.*)(?P<marker>[A-Za-z_])1(?P<suffix>[A-Za-z_][A-Za-z0-9_$]*)",
+        cell,
+    )
+    if match is None:
+        raise ValueError(
+            "CCFMAX_POWER_TEMPLATE_BASE_CELL must identify an inferable D1 drive variant"
+        )
+    return match.group("marker"), match.group("suffix")
+
+
+def _drive_member(cell, signature):
+    marker, suffix = signature
+    match = re.fullmatch(
+        r"(?P<family>.+)%s(?P<drive>\d+(?:P\d+)?)%s"
+        % (re.escape(marker), re.escape(suffix)),
+        cell,
+    )
+    if match is None:
+        return None
+    value = float(match.group("drive").replace("P", "."))
+    label = "D%d" % int(value) if value.is_integer() else "D%s" % match.group("drive")
+    return match.group("family"), label
+
+
+def _groups(text, kind):
+    pattern = re.compile(r'\b%s\s*\(\s*"?([^"\s)]+)"?\s*\)\s*\{' % re.escape(kind))
+    for match in pattern.finditer(text):
+        depth = 1
+        for index in range(match.end(), len(text)):
+            if text[index] == "{":
+                depth += 1
+            elif text[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    yield match.group(1), text[match.start():index + 1]
+                    break
+
+
+def _input_count_and_max_capacitance(block):
+    inputs = 0
+    output_caps = []
+    for _pin, pin_block in _groups(block, "pin"):
+        direction = re.search(r'\bdirection\s*:\s*"?([A-Za-z]+)', pin_block)
+        if direction is None:
+            continue
+        if direction.group(1) == "input":
+            inputs += 1
+        elif direction.group(1) == "output":
+            maximum = re.search(
+                r"\bmax_capacitance\s*:\s*([-+0-9.eE]+)", pin_block
+            )
+            if maximum is not None:
+                output_caps.append(float(maximum.group(1)))
+    return inputs, min(output_caps) if output_caps else None
+
+
+def build_reference_depth_anchors(
+        cdl_path, liberty_path, policy, *, reference_drive_cell):
+    """Return D1-only foundry anchors and empirical drive-family behaviour."""
     import features
     liberty = Path(liberty_path).read_text(errors="replace")
     blocks = _cell_blocks(liberty)
+    signature = _reference_drive_signature(reference_drive_cell)
+    members = {cell: _drive_member(cell, signature) for cell in blocks}
+    d1_cells = {cell for cell, member in members.items()
+                if member is not None and member[1] == "D1"}
+    if reference_drive_cell not in d1_cells:
+        raise ValueError("reference drive Cell is absent from the foundry Liberty")
+    delay_cache = {}
+
+    def reference_delay(cell):
+        if cell not in delay_cache:
+            delay_cache[cell] = _cell_nominal_delay(
+                liberty, cell, blocks=blocks,
+                slew_ns=policy["reference_slew_ns"],
+                load_pf=policy["reference_load_pf"])
+        return delay_cache[cell]
+
     samples = defaultdict(list)
     accepted = 0
     with tempfile.TemporaryDirectory(prefix="hima-cdl-anchor-") as folder:
@@ -135,10 +218,9 @@ def build_reference_depth_anchors(cdl_path, liberty_path, policy):
         for cell, text in features.split_deck(cdl_path):
             if accepted >= policy["max_reference_cells"]:
                 break
-            delay = _cell_nominal_delay(
-                liberty, cell, blocks=blocks,
-                slew_ns=policy["reference_slew_ns"],
-                load_pf=policy["reference_load_pf"])
+            if cell not in d1_cells:
+                continue
+            delay = reference_delay(cell)
             if delay is None:
                 continue
             cell_path.write_text(text)
@@ -156,11 +238,42 @@ def build_reference_depth_anchors(cdl_path, liberty_path, policy):
     anchors = {depth: statistics.median(values) for depth, values in samples.items()
                if len(values) >= minimum}
     if not anchors:
-        raise ValueError("foundry CDL/Liberty produced no sufficiently populated depth anchor")
+        raise ValueError("foundry D1 CDL/Liberty produced no sufficiently populated depth anchor")
+
+    family_delays = defaultdict(dict)
+    d1_max_caps = defaultdict(list)
+    for cell, member in members.items():
+        if member is None:
+            continue
+        family, drive = member
+        delay = reference_delay(cell)
+        if delay is not None:
+            family_delays[family][drive] = delay
+        if drive == "D1":
+            input_count, maximum = _input_count_and_max_capacitance(blocks[cell])
+            if input_count > 0 and maximum is not None and maximum > 0:
+                d1_max_caps[input_count].append(maximum)
+    drive_delay_ratios = {"D1": 1.0}
+    drive_ratio_counts = {"D1": sum("D1" in rows for rows in family_delays.values())}
+    for drive in _DRIVE_ORDER[1:]:
+        ratios = [rows[drive] / rows["D1"] for rows in family_delays.values()
+                  if "D1" in rows and drive in rows]
+        if len(ratios) < minimum:
+            raise ValueError("foundry Liberty has too few %s/D1 drive-family anchors" % drive)
+        drive_delay_ratios[drive] = statistics.median(ratios)
+        drive_ratio_counts[drive] = len(ratios)
+    max_caps = {str(count): statistics.median(values)
+                for count, values in sorted(d1_max_caps.items()) if len(values) >= minimum}
+    if not max_caps:
+        raise ValueError("foundry D1 Liberty produced no max-capacitance anchors")
     return {
         "anchors_ns": dict(sorted(anchors.items())),
         "sample_counts": {depth: len(samples[depth]) for depth in sorted(samples)},
         "reference_cells": accepted,
+        "reference_drive_cell": reference_drive_cell,
+        "drive_delay_ratios": drive_delay_ratios,
+        "drive_ratio_counts": drive_ratio_counts,
+        "d1_max_capacitance_pf_by_input_count": max_caps,
         "reference_point": {"slew_ns": policy["reference_slew_ns"],
                             "load_pf": policy["reference_load_pf"]},
     }
@@ -265,19 +378,35 @@ def calibrate_prediction(prediction, spice_path, policy, reference, d1_cache):
                              "series_n": row["series_n"], "series_p": row["series_p"],
                              "applied": applied})
         pred["mock_calibration"] = {"drive": drive, "drive_scale": factor,
+                                    "reference_delay_ratio": 1.0,
                                     "arc_topology": arc_rows}
         d1_cache[base] = copy.deepcopy(pred)
     else:
         if base not in d1_cache:
             raise ValueError("drive family must be calibrated in D1-to-D8 order")
-        pred = copy.deepcopy(d1_cache[base])
+        source = d1_cache[base]
+        pred = copy.deepcopy(source)
         exponent = policy["drive_intrinsic_exponent"]
-        for arc in pred.get("arcs") or []:
+        try:
+            reference_ratio = float(reference["drive_delay_ratios"][drive])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("foundry reference has no empirical %s/D1 delay ratio" % drive) from exc
+        for arc_index, arc in enumerate(pred.get("arcs") or []):
+            source_arc = source["arcs"][arc_index]
             arc["index_2"] = [float(value) * factor for value in arc["index_2"]]
             for kind in ("cell_rise", "cell_fall", "rise_transition", "fall_transition"):
                 grid = (arc.get("tables") or {}).get(kind)
                 if grid:
-                    arc["tables"][kind] = _drive_grid(grid, factor, exponent)
+                    driven = _drive_grid(grid, factor, exponent)
+                    source_grid = source_arc["tables"][kind]
+                    source_reference = _grid_at(
+                        source_arc, source_grid,
+                        policy["reference_slew_ns"], policy["reference_load_pf"])
+                    observed = _grid_at(
+                        arc, driven,
+                        policy["reference_slew_ns"], policy["reference_load_pf"])
+                    arc["tables"][kind] = _scale_grid(
+                        driven, source_reference * reference_ratio / observed)
             for kind, grid in (arc.get("power_tables") or {}).items():
                 arc["power_tables"][kind] = _scale_grid(grid, factor)
             if "cap" in (arc.get("scalars") or {}):
@@ -290,10 +419,30 @@ def calibrate_prediction(prediction, spice_path, policy, reference, d1_cache):
             if isinstance(value, (int, float)) and not isinstance(value, bool):
                 leakage[key] = float(value) * factor
         pred["mock_calibration"] = {"drive": drive, "drive_scale": factor,
+                                    "reference_delay_ratio": reference_ratio,
                                     "derived_from": base + "_D1"}
+    input_count = len({arc.get("in_pin") for arc in pred.get("arcs") or []
+                       if isinstance(arc.get("in_pin"), str)})
+    cap_anchors = reference.get("d1_max_capacitance_pf_by_input_count") or {}
+    if not cap_anchors:
+        raise ValueError("foundry reference has no D1 max-capacitance anchors")
+    counts = [int(value) for value in cap_anchors]
+    selected_count = min(counts, key=lambda value: (abs(value - input_count), value))
+    pred["mock_calibration"]["max_capacitance_limit_pf"] = (
+        float(cap_anchors[str(selected_count)]) * factor
+    )
+    pred["mock_calibration"]["max_capacitance_anchor_input_count"] = selected_count
     pred["mock_calibration"]["output_resistance_ns_per_pf"] = _output_resistance(
         pred.get("arcs") or [])
     return pred, base, drive, factor
+
+
+def calibrated_max_capacitance(prediction, arcs):
+    predicted = min(float(arc["index_2"][-1]) for arc in arcs)
+    limit = (prediction.get("mock_calibration") or {}).get("max_capacitance_limit_pf")
+    if not isinstance(limit, (int, float)) or isinstance(limit, bool) or limit <= 0:
+        raise ValueError("calibrated prediction has no positive max-capacitance limit")
+    return min(predicted, float(limit))
 
 
 def demand_result(cell_name, pred, required_delay_ns, *, slew_ns=0.02, load_pf=0.003):

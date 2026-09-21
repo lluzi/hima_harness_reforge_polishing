@@ -5,7 +5,9 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -14,10 +16,58 @@ sys.path.insert(0, str(DOMAIN))
 
 from drive_family import scale_spice_drive, transistor_widths  # noqa: E402
 from mock_liberty_calibration import (  # noqa: E402
+    build_reference_depth_anchors, calibrated_max_capacitance,
     calibrate_prediction, demand_result, validate_electrical_families)
 
 
 class DriveFamilyAndMockLibertyTests(unittest.TestCase):
+    def test_policy_uses_the_reviewed_global_delay_scale(self):
+        policy = json.loads((DOMAIN / "mock_liberty_policy.json").read_text())
+        self.assertEqual(0.95, policy["global_delay_scale"])
+
+    def test_reference_anchor_excludes_other_drive_strengths(self):
+        fake_features = SimpleNamespace(
+            split_deck=lambda _path: [
+                ("ND2D1BWP40P140", "D1-a"),
+                ("AOI21D4BWP40P140", "D4-fast"),
+                ("AOI21D1BWP40P140", "D1-b"),
+            ],
+            MC=SimpleNamespace(parse_netlist=lambda path: (
+                Path(path).read_text(), ["A", "Y"], ["device"])),
+            cell_rows=lambda *_args: ([{"fanout_internal": 1}], None),
+        )
+        delays = {
+            "ND2D1BWP40P140": 0.020,
+            "ND2D2BWP40P140": 0.018,
+            "ND2D4BWP40P140": 0.014,
+            "ND2D6BWP40P140": 0.012,
+            "ND2D8BWP40P140": 0.011,
+            "AOI21D4BWP40P140": 0.004,
+            "AOI21D1BWP40P140": 0.024,
+        }
+        blocks = {
+            name: ('cell ("%s") { area : 1; pin ("A") { direction : input; } '
+                   'pin ("Y") { direction : output; max_capacitance : 0.1; } }') % name
+            for name in delays
+        }
+        policy = {
+            "max_reference_cells": 10, "min_anchor_cells": 1,
+            "reference_slew_ns": 0.02, "reference_load_pf": 0.003,
+        }
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.dict(sys.modules, {"features": fake_features}), \
+                patch("mock_liberty_calibration._cell_blocks", return_value=blocks), \
+                patch("mock_liberty_calibration._cell_nominal_delay",
+                      side_effect=lambda _lib, cell, **_kw: delays[cell]):
+            liberty = Path(folder) / "foundry.lib"
+            liberty.write_text("fixture")
+            result = build_reference_depth_anchors(
+                "foundry.spi", liberty, policy,
+                reference_drive_cell="ND2D1BWP40P140")
+        self.assertEqual(2, result["reference_cells"])
+        self.assertEqual(0.022, result["anchors_ns"][1])
+        self.assertEqual("ND2D1BWP40P140", result["reference_drive_cell"])
+
     def test_spice_drive_variants_have_distinct_physical_widths(self):
         source = (
             ".subckt CELL A Y vdd gnd\n"
@@ -52,7 +102,7 @@ class DriveFamilyAndMockLibertyTests(unittest.TestCase):
             "pins": {}, "leakage": {"leak_default": 0.01},
         }
         policy = {
-            "global_delay_scale": 0.85,
+            "global_delay_scale": 0.95,
             "p_series_penalty_per_extra": 0.08,
             "n_series_penalty_per_extra": 0.08,
             "drive_intrinsic_exponent": 0.15,
@@ -64,6 +114,11 @@ class DriveFamilyAndMockLibertyTests(unittest.TestCase):
             "fanout_internal": 2, "series_p": 3, "series_n": 2,
         }}
         cache = {}
+        reference = {
+            "anchors_ns": {2: 0.03},
+            "drive_delay_ratios": {"D1": 1.0, "D8": 0.55},
+            "d1_max_capacitance_pf_by_input_count": {"1": 0.05},
+        }
         with tempfile.TemporaryDirectory() as folder:
             d1 = Path(folder) / "XS_FUNC_Y_D1.sp"
             d8 = Path(folder) / "XS_FUNC_Y_D8.sp"
@@ -71,14 +126,26 @@ class DriveFamilyAndMockLibertyTests(unittest.TestCase):
             d8.write_text("fixture")
             with patch("mock_liberty_calibration.generated_arc_topology", return_value=topology):
                 calibrated_d1, _base, _drive, _factor = calibrate_prediction(
-                    prediction, d1, policy, {"anchors_ns": {2: 0.03}}, cache)
+                    prediction, d1, policy, reference, cache)
                 calibrated_d8, _base, _drive, _factor = calibrate_prediction(
-                    prediction, d8, policy, {"anchors_ns": {2: 0.03}}, cache)
+                    prediction, d8, policy, reference, cache)
         rise_d1 = calibrated_d1["arcs"][0]["tables"]["cell_rise"]
         rise_d8 = calibrated_d8["arcs"][0]["tables"]["cell_rise"]
         self.assertLess(max(max(row) for row in rise_d8), max(max(row) for row in rise_d1))
         self.assertEqual(0.016, calibrated_d8["arcs"][0]["scalars"]["cap"])
         self.assertEqual(0.032, calibrated_d8["arcs"][0]["index_2"][-1])
+        self.assertAlmostEqual(
+            calibrated_d8["mock_calibration"]["reference_delay_ratio"], 0.55)
+        self.assertAlmostEqual(
+            calibrated_max_capacitance(calibrated_d1, calibrated_d1["arcs"]), 0.004)
+        self.assertAlmostEqual(
+            calibrated_max_capacitance(calibrated_d8, calibrated_d8["arcs"]), 0.032)
+        self.assertAlmostEqual(calibrated_max_capacitance(
+            {"mock_calibration": {"max_capacitance_limit_pf": 0.05}},
+            [{"index_2": [0.001, 0.1]}]), 0.05)
+        d1_reference = calibrated_d1["arcs"][0]["tables"]["cell_rise"][1][1]
+        d8_reference = calibrated_d8["arcs"][0]["tables"]["cell_rise"][1][0]
+        self.assertAlmostEqual(d8_reference / d1_reference, 0.55)
         self.assertLess(
             calibrated_d8["mock_calibration"]["output_resistance_ns_per_pf"]["Y"],
             calibrated_d1["mock_calibration"]["output_resistance_ns_per_pf"]["Y"],

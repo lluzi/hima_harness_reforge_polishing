@@ -1,6 +1,6 @@
 {
   "schema": "hima.mock-liberty-policy/1",
-  "global_delay_scale": 0.85,
+  "global_delay_scale": 0.95,
   "p_series_penalty_per_extra": 0.08,
   "n_series_penalty_per_extra": 0.08,
   "drive_intrinsic_exponent": 0.15,
