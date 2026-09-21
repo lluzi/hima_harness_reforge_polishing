@@ -1,14 +1,14 @@
-# Custom Cell Fmax DTCO V5.2.8 drive-expanded budget smoke
+# Custom Cell Fmax DTCO V5.2.9 foundry-referenced Mock Liberty smoke
 
 ## Site
 
-Publication-only local Site. No model or commercial Campaign Job was launched by this Run. Trial.21 supplies retained real-Site evidence: 50 accepted Cell Demand topologies expanded to 250 D1-D8 physical Cells, then mapping dead-ended because two downstream budgets remained in topology units.
+Publication-only local Site. No model or commercial Campaign Job was launched by this Run. Trial.22 remains the immutable commercial baseline that exposed the prior Mock Liberty optimism after its 8.67% model-conditioned result.
 
 ## Run
 
-run: run-870cda12-ecf2-4dcd-ba00-de046d83e4c7
+run: run-da818499-941b-4271-b203-b8b5445f23b0
 
-The Harness loaded custom-cell-fmax-dtco@5.2.8, prepared its immutable graph and bound the release to method digest 8a6d59c3c7b82daf7819a07ee6c2b7c8e311aa0415eecc3fad17d54941973fe2.
+The Harness loaded custom-cell-fmax-dtco@5.2.9, prepared its immutable graph and bound the release to method digest d7e7a90e39fbe137b9708d72f932c6b5152997204b9d69231b7bb22959a319f6.
 
 ## Ending
 
@@ -18,7 +18,7 @@ The publication smoke ended before node work. It proves installation, ownership,
 
 ## Generations
 
-No research generation or matched P&R was claimed. Domain and contract tests prove design-mapping candidate and cumulative-frontier budgets scale by the same five-drive family as their physical Cell counts, while Pack input preflight still enforces MAX_NEW_CELLS, MAX_CELLS and eight-generation topology capacity before Campaign work.
+No research generation or matched P&R is claimed. Low-cost tests prove the 0.95 global scale, D1-only foundry depth anchors, empirical foundry D2/D4/D6/D8 delay ratios and foundry-bounded max capacitance. A real TSMC28 calibration probe moved the previously over-optimistic 0005 family from 11.25/4.39/3.96 ps at D1/D2/D4 to 23.92/24.91/20.71 ps.
 
 ## Code
 
@@ -30,4 +30,4 @@ none
 
 ## Disagreements
 
-Trial.21 remains immutable on 5.2.7. Pack 5.2.8 has not yet exercised the corrected mapping budgets or terminal route on the real Site; trial.22 owns that validation while trial.20's 9.73% matched result remains preserved evidence.
+Trial.22 and Pack 5.2.8 remain immutable. Pack 5.2.9 has not yet produced a matched commercial result; the next human-like trial owns validation of both the calibrated model and HimaHarness 0.3.0-trial.15 notification coalescing.
