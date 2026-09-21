@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.2.9"
+version: "5.2.10"
 entry: bind-inputs
 nodes:
   - id: bind-inputs

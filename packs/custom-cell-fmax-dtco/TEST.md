@@ -1,14 +1,14 @@
-# Custom Cell Fmax DTCO V5.2.9 foundry-referenced Mock Liberty smoke
+# Custom Cell Fmax DTCO V5.2.10 bounded evaluation compaction smoke
 
 ## Site
 
-Publication-only local Site. No model or commercial Campaign Job was launched by this Run. Trial.22 remains the immutable commercial baseline that exposed the prior Mock Liberty optimism after its 8.67% model-conditioned result.
+Publication-only local Site. No model or commercial Campaign Job was launched by this Run. Trial.23 retains the real generation-2 blocker: a valid 586,571-byte round evaluation could not enter the residual Research loader's 512 KiB pre-compaction gate.
 
 ## Run
 
-run: run-da818499-941b-4271-b203-b8b5445f23b0
+run: run-3d8b80f7-a242-4c46-aa9d-9624a597e3fb
 
-The Harness loaded custom-cell-fmax-dtco@5.2.9, prepared its immutable graph and bound the release to method digest d7e7a90e39fbe137b9708d72f932c6b5152997204b9d69231b7bb22959a319f6.
+The Harness loaded custom-cell-fmax-dtco@5.2.10, prepared its immutable graph and bound the release to method digest e60bbfb6e3466872ff24e590adb31aab62f4232b5eb9c9db71db9c75dddb629c.
 
 ## Ending
 
@@ -18,7 +18,7 @@ The publication smoke ended before node work. It proves installation, ownership,
 
 ## Generations
 
-No research generation or matched P&R is claimed. Low-cost tests prove the 0.95 global scale, D1-only foundry depth anchors, empirical foundry D2/D4/D6/D8 delay ratios and foundry-bounded max capacitance. A real TSMC28 calibration probe moved the previously over-optimistic 0005 family from 11.25/4.39/3.96 ps at D1/D2/D4 to 23.92/24.91/20.71 ps.
+No new research generation or matched P&R is claimed. The exact retained trial.23 evidence now loads successfully: the 586,571-byte full evaluation remains hash-bound while the projected Agent context is 153,428 bytes, below the unchanged 524,288-byte context limit. Documents above 8 MiB remain rejected before JSON parsing.
 
 ## Code
 
@@ -30,4 +30,4 @@ none
 
 ## Disagreements
 
-Trial.22 and Pack 5.2.8 remain immutable. Pack 5.2.9 has not yet produced a matched commercial result; the next human-like trial owns validation of both the calibrated model and HimaHarness 0.3.0-trial.15 notification coalescing.
+Trial.23 and Pack 5.2.9 remain immutable. Pack 5.2.10 fixes only the pre-compaction evidence bound; the next human-like trial owns proof that generation 2 can continue and respond to the prior commercial miss.
