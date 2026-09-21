@@ -1,0 +1,4 @@
+f0de22d9d8053ecd692b955adc7197407893a7e7af73952bcf8ca07b1b0d7304  HimaHarness-0.3.0-trial.16-computer-use-kit.zip
+18d7c2c9431b1c1a1e405c0f3db1d5bc03d6c5c4f34a1331c6a6ec2c36835302  ui-trial-0.3.0-trial.16/BUILD-RECEIPT.md
+dd9f8131cd2846f82be02998c26bc15c781d6fa54ff467642c72f4965e751880  ui-trial-0.3.0-trial.16/COMPUTER-USE-START.md
+5e2a6fb2f371163fafaa3a848fe340cc36c1d51821e8cabd97f9220920d01d0a  ui-trial-0.3.0-trial.16/trial-manifest.json
