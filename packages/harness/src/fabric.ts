@@ -2401,6 +2401,33 @@ export async function recordExecutionResult(ctx: Driving, execution: NodeExecuti
   }
 }
 
+/**
+ * A materialized Workshop revision is an editable starting point, not evidence that a later
+ * generation authored its research program.  The exception is the generation in which a revision
+ * was explicitly approved: that revision is itself the current authoring decision and may run
+ * without making the owner write the same bytes a second time.
+ */
+function freshWorkshopEntry(deps: FabricDeps, run: RunRecord, execution: NodeExecution): { readonly ok: true } | { readonly ok: false; readonly reason: string } {
+  const workshop = execution.workshop;
+  if (workshop === undefined) return { ok: false, reason: 'read the Workshop contract and write its fresh entry before starting work' };
+  const records = deps.ledger.records({ runId: run.id });
+  const entry = records.findLast((record) => record.type === 'code'
+    && record.generation === execution.generation && record.nodeId === execution.nodeId
+    && record.attempt === execution.attempt && record.branchId === execution.branchId
+    && record.workshop === workshop.id && record.path === workshop.entryPath);
+  if (entry?.type !== 'code') return { ok: false, reason: `write a fresh ${workshop.entry} for this generation before starting Workshop work` };
+  const authored = records.some((record) => record.type === 'research-write' && record.allowed
+    && record.generation === execution.generation && record.nodeId === execution.nodeId
+    && record.attempt === execution.attempt && record.branchId === execution.branchId
+    && record.scope === 'workshop' && record.workshop === workshop.id && record.path === workshop.entry);
+  if (authored) return { ok: true };
+  const approvedHere = records.some((record) => record.type === 'revision' && record.event === 'applied'
+    && record.generation === execution.generation && record.assets?.some((asset) => asset.scope === 'workshop'
+      && asset.nodeId === execution.nodeId && asset.logicalPath === workshop.entry && asset.afterSha256 === entry.sha256));
+  return approvedHere ? { ok: true }
+    : { ok: false, reason: `write a fresh ${workshop.entry} for this generation; a materialized earlier-generation revision is context, not current research authorship` };
+}
+
 async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionActionRequest, digest: string): Promise<ExecutionActionResult> {
   const no = (reason: string) => executionAnswer(deps, run.id, 'refused', { reason });
   const control = run.control!;
@@ -2427,6 +2454,10 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   if (req.action === 'read' || req.action === 'write' || req.action === 'knowledge' || req.action === 'recommend') return actInWorkshop(ctx, req, execution, digest);
   if (req.action === 'work') {
     if (execution.phase !== 'begun') return no('this execution is already working or has a result; no second Job was admitted');
+    if (node.kind === 'act' && node.parameters.workshop !== undefined) {
+      const entry = freshWorkshopEntry(deps, run, execution);
+      if (!entry.ok) return no(entry.reason);
+    }
     await recordExecutionAction(deps, run, req, digest, { executions: { ...control.executions, [execution.id]: { ...execution, phase: 'working' } } }, receipt, {}, 'admitted');
     try {
       let result: Step;

@@ -227,6 +227,66 @@ test('owner revision preserves finished Workshop bytes and seeds the affected re
   }
 });
 
+test('a prior-generation Workshop revision is context until the current generation authors its entry', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 }); assert.ok(home);
+  const packDir = path.join(home.h.home, 'hima/packs/authored-workshop'); await mkdir(packDir, { recursive: true });
+  for (const file of ['contract.yml', 'graph.yml', 'semantics.yml', 'readers', 'rules', 'tools', 'knowledge']) {
+    await cp(path.join(repoRoot, 'test/fixtures/pipeline/workshop', file), path.join(packDir, file), { recursive: true });
+  }
+  await writeFile(path.join(packDir, 'PACK.md'), '# Cross-generation Workshop fixture\n');
+  await writeFile(path.join(home.flow.root, 'numbers.txt'), '3\n7\n11\n');
+  const host = await bootInProcess(home.h); let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: 'authored-workshop', site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran'); if (started.kind !== 'ran') return; runId = started.run.id;
+    let request = 0;
+    const act = (action: ExecutionActionRequest['action'], fields: Partial<ExecutionActionRequest> = {}) => {
+      const control = host.ctx.hima.ledger.run(runId!)!.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), expectedEpoch: control.epoch,
+        expectedRevision: control.revision, requestId: `generation-entry-${++request}`, action, ...fields });
+    };
+    const entry = 'mkdir -p "$2/research/analysis"\nawk -v scale="$3" \'{sum+=$1} END {print sum*scale}\' "$2/flow/numbers.txt" > "$2/research/analysis/result.txt"\n';
+    const begun = await act('begin', { nodeId: 'analyze' }); const first = begun.receipt!.executionId!;
+    await act('recommend', { executionId: first });
+    await act('write', { executionId: first, path: 'entry.sh', content: entry });
+    await act('work', { executionId: first });
+    await waitUntil('first Workshop ready', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === first && execution.phase === 'ready'));
+    await act('complete', { executionId: first });
+    const read = await act('begin', { nodeId: 'read-analysis' }); const readId = read.receipt!.executionId!;
+    await act('work', { executionId: readId });
+    await waitUntil('first read ready', () => host.ctx.hima.executionContext(runId!).executions.some((execution) => execution.id === readId && execution.phase === 'ready'));
+    await act('complete', { executionId: readId });
+    const source = host.ctx.hima.ledger.records({ runId, type: 'code' }).findLast((record) => record.type === 'code')!;
+    const evidence = host.ctx.hima.ledger.records({ runId }).find((record) => record.type === 'workspace')!;
+    assert.equal(source.type, 'code'); assert.equal(evidence.type, 'workspace');
+    if (source.type !== 'code' || evidence.type !== 'workspace') return;
+    const context = host.ctx.hima.executionContext(runId);
+    const revisedEntry = `${entry}# approved same-generation revision\n`;
+    const proposal: RevisionProposal = { revisionId: 'generation-one-entry',
+      method: { id: context.method!.id, version: context.method!.version, digest: context.method!.digest },
+      inputThroughSeq: context.run.nextSeq - 1, inputs: [{ recordId: evidence.id, contentIdentity: identity(evidence) }],
+      reason: 'preserve an explicitly approved generation-one algorithm', changedNodes: ['analyze'], affectedNodes: ['analyze', 'read-analysis', 'judge'],
+      changes: [{ nodeId: 'analyze', scope: 'workshop', path: 'entry.sh', fromSha256: source.sha256, content: revisedEntry, sourceRecordId: source.id }] };
+    assert.equal((await act('revise', { revision: proposal })).kind, 'accepted');
+    await host.ctx.hima.ledger.advanceRun(runId, { generation: 2, currentNode: 'analyze' });
+    const next = await act('begin', { nodeId: 'analyze' }); const nextId = next.receipt!.executionId!;
+    assert.equal((await act('recommend', { executionId: nextId })).kind, 'accepted');
+    const seeded = host.ctx.hima.ledger.records({ runId, type: 'code' }).findLast((record) => record.type === 'code' && record.generation === 2)!;
+    assert.equal(seeded.type, 'code'); assert.equal(await readFile(seeded.path, 'utf8'), revisedEntry,
+      'the approved prior version remains visible as an editable starting point');
+    const launches = host.ctx.hima.ledger.records({ runId, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched').length;
+    const staleWork = await act('work', { executionId: nextId });
+    assert.equal(staleWork.kind, 'refused', 'a prior-generation revision is context, not fresh Workshop authorship');
+    assert.match(staleWork.reason ?? '', /fresh entry\.sh.*generation/i);
+    assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).filter((record) => record.type === 'job' && record.event === 'launched').length, launches,
+      'refusing stale seeded code launches no Job');
+  } finally {
+    if (runId) { killSessions(sessionsOf(host, runId)); await host.ctx.hima.cancelRun(runId); }
+    await host.dispose(); await home.h.dispose();
+  }
+});
+
 test('a completed real fork reopens only the revised branch and keeps sibling evidence current', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0 }); assert.ok(home);
   const packDir = path.join(home.h.home, 'hima/packs/revision-fork');
