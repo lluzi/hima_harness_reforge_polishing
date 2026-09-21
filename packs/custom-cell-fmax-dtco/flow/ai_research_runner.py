@@ -752,7 +752,8 @@ def load_residual_research_context(request, *, evidence_root):
     if not isinstance(history_refs, list) or len(history_refs) > 50:
         raise ValueError("history must be an array of at most 50 rounds")
     evaluation, evaluation_ref = _bound_json_reference(
-        evidence_root, request.get("evaluation"), "evaluation")
+        evidence_root, request.get("evaluation"), "evaluation",
+        RESIDUAL_DOCUMENT_BYTES)
     frontier, frontier_ref = _bound_json_reference(
         evidence_root, request.get("frontier"), "frontier")
     manifest, manifest_ref = _bound_json_reference(

@@ -20,7 +20,9 @@ sys.path.insert(0, str(FLOW))
 
 from ai_research_runner import (  # noqa: E402
     BUILDABLE_ROUTES,
+    RESIDUAL_CONTEXT_BYTES,
     RESIDUAL_CONTEXT_SCHEMA,
+    RESIDUAL_DOCUMENT_BYTES,
     RESIDUAL_OUTPUT_SCHEMA,
     build_residual_research_context,
     execute_candidate_program,
@@ -707,11 +709,35 @@ class ResidualResearchContextTests(unittest.TestCase):
         validated = validate_residual_research_proposal(proposal, context)
         self.assertRegex(validated["candidate_program"]["sha256"], r"^[0-9a-f]{64}$")
 
+    def test_large_round_evaluation_is_compacted_before_the_agent_context_bound(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request = _request(root)
+            prior_evaluation_sha = request["evaluation"]["sha256"]
+            evaluation = _evaluation()
+            evaluation["producer_diagnostics"] = {"payload": "x" * (600 * 1024)}
+            request["evaluation"] = _write_json(root, "large-evaluation.json", evaluation)
+            frontier = json.loads((root / request["frontier"]["path"]).read_text())
+            for member in frontier["members"]:
+                if member["evaluation_sha256"] == prior_evaluation_sha:
+                    member["evaluation_sha256"] = request["evaluation"]["sha256"]
+            request["frontier"] = _write_json(root, "large-frontier.json", frontier)
+
+            self.assertGreater(
+                (root / request["evaluation"]["path"]).stat().st_size,
+                RESIDUAL_CONTEXT_BYTES,
+            )
+            context = load_residual_research_context(request, evidence_root=root)
+
+        compact = (json.dumps(context, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        self.assertLessEqual(len(compact), RESIDUAL_CONTEXT_BYTES)
+        self.assertEqual("augmented-dominates", context["metric_vectors"]["aggregate_relation"])
+
     def test_oversized_hash_bound_evidence_fails_before_json_read(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             request = _request(root)
-            payload = b"{" + b" " * (600 * 1024) + b"}\n"
+            payload = b"{" + b" " * RESIDUAL_DOCUMENT_BYTES + b"}\n"
             path = root / "oversized-evaluation.json"
             path.write_bytes(payload)
             request["evaluation"] = {
