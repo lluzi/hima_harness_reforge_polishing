@@ -107,6 +107,13 @@ Never merge Claude's branch blindly.
    verify the asset digest. Never hand-edit a release seal.
 9. Update the tester manual and cycle state, then send the next exact identity
    to the same Claude session.
+10. **Close the relay.** When the user authorized continued fix-release-retest,
+    the integration turn is complete only after the next cycle has its manual,
+    worktree, state, heartbeat prompt, visible tester-skill handshake and direct
+    task envelope. Keep the current cycle actionable until all six exist. A
+    `COMPLETE` cycle whose note says `pending`, `next`, `awaiting release` or
+    equivalent is a coordination failure: the heartbeat treats it as an
+    immediate continuation handoff, not healthy idle state.
 
 Negative scientific results do not trigger a product fix. Fix infrastructure
 defects, false facts, broken contracts and unusable UX; let the Campaign's
@@ -114,7 +121,9 @@ methodology handle valid negative EDA outcomes.
 
 ## Close or escalate
 
-Close a cycle only from retained terminal evidence. Pause and ask the user only
+Close a cycle only from retained terminal evidence. For an authorized continuous
+test loop, close it together with the dispatched successor described above.
+Pause and ask the user only
 for a product-definition decision, an irreversible/destructive action, missing
 licensed external resources, or a contradiction that cannot be resolved from
 the declared authority.
