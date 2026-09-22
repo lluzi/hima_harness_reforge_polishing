@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -135,6 +136,98 @@ class ClosureContractTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             reader.read(self.workspace / "flow" / "output" / "best-database.json", "best")
 
+    def test_starrc_runs_with_its_library_path_set_inside_the_container(self):
+        # Trial 26: extract-baseline failed with exit 1 and
+        # "StarXtract: error while loading shared libraries: libtbb.so.12: cannot open shared
+        # object file". StarXtract is on PATH inside the container and libtbb.so.12 ships in the
+        # toolkit's own linux64_starrc/lib, but edarun-init.sh sets no StarRC library path and the
+        # Pack does not go through the Foundation Flow's scripts/run_starrc.sh, which exports one.
+        # The value must be set inside the container's shell -- the command edarun runs -- because
+        # a value set on the outer Python subprocess is stripped at the boundary.
+        toolkit = self.workspace / "starrc" / "X-2025.06-SP1"
+        (toolkit / "linux64_starrc" / "lib").mkdir(parents=True)
+        (toolkit / "linux64_starrc" / "lib" / "libtbb.so.12").write_text("")
+        (toolkit / "linux64_starrc" / "lib" / "shlib").mkdir()
+
+        captured = {}
+
+        def fake_run(argv, **kwargs):
+            captured["argv"] = argv
+            return type("Done", (), {"returncode": 0})()
+
+        original = closure.subprocess.run
+        closure.subprocess.run = fake_run
+        try:
+            closure.run_starrc(
+                {"edaShell": ["/usr/local/bin/edarun", "bash", "-lc"]},
+                ["StarXtract", "-clean", "cworst_T.cmd"],
+                self.workspace,
+                self.workspace / "cworst_T.log",
+                toolkit,
+            )
+        finally:
+            closure.subprocess.run = original
+
+        line = captured["argv"][-1]
+        # The assignment must precede the tool, inside the shell the wrapper runs.
+        self.assertIn("LD_LIBRARY_PATH=", line)
+        self.assertLess(line.index("LD_LIBRARY_PATH="), line.index("StarXtract"))
+        self.assertIn(str(toolkit / "linux64_starrc" / "lib"), line)
+        # The inherited path is appended rather than discarded, and the line is valid shell.
+        self.assertIn("${LD_LIBRARY_PATH:-}", line)
+        self.assertEqual(subprocess.run(["bash", "-n", "-c", line]).returncode, 0)
+
+    def test_starrc_library_paths_are_quoted_for_a_path_containing_spaces(self):
+        toolkit = self.workspace / "star rc" / "X-2025.06-SP1"
+        (toolkit / "linux64_starrc" / "lib").mkdir(parents=True)
+        shell_env = closure.starrc_shell_env(toolkit)
+        self.assertEqual(len(shell_env), 1)
+        name, quoted = shell_env[0]
+        self.assertEqual(name, "LD_LIBRARY_PATH")
+        self.assertIn(str(toolkit / "linux64_starrc" / "lib"), quoted)
+
+        # The quoted value is what the container's shell would evaluate, spaces and all.
+        value = subprocess.run(["bash", "-c", f"printf %s {quoted}"],
+                               capture_output=True, text=True).stdout
+        self.assertTrue(value.startswith(str(toolkit / "linux64_starrc" / "lib")))
+        self.assertTrue(value.endswith(":"))
+
+        line = closure.shell_line({"edaShell": ["/usr/local/bin/edarun", "bash", "-lc"]},
+                                  ["StarXtract", "-clean", "c.cmd"], shell_env)
+        self.assertEqual(subprocess.run(["bash", "-n", "-c", line]).returncode, 0)
+
+    def test_site_profile_may_declare_the_starrc_toolkit_but_need_not(self):
+        # The toolkit root is discovered inside the container when the profile is silent, so an
+        # already-deployed profile needs no edit; a declared one must still be usable.
+        base = {
+            "schema": closure.PROFILE_SCHEMA, "design": "d", "foundationRoot": "/f",
+            "physicalInputRoot": "/p", "inputSdc": "/s", "sourceManifestRoot": "/m",
+            "edaShell": ["/usr/local/bin/edarun", "bash", "-lc"], "originalDriverLibrary": "o",
+            "techLef": "/t", "cellLefGlob": "/c/*.lef",
+            "starrc": [{"name": "worst", "template": "/a"}, {"name": "best", "template": "/b"}],
+            "scenarios": self.scenarios,
+        }
+        path = self.workspace / "flow" / "profile.json"
+        path.write_text(json.dumps(base))
+        self.assertNotIn("starrcHome", closure.load_profile(path))
+
+        base["starrcHome"] = ""
+        path.write_text(json.dumps(base))
+        with self.assertRaises(closure.Rejected) as empty:
+            closure.load_profile(path)
+        self.assertIn("starrcHome", str(empty.exception))
+
+        base["starrcHome"] = "/data/eda/software/eda_tools/synopsys/starrc/X-2025.06-SP1"
+        path.write_text(json.dumps(base))
+        self.assertEqual(closure.load_profile(path)["starrcHome"], base["starrcHome"])
+
+        del base["starrcHome"]
+        base["unexpected"] = "x"
+        path.write_text(json.dumps(base))
+        with self.assertRaises(closure.Rejected) as inexact:
+            closure.load_profile(path)
+        self.assertIn("not exact", str(inexact.exception))
+
     def test_plan_contract_accepts_only_bounded_whitelisted_actions(self):
         plan = {
             "schema": closure.PLAN_SCHEMA,
@@ -209,6 +302,7 @@ class ClosureContractTest(unittest.TestCase):
             "sourceManifestRoot": str(source), "edaShell": ["true"], "originalDriverLibrary": "slow",
             "techLef": str(held), "cellLefGlob": str(source / "FF" / "*.txt"),
             "starrc": [{"name": "worst", "template": str(held)}, {"name": "best", "template": str(held)}],
+            "starrcHome": str(source / "starrc"),
             "scenarios": self.scenarios,
         }
         profile_path = self.workspace / "profile.json"
