@@ -263,12 +263,29 @@ def run_eda(profile, command, cwd: Path, log: Path, env=None):
     return log
 
 
-def copy_template(workspace: Path, name: str, target: Path):
+def tcl_quote(value) -> str:
+    text = str(value)
+    for char in ("\\", "\"", "[", "]", "$"):
+        text = text.replace(char, "\\" + char)
+    return text
+
+
+def copy_template(workspace: Path, name: str, target: Path, env: dict | None = None):
     source = paths(workspace)["templates"] / name
     if source.is_symlink() or not source.is_file():
         raise Rejected("Pack template is missing: " + name)
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
+    if env:
+        # The site's container wrapper (edarun) forwards only a fixed allowlist of
+        # environment variables into the podman container; a Pack-declared variable
+        # such as WORK_ROOT never reaches the commercial tool's process environment
+        # there. Bake the values into the script itself so `env(NAME)` resolves
+        # regardless of what the container transport forwards.
+        preamble = "".join(f'set env({key}) "{tcl_quote(value)}"\n' for key, value in env.items())
+        target.write_text(preamble + source.read_text())
+        shutil.copystat(source, target)
+    else:
+        shutil.copy2(source, target)
     return target
 
 
@@ -279,12 +296,13 @@ def export_current(workspace: Path):
     iteration = int(runtime["iteration"])
     root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}"
     export_root = root / "EXPORT"
-    tcl = copy_template(workspace, "export.tcl", root / "scripts" / "export.tcl")
-    log = root / "logs" / "innovus-export.log"
-    run_eda(profile, ["innovus", "-batch", "-files", str(tcl), "-log", str(log), "-overwrite", "-64", "-nowin"], paths(workspace)["site"], log, {
+    export_env = {
         "WORK_ROOT": paths(workspace)["site"], "CURRENT_DB": runtime["currentDatabase"],
         "DESIGN": profile["design"], "EXPORT_ROOT": export_root,
-    })
+    }
+    tcl = copy_template(workspace, "export.tcl", root / "scripts" / "export.tcl", env=export_env)
+    log = root / "logs" / "innovus-export.log"
+    run_eda(profile, ["innovus", "-batch", "-files", str(tcl), "-log", str(log), "-overwrite", "-64", "-nowin"], paths(workspace)["site"], log, export_env)
     def_path, netlist = export_root / "design.def", export_root / "design.v"
     refs = [file_ref(def_path, workspace, "routed-def"), file_ref(netlist, workspace, "routed-netlist")]
     runtime["currentExport"] = {"root": str(export_root), "def": str(def_path), "netlist": str(netlist)}
@@ -359,18 +377,19 @@ def timing_current(workspace: Path):
     iteration = int(runtime["iteration"])
     root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "PT"
     reports, sta_data, logs = root / "reports", root / "sta_data", []
-    tcl = copy_template(workspace, "pt-scenario.tcl", root / "scripts" / "pt-scenario.tcl")
     for row in profile["scenarios"]:
         name = row["name"]
         spef = analysis["spef"].get(row["spefCorner"])
         if spef is None:
             raise Rejected(f"scenario {name} references unknown SPEF corner")
-        log = root / "logs" / f"{name}.log"
-        run_eda(profile, ["pt_shell", "-f", str(tcl)], root, log, {
+        scenario_env = {
             "DESIGN": profile["design"], "NETLIST": export["netlist"], "INPUT_SDC": profile["inputSdc"],
             "SPEF": spef, "REPORT_ROOT": reports, "STA_DATA": sta_data, "LIB_GLOB": row["libGlob"],
             "DRIVER_LIBRARY": row["driverLibrary"], "ORIGINAL_DRIVER_LIBRARY": profile["originalDriverLibrary"], "SCENARIO": name,
-        })
+        }
+        tcl = copy_template(workspace, "pt-scenario.tcl", root / "scripts" / f"pt-scenario-{name}.tcl", env=scenario_env)
+        log = root / "logs" / f"{name}.log"
+        run_eda(profile, ["pt_shell", "-f", str(tcl)], root, log, scenario_env)
         required = [reports / name / part for part in ("global_timing.rpt", "setup.rpt", "hold.rpt", "check_timing.rpt")]
         for part in required:
             file_ref(part, workspace, f"pt-{name}-{part.stem}")
@@ -530,13 +549,14 @@ def xtop(workspace: Path):
     library_file = root / "libraries.tcl"
     actions_tcl(plan, action_file)
     generate_xtop_libraries(profile, library_file)
-    tcl = copy_template(workspace, "xtop.tcl", root / "xtop.tcl")
-    log = root / "xtop.log"
-    run_eda(profile, ["xtop", "-f", str(tcl), "-log_dir", str(root / "logs")], root, log, {
+    xtop_env = {
         "DESIGN": profile["design"], "TECH_LEF": profile["techLef"], "CELL_LEF_GLOB": profile["cellLefGlob"],
         "NETLIST": export["netlist"], "DEF": export["def"], "STA_DATA": analysis["staData"], "RUN_ROOT": root,
         "LIBRARY_TCL": library_file, "ACTIONS_TCL": action_file, "ECO_PREFIX": f"xtop_g{next_iteration:03d}_eco",
-    })
+    }
+    tcl = copy_template(workspace, "xtop.tcl", root / "xtop.tcl", env=xtop_env)
+    log = root / "xtop.log"
+    run_eda(profile, ["xtop", "-f", str(tcl), "-log_dir", str(root / "logs")], root, log, xtop_env)
     eco = root / "eco_output"
     netlist = list(eco.glob("xtop_opt_innovus_netlist_*.txt"))
     physical = list(eco.glob("xtop_opt_innovus_physical_*.txt"))
@@ -557,12 +577,13 @@ def apply_eco(workspace: Path):
     if not isinstance(iteration, int) or not isinstance(eco, dict):
         raise Rejected("there is no pending XTop ECO")
     root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "INNOVUS"
-    tcl = copy_template(workspace, "apply-eco.tcl", root / "apply-eco.tcl")
-    log = root / "innovus-eco.log"
-    run_eda(profile, ["innovus", "-batch", "-files", str(tcl), "-log", str(log), "-overwrite", "-64", "-nowin"], paths(workspace)["site"], log, {
+    apply_eco_env = {
         "WORK_ROOT": paths(workspace)["site"], "CURRENT_DB": runtime["currentDatabase"], "DESIGN": profile["design"],
         "ECO_DIR": eco["root"], "OUTPUT_ROOT": root,
-    })
+    }
+    tcl = copy_template(workspace, "apply-eco.tcl", root / "apply-eco.tcl", env=apply_eco_env)
+    log = root / "innovus-eco.log"
+    run_eda(profile, ["innovus", "-batch", "-files", str(tcl), "-log", str(log), "-overwrite", "-64", "-nowin"], paths(workspace)["site"], log, apply_eco_env)
     data = root / "DBS" / "closed.enc.dat"
     script = root / "DBS" / "closed.enc"
     export_root = root / "EXPORT"
