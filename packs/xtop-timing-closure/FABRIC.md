@@ -11,9 +11,27 @@ The Pack has low-cost parser, data-contract and graph validation. Trial 25 prove
 Site admission, source identity and one real Innovus launch, then exposed that `edarun` strips the
 Pack's custom environment values at the container boundary. Version 1.0.1 bakes only the validated
 Tcl parameters into each generated script and retains the outer environment for non-containerized
-use. The original Run was cancelled before any artifact and is immutable. A new Campaign must still
-prove database restore/export, the remaining commercial stages and the autonomous Workshop loop.
-The Pack remains development status and has no TEST.md or VERSION.yml release seal.
+use. That fix was confirmed in Trial 26: Innovus restored the checkpoint and exported a 148 MB DEF
+and an 18 MB netlist in 121 s of licence time, against Trial 25's 14.7 s guard failure with no
+artifacts.
+
+Trial 26 then reached StarRC and found a second, distinct boundary defect. `StarXtract` is on `PATH`
+inside the container and `libtbb.so.12` ships in the toolkit's own `linux64_starrc/lib`, but the
+container's EDA init sets no StarRC library path and the Pack does not go through the Foundation
+Flow's `scripts/run_starrc.sh`, which exports `LD_LIBRARY_PATH` before launching it. The extraction
+stage therefore failed at load with `libtbb.so.12: cannot open shared object file`. Version 1.0.2
+sets that path inside the container's own shell, as a prefix on the command `edarun` runs, because a
+value set on the outer Python subprocess never crosses the boundary. The toolkit root is discovered
+inside the container by walking up from the `StarXtract` binary `command -v` resolves; a Site profile
+may also declare it explicitly as `starrcHome`, but none of the retained profiles do so in this trial.
+The container's inherited `LD_LIBRARY_PATH` is appended rather than discarded.
+`pt_shell` and `xtop` need no equivalent: their Foundation Flow wrappers set no environment beyond
+what `edarun-init.sh` already provides.
+
+Database restore/export is now proven end to end on 1.0.1. StarRC, PrimeTime, XTop, the Innovus ECO
+and the autonomous Workshop loop remain unproven; the 1.0.2 Run that would exercise them had not
+started when this record was written. The Pack remains development status and has no TEST.md or
+VERSION.yml release seal.
 
 ## Reviews
 

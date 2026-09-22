@@ -122,10 +122,14 @@ def load_runtime(workspace: Path):
 def load_profile(path: Path):
     profile = read_json(path)
     required = {"schema", "design", "foundationRoot", "physicalInputRoot", "inputSdc", "sourceManifestRoot", "edaShell", "originalDriverLibrary", "techLef", "cellLefGlob", "starrc", "scenarios"}
-    if set(profile) != required or profile.get("schema") != PROFILE_SCHEMA:
+    # `starrcHome` is permitted but not required: when it is absent the StarRC toolkit root is
+    # discovered inside the container, so an already-deployed profile needs no edit.
+    if set(profile) - {"starrcHome"} != required or profile.get("schema") != PROFILE_SCHEMA:
         raise Rejected("Site profile fields or schema are not exact")
     if not isinstance(profile["edaShell"], list) or not profile["edaShell"] or not all(isinstance(x, str) and x for x in profile["edaShell"]):
         raise Rejected("edaShell must be a non-empty argv list")
+    if "starrcHome" in profile and (not isinstance(profile["starrcHome"], str) or not profile["starrcHome"]):
+        raise Rejected("starrcHome, when declared, must be the StarRC toolkit root holding linux64_starrc")
     scenarios = profile["scenarios"]
     if not isinstance(scenarios, list) or len(scenarios) < 2:
         raise Rejected("Site profile must declare at least two timing scenarios")
@@ -247,9 +251,29 @@ def prepare(workspace: Path, input_db: str, profile_path: str, source_manifest: 
     return {"inputDatabase": {"script": file_ref(staged_script, workspace, "input-db-script"), "tree": identity}, "sourceFilesChecked": len(checked)}
 
 
-def run_eda(profile, command, cwd: Path, log: Path, env=None):
+def shell_line(profile, command, shell_env=None):
+    """The single command the site's shell runs for one commercial tool invocation.
+
+    `shell_env` is not the same thing as a subprocess `env`. A value the tool itself needs in its
+    process environment must be set *inside* the container, by prefixing the command the wrapper
+    runs, because the wrapper forwards only its own allowlist across that boundary.
+    """
+    prefix = "".join(f"{name}={value} " for name, value in (shell_env or []))
+    return prefix + shlex.join([str(x) for x in command])
+
+
+def shell_env_value(value) -> str:
+    """One assignment's right-hand side, quoted so the container's shell evaluates it as written.
+
+    Double quotes preserve an inner `${...}` expansion, which is how an inherited value is kept;
+    a value with no expansion keeps its literal text either way.
+    """
+    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def run_eda(profile, command, cwd: Path, log: Path, env=None, shell_env=None):
     log.parent.mkdir(parents=True, exist_ok=True)
-    shell = profile["edaShell"] + [shlex.join([str(x) for x in command])]
+    shell = profile["edaShell"] + [shell_line(profile, command, shell_env)]
     merged = os.environ.copy()
     if env:
         merged.update({key: str(value) for key, value in env.items()})
@@ -261,6 +285,47 @@ def run_eda(profile, command, cwd: Path, log: Path, env=None):
     if re.search(r"(?m)^(?:\*\*)?(?:ERROR|Error|Fatal):", text):
         raise Rejected(f"commercial tool log reports an error; see {log}")
     return log
+
+
+def discover_starrc_toolkit(profile):
+    """The StarRC toolkit root, asked of the container that will run StarXtract.
+
+    Resolved by walking up from the binary to the directory that actually holds `linux64_starrc`,
+    rather than by counting levels: the toolkit root is the one a given install puts its platform
+    directory under, and a fixed count would silently pick the wrong directory when it differs.
+    Asked inside the container because that is where the tool resolves; a path computed on the host
+    says nothing about what the tool's own environment will look like.
+    """
+    probe = ('b=$(command -v StarXtract) || exit 1; d=$(dirname "$b"); '
+             'while [ "$d" != / ]; do [ -d "$d/linux64_starrc/lib" ] && { echo "$d"; exit 0; }; '
+             'd=$(dirname "$d"); done; exit 1')
+    try:
+        proc = subprocess.run(profile["edaShell"] + [probe], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = proc.stdout.decode("utf-8", "replace").strip().splitlines()
+    return Path(found[-1]) if proc.returncode == 0 and found else None
+
+
+def starrc_shell_env(toolkit: Path):
+    """The in-container environment StarXtract needs, as assignment pairs.
+
+    StarXtract resolves `libtbb.so.12` only when the toolkit's own library directories are on the
+    loader search path. The inherited value is appended in the same shell, preserving whatever the
+    container's own EDA init put there.
+    """
+    roots = [candidate for candidate in (toolkit / "linux64_starrc" / "lib",
+                                        toolkit / "linux64_starrc" / "lib" / "shlib")
+             if candidate.is_dir()]
+    if not roots:
+        return []
+    entries = ":".join(str(root) for root in roots) + ":${LD_LIBRARY_PATH:-}"
+    return [("LD_LIBRARY_PATH", shell_env_value(entries))]
+
+
+def run_starrc(profile, command, cwd: Path, log: Path, toolkit: Path):
+    return run_eda(profile, command, cwd, log, shell_env=starrc_shell_env(toolkit))
 
 
 def tcl_quote(value) -> str:
@@ -334,6 +399,14 @@ def extract_current(workspace: Path):
         raise Rejected("current Innovus export is absent")
     iteration = int(runtime["iteration"])
     root = paths(workspace)["flow"] / "iterations" / f"g{iteration:03d}" / "STARRC"
+    declared = profile.get("starrcHome")
+    starrc_toolkit = Path(declared) if declared else discover_starrc_toolkit(profile)
+    if not starrc_toolkit or not starrc_shell_env(starrc_toolkit):
+        # Failing here says which library directories were wanted; letting it through would run
+        # StarXtract again just to fail on the same shared library.
+        raise Rejected("StarRC toolkit root cannot be resolved: declare starrcHome in the Site "
+                       "profile, or have StarXtract on PATH under a toolkit holding "
+                       "linux64_starrc/lib")
     artifacts, logs = [], []
     for corner in profile["starrc"]:
         name = corner["name"]
@@ -341,7 +414,7 @@ def extract_current(workspace: Path):
         spef = root / f"{profile['design']}.{name}.spef"
         patch_starrc_template(Path(corner["template"]), cmd, Path(export["def"]), root / f"work_{name}", spef)
         log = root / f"{name}.log"
-        run_eda(profile, ["StarXtract", "-clean", str(cmd)], root, log)
+        run_starrc(profile, ["StarXtract", "-clean", str(cmd)], root, log, starrc_toolkit)
         text = log.read_text(errors="replace")
         if re.search(r"Errors:\s*[1-9]", text):
             raise Rejected(f"StarRC {name} reported extraction errors")
