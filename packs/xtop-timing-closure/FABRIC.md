@@ -28,10 +28,25 @@ The container's inherited `LD_LIBRARY_PATH` is appended rather than discarded.
 `pt_shell` and `xtop` need no equivalent: their Foundation Flow wrappers set no environment beyond
 what `edarun-init.sh` already provides.
 
-Database restore/export is now proven end to end on 1.0.1. StarRC, PrimeTime, XTop, the Innovus ECO
-and the autonomous Workshop loop remain unproven; the 1.0.2 Run that would exercise them had not
-started when this record was written. The Pack remains development status and has no TEST.md or
-VERSION.yml release seal.
+Database restore/export is now proven end to end on 1.0.1. Trial 27 ran the 1.0.2 fix in a real
+Campaign for the first time: `extract-baseline` (StarRC) finished with exit 0 on both declared
+corners (`cworst_T`, `cbest`), each a fully clean 83 MB SPEF with zero errors across every StarRC
+stage, confirming the `LD_LIBRARY_PATH` fix — Trial 26's `libtbb.so.12` failure did not recur. The
+Run then reached `analyze-baseline` (PrimeTime) for the first time in any Campaign — Trial 25 died at
+Innovus, Trial 26 at StarRC — and PrimeTime itself completed across all four declared scenarios. The
+next node, `summarize-baseline`, then exposed a third, distinct boundary defect: `parse_global`
+(`flow/closure.py`) only recognizes the dashed WNS/TNS/NUM table PrimeTime prints for a corner with
+violations; when a corner has zero setup (or zero hold) violations, PrimeTime instead prints a single
+line, `No setup violations found.` (three of this Run's four scenarios were setup-clean), and the
+parser raised `Rejected` on that line having no table to match. This is a pure-parse defect with no
+licence cost — the Pack's own fixture in `test_closure.py` had only ever exercised the
+has-violations shape, so nothing caught it before a real Campaign reached a genuinely clean corner.
+Version 1.0.3 makes `parse_global` recognize `No {mode} violations found.` and return an all-zero
+result for that mode, verified against a synthetic fixture and against all four real
+`global_timing.rpt` files this Run produced. XTop, the Innovus ECO and the autonomous Workshop loop
+remain unproven; the Trial 27 Run was cancelled at `summarize-baseline` as BLOCKED evidence rather
+than hot-patched, per the tester's isolation rule. The Pack remains development status and has no
+TEST.md or VERSION.yml release seal.
 
 ## Reviews
 
