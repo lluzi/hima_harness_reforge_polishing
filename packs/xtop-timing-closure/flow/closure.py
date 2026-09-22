@@ -479,6 +479,9 @@ def parse_global(path: Path):
     text = path.read_text(errors="replace")
     result = {}
     for mode in ("Setup", "Hold"):
+        if re.search(rf"(?m)^No {mode.lower()} violations found\.", text, re.I):
+            result[mode.lower()] = {"WNS": 0.0, "TNS": 0.0, "NUM": 0}
+            continue
         block = re.search(rf"{mode} violations\s*\n-+\n.*?\n-+\n(.*?)\n-+", text, re.S)
         if not block:
             raise Rejected(f"cannot parse {mode.lower()} global timing from {path}")

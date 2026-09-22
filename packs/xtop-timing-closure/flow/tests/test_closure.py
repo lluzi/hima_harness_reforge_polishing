@@ -315,5 +315,49 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(record["status"], "passed")
 
 
+    def test_parse_global_reads_a_clean_corner_that_prints_no_violations_found(self):
+        # Trial 27: PrimeTime prints "No setup violations found." instead of the
+        # dashed WNS/TNS/NUM table when a corner has zero setup violations (seen on
+        # the real func_ffg_cbest_m40 scenario). The old regex-only parser raised
+        # Rejected("cannot parse setup global timing...") on this, which is wrong:
+        # a clean corner is progress toward the Goal, not a parse failure.
+        report = self.workspace / "global_timing.rpt"
+        report.write_text(
+            "****************************************\n"
+            "Report : global_timing\n"
+            "Design : swerv_wrapper\n"
+            "****************************************\n\n"
+            "No setup violations found.\n\n"
+            "Hold violations\n"
+            "---------------------------------------------------------\n"
+            "         Total  reg->reg   in->reg  reg->out   in->out\n"
+            "---------------------------------------------------------\n"
+            "WNS      -0.07     -0.01     -0.07      0.00      0.00\n"
+            "TNS      -0.80     -0.08     -0.72      0.00      0.00\n"
+            "NUM         70        36        34         0         0\n"
+            "---------------------------------------------------------\n"
+        )
+        values = closure.parse_global(report)
+        self.assertEqual(values["setup"], {"WNS": 0.0, "TNS": 0.0, "NUM": 0})
+        self.assertEqual(values["hold"], {"WNS": -0.07, "TNS": -0.80, "NUM": 70})
+
+    def test_parse_global_reads_a_clean_corner_on_the_hold_side_too(self):
+        report = self.workspace / "global_timing.rpt"
+        report.write_text(
+            "Setup violations\n"
+            "---------------------------------------------------------\n"
+            "         Total  reg->reg   in->reg  reg->out   in->out\n"
+            "---------------------------------------------------------\n"
+            "WNS      -0.04     -0.00      0.00     -0.04      0.00\n"
+            "TNS      -0.12     -0.02      0.00     -0.10      0.00\n"
+            "NUM         12         7         0         5         0\n"
+            "---------------------------------------------------------\n\n"
+            "No hold violations found.\n"
+        )
+        values = closure.parse_global(report)
+        self.assertEqual(values["setup"], {"WNS": -0.04, "TNS": -0.12, "NUM": 12})
+        self.assertEqual(values["hold"], {"WNS": 0.0, "TNS": 0.0, "NUM": 0})
+
+
 if __name__ == "__main__":
     unittest.main()
