@@ -1,0 +1,16 @@
+id: xtop-next-iteration
+version: "1"
+title: Continue targeted closure until clean or the measured score stops moving
+parameter:
+  name: revisionStep
+  unit: count
+reads:
+  score: { type: xtop_closure_score, unit: score }
+  iteration: { type: xtop_endpoint_remaining_count, unit: count }
+decide:
+  - when: { constraint: PASS, goal: PASS }
+    goalMet: true
+  - when: { constraint: PASS, goal: FAIL }
+    next:
+      strategyRevision: revisionStep
+

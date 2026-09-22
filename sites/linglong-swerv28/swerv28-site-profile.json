@@ -1,0 +1,57 @@
+{
+  "schema": "xtop-timing-closure-site/1",
+  "design": "swerv_wrapper",
+  "foundationRoot": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation",
+  "physicalInputRoot": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input",
+  "inputSdc": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/EXPORT/swerv_wrapper.input.sdc",
+  "sourceManifestRoot": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation",
+  "edaShell": ["/usr/local/bin/edarun", "bash", "-lc"],
+  "originalDriverLibrary": "tcbn28hpcplusbwp35p140lvtssg0p81vm40c",
+  "techLef": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/tsmcn28_10lm5X2Y2ZUTRDL.tlef",
+  "cellLefGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lef/*.lef",
+  "starrc": [
+    {
+      "name": "cworst_T",
+      "template": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/STARRC/cworst_T.cmd"
+    },
+    {
+      "name": "cbest",
+      "template": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/STARRC/cbest.cmd"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "func_ssg_rcworst_m40",
+      "libGlob": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/PT/libdb/ssg_m40c/*.db",
+      "driverLibrary": "tcbn28hpcplusbwp35p140lvtssg0p81vm40c",
+      "spefCorner": "cworst_T",
+      "xtopCorner": "ssg_m40c",
+      "xtopLibertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ssg_m40c/*.lib"
+    },
+    {
+      "name": "func_ssg_rcworst_125",
+      "libGlob": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/PT/libdb/ssg_125c/*.db",
+      "driverLibrary": "tcbn28hpcplusbwp35p140lvtssg0p81v125c",
+      "spefCorner": "cworst_T",
+      "xtopCorner": "ssg_125c",
+      "xtopLibertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ssg_125c/*.lib"
+    },
+    {
+      "name": "func_ffg_cbest_m40",
+      "libGlob": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/PT/libdb/ffg_m40c/*.db",
+      "driverLibrary": "tcbn28hpcplusbwp35p140lvtffg0p99vm40c",
+      "spefCorner": "cbest",
+      "xtopCorner": "ffg_m40c",
+      "xtopLibertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ffg_m40c/*.lib"
+    },
+    {
+      "name": "func_ffg_cbest_125",
+      "libGlob": "/data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/SIGNOFF/PT/libdb/ffg_125c/*.db",
+      "driverLibrary": "tcbn28hpcplusbwp35p140lvtffg0p99v125c",
+      "spefCorner": "cbest",
+      "xtopCorner": "ffg_125c",
+      "xtopLibertyGlob": "/data/eda/project/design_zoo/flows/swerv_wrapper_tsmc28/input/lib_ffg_125c/*.lib"
+    }
+  ]
+}
+

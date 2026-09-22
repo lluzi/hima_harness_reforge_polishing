@@ -1,0 +1,217 @@
+id: xtop-timing-closure
+version: "1.0.0"
+title: XTop iterative timing closure
+status: development
+minimumHarnessVersion: 0.1.0
+
+ontology:
+  aliases:
+    campaign: [closure campaign, timing closure]
+    endpoint: [timing endpoint, sink]
+    iteration: [round, generation]
+
+knowledgeManifest: knowledge/manifest.yml
+
+budget:
+  timeBoxMs: 86400000
+  closingReserveMs: 1800000
+  attemptLimit: 240
+  researchWrites:
+    writeAttempts: 64
+    bytes: 1048576
+
+inputs:
+  - name: inputInnovusDatabase
+    description: >-
+      Read-only Innovus checkpoint data directory used as the business input. The Pack never edits
+      it; prepare copies it into the Campaign workspace and records its complete file identity.
+  - name: siteProfile
+    description: >-
+      Site-owned JSON profile for design name, Foundation Flow root, physical inputs, PT libraries,
+      four timing scenarios and the EDA wrapper. HimaGuide discovers and binds this; it is not a
+      form the timing engineer writes for each Campaign.
+  - name: sourceManifest
+    description: >-
+      SHA-256 manifest for the Foundation Flow sources this Pack was calibrated against. A changed
+      source fails closed before any licensed job.
+  - name: workspaceRoot
+    description: Campaign workspace root allowed by the Site Permit.
+
+outputs:
+  - name: preparation
+    path: flow/records/prepare.json
+    reader: xtop-stage
+    description: Immutable identity of the input checkpoint, Site profile and Foundation sources.
+  - name: exportStage
+    path: flow/records/export.json
+    reader: xtop-stage
+    description: Innovus restore/export completion and current DB/DEF/netlist identities.
+  - name: extractionStage
+    path: flow/records/extract.json
+    reader: xtop-stage
+    description: Fresh StarRC RC-corner logs, SPEF identities and source physical identity.
+  - name: timingStage
+    path: flow/records/timing.json
+    reader: xtop-stage
+    description: Fresh four-scenario PrimeTime reports and XTop timing-data identities.
+  - name: closureState
+    path: flow/state/current.json
+    reader: xtop-closure-state
+    description: >-
+      Current endpoint-complete setup/hold state. It is rewritten only after a complete PT refresh;
+      every historical snapshot remains under flow/iterations/.
+  - name: closureExperience
+    path: flow/evidence/experience.jsonl
+    description: Append-only success and failure experience for every attempted fix generation.
+  - name: fixPlan
+    path: flow/research/fix-plan.json
+    reader: xtop-fix-plan
+    description: AI-authored, schema-checked plan grounded in the current endpoint delta and history.
+  - name: xtopStage
+    path: flow/records/xtop.json
+    reader: xtop-stage
+    description: XTop command, logs, pre/post estimates and exact ECO file identities.
+  - name: innovusStage
+    path: flow/records/apply-eco.json
+    reader: xtop-stage
+    description: Innovus loadECO, physical Tcl, ecoRoute, DB and export evidence.
+  - name: iterationResult
+    path: flow/records/compare.json
+    reader: xtop-iteration-result
+    description: >-
+      Like-for-like endpoint delta, global setup/hold delta, physical findings and next-loop score.
+  - name: bestDatabaseManifest
+    path: flow/output/best-database.json
+    reader: xtop-best-database
+    description: >-
+      Hash-bound pointer to the best admitted Innovus restore script and .enc.dat directory retained
+      inside this Campaign. The selected database is the Pack's business output.
+  - name: bestDatabaseScript
+    path: flow/output/best.enc
+    description: Materialized Innovus restore script for the best admitted database.
+  - name: bestDatabaseData
+    path: flow/output/best.enc.dat
+    description: Materialized Innovus data directory for the best admitted database.
+
+environment:
+  wrappers:
+    - /usr/bin/python3
+
+workspace:
+  source: pack
+  copy:
+    - closure.py
+    - templates
+
+tools:
+  - id: prepare
+    file: tools/closure.py
+    description: Validate source identity and copy the input Innovus checkpoint into the private workspace.
+    inputs: [WORKSPACE, INPUT_DB, SITE_PROFILE, SOURCE_MANIFEST]
+    argv:
+      - /usr/bin/python3
+      - ${WORKSPACE}/flow/closure.py
+      - prepare
+      - ${WORKSPACE}
+      - ${INPUT_DB}
+      - ${SITE_PROFILE}
+      - ${SOURCE_MANIFEST}
+
+  - id: export-current
+    recommendedVersion: Innovus 23.14
+    file: tools/closure.py
+    description: Restore the current admitted Innovus database and export its DEF and netlist.
+    inputs: [WORKSPACE]
+    licences: { Innovus: 1 }
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', export, '${WORKSPACE}']
+
+  - id: extract-current
+    recommendedVersion: StarRC X-2025.06-SP1
+    file: tools/closure.py
+    description: Extract the declared RC corners from the current Innovus DEF.
+    inputs: [WORKSPACE]
+    licences: { StarRC: 1 }
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', extract, '${WORKSPACE}']
+
+  - id: analyze-current
+    recommendedVersion: PrimeTime X-2025.06
+    file: tools/closure.py
+    description: Run every declared PT scenario and export XTop timing data from current artifacts.
+    inputs: [WORKSPACE]
+    licences: { PrimeTime: 1 }
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', timing, '${WORKSPACE}']
+
+  - id: summarize-current
+    file: tools/closure.py
+    description: Parse endpoint-complete PT reports into the typed current closure state.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', summarize, '${WORKSPACE}']
+
+  - id: run-xtop-fix
+    recommendedVersion: XTop 2025.09.tmp15
+    file: tools/closure.py
+    description: Validate the AI plan and execute only the whitelisted XTop setup/hold actions.
+    inputs: [WORKSPACE]
+    licences: { XTop: 1 }
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', xtop, '${WORKSPACE}']
+
+  - id: apply-eco
+    recommendedVersion: Innovus 23.14
+    file: tools/closure.py
+    description: Restore the matching DB, load the netlist ECO, source physical commands and ecoRoute.
+    inputs: [WORKSPACE]
+    licences: { Innovus: 1 }
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', apply-eco, '${WORKSPACE}']
+
+  - id: compare-and-retain
+    file: tools/closure.py
+    description: Compare endpoints, append experience and retain the best evidence-backed Innovus DB.
+    inputs: [WORKSPACE]
+    argv: [/usr/bin/python3, '${WORKSPACE}/flow/closure.py', compare, '${WORKSPACE}']
+
+rules:
+  - xtop-iteration-evidence-valid
+  - xtop-setup-clean
+  - xtop-hold-clean
+
+strategy:
+  strategyRevision: { type: number, unit: count, min: 0, max: 64, default: 0 }
+
+words:
+  target_setup_wns_ns: { label: target setup WNS, unit: ns }
+  target_hold_wns_ns: { label: target hold WNS, unit: ns }
+  strategyRevision: { label: strategy revision, unit: count }
+
+goal:
+  target_setup_wns_ns: { type: number, unit: ns, min: 0, max: 1, default: 0 }
+  target_hold_wns_ns: { type: number, unit: ns, min: 0, max: 1, default: 0 }
+
+knowledge:
+  - file: methodology.md
+    purpose: The measured PT-XTop-Innovus-StarRC-PT closure method and honest completion boundary.
+  - file: endpoint-feedback.md
+    purpose: How to classify fixed, remaining, entrant and regressed endpoints before choosing the next action.
+  - file: source-flow.md
+    purpose: The verified SWERV28 Foundation Flow, recovery rules, source paths and two-round evidence.
+  - file: source-manifest.txt
+    purpose: Hash identity of the calibrated Foundation Flow source files.
+
+workshops:
+  - id: plan-fix
+    purpose: >-
+      Act as the timing-closure researcher for one persistent Campaign. Read the current endpoint
+      state, append-only experience and last plan. First explain which endpoint groups improved,
+      remained, entered or regressed and which prior actions succeeded or failed. Then write one
+      bounded JSON plan at flow/research/fix-plan.json. Use only the declared action kinds
+      setup-size, setup-buffer, hold-size and hold-buffer. Prefer actions tied to named endpoint
+      groups and avoid repeating a failed action without a new evidence-based reason. Do not claim
+      closure from XTop estimates; the plan is a hypothesis until Innovus, StarRC and PrimeTime
+      refresh it. Keep setup margin while fixing hold and hold margin while fixing setup.
+    directory: research/timing-closure
+    entry: entry.py
+    language: python
+    inputs: []
+    reads: [closureState, closureExperience]
+    knowledge: [methodology.md, endpoint-feedback.md, source-flow.md]
+    produces: fixPlan
+    argv: [/usr/bin/python3, '${ENTRY}', '${WORKSPACE}']

@@ -1,0 +1,10 @@
+id: xtop-setup-clean
+version: "1"
+title: All declared PrimeTime scenarios meet the setup target
+parameter: { name: target_setup_wns_ns, unit: ns }
+requires: [{ type: xtop_setup_wns, mode: setup, scope: all }]
+subject: { type: xtop_setup_wns, mode: setup, scope: all }
+predicate:
+  op: gte
+  threshold: { parameter: target_setup_wns_ns }
+  unit: ns

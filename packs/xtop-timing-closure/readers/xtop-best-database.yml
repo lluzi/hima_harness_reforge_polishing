@@ -1,0 +1,6 @@
+id: xtop-best-database
+version: "1"
+file: tools/read-output.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', best]
+reportKind: xtop-timing-closure-best-database/1
+emits: [xtop_best_database_ready]

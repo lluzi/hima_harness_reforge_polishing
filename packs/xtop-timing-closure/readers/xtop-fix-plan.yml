@@ -1,0 +1,6 @@
+id: xtop-fix-plan
+version: "1"
+file: tools/read-output.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', plan]
+reportKind: xtop-timing-fix-plan/1
+emits: [xtop_fix_action_count]

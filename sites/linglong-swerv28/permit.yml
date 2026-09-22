@@ -1,0 +1,17 @@
+allowedReadRoots:
+  - /data/eda/project
+allowedWriteRoots:
+  - /data/eda/project/hima_harness/xtop-timing-closure-runs
+allowedWrappers:
+  - /usr/bin/python3
+forbidden:
+  - services
+  - licence-servers
+  - network-settings
+  - dns
+  - proxy
+  - tailscale
+  - deletions
+  - moves-of-run-directories
+  - repository-downloads
+

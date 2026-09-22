@@ -1,0 +1,10 @@
+id: xtop-hold-clean
+version: "1"
+title: All declared PrimeTime scenarios meet the hold target
+parameter: { name: target_hold_wns_ns, unit: ns }
+requires: [{ type: xtop_hold_wns, mode: hold, scope: all }]
+subject: { type: xtop_hold_wns, mode: hold, scope: all }
+predicate:
+  op: gte
+  threshold: { parameter: target_hold_wns_ns }
+  unit: ns

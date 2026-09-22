@@ -1,0 +1,6 @@
+id: xtop-stage
+version: "1"
+file: tools/read-output.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', stage]
+reportKind: xtop-timing-closure-stage/1
+emits: [xtop_stage_ok]

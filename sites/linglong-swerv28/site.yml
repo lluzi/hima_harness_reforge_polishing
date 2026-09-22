@@ -1,0 +1,23 @@
+name: linglong-swerv28
+kind: ssh
+workspaceRoot: /data/eda/project/hima_harness/xtop-timing-closure-runs
+permit: ./permit.yml
+bindings:
+  inputInnovusDatabase: /data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/DBS/xtop_round2_eco_route.enc.dat
+  siteProfile: /data/eda/project/hima_harness/xtop-timing-closure-inputs/swerv28-site-profile.json
+  sourceManifest: /data/eda/project/design_zoo/pr/swerv_wrapper_tsmc28/foundation/docs/SWERV28_AGENT_SOURCE_MANIFEST.sha256
+  workspaceRoot: /data/eda/project/hima_harness/xtop-timing-closure-runs
+ssh:
+  destination: luzi@192.168.50.41
+  jumps: []
+  controlPersistSeconds: 60
+capacity:
+  cores: 16
+  memoryGiB: 64
+  parallelJobs: 1
+  licences:
+    Innovus: 1
+    StarRC: 1
+    PrimeTime: 1
+    XTop: 1
+

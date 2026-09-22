@@ -1,0 +1,7 @@
+id: xtop-iteration-evidence-valid
+version: "1"
+title: Refreshed iteration and best database evidence are complete
+requires: [{ type: xtop_iteration_evidence_valid }]
+subject: { type: xtop_iteration_evidence_valid }
+predicate: { op: eq, threshold: 1, unit: count }
+

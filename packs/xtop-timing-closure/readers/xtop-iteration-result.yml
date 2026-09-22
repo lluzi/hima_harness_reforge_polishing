@@ -1,0 +1,18 @@
+id: xtop-iteration-result
+version: "1"
+file: tools/read-output.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', iteration]
+reportKind: xtop-timing-closure-iteration/1
+emits:
+  - xtop_setup_wns
+  - xtop_setup_tns
+  - xtop_setup_violations
+  - xtop_hold_wns
+  - xtop_hold_tns
+  - xtop_hold_violations
+  - xtop_endpoint_fixed_count
+  - xtop_endpoint_remaining_count
+  - xtop_endpoint_entrant_count
+  - xtop_endpoint_regressed_count
+  - xtop_closure_score
+  - xtop_iteration_evidence_valid

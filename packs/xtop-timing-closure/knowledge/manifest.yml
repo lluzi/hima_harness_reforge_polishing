@@ -1,0 +1,22 @@
+schema: hima-pack-knowledge/1
+documents:
+  - id: xtop-timing-closure-methodology
+    file: methodology.md
+    title: XTop timing closure method and evidence boundary
+    version: "1"
+    mediaType: text/markdown
+  - id: endpoint-feedback
+    file: endpoint-feedback.md
+    title: Endpoint feedback and strategy revision contract
+    version: "1"
+    mediaType: text/markdown
+  - id: swerv28-source-flow
+    file: source-flow.md
+    title: Verified SWERV28 Foundation Flow and iterative timing closure
+    version: "2026-09-21"
+    mediaType: text/markdown
+  - id: swerv28-source-manifest
+    file: source-manifest.txt
+    title: Verified SWERV28 Foundation Flow source manifest
+    version: "2026-09-21"
+    mediaType: text/plain

@@ -1,0 +1,14 @@
+id: xtop-closure-state
+version: "1"
+file: tools/read-output.py
+argv: [/usr/bin/python3, '${READER}', '${REPORT}', '${OUT}', state]
+reportKind: xtop-timing-closure-state/1
+emits:
+  - xtop_setup_wns
+  - xtop_setup_tns
+  - xtop_setup_violations
+  - xtop_hold_wns
+  - xtop_hold_tns
+  - xtop_hold_violations
+  - xtop_unconstrained_endpoints
+  - xtop_closure_score

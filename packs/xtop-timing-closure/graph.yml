@@ -1,0 +1,141 @@
+id: xtop-timing-closure
+version: "1.0.0"
+entry: prepare
+
+nodes:
+  - id: prepare
+    kind: act
+    parameters:
+      tool: prepare
+      arguments:
+        INPUT_DB: { from: input, name: inputInnovusDatabase }
+        SITE_PROFILE: { from: input, name: siteProfile }
+        SOURCE_MANIFEST: { from: input, name: sourceManifest }
+  - id: read-preparation
+    kind: act
+    parameters: { observes: preparation }
+  - id: export-baseline
+    kind: act
+    parameters: { tool: export-current }
+  - id: read-baseline-export
+    kind: act
+    parameters: { observes: exportStage }
+  - id: extract-baseline
+    kind: act
+    parameters: { tool: extract-current }
+  - id: read-baseline-extraction
+    kind: act
+    parameters: { observes: extractionStage }
+  - id: analyze-baseline
+    kind: act
+    parameters: { tool: analyze-current }
+  - id: read-baseline-timing
+    kind: act
+    parameters: { observes: timingStage }
+  - id: summarize-baseline
+    kind: act
+    parameters: { tool: summarize-current }
+  - id: read-baseline-state
+    kind: act
+    parameters: { observes: closureState }
+
+  - id: plan-fix
+    kind: act
+    parameters: { workshop: plan-fix }
+  - id: read-fix-plan
+    kind: act
+    parameters: { observes: fixPlan }
+  - id: run-xtop-fix
+    kind: act
+    parameters: { tool: run-xtop-fix }
+  - id: read-xtop
+    kind: act
+    parameters: { observes: xtopStage }
+  - id: apply-eco
+    kind: act
+    parameters: { tool: apply-eco }
+  - id: read-innovus
+    kind: act
+    parameters: { observes: innovusStage }
+  - id: extract-after
+    kind: act
+    parameters: { tool: extract-current }
+  - id: read-after-extraction
+    kind: act
+    parameters: { observes: extractionStage }
+  - id: analyze-after
+    kind: act
+    parameters: { tool: analyze-current }
+  - id: read-after-timing
+    kind: act
+    parameters: { observes: timingStage }
+  - id: summarize-after
+    kind: act
+    parameters: { tool: summarize-current }
+  - id: read-after-state
+    kind: act
+    parameters: { observes: closureState }
+  - id: compare-and-retain
+    kind: act
+    parameters: { tool: compare-and-retain }
+  - id: read-iteration-result
+    kind: act
+    parameters: { observes: iterationResult }
+  - id: evidence-gate
+    kind: judge
+    parameters:
+      rules:
+        - xtop-iteration-evidence-valid
+        - xtop-setup-clean
+        - xtop-hold-clean
+      bind:
+        target_setup_wns_ns: { from: goal, name: target_setup_wns_ns }
+        target_hold_wns_ns: { from: goal, name: target_hold_wns_ns }
+  - id: read-best-database
+    kind: act
+    parameters: { observes: bestDatabaseManifest }
+  - id: next-iteration
+    kind: explore
+    parameters:
+      chooser: xtop-next-iteration
+      bind: { revisionStep: 1 }
+      converge:
+        read: score
+        band: 0.001
+        generations: 2
+        generationLimit: 12
+  - id: blocked
+    kind: wait
+    parameters: { blocker: hard-blocker }
+
+edges:
+  - { from: prepare, to: read-preparation }
+  - { from: read-preparation, to: export-baseline }
+  - { from: export-baseline, to: read-baseline-export }
+  - { from: read-baseline-export, to: extract-baseline }
+  - { from: extract-baseline, to: read-baseline-extraction }
+  - { from: read-baseline-extraction, to: analyze-baseline }
+  - { from: analyze-baseline, to: read-baseline-timing }
+  - { from: read-baseline-timing, to: summarize-baseline }
+  - { from: summarize-baseline, to: read-baseline-state }
+  - { from: read-baseline-state, to: plan-fix }
+  - { from: plan-fix, to: read-fix-plan }
+  - { from: read-fix-plan, to: run-xtop-fix }
+  - { from: run-xtop-fix, to: read-xtop }
+  - { from: read-xtop, to: apply-eco }
+  - { from: apply-eco, to: read-innovus }
+  - { from: read-innovus, to: extract-after }
+  - { from: extract-after, to: read-after-extraction }
+  - { from: read-after-extraction, to: analyze-after }
+  - { from: analyze-after, to: read-after-timing }
+  - { from: read-after-timing, to: summarize-after }
+  - { from: summarize-after, to: read-after-state }
+  - { from: read-after-state, to: compare-and-retain }
+  - { from: compare-and-retain, to: read-iteration-result }
+  - { from: read-iteration-result, to: evidence-gate }
+  - { from: evidence-gate, to: read-best-database, outcome: PASS }
+  - { from: evidence-gate, to: blocked, outcome: FAIL }
+  - { from: read-best-database, to: next-iteration }
+  - { from: next-iteration, to: plan-fix, revisit: true }
+
+loops: {}

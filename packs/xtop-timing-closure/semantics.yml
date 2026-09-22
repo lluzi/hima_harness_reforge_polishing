@@ -1,0 +1,58 @@
+values:
+  xtop_stage_ok:
+    unit: count
+    description: One only when the named stage completed with logs and required non-empty artifacts.
+  xtop_setup_wns:
+    unit: ns
+    description: Worst setup slack across the declared refreshed PrimeTime scenarios.
+    mode: [setup]
+    scope: [all]
+  xtop_setup_tns:
+    unit: ns
+    description: Sum of setup TNS across the declared refreshed PrimeTime scenarios.
+    mode: [setup]
+    scope: [all]
+  xtop_setup_violations:
+    unit: count
+    description: Sum of setup violation counts across the declared refreshed PrimeTime scenarios.
+  xtop_hold_wns:
+    unit: ns
+    description: Worst hold slack across the declared refreshed PrimeTime scenarios.
+    mode: [hold]
+    scope: [all]
+  xtop_hold_tns:
+    unit: ns
+    description: Sum of hold TNS across the declared refreshed PrimeTime scenarios.
+    mode: [hold]
+    scope: [all]
+  xtop_hold_violations:
+    unit: count
+    description: Sum of hold violation counts across the declared refreshed PrimeTime scenarios.
+  xtop_unconstrained_endpoints:
+    unit: count
+    description: Maximum unconstrained endpoint count disclosed by a refreshed PT scenario.
+  xtop_endpoint_fixed_count:
+    unit: count
+    description: Previously violating endpoints absent from the same refreshed failing set.
+  xtop_endpoint_remaining_count:
+    unit: count
+    description: Previously violating endpoints that remain violating after the iteration.
+  xtop_endpoint_entrant_count:
+    unit: count
+    description: Newly violating endpoints after the iteration.
+  xtop_endpoint_regressed_count:
+    unit: count
+    description: Shared endpoints whose slack moved in the wrong direction beyond tolerance.
+  xtop_closure_score:
+    unit: score
+    description: Monotone comparison scalar derived from violation counts and negative slack mass.
+  xtop_iteration_evidence_valid:
+    unit: count
+    description: One only when refreshed reports, endpoint delta and best DB identity are complete.
+  xtop_fix_action_count:
+    unit: count
+    description: Number of whitelisted setup/hold actions in the AI-authored plan.
+  xtop_best_database_ready:
+    unit: count
+    description: One when the selected Innovus restore script and .enc.dat tree pass identity checks.
+
