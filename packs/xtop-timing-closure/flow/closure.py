@@ -621,6 +621,7 @@ def xtop(workspace: Path):
     next_iteration = int(runtime["iteration"]) + 1
     root = paths(workspace)["flow"] / "iterations" / f"g{next_iteration:03d}" / "XTOP"
     root.mkdir(parents=True, exist_ok=True)
+    (root / "logs").mkdir(parents=True, exist_ok=True)
     action_file = root / "actions.tcl"
     library_file = root / "libraries.tcl"
     actions_tcl(plan, action_file)

@@ -359,5 +359,69 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(values["hold"], {"WNS": 0.0, "TNS": 0.0, "NUM": 0})
 
 
+    def test_xtop_creates_its_own_log_dir_before_invoking_the_tool(self):
+        # Trial 28: XTop exited 1 with "Directory '.../XTOP/logs' does not exist or is not
+        # readable." xtop() passes -log_dir <root>/logs but only ever creates <root> itself
+        # (root.mkdir), never the logs subdirectory XTop is told to write into -- and XTop,
+        # unlike the Pack's own templated tools, does not create it for itself.
+        templates = self.workspace / "flow" / "templates"
+        templates.mkdir(parents=True, exist_ok=True)
+        (templates / "xtop.tcl").write_text("# xtop\n")
+        lib_dir = self.workspace / "libs"
+        lib_dir.mkdir()
+        (lib_dir / "slow.lib").write_text("lib")
+        (lib_dir / "fast.lib").write_text("lib")
+        profile = {
+            "schema": closure.PROFILE_SCHEMA, "design": "top", "foundationRoot": str(self.workspace),
+            "physicalInputRoot": str(self.workspace), "inputSdc": str(self.workspace / "setup.tcl"),
+            "sourceManifestRoot": str(self.workspace), "edaShell": ["true"], "originalDriverLibrary": "slow",
+            "techLef": str(self.workspace / "tech.lef"), "cellLefGlob": str(self.workspace / "*.lef"),
+            "starrc": [{"name": "worst", "template": str(self.workspace / "worst.cmd")}],
+            "scenarios": [
+                {"name": "slow", "libGlob": "unused", "driverLibrary": "slow", "spefCorner": "worst",
+                 "xtopCorner": "slow", "xtopLibertyGlob": str(lib_dir / "slow.lib")},
+                {"name": "fast", "libGlob": "unused", "driverLibrary": "fast", "spefCorner": "worst",
+                 "xtopCorner": "fast", "xtopLibertyGlob": str(lib_dir / "fast.lib")},
+            ],
+        }
+        self.runtime.update({
+            "profile": profile, "iteration": 0,
+            "currentExport": {"netlist": str(self.workspace / "export.v"), "def": str(self.workspace / "export.def")},
+            "currentAnalysis": {"staData": str(self.workspace / "sta_data")},
+        })
+        self.save_runtime()
+        (self.workspace / "flow" / "research").mkdir(parents=True, exist_ok=True)
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+            "schema": closure.PLAN_SCHEMA, "iteration": 1, "diagnosis": "test", "hypotheses": ["test"],
+            "endpointGroups": ["core_clock"],
+            "actions": [{
+                "kind": "hold-buffer", "effort": "high", "setupTargetNs": 0.0, "holdTargetNs": 0.0,
+                "setupMarginNs": 0.02, "holdMarginNs": 0.02, "endpointGroups": ["core_clock"], "reason": "test",
+            }],
+            "avoid": "nothing yet", "reasoning": "test",
+        }))
+
+        root = self.workspace / "flow" / "iterations" / "g001" / "XTOP"
+        seen_logs_dir_at_launch = {}
+
+        def fake_run_eda(profile, command, cwd, log, env=None, shell_env=None):
+            seen_logs_dir_at_launch["exists"] = (root / "logs").is_dir()
+            eco = root / "eco_output"
+            eco.mkdir(parents=True, exist_ok=True)
+            (eco / "xtop_opt_innovus_netlist_1.txt").write_text("netlist eco\n")
+            (eco / "xtop_opt_innovus_physical_1.txt").write_text("physical eco\n")
+            return log
+
+        original = closure.run_eda
+        closure.run_eda = fake_run_eda
+        try:
+            closure.xtop(self.workspace)
+        finally:
+            closure.run_eda = original
+
+        self.assertTrue(seen_logs_dir_at_launch.get("exists"),
+                         "xtop() must create <root>/logs before invoking the tool with -log_dir pointing at it")
+
+
 if __name__ == "__main__":
     unittest.main()
