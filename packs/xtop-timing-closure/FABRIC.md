@@ -7,10 +7,13 @@ PrimeTime, XTop and comparison; no shell script owns the multi-tool loop.
 
 ## Gaps
 
-The Pack has low-cost parser, data-contract and graph validation only. It reuses the already verified
-SWERV28 source/tool evidence but has not yet run a new Campaign through HimaFabric. Therefore it is
-development status and has no TEST.md or VERSION.yml release seal. A first real Campaign must prove
-the staged checkpoint copy, generic templates and autonomous Workshop plan on the bound Site.
+The Pack has low-cost parser, data-contract and graph validation. Trial 25 proved installation,
+Site admission, source identity and one real Innovus launch, then exposed that `edarun` strips the
+Pack's custom environment values at the container boundary. Version 1.0.1 bakes only the validated
+Tcl parameters into each generated script and retains the outer environment for non-containerized
+use. The original Run was cancelled before any artifact and is immutable. A new Campaign must still
+prove database restore/export, the remaining commercial stages and the autonomous Workshop loop.
+The Pack remains development status and has no TEST.md or VERSION.yml release seal.
 
 ## Reviews
 
@@ -18,4 +21,3 @@ The method preserves one visible Campaign owner and one persistent Run. AI contr
 bounded fix hypothesis; deterministic code controls identity, command whitelist, evidence parsing,
 comparison and database selection. Runtime remains domain-neutral. The source Foundation Flow is
 read-only and all licensed work lands in the Campaign workspace.
-
