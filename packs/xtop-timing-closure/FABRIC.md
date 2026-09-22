@@ -68,6 +68,33 @@ exist_ok=True)` immediately after `root.mkdir(...)`, verified against a red test
 autonomous multi-generation research loop remain unproven; the Trial 28 Run was stopped at `xtop`
 as BLOCKED evidence rather than hot-patched.
 
+Trial 29 proved the 1.0.4 fix completely: `xtop` succeeded for the first time in this Pack's
+history, and the Run went on to admit the Innovus ECO for the first time too — `apply-eco`,
+`extract-after` (StarRC), `analyze-after` (PrimeTime) and `compare-and-retain` all completed,
+closing generation 1 with a real measured improvement (closure score 243.580 → 214.920, hold
+violations 221 → 193, hold TNS −8.860 ns → −8.300 ns, setup held at its −0.040 ns/12-violation
+margin exactly as the plan intended) and retaining it as the new best database over the baseline.
+Generation 2's `plan-fix` correctly re-justified repeating the same `hold-buffer` action "by
+measurement, not habit," citing the retained generation's own delta rather than habit. Generation
+2's own XTop and Innovus ECO both succeeded again, but `compare-and-retain` then failed with
+`[Errno 17] File exists` on a foundation-library LEF symlink inside `best.enc.dat/libs/lef/` — a
+fifth, distinct boundary defect. `copy_database_alias` used
+`shutil.copytree(..., symlinks=True, dirs_exist_ok=True)` once `best.enc.dat` already existed;
+`dirs_exist_ok` lets `copytree` reuse the destination *directory*, but for each *symlink* entry it
+still calls `os.symlink(target, dst)` directly, which raises `FileExistsError` when `dst` is
+already there. Generation 1's retention succeeded only because `best.enc.dat` did not exist yet,
+so every symlink creation was a fresh one; retention was never actually idempotent, and the second
+generation ever retained was the first one to expose it. Version 1.0.5 makes `copy_database_alias`
+`shutil.rmtree` the existing `best.enc.dat` before an unconditional `copytree`, verified against a
+red test with two generations sharing a real symlinked LEF file across both retained databases.
+HimaGuide also flagged two related, unfixed graph-level observations worth the improver's
+attention: the evidence-gate's rule order may let `hold-clean` never influence routing while
+`goal-met` keys only off setup, and `compare-and-retain` (an `act` node) has no declared failure
+route to a Wait node, so a mechanical failure there can only ever leave the Run `retrying` rather
+than recording a proper `blocked` outcome. The Trial 29 Run was cancelled at `compare-and-retain`
+as BLOCKED evidence rather than hot-patched, with its first generation's real success intact in the
+Ledger.
+
 ## Reviews
 
 The method preserves one visible Campaign owner and one persistent Run. AI controls the next

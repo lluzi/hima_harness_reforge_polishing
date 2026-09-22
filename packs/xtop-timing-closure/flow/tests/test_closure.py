@@ -359,6 +359,63 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(values["hold"], {"WNS": 0.0, "TNS": 0.0, "NUM": 0})
 
 
+    def write_database_with_a_shared_symlink(self, generation, real_lef):
+        root = self.workspace / "flow" / "iterations" / f"g{generation:03d}" / "DBS"
+        data = root / "closed.enc.dat"
+        (data / "libs" / "lef").mkdir(parents=True)
+        (data / "libs" / "lef" / "tech.lef").symlink_to(real_lef)
+        (data / "db.bin").write_bytes(f"db-{generation}".encode())
+        script = root / "closed.enc"
+        script.write_text(f"restore {generation}\n")
+        self.runtime["currentDatabase"] = str(data)
+        self.runtime["currentDatabaseScript"] = str(script)
+
+    def test_retention_is_idempotent_when_a_later_generation_wins_and_the_database_holds_symlinks(self):
+        # Trial 29 generation 2: compare() failed with
+        # "[Errno 17] File exists: '.../input/lef/tech.lef' -> '.../best.enc.dat/libs/lef/tech.lef'".
+        # The foundation LEF libraries are symlinked into every generation's restored database
+        # unchanged, so once generation 1 is retained as best, its best.enc.dat/libs/lef/tech.lef
+        # symlink already exists on disk. copy_database_alias's second call used
+        # shutil.copytree(..., symlinks=True, dirs_exist_ok=True): dirs_exist_ok lets copytree
+        # reuse the destination directory, but for a symlink entry copytree still calls
+        # os.symlink(target, dst) directly, which raises FileExistsError when dst is already
+        # there -- dirs_exist_ok does not cover pre-existing symlinks, only pre-existing dirs.
+        real_lef = self.workspace / "input.lef"
+        real_lef.write_text("lef\n")
+
+        self.write_database_with_a_shared_symlink(0, real_lef)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]})
+        self.save_runtime()
+        closure.summarize(self.workspace)
+
+        self.runtime = closure.load_runtime(self.workspace)
+        self.runtime["iteration"] = 1
+        self.write_database_with_a_shared_symlink(1, real_lef)
+        self.write_reports(1, {"global": (-0.06, -0.12, 2, -0.09, -0.12, 2), "setup": [("A/D", -0.02)], "hold": [("H/D", -0.09)]})
+        self.save_runtime()
+        closure.summarize(self.workspace)
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+            "schema": closure.PLAN_SCHEMA, "iteration": 1, "diagnosis": "test", "hypotheses": ["test"],
+            "endpointGroups": ["core_clock"], "actions": [], "avoid": [], "reasoning": "test",
+        }))
+        closure.compare(self.workspace)
+
+        self.runtime = closure.load_runtime(self.workspace)
+        self.runtime["iteration"] = 2
+        self.write_database_with_a_shared_symlink(2, real_lef)
+        self.write_reports(2, {"global": (-0.02, -0.02, 1, -0.09, -0.12, 2), "setup": [("A/D", -0.02)], "hold": [("H/D", -0.09)]})
+        self.save_runtime()
+        closure.summarize(self.workspace)
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+            "schema": closure.PLAN_SCHEMA, "iteration": 2, "diagnosis": "test", "hypotheses": ["test"],
+            "endpointGroups": ["core_clock"], "actions": [], "avoid": [], "reasoning": "test",
+        }))
+        closure.compare(self.workspace)
+
+        best = json.loads((self.workspace / "flow" / "output" / "best-database.json").read_text())
+        self.assertEqual(best["iteration"], 2)
+        self.assertTrue((self.workspace / "flow" / "output" / "best.enc.dat" / "libs" / "lef" / "tech.lef").is_symlink())
+
     def test_xtop_creates_its_own_log_dir_before_invoking_the_tool(self):
         # Trial 28: XTop exited 1 with "Directory '.../XTOP/logs' does not exist or is not
         # readable." xtop() passes -log_dir <root>/logs but only ever creates <root> itself
