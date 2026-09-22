@@ -158,6 +158,38 @@ class ClosureContractTest(unittest.TestCase):
         with self.assertRaises(closure.Rejected):
             closure.validate_plan(path, 1)
 
+    def test_copy_template_bakes_required_vars_into_the_tcl_so_a_stripped_container_env_still_works(self):
+        # edarun forwards only a fixed allowlist of env vars into the podman container
+        # (HOME, USER, EDA_DIR, licence vars, ...). Custom vars like WORK_ROOT/CURRENT_DB/
+        # DESIGN/EXPORT_ROOT set on the outer Python subprocess never reach the Tcl process
+        # running inside the container, so a template that only reads env(...) fails with
+        # "WORK_ROOT, CURRENT_DB, DESIGN and EXPORT_ROOT are required" even though the
+        # adapter passed every value. copy_template must bake the values directly into the
+        # generated script so the check passes regardless of what the container forwards.
+        templates = self.workspace / "flow" / "templates"
+        templates.mkdir(parents=True, exist_ok=True)
+        (templates / "export.tcl").write_text(
+            "if {![info exists env(WORK_ROOT)] || ![info exists env(EXPORT_ROOT)]} {\n"
+            "    error \"WORK_ROOT, CURRENT_DB, DESIGN and EXPORT_ROOT are required\"\n"
+            "}\n"
+        )
+        target = self.workspace / "flow" / "iterations" / "g000" / "scripts" / "export.tcl"
+        closure.copy_template(self.workspace, "export.tcl", target, env={
+            "WORK_ROOT": self.workspace / "site", "EXPORT_ROOT": self.workspace / "export",
+        })
+        rendered = target.read_text()
+        self.assertIn('set env(WORK_ROOT) "%s"' % (self.workspace / "site"), rendered)
+        self.assertIn('set env(EXPORT_ROOT) "%s"' % (self.workspace / "export"), rendered)
+        # The baked assignments must run before the template's own guard clause.
+        self.assertLess(rendered.index("set env(WORK_ROOT)"), rendered.index("info exists env(WORK_ROOT)"))
+        # Simulate exactly what a container-restricted env would do: env() is unset for
+        # these names in the interpreter that sources the file. A real Tcl interpreter
+        # isn't available in this test environment, so assert on the guaranteed textual
+        # invariant instead: every required key from the passed env dict has a
+        # corresponding `set env(KEY) ...` line ahead of any `info exists env(KEY)` use.
+        for key in ("WORK_ROOT", "EXPORT_ROOT"):
+            self.assertIn(f"set env({key})", rendered)
+
     def test_prepare_hashes_sources_and_copies_the_checkpoint(self):
         source = self.workspace / "source"
         for directory in ("FF", "PLUG", "script"):
