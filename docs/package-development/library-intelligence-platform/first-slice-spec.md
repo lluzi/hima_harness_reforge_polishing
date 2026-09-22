@@ -110,6 +110,11 @@ values, model type and source location when the API exposes it. Missing values r
 reason. Large tables may be stored in content-addressed sidecars; the record retains shape, min/max/statistics and
 sidecar hash, never an unbound path.
 
+Every fact/finding also carries orthogonal epistemic fields: `derivationLevel` (`explicit/derived/inferred`),
+`sourceDomain` (`Liberty/design/STA/SPICE/physical/silicon`) and `evidenceStatus`
+(`available/unknown/ambiguous/contradicted/corroborated`). “Liberty alone unknown” is a query status, not a
+permanent fact level; external STA or SPICE evidence can itself be explicit or derived.
+
 Worker failure is a result, not partial data: parent records input hash, exit code or signal, parser log hash and no
 facts record. A failed file cannot silently disappear from corpus totals.
 
@@ -138,6 +143,10 @@ facts record. A failed file cannot silently disappear from corpus totals.
 
 排序可以组合两轴，但不能覆盖原值。`designRelevance=none` 只表示当前 design 未见影响，不表示 Library
 正确。模型可以解释和选择 investigation，不得生成未被 records 支持的数值或 PASS/FAIL。
+
+Graph relations also distinguish deterministic lineage, inferred impact, experimentally observed response and
+causal claims. A semantic delta connected to an affected instance/path is dependency evidence; it becomes causal
+only after a matched intervention or equivalent counterfactual experiment.
 
 ## 保持项与安全边界
 

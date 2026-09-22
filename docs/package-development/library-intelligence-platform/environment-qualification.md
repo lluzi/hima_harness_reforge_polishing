@@ -21,8 +21,8 @@ Unchanged:
 - the active Empyrean 2025 license service and QuaLib installation;
 - QuaLib 2026 service activation.
 
-The Miniconda installer came from
-`https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh`. Its SHA-256 was checked
+The Miniconda installer came from the
+[official repository](https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh). Its SHA-256 was checked
 before installation:
 
 ```text
