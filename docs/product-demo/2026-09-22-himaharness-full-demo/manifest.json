@@ -1,0 +1,202 @@
+{
+  "schema": "hima.demo-kit/1",
+  "app": "HimaHarness 0.3.0-trial.16",
+  "video": "HimaHarness-full-demo.zh-CN.mp4",
+  "duration_seconds": 320.691,
+  "resolution": "1920x1080",
+  "voice": "macOS Tingting zh_CN, rate 185",
+  "pack_identities": {
+    "dtco": "custom-cell-fmax-dtco@5.2.10 / e60bbfb6e3466872ff24e590adb31aab62f4232b5eb9c9db71db9c75dddb629c",
+    "timing": "xtop-timing-closure@1.0.5 / ea774e6fa31f5c9949cf6936a66ad8881d2500d8558e7550e3d920ce129db092"
+  },
+  "source_screenshots": {
+    "01-startup.png": "docs/assessment/2026-09-11/unified-ui/light-start.png",
+    "02-configuration-ready.png": "docs/assessment/2026-09-16/campaign-workspace/config-ready-light.png",
+    "03-dtco-full-graph.png": "docs/assessment/2026-09-16/campaign-workspace/graph-51-node-light.png",
+    "04-node-detail.png": "docs/assessment/2026-09-16/campaign-workspace/running-node-card-light.png",
+    "05-pause-control.png": "docs/assessment/2026-09-12/pls-19/desktop/owned-paused.png",
+    "06-workshop.png": "docs/assessment/2026-09-12/pls-20/images/light-workshop.png",
+    "07-files-and-code.png": "docs/assessment/2026-09-11/unified-ui/light-code.png",
+    "08-technical-report.png": "docs/assessment/2026-09-11/unified-ui/light-report.png",
+    "09-side-talk.png": "docs/assessment/2026-09-16/campaign-workspace/side-talk-light.png",
+    "10-knowledge-archive.png": "docs/validation/growth-assets/ui-assets/revision-history-archive.png"
+  },
+  "scenes": [
+    {
+      "index": 1,
+      "slug": "01-title",
+      "title": "HimaHarness 全景演示",
+      "narration": "HimaHarness 把工程师、AI、方法包、商业 EDA 和可审计证据组织在一个持续运行的工程工作区中。",
+      "visual": "title",
+      "source": null
+    },
+    {
+      "index": 2,
+      "slug": "02-start",
+      "title": "从启动到统一工作区",
+      "narration": "应用启动后，对话始终位于左侧。右侧工作区承载配置、运行图、代码、证据和报告，工程师不需要在多个独立工具之间来回切换。",
+      "visual": "screenshot",
+      "source": "docs/assessment/2026-09-11/unified-ui/light-start.png"
+    },
+    {
+      "index": 3,
+      "slug": "03-dialogue",
+      "title": "用中文理解任务，而不是填写内部表格",
+      "narration": "工程师可以直接用中文提出目标。HimaGuide 负责解释 Pack、检查输入和预算，并把自然语言目标转成一份可审阅的 Campaign 提案。",
+      "visual": "dialogue",
+      "source": null
+    },
+    {
+      "index": 4,
+      "slug": "04-config",
+      "title": "Pack、Site、输入与预算一次对齐",
+      "narration": "创建 Campaign 之前，系统先核对固定版本的 Pack、可用 Site、声明输入、工具能力和写入边界。缺失条件会在昂贵任务开始前暴露。",
+      "visual": "screenshot",
+      "source": "docs/assessment/2026-09-16/campaign-workspace/config-ready-light.png"
+    },
+    {
+      "index": 5,
+      "slug": "05-agent",
+      "title": "一个可见的 Campaign Agent 持续负责",
+      "narration": "每个 Campaign 只有一个持久的执行 Agent。它读取参考方法和当前事实，决定下一步动作；聊天结束、应用重开或上下文压缩都不会偷偷创建第二条 Run。",
+      "visual": "screenshot",
+      "source": "docs/assessment/2026-09-16/campaign-workspace/graph-51-node-light.png"
+    },
+    {
+      "index": 6,
+      "slug": "06-node",
+      "title": "Fabric 把复杂流程拆成可检查节点",
+      "narration": "节点明确声明输入、工具、证据、预算和完成条件。点开节点即可看到事实、作业、代码、知识与证据，也能在安全边界暂停或继续。",
+      "visual": "screenshot",
+      "source": "docs/assessment/2026-09-16/campaign-workspace/running-node-card-light.png"
+    },
+    {
+      "index": 7,
+      "slug": "07-pause",
+      "title": "暂停不丢事实，继续不重跑历史",
+      "narration": "暂停只阻止新工作。已经提交的 EDA Job 可以落下事实，之后从同一 Run、同一节点和同一证据链恢复。",
+      "visual": "screenshot",
+      "source": "docs/assessment/2026-09-12/pls-19/desktop/owned-paused.png"
+    },
+    {
+      "index": 8,
+      "slug": "08-code",
+      "title": "对话、代码和设计文件同屏",
+      "narration": "工程师可以在同一个工作区查看生成脚本、输入身份和中间文件。AI 的修改不是黑箱，它必须留下可审阅、可回滚的字节与来源。",
+      "visual": "screenshot",
+      "source": "docs/assessment/2026-09-11/unified-ui/light-code.png"
+    },
+    {
+      "index": 9,
+      "slug": "09-workshop",
+      "title": "Workshop 允许现场研究与策略更新",
+      "narration": "Pack 提供方法骨架，Workshop 允许 Agent 在声明范围内生成研究代码、比较新策略并回写下一轮方案。确定性 Framework 继续负责身份、预算和事实校验。",
+      "visual": "screenshot",
+      "source": "docs/assessment/2026-09-12/pls-20/images/light-workshop.png"
+    },
+    {
+      "index": 10,
+      "slug": "10-report",
+      "title": "报告区分事实、推断和未知",
+      "narration": "每一次成功、失败和未完成范围都进入技术报告。Harness 不把代理指标当成商业收益，也不会把预算耗尽改写成目标达成。",
+      "visual": "screenshot",
+      "source": "docs/assessment/2026-09-11/unified-ui/light-report.png"
+    },
+    {
+      "index": 11,
+      "slug": "11-side-talk",
+      "title": "Side Talk 不夺走运行所有权",
+      "narration": "工程师可以另开 Side Talk 追问、查代码或讨论方案，而不改变正在运行的 Campaign Agent。只有显式交接才会改变执行所有权。",
+      "visual": "screenshot",
+      "source": "docs/assessment/2026-09-16/campaign-workspace/side-talk-light.png"
+    },
+    {
+      "index": 12,
+      "slug": "12-platform",
+      "title": "平台闭环：方法、执行、证据、反馈",
+      "narration": "HimaHarness 的价值不是替代某一颗 EDA 工具，而是把长周期、多工具、可恢复的研究闭环变成一个可重复交付的工程系统。",
+      "visual": "platform",
+      "source": null
+    },
+    {
+      "index": 13,
+      "slug": "13-dtco",
+      "title": "Pack 一：Custom Cell Fmax DTCO 5.2.10",
+      "narration": "这个 Pack 面向设计驱动的定制标准单元研究。它从网表与物理信息中寻找 Cell Demand，以累计 Library 为资产，并把真实 matched post-route Fmax 作为最终 E0 观察。",
+      "visual": "dtco",
+      "source": null
+    },
+    {
+      "index": 14,
+      "slug": "14-dtco-factors",
+      "title": "免费因子负责观察，商业 EDA 负责裁决",
+      "narration": "F0 检查功能与接口可行性；F1、F2、F3 并列记录局部结构、全设计映射和代理时序。它们在完成校准前无权否决候选，E0 才给出真实设计响应。",
+      "visual": "dtco-factors",
+      "source": null
+    },
+    {
+      "index": 15,
+      "slug": "15-dtco-result",
+      "title": "自进化并不等于粉饰结果",
+      "narration": "最新完整试验跨越七代和五次算法修订，把 Cell Demand 覆盖从三十八比四十二推进到三十八比三十八；但 matched Fmax 仍为负二点九三个百分点，因此 Run 诚实地以预算边界结束。",
+      "visual": "dtco-chart",
+      "source": null
+    },
+    {
+      "index": 16,
+      "slug": "16-xtop",
+      "title": "Pack 二：XTop Timing Closure 1.0.5",
+      "narration": "这个 Pack 以只读 Innovus database 为输入，串联 XTop、Innovus、StarRC 和 PrimeTime，持续推进 setup 与 hold，输出最佳已验证 database，而不是最后一次尝试。",
+      "visual": "xtop",
+      "source": null
+    },
+    {
+      "index": 17,
+      "slug": "17-fabric",
+      "title": "每一种商业工具都有独立 Fabric 节点",
+      "narration": "Innovus 负责数据库导出和增量 ECO，StarRC 刷新寄生参数，PrimeTime 提供四场景真实时序，XTop 生成逻辑与物理 Tcl。任何工具都不能替另一工具伪造完成状态。",
+      "visual": "xtop-flow",
+      "source": null
+    },
+    {
+      "index": 18,
+      "slug": "18-feedback",
+      "title": "优化对象是 Endpoint 集合，不是一条路径",
+      "narration": "每代都比较 fixed、remaining、entrant 和 regressed endpoint。下一轮计划必须回答上一轮解决了什么、引入了什么，以及为什么仍值得继续。",
+      "visual": "endpoint",
+      "source": null
+    },
+    {
+      "index": 19,
+      "slug": "19-xtop-result",
+      "title": "真实 Trial 30：连续保留更优 Database",
+      "narration": "当前证据显示 closure score 从二百四十三点五八下降到一百七十五点六二，连续八代都保留了新的 best database。趋势仍在改善，因此系统没有提前宣称 timing clean。",
+      "visual": "xtop-chart",
+      "source": null
+    },
+    {
+      "index": 20,
+      "slug": "20-route",
+      "title": "保留布线的原位 ECO",
+      "narration": "XTop 输出两份可 source 的 Innovus macro Tcl，并启用 keep route。Innovus 先应用逻辑脚本，再应用物理脚本，随后 eco route 和完整刷新，最大限度保留未触碰布线。",
+      "visual": "route",
+      "source": null
+    },
+    {
+      "index": 21,
+      "slug": "21-assets",
+      "title": "经验沉淀为可复用资产",
+      "narration": "运行完成后，策略、代码、输入哈希、证据、报告和失败原因都归档到 Pack 的知识资产中。下一次研究可以引用历史，但当前结论仍由当前设计重新验证。",
+      "visual": "screenshot",
+      "source": "docs/validation/growth-assets/ui-assets/revision-history-archive.png"
+    },
+    {
+      "index": 22,
+      "slug": "22-end",
+      "title": "HimaHarness：把复杂芯片优化变成持续、可信的工程能力",
+      "narration": "一个工程师可以定义方向，AI 可以持续研究，Fabric 保证边界，商业 EDA 给出事实，而每一次尝试都会留下可复核、可恢复、可继续的经验。",
+      "visual": "end",
+      "source": null
+    }
+  ]
+}
