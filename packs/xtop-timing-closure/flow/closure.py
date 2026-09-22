@@ -613,6 +613,22 @@ def actions_tcl(plan, target: Path):
     target.write_text("\n".join(lines) + "\n")
 
 
+def validate_sourceable_eco(path: Path, role: str):
+    """Refuse atomic/loadECO or route-destructive output where macro Tcl is required."""
+    if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
+        raise Rejected(f"{role} ECO Tcl is missing, empty or linked: {path}")
+    text = path.read_text(errors="replace")
+    if re.search(r"(?m)^\s*FORMATVERSION\s+", text):
+        raise Rejected(f"{role} ECO is an atomic loadECO directive file, not sourceable macro Tcl")
+    destructive = re.findall(r"(?m)^\s*(?:dbNetFreeWires\b|editDelete\s+-net\b)", text)
+    if destructive:
+        raise Rejected(f"{role} ECO contains {len(destructive)} route-destructive command(s) despite -keep_route")
+    commands = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    if not commands:
+        raise Rejected(f"{role} ECO Tcl contains no command")
+    return {"sourceable": True, "routeDestructiveCommandCount": 0, "commandLineCount": len(commands)}
+
+
 @stage("xtop")
 def xtop(workspace: Path):
     runtime = load_runtime(workspace)
@@ -639,10 +655,15 @@ def xtop(workspace: Path):
     physical = list(eco.glob("xtop_opt_innovus_physical_*.txt"))
     if len(netlist) != 1 or len(physical) != 1:
         raise Rejected("XTop produced no unique netlist and physical ECO pair")
+    logical_tcl = validate_sourceable_eco(netlist[0], "logical")
+    physical_tcl = validate_sourceable_eco(physical[0], "physical")
     runtime["pendingIteration"] = next_iteration
     runtime["pendingEco"] = {"root": str(eco), "netlist": str(netlist[0]), "physical": str(physical[0])}
     atomic_json(paths(workspace)["runtime"], runtime)
-    return {"iteration": next_iteration, "actionCount": len(plan["actions"]), "artifacts": [file_ref(netlist[0], workspace, "netlist-eco"), file_ref(physical[0], workspace, "physical-eco")]}
+    return {"iteration": next_iteration, "actionCount": len(plan["actions"]),
+            "routePreservation": {"keepRouteRequested": True, "logicalTcl": logical_tcl,
+                                  "physicalTcl": physical_tcl},
+            "artifacts": [file_ref(netlist[0], workspace, "netlist-eco"), file_ref(physical[0], workspace, "physical-eco")]}
 
 
 @stage("apply-eco")

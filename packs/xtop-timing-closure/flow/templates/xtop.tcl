@@ -45,7 +45,6 @@ source $env(ACTIONS_TCL)
 redirect -file $report_dir/post_opt.rpt { summarize_eco_actions }
 redirect -file $report_dir/post_opt.rpt -append { summarize_gba_violations -exclude_path -with_reference -with_delta -setup }
 redirect -file $report_dir/post_opt.rpt -append { summarize_gba_violations -exclude_path -with_reference -with_delta -hold }
-write_design_changes -format INNOVUS -eco_file_prefix xtop_opt_innovus -output_dir $eco_output_dir -write_atomic_cmd
+write_design_changes -format INNOVUS -eco_file_prefix xtop_opt_innovus -output_dir $eco_output_dir -keep_route
 save_workspace -as ${design}_xtop_eco
 exit
-

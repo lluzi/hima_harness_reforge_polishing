@@ -479,6 +479,29 @@ class ClosureContractTest(unittest.TestCase):
         self.assertTrue(seen_logs_dir_at_launch.get("exists"),
                          "xtop() must create <root>/logs before invoking the tool with -log_dir pointing at it")
 
+    def test_keep_route_uses_two_sourceable_tcl_scripts_and_rejects_atomic_or_route_deletion(self):
+        pack = Path(__file__).resolve().parents[2]
+        xtop_template = (pack / "flow" / "templates" / "xtop.tcl").read_text()
+        apply_template = (pack / "flow" / "templates" / "apply-eco.tcl").read_text()
+        self.assertIn("-keep_route", xtop_template)
+        self.assertNotIn("-write_atomic_cmd", xtop_template)
+        self.assertNotIn("loadECO", apply_template)
+        self.assertEqual(apply_template.count("source [lindex $"), 2)
+
+        logical = self.workspace / "logical.tcl"
+        physical = self.workspace / "physical.tcl"
+        logical.write_text("ecoAddRepeater -cell BUFFD2 -net n1\n")
+        physical.write_text("placeInstance eco_buffer_1 10 20 R0 -placed\n")
+        self.assertTrue(closure.validate_sourceable_eco(logical, "logical")["sourceable"])
+        self.assertTrue(closure.validate_sourceable_eco(physical, "physical")["sourceable"])
+
+        logical.write_text("FORMATVERSION 2\nADDINST eco_buffer_1 BUFFD2\n")
+        with self.assertRaises(closure.Rejected):
+            closure.validate_sourceable_eco(logical, "logical")
+        physical.write_text("dbNetFreeWires [dbGetNetByName n1]\n")
+        with self.assertRaises(closure.Rejected):
+            closure.validate_sourceable_eco(physical, "physical")
+
 
 if __name__ == "__main__":
     unittest.main()

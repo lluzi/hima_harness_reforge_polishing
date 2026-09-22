@@ -19,8 +19,8 @@ checkpoint, not the most recent attempt. Successes and failures both become Camp
 
 ## Ambiguities resolved
 
-XTop post-opt values are predictions. Only the refreshed PrimeTime result after Innovus `loadECO`,
-physical commands, ecoRoute and StarRC is admitted. “No longer progresses” is measured convergence,
+XTop post-opt values are predictions. Only the refreshed PrimeTime result after Innovus sources the
+logical and physical macro Tcl, runs ecoRoute and refreshes StarRC is admitted. “No longer progresses” is measured convergence,
 not a claim of sign-off closure. Existing PG DRC, connectivity and unconstrained endpoints remain
 visible and cannot be erased by timing improvement.
 

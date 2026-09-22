@@ -13,7 +13,7 @@ set physical_eco_files [lsort [glob -nocomplain $env(ECO_DIR)/xtop_opt_innovus_p
 if {[llength $netlist_eco_files] != 1 || [llength $physical_eco_files] != 1} {
     error "expected exactly one XTop netlist ECO and one physical ECO"
 }
-loadECO [lindex $netlist_eco_files 0]
+source [lindex $netlist_eco_files 0]
 source [lindex $physical_eco_files 0]
 setNanoRouteMode -routeWithEco true -routeWithTimingDriven false -routeWithSiDriven false -drouteUseMultiCutViaEffort high
 ecoRoute
@@ -26,4 +26,3 @@ saveDesign $env(OUTPUT_ROOT)/DBS/closed.enc -compress
 defOut -floorplan -placement -netlist -routing -withShield -usedVia $env(OUTPUT_ROOT)/EXPORT/design.def
 saveNetlist $env(OUTPUT_ROOT)/EXPORT/design.v
 exit 0
-

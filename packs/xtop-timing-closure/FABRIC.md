@@ -95,6 +95,15 @@ than recording a proper `blocked` outcome. The Trial 29 Run was cancelled at `co
 as BLOCKED evidence rather than hot-patched, with its first generation's real success intact in the
 Ledger.
 
+Version 1.0.5 also adopts the Site owner's route-preservation requirement. The previous XTop
+`-write_atomic_cmd` mode emitted a `FORMATVERSION 2` logical file for `loadECO` and a physical Tcl
+that called `dbNetFreeWires`/`editDelete -net`; XTop's reference manual says atomic output removes
+the original routes of touched nets, while macro output keeps routing topology. The Pack now asks
+for INNOVUS macro commands with `-keep_route`, rejects FORMATVERSION/loadECO material and
+route-destructive physical commands, and sources the logical then physical Tcl before `ecoRoute`.
+The next Campaign must verify both scripts on the real tool, touched-net route retention,
+connectivity/DRC and refreshed STA; this record does not pre-claim those results.
+
 ## Reviews
 
 The method preserves one visible Campaign owner and one persistent Run. AI controls the next

@@ -22,7 +22,7 @@ prepare
   -> endpoint state
   -> AI plan-fix Workshop
   -> XTop fix
-  -> Innovus loadECO/source/ecoRoute
+  -> Innovus source logical Tcl/source physical Tcl/ecoRoute
   -> StarRC extraction
   -> PrimeTime scenarios
   -> endpoint compare + retain best DB
@@ -88,4 +88,3 @@ Foundation Flow 保持只读。Campaign 只写：
 6. Run 结束语义、experience 和所有产物可复核。
 
 这一门通过后再决定是否写 `TEST.md`、seal 和正式 release。
-

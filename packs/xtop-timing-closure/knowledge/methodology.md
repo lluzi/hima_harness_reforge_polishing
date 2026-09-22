@@ -9,8 +9,8 @@ Every generation is one controlled experiment:
 2. Explain what the last generation fixed, left, introduced or regressed.
 3. Write a bounded plan using only XTop size-cell and insert-buffer setup/hold actions.
 4. Let XTop propose an ECO. XTop post-opt numbers are a prediction, not admission evidence.
-5. Restore the exactly matching Innovus database, `loadECO` the netlist directives, source the
-   physical Tcl, and run `ecoRoute`.
+5. Restore the exactly matching Innovus database, source XTop's logical then physical macro Tcl,
+   require `-keep_route` output with no route-destructive commands, and run `ecoRoute`.
 6. Export the resulting DEF and netlist, run fresh StarRC extraction and all declared PrimeTime
    scenarios, and compare like for like.
 7. Append both successful and unsuccessful experience. Keep the lower-ranked database as evidence;
