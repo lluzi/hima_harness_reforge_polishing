@@ -688,9 +688,8 @@ def copy_database_alias(workspace: Path, snapshot):
     data = output / "best.enc.dat"
     shutil.copy2(source_script, script)
     if data.exists():
-        shutil.copytree(source_data, data, symlinks=True, dirs_exist_ok=True)
-    else:
-        shutil.copytree(source_data, data, symlinks=True)
+        shutil.rmtree(data)
+    shutil.copytree(source_data, data, symlinks=True)
     return script, data, tree_identity(data)
 
 
