@@ -48,6 +48,26 @@ remain unproven; the Trial 27 Run was cancelled at `summarize-baseline` as BLOCK
 than hot-patched, per the tester's isolation rule. The Pack remains development status and has no
 TEST.md or VERSION.yml release seal.
 
+Trial 28 ran the 1.0.3 fix in a real Campaign and confirmed it: `summarize-baseline` completed and
+produced this Pack's first-ever real closure state (setup WNS -0.040 ns / TNS -0.120 ns / 12
+violations, hold WNS -0.160 ns / TNS -8.860 ns / 221 violations, closure score 243.580, 3
+unconstrained endpoints), and the `plan-fix` Workshop then produced this Pack's first-ever real
+generation-1 plan (a bounded `hold-buffer` action against the three families carrying the hold
+mass, evidence-linked hypotheses, opposing setup margin retained). The Run then reached `xtop` for
+the first time in any Campaign and exposed a fourth, distinct boundary defect: `xtop()` passes
+`-log_dir <root>/logs` to the `xtop` binary but only ever creates `<root>` itself
+(`root.mkdir(...)`), never the `logs` subdirectory — and unlike the Pack's own templated tools,
+`xtop` does not create that directory for itself, so it exits 1 immediately with `Directory
+'.../XTOP/logs' does not exist or is not readable.` before doing any timing-fix work. This is a
+pure filesystem-setup gap, deterministic and licence-free, distinct from the Innovus/StarRC
+container-boundary class (trials 25–26) and the PrimeTime parser gap (trial 27) — `xtop` is simply
+the first stage whose own log-directory requirement the Pack never satisfied, because no prior
+Campaign ever admitted it. Version 1.0.4 adds `(root / "logs").mkdir(parents=True,
+exist_ok=True)` immediately after `root.mkdir(...)`, verified against a red test that stubs
+`run_eda` and asserts the directory exists at call time. The Innovus ECO/`ecoRoute` loop and the
+autonomous multi-generation research loop remain unproven; the Trial 28 Run was stopped at `xtop`
+as BLOCKED evidence rather than hot-patched.
+
 ## Reviews
 
 The method preserves one visible Campaign owner and one persistent Run. AI controls the next
