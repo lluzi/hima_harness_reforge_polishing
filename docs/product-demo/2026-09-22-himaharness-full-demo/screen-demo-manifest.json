@@ -1,5 +1,5 @@
 {
-  "schema": "hima.human-screen-demo/2",
+  "schema": "hima.human-screen-demo/3",
   "recording": "HimaHarness-human-screen-demo.zh-CN.mp4",
   "subtitle": "HimaHarness-human-screen-demo.zh-CN.srt",
   "app": "HimaHarness 0.3.0-trial.16",
@@ -58,6 +58,38 @@
       "playback_speed": 1.25,
       "edited_start": 408.666667,
       "edited_duration_seconds": 212.2
+    },
+    {
+      "source": "pack-mechanism-comparison",
+      "raw_ranges": [
+        [
+          0,
+          55
+        ],
+        [
+          60,
+          115
+        ],
+        [
+          120,
+          170
+        ],
+        [
+          190,
+          285
+        ],
+        [
+          285,
+          315
+        ],
+        [
+          330,
+          416.733333
+        ]
+      ],
+      "playback_speed": 1.25,
+      "edited_start": 620.866667,
+      "edited_duration_seconds": 297.433008
     }
   ],
   "screenshots": [
@@ -156,11 +188,59 @@
       "source": "live-run-graph-detail",
       "raw_second": 170,
       "description": "evidence-gate Evidence tab with source path, hash and reader provenance"
+    },
+    {
+      "file": "screen-recording/17-dtco-parallel-miners.png",
+      "source": "pack-mechanism-comparison",
+      "raw_second": 5,
+      "description": "DTCO graph entry, bound inputs and parallel opportunity miners"
+    },
+    {
+      "file": "screen-recording/18-dtco-commercial-feedback.png",
+      "source": "pack-mechanism-comparison",
+      "raw_second": 35,
+      "description": "DTCO generation, calibration, portfolio and commercial feedback nodes"
+    },
+    {
+      "file": "screen-recording/19-xtop-closure-nodes.png",
+      "source": "pack-mechanism-comparison",
+      "raw_second": 90,
+      "description": "Timing Closure baseline, plan, XTop, Innovus, extraction and PrimeTime nodes"
+    },
+    {
+      "file": "screen-recording/20-xtop-iteration-edges.png",
+      "source": "pack-mechanism-comparison",
+      "raw_second": 105,
+      "description": "Timing Closure evidence gate, best database and revisit edges"
+    },
+    {
+      "file": "screen-recording/21-pack-capabilities-explanation.png",
+      "source": "pack-mechanism-comparison",
+      "raw_second": 205,
+      "description": "HimaGuide read-only explanation of Pack capabilities and both business flows"
+    },
+    {
+      "file": "screen-recording/22-shared-node-semantics.png",
+      "source": "pack-mechanism-comparison",
+      "raw_second": 255,
+      "description": "Shared act, read, judge, explore and wait semantics"
+    },
+    {
+      "file": "screen-recording/23-pack-config-contract.png",
+      "source": "pack-mechanism-comparison",
+      "raw_second": 360,
+      "description": "Timing Closure Pack inputs, Site, Goal, budgets, seats and Knowledge binding"
+    },
+    {
+      "file": "screen-recording/24-pack-to-live-run.png",
+      "source": "pack-mechanism-comparison",
+      "raw_second": 405,
+      "description": "Declared Timing Closure Pack rendered as an active Fabric Live Run graph"
     }
   ],
-  "truth_boundary": "All product screens, mouse clicks, drag and zoom gestures, typed Chinese prompts, model responses and campaign data are from recorded HimaHarness sessions. Editing removes idle intervals and accelerates the graph detail segment to 1.25x; no presentation frames are inserted.",
+  "truth_boundary": "All product screens, mouse clicks, drag and zoom gestures, file scrolling, typed Chinese prompts, model responses and campaign data are from recorded HimaHarness sessions. Editing removes idle intervals and accelerates the graph-detail and dual-Pack segments to 1.25x; no presentation frames are inserted.",
   "campaign_safety": "Trial 30 remained Run-wide paused. No new Campaign or EDA Job was started for the demo.",
-  "final_duration_seconds": 620.866667,
+  "final_duration_seconds": 918.3,
   "source_recordings": [
     {
       "id": "main-human-session",
@@ -175,6 +255,13 @@
       "duration_seconds": 325.208333,
       "repository_included": false,
       "reason": "raw graph interaction capture retained locally; only edited segment and key frames are versioned"
+    },
+    {
+      "id": "pack-mechanism-comparison",
+      "path": ".hima-tmp/demo-recording/HimaHarness-pack-mechanism-raw.mov",
+      "duration_seconds": 416.733333,
+      "repository_included": false,
+      "reason": "raw dual-Pack source and read-only HimaGuide explanation retained locally; edited segment and key frames are versioned"
     }
   ]
 }

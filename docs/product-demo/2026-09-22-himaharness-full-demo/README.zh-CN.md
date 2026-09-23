@@ -6,11 +6,11 @@
 
 ## 主交付：真人式操作录屏
 
-- `HimaHarness-human-screen-demo.zh-CN.mp4`：10 分 21 秒、1920×1200。画面全部来自真实
+- `HimaHarness-human-screen-demo.zh-CN.mp4`：15 分 18 秒、1920×1200。画面全部来自真实
   HimaHarness 窗口、真实点击、中文输入、DeepSeek-V4.1-Flash 响应和已保留的 Campaign 数据；
   MP4 内含可开关的中文字幕轨。
 - `HimaHarness-human-screen-demo.zh-CN.srt`：独立中文字幕。
-- `screen-recording/`：从原始录屏直接提取的十六张关键功能截图。
+- `screen-recording/`：从原始录屏直接提取的二十四张关键功能截图。
 - `screen-demo-manifest.json`：录制环境、剪辑区间、截图原始时间点和真实性边界。
 
 录屏包含：应用启动、新会话、中文产品问答、Campaign 配置、Site 绑定、完整 Fabric 图、九代
@@ -24,6 +24,18 @@ DTCO 与 XTop 两套 Pack 的源码浏览。新增的 Live Run 深挖段真实�
 - `Knowledge`：每代分别保留的 `closureState` 与 `closureExperience`；
 - `Rules` / `Verdicts`：固定判据及其逐代 PASS/FAIL、WNS/TNS、违例和 endpoint 变化；
 - `Evidence`：结果文件路径、文件哈希、reader 脚本和读取时间构成的来源链。
+
+双 Pack 对照段进一步打开并滚动两份真实 `graph.yml`，展示 HimaHarness 如何用同一机制承载两类
+完全不同的业务：
+
+- DTCO Pack 从输入绑定和六个并行 miner 出发，经 AI Workshop、F0–F3、Cell 生成、Layout、
+  Characterization、Liberty 校准、累计 Library、双臂综合、匹配 P&R 和 E0 反馈形成研究闭环；
+- Timing Closure Pack 从只读 Innovus checkpoint 出发，经基线提取、plan-fix、XTop、Innovus ECO、
+  StarRC、PrimeTime、best-database retention 和 endpoint 反馈形成物理 ECO 闭环；
+- 两者都使用 `act`、`read`、`judge`、`explore`、`wait`，并由 Pack 内的 Intent、Graph、Contract、
+  Tools、Readers、Rules、Choosers、Knowledge、预算和证据语义定义完整方法；
+- HimaGuide 在一个新中文会话中实际读取四份 Pack 文件并解释上述关系，随后回到 Pack 配置和真实
+  Live Run，展示声明式方法如何被 Fabric 投影为可观察的运行图。
 
 录制期间 Trial 30 保持 Run-wide pause，没有启动新 Campaign 或 EDA Job。
 
@@ -42,7 +54,7 @@ DTCO 与 XTop 两套 Pack 的源码浏览。新增的 Live Run 深挖段真实�
 1. 主录屏是在 Catsights（macOS display 3）上通过 Computer Use 实际操作产生的，未插入任何
    presentation 页面；后期只删除等待和一次无效的宽泛搜索。
 2. 主录屏中的中文对话、工具调用、失败提示、文件读取和响应均由真实 HimaHarness 会话产生。
-3. `screen-recording/` 截图来自两段原始录屏帧；两段 MOV 均保留在本地
+3. `screen-recording/` 截图来自三段原始录屏帧；三段 MOV 均保留在本地
    `.hima-tmp/demo-recording/`，不进入 Git。版本化 MP4 是删除等待后串接形成的可交付剪辑。
 4. 补充讲解片的 UI 截图来自仓库中已保留的 L3 Electron/Catsights 验证产物，来源写在
    `manifest.json`。
@@ -61,10 +73,17 @@ DTCO 与 XTop 两套 Pack 的源码浏览。新增的 Live Run 深挖段真实�
    Pack 和 Fabric 承载，并可在全局与局部之间导航。
 3. 用 `13-plan-fix-code.png`、`14-apply-eco-job.png` 说明代码身份与真实商业作业如何进入同一张图。
 4. 用 `15-evidence-gate-verdicts.png`、`16-evidence-provenance.png` 说明裁决结果与来源证据可追溯。
-5. 用 `04-node-detail.png`、`05-pause-control.png` 说明可检查、可干预和可恢复。
-6. 用 `frames/15-15-dtco-result.png` 说明 Harness 记录负结果并推动下一代，而不是包装结果。
-7. 用 `frames/19-19-xtop-result.png` 说明 XTop Timing Closure 的连续商业工具闭环。
-8. 用 `10-knowledge-archive.png` 收束到知识资产与下一轮复用。
+5. 用 `17-dtco-parallel-miners.png`、`18-dtco-commercial-feedback.png` 展示 DTCO 的研究、Cell 实现和
+   商业反馈节点；用 `19-xtop-closure-nodes.png`、`20-xtop-iteration-edges.png` 展示 Timing Closure
+   的工具闭环与迭代边。
+6. 用 `21-pack-capabilities-explanation.png`、`22-shared-node-semantics.png` 说明 Pack 可封装的能力与
+   两套业务共用的节点语义。
+7. 用 `23-pack-config-contract.png`、`24-pack-to-live-run.png` 说明 Pack 声明如何经过 Site、Goal、预算
+   和 Knowledge 绑定，最终变成 Fabric Live Run。
+8. 用 `04-node-detail.png`、`05-pause-control.png` 说明可检查、可干预和可恢复。
+9. 用 `frames/15-15-dtco-result.png` 说明 Harness 记录负结果并推动下一代，而不是包装结果。
+10. 用 `frames/19-19-xtop-result.png` 说明 XTop Timing Closure 的连续商业工具闭环。
+11. 用 `10-knowledge-archive.png` 收束到知识资产与下一轮复用。
 
 ## 重新构建
 

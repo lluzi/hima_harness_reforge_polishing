@@ -69,3 +69,43 @@ Evidence 继续追溯每次裁决的 compare.json 路径、文件哈希、reader
 18
 00:10:00,640 --> 00:10:20,840
 最后演示定位当前节点、缩小和恢复全图。Live Run 图把方法、执行、知识、商业测量与证据链放在同一张可检查、可恢复的运行视图中。
+
+19
+00:10:20,867 --> 00:10:42,867
+Pack 不只是提示词，而是一份可安装、可审查、可执行的方法文件夹。先打开 DTCO graph.yml：入口、输入绑定和六个并行机会挖掘器都由图明确声明。
+
+20
+00:10:42,867 --> 00:11:04,867
+DTCO 图继续定义 AI Workshop、F0–F3 因子门、Cell 生成、Layout、Characterization、Liberty 校准、累计 Library、双臂综合与匹配 P&R，再由商业结果进入下一轮研究。
+
+21
+00:11:04,867 --> 00:11:26,867
+切换到 Timing Closure graph.yml：它从只读 Innovus checkpoint 建立基线，经 plan-fix、XTop、Innovus ECO、StarRC 与 PrimeTime 刷新时序。
+
+22
+00:11:26,867 --> 00:11:48,867
+随后 compare-and-retain 保存最佳数据库，evidence-gate 判定证据、setup 和 hold，next-iteration 带着 score 与 endpoint 反馈回到 plan-fix；硬阻塞进入显式 wait。
+
+23
+00:11:48,867 --> 00:12:28,867
+工程师新建中文会话，要求 HimaGuide 只读取两套 Pack 的 INTENT 与 Graph。问题明确禁止运行 Campaign、EDA 作业或修改文件，并要求解释共同机制。
+
+24
+00:12:28,867 --> 00:13:00,000
+HimaGuide 实际执行四次文件读取，并说明 Pack 可封装 Intent、Graph、Contract、Tools、Readers、Rules、Choosers、Knowledge、预算和证据语义。
+
+25
+00:13:00,000 --> 00:13:44,867
+DTCO 是开放研究与商业验证的累计 Library 闭环；Timing Closure 是 checkpoint 到 best database 的物理 ECO 闭环。两者共享 act、read、judge、explore、wait 五类节点语义。
+
+26
+00:13:44,867 --> 00:14:08,867
+框架治理图、预算、依赖、证据和恢复；业务差异留在 Pack。Site 提供环境与许可，Contract 固定 Goal，Readers 建立证据入口，Knowledge 与失败记录供下一代复用。
+
+27
+00:14:08,867 --> 00:14:43,000
+回到产品中的 Timing Closure Campaign 配置：同一个 Pack 还声明输入、Site 绑定、目标、策略、时间与代数预算、工具席位、Knowledge 和 28 节点参考图。
+
+28
+00:14:43,000 --> 00:15:18,280
+选择已有的 Trial 30 后，声明式 Pack 被 Fabric 投影成真实 Live Run。节点状态、商业 Job、Judge、Explore、Wait、Evidence 与跨代历史都由同一产品表面承载。
