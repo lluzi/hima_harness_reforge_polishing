@@ -276,6 +276,14 @@ R1/R3 与 R5 的合同设计可以并行；共享接线文件仍单一 owner。R
 
 若一个纯展示需求必须引入第二 root/session 调度器，或一个只读分析组件要求 SQL write/终端权限，停止整体接入，改为窄提取或放弃。若插件 API 升级要求大范围改核心，先比较自行实现小接口的维护成本，不为一项局部特性升级整套 runtime。
 
+## 补充需求：交互式 EDA Operator（2026-09-23）
+
+用户补充 XTop manual ECO 场景，并明确本轮先写方案。这个具体需求使 DSH 原生 terminal/PTY 能力成为独立的复用方向：一次性 Bash、持久 shell 与交互 EDA 会话应分开核验。当前已有 owner-scoped terminal service/backend，但 profile 的 model-facing 入口和 Campaign 内受控输入尚不能据此视为完成。
+
+建议增加 R7：普通终端复用原生 PTY；Campaign 交互能力扩展现有 Job/Channel/Fabric，而不整体引入社区 shell。保留同一 EDA 进程、逐次输入输出、at-most-once 派发/unknown、暂停和 checkpoint 验证。它与此前暂缓“完整 BI/Shell/fork”不冲突：新需求需要一个窄终端执行接口，没有要求替换 Workbench 或增加另一套业务控制器。
+
+完整接口与测试场景见 [交互式 EDA 方案](../../specs/interactive-eda-v1/spec.zh-CN.md)。没有开启新测试或更改依赖；原研究的时间和验证范围保持。
+
 ## 12. 本次研究的完成边界
 
 已完成组件发现、原生接口与源码/manifest 核查、主要候选许可识别、现有架构对照、分阶段 POC 和可证伪条件。没有安装候选项目或运行其 tests，没有量化节省的开发工时，没有将 upstream README 的“支持/通过”当成 Hima 实测。
