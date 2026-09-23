@@ -23,8 +23,8 @@ const write = { kind: 'chunks', chunks: [
   { type: 'finish', reason: { kind: 'tool-calls' } },
 ] };
 
-async function persisted(t: TestContext) {
-  const h = await createHimaHome(); t.after(() => h.dispose());
+async function persisted() {
+  const h = await createHimaHome();
   const file = path.join(h.home, 'replay.jsonl'); const override = path.join(h.home, 'replay.json');
   writeFileSync(file, JSON.stringify({ version: 0, type: 'session', id: 'fixture-resume', createdAt: 0, cwd: h.workspace }) + '\n');
   writeFileSync(override, JSON.stringify([say('original persisted turn')]));
@@ -41,12 +41,13 @@ async function persisted(t: TestContext) {
   return { h, id, model };
 }
 
-function liveCheck(t: TestContext, out: string) {
+function liveCheck(t: TestContext, out: string, home: Awaited<ReturnType<typeof createHimaHome>>) {
   const saved = { argv: process.argv, key: process.env.DEEPSEEK_API_KEY, stdout: process.stdout.write, stderr: process.stderr.write, exitCode: process.exitCode };
   const env = Object.fromEntries(['TMPDIR', 'TMUX_TMPDIR', 'TMUX', 'SSH_AUTH_SOCK', 'HIMA_TEST_LEGACY_AUTO_DRIVE', 'HIMA_TEST_SILENT_AGENT', 'DSH_TELEMETRY_DISABLED'].map((key) => [key, process.env[key]]));
   process.argv = [process.execPath, 'keyless-lifecycle-test', '--out', out, '--timeout-ms', '30000'];
   process.env.DEEPSEEK_API_KEY = 'nonsecret-checkpoint-scan-sentinel';
   const check = new LiveCheck('live-check-pipeline-checkpoint', 2);
+  check.home = home;
   process.argv = saved.argv;
   t.after(async () => {
     clearTimeout(check.hardTimer);
@@ -56,13 +57,14 @@ function liveCheck(t: TestContext, out: string) {
     if (saved.key === undefined) delete process.env.DEEPSEEK_API_KEY; else process.env.DEEPSEEK_API_KEY = saved.key;
     for (const [key, value] of Object.entries(env)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
     rmSync(check.temporary, { recursive: true, force: true });
+    await home.dispose();
   });
   return check;
 }
 
 test('the pilot guard reads its native spilled result but refuses temporary files and symlink escapes', async t => {
-  const { h, id, model } = await persisted(t);
-  const check = liveCheck(t, path.join(h.home, 'spill-guard-evidence'));
+  const { h, id, model } = await persisted();
+  const check = liveCheck(t, path.join(h.home, 'spill-guard-evidence'), h);
   const host = await bootInProcess(h); check.attach(host);
   const resumed = await resumeTestAgent(host.ctx, id, model);
   t.after(() => resumed.dispose());
@@ -85,8 +87,8 @@ test('the pilot guard reads its native spilled result but refuses temporary file
 });
 
 test('native persisted resume restores the explicitly held model and finishes an actual tool before say returns', async (t) => {
-  const { h, id, model } = await persisted(t);
-  const check = liveCheck(t, path.join(h.home, 'completed-turn-evidence')); check.home = h;
+  const { h, id, model } = await persisted();
+  const check = liveCheck(t, path.join(h.home, 'completed-turn-evidence'), h);
   const host = await bootInProcess(h); check.attach(host);
   const handle = await resumeTestAgent(host.ctx, id, model); check.trackResumed(handle.agent);
   try {
@@ -109,9 +111,8 @@ test('native persisted resume restores the explicitly held model and finishes an
 });
 
 test('LiveCheck reports a native turn failure instead of advancing to method assertions', async (t) => {
-  const { h, id } = await persisted(t);
-  const check = liveCheck(t, path.join(h.home, 'failed-turn-evidence'));
-  check.home = h;
+  const { h, id } = await persisted();
+  const check = liveCheck(t, path.join(h.home, 'failed-turn-evidence'), h);
   const host = await bootInProcess(h); check.attach(host);
   const handle = await resumeTestAgent(host.ctx, id); // Deliberately no model, reproducing the defect.
   check.trackResumed(handle.agent);
@@ -122,9 +123,8 @@ test('LiveCheck reports a native turn failure instead of advancing to method ass
 });
 
 test('cleanup survives an already disposed projection, records failure and scans the retained external home', async (t) => {
-  const { h, id, model } = await persisted(t);
-  const check = liveCheck(t, path.join(h.home, 'cleanup-evidence'));
-  check.home = h;
+  const { h, id, model } = await persisted();
+  const check = liveCheck(t, path.join(h.home, 'cleanup-evidence'), h);
   const host = await bootInProcess(h); check.attach(host);
   const handle = await resumeTestAgent(host.ctx, id, model); check.trackResumed(handle.agent);
   check.failure = 'deliberate failed-check fixture';

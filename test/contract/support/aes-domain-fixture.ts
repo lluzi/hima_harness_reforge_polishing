@@ -151,13 +151,17 @@ elif tool == 'innovus':
         print('=== core area: {2.0 2.0 22.0 22.0} ===')
     elif script.name.startswith('pnr_'):
         checkpoint_targets = re.findall(r'^saveDesign\s+(\S+)', text, re.M)
-        if len(checkpoint_targets) != 1:
-            raise SystemExit('synthetic P&R expects exactly the scripted postroute saveDesign checkpoint')
-        target = pathlib.Path(checkpoint_targets[0])
+        if len(checkpoint_targets) not in (1, 2):
+            raise SystemExit('synthetic P&R expects one postroute checkpoint or place and postroute checkpoints')
+        target = pathlib.Path(checkpoint_targets[-1])
         restored = pathlib.Path(re.search(r'^restoreDesign\s+(\S+)', text, re.M).group(1))
         place_links = [(str(link.relative_to(restored)), link.readlink())
                        for link in restored.rglob('*') if link.is_symlink()
                        and not str(link.readlink()).endswith('.dc.sdc')]
+        if len(checkpoint_targets) == 2:
+            place_target = pathlib.Path(checkpoint_targets[0])
+            save_checkpoint(place_target, arm + '-place', place_links)
+            print('=== CCFMAX PLACE CHECKPOINT %s %s ===' % (arm, place_target))
         links = list(place_links)
         rc_model = script.parent / 'rc_model.bin'
         rc_model.write_bytes(b'SYNTHETIC POSTROUTE RC MODEL\n')
@@ -233,7 +237,8 @@ Analysis View: view_%s
             physical_facts.parent.mkdir(parents=True, exist_ok=True)
             physical_facts.write_text('metric\tvalue\tunit\noccupied_standard_cell_area\t100\tum2\ncore_area\t400\tum2\neffective_site_occupancy\t0.25\tfraction\ndcap_count\t0\tcount\npg_special_wire_count\t4\tcount\n')
         density_match = re.search(r'reportDensityMap > \{([^}]+)\}', text)
-        if density_match: pathlib.Path(density_match.group(1)).write_text('SYNTHETIC DENSITY MAP\n')
+        if density_match:
+            pathlib.Path(density_match.group(1)).write_text('SYNTHETIC DENSITY MAP\n')
         save_netlist = re.search(r'^saveNetlist\s+(\S+)', text, re.M)
         if save_netlist:
             routed_netlist = pathlib.Path(save_netlist.group(1))
