@@ -36,6 +36,22 @@ _Avoid_: 隐藏执行 Agent、Fabric 的旁观者、多个并行 Run owner
 与 Campaign Agent 同处一个 HimaHarness、可以并行进行普通对话或 Coding 的独立非 owner 会话；它可以查看 Campaign，只有显式 handoff 后才能接管执行。
 _Avoid_: Campaign 的第二执行者、右侧运行状态面板
 
+**业务 Subagent**:
+接受明确委派、以独立上下文和会话完成分析、研究、Coding 或获准操作的协作者；工程师可以独立查看其任务、保留的上下文、transcript 和产物。它的局部执行权限不等于 Campaign 的整体业务所有权。
+_Avoid_: 后台 Job、不可查看的主 Agent 摘要、默认第二个 Run owner
+
+**产品工作模式**:
+工程师在同一工作区选择的任务入口与主要展示方式，当前包括 Campaign 与 Data Insight 两种同级模式。
+_Avoid_: DSH 工具组合模式、另一套 Runtime、只切换视觉主题
+
+**Campaign 工作模式**:
+以准备、推进和观察一次 Campaign 为中心的产品工作模式，Live Run 是其中的执行视图。
+_Avoid_: 所有数据浏览的强制入口、Campaign 业务实体本身的替代定义
+
+**Data Insight 工作模式**:
+以数据分析、可交互比较、发现和证据理解为中心，与 Campaign 同级的产品工作模式；需要实际计算或行动时关联既有受控执行能力。
+_Avoid_: Live Run 子页、独立 BI 应用、第二份数据或执行权威
+
 **HimaFabric**:
 承载参考路线、运行事实和执行约束的业务基础设施，为 Campaign Agent 提供可追踪、可恢复的运行环境。
 _Avoid_: 独立业务决策者、第二执行主脑

@@ -16,6 +16,11 @@ Library-richness calibration 阶段的免费代理只提供各自指标、局部
 
 用户最新明确：一个可见的 Campaign Agent 是该 Campaign 持久 Run 的唯一业务执行主体。它读取 Pack 的参考路线与实际状态，执行节点内的研究、Coding 和工具工作，并根据结果及人类指令决定后续动作；用户可以在同一产品内新开独立 Side Talk 继续普通对话和 Coding，切换会话不改变 Run owner。Fabric 提供执行上下文、合法动作、资源/依赖约束、验收与事实记录；主产品路径不再由 Fabric 自主连续推进整张图。机械的 Job 执行、状态采集和硬约束继续由基础设施代码承担。见 [并行会话与执行主导权决定](adr/0008-visible-campaign-agent-and-side-talk.md)。
 
+用户于 2026-09-23 进一步明确：Subagent 应有可独立打开的真实工作会话。工程师能查看委派任务、
+实际可用的上下文/来源、完整保留的 transcript、工具轨迹与产物，并向明确的子 Agent 跟进。
+研究/Coding/EDA 操作角色在分配权限内执行实际工作；只读是某些角色的配置，不是所有 Subagent
+的能力上限。查看/切换子会话不改变 Run owner，未记录的上下文不得由模型补写。
+
 模型基线为用户提供的 DeepSeek-V4.1-Flash（官方 API wire id `deepseek-flash`）。预期整体工作流可靠，模型能力差异主要体现在特定研究环节的创造力和思考深度；不能依赖只有最强闭源模型才能完成的隐性前提，也不要求最弱模型具备同等研究能力。
 
 工程师设定方向和关键业务约束，AI 在授权与预算内自主推进。工程师可随时查看、追问、纠偏或停止；真正缺少业务判断、无法继续或需要超出权限的动作时返回人，并附原因、已尝试内容和下一步。
@@ -59,6 +64,17 @@ Pack 安装后，用户可直接询问用途和运行条件。HimaGuide 在建�
 
 用户提供 Pack 要求的输入，在检查通过的 Site 条件下，应能顺利复现方法与研究闭环，并验证结果。不同设计或环境不承诺相同数值。条件缺口和适配责任在开始前呈现。
 Golden Flow 是 Pack 作者学习、校准和测试方法的参考，不是客户运行 Pack 的必要输入。Pack 与 Harness 分开版本：Pack 只声明最低 Harness 版本，Harness 对既有 Pack 保持向前兼容；Pack 状态只用于展示，不改变 Runtime。
+
+用户于 2026-09-23 明确：**Campaign 与 Data Insight 是同级产品工作模式**，Start 与工作区均应提供
+入口/标签；Agent 收到 Library 分析需求时打开 Data Insight panel，收到执行型任务时打开 Campaign
+准备或运行视图。Data Insight 不嵌套为 Live Run 的子页，打开已有洞察也不要求创建空 Campaign。
+复用现有对话、Workbench/dock、主题、卡片、表格、图标和文件/终端入口；需要计算或验证的分析继续
+使用现有受控执行与证据体系。后台更新不抢用户焦点，切换面板不隐式启动、暂停或接管任务。
+
+两种模式均能打开 Agent 团队和独立 Subagent 会话，像普通 Coding 会话一样检查消息、上下文、工具
+调用与代码/测试产物。它是共享协作视图，不是第三种产品运行模式。具体信息层级与验收见
+[工作模式与 Subagent 方案](specs/workbench-modes-and-subagents/spec.zh-CN.md)，决定见
+[ADR-0013](adr/0013-campaign-and-data-insight-are-peer-workbench-modes.md)。这些为已确认需求，尚未实现。
 
 首个版本先支持明确环境的试点部署；一次站点准备后，研究工程师通过桌面和对话工作，无需构建源码或维护内部 YAML。商业签名、通用安装包、多操作系统未列为当前已承诺里程碑，不因本稿自动扩展范围。
 

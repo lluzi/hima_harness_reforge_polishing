@@ -284,6 +284,17 @@ R1/R3 与 R5 的合同设计可以并行；共享接线文件仍单一 owner。R
 
 完整接口与测试场景见 [交互式 EDA 方案](../../specs/interactive-eda-v1/spec.zh-CN.md)。没有开启新测试或更改依赖；原研究的时间和验证范围保持。
 
+## 补充决定：同级 Data Insight 与独立 Subagent 会话（2026-09-23）
+
+用户明确了导航层级：Start 与工作区提供同级 Campaign / Data Insight 标签；Library 分析由 Agent 打开
+Data Insight，Live Run 继续属于 Campaign。复用现有视觉和 dock，而不是在 Campaign 详情里塞一个
+必须依赖 Run 的洞察子页。Subagent 作为真实独立工作会话，可查看任务、实际上下文、transcript、
+工具轨迹、代码和产物；Coding 能力依角色权限开放，不能将只读试点固化为整个团队的能力上限。
+
+这两项通过原生 UI/session/context 与薄的身份适配推进。产品决定与验收见
+[工作模式与 Subagent 方案](../../specs/workbench-modes-and-subagents/spec.zh-CN.md)。当前只记录设计，
+没有启动实现或测试。
+
 ## 12. 本次研究的完成边界
 
 已完成组件发现、原生接口与源码/manifest 核查、主要候选许可识别、现有架构对照、分阶段 POC 和可证伪条件。没有安装候选项目或运行其 tests，没有量化节省的开发工时，没有将 upstream README 的“支持/通过”当成 Hima 实测。

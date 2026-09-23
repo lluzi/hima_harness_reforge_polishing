@@ -21,3 +21,6 @@ Finding、Rule Studio、Insight Builder、报告、Sandbox 或 Action Center 拆
 Trend 的 load 切换、Cell filter、多维视图和客户算法属于三类分析共用的交互/分析能力。客户 Python
 算法必须经过 schema、fixture、版本、预算和权限约束。Milkyway、NDM 等第三方数据库只能通过各自的
 只读 adapter 和合法 Site 工具投影事实，不得因为 Liberty API 本身是 Python API 就宣称直接支持。
+
+2026-09-23 补充：三类分析属于与 Campaign 同级的 Data Insight 工作模式；不是 Campaign 下新增三个
+页面。Start/标签层级见 [ADR-0013](0013-campaign-and-data-insight-are-peer-workbench-modes.md)。
