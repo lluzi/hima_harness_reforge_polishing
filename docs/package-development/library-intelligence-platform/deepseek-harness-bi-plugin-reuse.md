@@ -186,6 +186,26 @@ Provenance 等内部模块。产品首页和右侧 Workbench 只回答三个问�
 `Catalog & Lineage`、数据索引、ECharts、frozen replay、candidate sandbox 和 provenance 都属于基础设施。
 用户只在需要解释“数据从哪里来”“为什么相信”“怎样回滚”时下钻，不需要先学习这些概念。
 
+### 一线 AE 观察怎样合入三类分析
+
+下面五点是竞品差异的现场观察，不新增五个产品入口：
+
+| AE 观察 | 我们能否解决 | 放入哪类分析 | Lib API 与额外依赖边界 |
+| --- | --- | --- | --- |
+| Trend Analysis 可点选切换不同 loading | **可以直接做好。** 同一 arc/table 支持 output-load selector、固定 slew 后比较 load slice，或固定 load 后比较 slew/PVT；选择保持到继续追问 | 库性能与竞争力；异常时也进入库健康 | Lib API 的 template/index/values、NLDM/CCS data group 可提供 load/slew axes。必须显示域内/边界/域外，不能静默 extrapolate |
+| 用户用 Python API 自定义 outlier algorithm；Qualib 现场体验主要是严格递增/递减 | **可以，并应作为差异点。** 用户说“添加公司检查”，系统生成/导入算法，在 fixture 上预览、测试、版本化，输出 Finding schema | 三类分析共用；主要服务库健康与发布风险 | Lib API 提供 normalized facts、table/waveform/corner 数据。Python 只在 Site-local 受控 runner 中执行，声明输入字段、预算、依赖和输出；自由脚本不能直接给 PASS/FAIL |
+| GUI 可过滤不想看的 Cell | **可以直接做好，而且要比简单 name filter 更有用。** 支持 name/function/VT/drive/cell class/finding/design adoption 过滤、include/exclude、保存 view | 三类分析共用 | Lib API 可枚举 Cell、function、area/footprint、pin/arc 与属性；design-adoption filter 还需 Hima 设计证据。大 corpus 应在 Host 侧过滤，不把全量 Cell 传给浏览器/模型 |
+| 三个维度同时呈现，例如 Word、Byte、Delay Constraint、Corner | **可以，但需把维度语义写清。** 产品提供 X/Y/Color 或 Row/Column/Color，必要时用 small multiples；不让用户先选择“图表类型” | 库性能与竞争力；异常点进入库健康 | Delay/constraint/corner 可由 Lib API 提取。若 Word/Byte 指 memory organization 等字段，只在 Liberty generic attribute/group 或获准 manifest/adapter 明确提供时使用；不存在的维度不能由文件名或 AI 猜测 |
+| Python API 支持第三方 model，如 Synopsys Milkyway/NDM | **可通过 adapter 解决，但不是 Lib API 直接能力。** 用第三方数据库增强 cross-view 与物理信息，而不是宣称一个 parser 读所有格式 | 库健康：跨 view 完整性；库性能：物理/接口辅助；设计影响：实际消费 | Milkyway/NDM 需要 Synopsys 合法工具/API、许可和 Site-local read-only extractor，产生 hash-bound projection。SAED14 现场已有 10 个 Milkyway 目录、35 个 NDM bundle/reflib，可作为真实 POC；原数据库继续是 authority |
+
+第五点的产品措辞建议固定为“**可扩展的 Library/View Adapter**”，而不是“第三方 Model 支持”。前者明确
+每种格式都要有 reader、版本、许可、identity mapping、unknown 与验证；后者容易让客户理解成无需
+vendor 工具即可任意读取 proprietary database。
+
+Synopsys 的最新产品手册由 [SolvNetPlus](https://www.synopsys.com/support/licensing-installation-computeplatforms/synopsys-documentation.html)
+向合格客户提供，本轮没有使用 entitlement 内容，也未验证具体 NDM/Milkyway 命令/API。adapter 的
+“可行”仅来自格式 collateral、合法工具接入模式和现场真实 corpus，不能升级为已 qualification。
+
 ## 5. 推荐的产品结构
 
 ```text

@@ -85,6 +85,13 @@ Golden Flow 是 Pack 作者学习、校准和测试方法的参考，不是客�
 用户可以在分析过程中用自然语言增加组织规则或保存分析方法；产品把它们编译为受控、可测试、可版本化
 资产，不让自由模型代码直接成为结果权威。Liberty API 能提供 Library 内事实和候选副本能力；设计采用、
 真实 PPA、相关性和芯片结果仍须由 HimaHarness 的设计证据与实际 EDA 验证补充，不能由 Liberty 单独推导。
+
+一线 AE 的竞品观察进一步明确共同能力：trend 分析允许切换 output load；用户可过滤不关注的 Cell；
+同一视图可用类别、数值与 corner 等三个维度联合表达；客户可以增加自己的 Python 分析算法。HimaHarness
+应在三类分析内部提供这些能力，但 Python 算法须使用受控输入/输出 schema、fixture、版本和执行边界，
+不能成为无审计的自由代码。Milkyway、NDM 等第三方数据库不属于 Liberty API 的直接读取范围；只有在
+Site 具备合法工具、许可和只读访问时，才通过独立格式 adapter 投影到相同语义身份，并保留原数据库为
+权威。本要求不扩展为“任意格式天然支持”的产品承诺。
 见 [Library Intelligence 三类用户分析决定](adr/0012-library-intelligence-has-three-user-analysis-surfaces.md)。
 
 ## 首个里程碑与验证责任
