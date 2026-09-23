@@ -1,0 +1,91 @@
+{
+  "schema": "hima.human-screen-demo/1",
+  "recording": "HimaHarness-human-screen-demo.zh-CN.mp4",
+  "subtitle": "HimaHarness-human-screen-demo.zh-CN.srt",
+  "app": "HimaHarness 0.3.0-trial.16",
+  "display": "Catsights / macOS display 3 / 1920x1200",
+  "operator": "Codex Computer Use",
+  "model": "DeepSeek-V4.1-Flash High",
+  "source_recording": {
+    "duration_seconds": 533.64,
+    "repository_included": false,
+    "reason": "raw capture retained locally; final edited screen recording is the deliverable"
+  },
+  "edits": [
+    {
+      "raw": [
+        0,
+        125
+      ],
+      "edited_start": 0
+    },
+    {
+      "raw": [
+        175,
+        225
+      ],
+      "edited_start": 125
+    },
+    {
+      "raw": [
+        300,
+        533.64
+      ],
+      "edited_start": 175
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "screen-recording/01-startup.png",
+      "raw_second": 25,
+      "description": "HimaHarness startup and restored workspace"
+    },
+    {
+      "file": "screen-recording/02-chinese-dialogue.png",
+      "raw_second": 90,
+      "description": "Chinese HimaGuide response with Campaign configuration"
+    },
+    {
+      "file": "screen-recording/03-live-graph.png",
+      "raw_second": 120,
+      "description": "Live Fabric graph beside the conversation"
+    },
+    {
+      "file": "screen-recording/04-generations.png",
+      "raw_second": 185,
+      "description": "Nine completed generations and generation ten boundary"
+    },
+    {
+      "file": "screen-recording/05-evidence.png",
+      "raw_second": 200,
+      "description": "Evidence and measured timing facts"
+    },
+    {
+      "file": "screen-recording/06-dtco-prompt.png",
+      "raw_second": 330,
+      "description": "User requests a bounded read-only DTCO Pack explanation"
+    },
+    {
+      "file": "screen-recording/07-dtco-response.png",
+      "raw_second": 390,
+      "description": "Chinese DTCO Pack explanation from real files"
+    },
+    {
+      "file": "screen-recording/08-files-and-code.png",
+      "raw_second": 455,
+      "description": "Files and code panel with both Pack folders"
+    },
+    {
+      "file": "screen-recording/09-dtco-intent.png",
+      "raw_second": 485,
+      "description": "Custom Cell Fmax DTCO INTENT opened in product"
+    },
+    {
+      "file": "screen-recording/10-xtop-intent.png",
+      "raw_second": 520,
+      "description": "XTop Timing Closure INTENT opened in product"
+    }
+  ],
+  "truth_boundary": "All product screens, mouse clicks, typed Chinese prompts, model responses and campaign data are from the recorded HimaHarness session. Editing removes idle/search intervals only; no presentation frames are inserted.",
+  "campaign_safety": "Trial 30 remained Run-wide paused. No new Campaign or EDA Job was started for the demo."
+}

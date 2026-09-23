@@ -1,0 +1,43 @@
+1
+00:00:00,000 --> 00:00:18,000
+真实启动 HimaHarness 0.3.0-trial.16，并从隔离的 Trial Data 恢复工作区。
+
+2
+00:00:18,000 --> 00:00:55,000
+在一个新会话中，工程师用中文询问 HimaPack、Site、Campaign、Fabric 与 Evidence 的关系。
+
+3
+00:00:55,000 --> 00:01:32,000
+DeepSeek-V4.1-Flash 用中文解释产品核心：Pack 定义方法，Site 定义执行边界，Campaign 固定目标，Fabric 约束执行，Evidence 决定结论。
+
+4
+00:01:32,000 --> 00:02:05,000
+右侧打开 Campaign 配置与 Live 图：输入由 Site 绑定，目标、预算、工具席位和完整参考图同时可见。
+
+5
+00:02:05,000 --> 00:02:30,000
+Generations 视图展示九代已完成结果与第十代的暂停边界，历史 Run 没有被新会话替换。
+
+6
+00:02:30,000 --> 00:02:55,000
+Evidence 视图保存代码哈希、Workshop 输入、每代 observation、endpoint fixed/remaining/entrant/regressed 和真实 PrimeTime 指标。
+
+7
+00:02:55,000 --> 00:03:32,000
+Pack & assets 使用透明文件夹；演示指定 custom-cell-fmax-dtco 源目录，没有创建或启动新的 Campaign。
+
+8
+00:03:32,000 --> 00:04:30,000
+工程师要求 HimaGuide 只读取 DTCO Pack 的 INTENT 与 VERSION。Agent 实际调用文件读取工具，并明确不启动 EDA 作业。
+
+9
+00:04:30,000 --> 00:05:30,000
+HimaGuide 用中文说明 DTCO 5.2.10：5% matched post-route Fmax 目标、并列 F0–F3、E0 商业观察、累计 Library 和诚实停止。
+
+10
+00:05:30,000 --> 00:06:20,000
+Files & code 面板直接浏览 Pack 的 choosers、flow、knowledge、readers、rules、tools、graph、contract 和版本封印。
+
+11
+00:06:20,000 --> 00:06:48,640
+最后查看 XTop Timing Closure Pack：Innovus 数据库输入、XTop/Innovus/StarRC/PrimeTime 闭环、endpoint 反馈与 best database 输出。

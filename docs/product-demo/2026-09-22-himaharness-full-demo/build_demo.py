@@ -382,7 +382,19 @@ def main() -> None:
     (OUT / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     checks = []
-    for p in sorted([final, OUT / "HimaHarness-full-demo.zh-CN.srt", *KEY.glob("*.png"), *FRAMES.glob("*.png")]):
+    optional = [
+        OUT / "HimaHarness-human-screen-demo.zh-CN.mp4",
+        OUT / "HimaHarness-human-screen-demo.zh-CN.srt",
+        OUT / "screen-demo-manifest.json",
+    ]
+    for p in sorted([
+        final,
+        OUT / "HimaHarness-full-demo.zh-CN.srt",
+        *KEY.glob("*.png"),
+        *FRAMES.glob("*.png"),
+        *(p for p in optional if p.exists()),
+        *(OUT / "screen-recording").glob("*.png"),
+    ]):
         checks.append(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(OUT)}")
     (OUT / "SHA256SUMS.txt").write_text("\n".join(checks) + "\n", encoding="utf-8")
 
