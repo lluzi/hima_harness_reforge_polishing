@@ -212,7 +212,17 @@ function smokeRelocatedHost(app) {
         const opened = await fetch(host.url, { redirect: 'manual' });
         const cookie = opened.headers.get('set-cookie')?.split(';')[0];
         if (opened.status !== 303 || !cookie) throw new Error('packaged Host did not authenticate its session');
-        const response = await fetch(new URL('/hima/api/runs', host.url), { headers: { cookie } });
+        const unscoped = await fetch(new URL('/hima/api/runs', host.url), { headers: { cookie } });
+        if (unscoped.status !== 403) throw new Error('packaged Host exposed unscoped Run inventory');
+        const created = await fetch(new URL('/api/session/create', host.url), {
+          method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'client-request', rpcId: 'relocated-smoke-session', method: 'session/create',
+            payload: { args: { request: { cwd: workspace } } } }),
+        });
+        const native = await created.json();
+        const sessionId = native.result?.value?.sessionId;
+        if (native.result?.ok !== true || typeof sessionId !== 'string') throw new Error('packaged Host could not create a native project conversation');
+        const response = await fetch(new URL('/hima/api/runs?sessionId=' + encodeURIComponent(sessionId), host.url), { headers: { cookie } });
         if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
           throw new Error('packaged Host did not serve its Hima API');
         }
