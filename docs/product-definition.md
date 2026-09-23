@@ -62,6 +62,31 @@ Golden Flow 是 Pack 作者学习、校准和测试方法的参考，不是客�
 
 首个版本先支持明确环境的试点部署；一次站点准备后，研究工程师通过桌面和对话工作，无需构建源码或维护内部 YAML。商业签名、通用安装包、多操作系统未列为当前已承诺里程碑，不因本稿自动扩展范围。
 
+## Library Intelligence 产品面
+
+用户于 2026-09-22 明确：Library Intelligence 是 HimaHarness 基于 Liberty API 提供的原生业务能力。
+用户继续使用同一对话，右侧 Workbench 展示可交互的数据洞察和可视化；洞察可以形成有依据的后续
+行动建议，并支持客户自己的检查和分析方法。
+
+面向用户只呈现三类分析，不把 Catalog、图表、Finding、Rule Studio、报告和 Action Center 分别包装成
+多个产品功能：
+
+1. **库健康与发布风险分析——这套库可靠吗？** 检查版本与 corner/view 身份、结构和单位完整性、
+   Cell/pin/arc/constraint/model coverage、跨 PVT 一致性、数值趋势异常和 revision regression，帮助
+   用户判断能否交付、哪些问题需要阻塞或复查。
+2. **库性能与竞争力分析——这套库强在哪里、弱在哪里？** 分析 Cell family、drive/VT/PVT、delay、
+   transition、constraint、area、leakage、internal power、variation 和工作域，帮助用户比较版本/方案、
+   识别优势、短板和 Library 开发优先级。
+3. **设计影响与行动分析——它对我的芯片意味着什么？** 将 Library finding 与当前设计实际使用的
+   Cell/instance、path/endpoint、slew/load、mode 和商业工具结果连接，帮助用户决定先处理什么、下一项
+   最便宜验证是什么，以及是否需要 candidate、STA/SPICE 或 matched implementation。
+
+自定义规则、数据探索、可视化、证据追溯、报告和后续动作是三类分析的共同能力，不作为一级产品导航。
+用户可以在分析过程中用自然语言增加组织规则或保存分析方法；产品把它们编译为受控、可测试、可版本化
+资产，不让自由模型代码直接成为结果权威。Liberty API 能提供 Library 内事实和候选副本能力；设计采用、
+真实 PPA、相关性和芯片结果仍须由 HimaHarness 的设计证据与实际 EDA 验证补充，不能由 Liberty 单独推导。
+见 [Library Intelligence 三类用户分析决定](adr/0012-library-intelligence-has-three-user-analysis-surfaces.md)。
+
 ## 首个里程碑与验证责任
 
 在 DeepSeek Harness 架构上运行旧版最复杂的 DTCO 探索业务，达到并超过旧版 OpenCode 平台的研究与产品能力，包括对话、Coding、优秀 UI、Fabric 与复杂业务的 Pack 表达。

@@ -112,7 +112,11 @@ domain 和 model-family 语义，不是字段数量。
 4. **What should we do?** 哪个反证、修复或实验具有最高信息价值；
 5. **Did it work?** 修复是否被工具实际采用，并改善了什么、恶化了什么。
 
-## 4. 必须达到的七层能力
+## 4. 三类用户分析背后的内部能力
+
+下面七层是三类分析共同使用的内部能力和演进顺序，不是七个产品入口。用户只看到“库健康与发布风险”、
+“库性能与竞争力”和“设计影响与行动”；source truth、semantic cube、Finding、验证、修复和学习根据问题
+自动组合，并在需要审计时才展开。
 
 ### L1：可审计的 source truth
 
@@ -191,15 +195,18 @@ commercial response。
 
 ## 7. 产品体验应当长什么样
 
-工程师不应面对一个图表目录，而是面对四个连续工作面：
+工程师不面对图表和模块目录，而是从三个问题开始：
 
-1. **Release Radar**：Library family/corner/view/revision 完整度、变化面、未闭合风险和 design exposure；
-2. **Finding Dossier**：趋势图、table/waveform、相邻条件、规则/模型解释、受影响设计对象和原始 location；
-3. **Investigation Workspace**：Agent 的假设、可执行 query/code、选择的反证、Job 状态和新证据；
-4. **Decision & Release**：采用/修复/waive/block、证据责任、影响闭包、回滚与技术报告。
+1. **这套库可靠吗？** 进入库健康与发布风险分析；
+2. **这套库强在哪里、弱在哪里？** 进入库性能与竞争力分析；
+3. **它对我的芯片意味着什么？** 进入设计影响与行动分析。
 
-用户从任何 Cell、arc、corner、finding、instance 或 endpoint 都能追到其余三个工作面；对话与工作台读取
-同一事实，不存在“AI 说已修复但 release evidence 不知道”的第二叙事。
+右侧 Workbench 根据问题自动组合 summary、trend/surface/waveform、Finding 与下一动作。用户点击任意
+Cell、arc、corner、finding、instance 或 endpoint 都能在同一分析中继续追问；需要解释时展开来源、规则、
+反例和 unknown，需要执行时形成 typed action proposal。自定义规则表现为“添加公司检查”，可复用洞察
+表现为“保存这个分析”，而不是要求用户先理解 Rule Studio 或 Insight Builder。
+
+对话、工作台、报告和 Ledger 读取同一事实，不存在“AI 说已修复但 release evidence 不知道”的第二叙事。
 
 ## 8. 关键边界
 

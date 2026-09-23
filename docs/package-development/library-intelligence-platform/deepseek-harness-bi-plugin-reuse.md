@@ -160,26 +160,31 @@ hash-bound facts 计算，再把小型 result/identity 返回 Agent。
 | 官方 PTC 作为 Rule Studio 默认执行器 | 模型代码权限接近 Bash，官方只承诺 containment；不满足受控、可审计规则执行 |
 | Session SQLite search 直接存 Library truth | 它的合同是 session text derived index，复用会混淆 authority 与生命周期 |
 
-## 4. 核心产品特性：竞争价值 × Lib API 可实现性 × Harness 复用
+## 4. 面向用户只保留三类分析
 
-下表只保留同时回答两项原则的功能。`直接`表示主要事实可由 Lib API 读取；`派生`表示 Lib API facts
-加确定性算法；`联合`表示必须再结合 Hima 或 EDA 外部证据。
+用户不需要理解 Catalog、Trend Explorer、Finding Dossier、Rule Studio、Insight Builder、Sandbox 或
+Provenance 等内部模块。产品首页和右侧 Workbench 只回答三个问题：
 
-| 产品特性 | 为什么提高产品竞争力 | 为什么 Lib API 能实现 | Harness/插件复用 | 证据等级 |
+| 一级分析 | 用户要解决的问题 | 明确分析哪些方面 | 为什么提高竞争力 | 为什么 Lib API 能实现 |
 | --- | --- | --- | --- | --- |
-| Library Catalog & Lineage | 先消除错版本、重复 run copy、corner/view 混淆；没有可信 inventory，后续 BI 都会被污染 | `tmlib` 读取 Library、units、operating conditions、Cell；`corner` 管理多文件；输入 hash/API build 补充 provenance | 现有 Hima Workbench + Data Agent Catalog 的 versioned-governance 模式；SQLite 只做可重建 index | 直接；exact source line/offset 尚未由 API 证明 |
-| Cell/Pin/Arc 360° Dossier | 把工程师跨文件、跨窗口找信息的成本压成一个可追问对象，是日常高频入口 | API 暴露 Cell、Pin、PgPin、Bus、Bundle、Timing、Power、Leakage、Template、Function/FF/Latch 等对象 | Right Sidebar Tab + typed React component；点击对象把 identity 写回对话 draft | 直接 |
-| Multi-PVT / Revision Compare | DigWise/Solido 已证明是购买基线；Hima 必须达到 parity，且增加 source identity 与 unknown | `corner.linkFile`、Cell/arc/table traversal、units/templates/values 可形成 semantic key 和完整 delta | 借 Data Agent report/dataset/view pattern，不借 SQL authority | 直接 + 派生 |
-| Trend / Surface / Waveform Explorer | 非单调、kink、spike、corner ordering 和工作域覆盖直接影响模型可信度与 review 时间 | API 可取得 table axes/values、NLDM data、CCS trans/load/current、receiver cap；`interpolate` 只能在资格验证后使用 | ECharts；扩展 typed schema 为 heatmap/surface/waveform/corner-matrix；右侧 canvas 固定渲染 | 直接 + 派生；ECSM specialized coverage 未证明 |
-| Finding Dossier | 竞品能报异常；竞争壁垒是把异常的机制、邻域、反例、unknown 与下一验证装进同一决策包 | Generic attribute/group + specialized facts 支持结构、completeness、shape、condition、trend、delta rules | Frozen `presentationMeta`/Ledger record；Tool Result 只显示摘要并打开右侧 | 派生；root cause 通常仍是 inferred/unknown |
-| Custom Rule Studio | 客户工艺、命名、表征和 signoff 方法不同；无需等产品发版即可形成组织资产 | Lib API 提供稳定 fact vocabulary；规则作用于 normalized facts，不直接操作 native object | 不用 PTC；定义 typed Rule IR、fixture、preview、positive/negative tests、versioned Rule Pack | 派生；只支持 API 能稳定抽取的字段 |
-| Insight Builder | 用户把查询、metric、过滤、图表和 ranking 保存为可重复方法，形成切换成本与知识积累 | Lib API query 可返回 bounded datasets；同 source hash/query/version 可重放 | 借 Data Agent `AnalysisReportV1`/offline HTML 思路；Hima Pack/Knowledge 保存方法 | 直接 + 派生 |
-| Evidence-linked Visualization | 可复核性明显优于普通 BI：每个点能回到 source hash、Cell/arc/table/condition，而不是只有 tooltip 数字 | API 提供对象层次和数据；Hima 增加 source hash、producer、query、unit、condition | Typed chart datum + right-sidebar drilldown + Files/Evidence links | 直接；源码行号需 sidecar/额外验证 |
-| Insight-to-Action Center | 把分析产品变成工程闭环：用户知道接下来查什么、成本/许可/风险/停止条件是什么 | API 可继续 query、evaluate、corner compare，并通过 `outputLib` 生成 candidate copy | Action 只形成 typed proposal；执行仍由 Campaign Agent/Fabric、Permit、Ledger 完成 | 直接 + 联合；芯片结果需要外部工具 |
-| Candidate Library Sandbox | 支持安全 what-if 和修复验证，同时避免破坏 golden Library | `outputLib` 声明了写副本能力；可 re-read/compare/round-trip，前提是 API qualification 通过 | Campaign workspace、Pack tool、hash/invariant、rollback；绝不走通用 SQL write | 直接；当前 runtime qualification 阻塞 |
-| Design-Conditioned Impact | 把 Library 内最大异常升级为“当前芯片最值得处理的问题”，这是超越普通 BI/QA 的核心 | Lib API 提供 exact Cell/pin/arc/table identity 和工作域；但不提供当前 design consumption | 与 Hima DIG、netlist、STA readback、endpoint frontier、actual slew/load 联合 | 联合，Lib API alone 不可完成 |
-| Offline Insight Report | 企业可审阅、归档、分享，减少截图和手工 PPT；也是版本/release 证据载体 | Report 数据全部来自 Lib API facts/derived findings，带身份即可重放 | 借 Data Agent offline HTML 原子写入与 Deliverables file links | 派生；报告不是 signoff |
-| Analysis Provenance & Versioning | 这是与普通 BI/GenUI 的关键差异：图表改变后仍能复算、比较、审计 | API build、source hash、query/rule/schema version 可绑定每个 artifact | 借 PaperMachine 产品原则与 Data Agent frozen replay；权威记录在 Hima Ledger/Archive | 直接 + Harness evidence |
+| **库健康与发布风险分析** | **这套库可靠吗，能不能交付？** | Library/revision/corner/view 身份；单位、template、引用和 shape 完整性；Cell/pin/arc/constraint/model coverage；跨 PVT 对称性与顺序；non-monotonic、kink、spike、missing；revision regression；unknown 和未解析输入 | 把 scattered checker、脚本和人工 review 合并为一个 release decision；减少错版、漏检、无效调查和 downstream escape | `tmlib` 可读取 Library、units、operating conditions、Cell/Pin/Timing/Power/Template 与 generic group/attribute；`corner` 管理多文件；axes/values 支持确定性结构、趋势和 delta 检查 |
+| **库性能与竞争力分析** | **这套库强在哪里、弱在哪里，应该优先改什么？** | Cell family、function、drive、VT、PVT；delay、transition、setup/hold、pulse/period；area、leakage、internal power；variation/LVF；operating envelope；版本/方案 Pareto 与 corner robustness | 将原始表值转成可用于 Library 选择、产品定位和开发优先级的洞察；达到 DigWise/Solido 基础能力，并用可追溯条件避免“最大值就是最好/最坏”的误导 | API 暴露 Cell area/leakage、timing/constraint/power groups、NLDM tables、CCS waveform/receiver cap、templates/axes/values；evaluator 提供 cell-level 代理但必须先 qualification，不能冒充 design PPA |
+| **设计影响与行动分析** | **这些结果对我的芯片意味着什么，下一步做什么？** | 当前设计实际使用的 Cell/master/instance；受影响 arc、path、endpoint；actual slew/load/mode；revision blast radius；Library severity × design relevance；最便宜反证；candidate、STA/SPICE、coverage 或 matched implementation 的动作与结果 | 从“库内异常排行榜”升级为当前产品的工程优先级和可执行闭环，是最可能超越普通 BI/QA 的差异 | Lib API 提供 exact Cell/pin/arc/table identity、模型值、工作域、corner compare 与 candidate `outputLib`；当前设计采用、STA/P&R、SPICE 和商业响应必须由 Hima/DIG/EDA 外部证据联合，Lib API 单独不能完成 |
+
+### 三类分析共用的能力，不做一级导航
+
+- **自然语言与可视化联动：** 用户从三个问题进入，系统自动选择表格、trend、surface、waveform 或
+  comparison；不提供“图表工具箱”首页。
+- **用户自定义规则与洞察：** 在当前分析中使用“添加公司检查”“保存这个分析”；底层仍是 typed
+  Rule/Insight IR、fixture、正反例、版本和 provenance，不单独暴露 Rule Studio 产品。
+- **Finding 与证据：** 每类分析的异常都能展开原因、范围、反例、unknown、source hash、API/rule/query
+  version 和下一验证；Finding Dossier 是结果形态，不是第四类分析。
+- **报告与交付：** 三类分析都可形成相同身份绑定的离线报告和知识资产；Report 不是独立业务能力。
+- **后续动作：** 三类分析都可以提出 typed action proposal；执行仍由 Campaign Agent/Fabric/Permit/Ledger
+  完成，Action Center 不成为新的控制面。
+
+`Catalog & Lineage`、数据索引、ECharts、frozen replay、candidate sandbox 和 provenance 都属于基础设施。
+用户只在需要解释“数据从哪里来”“为什么相信”“怎样回滚”时下钻，不需要先学习这些概念。
 
 ## 5. 推荐的产品结构
 
