@@ -92,6 +92,8 @@ import { materializeWorkshopRevision, type WorkspaceRevisionAsset } from './work
  *  and packs this machine holds are installed. Declared here, with the turn that is handed it, and
  *  re-exported from `fabric.ts` so a caller finds it beside `startRun`. */
 export interface FabricDeps {
+  /** Original native project identity; a Site name does not establish a project. */
+  readonly projectOfRun?: (runId: string) => Promise<string | undefined>;
   readonly beforeSlotClaim?: JobDeps['beforeSlotClaim'];
   readonly ledger: Ledger;
   readonly judge: Judge;
@@ -1910,7 +1912,7 @@ export function exploreEvidence(ctx: Driving, node: Extract<PackNode, { kind: 'e
 export function exploreRecommendation(ctx: Driving, node: Extract<PackNode, { kind: 'explore' }>): ExploreRecommendation | { readonly ok: false; readonly reason: string } {
   const evidence = exploreEvidence(ctx, node);
   if (!evidence.ok) return evidence;
-  const { chooser, chooserOrigin, constraint, goal, observation, cites } = evidence;
+  const { chooser, chooserOrigin, constraint, goal, observation, verdicts, cites } = evidence;
   const run = existingRun(ctx.deps.ledger, ctx.runId);
   const converge = node.parameters.converge;
   const chosen = choose(chooser, {
@@ -1922,6 +1924,7 @@ export function exploreRecommendation(ctx: Driving, node: Extract<PackNode, { ki
     constraint,
     goal,
     observation,
+    verdicts,
     ...(converge === undefined ? {} : { converge, earlier: earlierGenerations(ctx, chooser, converge.read) }),
   });
   if (!chosen.ok) return { ok: false, reason: chosen.reason };

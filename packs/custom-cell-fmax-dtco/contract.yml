@@ -1,7 +1,7 @@
 id: custom-cell-fmax-dtco
-version: "5.2.10"
+version: "5.2.11"
 title: V5 Active Frontier custom Cell Fmax reference Campaign
-status: released
+status: development
 minimumHarnessVersion: 0.1.0
 ontology:
   aliases:

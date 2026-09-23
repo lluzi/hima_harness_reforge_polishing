@@ -28,7 +28,7 @@ export interface ClientContext {
   readonly sidebarRight: { openTab(kind: string, options?: { params?: { runId?: string } }): void };
   readonly sidebarRightTabs: { register(definition: { id: string; kind: string; title(address: string): string; guide: { order: number; title(): string; description(): string }[] }): () => void };
   readonly layout: { toggleSidebar(): void };
-  readonly sessions: { open(id: string): void };
+  readonly sessions: { open(id: string): void; openSubagent(address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }): void };
   effect(callback: () => (() => void)): unknown;
   /** Optional-service lookup ("Prefer `ctx.get(name)` with an undefined check; use `inject` only for
    *  hard dependencies" — the shell's own slot documentation). Used for `uiWorkspace`'s native folder
@@ -89,7 +89,7 @@ function CampaignTabTitle({ sessionId }: { sessionId: string }): ReactElement {
   const { run, stale } = useOwnedRun(sessionId);
   const status = run?.status;
   const body = run === undefined
-    ? 'Campaign · configure'
+    ? 'Hima Workspace'
     : createElement('span', null, 'Campaign ·',
         createElement(Glyph, { name: status === undefined ? 'circle' : STATUS_GLYPH[status], size: 13 }),
         ` ${status === 'running' ? (run.currentNode ?? 'running') : statusSaid(status)}`,
@@ -150,8 +150,8 @@ function WorkbenchEntry({ wide, useSessions, open }: EntryProps): ReactElement {
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.sidebarRightTabs.register({
-    id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'Campaign',
-    guide: [{ order: 0, title: () => 'Hima Campaign', description: () => 'Preparation, execution, code and evidence beside the conversation.' }],
+    id: WORKBENCH_ID, kind: WORKBENCH_KIND, title: () => 'Hima Workspace',
+    guide: [{ order: 0, title: () => 'Hima Workspace', description: () => 'Campaign and Data Insight beside the conversation, with source-linked evidence.' }],
   }));
   const openRun = (runId?: string) => ctx.sidebarRight.openTab(WORKBENCH_KIND, runId === undefined ? undefined : { params: { runId } });
   // C19: `uiWorkspace` (the native folder picker) is resolved lazily, inside the callback itself,
@@ -167,7 +167,7 @@ export function apply(ctx: ClientContext): void {
   };
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: WORKBENCH_ID,
-    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id), pickFolder }),
+    inject: () => ({ openFiles: () => ctx.sidebarRight.openTab('files'), openOwner: (id: string) => ctx.sessions.open(id), openChild: (address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }) => ctx.sessions.openSubagent(address), pickFolder }),
   }, HimaWorkbench));
   ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab.title', key: WORKBENCH_ID,

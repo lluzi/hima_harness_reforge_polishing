@@ -120,7 +120,10 @@ test('Case 2: POST /hima/api/sites/discover saves a redacted lab-a Site and Perm
 
       const siteText = await readFile(path.join(f.site.sitesDir, 'lab-a.yml'), 'utf8');
       assert.doesNotMatch(siteText, /never-save-me/, 'a credential-shaped discovery value does not reach the saved file');
-      assert.match(siteText, /password=\[redacted\]/);
+      assert.doesNotMatch(siteText, /discovery:/);
+      const discoveryText = await readFile(path.join(f.site.sitesDir, 'lab-a.discovery.json'), 'utf8');
+      assert.doesNotMatch(discoveryText, /never-save-me/);
+      assert.match(discoveryText, /password=\[redacted\]/);
       const permitText = await readFile(path.join(f.site.sitesDir, 'lab-a.permit.yml'), 'utf8');
       assert.match(permitText, /allowedWriteRoots/);
 
@@ -163,7 +166,8 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
       const richReadRoots = Array.from({ length: 9 }, (_, index) => `/work/reference-${String(index + 1)}`);
       const savedSiteFile = path.join(f.site.sitesDir, 'lab-a.yml');
       await writeFile(savedSiteFile, (await readFile(savedSiteFile, 'utf8')).replace(
-        'bindings: {}', 'bindings:\n  designRoot: /work/reference-1/design\n  workspaceRoot: /work/hima'));
+        'bindings: {}', 'bindings:\n  designRoot: /work/reference-1/design\n  workspaceRoot: /work/hima').replace(
+        'licences: {}', 'licences:\n    Design-Compiler: 0'));
       await writeFile(path.join(f.site.sitesDir, 'lab-a.permit.yml'), [
         'allowedReadRoots:', ...richReadRoots.map((root) => `  - ${root}`),
         'allowedWriteRoots:', '  - /work/hima',
@@ -191,7 +195,7 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
         { designRoot: '/work/reference-1/design', workspaceRoot: '/work/hima' },
         'rediscovery retains the saved Site bindings instead of replacing them with an empty map');
       assert.deepEqual((previewBody.result.permit as { allowedWrappers?: string[] }).allowedWrappers, ['make'], 'the selected Pack proposes its declared wrapper');
-      assert.deepEqual(previewBody.result.site.capacity.licences, { 'Design-Compiler': 1 }, 'the reviewed draft reserves the Pack-declared minimum seat without probing a vendor tool');
+      assert.deepEqual(previewBody.result.site.capacity.licences, { 'Design-Compiler': 0 }, 'a Pack request cannot increase the administrator licence reservation during rediscovery');
       assert.ok((previewBody.result as { site: { discovery?: { facts: { probe: string[]; code: number }[] } } }).site.discovery?.facts.some((fact) => fact.code === 0 && fact.probe.join(' ') === 'which make'), 'the selected Pack command is actually probed');
       const beforeSaveMtime = (await stat(path.join(f.site.sitesDir, 'lab-a.yml'))).mtimeMs;
 
@@ -215,6 +219,21 @@ test('Case 2b (bug 2 fix): POST /hima/api/sites/discover with no ssh rediscovers
         body: JSON.stringify({ sessionId, name: 'lab-a', reviewId: previewBody.reviewId, save: true }),
       });
       assert.equal(replay.status, 400, 'a reviewed draft is consumed once and cannot be replayed');
+
+      await writeFile(tableFile, JSON.stringify(table));
+      const nextPreview = await api(f.host, f.cookie, '/hima/api/sites/discover', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId, name: 'lab-a' }),
+      });
+      const nextBody = await nextPreview.json() as { reviewId: string };
+      assert.equal(nextPreview.status, 200);
+      const changedSite = `${await readFile(savedSiteFile, 'utf8')}# administrator changed the reviewed bytes\n`;
+      await writeFile(savedSiteFile, changedSite);
+      const staleSave = await api(f.host, f.cookie, '/hima/api/sites/discover', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, name: 'lab-a', reviewId: nextBody.reviewId, save: true }),
+      });
+      assert.equal(staleSave.status, 409, await staleSave.text());
+      assert.equal(await readFile(savedSiteFile, 'utf8'), changedSite, 'a stale preview never overwrites a later administrator change');
 
       // A rediscover naming a Site this Host has never saved is still the caller's own mistake, not
       // an unexplained 500 — the same 400/"ssh" contract Case 7 already holds a brand-new Site to.

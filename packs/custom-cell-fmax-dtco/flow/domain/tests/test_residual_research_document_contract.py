@@ -60,6 +60,14 @@ def _document(*, feedback_ab: bool) -> dict:
         "commercial_eda_executed": False,
         "candidate_identity_assigned": False,
     }
+    if feedback_ab:
+        document["feedback_ab"] = {
+            "performed": False, "selection_changed": None,
+            "without_feedback_proposal_keys": [], "with_feedback_proposal_keys": [],
+            "selection_effect": {"kind": "unchanged", "added_proposal_keys": [], "removed_proposal_keys": [],
+                                 "reason": "commercial feedback did not change candidate selection"},
+            "interpretation": "no commercial feedback was supplied",
+        }
     return document
 
 

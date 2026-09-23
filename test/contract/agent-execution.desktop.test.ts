@@ -17,13 +17,13 @@ process.env.HIMA_TEST_SILENT_AGENT = '1';
 const initialDraft = 'Keep the existing research question and evidence in view. Unsent desktop test draft.';
 const continuedDraft = 'After this verified result, compare the next experiment before launching it. Unsent draft.';
 
-test('native selected conversation runs one explicit Job, accepts typed steering and human Continue without losing draft or Files', async (t) => {
+test('independent Campaign conversation runs one explicit Job, accepts typed steering and human Continue without losing draft or Files', async (t) => {
   const home = await localHome(t, { sleepSeconds: 25 });
   assert.ok(home);
-  const replay = await writeExecutionReplay(home.h);
+  const replay = await writeExecutionReplay(home.h, { notifications: true });
   const port = await freePort();
   const d = await bootDriver(t, { existing: home.h, theme: 'light', window: { width: 1440, height: 960 }, remoteDebuggingPort: port,
-    model: { replay }, env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1' } });
+    model: { replay }, env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '0' } });
   if (!d) { await home.h.dispose(); return; }
   const browser = await inspectWindow(port);
   const jobSessions = new Set<string>();
@@ -53,7 +53,7 @@ test('native selected conversation runs one explicit Job, accepts typed steering
     assert.ok((await d.click('open-workbench')).ok);
     assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
     const studio = await d.read('studio'); assert.ok(studio.ok);
-    const selectedSession = studio.state.session;
+    const selectedSession = studio.state.session; assert.ok(selectedSession);
     const url = await browser.evaluate<string>('location.href');
     await fillConfiguration(d, browser, {
       pack: timingProbePackId, site: 'local',
@@ -73,20 +73,28 @@ test('native selected conversation runs one explicit Job, accepts typed steering
       };
     })()`);
     assert.ok((await d.click('config-confirm')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-control="open-owner"]')`, 10000);
+    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), initialDraft, 'Guide draft survives independent dispatch');
+    assert.ok((await d.click('open-owner')).ok);
     await browser.wait(`document.body.innerText.includes(${JSON.stringify(replayJobStarted)})`, 30_000);
+    await browser.wait(`!!document.querySelector('[data-hima-region="campaign-chip"]')`);
+    await browser.mark('[data-hima-region="campaign-chip"]', 'execution-campaign');
+    assert.ok((await d.click('execution-campaign')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="studio"]')`);
     const running = await d.read('studio'); assert.ok(running.ok);
     const runId = running.state.run; assert.ok(runId);
     const readRun = async () => {
-      const view = await (await api(host, cookie, `/hima/api/runs/${runId}`)).json() as RunView;
+      const view = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(selectedSession)}`)).json() as RunView;
       for (const job of view.jobs) jobSessions.add(job.job.session);
       return view;
     };
     const first = await readRun();
-    assert.equal(first.run.control?.owner, selectedSession);
+    assert.equal(first.run.control?.guideSessionId, selectedSession);
+    assert.notEqual(first.run.control?.owner, selectedSession, 'Campaign execution remains an independent native root');
     const execution = Object.values(first.run.control!.executions)[0]; assert.ok(execution);
     assert.equal(execution.phase, 'working');
     assert.equal(first.jobs.filter((job) => job.event === 'launched').length, 1);
-    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), initialDraft);
+    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), '', 'execution composer does not inherit Guide draft');
     await browser.wait(`document.querySelector('.hima-studio [data-hima-state-execution="${execution.id}"]')?.getAttribute('data-hima-state-phase')==='working'`);
     await capture('owned-running');
 
@@ -102,12 +110,14 @@ test('native selected conversation runs one explicit Job, accepts typed steering
     assert.equal(paused.jobs.filter((job) => job.event === 'launched').length, 1);
     await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
     await browser.send('Input.insertText', { text: continuedDraft });
-    await browser.wait(`document.querySelector('.hima-studio [data-hima-region="execution-control"]')?.textContent.includes('New work paused')`);
+    assert.ok((await d.click('node-synthesize')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="campaign-node-card"] [data-hima-control="node-continue"]')`);
     await capture('owned-paused');
     await browser.wait(`document.querySelector('.hima-studio [data-hima-state-execution="${execution.id}"]')?.getAttribute('data-hima-state-phase')==='ready'`, 40_000);
     assert.deepEqual((await readRun()).run.control?.paused, ['synthesize']);
-    await browser.mark('.hima-studio [data-hima-control="continue-node-synthesize"]', 'owned-native-continue');
-    assert.ok((await d.click('owned-native-continue')).ok);
+    await browser.wait(`document.body.innerText.includes('Replay: Job facts are ready; waiting for human Continue.')`, 10000);
+    assert.ok((await d.click('node-continue')).ok);
+    assert.ok((await d.click('node-continue-confirm')).ok);
     await browser.wait(`document.body.innerText.includes(${JSON.stringify(replayCompleted)})`, 20_000);
     const complete = await readRun();
     assert.equal(complete.run.control?.executions[execution.id]?.phase, 'completed');

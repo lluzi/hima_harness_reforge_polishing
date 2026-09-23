@@ -25,6 +25,7 @@ from ai_research_runner import (  # noqa: E402
     RESIDUAL_DOCUMENT_BYTES,
     RESIDUAL_OUTPUT_SCHEMA,
     build_residual_research_context,
+    _feedback_ab,
     execute_candidate_program,
     load_residual_research_context,
     load_candidate_pool_registry,
@@ -32,6 +33,19 @@ from ai_research_runner import (  # noqa: E402
     run_residual_research,
     validate_residual_research_proposal,
 )
+
+
+def test_feedback_ab_records_the_concrete_selection_delta_or_an_explicit_unchanged_reason():
+    changed = _feedback_ab(["proposal:a"], ["proposal:b"], "feedback moved the choice", {"return_code": 0})
+    assert changed["selection_changed"] is True
+    assert changed["selection_effect"] == {
+        "kind": "changed", "added_proposal_keys": ["proposal:b"], "removed_proposal_keys": ["proposal:a"],
+        "reason": "commercial feedback changed candidate selection",
+    }
+    unchanged = _feedback_ab(["proposal:a"], ["proposal:a"], "feedback kept the choice", {"return_code": 0})
+    assert unchanged["selection_changed"] is False
+    assert unchanged["selection_effect"]["kind"] == "unchanged"
+    assert unchanged["selection_effect"]["reason"] == "commercial feedback did not change candidate selection"
 from mine_timing_route import _route_requests, rank_critical_subgraph  # noqa: E402
 from verilog_netlist import Instance  # noqa: E402
 

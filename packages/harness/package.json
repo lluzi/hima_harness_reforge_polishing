@@ -61,6 +61,9 @@
     }
   },
   "dependencies": {
+    "@deepseek-ai/dsh-terminal": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-terminal-bash": "0.1.5-alpha.1",
+    "@deepseek-ai/dsh-tool-terminal": "0.1.5-alpha.1",
     "unpdf": "1.8.1",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"

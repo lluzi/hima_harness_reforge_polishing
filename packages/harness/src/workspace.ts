@@ -100,6 +100,8 @@ export type WorkspaceFile = z.infer<typeof workspaceFile>;
 export interface WorkspaceDeps { readonly ledger: Ledger; readonly sitesDir: string; readonly packsDir: string }
 
 export interface PrepareRequest {
+  /** Native project for a new standalone preparation; named Runs retain their original identity. */
+  readonly projectSessionId?: string;
   readonly site: string;
   readonly pack: string;
   /** The Campaign to prepare for. Absent, one is named after the pack and the time. */
@@ -285,7 +287,7 @@ export async function prepareWorkspace(deps: WorkspaceDeps, req: PrepareRequest)
   const campaignId = req.campaign ?? named?.campaignId ?? campaignIdFor(pack, new Date());
   const issue = campaignIdIssue(campaignId);
   if (issue) throw new Error(issue);
-  const run = named ?? (await deps.ledger.createRun({ campaignId, siteId: site.name }));
+  const run = named ?? (await deps.ledger.createRun({ campaignId, siteId: site.name, ...(req.projectSessionId ? { projectSessionId: req.projectSessionId } : {}) }));
 
   const p = pathsOf(site);
   // One channel for the whole operation: every permit decision resolves its path on the Site, and the

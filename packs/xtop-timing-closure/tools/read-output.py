@@ -59,6 +59,29 @@ def verify_state(data, workspace: Path):
         raise ValueError("closure state has no report identities")
     for ref in refs:
         verify_ref(ref, workspace)
+    physical = data.get("physical")
+    if not isinstance(physical, dict) or physical.get("schema") != "xtop-timing-closure-physical-check/1" or physical.get("coverage") not in {"complete", "unknown"}:
+        raise ValueError("closure state has malformed physical evidence")
+    for kind in ("drc", "connectivity"):
+        row = physical.get(kind)
+        if not isinstance(row, dict):
+            raise ValueError(f"closure state has malformed physical {kind} evidence")
+        count = row.get("count")
+        if count is not None and (isinstance(count, bool) or not isinstance(count, int) or count < 0):
+            raise ValueError(f"closure state has malformed physical {kind} count")
+        if count is None and (physical["coverage"] == "complete" or row.get("status") != "unknown" or not isinstance(row.get("reason"), str)):
+            raise ValueError(f"closure state has neither a qualified physical {kind} count nor an explicit unknown")
+        verify_ref(row.get("report"), workspace)
+    verify_ref(physical.get("manifest"), workspace)
+    measurement = data.get("measurement")
+    if not isinstance(measurement, dict) or not isinstance(measurement.get("scenariosSha256"), str) or not isinstance(measurement.get("spef"), dict):
+        raise ValueError("closure state has no measurement coverage identity")
+    verify_ref(measurement.get("profile"), workspace)
+    verify_ref(measurement.get("sourceManifest"), workspace)
+    if not measurement["spef"]:
+        raise ValueError("closure state has no extraction identity")
+    for ref in measurement["spef"].values():
+        verify_ref(ref, workspace)
     metrics = data.get("metrics")
     endpoints = data.get("endpointSlackNs")
     if not isinstance(metrics, dict) or not isinstance(endpoints, dict):
@@ -127,20 +150,24 @@ def read(report: Path, mode: str):
         verify_state(data["before"], workspace)
         after = verify_state(data["after"], workspace)
         delta = data["endpoint_delta"]
-        return [
+        values = [
             number("xtop_setup_wns", after["setup_wns_ns"], "ns", mode="setup", scope="all"),
             number("xtop_setup_tns", after["setup_tns_ns"], "ns", mode="setup", scope="all"),
             number("xtop_setup_violations", after["setup_violations"]),
             number("xtop_hold_wns", after["hold_wns_ns"], "ns", mode="hold", scope="all"),
             number("xtop_hold_tns", after["hold_tns_ns"], "ns", mode="hold", scope="all"),
             number("xtop_hold_violations", after["hold_violations"]),
-            number("xtop_endpoint_fixed_count", len(delta["fixed"])),
-            number("xtop_endpoint_remaining_count", len(delta["remaining"])),
-            number("xtop_endpoint_entrant_count", len(delta["entrants"])),
-            number("xtop_endpoint_regressed_count", len(delta["regressed"])),
             number("xtop_closure_score", after["closure_score"], "score"),
             number("xtop_iteration_evidence_valid", 1 if data.get("evidence_valid") is True else 0),
         ]
+        if delta.get("comparability", "comparable") == "comparable":
+            values[6:6] = [
+                number("xtop_endpoint_fixed_count", len(delta["fixed"])),
+                number("xtop_endpoint_remaining_count", len(delta["remaining"])),
+                number("xtop_endpoint_entrant_count", len(delta["entrants"])),
+                number("xtop_endpoint_regressed_count", len(delta["regressed"])),
+            ]
+        return values
     raise ValueError("unknown reader mode: " + mode)
 
 

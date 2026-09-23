@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import copy
 from pathlib import Path
 import subprocess
 import tempfile
@@ -74,6 +75,12 @@ class ClosureContractTest(unittest.TestCase):
             "currentAnalysis": None,
             "previousSnapshot": None,
         }
+        profile = self.workspace / "profile.json"
+        source = self.workspace / "source-manifest.sha256"
+        profile.write_text(json.dumps(self.runtime["profile"], sort_keys=True))
+        source.write_text("source identity\n")
+        self.runtime["profileIdentity"] = closure.file_ref(profile, self.workspace, "site-profile")
+        self.runtime["sourceManifest"] = closure.file_ref(source, self.workspace, "source-manifest")
 
     def tearDown(self):
         self.temp.cleanup()
@@ -88,7 +95,7 @@ class ClosureContractTest(unittest.TestCase):
         self.runtime["currentDatabase"] = str(data)
         self.runtime["currentDatabaseScript"] = str(script)
 
-    def write_reports(self, generation, values):
+    def write_reports(self, generation, values, drc=10, connectivity=20, coverage="complete"):
         root = self.workspace / "flow" / "iterations" / f"g{generation:03d}" / "PT" / "reports"
         for scenario in self.scenarios:
             folder = root / scenario["name"]
@@ -98,11 +105,114 @@ class ClosureContractTest(unittest.TestCase):
             folder.joinpath("hold.rpt").write_text(path_report(values["hold"], "hold"))
             folder.joinpath("check_timing.rpt").write_text("Warning: There are 3 endpoints which are not constrained for maximum delay.\n")
         self.runtime["currentAnalysis"] = {"reports": str(root)}
+        physical = self.workspace / "flow" / "iterations" / f"g{generation:03d}" / "PHYSICAL"
+        physical.mkdir(parents=True, exist_ok=True)
+        (physical / "verify_drc.rpt").write_text(f"Total number of DRC violations = {drc}\n")
+        (physical / "verify_connectivity.rpt").write_text(f"Total number of connectivity = {connectivity}\n")
+        (physical / "physical-check.json").write_text(json.dumps({
+            "schema": "xtop-timing-closure-physical-check/1", "coverage": coverage, "drcLimit": 1000000,
+            "drcReport": "verify_drc.rpt", "connectivityReport": "verify_connectivity.rpt",
+        }))
+        self.runtime["currentPhysical"] = closure.physical_evidence(self.workspace, physical)
+        self.runtime["currentAnalysis"]["spef"] = {"worst": str(root / "slow" / "global_timing.rpt"), "best": str(root / "fast" / "global_timing.rpt")}
 
     def save_runtime(self):
         closure.atomic_json(self.workspace / "flow" / "state" / "runtime.json", self.runtime)
 
-    def test_endpoint_feedback_and_best_database_are_derived_from_refreshed_reports(self):
+    def test_actual_tcl_manifest_is_valid_json_and_does_not_claim_full_coverage(self):
+        for name in ("export.tcl", "apply-eco.tcl"):
+            template = (SOURCE.parent / "templates" / name).read_text()
+            line = next(row for row in template.splitlines() if row.startswith("puts $physical "))
+            result = subprocess.run(["tclsh"], input="set physical stdout\n" + line + "\n", text=True, capture_output=True, check=True)
+            manifest = json.loads(result.stdout)
+            self.assertEqual(manifest["schema"], "xtop-timing-closure-physical-check/1")
+            self.assertEqual(manifest["coverage"], "unknown")
+            self.assertEqual(manifest["drcLimit"], 1000000)
+
+    def test_unknown_physical_report_grammar_is_retained_without_inventing_counts(self):
+        physical = self.workspace / "flow" / "iterations" / "g000" / "PHYSICAL"
+        physical.mkdir(parents=True)
+        (physical / "verify_drc.rpt").write_text("Innovus physical verification format not yet qualified\n")
+        (physical / "verify_connectivity.rpt").write_text("Innovus connectivity format not yet qualified\n")
+        (physical / "physical-check.json").write_text(json.dumps({
+            "schema": "xtop-timing-closure-physical-check/1", "coverage": "unknown", "drcLimit": 1000000,
+            "drcReport": "verify_drc.rpt", "connectivityReport": "verify_connectivity.rpt",
+        }))
+
+        evidence = closure.physical_evidence(self.workspace, physical)
+        self.assertEqual(evidence["coverage"], "unknown")
+        for kind in ("drc", "connectivity"):
+            self.assertEqual(evidence[kind]["status"], "unknown")
+            self.assertNotIn("count", evidence[kind])
+            self.assertRegex(evidence[kind]["report"]["sha256"], r"^[0-9a-f]{64}$")
+
+    def test_state_reader_preserves_timing_when_physical_qualification_is_unknown(self):
+        self.write_database(0)
+        self.write_reports(0, {
+            "global": (-0.10, -0.30, 3, -0.08, -0.20, 2),
+            "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)],
+        }, coverage="unknown")
+        self.save_runtime(); closure.summarize(self.workspace)
+
+        values = reader.read(self.workspace / "flow" / "state" / "current.json", "state")
+        kinds = {row["type"] for row in values}
+        self.assertIn("xtop_setup_wns", kinds)
+        self.assertIn("xtop_hold_wns", kinds)
+        self.assertIn("xtop_closure_score", kinds)
+
+    def test_not_comparable_iteration_does_not_report_unknown_endpoint_deltas_as_zero(self):
+        self.write_database(0)
+        self.write_reports(0, {
+            "global": (-0.10, -0.30, 3, -0.08, -0.20, 2),
+            "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)],
+        })
+        self.save_runtime(); closure.summarize(self.workspace)
+        state = closure.read_json(self.workspace / "flow" / "state" / "current.json")
+        result = {
+            "schema": closure.ITERATION_SCHEMA, "iteration": 1, "before": state, "after": state,
+            "endpoint_delta": {"comparability": "not-comparable", "reason": "measurement conditions changed",
+                "originalFrontierCount": 1, "measuredOriginalCount": 0,
+                "fixed": [], "remaining": [], "entrants": [], "regressed": [], "missing": ["slow|setup|core_clock|A/D"]},
+            "bestQualification": {"status": "ineligible", "reason": "measurement conditions changed"},
+            "evidence_valid": False,
+        }
+        report = self.workspace / "flow" / "records" / "compare.json"
+        closure.atomic_json(report, result)
+
+        values = reader.read(report, "iteration")
+        kinds = {row["type"] for row in values}
+        self.assertTrue({"xtop_setup_wns", "xtop_hold_wns", "xtop_closure_score", "xtop_iteration_evidence_valid"} <= kinds)
+        self.assertFalse({"xtop_endpoint_fixed_count", "xtop_endpoint_remaining_count",
+                          "xtop_endpoint_entrant_count", "xtop_endpoint_regressed_count"} & kinds)
+
+    def test_candidate_spef_is_bound_to_its_own_bytes_not_required_to_equal_baseline(self):
+        physical = {"coverage": "complete", "drc": {"count": 0}, "connectivity": {"count": 0}}
+        before = {"profile": {"sha256": "1"}, "sourceManifest": {"sha256": "2"},
+                  "scenariosSha256": "3", "spef": {"worst": {"sha256": "baseline"}}, "physical": physical}
+        after = {"profile": {"sha256": "1"}, "sourceManifest": {"sha256": "2"},
+                 "scenariosSha256": "3", "spef": {"worst": {"sha256": "candidate"}}, "physical": physical}
+        self.assertEqual(closure.physical_qualification(before, after)["status"], "eligible")
+
+    def test_snapshot_values_and_database_are_bound_to_retained_bytes(self):
+        self.write_database(0)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]})
+        self.save_runtime(); closure.summarize(self.workspace)
+        original = closure.read_json(self.workspace / "flow" / "state" / "current.json")
+        closure.validate_snapshot_identity(self.workspace, original)
+        changed = copy.deepcopy(original); changed["physical"]["drc"]["count"] = 0
+        with self.assertRaisesRegex(closure.Rejected, "physical counts"):
+            closure.validate_snapshot_identity(self.workspace, changed)
+        changed = copy.deepcopy(original); changed["metrics"]["closure_score"] = 0
+        with self.assertRaisesRegex(closure.Rejected, "timing values"):
+            closure.validate_snapshot_identity(self.workspace, changed)
+        changed = copy.deepcopy(original); changed["reportFiles"].pop()
+        with self.assertRaisesRegex(closure.Rejected, "report coverage"):
+            closure.validate_snapshot_identity(self.workspace, changed)
+        (Path(original["database"]["data"]) / "db.bin").write_bytes(b"different database")
+        with self.assertRaisesRegex(closure.Rejected, "database bytes changed"):
+            closure.validate_snapshot_identity(self.workspace, original)
+
+    def test_complete_same_method_physical_checks_allow_a_best_database(self):
         self.write_database(0)
         self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10), ("B/D", -0.05)], "hold": [("H/D", -0.08)]})
         self.save_runtime()
@@ -122,19 +232,112 @@ class ClosureContractTest(unittest.TestCase):
         closure.compare(self.workspace)
 
         result = json.loads((self.workspace / "flow" / "records" / "compare.json").read_text())
-        self.assertEqual(result["endpoint_delta"]["fixed"], ["fast|setup|core_clock|A/D", "slow|setup|core_clock|A/D"])
+        self.assertEqual(result["endpoint_delta"]["fixed"], [])
+        self.assertEqual(result["endpoint_delta"]["missing"], ["fast|setup|core_clock|A/D", "slow|setup|core_clock|A/D"])
         self.assertEqual(result["endpoint_delta"]["entrants"], ["fast|setup|core_clock|C/D", "slow|setup|core_clock|C/D"])
         self.assertEqual(result["endpoint_delta"]["regressed"], ["fast|hold|core_clock|H/D", "slow|hold|core_clock|H/D"])
         self.assertTrue(result["evidence_valid"])
+        self.assertEqual(result["bestQualification"]["status"], "eligible")
         best = json.loads((self.workspace / "flow" / "output" / "best-database.json").read_text())
         self.assertEqual(best["iteration"], 1)
-        self.assertTrue((self.workspace / "flow" / "output" / "best.enc.dat" / "db.bin").is_file())
+        self.assertTrue((Path(best["restoreData"]) / "db.bin").is_file())
         self.assertEqual(len((self.workspace / "flow" / "evidence" / "experience.jsonl").read_text().splitlines()), 1)
-        self.assertEqual(reader.read(self.workspace / "flow" / "output" / "best-database.json", "best")[0]["value"], 1)
         self.assertEqual(reader.read(self.workspace / "flow" / "records" / "compare.json", "iteration")[-1]["value"], 1)
-        (self.workspace / "flow" / "output" / "best.enc.dat" / "db.bin").write_bytes(b"tampered")
-        with self.assertRaises(ValueError):
-            reader.read(self.workspace / "flow" / "output" / "best-database.json", "best")
+
+    def test_qualified_candidate_replaces_a_verified_prior_best(self):
+        self.write_database(0)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]})
+        self.save_runtime()
+        closure.summarize(self.workspace)
+        baseline = str(self.workspace / "flow" / "iterations" / "g000" / "closure-state.json")
+        snapshot = closure.read_json(Path(baseline))
+        script, data, tree = closure.copy_database_alias(self.workspace, snapshot)
+        closure.atomic_json(self.workspace / "flow" / "output" / "best-database.json", {
+            "schema": closure.BEST_SCHEMA, "ready": True, "iteration": 0, "snapshot": baseline,
+            "restoreScript": closure.file_ref(script, self.workspace, "best-db-script"), "restoreData": str(data), "tree": tree,
+        })
+        self.assertEqual(closure.tree_identity(data), closure.read_json(self.workspace / "flow" / "output" / "best-database.json")["tree"])
+        closure.validate_best(self.workspace, closure.read_json(self.workspace / "flow" / "output" / "best-database.json"))
+
+        self.runtime = closure.load_runtime(self.workspace)
+        self.runtime["iteration"] = 1
+        self.write_database(1)
+        self.write_reports(1, {"global": (-0.01, -0.02, 1, -0.02, -0.03, 1), "setup": [("A/D", -0.01)], "hold": [("H/D", -0.02)]})
+        self.save_runtime()
+        closure.summarize(self.workspace)
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+            "schema": closure.PLAN_SCHEMA, "iteration": 1, "diagnosis": "test", "hypotheses": ["test"],
+            "endpointGroups": ["core_clock"], "actions": [], "avoid": [], "reasoning": "test",
+        }))
+        closure.compare(self.workspace)
+        best = closure.read_json(self.workspace / "flow" / "output" / "best-database.json")
+        self.assertEqual(best["iteration"], 1)
+        self.assertTrue(closure.read_json(self.workspace / "flow" / "records" / "compare.json")["evidence_valid"])
+
+    def test_physical_regression_or_incomplete_coverage_cannot_adopt(self):
+        self.write_database(0)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)],}, drc=10, connectivity=20)
+        self.save_runtime(); closure.summarize(self.workspace)
+        self.runtime = closure.load_runtime(self.workspace); self.runtime["iteration"] = 1
+        self.write_database(1)
+        self.write_reports(1, {"global": (-0.01, -0.02, 1, -0.02, -0.03, 1), "setup": [("A/D", -0.01)], "hold": [("H/D", -0.02)]}, drc=11, connectivity=20)
+        self.save_runtime(); closure.summarize(self.workspace)
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({"schema": closure.PLAN_SCHEMA, "iteration": 1, "diagnosis": "test", "hypotheses": ["test"], "endpointGroups": ["core_clock"], "actions": [], "avoid": [], "reasoning": "test"}))
+        closure.compare(self.workspace)
+        result = closure.read_json(self.workspace / "flow" / "records" / "compare.json")
+        self.assertFalse(result["evidence_valid"])
+        self.assertEqual(result["bestQualification"]["status"], "ineligible")
+        self.assertFalse((self.workspace / "flow" / "output" / "best-database.json").exists())
+        (self.workspace / "flow" / "iterations" / "g001" / "PHYSICAL" / "physical-check.json").unlink()
+        with self.assertRaises(closure.Rejected):
+            closure.physical_evidence(self.workspace, self.workspace / "flow" / "iterations" / "g001" / "PHYSICAL")
+
+    def test_unknown_physical_coverage_preserves_comparison_but_never_creates_best(self):
+        self.write_database(0)
+        self.write_reports(0, {
+            "global": (-0.10, -0.30, 3, -0.08, -0.20, 2),
+            "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)],
+        }, coverage="unknown")
+        self.save_runtime(); closure.summarize(self.workspace)
+        self.runtime = closure.load_runtime(self.workspace); self.runtime["iteration"] = 1
+        self.write_database(1)
+        self.write_reports(1, {
+            "global": (-0.01, -0.02, 1, -0.02, -0.03, 1),
+            "setup": [("A/D", -0.01)], "hold": [("H/D", -0.02)],
+        }, coverage="unknown")
+        self.save_runtime(); closure.summarize(self.workspace)
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+            "schema": closure.PLAN_SCHEMA, "iteration": 1, "diagnosis": "test", "hypotheses": ["test"],
+            "endpointGroups": ["core_clock"], "actions": [], "avoid": [], "reasoning": "test",
+        }))
+
+        closure.compare(self.workspace)
+        result = closure.read_json(self.workspace / "flow" / "records" / "compare.json")
+        self.assertEqual(result["bestQualification"]["status"], "unknown")
+        self.assertFalse(result["evidence_valid"])
+        self.assertFalse((self.workspace / "flow" / "output" / "best-database.json").exists())
+        self.assertEqual(reader.read(self.workspace / "flow" / "records" / "compare.json", "iteration")[-1],
+                         {"type": "xtop_iteration_evidence_valid", "unit": "count", "value": 0})
+
+    def test_copy_failure_keeps_the_verified_prior_best(self):
+        self.write_database(0)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]})
+        self.save_runtime(); closure.summarize(self.workspace)
+        baseline = str(self.workspace / "flow" / "iterations" / "g000" / "closure-state.json")
+        script, data, tree = closure.copy_database_alias(self.workspace, closure.read_json(Path(baseline)))
+        closure.atomic_json(self.workspace / "flow" / "output" / "best-database.json", {"schema": closure.BEST_SCHEMA, "ready": True, "iteration": 0, "snapshot": baseline, "restoreScript": closure.file_ref(script, self.workspace, "best-db-script"), "restoreData": str(data), "tree": tree})
+        self.runtime = closure.load_runtime(self.workspace); self.runtime["iteration"] = 1
+        self.write_database(1)
+        self.write_reports(1, {"global": (-0.01, -0.02, 1, -0.02, -0.03, 1), "setup": [("A/D", -0.01)], "hold": [("H/D", -0.02)]})
+        self.save_runtime(); closure.summarize(self.workspace)
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({"schema": closure.PLAN_SCHEMA, "iteration": 1, "diagnosis": "test", "hypotheses": ["test"], "endpointGroups": ["core_clock"], "actions": [], "avoid": [], "reasoning": "test"}))
+        original = closure.copy_database_alias
+        closure.copy_database_alias = lambda *_: (_ for _ in ()).throw(closure.Rejected("copy failed"))
+        try:
+            with self.assertRaises(closure.Rejected): closure.compare(self.workspace)
+        finally:
+            closure.copy_database_alias = original
+        self.assertEqual(closure.read_json(self.workspace / "flow" / "output" / "best-database.json")["iteration"], 0)
 
     def test_starrc_runs_with_its_library_path_set_inside_the_container(self):
         # Trial 26: extract-baseline failed with exit 1 and
@@ -412,9 +615,11 @@ class ClosureContractTest(unittest.TestCase):
         }))
         closure.compare(self.workspace)
 
+        result = json.loads((self.workspace / "flow" / "records" / "compare.json").read_text())
+        self.assertTrue(result["evidence_valid"])
         best = json.loads((self.workspace / "flow" / "output" / "best-database.json").read_text())
         self.assertEqual(best["iteration"], 2)
-        self.assertTrue((self.workspace / "flow" / "output" / "best.enc.dat" / "libs" / "lef" / "tech.lef").is_symlink())
+        self.assertTrue((Path(best["restoreData"]) / "libs" / "lef" / "tech.lef").is_symlink())
 
     def test_xtop_creates_its_own_log_dir_before_invoking_the_tool(self):
         # Trial 28: XTop exited 1 with "Directory '.../XTOP/logs' does not exist or is not

@@ -101,13 +101,16 @@ test('Campaign-attached document evidence is bound to one owner execution and it
     assert.equal(crossCampaignSearch.isError, false, JSON.stringify(crossCampaignSearch));
     assert.deepEqual(JSON.parse(crossCampaignSearch.content.filter((item) => item.type === 'text').map((item) => item.text).join('')).hits, []);
     const control = host.ctx.hima.ledger.run(run.runId)!.control!;
-    const begun = await host.ctx.hima.executionAction({ runId: run.runId, actor: String(owner.id), expectedEpoch: control.epoch,
+    const executionOwner = host.ctx.get('agents')!.get(control.owner as never)!;
+    assert.notEqual(String(executionOwner.id), String(owner.id));
+    assert.equal(control.guideSessionId, String(owner.id));
+    const begun = await host.ctx.hima.executionAction({ runId: run.runId, actor: String(executionOwner.id), expectedEpoch: control.epoch,
       expectedRevision: control.revision, requestId: 'knowledge-begin', action: 'begin', nodeId: host.ctx.hima.ledger.run(run.runId)!.currentNode });
     assert.equal(begun.kind, 'accepted');
     const execution = begun.context.executions.find((item) => item.id === begun.receipt?.executionId)!;
     const readArgs = { action: 'read', source: 'current', scope: proposal.id, run: run.runId,
       documentId: imported.document.id, chunkId: searched.hits[0].id };
-    const read = await invoke(owner, readArgs);
+    const read = await invoke(executionOwner, readArgs);
     assert.equal(read.isError, false, JSON.stringify(read));
     const record = host.ctx.hima.ledger.records({ runId: run.runId, type: 'knowledge' }).find((item) => item.type === 'knowledge');
     assert.ok(record?.type === 'knowledge');
@@ -118,14 +121,14 @@ test('Campaign-attached document evidence is bound to one owner execution and it
     const nonowner = await invoke(other, readArgs);
     assert.equal(nonowner.isError, true);
     assert.match(JSON.stringify(nonowner.content), /owning Campaign Agent/);
-    const crossScope = await invoke(owner, { ...readArgs, scope: '0'.repeat(64) });
+    const crossScope = await invoke(executionOwner, { ...readArgs, scope: '0'.repeat(64) });
     assert.equal(crossScope.isError, true);
     assert.match(JSON.stringify(crossScope.content), /full, current HimaGuide Campaign proposal token/);
     await host.ctx.hima.ledger.advanceRun(run.runId, { status: 'ended-goal-met' });
-    const ended = await invoke(owner, readArgs);
+    const ended = await invoke(executionOwner, readArgs);
     assert.equal(ended.isError, true);
     assert.match(JSON.stringify(ended.content), /active writable Campaign/);
-    const endedClear = await invoke(owner, { action: 'clear', source: 'current', scope: proposal.id, run: run.runId,
+    const endedClear = await invoke(executionOwner, { action: 'clear', source: 'current', scope: proposal.id, run: run.runId,
       documentId: imported.document.id });
     assert.equal(endedClear.isError, true);
     assert.match(JSON.stringify(endedClear.content), /active writable Campaign/);

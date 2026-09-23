@@ -147,6 +147,8 @@ function packPurpose(folder: PackFolderSnapshot): RunPurpose {
 export interface StartRunRequest {
   /** Internal Host admission: the actual calling conversation, never a model-chosen identity. */
   readonly ownerSessionId?: string;
+  /** Host-authenticated independent Guide that arranged this execution. */
+  readonly guideSessionId?: string;
   /** Confirmed read-only preparation identity. One identity may open at most one persistent Run. */
   readonly proposalId?: string;
   /** Web intake asks the Host to notify the recorded owner after durable preparation. */
@@ -526,7 +528,9 @@ async function startRunOnce(deps: FabricDeps, req: StartRunRequest): Promise<Sta
   } catch (err) {
     throw new RunStartError(`pack ${req.pack} cannot preserve its method for this Run: ${(err as Error).message}`);
   }
-  const control = req.ownerSessionId === undefined ? {} : { control: { mode: 'agent' as const, owner: req.ownerSessionId, epoch: 1, revision: 0, paused: [], executions: {}, requests: {}, siteDigest: identityOf(site) } };
+  const control = req.ownerSessionId === undefined ? {} : { control: { mode: 'agent' as const, owner: req.ownerSessionId,
+    ...(req.guideSessionId === undefined ? {} : { guideSessionId: req.guideSessionId }),
+    epoch: 1, revision: 0, paused: [], executions: {}, requests: {}, siteDigest: identityOf(site) } };
   const opened = await deps.ledger.createRun({ campaignId, siteId: site.name, ...(req.proposalId === undefined ? {} : { proposalId: req.proposalId }), packId: pack.id, purpose, packDigest, goal, budget, firstStrategy: strategy, generation: 1, ...control });
   if (req.proposalId !== undefined) {
     // The same basis `identityOverrides` above recomputed the confirmed facts with: a pending id for
@@ -1319,6 +1323,8 @@ export interface GrowthView {
   readonly optional?: boolean; readonly reason?: string; readonly evidence?: readonly string[];
 }
 export interface ExecutionContext {
+  /** Derived from durable control receipts, never an independent pause store. */
+  readonly holds?: readonly { readonly scope: string; readonly source: 'human' | 'agent' | 'unknown'; readonly actor?: string; readonly requestId?: string }[];
   /** Canonical record identities for structured grow/revise proposals; file SHA is a different identity. */
   readonly evidence?: readonly { readonly recordId: string; readonly contentIdentity: string; readonly type: string; readonly generation?: number; readonly nodeId?: string }[];
   readonly run: RunRecord; readonly nodes: readonly PackNode[];
@@ -1973,6 +1979,25 @@ function executionPauseReason(pack: Pack, run: RunRecord, nodeId: string): strin
   return dependent.has(nodeId) ? 'business admission is paused for this node or an upstream dependency' : undefined;
 }
 
+/** A pause without scoped provenance is conservatively human-clearable. */
+function executionHolds(control: RunControl): NonNullable<ExecutionContext['holds']> {
+  const requests = Object.values(control.requests).sort((a, b) => a.revision - b.revision);
+  return control.paused.map(scope => {
+    let held: NonNullable<ExecutionContext['holds']>[number] = { scope, source: 'unknown' };
+    for (const request of requests) {
+      const data = request.receipt.data;
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) continue;
+      if (request.state === 'done' && request.receipt.action === 'continue'
+        && Array.isArray(data.clearedScopes) && data.clearedScopes.includes(scope)) held = { scope, source: 'unknown' };
+      if (!['pause', 'handoff', 'adopt'].includes(request.receipt.action) || data.scope !== scope) continue;
+      // Repeating a pause cannot downgrade an earlier human or unknown hold.
+      if (held.source === 'human' || (held.source === 'unknown' && data.newHold !== true && request.origin === 'agent')) continue;
+      held = { scope, source: request.origin ?? 'unknown', actor: request.actor, requestId: request.receipt.requestId };
+    }
+    return held;
+  });
+}
+
 function unclearedFailure(run: RunRecord, scope: string): NodeExecution | undefined {
   return Object.values(run.control?.executions ?? {}).findLast((execution) =>
     execution.supersededBy === undefined && execution.phase === 'failed' && execution.humanClearance === undefined
@@ -2006,7 +2031,7 @@ export function executionContext(deps: FabricDeps, runId: string): ExecutionCont
         execution.nodeId === nodeId && execution.generation === (run.generation ?? 1)
         && execution.loopId === run.loop?.id && execution.loopGeneration === run.loop?.generation
         && execution.supersededBy === undefined && execution.phase !== 'failed'));
-    return { run, budget: standing, nodes, available, executions, evidence, growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion, revision or human clearance has not finished recording its effect; inspect its receipt before new business work' } : standing.phase === 'closing' ? { reason: 'the Campaign is in its closing reserve; analysis, fact reading and deterministic settlement remain, but no new experiment, revision, growth or Workshop write may start' } : standing.phase === 'exhausted' ? { reason: 'the Campaign hard time box is exhausted; only deterministic facts and missing-delivery reporting remain' } : standing.attemptLimitSpent && candidates.some((nodeId) => nodes.find((node) => node.id === nodeId)?.kind === 'act') ? { reason: 'the Campaign attempt limit is exhausted; the current act node cannot be admitted, while analysis and deterministic closing remain available' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
+    return { run, budget: standing, nodes, available, executions, evidence, holds: executionHolds(run.control), growths: growthViews(deps, pack, run.id), revisions, ...(incomplete ? { reason: 'an admitted completion, revision or human clearance has not finished recording its effect; inspect its receipt before new business work' } : standing.phase === 'closing' ? { reason: 'the Campaign is in its closing reserve; analysis, fact reading and deterministic settlement remain, but no new experiment, revision, growth or Workshop write may start' } : standing.phase === 'exhausted' ? { reason: 'the Campaign hard time box is exhausted; only deterministic facts and missing-delivery reporting remain' } : standing.attemptLimitSpent && candidates.some((nodeId) => nodes.find((node) => node.id === nodeId)?.kind === 'act') ? { reason: 'the Campaign attempt limit is exhausted; the current act node cannot be admitted, while analysis and deterministic closing remain available' } : {}), method: { id: pack.id, version: pack.contract.version, digest: run.packDigest!, dir: pack.dir, contract: pack.contract, reference: pack.graph } };
   } catch (error) {
     return { run, budget: standing, nodes: [], available: [], executions, growths: [], revisions, reason: (error as Error).message };
   }
@@ -2027,7 +2052,8 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
     // A human may urgently pause or stop a Campaign from a Side Talk, but that does not make the
     // Side Talk an execution owner.  Every node action, continuation, revision and handoff remains
     // fenced to the recorded owner and epoch below.
-    const humanEmergencyControl = req.origin === 'human' && (req.action === 'pause' || req.action === 'cancel');
+    const humanEmergencyControl = req.origin === 'human' && (req.action === 'pause' || req.action === 'cancel'
+      || (req.action === 'continue' && control.guideSessionId === req.actor));
     if ((control.owner !== req.actor && !humanEmergencyControl) || control.epoch !== req.expectedEpoch) return no('owner or owner epoch is stale; enter the owning conversation or make an explicit handoff');
     if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/.test(req.requestId)) return no('request identity must be a bounded plain identifier');
     const digest = identityOf(req);
@@ -2088,9 +2114,16 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
         if (target === undefined || target === control.owner || !deps.host?.get('agents')?.list().some((agent) => String(agent.id) === target)) return no('handoff needs a different live conversation on this Host');
         if (Object.values(control.executions).some((execution) => execution.phase === 'working' || execution.phase === 'uncertain') || deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === run.id)) return no('handoff needs a safe boundary with no in-flight or uncertain Job');
         changed = { owner: target, epoch: control.epoch + 1, paused: [...new Set([...control.paused, '*'])] };
-        receipt = { ...receipt, owner: target, epoch: control.epoch + 1 };
-      } else if (req.action === 'pause') changed = { paused: [...new Set([...control.paused, scope])] };
+        receipt = { ...receipt, owner: target, epoch: control.epoch + 1, data: { scope: '*', newHold: !control.paused.includes('*') } };
+      } else if (req.action === 'pause') {
+        changed = { paused: [...new Set([...control.paused, scope])] };
+        receipt = { ...receipt, data: { scope, newHold: !control.paused.includes(scope) } };
+      }
       else {
+        if (req.origin !== 'human' && executionHolds(control).some(hold => hold.scope === scope && hold.source !== 'agent')) {
+          return no('this pause requires an explicit human continuation; an Agent cannot clear a human or unknown pause');
+        }
+        receipt = { ...receipt, data: { scope, clearedScopes: [scope] } };
         // A human clearing a Hard blocker or a Pack Wait node is not itself new business work — it
         // only records who cleared what, and (`clearExecutionBlocker` -> `advance`) widens the time box
         // by the wait `waitedMsOf` credits it. Gating the clearance itself on the *current* flat
@@ -2102,7 +2135,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
         if (blocked !== undefined) {
           if (req.origin !== 'human') return no('the failed node needs a human clearance of its blocker; an Agent continue cannot grant another retry allowance');
           if (deps.ledger.openJobsOn(run.siteId).some((job) => job.runId === run.id && job.nodeId === blocked.nodeId)) return no('the blocked node still has an in-flight or uncertain Job; establish its actual exit before retrying');
-          receipt = { ...receipt, executionId: blocked.id };
+          receipt = { ...receipt, executionId: blocked.id, data: { scope, clearedScopes: [...new Set([scope, blocked.nodeId])] } };
           await clearExecutionBlocker(deps, run, req, digest, blocked, scope, receipt);
           return answer('accepted', { receipt });
         }
@@ -2112,7 +2145,7 @@ export function executionAction(deps: FabricDeps, req: ExecutionActionRequest): 
           && execution.loopGeneration === run.loop?.generation && (scope === '*' || scope === execution.nodeId));
         if (waiting !== undefined && waiting.humanClearance === undefined) {
           if (req.origin !== 'human') return no('the Pack wait blocker needs a human clearance; an Agent continue is not that clearance');
-          receipt = { ...receipt, executionId: waiting.id };
+          receipt = { ...receipt, executionId: waiting.id, data: { scope, clearedScopes: [...new Set([scope, waiting.nodeId])] } };
           await clearExecutionBlocker(deps, run, req, digest, waiting, scope, receipt);
           return answer('accepted', { receipt });
         }
@@ -2642,6 +2675,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
       return no(built.reason);
     }
     const { scope, resolved } = built;
+    const projectWorkspace = await deps.projectOfRun?.(runId);
     const workshop = { id: resolved.declaration.id, entry: resolved.declaration.entry, entryPath: resolved.entryAbs, directory: resolved.workshopAbs };
     if (execution.workshop !== undefined && identityOf(execution.workshop) !== identityOf(workshop)) throw new RunStartError('the resolved Workshop no longer matches the admitted version');
     if (initializes) await updateExecution(deps, runId, execution.id, { workshop });
@@ -2649,11 +2683,11 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
     if (req.action === 'recommend') {
       const inputs = await captureWorkshopInputs(scope);
       const unavailableInputs = inputs.unavailable.map(input => input.file);
-      const candidates = await listRunKnowledge(deps, runId, resolved.declaration.id, unavailableInputs);
+      const candidates = await listRunKnowledge(deps, runId, resolved.declaration.id, unavailableInputs, projectWorkspace);
       const historical = await readRunKnowledge(deps, {
         runId, nodeId: execution.nodeId, attempt: execution.attempt, sessionId: req.actor,
         workshop: resolved.declaration.id, ...(execution.branchId === undefined ? {} : { branchId: execution.branchId }),
-        summary: true, unavailableInputs,
+        summary: true, unavailableInputs, workspaceRef: projectWorkspace,
       });
       data = {
         purpose: resolved.declaration.purpose, language: resolved.declaration.language,
@@ -2681,6 +2715,7 @@ async function actInWorkshop(ctx: Driving, req: ExecutionActionRequest, executio
           ...(req.assetRun === undefined ? {} : { sourceRun: req.assetRun }),
           ...(req.assetPath === undefined ? {} : { assetPath: req.assetPath }),
           unavailableInputs: inputs.unavailable.map(input => input.file),
+          workspaceRef: projectWorkspace,
       });
       }
     } else if (req.path !== undefined) {

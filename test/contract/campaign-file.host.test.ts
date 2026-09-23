@@ -159,7 +159,7 @@ test('Case 5: POST /hima/api/runs/start confirms straight from the Campaign file
     assert.equal(res.status, 200, JSON.stringify(body));
     assert.equal(body.run.goal.target_period_ns, 2.3, JSON.stringify(body.run.goal));
     assert.equal(body.workspace?.design, 'guide', JSON.stringify(body.workspace));
-    const records = await (await api(f.host, f.cookie, `/hima/api/runs/${body.run.id}/records?type=workspace`)).json() as any;
+    const records = await (await api(f.host, f.cookie, `/hima/api/runs/${body.run.id}/records?type=workspace&sessionId=${f.sessionId}`)).json() as any;
     const workspaceRecord = (records.records ?? records).find((r: any) => r.type === 'workspace');
     assert.ok(workspaceRecord, JSON.stringify(records));
     assert.equal(workspaceRecord.design, 'guide');

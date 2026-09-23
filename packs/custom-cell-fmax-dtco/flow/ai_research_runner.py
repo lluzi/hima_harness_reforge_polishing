@@ -1285,6 +1285,27 @@ def validate_residual_research_proposal(proposal, context):
             "feedback_interpretation": feedback_interpretation, "stop_reason": stop}
 
 
+def _feedback_ab(before, after, interpretation, without_execution=None):
+    changed = before != after
+    added = sorted(set(after) - set(before))
+    removed = sorted(set(before) - set(after))
+    return {
+        "performed": without_execution is not None,
+        "selection_changed": changed if without_execution is not None else None,
+        "without_feedback_proposal_keys": before,
+        "with_feedback_proposal_keys": after,
+        **({"without_feedback_execution": without_execution} if without_execution is not None else {}),
+        "selection_effect": {
+            "kind": "changed" if changed else "unchanged",
+            "added_proposal_keys": added,
+            "removed_proposal_keys": removed,
+            "reason": ("commercial feedback changed candidate selection" if changed
+                       else "commercial feedback did not change candidate selection"),
+        },
+        "interpretation": interpretation,
+    }
+
+
 def run_residual_research(research, workspace, output):
     """Run one standalone FW-07 AI turn and its isolated proposal program."""
     context = optional_residual_research_context(workspace)
@@ -1297,10 +1318,7 @@ def run_residual_research(research, workspace, output):
         allowed_lenses=[row["name"] for row in proposal["research_lenses"]],
         candidate_registry=candidate_registry,
     )
-    feedback_ab = {"performed": False, "selection_changed": None,
-                   "without_feedback_proposal_keys": [],
-                   "with_feedback_proposal_keys": [],
-                   "interpretation": proposal["feedback_interpretation"]}
+    feedback_ab = _feedback_ab([], [], proposal["feedback_interpretation"])
     if context.get("commercial_frontier_response") is not None:
         neutral = json.loads(json.dumps(context))
         neutral["commercial_frontier_response"] = None
@@ -1311,11 +1329,7 @@ def run_residual_research(research, workspace, output):
         )
         before = [row["transformation"]["proposal_key"] for row in without]
         after = [row["transformation"]["proposal_key"] for row in candidate_proposals]
-        feedback_ab = {"performed": True, "selection_changed": before != after,
-                       "without_feedback_proposal_keys": before,
-                       "with_feedback_proposal_keys": after,
-                       "without_feedback_execution": without_execution,
-                       "interpretation": proposal["feedback_interpretation"]}
+        feedback_ab = _feedback_ab(before, after, proposal["feedback_interpretation"], without_execution)
     document = {
         "schema": RESIDUAL_OUTPUT_SCHEMA,
         "status": "proposed",

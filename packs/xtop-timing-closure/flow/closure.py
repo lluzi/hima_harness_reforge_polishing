@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tempfile
 
 
 STAGE_SCHEMA = "xtop-timing-closure-stage/1"
@@ -60,6 +61,10 @@ def atomic_json(path: Path, value):
 
 def sha_file(path: Path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def sha_json(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def file_ref(path: Path, workspace: Path, role: str):
@@ -370,9 +375,11 @@ def export_current(workspace: Path):
     run_eda(profile, ["innovus", "-batch", "-files", str(tcl), "-log", str(log), "-overwrite", "-64", "-nowin"], paths(workspace)["site"], log, export_env)
     def_path, netlist = export_root / "design.def", export_root / "design.v"
     refs = [file_ref(def_path, workspace, "routed-def"), file_ref(netlist, workspace, "routed-netlist")]
+    physical = physical_evidence(workspace, export_root / "RPT")
     runtime["currentExport"] = {"root": str(export_root), "def": str(def_path), "netlist": str(netlist)}
+    runtime["currentPhysical"] = physical
     atomic_json(paths(workspace)["runtime"], runtime)
-    return {"iteration": iteration, "artifacts": refs}
+    return {"iteration": iteration, "artifacts": refs, "physical": physical}
 
 
 def patch_starrc_template(source: Path, target: Path, def_path: Path, work: Path, spef: Path):
@@ -544,6 +551,47 @@ def metrics_of(reports: Path, scenarios):
     }, endpoint_slack
 
 
+def physical_count(path: Path, kind: str):
+    text = path.read_text(errors="replace")
+    if re.search(r"(?i)\b(?:truncated|limit reached|first\s+\d+\s+(?:errors|violations))\b", text):
+        raise Rejected(f"{kind} report is truncated or limited")
+    if kind == "drc":
+        matches = re.findall(r"(?im)^\s*Total number of DRC violations\s*=\s*(\d+)\s*$", text)
+    else:
+        matches = re.findall(r"(?im)^\s*Total number of (?:connectivity|connectivity violations)\s*=\s*(\d+)\s*$", text)
+    if len(matches) != 1:
+        raise Rejected(f"cannot prove one complete {kind} count from {path}")
+    return int(matches[0])
+
+
+def physical_evidence(workspace: Path, reports: Path):
+    manifest = read_json(reports / "physical-check.json")
+    required = {"schema", "coverage", "drcLimit", "drcReport", "connectivityReport"}
+    if set(manifest) != required or manifest["schema"] != "xtop-timing-closure-physical-check/1" or manifest["coverage"] not in {"complete", "unknown"} or manifest["drcLimit"] != 1000000:
+        raise Rejected("physical check manifest is malformed")
+    drc = reports / manifest["drcReport"]
+    connectivity = reports / manifest["connectivityReport"]
+    if drc.parent != reports or connectivity.parent != reports:
+        raise Rejected("physical check manifest names a report outside its generation")
+    rows = {}
+    coverage = manifest["coverage"]
+    for kind, report in (("drc", drc), ("connectivity", connectivity)):
+        held = file_ref(report, workspace, f"physical-{kind}")
+        try:
+            count = physical_count(report, kind)
+            rows[kind] = {"count": count, "report": held}
+            if kind == "drc" and count >= manifest["drcLimit"]:
+                coverage = "unknown"
+        except Rejected as error:
+            coverage = "unknown"
+            rows[kind] = {"status": "unknown", "reason": str(error), "report": held}
+    return {
+        "schema": manifest["schema"], "coverage": coverage, "drcLimit": manifest["drcLimit"],
+        "drc": rows["drc"], "connectivity": rows["connectivity"],
+        "manifest": file_ref(reports / "physical-check.json", workspace, "physical-check-manifest"),
+    }
+
+
 @stage("summarize")
 def summarize(workspace: Path):
     runtime = load_runtime(workspace)
@@ -553,11 +601,22 @@ def summarize(workspace: Path):
     for row in runtime["profile"]["scenarios"]:
         for name in ("global_timing.rpt", "setup.rpt", "hold.rpt", "check_timing.rpt"):
             report_files.append(file_ref(reports / row["name"] / name, workspace, f"{row['name']}-{name}"))
+    physical = runtime.get("currentPhysical")
+    if not isinstance(physical, dict):
+        raise Rejected("current complete physical check is absent")
+    extraction = runtime.get("currentAnalysis", {}).get("spef", {})
+    if not isinstance(extraction, dict):
+        raise Rejected("current extraction identity is absent")
     snapshot = {
         "schema": STATE_SCHEMA, "iteration": runtime["iteration"], "metrics": metrics,
         "endpointSlackNs": dict(sorted(endpoints.items())),
-        "database": {"script": runtime["currentDatabaseScript"], "data": runtime["currentDatabase"]},
-        "reportsRoot": str(reports), "reportFiles": report_files,
+        "database": {"script": runtime["currentDatabaseScript"], "data": runtime["currentDatabase"],
+            "scriptIdentity": file_ref(Path(runtime["currentDatabaseScript"]), workspace, "database-restore"),
+            "tree": tree_identity(Path(runtime["currentDatabase"]))},
+        "reportsRoot": str(reports), "reportFiles": report_files, "physical": physical,
+        "measurement": {"profile": runtime["profileIdentity"], "sourceManifest": runtime["sourceManifest"],
+          "scenariosSha256": sha_json(runtime["profile"]["scenarios"]),
+          "spef": {name: file_ref(Path(value), workspace, f"spef-{name}") for name, value in extraction.items()}},
     }
     iteration_root = paths(workspace)["flow"] / "iterations" / f"g{int(runtime['iteration']):03d}"
     atomic_json(iteration_root / "closure-state.json", snapshot)
@@ -686,13 +745,14 @@ def apply_eco(workspace: Path):
     script = root / "DBS" / "closed.enc"
     export_root = root / "EXPORT"
     tree = tree_identity(data)
+    physical = physical_evidence(workspace, root / "RPT")
     runtime.update({
         "iteration": iteration, "currentDatabase": str(data), "currentDatabaseScript": str(script),
         "currentExport": {"root": str(export_root), "def": str(export_root / "design.def"), "netlist": str(export_root / "design.v")},
-        "currentAnalysis": None, "pendingIteration": None, "pendingEco": None,
+        "currentAnalysis": None, "currentPhysical": physical, "pendingIteration": None, "pendingEco": None,
     })
     atomic_json(paths(workspace)["runtime"], runtime)
-    return {"iteration": iteration, "databaseTree": tree, "artifacts": [file_ref(script, workspace, "innovus-db-script"), file_ref(export_root / "design.def", workspace, "routed-def"), file_ref(export_root / "design.v", workspace, "routed-netlist")]}
+    return {"iteration": iteration, "databaseTree": tree, "physical": physical, "artifacts": [file_ref(script, workspace, "innovus-db-script"), file_ref(export_root / "design.def", workspace, "routed-def"), file_ref(export_root / "design.v", workspace, "routed-netlist")]}
 
 
 def rank(snapshot):
@@ -705,13 +765,135 @@ def copy_database_alias(workspace: Path, snapshot):
     source_data = Path(snapshot["database"]["data"])
     output = paths(workspace)["flow"] / "output"
     output.mkdir(parents=True, exist_ok=True)
-    script = output / "best.enc"
-    data = output / "best.enc.dat"
-    shutil.copy2(source_script, script)
-    if data.exists():
-        shutil.rmtree(data)
-    shutil.copytree(source_data, data, symlinks=True)
-    return script, data, tree_identity(data)
+    identity = tree_identity(source_data)
+    destination = output / "databases" / f"g{snapshot['iteration']:03d}-{identity['treeSha256'][:20]}"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    script, data = destination / source_script.name, destination / source_data.name
+    if not destination.exists():
+        staging = Path(tempfile.mkdtemp(prefix=".best-", dir=destination.parent))
+        try:
+            shutil.copy2(source_script, staging / source_script.name)
+            shutil.copytree(source_data, staging / source_data.name, symlinks=True)
+            if tree_identity(staging / source_data.name) != identity or sha_file(staging / source_script.name) != sha_file(source_script):
+                raise Rejected("database copy changed before publication")
+            staging.rename(destination)
+        finally:
+            if staging.exists(): shutil.rmtree(staging)
+    if tree_identity(data) != identity or sha_file(script) != sha_file(source_script):
+        raise Rejected("retained database conflicts with its immutable identity")
+    return script, data, identity
+
+
+def resolved_ref(workspace: Path, ref):
+    if not isinstance(ref, dict) or set(ref) != {"role", "path", "sha256", "bytes"}:
+        raise Rejected("measurement file identity is malformed")
+    raw = Path(ref["path"])
+    path = raw.resolve() if raw.is_absolute() else (workspace / raw).resolve()
+    if not path.is_relative_to(workspace.resolve()) or path.is_symlink() or not path.is_file():
+        raise Rejected("measurement file identity is absent or escapes the workspace")
+    bytes_ = path.read_bytes()
+    if len(bytes_) != ref["bytes"] or hashlib.sha256(bytes_).hexdigest() != ref["sha256"]:
+        raise Rejected("measurement file identity changed")
+    return path
+
+
+def validate_snapshot_identity(workspace: Path, snapshot):
+    if snapshot.get("schema") != STATE_SCHEMA:
+        raise Rejected("candidate closure state has the wrong schema")
+    database = snapshot.get("database")
+    if not isinstance(database, dict) or set(database) != {"script", "data", "scriptIdentity", "tree"}:
+        raise Rejected("candidate database identity is incomplete")
+    script = Path(database["script"])
+    data = Path(database["data"])
+    if script.is_symlink() or not script.is_file() or data.is_symlink() or not data.is_dir():
+        raise Rejected("candidate database is absent or linked")
+    if resolved_ref(workspace, database["scriptIdentity"]) != script.resolve() or tree_identity(data) != database["tree"]:
+        raise Rejected("candidate database bytes changed after measurement")
+    for ref in snapshot.get("reportFiles", []):
+        resolved_ref(workspace, ref)
+    if not snapshot.get("reportFiles"):
+        raise Rejected("candidate has no STA report identities")
+    measurement = snapshot.get("measurement")
+    if not isinstance(measurement, dict) or set(measurement) != {"profile", "sourceManifest", "scenariosSha256", "spef"}:
+        raise Rejected("candidate constraints/scenario/extraction identity is incomplete")
+    profile_path = resolved_ref(workspace, measurement["profile"])
+    resolved_ref(workspace, measurement["sourceManifest"])
+    if not isinstance(measurement["scenariosSha256"], str) or not isinstance(measurement["spef"], dict) or not measurement["spef"]:
+        raise Rejected("candidate constraints/scenario/extraction identity is malformed")
+    for ref in measurement["spef"].values(): resolved_ref(workspace, ref)
+    scenarios = read_json(profile_path).get("scenarios")
+    if not isinstance(scenarios, list) or sha_json(scenarios) != measurement["scenariosSha256"]:
+        raise Rejected("candidate scenarios do not match the retained profile")
+    reports_root = Path(snapshot["reportsRoot"]).resolve()
+    expected_reports = {str(reports_root / row["name"] / name) for row in scenarios
+                        for name in ("global_timing.rpt", "setup.rpt", "hold.rpt", "check_timing.rpt")}
+    actual_reports = [str(resolved_ref(workspace, ref)) for ref in snapshot["reportFiles"]]
+    if set(actual_reports) != expected_reports or len(actual_reports) != len(expected_reports):
+        raise Rejected("candidate STA report coverage is incomplete or duplicated")
+    if set(measurement["spef"]) != {row["spefCorner"] for row in scenarios}:
+        raise Rejected("candidate SPEF corner coverage does not match the profile")
+    measured_metrics, measured_endpoints = metrics_of(reports_root, scenarios)
+    if snapshot.get("metrics") != measured_metrics or snapshot.get("endpointSlackNs") != measured_endpoints:
+        raise Rejected("candidate timing values do not match the retained reports")
+    physical = snapshot.get("physical")
+    if not isinstance(physical, dict) or physical.get("schema") != "xtop-timing-closure-physical-check/1" or physical.get("coverage") not in {"complete", "unknown"} or physical.get("drcLimit") != 1000000:
+        raise Rejected("candidate physical evidence is malformed")
+    for key in ("drc", "connectivity"):
+        row = physical.get(key)
+        if not isinstance(row, dict):
+            raise Rejected(f"candidate physical {key} evidence is malformed")
+        count = row.get("count")
+        if count is not None and (isinstance(count, bool) or not isinstance(count, int) or count < 0):
+            raise Rejected(f"candidate physical {key} count is malformed")
+        if count is None and (physical["coverage"] == "complete" or row.get("status") != "unknown" or not isinstance(row.get("reason"), str)):
+            raise Rejected(f"candidate physical {key} evidence has neither a qualified count nor an explicit unknown")
+        resolved_ref(workspace, row.get("report"))
+    manifest_path = resolved_ref(workspace, physical.get("manifest"))
+    if physical_evidence(workspace, manifest_path.parent) != physical:
+        raise Rejected("candidate physical counts or coverage differ from retained report bytes")
+    return {"databaseTree": tree_identity(data), "databaseScript": file_ref(script, workspace, "candidate restore script"),
+      "profile": measurement["profile"], "sourceManifest": measurement["sourceManifest"],
+      "scenariosSha256": measurement["scenariosSha256"], "spef": measurement["spef"], "physical": physical}
+
+
+def physical_qualification(before_identity, after_identity):
+    if before_identity["physical"]["coverage"] != "complete" or after_identity["physical"]["coverage"] != "complete":
+        return {"status": "unknown", "reason": "physical report coverage is not independently qualified"}
+    for key in ("profile", "sourceManifest", "scenariosSha256"):
+        if before_identity[key] != after_identity[key]:
+            return {"status": "ineligible", "reason": f"baseline and candidate {key} differ"}
+    before_spef, after_spef = before_identity["spef"], after_identity["spef"]
+    if set(before_spef) != set(after_spef):
+        return {"status": "ineligible", "reason": "baseline and candidate extraction coverage differ"}
+    before_physical, after_physical = before_identity["physical"], after_identity["physical"]
+    regressions = {kind: after_physical[kind]["count"] - before_physical[kind]["count"] for kind in ("drc", "connectivity")}
+    increased = {kind: count for kind, count in regressions.items() if count > 0}
+    if increased:
+        return {"status": "ineligible", "reason": "physical DRC/connectivity errors increased", "regressions": increased}
+    return {"status": "eligible", "baseline": {kind: before_physical[kind]["count"] for kind in ("drc", "connectivity")},
+      "candidate": {kind: after_physical[kind]["count"] for kind in ("drc", "connectivity")}}
+
+
+def validate_best(workspace: Path, best):
+    if not isinstance(best, dict) or best.get("schema") != BEST_SCHEMA or best.get("ready") is not True:
+        raise Rejected("stored best database is not a ready best manifest")
+    script = resolved_ref(workspace, best.get("restoreScript"))
+    data = Path(best.get("restoreData", ""))
+    if not data.is_absolute(): data = workspace / data
+    data = data.resolve()
+    if not data.is_relative_to(workspace.resolve()):
+        raise Rejected("stored best database escapes the workspace")
+    if tree_identity(data) != best.get("tree"):
+        raise Rejected("stored best database identity changed")
+    snapshot_path = Path(best.get("snapshot", "")).resolve()
+    if not snapshot_path.is_relative_to(workspace.resolve()) or not snapshot_path.is_file():
+        raise Rejected("stored best snapshot is unavailable or outside this workspace")
+    identity = validate_snapshot_identity(workspace, read_json(snapshot_path))
+    if physical_qualification(identity, identity)["status"] != "eligible":
+        raise Rejected("stored best lacks complete physical qualification")
+    if identity["databaseTree"] != best["tree"] or identity["databaseScript"]["sha256"] != best["restoreScript"]["sha256"]:
+        raise Rejected("stored best database does not belong to its measurement snapshot")
+    return script, data
 
 
 def compare(workspace: Path):
@@ -724,28 +906,43 @@ def compare(workspace: Path):
         a_bad = {key for key, value in a.items() if value < 0}
         shared = b_bad & a_bad
         delta = {
-            "fixed": sorted(b_bad - a_bad),
+            "fixed": sorted(key for key in b_bad if key in a and a[key] >= 0),
+            "missing": sorted(b_bad - set(a)),
             "remaining": sorted(shared),
             "entrants": sorted(a_bad - b_bad),
             "regressed": sorted(key for key in shared if a[key] < b[key] - 0.001),
+            "originalFrontierCount": len(b_bad),
+            "measuredOriginalCount": len(b_bad & set(a)),
         }
         previous_best = read_json(paths(workspace)["best"]) if paths(workspace)["best"].is_file() else None
+        if previous_best is not None:
+            validate_best(workspace, previous_best)
         previous_snapshot = read_json(Path(previous_best["snapshot"])) if previous_best else before
-        selected = after if rank(after) < rank(previous_snapshot) else previous_snapshot
-        if previous_best is None or selected is after:
+        baseline_identity = validate_snapshot_identity(workspace, before)
+        candidate_identity = validate_snapshot_identity(workspace, after)
+        delta["comparability"] = "comparable"
+        if any(baseline_identity[key] != candidate_identity[key] for key in ("profile", "sourceManifest", "scenariosSha256")):
+            delta = {"comparability": "not-comparable", "reason": "measurement conditions changed",
+                     "originalFrontierCount": len(b_bad), "measuredOriginalCount": 0,
+                     "fixed": [], "remaining": [], "entrants": [], "regressed": [], "missing": sorted(b_bad)}
+        qualification = physical_qualification(baseline_identity, candidate_identity)
+        selected = after if qualification["status"] == "eligible" and rank(after) < rank(previous_snapshot) else previous_snapshot
+        if qualification["status"] == "eligible" and (previous_best is None or selected is after):
             script, data, identity = copy_database_alias(workspace, selected)
             best = {
                 "schema": BEST_SCHEMA, "ready": True, "iteration": selected["iteration"],
                 "snapshot": runtime["latestSnapshot"] if selected is after else runtime["previousSnapshot"],
                 "restoreScript": file_ref(script, workspace, "best-db-script"), "restoreData": str(data), "tree": identity,
+                "candidateIdentity": candidate_identity if selected is after else baseline_identity, "qualification": qualification,
             }
             atomic_json(paths(workspace)["best"], best)
         else:
             best = previous_best
         result = {
             "schema": ITERATION_SCHEMA, "iteration": after["iteration"], "before": before, "after": after,
-            "endpoint_delta": delta, "evidence_valid": bool(best and best.get("ready")),
-            "bestDatabaseIteration": best["iteration"],
+            "endpoint_delta": delta, "candidateIdentity": candidate_identity, "bestQualification": qualification,
+            "evidence_valid": bool(qualification["status"] == "eligible" and best and best.get("ready")),
+            **({"bestDatabaseIteration": best["iteration"]} if best else {}),
         }
         atomic_json(record_path(workspace, "compare"), result)
         experience = {

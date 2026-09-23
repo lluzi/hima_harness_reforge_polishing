@@ -25,6 +25,27 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { bootDriver } from './support/driver.ts';
 
+test('closing and reopening the window preserves the same Host; explicit Quit still stops it', async t => {
+  const d = await bootDriver(t, { home: 'hima' });
+  if (!d) return;
+  try {
+    const before = await d.host(); assert.ok(before.ok);
+    const hidden = await d.request({ op: 'window-close' });
+    assert.equal(hidden.ok, true, JSON.stringify(hidden));
+    assert.equal(hidden.visible, false);
+    const during = await d.host(); assert.ok(during.ok);
+    assert.equal(during.origin, before.origin);
+    const reopened = await d.request({ op: 'window-reopen' });
+    assert.equal(reopened.ok, true, JSON.stringify(reopened));
+    assert.equal(reopened.visible, true);
+    const after = await d.host(); assert.ok(after.ok);
+    assert.equal(after.origin, before.origin);
+    assert.ok((await d.quit()).ok);
+    assert.equal(await d.exit(), 0);
+    await assert.rejects(fetch(before.origin));
+  } finally { await d.dispose(); }
+});
+
 test('pnpm run desktop --site local on a machine that has never run it: the shell makes the hima home, seeds the local site, boots its own host, answers the driver, refuses the fence, and stops the host', async (t) => {
   const d = await bootDriver(t, { home: 'empty', seed: 'local' });
   if (!d) return;
@@ -44,7 +65,7 @@ test('pnpm run desktop --site local on a machine that has never run it: the shel
     // generation's numbers should know they are the stand-in's arithmetic and not Design Compiler's.
     assert.match(
       said,
-      /^hima-desktop: local site: the stand-in computes its own qor report per generation, closing at 2\.20 ns$/m,
+      /^hima-desktop: local site: the stand-in computes its own qor report per generation, closing at 2\.20 ns; these are simulated values, not measured EDA results$/m,
       said,
     );
     assert.match(said, /^hima-desktop: local site: generated the stand-in flow at /m, said);

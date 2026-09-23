@@ -7,11 +7,61 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { findOnPath } from './support/tmux.ts';
 import { localHome, waitUntil, sessionsOf } from './support/fabric.ts';
-import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
+import { bootInProcess, createRootAgent, resumeTestAgent } from './support/boot-inprocess.ts';
 import { timingProbePackId } from './support/pack.ts';
 
 process.env.HIMA_TEST_LEGACY_AUTO_DRIVE = '0';
 process.env.HIMA_TEST_SILENT_AGENT = '1';
+
+test('a human pause survives Job completion and Host recovery until that scope is explicitly continued by a human', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0.01 });
+  assert.ok(home);
+  let host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  let resumed: Awaited<ReturnType<typeof resumeTestAgent>> | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const actor = String(owner.id);
+    const started = await host.ctx.hima.startRun({ pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 }, ownerSessionId: actor });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    let serial = 0;
+    const act = (action: 'begin' | 'work' | 'pause' | 'continue', origin: 'human' | 'agent', nodeId?: string, executionId?: string) => {
+      const control = host.ctx.hima.executionContext(runId!).run.control!;
+      return host.ctx.hima.executionAction({ runId: runId!, actor, action, origin, nodeId, executionId,
+        expectedEpoch: control.epoch, expectedRevision: control.revision, requestId: `hold-${++serial}` });
+    };
+    const begun = await act('begin', 'agent', started.run.currentNode);
+    assert.equal(begun.kind, 'accepted');
+    assert.equal((await act('work', 'agent', undefined, begun.receipt?.executionId)).kind, 'accepted');
+    assert.equal((await act('pause', 'human', started.run.currentNode)).kind, 'accepted');
+    assert.equal((await act('pause', 'agent', started.run.currentNode)).kind, 'accepted', 'an Agent may add a hold without erasing the human hold');
+    const denied = await act('continue', 'agent', started.run.currentNode);
+    assert.equal(denied.kind, 'refused', 'ordinary human pause requires a human continuation, even without a failed node');
+    assert.match(denied.reason ?? '', /human.*pause|pause.*human/i);
+    await waitUntil('the existing Job is still observed while admission is paused', () =>
+      host.ctx.hima.executionContext(runId!).executions[0]?.phase === 'ready');
+    await host.dispose();
+    host = await bootInProcess(home.h);
+    await host.ctx.hima.reconciled;
+    resumed = await resumeTestAgent(host.ctx, actor);
+    assert.deepEqual(host.ctx.hima.executionContext(runId).run.control?.paused, [started.run.currentNode]);
+    assert.equal((await act('continue', 'agent', started.run.currentNode)).kind, 'refused');
+    assert.equal((await act('continue', 'human')).kind, 'accepted', 'continuing another scope does not clear this node');
+    assert.deepEqual(host.ctx.hima.executionContext(runId).run.control?.paused, [started.run.currentNode]);
+    const cleared = await act('continue', 'human', started.run.currentNode);
+    assert.equal(cleared.kind, 'accepted');
+    assert.deepEqual(cleared.context.run.control?.paused, []);
+    assert.equal(sessionsOf(host, runId).length, 1, 'recovery and continue never launch a duplicate Job');
+    assert.equal((await act('pause', 'agent')).kind, 'accepted');
+    assert.equal((await act('continue', 'agent')).kind, 'accepted', 'an explicitly Agent-owned hold remains resumable by its owner');
+  } finally {
+    if (runId) await host.ctx.hima.cancelRun(runId);
+    await resumed?.dispose();
+    await host.dispose(); await home.h.dispose();
+  }
+});
 
 test('a human in another live conversation can promptly cancel a long Job without taking ownership', async (t) => {
   const home = await localHome(t, { sleepSeconds: 15 });

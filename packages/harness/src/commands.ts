@@ -14,6 +14,7 @@ import { legacyAutomaticAllowed } from './runs.js';
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands';
 import { hasEnded, type BlockerRecord, type CancelRecord, type CodeRecord, type DecisionRecord, type ExperienceRecord, type JobRecord, type LedgerRecord, type NodeRecord, type ObservationRecord, type ResumedRecord, type RunRecord, type SessionRecord, type VerdictRecord, type WorkspaceRecord } from './ledger.js';
 import { cancelSessions, chosenAs, standingWorkshop } from './record-views.js';
+import { assertRunProject } from './guide-context.js';
 import { observe, type ObserveResult } from './observe.js';
 import { jobKill, jobStatus, jobTail, launchJob, type JobKillResult, type JobStatusResult, type LaunchResult } from './jobs.js';
 import { claimSlot, fullSaid, type FullSlot } from './job-cap.js';
@@ -574,6 +575,16 @@ function numericFlag(flags: readonly string[], name: RunArgumentName, spelling: 
 export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: CommandInvocation): Promise<CommandResult> {
   const [sub = '', ...rest] = rawInput.trim().split(/\s+/).filter(Boolean);
   if (sub === '' || sub === 'version') return { kind: 'success', text: versionLine() };
+  if (!legacyAutomaticAllowed()) {
+    const namedRun = ['status', 'resume', 'cancel', 'judge'].includes(sub) ? rest[0]
+      : sub === 'observe' ? flagValue(rest.slice(2), '--run')
+      : sub === 'job' ? rest[0] === 'launch' ? flagValue(rest.slice(1, rest.indexOf('--') < 0 ? undefined : rest.indexOf('--')), '--run') : rest[1]
+      : undefined;
+    if (namedRun) {
+      try { await assertRunProject(deps, String(agent.id), agent.session.header.cwd, namedRun); }
+      catch { return { kind: 'error', text: 'This Run is not linked to the current project.' }; }
+    }
+  }
   if (sub === 'observe') {
     const [site, path, ...flags] = rest;
     const usage = 'usage: /hima observe <site> <path> [--reader <id>] [--run <runId>] [--judge <id,id,...>] [--param <name>=<value>]...';
@@ -590,7 +601,7 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
     let result: ObserveResult;
     try {
       if (run && deps.ledger.run(run)?.control) return { kind: 'error', text: 'Agent-owned Run observations require hima_execute with an admitted execution' };
-      result = await observe(deps, { site, path, reader, run });
+      result = await observe(deps, { site, path, reader, run, projectSessionId: String(agent.id) });
     } catch (err) {
       // A run reference the caller got wrong is theirs to fix and nothing was written; every other
       // fault propagates as it always has.
@@ -613,8 +624,8 @@ export async function handleHimaCommand(deps: FabricDeps, { rawInput, agent }: C
     if ('error' in parsedParams) return { kind: 'error', text: parsedParams.error };
     return judged(deps, runId, rules, parsedParams.params);
   }
-  if (sub === 'job') return handleJob(deps, rest);
-  if (sub === 'pack') return handlePack(deps, rest);
+  if (sub === 'job') return handleJob(deps, rest, String(agent.id));
+  if (sub === 'pack') return handlePack(deps, rest, String(agent.id));
   if (sub === 'run') return handleRun(deps, rest, String(agent.id));
   if (sub === 'resume') return handleResume(deps, rest, String(agent.id));
   if (sub === 'status') return handleStatus(deps, rest);
@@ -779,7 +790,7 @@ async function handleCancel(deps: FabricDeps, rest: readonly string[]): Promise<
  * generations run in. Both name the pack first and the Site with `--site`, because a pack is the
  * thing being asked about and a Site is what it is being asked about against.
  */
-async function handlePack(deps: FabricDeps, rest: readonly string[]): Promise<CommandResult> {
+async function handlePack(deps: FabricDeps, rest: readonly string[], projectSessionId?: string): Promise<CommandResult> {
   const [verb = '', pack = '', ...flags] = rest;
   const usage = [
     'usage: /hima pack check <pack> --site <site>',
@@ -824,7 +835,7 @@ async function handlePack(deps: FabricDeps, rest: readonly string[]): Promise<Co
       const result = checkInstalledPack(deps, { pack, site });
       return { kind: packCheckFit(result) ? 'success' : 'error', text: describePackCheckResult(result) };
     }
-    const result = await prepareWorkspace(deps, { pack, site, campaign });
+    const result = await prepareWorkspace(deps, { pack, site, campaign, projectSessionId });
     const text = describePrepare(result);
     return result.kind === 'prepared' || result.kind === 'reused' ? { kind: 'success', text } : { kind: 'error', text };
   } catch (err) {
@@ -843,7 +854,7 @@ async function handlePack(deps: FabricDeps, rest: readonly string[]): Promise<Co
  * form but launch names the Run the Job belongs to and the tmux session it runs in, which is what
  * the launch's own record says — a Job is found again through the ledger, never through a handle.
  */
-async function handleJob(deps: FabricDeps, rest: readonly string[]): Promise<CommandResult> {
+async function handleJob(deps: FabricDeps, rest: readonly string[], projectSessionId?: string): Promise<CommandResult> {
   const [verb = '', ...args] = rest;
   const usage = [
     'usage: /hima job launch <site> <workspace> [--run <runId>] [--name <n>] -- <command...>',
@@ -878,7 +889,7 @@ async function handleJob(deps: FabricDeps, rest: readonly string[]): Promise<Com
         // describes: nothing says what it would hold, so it reserves nothing and is counted against
         // the Site's job slots alone.
         holds: {},
-        launch: () => launchJob(deps, { site: site.name, workspace, argv, name, run }),
+        launch: () => launchJob(deps, { site: site.name, workspace, argv, name, run, projectSessionId }),
       });
       if (claimed.kind === 'at-cap') return { kind: 'error', text: describeAtCap(site.name, claimed.full, claimed.holding) };
       // The Site would not say how many Jobs it is running, so nothing was launched and nothing was

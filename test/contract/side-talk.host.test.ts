@@ -111,7 +111,7 @@ test('a Side Talk can read and code during one owner Run, but only a safe handof
     const successor = handoff.context.run.control!;
     const resumed = await host.ctx.hima.executionAction({
       runId, actor: String(sideTalk.id), expectedEpoch: successor.epoch, expectedRevision: successor.revision,
-      requestId: 'successor-continue', action: 'continue',
+      requestId: 'successor-continue', action: 'continue', origin: 'human',
     });
     assert.equal(resumed.kind, 'accepted', resumed.reason);
   } finally {

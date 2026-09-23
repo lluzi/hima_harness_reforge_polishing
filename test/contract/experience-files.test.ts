@@ -11,7 +11,7 @@ import { bootHimaHost } from './support/boot-host.ts';
 import { api, openSession } from './support/hima-api.ts';
 import { writeLocalSite } from './support/site.ts';
 import { installPack, packsDirOf, timingProbePackId } from './support/pack.ts';
-import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR } from '@hima/harness';
+import { readMaterial, applyPackTransfer, exportPackMethod, installPackMethod, packDigestOf, packTransferReceiptFile, previewPackTransfer, readArchivedMaterial, readExperience, writeExperience, writeRunAssets, readRunAssets, EXPERIENCE_DIR, readWorkMemorySummary, writeWorkMemorySummary, recordExperienceAdoption } from '@hima/harness';
 import type { ExperienceJson, ExperienceAnswer, RunAssetManifest, RunView } from '@hima/harness';
 
 const hash = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
@@ -26,6 +26,65 @@ async function fixture() {
   const close = async () => { if (!closed) { closed = true; await host.dispose(); } };
   return { h, host, run, deps, close };
 }
+
+test('a workspace summary is source-linked, stays scoped to its real workspace, and becomes stale when current authority advances', async () => {
+  const f = await fixture();
+  try {
+    const source = await f.deps.ledger.appendKnowledge(f.run.id, {
+      origin: 'current', nodeId: 'summary', attempt: 1, sessionId: 'summary-session', workshop: 'summary',
+      file: 'input.md', purpose: 'summary source', path: path.join(f.h.workspace, 'input.md'), sha256: hash('source\n'), bytes: 7,
+    });
+    const summary = {
+      schema: 'hima-work-memory/1' as const,
+      scope: { kind: 'session' as const, workspaceRef: f.h.workspace, sessionId: 'summary-session' },
+      subject: 'Keep the measured source linked.', decisions: ['Use the recorded source only.'], openQuestions: ['Need a new measurement?'], todo: ['Re-read current authority.'],
+      references: [{ recordId: source.id, contentIdentity: source.sha256, conditions: ['same workspace'] }],
+      sources: [{ runId: f.run.id, throughSeq: source.seq }], generatedAt: '2026-09-23T00:00:00.000Z', modelGenerated: false,
+    };
+    await writeWorkMemorySummary(f.deps.ledger, f.h.workspace, summary);
+    const current = await readWorkMemorySummary(f.deps.ledger, f.h.workspace, summary.scope);
+    assert.equal(current.kind, 'current');
+    if (current.kind === 'current') assert.equal(current.summary.references[0]?.recordId, source.id);
+
+    await f.deps.ledger.appendKnowledge(f.run.id, {
+      origin: 'current', nodeId: 'summary', attempt: 1, sessionId: 'summary-session', workshop: 'summary',
+      file: 'newer.md', purpose: 'newer authority', path: path.join(f.h.workspace, 'newer.md'), sha256: hash('newer\n'), bytes: 6,
+    });
+    const stale = await readWorkMemorySummary(f.deps.ledger, f.h.workspace, summary.scope);
+    assert.equal(stale.kind, 'stale');
+  } finally { await f.close(); await f.h.dispose(); }
+});
+
+test('experience adoption is append-only, request-idempotent, and requires new re-adoption evidence', async () => {
+  const f = await fixture();
+  try {
+    await installPack(f.h);
+    const source = await f.deps.ledger.createRun({ campaignId: 'adoption-source', siteId: 'local', status: 'cancelled', packId: timingProbePackId });
+    const archived = await writeRunAssets(f.deps, source.id);
+    assert.equal(archived.kind, 'written'); if (archived.kind !== 'written') return;
+    const material = archived.manifest.materials.find(item => item.path === 'experience.json')!;
+    const completion = f.deps.ledger.records({ runId: source.id, type: 'archive' }).findLast(record => record.type === 'archive' && record.delivery === 'complete');
+    assert.ok(completion?.type === 'archive' && completion.manifestSha256 !== undefined);
+    if (completion?.type !== 'archive' || completion.manifestSha256 === undefined) return;
+    const candidate = { sourceRun: source.id, sourceManifestSha256: completion.manifestSha256, sourceMaterialPath: 'experience.json' as const, sourceMaterialSha256: material.sha256 };
+    const firstEvidence = await f.deps.ledger.appendKnowledge(f.run.id, { nodeId: 'adoption', attempt: 1, sessionId: 'human-session', workshop: 'adoption', file: 'v2', purpose: 'disable evidence', path: path.join(f.h.workspace, 'v2'), sha256: hash('v2'), bytes: 2 });
+    const disabled = await recordExperienceAdoption(f.deps, { runId: f.run.id, workspaceRef: f.h.workspace, candidate,
+      event: 'disabled', requestId: 'disable-history', changedBy: 'human-session', reason: 'input changed', evidenceRefs: [firstEvidence.id] });
+    assert.equal((await recordExperienceAdoption(f.deps, { runId: f.run.id, workspaceRef: f.h.workspace, candidate,
+      event: 'disabled', requestId: 'disable-history', changedBy: 'human-session', reason: 'input changed', evidenceRefs: [firstEvidence.id] })).id, disabled.id);
+    await assert.rejects(() => recordExperienceAdoption(f.deps, { runId: f.run.id, workspaceRef: f.h.workspace, candidate,
+      event: 're-adopted', requestId: 're-adopt-old-evidence', supersedes: disabled.id, changedBy: 'human-session', reason: 'retry', evidenceRefs: [firstEvidence.id] }), /new verified evidence/);
+    const newEvidence = await f.deps.ledger.appendKnowledge(f.run.id, { nodeId: 'adoption', attempt: 1, sessionId: 'human-session', workshop: 'adoption', file: 'v3', purpose: 're-adopt evidence', path: path.join(f.h.workspace, 'v3'), sha256: hash('v3'), bytes: 2 });
+    const reAdopted = await recordExperienceAdoption(f.deps, { runId: f.run.id, workspaceRef: f.h.workspace, candidate,
+      event: 're-adopted', requestId: 're-adopt-new-evidence', changedBy: 'human-session', reason: 'new measurement', evidenceRefs: [newEvidence.id], supersedes: disabled.id });
+    assert.equal(reAdopted.event, 're-adopted');
+    assert.equal(disabled.writer, 'person');
+    assert.equal(reAdopted.writer, 'person');
+    assert.ok(disabled.conditions.includes(`Project workspace: ${f.h.workspace}`));
+    assert.ok(disabled.conditions.length >= 3, 'applicability records exact source identity and workspace');
+    assert.equal(f.deps.ledger.records({ runId: f.run.id, type: 'experience-adoption' }).length, 2);
+  } finally { await f.close(); await f.h.dispose(); }
+});
 
 test('two actual observations of an overwritten report retain both byte versions for final archive', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0.01 }); assert.ok(home);

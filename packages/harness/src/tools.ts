@@ -13,10 +13,11 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
+import { assertRunProject } from './guide-context.js';
 import { currentRecordsIn, type NodeExecution, type VerdictRecord } from './ledger.js';
 import { legacyAutomaticAllowed } from './runs.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
-import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult } from './fabric.js';
+import { authenticCampaignProposalId, identityOf, revisionImpactForRun, executionAction, executionContext, sameCampaignProposalFacts, type ExecutionActionRequest, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunResult, type StartRunRequest } from './fabric.js';
 import { cancelRun, type CancelResult } from './recovery.js';
 import { describePackCheck, describePackCheckResult, describePrepare, packCheckFit, packCheckStage } from './commands.js';
 import { checkInstalledPack, loadPack, runPackWords } from './packs.js';
@@ -31,6 +32,12 @@ import { allowsRunArgument, badRunArgument, notWaitingToResume, unresumableReaso
 type ToolJson = null | string | number | boolean | ToolJson[] | { [key: string]: ToolJson };
 /** Shared execution context crosses the same JSON boundary as the HTTP view. */
 function toolJson(value: object): Record<string, ToolJson> { return JSON.parse(JSON.stringify(value)) as Record<string, ToolJson>; }
+
+async function assertProjectAccess(deps: FabricDeps, agent: Agent | undefined, runId: string): Promise<void> {
+  if (legacyAutomaticAllowed()) return;
+  if (!agent) throw new Error('reading a task requires a live project conversation');
+  await assertRunProject(deps, String(agent.id), agentWorkspaceOf(agent), runId);
+}
 
 /**
  * The Agent's own workspace cwd: dsh's own session header, with a fallback to the Agent's own meta
@@ -195,6 +202,33 @@ function executionText(value: Record<string, ToolJson>): string {
 /** One tool as `ctx.tools.register` takes it: whatever `defineTool` makes of a definition. */
 type ToolDefinition = ReturnType<typeof defineTool>;
 
+/** Guide reads and derived memory share the same authenticated Host projection as the UI. */
+export function guideTools(operations: {
+  inspect(sessionId: string, requestId: string, target: unknown): Promise<object>;
+  memory(sessionId: string, request: { action: 'read' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
+}): ToolDefinition[] {
+  return [defineTool({
+    name: 'hima_inspect',
+    description: 'Inspect an exact Run, node execution/generation, retained report version, or native child in this project. Read-only, sourced current facts; selecting a target never grants ownership.',
+    parameters: { requestId: { type: 'string', required: true }, target: { type: 'object', required: true, additionalProperties: true,
+      description: 'TargetAddress: run{runId}; node{runId,nodeId,executionId or generation}; report{reportRef,version,sha256}; child{parentSessionId,childSessionId}. Include kind.' } },
+    output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    execute: async (args, execution) => {
+      if (!execution.agent) throw new Error('a live conversation is required');
+      return toolJson(await operations.inspect(String(execution.agent.id), args.requestId, args.target));
+    },
+  }), defineTool({
+    name: 'hima_memory',
+    description: 'Read or save a source-linked working summary in this project. It never resumes work or changes measurements, authority, pauses, or budgets. Re-read current sources on recovery; stale or unavailable memory must not direct execution. Campaign evidence references are required for saved summaries in this version.',
+    parameters: { action: { type: 'string', required: true, enum: ['read', 'save'] }, runId: { type: 'string' }, summary: { type: 'object', additionalProperties: true } },
+    output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    execute: async (args, execution) => {
+      if (!execution.agent) throw new Error('a live conversation is required');
+      return toolJson(await operations.memory(String(execution.agent.id), args));
+    },
+  })];
+}
+
 /** One numeric argument of a tool call, validated the same way. Absent is absent; wrong is refused. */
 function toolNumber(name: RunArgumentName, given: number | undefined): number | undefined {
   if (given === undefined) return undefined;
@@ -358,7 +392,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     /** A saved ssh Site's own destination/jumps and its Permit's own roots, for `rediscover` (#41
      *  task 4 review, important 3, minor 9): undefined when there is no such saved ssh Site to reuse. */
     readonly rediscoverInput: (name: string) => { readonly ssh: SiteDiscoverBody['ssh']; readonly hints: NonNullable<SiteDiscoverBody['hints']>; readonly bindings: Readonly<Record<string, string>> } | undefined;
-  }): ToolDefinition[] {
+  }, guidedStart?: (request: StartRunRequest) => Promise<StartRunResult>): ToolDefinition[] {
   return [
     ...author ? [defineTool({
       name: 'hima_author',
@@ -446,7 +480,8 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       description: 'Read current Run execution facts, owner/epoch/revision, reference nodes, available node ids and admitted executions, plus recorded Jobs, code, observations and verdicts. This read starts no business work. Use the current context already returned by hima_run or hima_execute for the next action; refresh here when asynchronous facts change or that context is missing or stale. A different selected Run does not change its owner.',
       parameters: { run: { type: 'string', required: true, description: 'Exact Run id.' } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
-      execute: async (args) => {
+      execute: async (args, execution) => {
+        await assertProjectAccess(deps, execution.agent, args.run);
         const context = executionContext(deps, args.run);
         let words: RunWords | undefined;
         try { words = runPackWords(deps.packsDir, context.run); }
@@ -525,6 +560,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: executionText(value) }] },
       execute: async (args, execution) => {
+        await assertProjectAccess(deps, execution.agent, args.run);
         if (!execution.agent) throw new Error('this operation requires a live conversational Agent');
         const { run, strategy, ...fields } = args;
         const request: ExecutionActionRequest = { ...fields, runId: run, actor: String(execution.agent.id), origin: 'agent', ...(strategy === undefined ? {} : { strategy: strategyArgument(strategy) }) };
@@ -580,13 +616,15 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: async (args) => {
+      execute: async (args, execution) => {
+        if (!legacyAutomaticAllowed() && !execution.agent) throw new Error('a Probe needs a live project conversation');
+        if (args.run) await assertProjectAccess(deps, execution.agent, args.run);
         // Validated before anything is read: a bad `params` entry must leave no observation and
         // no verdict behind, the same as a malformed `--param` on the command line.
         const parsedParams = numericParams(args.params as Record<string, unknown> | undefined);
         if ('error' in parsedParams) throw new Error(parsedParams.error);
         if (args.run && deps.ledger.run(args.run)?.control) throw new Error('Agent-owned Run observations require hima_execute with an admitted execution; direct observation is refused');
-        const result = await observe(deps, args as ObserveRequest);
+        const result = await observe(deps, { ...args, projectSessionId: execution.agent ? String(execution.agent.id) : undefined } as ObserveRequest);
         const value = toolResult(result);
         if (result.kind === 'observed' && args.judge?.length) {
           value.verdicts = (await deps.judge.evaluate({ runId: result.run.id, ruleIds: args.judge, params: parsedParams.params })).map(verdictToolValue);
@@ -611,7 +649,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
     }),
     defineTool({
       name: 'hima_run',
-      description: 'Prepare a Campaign on the named Site and bind it to this actual conversational Agent. Returns promptly with the Run and execution context; starts no business node or hidden Agent. You remain the execution owner: use hima_context and hima_execute to choose and perform each node, inspect real evidence, and decide the next action. Goal and total budget remain fixed. When this Agent\'s own workspace holds hima/campaign.yml naming this same Pack, its Goal, Strategy, input and Budget overrides are applied by default (report: campaignFile.applied), the same file hima_prepare applies.',
+      description: 'Confirm a prepared Campaign on the named Site and arrange an independent execution conversation. The returned context names its actual owner. This Guide stays available; it does not acquire execution ownership. Open the owner conversation for node work; Guide may read current facts and explain progress. Goal and total budget remain fixed. When this Agent\'s own workspace holds hima/campaign.yml naming this same Pack, its Goal, Strategy, input and Budget overrides are applied by default (report: campaignFile.applied), the same file hima_prepare applies.',
       parameters: {
         proposalId: { type: 'string', description: 'The current id returned by hima_prepare. Supply it when confirming a prepared Campaign.' },
         pack: { type: 'string', required: true, description: 'Pack id, as the packs directory holds it.' },
@@ -689,7 +727,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         // silently fall back to the Pack's plain defaults, when the file's own knob is what put it
         // there. Budget is the same shape: a confirmed Campaign is refused explicit budget args
         // above, so the file's own Budget override — the only other source — is what reaches the Run.
-        const result = await startRun(deps, {
+        const result = await (guidedStart ?? ((request: StartRunRequest) => startRun(deps, request)))({
           ownerSessionId: legacyAutomaticAllowed() ? undefined : String(execution.agent.id),
           ...(args.proposalId === undefined ? {} : { proposalId: args.proposalId }),
           pack: args.pack,
@@ -736,7 +774,10 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
       },
       // The calling agent's session is who the ledger records; a call arriving without one is
       // the workbench's, as the resume route's is.
-      execute: async (args, exec) => resumeToolValue(await resumeRun(deps, { runId: args.run, who: exec.agent === undefined ? 'workbench' : String(exec.agent.id) })),
+      execute: async (args, exec) => {
+        await assertProjectAccess(deps, exec.agent, args.run);
+        return resumeToolValue(await resumeRun(deps, { runId: args.run, who: exec.agent === undefined ? 'workbench' : String(exec.agent.id) }));
+      },
     }),
     // ---------------------------------------------------------------------------------------
     // The three the pack authoring pipeline's stages call (#64). A stage is a model following a
@@ -770,7 +811,7 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: (args) => {
+      execute: async (args) => {
         const result = checkInstalledPack(deps, { pack: args.pack, site: args.site });
         const stage = packCheckStage(result);
         // An absent key, never an undefined one: at the top of the ladder there is no next rung, and
@@ -801,7 +842,8 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: (args) => {
+      execute: async (args, execution) => {
+        await assertProjectAccess(deps, execution.agent, args.run);
         const run = deps.ledger.run(args.run);
         // A refusal in words, as `hima_resume` answers one: the caller asked about a run and there is
         // no such run, which is a fact about their request and not a fault of this host.
@@ -887,7 +929,8 @@ export function himaTools(deps: FabricDeps, author?: (request: { pack: string; c
         },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      execute: async (args) => {
+      execute: async (args, execution) => {
+        await assertProjectAccess(deps, execution.agent, args.run);
         if (deps.ledger.run(args.run)?.control) throw new Error('use hima_context then hima_execute cancel with the current owner epoch and control revision');
         return cancelToolValue(await cancelRun(deps, args.run));
       },

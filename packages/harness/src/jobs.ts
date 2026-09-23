@@ -365,6 +365,8 @@ export interface LaunchIntent {
 }
 
 export interface LaunchRequest {
+  /** Native project of a new standalone Probe; never rebinds a named Run. */
+  readonly projectSessionId?: string;
   /** The owner persists this intent before any process can start; a rejection prevents launch. */
   readonly beforeLaunch?: (intent: LaunchIntent) => Promise<void>;
   readonly site: string;
@@ -433,7 +435,7 @@ export type LaunchResult =
 /** Launch a Job under the Site's Permit and record it. A refusal is a record, never a silent no. */
 export async function launchJob(deps: JobDeps, req: LaunchRequest): Promise<LaunchResult> {
   const site = loadSite(deps.sitesDir, req.site);
-  const run = await runFor(deps.ledger, site, req.run);
+  const run = await runFor(deps.ledger, site, req.run, req.projectSessionId);
   const name = tmuxSafe(req.name ?? defaultJobName);
   // One channel for the whole operation: the permit decision resolves the workspace where it lives,
   // then the same warm channel launches into it.

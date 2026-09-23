@@ -7,6 +7,17 @@
 - id: session-telemetry-otel
   disabled: true
 
+# Ordinary side-talk PTY sessions: the service owns exact-Agent identity, the
+# shell backend owns process lifecycle, and the consumer exposes the six tools.
+# Campaign use is separately refused by Hima's monotonic guard until S09/F2.
+- insert:
+    - id: terminals
+      name: '@deepseek-ai/dsh-terminal'
+    - id: terminal-bash
+      name: '@deepseek-ai/dsh-terminal-bash'
+    - id: terminal-tools
+      name: '@deepseek-ai/dsh-tool-terminal'
+
 # HimaHarness managed model catalog: begin
 # DeepSeek's current product name is DeepSeek-V4.1-Flash; its official API advertises and accepts
 # `deepseek-flash` as the wire id. dsh-base 0.1.5 still defaults to the retired

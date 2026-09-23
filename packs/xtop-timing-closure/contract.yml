@@ -1,5 +1,5 @@
 id: xtop-timing-closure
-version: "1.0.5"
+version: "1.0.6"
 title: XTop iterative timing closure
 status: development
 minimumHarnessVersion: 0.1.0
@@ -86,12 +86,6 @@ outputs:
     description: >-
       Hash-bound pointer to the best admitted Innovus restore script and .enc.dat directory retained
       inside this Campaign. The selected database is the Pack's business output.
-  - name: bestDatabaseScript
-    path: flow/output/best.enc
-    description: Materialized Innovus restore script for the best admitted database.
-  - name: bestDatabaseData
-    path: flow/output/best.enc.dat
-    description: Materialized Innovus data directory for the best admitted database.
 
 environment:
   wrappers:

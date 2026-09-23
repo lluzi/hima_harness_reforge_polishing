@@ -13,4 +13,3 @@ decide:
   - when: { constraint: PASS, goal: FAIL }
     next:
       strategyRevision: revisionStep
-

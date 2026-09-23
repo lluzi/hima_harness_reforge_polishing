@@ -21,14 +21,15 @@
 // Run without the record, and the next boot's reconciliation writes the report again from records
 // that have not moved. That is also the idempotence — a Run that carries the record is a Run whose
 // report is written, and this module leaves the Site alone.
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants, lstatSync } from 'node:fs';
-import { link, lstat, mkdir, open, readFile as readLocalFile, rename, rm } from 'node:fs/promises';
+import { link, lstat, mkdir, open, readFile as readLocalFile, realpath, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { channelFor, mustRun, type Channel } from './channel.js';
 import { experienceReport, EXPERIENCE_DIR, RUN_ASSET_MANIFEST_SCHEMA, type ExperienceJson, type RunAssetManifest } from './experience-report.js';
-import { currentRecordsIn, hasEnded, type ArchiveRecord, type CodeRecord, type ExperienceFile, type ExperienceRecord, type KnowledgeRecord, type Ledger, type ObservationRecord, type RunPurpose, type RunRecord, type WorkspaceRecord } from './ledger.js';
+import { currentRecordsIn, hasEnded, recordValidityOf, type ArchiveRecord, type CodeRecord, type ExperienceAdoptionRecord, type ExperienceFile, type ExperienceRecord, type KnowledgeRecord, type Ledger, type LedgerRecord, type ObservationRecord, type RunPurpose, type RunRecord, type WorkspaceRecord } from './ledger.js';
 import { runView, type RunWords } from './remote.js';
 import { installedPackFolder, runPackWords } from './packs.js';
 import { methodHistoryDirectory, runAssetsDirectory } from './pack-folder.js';
@@ -43,6 +44,8 @@ import { loadSite, pathsOf, type Site } from './sites.js';
 export interface ExperienceDeps {
   readonly ledger: Ledger;
   readonly sitesDir: string;
+  /** Optional authenticated project identity; automatic history never crosses unequal projects. */
+  readonly projectOfRun?: (runId: string) => Promise<string | undefined>;
   /**
    * Where the packs are installed, for the words the report is written in (#42, #58): a Campaign's
    * report says its Goal and every generation's Strategy in the pack's own words, exactly as the
@@ -50,6 +53,161 @@ export interface ExperienceDeps {
    * leaves the report saying the names, which is what every other face falls back to.
    */
   readonly packsDir: string;
+}
+
+export const WORK_MEMORY_SCHEMA = 'hima-work-memory/1' as const;
+
+const workMemoryScope = z.strictObject({
+  kind: z.enum(['session', 'campaign', 'child']),
+  workspaceRef: z.string().min(1),
+  sessionId: z.string().min(1).optional(),
+  runId: z.string().min(1).optional(),
+  parentSessionId: z.string().min(1).optional(),
+}).superRefine((scope, ctx) => {
+  if ((scope.kind === 'session' || scope.kind === 'child') && scope.sessionId === undefined) ctx.addIssue({ code: 'custom', message: 'session and child summaries require sessionId' });
+  if (scope.kind === 'campaign' && scope.runId === undefined) ctx.addIssue({ code: 'custom', message: 'campaign summaries require runId' });
+  if (scope.kind === 'child' && scope.parentSessionId === undefined) ctx.addIssue({ code: 'custom', message: 'child summaries require parentSessionId' });
+});
+
+const workMemorySummarySchema = z.strictObject({
+  schema: z.literal(WORK_MEMORY_SCHEMA),
+  scope: workMemoryScope,
+  subject: z.string().min(1),
+  decisions: z.array(z.string().min(1)),
+  openQuestions: z.array(z.string().min(1)),
+  todo: z.array(z.string().min(1)),
+  references: z.array(z.strictObject({ recordId: z.string().min(1), contentIdentity: z.string().regex(/^[a-f0-9]{64}$/), conditions: z.array(z.string().min(1)) })).min(1),
+  sources: z.array(z.strictObject({ runId: z.string().min(1), throughSeq: z.number().int().nonnegative(), observedControlRevision: z.number().int().nonnegative().optional() })).min(1),
+  generatedAt: z.string().datetime(),
+  modelGenerated: z.boolean(),
+});
+export type WorkMemoryScope = z.infer<typeof workMemoryScope>;
+export type WorkMemorySummary = z.infer<typeof workMemorySummarySchema>;
+export type WorkMemoryRead =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'current'; readonly summary: WorkMemorySummary; readonly authority: readonly { readonly runId: string; readonly status?: string; readonly controlRevision?: number }[] }
+  | { readonly kind: 'stale'; readonly summary: WorkMemorySummary; readonly reason: string; readonly authority: readonly { readonly runId: string; readonly status?: string; readonly controlRevision?: number }[] }
+  | { readonly kind: 'unavailable'; readonly reason: string };
+
+const contentIdentityOf = (record: LedgerRecord): string | undefined =>
+  record.type === 'knowledge' ? record.sha256
+    : record.type === 'code' ? record.sha256
+      : record.type === 'observation' ? record.contentSha256
+        : record.type === 'experience' ? record.json.sha256
+          : record.type === 'archive' ? record.manifestSha256
+            : undefined;
+
+async function workMemoryPath(workspace: string, scope: WorkMemoryScope, write: boolean): Promise<string> {
+  const root = await realpath(workspace);
+  if (scope.workspaceRef !== root) throw new Error('work memory scope does not match the authenticated workspace');
+  const scopeKey = JSON.stringify({ kind: scope.kind, workspaceRef: root, ...(scope.sessionId === undefined ? {} : { sessionId: scope.sessionId }),
+    ...(scope.runId === undefined ? {} : { runId: scope.runId }), ...(scope.parentSessionId === undefined ? {} : { parentSessionId: scope.parentSessionId }) });
+  const directory = path.join(root, 'hima', 'work-memory');
+  try {
+    const state = await lstat(path.join(root, 'hima'));
+    if (state.isSymbolicLink() || !state.isDirectory()) throw new Error('work memory refuses a non-directory or symlinked hima ancestor');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if (!write) return path.join(directory, `${createHash('sha256').update(scopeKey).digest('hex')}.json`);
+    await mkdir(directory, { recursive: true });
+  }
+  if (write) await mkdir(directory, { recursive: true });
+  try {
+    const state = await lstat(directory);
+    if (state.isSymbolicLink() || !state.isDirectory()) throw new Error('work memory refuses a non-directory or symlinked work-memory ancestor');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if (!write) return path.join(directory, `${createHash('sha256').update(scopeKey).digest('hex')}.json`);
+    throw error;
+  }
+  const at = path.join(directory, `${createHash('sha256').update(scopeKey).digest('hex')}.json`);
+  try {
+    if ((await lstat(at)).isSymbolicLink()) throw new Error(`work memory refuses symlink: ${at}`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  return at;
+}
+
+function summaryState(ledger: Ledger, summary: WorkMemorySummary): Exclude<WorkMemoryRead, { kind: 'none' | 'unavailable' }> {
+  const declared = new Map(summary.sources.map((source) => [source.runId, source]));
+  if (summary.scope.kind === 'campaign' && (summary.scope.runId === undefined || !declared.has(summary.scope.runId))) {
+    return { kind: 'stale', summary, reason: 'campaign summary does not declare its scoped Run source', authority: [] };
+  }
+  const authority = summary.sources.map((source) => {
+    const run = ledger.run(source.runId);
+    return { runId: source.runId, status: run?.status, ...(run?.control === undefined ? {} : { controlRevision: run.control.revision }) };
+  });
+  for (const reference of summary.references) {
+    const record = ledger.record(reference.recordId);
+    if (record === undefined) return { kind: 'stale', summary, reason: `source record ${reference.recordId} is unavailable`, authority };
+    const source = declared.get(record.runId);
+    if (source === undefined || record.seq > source.throughSeq) return { kind: 'stale', summary, reason: `source record ${reference.recordId} is outside its declared source revision`, authority };
+    if (contentIdentityOf(record) !== reference.contentIdentity) return { kind: 'stale', summary, reason: `source record ${reference.recordId} no longer matches its content identity`, authority };
+    if (!recordValidityOf(ledger.records({ runId: record.runId }), record.id).valid) return { kind: 'stale', summary, reason: `source record ${reference.recordId} is invalidated`, authority };
+  }
+  for (const source of summary.sources) {
+    const run = ledger.run(source.runId);
+    if (run === undefined) return { kind: 'stale', summary, reason: `source Run ${source.runId} is unavailable`, authority };
+    if (run.control !== undefined && source.observedControlRevision === undefined) return { kind: 'stale', summary, reason: `source Run ${source.runId} control revision was not recorded`, authority };
+    if (source.observedControlRevision !== undefined && run.control?.revision !== source.observedControlRevision) return { kind: 'stale', summary, reason: `source Run ${source.runId} control changed`, authority };
+    const latest = ledger.records({ runId: source.runId }).at(-1)?.seq ?? 0;
+    if (latest !== source.throughSeq) return { kind: 'stale', summary, reason: `source Run ${source.runId} revision differs from the summary`, authority };
+  }
+  return { kind: 'current', summary, authority };
+}
+
+/** Write a derived, scope-addressed workspace summary.  The caller authenticates that workspace;
+ * this module only validates source-linked facts and refuses symlink/outside paths. */
+export async function writeWorkMemorySummary(ledger: Ledger, workspace: string, candidate: unknown): Promise<WorkMemorySummary> {
+  const summary = workMemorySummarySchema.parse(candidate);
+  const state = summaryState(ledger, summary);
+  if (state.kind !== 'current') throw new Error(`work memory cannot be written: ${state.reason}`);
+  const at = await workMemoryPath(workspace, summary.scope, true);
+  const bytes = Buffer.from(`${JSON.stringify(summary, null, 2)}\n`);
+  if (bytes.byteLength > 256 * 1024) throw new Error('work memory summary exceeds its read/write limit');
+  const next = `${at}.${randomUUID()}.tmp`;
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  let created = false;
+  try {
+    handle = await open(next, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600);
+    created = true;
+    await handle.writeFile(bytes);
+    await handle.close(); handle = undefined;
+    await rename(next, at);
+  } finally {
+    await handle?.close();
+    if (created) await rm(next, { force: true });
+  }
+  return summary;
+}
+
+/** Read a derived summary without granting it any control authority. */
+export async function readWorkMemorySummary(ledger: Ledger, workspace: string, scope?: WorkMemoryScope): Promise<WorkMemoryRead> {
+  if (scope === undefined) return { kind: 'unavailable', reason: 'an exact authenticated work-memory scope is required' };
+  let at: string;
+  try { scope = workMemoryScope.parse(scope); at = await workMemoryPath(workspace, scope, false); }
+  catch (error) { return { kind: 'unavailable', reason: (error as Error).message }; }
+  let text: string;
+  try {
+    const handle = await open(at, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const state = await handle.stat();
+      if (!state.isFile() || state.size > 256 * 1024) return { kind: 'unavailable', reason: 'work memory summary is not a bounded regular file' };
+      const buffer = Buffer.alloc(256 * 1024 + 1);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, 0);
+      if (bytesRead > 256 * 1024 || (await handle.stat()).size !== state.size) return { kind: 'unavailable', reason: 'work memory changed while reading' };
+      text = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, bytesRead));
+    } finally { await handle.close(); }
+  }
+  catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT' ? { kind: 'none' } : { kind: 'unavailable', reason: (error as Error).message }; }
+  let raw: unknown;
+  try { raw = JSON.parse(text); }
+  catch { return { kind: 'unavailable', reason: 'work memory summary is not valid JSON' }; }
+  const parsed = workMemorySummarySchema.safeParse(raw);
+  if (!parsed.success) return { kind: 'unavailable', reason: 'work memory summary has an invalid schema' };
+  if (!isDeepStrictEqual(parsed.data.scope, scope)) return { kind: 'unavailable', reason: 'work memory summary scope does not match the authenticated request' };
+  return summaryState(ledger, parsed.data);
 }
 
 /** What became of writing one Run's report. */
@@ -96,6 +254,7 @@ export type ReadMaterialResult =
  */
 const writesPerRun = new WeakMap<Ledger, Map<string, Promise<unknown>>>();
 const assetsPerRun = new WeakMap<Ledger, Map<string, Promise<unknown>>>();
+const adoptionsPerRun = new WeakMap<Ledger, Map<string, Promise<unknown>>>();
 
 function writingExperience(ledger: Ledger, runId: string, write: () => Promise<WriteExperienceResult>): Promise<WriteExperienceResult> {
   const chains = writesPerRun.get(ledger) ?? new Map<string, Promise<unknown>>();
@@ -398,6 +557,7 @@ export interface RunKnowledgeCandidate {
   readonly evidenceGrade: NonNullable<KnowledgeRecord['evidenceGrade']>;
   /** False excludes this source from proactive injection; an explicit read may still use it as labelled background. */
   readonly automatic: boolean;
+  readonly adoption?: Pick<ExperienceAdoptionRecord, 'id' | 'event' | 'reason' | 'correctionRef' | 'evidenceRefs' | 'changedBy' | 'at'>;
 }
 
 export interface RunKnowledgeList {
@@ -410,10 +570,109 @@ export type ReadRunKnowledgeResult =
   | { readonly kind: 'read'; readonly candidate: RunKnowledgeCandidate; readonly record: KnowledgeRecord; readonly text: string; readonly truncated: boolean }
   | { readonly kind: 'none'; readonly why: string; readonly available: readonly RunKnowledgeCandidate[] };
 
+export interface ExperienceAdoptionRequest {
+  readonly runId: string; readonly workspaceRef: string;
+  readonly candidate: Pick<RunKnowledgeCandidate, 'sourceRun' | 'sourceManifestSha256' | 'sourceMaterialPath' | 'sourceMaterialSha256'>;
+  readonly event: 'disabled' | 're-adopted'; readonly requestId: string; readonly changedBy: string; readonly reason: string;
+  readonly evidenceRefs: readonly string[]; readonly correctionRef?: ExperienceAdoptionRecord['correctionRef']; readonly supersedes?: string;
+  readonly conditions?: readonly string[];
+}
+
 const HISTORY_CANDIDATES_CAP = 8;
 const HISTORY_SCAN_CAP = 16;
 export const HISTORY_SUMMARY_CAP = 8 * 1024;
 export const HISTORY_READ_CAP = 256 * 1024;
+
+function sameCandidate(left: ExperienceAdoptionRecord['candidate'], right: ExperienceAdoptionRequest['candidate']): boolean {
+  return left.sourceRun === right.sourceRun && left.sourceManifestSha256 === right.sourceManifestSha256 && left.sourceMaterialPath === right.sourceMaterialPath && left.sourceMaterialSha256 === right.sourceMaterialSha256;
+}
+
+function adoptions(ledger: Ledger, workspaceRef: string, candidate: ExperienceAdoptionRequest['candidate']): ExperienceAdoptionRecord[] {
+  return ledger.runs().flatMap(run => ledger.records({ runId: run.id, type: 'experience-adoption' }))
+    .filter((record): record is ExperienceAdoptionRecord => record.type === 'experience-adoption' && record.workspaceRef === workspaceRef && sameCandidate(record.candidate, candidate));
+}
+
+function adoptionTip(ledger: Ledger, workspaceRef: string, candidate: ExperienceAdoptionRequest['candidate']): ExperienceAdoptionRecord | undefined {
+  const rows = adoptions(ledger, workspaceRef, candidate);
+  const superseded = new Set(rows.flatMap(row => row.supersedes === undefined ? [] : [row.supersedes]));
+  const tips = rows.filter(row => !superseded.has(row.id));
+  return tips.length === 1 ? tips[0] : undefined;
+}
+
+async function verifiedAdoptionCandidate(deps: ExperienceDeps, candidate: ExperienceAdoptionRequest['candidate']): Promise<void> {
+  const archive = await readRunAssets(deps, candidate.sourceRun);
+  const completion = deps.ledger.records({ runId: candidate.sourceRun, type: 'archive' }).findLast((record): record is ArchiveRecord => record.type === 'archive' && record.delivery === 'complete');
+  if (archive.kind !== 'read' || completion?.manifestSha256 !== candidate.sourceManifestSha256) {
+    throw new Error('experience adoption candidate is not a current verified archive');
+  }
+  const material = await readArchivedMaterial(deps, candidate.sourceRun, candidate.sourceMaterialPath);
+  if (material.kind !== 'read' || material.material.sha256 !== candidate.sourceMaterialSha256) {
+    throw new Error('experience adoption candidate material is not a verified archived source');
+  }
+}
+
+function serialAdoption(deps: ExperienceDeps, request: ExperienceAdoptionRequest, action: () => Promise<ExperienceAdoptionRecord>): Promise<ExperienceAdoptionRecord> {
+  const chains = adoptionsPerRun.get(deps.ledger) ?? new Map<string, Promise<unknown>>();
+  adoptionsPerRun.set(deps.ledger, chains);
+  // Request ids are unique across this Ledger, including requests about different candidates.
+  const key = 'experience-adoption';
+  const ahead = chains.get(key) ?? Promise.resolve();
+  const mine = ahead.then(action);
+  chains.set(key, mine.then(() => undefined, () => undefined));
+  return mine;
+}
+
+export function recordExperienceAdoption(deps: ExperienceDeps, request: ExperienceAdoptionRequest): Promise<ExperienceAdoptionRecord> {
+  return serialAdoption(deps, request, async () => {
+  const ledger = deps.ledger;
+  const conditions = [
+    `Project workspace: ${request.workspaceRef}`,
+    `Exact source archive: ${request.candidate.sourceRun} / ${request.candidate.sourceManifestSha256}`,
+    `Exact material: ${request.candidate.sourceMaterialPath} / ${request.candidate.sourceMaterialSha256}`,
+    ...(request.conditions ?? []),
+  ];
+  const sameRequest = ledger.runs().flatMap(run => ledger.records({ runId: run.id, type: 'experience-adoption' }))
+    .find((record): record is ExperienceAdoptionRecord => record.type === 'experience-adoption' && record.requestId === request.requestId);
+  if (sameRequest !== undefined) {
+    if (sameRequest.runId !== request.runId || sameRequest.workspaceRef !== request.workspaceRef || !sameCandidate(sameRequest.candidate, request.candidate)
+      || sameRequest.event !== request.event || sameRequest.changedBy !== request.changedBy || sameRequest.reason !== request.reason || sameRequest.supersedes !== request.supersedes
+      || JSON.stringify(sameRequest.evidenceRefs) !== JSON.stringify(request.evidenceRefs) || JSON.stringify(sameRequest.correctionRef) !== JSON.stringify(request.correctionRef)
+      || !isDeepStrictEqual(sameRequest.conditions, conditions)) {
+      throw new Error(`experience adoption requestId ${request.requestId} was already used for different data`);
+    }
+    return sameRequest;
+  }
+  if (request.evidenceRefs.length === 0) throw new Error('experience adoption requires at least one evidence reference');
+  await verifiedAdoptionCandidate(deps, request.candidate);
+  for (const ref of request.evidenceRefs) {
+    const record = ledger.record(ref);
+    if (record === undefined || record.runId !== request.runId || !recordValidityOf(ledger.records({ runId: request.runId }), ref).valid) {
+      throw new Error(`experience adoption evidence ${ref} is not a current record of the acting Run`);
+    }
+  }
+  const prior = adoptionTip(ledger, request.workspaceRef, request.candidate);
+  if (adoptions(ledger, request.workspaceRef, request.candidate).length > 0 && prior === undefined) throw new Error('experience adoption has multiple unsuperseded states and is conservatively unavailable');
+  if (prior !== undefined && request.supersedes !== prior.id) throw new Error('experience adoption must supersede the current exact candidate state');
+  if (prior === undefined && request.supersedes !== undefined) throw new Error('experience adoption names a missing prior state');
+  if (request.event === 're-adopted') {
+    if (prior?.event !== 'disabled') throw new Error('experience re-adoption requires a prior disable');
+    const newEvidence = request.evidenceRefs.some(ref => {
+      const record = ledger.record(ref);
+      return !prior.evidenceRefs.includes(ref) && record !== undefined
+        && (record.runId === prior.runId ? record.seq > prior.seq : Date.parse(record.at) > Date.parse(prior.at));
+    });
+    if (!newEvidence) throw new Error('experience re-adoption requires new verified evidence after the prior disable');
+  }
+  return ledger.appendExperienceAdoption(request.runId, { requestId: request.requestId, ...(prior === undefined ? {} : { supersedes: prior.id }), candidate: request.candidate, workspaceRef: request.workspaceRef,
+    conditions, event: request.event, ...(request.correctionRef === undefined ? {} : { correctionRef: request.correctionRef }), evidenceRefs: [...request.evidenceRefs], changedBy: request.changedBy, reason: request.reason });
+  });
+}
+
+function adoptionOf(ledger: Ledger, workspaceRef: string | undefined, candidate: ExperienceAdoptionRequest['candidate']): RunKnowledgeCandidate['adoption'] | undefined {
+  if (workspaceRef === undefined) return undefined;
+  const record = adoptionTip(ledger, workspaceRef, candidate);
+  return record === undefined ? undefined : { id: record.id, event: record.event, reason: record.reason, correctionRef: record.correctionRef, evidenceRefs: record.evidenceRefs, changedBy: record.changedBy, at: record.at };
+}
 
 function sameGoalKeys(left: RunRecord['goal'], right: RunRecord['goal']): boolean {
   return JSON.stringify(Object.keys(left ?? {}).sort()) === JSON.stringify(Object.keys(right ?? {}).sort());
@@ -479,7 +738,7 @@ function reportCoverage(report: ExperienceJson): string {
  * contents are never exposed through this interface.
  */
 export async function listRunKnowledge(deps: ExperienceDeps, currentRunId: string, workshop?: string,
-  unavailableInputs: readonly string[] = []): Promise<RunKnowledgeList> {
+  unavailableInputs: readonly string[] = [], workspaceRef?: string): Promise<RunKnowledgeList> {
   const current = existingRun(deps.ledger, currentRunId);
   if (current.packId === undefined || current.packDigest === undefined) return { candidates: [], unavailable: [] };
   const sources = deps.ledger.runs().filter((source) => source.id !== current.id && hasEnded(source.status)
@@ -488,9 +747,11 @@ export async function listRunKnowledge(deps: ExperienceDeps, currentRunId: strin
   const currentInputs = inputIdentities(deps.ledger, current.id);
   const declared = declaredWorkshopInputs(deps, current, workshop);
   const currentlyUnavailable = new Set(unavailableInputs.map(file => workshop === undefined || file.includes('/') ? file : `${workshop}/${file}`));
+  const currentProject = deps.projectOfRun === undefined ? undefined : await deps.projectOfRun(current.id);
   const candidates: RunKnowledgeCandidate[] = [];
   const unavailable: { sourceRun: string; reason: string }[] = [];
   for (const source of sources) {
+    if (deps.projectOfRun !== undefined && (currentProject === undefined || await deps.projectOfRun(source.id) !== currentProject)) continue;
     const archive = await readRunAssets(deps, source.id);
     if (archive.kind !== 'read') {
       const reason = archive.kind === 'changed' ? `${archive.path} changed from ${archive.recorded} to ${archive.found}`
@@ -562,14 +823,19 @@ export async function listRunKnowledge(deps: ExperienceDeps, currentRunId: strin
       unavailable.push({ sourceRun: source.id, reason: 'no historical context: completed archive has no exact manifest identity' });
       continue;
     }
-    candidates.push({
+    const candidate = {
       sourceRun: source.id, sourcePurpose: source.purpose ?? 'campaign',
       sourceMethod: { id: current.packId, version: archive.manifest.pack.version, digest: current.packDigest },
       sourceManifestSha256: completion.manifestSha256, sourceMaterialPath: 'experience.json',
       sourceMaterialSha256: experience.material.sha256, sourceMaterialBytes: experience.material.bytes,
       sourceConclusion: reportConclusion(report), sourceCoverage: reportCoverage(report), conditions,
       evidenceGrade: 'limited-background', automatic,
-    });
+    } satisfies RunKnowledgeCandidate;
+    const adoption = adoptionOf(deps.ledger, workspaceRef, candidate);
+    const conflictingAdoptions = workspaceRef !== undefined && adoption === undefined && adoptions(deps.ledger, workspaceRef, candidate).length > 0;
+    candidates.push({ ...candidate, ...(adoption === undefined ? {} : { adoption }),
+      conditions: conflictingAdoptions ? [...candidate.conditions, 'Conflicting experience corrections need review; automatic reuse is disabled.'] : candidate.conditions,
+      automatic: candidate.automatic && !conflictingAdoptions && adoption?.event !== 'disabled' });
   }
   candidates.sort((a, b) => Number(b.sourceConclusion === 'measured-negative') - Number(a.sourceConclusion === 'measured-negative'));
   return { candidates: candidates.slice(0, HISTORY_CANDIDATES_CAP), unavailable };
@@ -627,9 +893,9 @@ function historicalSummary(candidate: RunKnowledgeCandidate, report: ExperienceJ
 export async function readRunKnowledge(deps: ExperienceDeps, request: {
   readonly runId: string; readonly nodeId: string; readonly attempt: number; readonly sessionId: string; readonly workshop: string;
   readonly branchId?: string; readonly sourceRun?: string; readonly assetPath?: string; readonly summary?: boolean;
-  readonly unavailableInputs?: readonly string[];
+  readonly unavailableInputs?: readonly string[]; readonly workspaceRef?: string;
 }): Promise<ReadRunKnowledgeResult> {
-  const listed = await listRunKnowledge(deps, request.runId, request.workshop, request.unavailableInputs);
+  const listed = await listRunKnowledge(deps, request.runId, request.workshop, request.unavailableInputs, request.workspaceRef);
   const candidate = request.sourceRun === undefined
     ? listed.candidates.find((item) => item.automatic)
     : listed.candidates.find((item) => item.sourceRun === request.sourceRun);

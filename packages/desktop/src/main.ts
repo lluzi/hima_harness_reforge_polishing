@@ -537,9 +537,11 @@ async function start(): Promise<void> {
   win.on('page-title-updated', (event) => { event.preventDefault(); });
   win.on('resize', () => { writeBounds(win); });
   win.on('move', () => { writeBounds(win); });
-  win.on('close', () => { writeBounds(win); });
-  // Closing the window ends the app, on every platform including macOS: the host is this window's
-  // child, and a workbench with no window is a licence-holding job nobody can see.
+  win.on('close', (event) => {
+    writeBounds(win);
+    if (!quitting) { event.preventDefault(); win.hide(); }
+  });
+  // Ordinary close hides this same window and preserves the Host. Explicit Quit still owns cleanup.
   win.on('closed', () => { app.quit(); });
 
   await win.loadFile(localPage('starting.html', `${APP_NAME} — starting`, `<h1>Starting ${APP_NAME}…</h1><p>Booting the hima profile.</p>`));
@@ -693,6 +695,10 @@ function watchHostExit(win: BrowserWindow, running: LaunchedHost): void {
 }
 
 app.on('window-all-closed', () => { app.quit(); });
+app.on('activate', () => {
+  const [open] = BrowserWindow.getAllWindows();
+  if (open && !quitting) { open.show(); if (open.isMinimized()) open.restore(); open.focus(); }
+});
 // Quitting waits for the host: a SIGTERM sent as the process is exiting is a SIGTERM that may not
 // arrive, and this host holds a session lock and an append-only writer.
 let quitting = false;
@@ -715,7 +721,7 @@ if (!driver && !app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => {
     const [open] = BrowserWindow.getAllWindows();
-    if (open) { if (open.isMinimized()) open.restore(); open.focus(); }
+    if (open) { open.show(); if (open.isMinimized()) open.restore(); open.focus(); }
   });
   app.whenReady().then(start).catch((err: unknown) => {
     process.stderr.write(`hima-desktop: ${String(err)}\n`);

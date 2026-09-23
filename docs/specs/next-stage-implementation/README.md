@@ -1,5 +1,7 @@
 # 下一阶段可实施规格与并行工作图
 
+> 本文保留规格阶段的范围与基线。首批代码实施、验证结果和未完成项见 [实施记录](../../assessment/2026-09-23/next-stage/implementation-phase1.md) 与 [覆盖矩阵](../../assessment/2026-09-23/next-stage/phase1-coverage.md)。
+
 日期：2026-09-23；核查基线：`1a79cb1514364aa049e775d7b18bbb063a223092`。用户通过 `/to-spec` 要求将已确认的 Q1～Q19 转成具体规格，并明确保持现有架构、代码归属与并行开发。本轮只交付规格与 Issue，不修改运行代码或恢复 trial30/Claude/EDA 测试。
 
 ## Problem Statement
@@ -98,6 +100,10 @@ L0/L2使用现有测试入口，一次新构建供相关子集共用；新增测
 恢复暂停试验、马上实现29项、架构重写、新云服务、自动更新活动Pack、扩大客户权限、以完整P&R阻塞普通发布、承诺普遍+5% Fmax收益。
 
 ## Further Notes
+
+## 2026-09-23 Phase 1 implementation status
+
+The current implementation is tracked in the [Phase 1 coverage matrix](../../assessment/2026-09-23/next-stage/phase1-coverage.md). It separates local mechanics, active corrections, blocked qualifications and future L4/L5 evidence; it does not mark all 29 tasks complete.
 
 实施分配按现行模型政策：常规Terra/Medium，控制/权限/恢复/结果真实性复核Sol/High。规格编写采用主会话整合与两位Terra/Medium工作agent并行；未运行产品模型，开发token/成本未计量。
 

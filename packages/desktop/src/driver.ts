@@ -24,7 +24,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 
 /** The ops this driver answers, in the order the README lists them. */
-const OPS = ['host', 'open', 'read', 'wait', 'click', 'fill', 'zoom', 'screenshot', 'quit'] as const;
+const OPS = ['host', 'open', 'read', 'wait', 'click', 'fill', 'zoom', 'screenshot', 'window-close', 'window-reopen', 'quit'] as const;
 
 /** How often `wait` looks at the document, and how long it looks unless told otherwise. */
 const WAIT_POLL_MS = 200;
@@ -65,7 +65,7 @@ export interface DriverOptions {
   readonly session: () => Promise<DriverSession | undefined>;
   /** The navigation fence's own words for a target it refuses. */
   readonly refusal: (target: string) => string;
-  /** End the app the way closing the window does: `quit` and a closed stdin call it once their answer is out. */
+  /** Explicitly quit the app; ordinary window close only hides its retained window. */
   readonly quit: () => void;
   /** What the shell says about what it did, for the one fact an answer has no room for: a click the
    *  window took more than one send to receive. It belongs in the driver's stderr beside the shell's
@@ -163,6 +163,8 @@ async function perform(opts: DriverOptions, body: Record<string, unknown>): Prom
       case 'fill': return await fillOp(opts, string(body, 'control'), string(body, 'value'));
       case 'zoom': return await zoomOp(opts, factor(body, 'factor'));
       case 'screenshot': return await screenshotOp(opts, string(body, 'path'));
+      case 'window-close': opts.win.close(); return { ok: true, visible: opts.win.isVisible() };
+      case 'window-reopen': opts.win.showInactive(); return { ok: true, visible: opts.win.isVisible() };
       case 'quit': return { ok: true };
       default: return refuse(`unknown op ${JSON.stringify(body.op)}; this driver answers ${OPS.join(', ')}`);
     }

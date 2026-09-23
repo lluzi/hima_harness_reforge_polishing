@@ -48,7 +48,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.2.10');
+  assert.equal(graph.version, '5.2.11');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -238,7 +238,7 @@ test('two different Site bindings fit the Pack and a missing production binding 
     licences: { 'Design-Compiler': 1, 'Library-Compiler': 1, Innovus: 1 },
   });
   const pack = loadPack(path.join(repoRoot, 'packs'), 'custom-cell-fmax-dtco');
-  assert.equal(packOverview(pack).status?.normalized, 'released');
+  assert.equal(packOverview(pack).status?.normalized, 'development');
   assert.equal(packOverview(pack).minimumHarnessVersion, '0.1.0');
   assert.equal(packKnowledgeManifestOf(pack)?.documents.length, 5);
   const knowledge = await searchPackKnowledge(pack, 'matched comparison custom cell adoption');

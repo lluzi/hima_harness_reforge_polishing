@@ -6,6 +6,7 @@ import type { CampaignFile } from '../campaign-file.js';
 import type { CampaignFileView, HimaErrorBody, HimaErrorCode, LogTailView, MaterialAnswer, RunHeadView, RunView, SiteDiscoverBody, SiteHeadView } from '../remote.js';
 import type { SiteDiscoveryResult } from '../sites.js';
 import type { StartChoices } from '../workbench.js';
+import type { GuideContextView, TargetAddress } from '../guide-context.js';
 import { answeredWithNoCode, answeredWithoutJson, couldNotReach } from '../card-labels.js';
 import { HIMA_CAMPAIGN_FILE_PATH, HIMA_RUNS_PATH, HIMA_RUNS_START_PATH, HIMA_SITES_PATH, HIMA_START_OPTIONS_PATH, runActionPath, runLogTailPath, runPath, siteDiscoverPath } from '../paths.js';
 
@@ -40,21 +41,21 @@ function failureFrom(status: number, body: unknown): HimaFailure {
  * @param signal - cancellation from the caller's render lifetime.
  * @returns the run view, or the coded reason there is none.
  */
-export function fetchRun(runId: string, signal?: AbortSignal): Promise<HimaResult<RunView>> {
-  return runRequest<RunView>(runPath(runId), { signal });
+export function fetchRun(runId: string, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<RunView>> {
+  return runRequest<RunView>(scoped(runPath(runId), sessionId), { signal });
 }
 
 /** Read one Run-owned code or knowledge version after the Host has held it to its recorded hash. */
-export function fetchMaterial(runId: string, recordId: string, signal?: AbortSignal): Promise<HimaResult<MaterialAnswer>> {
-  return runRequest(`${runPath(runId)}/material/${encodeURIComponent(recordId)}`, { signal });
+export function fetchMaterial(runId: string, recordId: string, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<MaterialAnswer>> {
+  return runRequest(scoped(`${runPath(runId)}/material/${encodeURIComponent(recordId)}`, sessionId), { signal });
 }
 
-export function fetchArchive(runId: string, material?: string, signal?: AbortSignal): Promise<HimaResult<{ manifest: import('../experience-report.js').RunAssetManifest; text?: string }>> {
-  return runRequest(`${runPath(runId)}/assets${material === undefined ? '' : `?material=${encodeURIComponent(material)}`}`, { signal });
+export function fetchArchive(runId: string, material?: string, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<{ manifest: import('../experience-report.js').RunAssetManifest; text?: string }>> {
+  return runRequest(scoped(`${runPath(runId)}/assets${material === undefined ? '' : `?material=${encodeURIComponent(material)}`}`, sessionId), { signal });
 }
 
-export const fetchRuns = (signal?: AbortSignal): Promise<HimaResult<{ runs: RunHeadView[] }>> =>
-  runRequest(HIMA_RUNS_PATH, { signal });
+export const fetchRuns = (signal?: AbortSignal, sessionId?: string): Promise<HimaResult<{ runs: RunHeadView[] }>> =>
+  runRequest(scoped(HIMA_RUNS_PATH, sessionId), { signal });
 
 export function fetchStartChoices(pack?: string, site?: string, signal?: AbortSignal): Promise<HimaResult<StartChoices>> {
   const query = new URLSearchParams();
@@ -96,13 +97,22 @@ export function discoverSite(body: SiteDiscoverBody, signal?: AbortSignal): Prom
   return runRequest(siteDiscoverPath(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
 }
 
-export const fetchExecutionContext = (runId: string, signal?: AbortSignal): Promise<HimaResult<ExecutionContext>> =>
-  runRequest(`${runPath(runId)}/context`, { signal });
+export const fetchExecutionContext = (runId: string, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<ExecutionContext>> =>
+  runRequest(scoped(`${runPath(runId)}/context`, sessionId), { signal });
+
+export const fetchGuideContext = (body: { sessionId: string; requestId: string; target: TargetAddress }, signal?: AbortSignal): Promise<HimaResult<GuideContextView>> =>
+  runRequest('/hima/api/context', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+export const fetchSessionChildren = (body: { sessionId: string; parentSessionId: string }, signal?: AbortSignal): Promise<HimaResult<{ children: readonly { childSessionId: string; nativeOpen: boolean }[]; hasMore: boolean }>> =>
+  runRequest('/hima/api/context/children', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+export const resolveReportAddress = (body: { sessionId: string; reportRef: string }, signal?: AbortSignal): Promise<HimaResult<Extract<TargetAddress, { kind: 'report' }>>> =>
+  runRequest('/hima/api/context/report-address', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 /** The bounded tail of the running node's own Job log, for the one line the canvas draws under it. */
-export function fetchLogTail(runId: string, nodeId: string, lines = 1, signal?: AbortSignal): Promise<HimaResult<LogTailView>> {
+export function fetchLogTail(runId: string, nodeId: string, lines = 1, signal?: AbortSignal, sessionId?: string): Promise<HimaResult<LogTailView>> {
   const query = new URLSearchParams({ node: nodeId, lines: String(lines) });
-  return runRequest(`${runLogTailPath(runId)}?${query}`, { signal });
+  return runRequest(scoped(`${runLogTailPath(runId)}?${query}`, sessionId), { signal });
 }
 
 export interface ControlRunResult {
@@ -134,11 +144,13 @@ export function controlRun(view: RunView, sessionId: string, action: 'pause' | '
  * @param signal - cancellation from the caller's render lifetime.
  * @returns the Run as it now stands, or the coded reason it was refused.
  */
-export function actOnRun(runId: string, action: 'cancel' | 'resume', signal?: AbortSignal): Promise<HimaResult<RunView>> {
-  return runRequest(runActionPath(runId, action), { method: 'POST', signal });
+export function actOnRun(runId: string, action: 'cancel' | 'resume', signal?: AbortSignal, sessionId?: string): Promise<HimaResult<RunView>> {
+  return runRequest(scoped(runActionPath(runId, action), sessionId), { method: 'POST', signal });
 }
 
 /** One request to the namespace answering with a Run: a failure is a value the caller renders. */
+export const scoped = (target: string, sessionId?: string): string => `${target}${target.includes('?') ? '&' : '?'}sessionId=${encodeURIComponent(sessionId ?? '')}`;
+
 async function runRequest<T>(target: string, init: RequestInit): Promise<HimaResult<T>> {
   let response: Response;
   try {

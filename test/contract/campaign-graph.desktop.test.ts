@@ -57,9 +57,12 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
       expectedRevision: 1, requestId: 'desktop-old-owner-fenced' }),
     say('The former Campaign Agent was fenced after handoff and did not begin the node.'),
   ];
-  await writeFile(replayOverride, `${JSON.stringify(ownerReplay, null, 2)}\n`);
-  const replay = await appendReplaySession({ file: replayFile, override: replayOverride,
-    readyFile: path.join(replayDir, 'unused-ready'), children: [] }, 'side-talk', [
+  // The visible Guide, ordinary Side Talk and independent Campaign Agent are three native roots.
+  // Replay binds entries on first model use, so each receives only its own turns.
+  await writeFile(replayOverride, `${JSON.stringify([ownerReplay[0]!], null, 2)}\n`);
+  const executionReplay = await appendReplaySession({ file: replayFile, override: replayOverride,
+    readyFile: path.join(replayDir, 'unused-ready'), children: [] }, 'campaign-execution', ownerReplay);
+  const replay = await appendReplaySession(executionReplay, 'side-talk', [
     tool('write', { file_path: 'side-talk-note.txt', content: 'Side Talk ordinary coding completed.\n' }),
     say('Side Talk completed ordinary conversation and coding without taking Campaign ownership.'),
   ]);
@@ -77,6 +80,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
   if (!d) { await h.dispose(); return; }
   const browser = await inspectWindow(port);
   let runId: string | undefined;
+  let viewerSession = '';
   try {
     await d.open('/');
     await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
@@ -97,6 +101,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     assert.ok((await d.click('open-workbench')).ok);
     assert.ok((await d.wait('studio', 'Campaign configuration', 12_000)).ok);
     const owner = (await d.read('studio')); assert.ok(owner.ok); const ownerSession = owner.state.session; assert.ok(ownerSession);
+    viewerSession = ownerSession;
 
     assert.ok((await d.wait('config-empty-pack', 'No HimaPack is installed', 10_000)).ok);
     assert.ok((await d.click('studio-pack-owner')).ok);
@@ -125,8 +130,24 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     const graph = await d.read('campaign-graph'); assert.ok(graph.ok); assert.ok(Number(graph.state.nodes) >= 48, graph.text);
     assert.ok(graph.text.includes('pnr-foundry') && graph.text.includes('compare'), graph.text);
     const runningStudio = await d.read('studio'); assert.ok(runningStudio.ok); runId = runningStudio.state.run; assert.ok(runId);
-    // Task 8: the owner session's own session-header chip carries Campaign identity once its Run is
-    // running — the conversation in front right now is still the owner's own.
+    const guideSessionId = runningStudio.state.session;
+    if (typeof guideSessionId !== 'string' || guideSessionId === '') throw new Error(`Guide studio has no native session identity: ${JSON.stringify(runningStudio)}`);
+    const guideView = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(guideSessionId)}`)).json() as RunView;
+    assert.equal(guideView.run.control?.guideSessionId, guideSessionId);
+    const executionOwner = guideView.run.control?.owner;
+    if (typeof executionOwner !== 'string' || executionOwner === '') throw new Error(`Run has no native execution owner: ${JSON.stringify(guideView.run.control)}`);
+    await browser.wait(`document.querySelector('[data-hima-control="open-owner"]') !== null`);
+    assert.ok((await d.click('open-owner')).ok);
+    await browser.wait(`!!document.querySelector('[contenteditable="true"]')`);
+    await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
+    await browser.send('Input.insertText', { text: 'Initialize this Campaign execution session without starting node work.' });
+    await browser.evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.getBoundingClientRect().height>0 && /send/i.test([e.textContent,e.getAttribute('aria-label')].join(' '))); if(!e) throw new Error('no execution session send control'); e.setAttribute('data-hima-control','initialize-execution-owner'); })()`);
+    assert.ok((await d.click('initialize-execution-owner')).ok);
+    await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready.')`, 15_000);
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]') !== null`);
+    await browser.mark('[data-hima-region="campaign-chip"]', 'execution-owner-chip');
+    assert.ok((await d.click('execution-owner-chip')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session')===${JSON.stringify(executionOwner)}`);
     await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]')?.getAttribute('data-hima-state-status') === 'running'`, 10_000);
     // The Campaign tab's own dock chip title carries the same identity, short: the running glyph and
     // the current node rather than "configure".
@@ -164,14 +185,20 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     await browser.wait(`document.querySelector('[data-hima-region="studio"]') !== null`);
     const sideSession = await browser.evaluate<string>(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session') || ''`);
     assert.ok(sideSession && sideSession !== ownerSession);
-    const view = await (await api(host, cookie, `/hima/api/runs/${runId}`)).json() as RunView;
-    assert.equal(view.run.control?.owner, ownerSession);
+    viewerSession = sideSession;
+    const view = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(ownerSession)}`)).json() as RunView;
+    assert.equal(view.run.control?.guideSessionId, ownerSession);
+    assert.notEqual(view.run.control?.owner, ownerSession, 'the visible Guide does not own Campaign execution');
+    assert.equal(view.run.control?.owner, executionOwner);
     assert.equal(view.run.status, 'running', 'opening the Side Talk surface is navigation, not Campaign control');
-    assert.equal((await (await api(host, cookie, '/hima/api/runs')).json() as { runs: unknown[] }).runs.length, 1);
+    assert.equal((await (await api(host, cookie, `/hima/api/runs?sessionId=${encodeURIComponent(ownerSession)}`)).json() as { runs: unknown[] }).runs.length, 1);
     assert.ok((await d.fill('studio-run', runId)).ok);
     await browser.wait(`document.querySelector('[data-hima-control="open-owner"]') !== null`);
     assert.ok((await d.click('open-owner')).ok);
-    await browser.wait(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session')===${JSON.stringify(ownerSession)}`);
+    await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]') !== null`);
+    await browser.mark('[data-hima-region="campaign-chip"]', 'execution-owner-chip-after-side-talk');
+    assert.ok((await d.click('execution-owner-chip-after-side-talk')).ok);
+    await browser.wait(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session')===${JSON.stringify(executionOwner)}`);
     // Task 8: back on the owner conversation, the chip is there again — scoped to the session that
     // owns the Run, not to whichever conversation happened to be open last.
     await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]') !== null`, 10_000);
@@ -182,14 +209,14 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     await browser.evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.getBoundingClientRect().height>0 && /send/i.test([e.textContent,e.getAttribute('aria-label')].join(' '))); if(!e) throw new Error('no visible owner send control'); e.setAttribute('data-hima-control','send-owner-handoff'); })()`);
     assert.ok((await d.click('send-owner-handoff')).ok);
     await browser.wait(`document.body.innerText.includes('Campaign ownership was handed')`, 15_000);
-    const handed = await (await api(host, cookie, `/hima/api/runs/${runId}`)).json() as RunView;
+    const handed = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(sideSession)}`)).json() as RunView;
     assert.equal(handed.run.control?.owner, sideSession); assert.equal(handed.run.control?.epoch, 2);
     await browser.mark('[contenteditable="true"]', 'old-owner-composer'); assert.ok((await d.click('old-owner-composer')).ok);
     await browser.send('Input.insertText', { text: `For Run ${runId}, try to begin bind-inputs from this former owner conversation.` });
     await browser.wait(`!document.querySelector('[aria-label="Send message"]')?.disabled`); await browser.mark('[aria-label="Send message"]', 'send-old-owner');
     assert.ok((await d.click('send-old-owner')).ok);
     await browser.wait(`document.body.innerText.includes('former Campaign Agent was fenced')`, 15_000);
-    const fenced = await (await api(host, cookie, `/hima/api/runs/${runId}`)).json() as RunView;
+    const fenced = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(sideSession)}`)).json() as RunView;
     assert.equal(fenced.run.control?.owner, sideSession);
     assert.equal(Object.values(fenced.run.control?.executions ?? {}).some((execution) => execution.nodeId === 'bind-inputs'), false,
       'the former owner did not admit node work after handoff');
@@ -199,7 +226,7 @@ test('on Catsights a new user installs a Pack, confirms one proposal, sees the c
     throw error;
   } finally {
     if (runId) {
-      const host = await d.host(); if (host.ok) { const cookie = await d.cookie(); await api(host, cookie, `/hima/api/runs/${runId}/cancel`, { method: 'POST' }).catch(() => undefined); }
+      const host = await d.host(); if (host.ok && viewerSession) { const cookie = await d.cookie(); await api(host, cookie, `/hima/api/runs/${runId}/cancel?sessionId=${encodeURIComponent(viewerSession)}`, { method: 'POST' }).catch(() => undefined); }
     }
     browser.close(); await d.dispose(); await h.dispose();
   }

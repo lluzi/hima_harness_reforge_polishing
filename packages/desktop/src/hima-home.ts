@@ -19,7 +19,7 @@
 // Nothing in here imports a sibling module. The contract suite loads this file as TypeScript through
 // Node's type stripping, which resolves specifiers literally — a `./host-launch.js` import would be a
 // file that does not exist in `src/` — so what this module needs, it declares.
-import { cp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { createRequire } from 'node:module';
@@ -337,6 +337,18 @@ export async function prepareHimaHome(req: PrepareHimaHomeRequest): Promise<Prep
   } else {
     await symlink(sources.harnessPackage, link, 'dir');
     did.push(`linked ${HARNESS_PACKAGE} → ${sources.harnessPackage}`);
+  }
+
+  // Explicit profile consumers must resolve in fresh and relocated homes, not just in the checkout.
+  const runtimeRequire = createRequire(path.join(sources.harnessPackage, 'package.json'));
+  for (const name of ['@deepseek-ai/dsh-terminal', '@deepseek-ai/dsh-terminal-bash', '@deepseek-ai/dsh-tool-terminal']) {
+    const dependency = await realpath(path.dirname(runtimeRequire.resolve(`${name}/package.json`)));
+    const at = path.join(profileDir, 'node_modules', name);
+    await mkdir(path.dirname(at), { recursive: true });
+    const existing = await lstat(at).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return undefined; throw error; });
+    if (existing && !existing.isSymbolicLink()) throw new Error(`profile dependency is not a managed symlink: ${at}`);
+    if (existing) await rm(at);
+    await symlink(dependency, at, 'dir');
   }
 
   // The bundle's own agent presets, where dsh's roster looks for a person's: copied rather than

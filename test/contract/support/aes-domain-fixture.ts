@@ -151,16 +151,13 @@ elif tool == 'innovus':
         print('=== core area: {2.0 2.0 22.0 22.0} ===')
     elif script.name.startswith('pnr_'):
         checkpoint_targets = re.findall(r'^saveDesign\s+(\S+)', text, re.M)
-        if len(checkpoint_targets) != 2:
-            raise SystemExit('synthetic P&R expects place and postroute saveDesign checkpoints')
-        place_target = pathlib.Path(checkpoint_targets[0])
-        target = pathlib.Path(checkpoint_targets[1])
+        if len(checkpoint_targets) != 1:
+            raise SystemExit('synthetic P&R expects exactly the scripted postroute saveDesign checkpoint')
+        target = pathlib.Path(checkpoint_targets[0])
         restored = pathlib.Path(re.search(r'^restoreDesign\s+(\S+)', text, re.M).group(1))
         place_links = [(str(link.relative_to(restored)), link.readlink())
                        for link in restored.rglob('*') if link.is_symlink()
                        and not str(link.readlink()).endswith('.dc.sdc')]
-        save_checkpoint(place_target, arm + '-place', place_links)
-        print('=== CCFMAX PLACE CHECKPOINT %s %s ===' % (arm, place_target))
         links = list(place_links)
         rc_model = script.parent / 'rc_model.bin'
         rc_model.write_bytes(b'SYNTHETIC POSTROUTE RC MODEL\n')
@@ -194,12 +191,15 @@ elif tool == 'innovus':
             with gzip.open(summary, 'wt') as handle: handle.write(summary_text)
         if not (fixture_flow / 'synthetic-missing-timing-companion').exists():
             with gzip.open(paths, 'wt') as handle: handle.write(path_text)
-        endpoint_index = pathlib.Path(re.search(r'set _hima_endpoint_index \[open \{([^}]+)\} w\]', text).group(1))
-        endpoint_report = pathlib.Path(re.search(r'file delete -force \{([^}]+endpoint-worst-setup\.rpt)\}', text).group(1))
-        endpoint_index.parent.mkdir(parents=True, exist_ok=True)
-        endpoint_index.write_text('# endpoint\nstate_reg/D\n')
-        endpoint_top = re.search(r'^restoreDesign\s+\S+\s+(\S+)', text, re.M).group(1)
-        endpoint_report.write_text('''# Design : %s
+        endpoint_index_match = re.search(r'set _hima_endpoint_index \[open \{([^}]+)\} w\]', text)
+        endpoint_report_match = re.search(r'file delete -force \{([^}]+endpoint-worst-setup\.rpt)\}', text)
+        if endpoint_index_match and endpoint_report_match:
+            endpoint_index = pathlib.Path(endpoint_index_match.group(1))
+            endpoint_report = pathlib.Path(endpoint_report_match.group(1))
+            endpoint_index.parent.mkdir(parents=True, exist_ok=True)
+            endpoint_index.write_text('# endpoint\nstate_reg/D\n')
+            endpoint_top = re.search(r'^restoreDesign\s+\S+\s+(\S+)', text, re.M).group(1)
+            endpoint_report.write_text('''# Design : %s
 # Command : report_timing endpoint loop
 Path 1: SYNTHETIC Setup Check
 Endpoint: state_reg/D (^) checked
@@ -227,11 +227,13 @@ Analysis View: view_%s
         (pathlib.Path(report_dir) / 'power.rpt').write_text('Power Units = 1mW\nTotal Power: 1.25\n')
         (pathlib.Path(report_dir) / 'gatecount.rpt').write_text('[0] held_out_datapath Gates=42 Cells=21 Area=12.5 um^2\n')
         (pathlib.Path(report_dir) / 'summary.rpt').write_text('# Instances: 25\n% Pure Gate Density #6 ((fixture)): 55.5%\n')
-        physical_facts = pathlib.Path(re.search(r'set _hima_physical_facts \[open \{([^}]+)\} w\]', text).group(1))
-        physical_facts.parent.mkdir(parents=True, exist_ok=True)
-        physical_facts.write_text('metric\tvalue\tunit\noccupied_standard_cell_area\t100\tum2\ncore_area\t400\tum2\neffective_site_occupancy\t0.25\tfraction\ndcap_count\t0\tcount\npg_special_wire_count\t4\tcount\n')
-        density_report = pathlib.Path(re.search(r'reportDensityMap > \{([^}]+)\}', text).group(1))
-        density_report.write_text('SYNTHETIC DENSITY MAP\n')
+        physical_match = re.search(r'set _hima_physical_facts \[open \{([^}]+)\} w\]', text)
+        if physical_match:
+            physical_facts = pathlib.Path(physical_match.group(1))
+            physical_facts.parent.mkdir(parents=True, exist_ok=True)
+            physical_facts.write_text('metric\tvalue\tunit\noccupied_standard_cell_area\t100\tum2\ncore_area\t400\tum2\neffective_site_occupancy\t0.25\tfraction\ndcap_count\t0\tcount\npg_special_wire_count\t4\tcount\n')
+        density_match = re.search(r'reportDensityMap > \{([^}]+)\}', text)
+        if density_match: pathlib.Path(density_match.group(1)).write_text('SYNTHETIC DENSITY MAP\n')
         save_netlist = re.search(r'^saveNetlist\s+(\S+)', text, re.M)
         if save_netlist:
             routed_netlist = pathlib.Path(save_netlist.group(1))

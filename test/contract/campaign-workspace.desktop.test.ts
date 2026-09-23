@@ -17,6 +17,7 @@ import { localHome, type LocalHome } from './support/fabric.ts';
 import { writeReplayOverlay } from '../../packages/desktop/src/hima-home.ts';
 import type { RunView } from '@hima/harness';
 import type { ReplayEntry } from '@deepseek-ai/dsh-llm-replay';
+import { appendReplaySession } from './support/moments.ts';
 
 type Inspector = Awaited<ReturnType<typeof inspectWindow>>;
 
@@ -49,17 +50,24 @@ async function capture(d: BootedDriver, browser: Inspector, name: string): Promi
  *  `unified-workbench.test.ts`'s `finish` does, so a state's own boot never strands a stand-in Job. */
 async function finish(d: BootedDriver | undefined, browser?: Inspector): Promise<void> {
   if (!d) return;
-  if (browser) browser.close();
-  const host = await d.host();
-  if (host.ok) {
-    const cookie = await d.cookie();
-    const listed = await api(host, cookie, '/hima/api/runs');
-    const { runs } = await listed.json() as { runs: RunView['run'][] };
-    for (const run of runs.filter((run) => run.status === 'running' || run.status === 'waiting')) {
-      await api(host, cookie, `/hima/api/runs/${run.id}/cancel`, { method: 'POST' }).catch(() => undefined);
+  try {
+    if (browser) browser.close();
+    const host = await d.host();
+    if (host.ok) {
+      const cookie = await d.cookie();
+      const studio = await d.read('studio');
+      const viewerSessionId = studio.ok ? studio.state.session : undefined;
+      if (typeof viewerSessionId === 'string' && viewerSessionId !== '') {
+        const listed = await api(host, cookie, `/hima/api/runs?sessionId=${encodeURIComponent(viewerSessionId)}`);
+        const { runs } = await listed.json() as { runs: RunView['run'][] };
+        for (const run of runs.filter((run) => run.status === 'running' || run.status === 'waiting')) {
+          await api(host, cookie, `/hima/api/runs/${run.id}/cancel?sessionId=${encodeURIComponent(viewerSessionId)}`, { method: 'POST' }).catch(() => undefined);
+        }
+      }
     }
+  } finally {
+    await d.dispose();
   }
-  await d.dispose();
 }
 
 /** Reach the Configuration page's own dock tab: dismiss the notice, configure the model later
@@ -70,7 +78,7 @@ async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = 
   await browser.wait(`document.body.innerText.includes('Internal Testing Notice')`);
   await browser.markText('button', 'Continue', 'notice-continue');
   assert.ok((await d.click('notice-continue')).ok);
-  if (!modelReady) {
+  if (!modelReady && await browser.evaluate(`document.body.innerText.includes('Configure later')`)) {
     await browser.wait(`document.body.innerText.includes('Configure later')`);
     await browser.markText('button', 'Configure later', 'models-later');
     assert.ok((await d.click('models-later')).ok);
@@ -194,7 +202,7 @@ async function fillShipped(d: BootedDriver, browser: Inspector, target = '2.25')
  *  therefore read whichever node `run.currentNode` already names (the entry, immediately after
  *  Run creation) rather than gating on a literal `running` node-state read, which C7 asked for but
  *  this fixture cannot yet reliably produce. */
-async function ownerReplayFiles(home: LocalHome | { readonly h: { readonly home: string } }): Promise<{ readonly file: string; readonly override: string }> {
+async function ownerReplayFiles(home: LocalHome | { readonly h: { readonly home: string } }): Promise<{ readonly file: string; readonly override: string; readonly children: readonly string[] }> {
   const dir = path.join(home.h.home, 'owner-replay'); await mkdir(dir, { recursive: true });
   const file = path.join(dir, 'session.jsonl');
   const override = path.join(dir, 'replay.override.json');
@@ -205,7 +213,7 @@ async function ownerReplayFiles(home: LocalHome | { readonly h: { readonly home:
     { type: 'finish', reason: { kind: 'stop' } },
   ] });
   await writeFile(override, `${JSON.stringify([say('Campaign Agent conversation is ready.')], null, 2)}\n`);
-  return { file, override };
+  return appendReplaySession({ file, override, readyFile: path.join(dir, 'unused-ready'), children: [] }, 'campaign-execution', [say('Campaign Agent conversation is ready.')]);
 }
 
 /** A home with the shipped Pack, the stand-in flow and the local Site already seeded
@@ -224,7 +232,7 @@ async function bootOwnedShipped(
   if (!home) return undefined;
   const replay = await ownerReplayFiles(home);
   const d = await bootDriver(t, { existing: home.h, remoteDebuggingPort: port, theme, window: WINDOW,
-    model: { replay: { file: replay.file, override: replay.override, children: [] } },
+    model: { replay: { file: replay.file, override: replay.override, children: replay.children } },
     env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1', ...extraEnv } });
   if (!d) { await home.h.dispose(); return undefined; }
   return { d, home };
@@ -258,8 +266,24 @@ async function establishOwnerSession(d: BootedDriver, browser: Inspector): Promi
   assert.ok((await d.click('config-confirm')).ok);
   await browser.wait(`!!document.querySelector('[data-hima-region="campaign-masthead"]')`, 20_000);
   const runId = await currentRun(d);
-  await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]')?.getAttribute('data-hima-state-status') !== undefined`, 15_000).catch(() => undefined);
-  return { host, cookie, ownerSessionId, runId };
+  const guideView = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${encodeURIComponent(ownerSessionId)}`)).json() as RunView;
+  assert.equal(guideView.run.control?.guideSessionId, ownerSessionId);
+  const executionOwner = guideView.run.control?.owner;
+  if (typeof executionOwner !== 'string' || executionOwner === '') throw new Error(`Run has no native execution owner: ${JSON.stringify(guideView.run.control)}`);
+  await browser.wait(`document.querySelector('[data-hima-control="open-owner"]') !== null`);
+  assert.ok((await d.click('open-owner')).ok);
+  await browser.wait(`!!document.querySelector('[contenteditable="true"]')`);
+  await browser.evaluate(`document.querySelector('[contenteditable="true"]').focus()`);
+  await browser.send('Input.insertText', { text: 'Initialize this Campaign execution session without starting node work.' });
+  await browser.evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.getBoundingClientRect().height>0 && /send/i.test([e.textContent,e.getAttribute('aria-label')].join(' '))); if(!e) throw new Error('no execution session send control'); e.setAttribute('data-hima-control','initialize-execution-owner'); })()`);
+  assert.ok((await d.click('initialize-execution-owner')).ok);
+  await browser.wait(`document.body.innerText.includes('Campaign Agent conversation is ready.')`, 15_000);
+  await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]') !== null`);
+  await browser.mark('[data-hima-region="campaign-chip"]', 'execution-owner-chip');
+  assert.ok((await d.click('execution-owner-chip')).ok);
+  await browser.wait(`document.querySelector('[data-hima-region="studio"]')?.getAttribute('data-hima-state-session')===${JSON.stringify(executionOwner)}`);
+  await browser.wait(`document.querySelector('[data-hima-region="campaign-chip"]')?.getAttribute('data-hima-state-status') !== undefined`, 15_000);
+  return { host, cookie, ownerSessionId: executionOwner, runId };
 }
 
 /** Run both themes of one acceptance state under one `test()`, so the file reports exactly seven
@@ -462,7 +486,10 @@ test('state 4: a blocked Campaign shows the attention strip with the blocker\'s 
       t.diagnostic(`state 4 (${theme}) dock pane width after drag: ${String(width)}px`);
       assert.ok(width >= 700, `dock pane widened to at least 700px: ${String(width)}`);
       const id = await currentRun(d);
-      const view = await (await api(host, cookie, `/hima/api/runs/${id}`)).json() as RunView;
+      const studio = await d.read('studio'); assert.ok(studio.ok);
+      const viewerSessionId = studio.state.session;
+      if (typeof viewerSessionId !== 'string' || viewerSessionId === '') throw new Error(`Workbench has no native viewer session: ${JSON.stringify(studio)}`);
+      const view = await (await api(host, cookie, `/hima/api/runs/${id}?sessionId=${encodeURIComponent(viewerSessionId)}`)).json() as RunView;
       const reason = view.blockers.at(-1)?.reason;
       assert.ok(reason, `the Run carries a blocker: ${JSON.stringify(view.blockers)}`);
       await browser.wait(`document.querySelector('[data-hima-region="campaign-attention"]')?.getAttribute('data-hima-state-kind') === 'waiting'`, 10_000);

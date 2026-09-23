@@ -38,6 +38,12 @@ Before anything about tools or files:
   ending this pack declares in its own words. A generation limit is not one of them.
 - **What must a person never have to guess?** The readings that are ambiguous unless the pack says
   which one it means.
+- **What proves a reader or checker wrong cheaply?** Name one source-linked counterexample for each
+  critical reading: a true zero, an empty or partial report, a missing field, or multiple targets.
+  Record the source and the expected refusal or typed value; this is test input, not a claim that a
+  commercial flow has passed.
+- **What bounds one Campaign?** State the input identity, feedback that may change the next move,
+  and the time, generation, licence or attempt budget that stops new work.
 
 ### Then the Golden Flow
 
@@ -73,7 +79,8 @@ validate, and the next stage refuses it — so put anything else you want to say
 belongs to.
 
 - `## Business` — what is explored, what is measured, what ends it, what a person must never have to
-  guess.
+  guess, the input/feedback/budget boundary, and the source-linked counterexamples that later readers
+  and rules must survive.
 - `## Golden Flow` — where it lies, and what you read there, as pointers. End the pointer line at the
   path itself so the next stage can read it back.
 - `## Answers` — each question and the answer the author gave, numbered.
@@ -85,7 +92,9 @@ Then say, in one short message, that it is written and what it holds.
 
 ## Running again on a folder that already has one
 
-Read the existing `INTENT.md` first. Ask only what is still open — what is missing, what the flow
-has since contradicted, what the author asked to revisit — and rewrite the whole file with the
-earlier answers carried through. Never drop an answer the author already gave, and never start over
-silently.
+Call `hima_pack_check` first, then read the existing `INTENT.md`. Its actual rung, `next`, `needs`
+and issue decide where work resumes: when it points to an earlier stage, direct the author there;
+when it points here, ask only what is still open — what is missing, what the flow has since
+contradicted, what the author asked to revisit — and rewrite the whole file with earlier answers
+carried through. Never drop an answer the author already gave, and never start over silently. A
+later stage or a remembered digest never overrules the current check.

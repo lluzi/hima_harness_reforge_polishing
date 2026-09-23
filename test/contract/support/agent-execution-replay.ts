@@ -12,7 +12,7 @@ export const replayPaused = 'Replay: node admission is paused. Its existing Job 
 export const replayCompleted = 'Replay: the admitted node is explicitly completed. Its successor is available and has not been started.';
 
 /** The installed replay adapter documents last-match captures from actual request string leaves. */
-export async function writeExecutionReplay(home: HimaHome) {
+export async function writeExecutionReplay(home: HimaHome, options: { notifications?: boolean } = {}) {
   const directory = path.join(home.home, 'execution-replay');
   await mkdir(directory, { recursive: true });
   const file = path.join(directory, 'session.jsonl');
@@ -39,6 +39,7 @@ export async function writeExecutionReplay(home: HimaHome) {
   const entries = [
     context(), action('begin', { nodeId: 'synthesize' }), action('work', { executionId: execution }), say(replayJobStarted),
     context(), action('pause', { nodeId: 'synthesize' }), say(replayPaused),
+    ...(options.notifications ? [say('Replay: pause receipt acknowledged; no new work.'), context(), say('Replay: Job facts are ready; waiting for human Continue.')] : []),
     context(), action('complete', { executionId: execution }), say(replayCompleted),
   ];
   await writeFile(override, JSON.stringify(entries, null, 2) + '\n');

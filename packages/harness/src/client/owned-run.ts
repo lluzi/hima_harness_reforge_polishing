@@ -55,9 +55,9 @@ export const STATUS_GLYPH: Readonly<Record<RunStatus, GlyphName>> = {
 };
 
 // --- The one shared subscription -----------------------------------------------------------------
-// `fetchRuns` answers with every Run on the Host, not one session's own — there was never a reason
+// `fetchRuns` answers only Runs visible to the native viewing session. There is no reason
 // for the chip, the tab title and the tab body's own runs list to each hold a separate poll of the
-// exact same read. One `setTimeout` chain, reference-counted by every mounted consumer through
+// exact same scoped read. One `setTimeout` chain per viewer, reference-counted by every mounted consumer through
 // `useSyncExternalStore`; the last unsubscribe stops it, the next subscribe restarts it from the
 // last snapshot rather than a blank one, so a brief 0-to-1 subscriber gap never flashes "reading…".
 
@@ -67,74 +67,49 @@ interface RunsSnapshot {
   readonly error?: string;
 }
 
-let snapshot: RunsSnapshot = {};
-const listeners = new Set<() => void>();
-let timer: ReturnType<typeof setTimeout> | undefined;
-let inFlight: AbortController | undefined;
-
-function notify(): void {
-  for (const listener of listeners) listener();
-}
-
-function poll(): void {
-  const own = new AbortController();
-  inFlight = own;
-  void fetchRuns(own.signal).then((result) => {
-    if (own.signal.aborted) return;
-    inFlight = undefined;
-    if (result.ok) {
-      const readAt = Date.now();
-      // The one place `endedSeenAt` is written: once per fresh read, here, never from a render.
-      recordEndedSeenAt(result.value.runs, readAt, endedSeenAt);
-      snapshot = { runs: result.value.runs, readAt };
-    } else {
-      snapshot = { ...snapshot, error: result.error.message };
-    }
-    notify();
-    // Nobody subscribed any more (the last unmount raced this in-flight read) — `stopPolling` already
-    // ran and cleared `timer`; re-arming here would restart a poll nothing is listening to.
-    if (listeners.size === 0) return;
-    timer = setTimeout(poll, OWNED_RUN_POLL_MS);
-  });
-}
-
-function ensurePolling(): void {
-  if (timer !== undefined || inFlight !== undefined) return;
-  poll();
-}
-
-function stopPolling(): void {
-  if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
-  inFlight?.abort();
-  inFlight = undefined;
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  ensurePolling();
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) stopPolling();
+function createRunsStore(sessionId: string) {
+  let snapshot: RunsSnapshot = {};
+  const listeners = new Set<() => void>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight: AbortController | undefined;
+  const stop = () => { clearTimeout(timer); timer = undefined; inFlight?.abort(); inFlight = undefined; };
+  const poll = () => {
+    if (!sessionId || inFlight) return;
+    const own = new AbortController(); inFlight = own;
+    void fetchRuns(own.signal, sessionId).then(result => {
+      if (own.signal.aborted) return;
+      inFlight = undefined;
+      if (result.ok) {
+        const readAt = Date.now(); recordEndedSeenAt(result.value.runs, readAt, endedSeenAt);
+        snapshot = { runs: result.value.runs, readAt };
+      } else snapshot = { ...snapshot, error: result.error.message };
+      for (const listener of listeners) listener();
+      if (listeners.size > 0) timer = setTimeout(poll, OWNED_RUN_POLL_MS);
+    });
+  };
+  return {
+    getSnapshot: () => snapshot,
+    refresh: () => { if (listeners.size) { stop(); poll(); } },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      if (!timer && !inFlight) poll();
+      return () => { listeners.delete(listener); if (!listeners.size) stop(); };
+    },
   };
 }
-
-function getSnapshot(): RunsSnapshot {
-  return snapshot;
+// UI snapshots are keyed by the native viewing session. They carry no execution authority.
+const stores = new Map<string, ReturnType<typeof createRunsStore>>();
+function runsStore(sessionId: string) {
+  let store = stores.get(sessionId);
+  if (!store) { store = createRunsStore(sessionId); stores.set(sessionId, store); }
+  return store;
 }
+export function refreshRuns(): void { for (const store of stores.values()) store.refresh(); }
 
-/** Force an immediate re-read on top of the shared cadence, e.g. right after this session's own
- *  control action lands — a no-op while nobody is subscribed, since there is then nothing to serve. */
-export function refreshRuns(): void {
-  if (listeners.size === 0) return;
-  stopPolling();
-  ensurePolling();
-}
-
-/** Every Run on the Host, from the one shared poll — what the tab body's own Run picker reads,
- *  in place of a second independent `GET /hima/api/runs` cadence of its own. */
-export function useRunsList(): { readonly runs: readonly RunHeadView[]; readonly readAt?: number; readonly error?: string; refresh(): void } {
-  const shared = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  return { runs: shared.runs ?? [], readAt: shared.readAt, error: shared.error, refresh: refreshRuns };
+export function useRunsList(sessionId: string): { readonly runs: readonly RunHeadView[]; readonly readAt?: number; readonly error?: string; refresh(): void } {
+  const store = runsStore(sessionId);
+  const shared = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  return { runs: shared.runs ?? [], readAt: shared.readAt, error: shared.error, refresh: store.refresh };
 }
 
 /**
@@ -147,7 +122,7 @@ export function useRunsList(): { readonly runs: readonly RunHeadView[]; readonly
  * @param sessionId - the session whose own Run this is.
  */
 export function useOwnedRun(sessionId: string): OwnedRun {
-  const shared = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const shared = useRunsList(sessionId);
   return {
     run: shared.runs === undefined ? undefined : pickOwnedRun(shared.runs, sessionId, endedSeenAt),
     readAt: shared.readAt,

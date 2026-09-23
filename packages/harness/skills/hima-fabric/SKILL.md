@@ -126,7 +126,10 @@ In this folder and nowhere else, and only what the spec states:
   is this pack's own, and name a shipped id when the knowledge behind the move is this harness's.
 - `readers/<id>.yml` with its script under `tools/` — for each output the spec says is read into
   typed values and that no shipped reader already reads. The declaration names the script, the
-  command line it is launched with and every value type it emits.
+  command line it is launched with and every value type it emits. Keep the source-linked
+  counterexamples beside the reader as its existing Pack test fixture or documented invocation:
+  true zero is a value; empty, missing, ambiguous and multi-target input is a refusal or unknown,
+  never a substituted success.
 - `knowledge/<file>.md` — one file per entry of the spec's `Knowledge` section, written for the
   purpose that section gives it, and declared in the contract's `knowledge:` with that purpose.
 - `tools/<name>` — one script per tool, holding the very command line the contract declares for it,
@@ -224,6 +227,11 @@ Call `hima_pack_check` with this pack and the Site the author named. It answers 
 stands on, whether that Site can host the pack, and every fault by name. Fix what it names **in this
 pack's own files**, and check again. Stop when it says `compiled` and the pack fits, or say plainly
 which fault you cannot fix and what the author has to decide.
+
+If a reopened folder checks below `compiled`, resume at the check's `next` stage rather than editing
+a later record. If this stage is next because its contract, graph or method bytes changed, compile
+again and leave the old test/release evidence for the checker to reject; the next test Run will carry
+the current digest.
 
 ## Rules that do not bend
 

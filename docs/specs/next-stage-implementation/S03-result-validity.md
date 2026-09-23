@@ -35,7 +35,7 @@
 
 输入身份包括 DB树/恢复脚本、输入和约束、场景覆盖、提取/STA/物理报告、generation/iteration。每个必需值须有单位与来源。资格是 eligible/ineligible/unknown，unknown 不进入采用集合。best 与 last 明确分开；原 best 的身份验证失败则报错，不能悄悄回退到 last。
 
-已声明规则决定物理质量门槛；本次不发明通用 DRC 数字。如果 Pack 缺基线/比较规则，采用门保持 unknown，实施者依据既有场景和留存报告补合同，不通过宽松默认值放行。更新 best 先验证完整产物，再原子更新指针；失败留原 best。保留两个 XTop 保路 Tcl，不改回 loadECO。
+用户于 2026-09-23 确认物理采用门：**同口径完整检查，相对基线不新增 DRC 或连通性错误；覆盖不完整则不采用。** XTop 基线与候选必须各自以同一 Innovus 检查模板写出完整 DRC/connectivity report 和 completion manifest；解析器精确读取完整总数，缺失、重复、截断或受限报告为 unknown/拒绝，绝不以显示条数推断完整。采用时还必须核对同一 profile/source-manifest/scenario 覆盖、DB、STA report、SPEF/extraction 与物理报告 identity。更新 best 先验证完整产物，再原子更新指针；复制失败留原 best。保留两个 XTop 保路 Tcl，不改回 loadECO。
 
 ### 切片与并行
 

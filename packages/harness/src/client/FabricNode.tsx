@@ -1,3 +1,4 @@
+import { useViewerSession } from './viewer-session.js';
 // One node's own form, state glyph, caption and marks — the shapes `docs/specs/campaign-workspace-ui`
 // fixes: act a rounded rect, judge a diamond, explore a circle with a small chooser mark, wait an
 // octagon. State is shape and colour together (Global Constraints): every state below draws its own
@@ -37,20 +38,21 @@ export function truncate(text: string, max = LABEL_MAX_CHARS): string {
  *  Exported for the Diagnostics sheet (#41 task 8), which reads the same current node's own line
  *  rather than a second poll of its own. */
 export function useLastLogLine(runId: string, nodeId: string, active: boolean): string | undefined {
+  const viewer = useViewerSession();
   const [line, setLine] = useState<string>();
   useEffect(() => {
     if (!active) { setLine(undefined); return; }
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
-      const result = await fetchLogTail(runId, nodeId, 1, controller.signal);
+      const result = await fetchLogTail(runId, nodeId, 1, controller.signal, viewer);
       if (controller.signal.aborted) return;
       if (result.ok) setLine(result.value.lines.at(-1));
       timer = setTimeout(() => { void poll(); }, 2000);
     };
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [runId, nodeId, active]);
+  }, [runId, nodeId, active, viewer]);
   return line;
 }
 

@@ -11,7 +11,7 @@ import { reportBlocks } from '../experience-report.js';
 import type { RunView } from '../remote.js';
 import type { PreparationView } from '../workbench.js';
 import { sceneInputs } from '../scene.js';
-import { fetchStartChoices } from './api.js';
+import { fetchStartChoices, scoped } from './api.js';
 import { FabricCanvas } from './FabricCanvas.js';
 import {
   ArchiveSection, DecisionRow, ExperienceSection, GenerationsTable, GrowthSection,
@@ -20,6 +20,7 @@ import {
 import { Masthead } from './Masthead.js';
 import { shortTime } from './time.js';
 import { isOwner as isOwnerOf } from './owned-run.js';
+import { useViewerSession } from './viewer-session.js';
 
 export interface CampaignTabProps {
   readonly sessionId: string;
@@ -126,9 +127,10 @@ function EvidenceView({ view }: { view: RunView }): ReactElement {
 /** The Report view: the Campaign's technical report, as a current ledger preview or — on request —
  *  the saved file itself, read back and held to its recorded hash. */
 function ReportView({ view, runId }: { view: RunView; runId: string }): ReactElement {
+  const viewer = useViewerSession();
   const [saved, setSaved] = useState<{ markdown?: string; error?: string; loading?: boolean }>();
   const pending = useRef<AbortController>();
-  useEffect(() => { setSaved(undefined); return () => pending.current?.abort(); }, [runId]);
+  useEffect(() => { setSaved(undefined); return () => pending.current?.abort(); }, [runId, viewer]);
   const openSaved = async () => {
     pending.current?.abort();
     const own = new AbortController(); pending.current = own;
@@ -137,7 +139,7 @@ function ReportView({ view, runId }: { view: RunView; runId: string }): ReactEle
       // The JSON route (no `.md` suffix), never `experienceMarkdownPath` — that one answers with the
       // raw file itself (`media: 'text/markdown'`, `remote.ts`'s own `experienceOperation`), which is
       // what the anchor's own `href` is for, not this fetch.
-      const response = await fetch(`${runPath(runId)}/experience`, { signal: own.signal, headers: { accept: 'application/json' } });
+      const response = await fetch(scoped(`${runPath(runId)}/experience`, viewer), { signal: own.signal, headers: { accept: 'application/json' } });
       const body = await response.json() as { markdown?: string; error?: { message?: string } };
       if (!response.ok || typeof body.markdown !== 'string') throw new Error(body.error?.message ?? `Report read failed (HTTP ${String(response.status)})`);
       if (!own.signal.aborted) setSaved({ markdown: body.markdown });

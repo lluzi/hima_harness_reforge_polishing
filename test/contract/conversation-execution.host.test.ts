@@ -22,12 +22,14 @@ test('hima_run prepares for the actual calling Agent and returns the same conver
     }, agent, signal: AbortSignal.timeout(30000) });
     assert.equal(result.isError, false, JSON.stringify(result));
     const run = host.ctx.hima.ledger.runs()[0];
-    assert.equal(run?.control?.owner, String(agent.id));
+    assert.notEqual(run?.control?.owner, String(agent.id));
+    assert.equal(run?.control?.guideSessionId, String(agent.id));
     assert.equal(host.ctx.hima.ledger.records({ runId: run!.id, type: 'job' }).length, 0);
     assert.equal(host.ctx.hima.ledger.records({ runId: run!.id, type: 'session' }).length, 0);
     const text = result.content.filter((item) => item.type === 'text').map((item) => item.text).join('');
     const value = JSON.parse(text);
-    assert.equal(value.context.run.control.owner, String(agent.id));
+    assert.equal(value.context.run.control.owner, run?.control?.owner);
+    assert.equal(value.context.run.control.guideSessionId, String(agent.id));
     assert.ok(value.context.available.includes(run!.currentNode));
   } finally { await host.dispose(); await local.h.dispose(); }
 });
@@ -38,9 +40,10 @@ test('controlled tools derive ownership, deduplicate admission, and refuse legac
   assert.ok(local);
   const host = await bootInProcess(local.h);
   try {
-    const owner = await createRootAgent(host.ctx, local.h.workspace);
+    const guide = await createRootAgent(host.ctx, local.h.workspace);
     const other = await createRootAgent(host.ctx, local.h.workspace);
     let serial = 0;
+    let owner = guide;
     const call = (name: string, args: object, agent = owner) => host.ctx.tools.execute({ callId: `tool-${++serial}` as never, name, arguments: args, agent, signal: AbortSignal.timeout(30000) });
     const value = (result: Awaited<ReturnType<typeof call>>) => {
       assert.equal(result.isError, false, JSON.stringify(result));
@@ -53,6 +56,9 @@ test('controlled tools derive ownership, deduplicate admission, and refuse legac
     const proposal = value(await call('hima_prepare', { pack: timingProbePackId, site: 'local' }));
     const started = value(await call('hima_run', { proposalId: proposal.id, pack: timingProbePackId, site: 'local', goal: proposal.goal, strategy: proposal.strategy }));
     const run = started.runId;
+    owner = host.ctx.get('agents')!.get(started.context.run.control.owner as never)!;
+    assert.notEqual(String(owner.id), String(guide.id));
+    assert.equal(started.context.run.control.guideSessionId, String(guide.id));
     const request = { run, action: 'begin', nodeId: started.context.run.currentNode, expectedEpoch: 1, expectedRevision: 0, requestId: 'first-admission' };
     const denied = value(await call('hima_execute', request, other));
     assert.equal(denied.kind, 'refused');
@@ -80,8 +86,8 @@ test('controlled tools derive ownership, deduplicate admission, and refuse legac
     assert.equal(coding.isError, false, JSON.stringify(coding));
     assert.equal(host.ctx.hima.ledger.run(run)?.control?.revision, 1);
     const historical = await host.ctx.hima.ledger.createRun({ campaignId: 'legacy-without-method', siteId: 'local' });
-    const adoption = value(await call('hima_execute', { run: historical.id, action: 'adopt', expectedEpoch: 0, expectedRevision: 0, requestId: 'inspect-adoption' }));
-    assert.equal(adoption.kind, 'refused', 'the real adoption operation refuses missing historical identity');
+    const adoption = await call('hima_execute', { run: historical.id, action: 'adopt', expectedEpoch: 0, expectedRevision: 0, requestId: 'inspect-adoption' });
+    assert.equal(adoption.isError, true, 'unassigned history cannot be claimed by selecting an arbitrary project');
     assert.equal(host.ctx.hima.ledger.run(historical.id)?.control, undefined);
   } finally { await host.dispose(); await local.h.dispose(); }
 });
@@ -104,7 +110,7 @@ test('native preparation validates a live selected session and exposes durable c
     const input = { pack: timingProbePackId, site: 'local', goal: { target_period_ns: 2 } };
     assert.equal((await post('/runs/start', input)).status, 400);
     assert.equal((await post('/runs/start', { ...input, sessionId: 'session-forged' })).status, 400);
-    const empty = await api(host, cookie, '/hima/api/runs');
+    const empty = await api(host, cookie, `/hima/api/runs?sessionId=${owner}`);
     assert.deepEqual(await empty.json(), { runs: [] });
     const choicesResponse = await api(host, cookie, `/hima/api/start-options?pack=${timingProbePackId}&site=local`);
     const choices = await choicesResponse.json() as { proposal: { id: string; goal: Record<string, number>; strategy: Record<string, number | string> } };
@@ -113,24 +119,27 @@ test('native preparation validates a live selected session and exposes durable c
     const preparedText = await prepared.text();
     assert.equal(prepared.status, 200, preparedText);
     const view = JSON.parse(preparedText);
-    assert.equal(view.run.control.owner, owner);
+    assert.notEqual(view.run.control.owner, owner);
+    assert.equal(view.run.control.guideSessionId, owner);
     assert.equal(view.jobs.length, 0);
-    const context = await api(host, cookie, `/hima/api/runs/${view.run.id}/context`);
+    const context = await api(host, cookie, `/hima/api/runs/${view.run.id}/context?sessionId=${owner}`);
     assert.equal(context.status, 200);
-    const contextBody = await context.json() as { run: { control: { owner: string; revision: number } } };
-    assert.equal(contextBody.run.control.owner, owner);
-    const moment = await post(`/runs/${view.run.id}/moment`, { instructions: 'inspect this Run' });
+    const contextBody = await context.json() as { run: { control: { owner: string; guideSessionId?: string; revision: number } } };
+    assert.equal(contextBody.run.control.owner, view.run.control.owner);
+    assert.equal(contextBody.run.control.guideSessionId, owner);
+    const moment = await post(`/runs/${view.run.id}/moment?sessionId=${owner}`, { instructions: 'inspect this Run' });
     const momentBody = await moment.json() as HimaErrorBody;
     assert.equal(moment.status, 409, JSON.stringify(momentBody));
     assert.equal(momentBody.error.code, 'hima/run-not-in-state');
     assert.match(momentBody.error.message, /controlled by its conversation Agent/);
-    const sessions = await api(host, cookie, `/hima/api/runs/${view.run.id}/records?type=session`);
+    const sessions = await api(host, cookie, `/hima/api/runs/${view.run.id}/records?type=session&sessionId=${owner}`);
     assert.deepEqual((await sessions.json() as RecordsView).records, [], 'a policy refusal opens no separate model session');
     const pauseRequest = { action: 'pause', sessionId: owner, expectedEpoch: 1, expectedRevision: 0, requestId: 'human-pause' };
     const paused = await post(`/runs/${view.run.id}/control`, pauseRequest);
-    const pausedBody = await paused.json() as { run: { run: { control: { owner: string; paused: string[] } } }; notification: { status: string; message: string } };
+    const pausedBody = await paused.json() as { run: { run: { control: { owner: string; guideSessionId?: string; paused: string[] } } }; notification: { status: string; message: string } };
     assert.equal(paused.status, 200, JSON.stringify(pausedBody));
-    assert.equal(pausedBody.run.run.control.owner, owner);
+    assert.equal(pausedBody.run.run.control.owner, view.run.control.owner);
+    assert.equal(pausedBody.run.run.control.guideSessionId, owner);
     assert.deepEqual(pausedBody.run.run.control.paused, ['*']);
     assert.equal(pausedBody.notification.status, 'inactive');
     assert.match(pausedBody.notification.message, /control fact is recorded/i);
@@ -139,7 +148,7 @@ test('native preparation validates a live selected session and exposes durable c
     assert.equal(repeatedPause.status, 200, JSON.stringify(repeatedBody));
     assert.equal(repeatedBody.notification.status, 'not-repeated');
     assert.match(repeatedBody.notification.message, /original delivery outcome is not durable/i);
-    assert.equal((await post(`/runs/${view.run.id}/cancel`, {})).status, 400);
+    assert.equal((await post(`/runs/${view.run.id}/cancel`, {})).status, 403, 'unscoped mutation is denied before Run details are inspected');
     assert.equal((await post(`/runs/${view.run.id}/control`, { action: 'work', sessionId: owner, expectedEpoch: 1, expectedRevision: 0, requestId: 'human-work' })).status, 400);
     assert.equal(contextBody.run.control.revision, 0);
   } finally { await host.stop(); await local.h.dispose(); }

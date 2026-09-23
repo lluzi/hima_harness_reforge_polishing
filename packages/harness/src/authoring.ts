@@ -64,6 +64,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolExecution } from '@deepseek-ai/dsh-tools';
+import type { Ledger } from './ledger.js';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 
 /** Create/select a Pack using the native session creation boundary. Cwd is immutable in dsh. */
@@ -119,6 +120,9 @@ export const FILE_WRITING_TOOLS = ['write', 'edit'] as const;
 /** The tool an authoring session may not call at all, whatever its arguments say. */
 export const SHELL_TOOL = 'bash';
 
+/** Persistent PTY tools are interactive execution, never Pack-authoring input. */
+export const TERMINAL_TOOLS = ['terminal_open', 'terminal_send', 'terminal_read', 'terminal_signal', 'terminal_close', 'terminal_list'] as const;
+
 /**
  * Every tool this guard has an opinion about. Anything else is none of its business.
  *
@@ -128,7 +132,7 @@ export const SHELL_TOOL = 'bash';
  * arrives in both places at once — and so that the two can never drift into a session this guard
  * would deny and a moment that is promised it can never be denied.
  */
-export const GOVERNED_TOOLS = [...FILE_WRITING_TOOLS, SHELL_TOOL] as const;
+export const GOVERNED_TOOLS = [...FILE_WRITING_TOOLS, SHELL_TOOL, ...TERMINAL_TOOLS] as const;
 
 const governed = new Set<string>(GOVERNED_TOOLS);
 
@@ -364,8 +368,8 @@ function authoringDenial(execution: Readonly<ToolExecution>, packsDir: string): 
     const target = (execution.arguments as { pack?: unknown } | undefined)?.pack;
     return target === path.basename(folder) ? undefined : `an authoring session in ${folder} may release only its own Pack`;
   }
-  if (execution.name === SHELL_TOOL) {
-    return `a pack authoring session in ${folder} has no shell: read the Golden Flow where it lies with read, glob and grep, and write only inside the pack folder. "${SHELL_TOOL}" refused.`;
+  if (execution.name === SHELL_TOOL || (TERMINAL_TOOLS as readonly string[]).includes(execution.name)) {
+    return `a pack authoring session in ${folder} has no shell or terminal: read the Golden Flow where it lies with read, glob and grep, and write only inside the pack folder. "${execution.name}" refused.`;
   }
   const args = execution.arguments as { file_path?: unknown } | null | undefined;
   const target = args?.file_path;
@@ -385,6 +389,18 @@ function authoringDenial(execution: Readonly<ToolExecution>, packsDir: string): 
     return `${inside}, and "${target}" is ${resolved.at}, which is outside it. Refused: read the Golden Flow where it lies and copy no file of it.`;
   }
   return undefined;
+}
+
+/** Refuse raw PTY access from a current Campaign owner until the F2 Site/Fabric bridge qualifies it. */
+export function terminalDenial(execution: Readonly<ToolExecution>, ledger: Pick<Ledger, 'runs'>): string | undefined {
+  if (!(TERMINAL_TOOLS as readonly string[]).includes(execution.name)) return undefined;
+  if (execution.agent === undefined) return 'raw terminal tools require a live ordinary side-talk Agent; anonymous execution is refused.';
+  const owner = String(execution.agent.id);
+  if (execution.agent.session.header.parentSession !== undefined) {
+    return `native child Agent ${owner} may not use raw terminal tools before its delegation and Site/Fabric terminal authority are qualified.`;
+  }
+  if (!ledger.runs().some((run) => run.control?.owner === owner)) return undefined;
+  return `Campaign Agent ${owner} may not use raw terminal tools before the qualified Site/Fabric terminal bridge; use hima_execute and the Pack-declared Channel instead.`;
 }
 
 /**

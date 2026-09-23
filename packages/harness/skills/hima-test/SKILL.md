@@ -100,10 +100,15 @@ the folder does not stand at `tested`.
   reason it carries. Exactly `none`, and nothing else, when there were none.
 - `## Disagreements` — each place this pack and the Golden Flow disagreed, read from what the Run
   recorded — its blockers, its refusals, the flow's own words in a log tail — and from the flow
-  itself: a value the flow states differently from what the spec expected, an ending the flow reached
-  that the pack does not declare, a stage a tool line drove that the flow refused, a tool that did
-  not behave as its script says. `none` when there were none, and say `none` only when you have
-  looked.
+   itself: a value the flow states differently from what the spec expected, an ending the flow reached
+   that the pack does not declare, a stage a tool line drove that the flow refused, a tool that did
+   not behave as its script says. `none` when there were none, and say `none` only when you have
+   looked.
+
+Before a Site Run, exercise the cheapest source-linked reader/rule counterexample the intent and spec
+declare. Keep it in the Pack's existing test fixture or reader invocation, and record its actual
+refusal/unknown or typed zero. This does not replace the Site Run: it proves parser/checker behavior;
+the Campaign proves the named method on that Site.
 
 **Three of those lines the harness reads**, and it holds them against the Run itself: the `Ending`
 section's `status:` line must be the status that Run ended with, exactly; the `Code` section must
@@ -114,6 +119,10 @@ the evidence a release seals, and these three are the claims a ledger can be ask
 
 Then check the folder again with `hima_pack_check` and say what it answers. A folder at `tested` is
 ready for `/hima-release`.
+
+When returning to an interrupted folder, call that check before starting any Run. Its current rung
+is authoritative: an edited method that no longer matches the recorded test digest resumes at the
+first stage it names, normally `tested`; do not reuse the old Run or write a new `TEST.md` around it.
 
 ## Rules that do not bend
 

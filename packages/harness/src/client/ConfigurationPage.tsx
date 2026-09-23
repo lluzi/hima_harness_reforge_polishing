@@ -410,7 +410,7 @@ export function ConfigurationPage({ sessionId, askGuide, pickFolder, onStarted, 
 
   if (draft === undefined) {
     return <div className="hima-config hima-root" data-hima-region="configuration" data-hima-state-ready="false" data-hima-state-pack="" data-hima-state-site="" data-hima-state-changed="0">
-      <p className="hima-small">Reading the Campaign file…</p>
+      {error === undefined ? <p className="hima-small">Reading the Campaign file…</p> : <div className="hima-config-readiness-row" role="alert"><StateRoundel state="bad" glyph="warning" /><span>{error}</span><button type="button" className="hima-button" data-hima-control="config-retry" onClick={() => { void tick.current(); }}>Retry</button></div>}
     </div>;
   }
 

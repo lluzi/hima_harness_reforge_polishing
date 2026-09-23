@@ -1424,12 +1424,9 @@ test('a campaign whose workspace root is outside the permit\'s write roots is re
     clearRemoteCommands();
     const refused = await himaCommand(host, h.workspace, `/hima pack prepare ${timingProbePackId} --site local --campaign hima-test-refused`);
     assert.equal(refused.kind, 'error', refused.text);
-    assert.match(refused.text, /outside the permitted write roots/, refused.text);
-    const records = recordsOf(host, refused.runId!);
-    assert.equal(records.length, 1);
-    assert.equal(records[0]!.type, 'refusal');
-    assert.equal(records[0]!.writer, 'shell', 'the shell refuses on the permit');
-    assert.deepEqual(workspaceRecords(host, refused.runId!), [], 'nothing was prepared');
+    assert.match(refused.text, /workspaceRoot is outside its permitted write roots/, refused.text);
+    assert.equal(refused.runId, undefined, 'predictable policy gaps are rejected before a Run');
+    assert.deepEqual(host.ctx.hima.ledger.runs(), []);
     assert.deepEqual(remoteCommands(), [], 'the refusal came before any command was run at all');
   } finally {
     await dispose();

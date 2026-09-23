@@ -22,6 +22,9 @@ file mkdir $env(OUTPUT_ROOT)/EXPORT
 file mkdir $env(OUTPUT_ROOT)/DBS
 verify_drc -limit 1000000 -report $env(OUTPUT_ROOT)/RPT/verify_drc.rpt
 verifyConnectivity -noAntenna -report $env(OUTPUT_ROOT)/RPT/verify_connectivity.rpt
+set physical [open $env(OUTPUT_ROOT)/RPT/physical-check.json w]
+puts $physical {{"schema":"xtop-timing-closure-physical-check/1","coverage":"unknown","drcLimit":1000000,"drcReport":"verify_drc.rpt","connectivityReport":"verify_connectivity.rpt"}}
+close $physical
 saveDesign $env(OUTPUT_ROOT)/DBS/closed.enc -compress
 defOut -floorplan -placement -netlist -routing -withShield -usedVia $env(OUTPUT_ROOT)/EXPORT/design.def
 saveNetlist $env(OUTPUT_ROOT)/EXPORT/design.v

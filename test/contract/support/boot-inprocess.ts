@@ -78,6 +78,20 @@ export async function createRootAgent(ctx: Context, cwd: string): Promise<Agent>
   return agent;
 }
 
+/** Create one child with explicit runtime owner and durable lineage, without driving a model turn. */
+export async function createChildAgent(ctx: Context, parent: Agent, cwd: string): Promise<Agent> {
+  const agents = ctx.get('agents');
+  if (!agents) throw new Error('agents service missing');
+  const { agent } = await agents.create({
+    sessionId: `session-${randomUUID()}` as never,
+    parentAgent: parent,
+    meta: { cwd, parentSession: parent.id, origin: 'subagent', delegationDepth: 1 },
+    agentOptions: { provider: parent.options.provider, model: parent.options.model },
+  });
+  await agent.whenIdle();
+  return agent;
+}
+
 /**
  * Say one thing to an agent the way a person says it in the window's chat, and wait for the turn.
  *

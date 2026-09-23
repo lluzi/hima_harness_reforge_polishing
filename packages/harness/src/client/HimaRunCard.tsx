@@ -1,3 +1,4 @@
+import { HimaViewerSession, useViewerSession } from './viewer-session.js';
 // The HimaGuide card for a Hima tool call: where the Run stands, the path it took to get there, what
 // it read, what was concluded about it, and what it decided next. A presentation component and
 // nothing else — it holds no Cordis context and no transport, and it reads the run through the one
@@ -20,7 +21,7 @@ import type { BlockerView, CancelView, Citation, CodeView, DecisionView, Experie
 import { experienceReport, reportBlocks, type ReportBlock } from '../experience-report.js';
 import type { SemanticValue } from '../semantics.js';
 import { bannerLines, runPurposeMark, branchesIn, branchesState, branchLines, branchStateLabel, cancelAsked, cancelObserved, chosenSaid, citedSaid, counted, decisionState, duration, EXPERIENCE_HEADING, EXPERIENCE_MARKDOWN_LINK, experienceFileSaid, experienceMarkdownHref, experienceState, experienceWrittenSaid, factQuestions, generationColumns, generationDecisionSaid, generationsState, generationStateLabel, groupSaid, jobEnding, joinSaid, labelled, LEDGER_ORDER, ledgerRows, loopClosedSaid, loopOpenedSaid, loopSaid, loopsIn, loopsState, meterRows, metersState, nameOf, NO_FABRIC_STATE, nodeStateLabel, NOT_HELD, NOTHING_JUDGED, askedObservedSaid, readerSaid, runControls, runStatusLabel, showsCancel, showsResume, slackSaid, codeOfWorkshop, codeSaid, workshopSaid, workshopState, workshopStateLabel } from '../card-labels.js';
-import { actOnRun, controlRun, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
+import { scoped, actOnRun, controlRun, fetchArchive, fetchMaterial, fetchRun, type HimaFailure, type HimaResult } from './api.js';
 import { Glyph } from './glyphs.js';
 import { HIMA_STYLE } from './workbench-style.js';
 
@@ -437,7 +438,7 @@ export function useRunActions(runId: string | undefined, onChanged: (view: RunVi
           .then((result) => result.ok ? { ok: true as const, value: { view: result.value.run, notice: result.value.notification.message } } : result)
           : Promise.resolve({ ok: false as const, error: { code: 'hima/not-authorized' as const, message: 'Open the owning conversation in Live Run to control this Run.' } })
         : kind === 'pause' || kind === 'continue' ? Promise.resolve({ ok: false as const, error: { code: 'hima/run-not-in-state' as const, message: 'This historical Run requires explicit ownership migration.' } })
-          : actOnRun(runId, kind, own.controller.signal).then((result) => result.ok ? { ok: true as const, value: { view: result.value } } : result);
+          : actOnRun(runId, kind, own.controller.signal, sessionId).then((result) => result.ok ? { ok: true as const, value: { view: result.value } } : result);
       void action.then((result) => {
         if (own.controller.signal.aborted || pending.current !== own || latest.current.runId !== runId) return;
         pending.current = undefined;
@@ -463,6 +464,7 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
   const control = view.run.control;
   if (control) {
     const owner = control.owner === acting.sessionId;
+    const humanGuide = control.guideSessionId === acting.sessionId;
     const active = view.run.status === 'running' || view.run.status === 'waiting';
     return <div className="hima-run-card-control-row" data-hima-region='execution-control' data-hima-state-owner={control.owner} data-hima-state-epoch={control.epoch} data-hima-state-revision={control.revision}>
       {showDiagnostics ? <span className="hima-muted">Owner {control.owner} · epoch {control.epoch} · revision {control.revision}</span> : null}
@@ -470,10 +472,10 @@ export function RunControls({ view, acting, showDiagnostics = true }: { view: Ru
       <div className="hima-run-card-control-buttons">
         {active && acting.sessionId ? <button type='button' className="hima-button" data-hima-control='pause' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause')}>Pause Run</button> : null}
         {active && owner && view.run.currentNode ? <button type='button' className="hima-button" data-hima-control='pause-node' disabled={acting.inFlight !== undefined} onClick={() => acting.act('pause', view.run.currentNode)}>Pause {view.run.currentNode}</button> : null}
-        {active && owner ? control.paused.map((scope) => <button key={scope} type='button' className="hima-button" data-hima-control={scope === '*' ? 'continue' : `continue-node-${scope}`} disabled={acting.inFlight !== undefined} onClick={() => acting.act('continue', scope === '*' ? undefined : scope)}>Continue {scope === '*' ? 'Run' : scope}</button>) : null}
+        {active && (owner || humanGuide) ? control.paused.map((scope) => <button key={scope} type='button' className="hima-button" data-hima-control={scope === '*' ? 'continue' : `continue-node-${scope}`} disabled={acting.inFlight !== undefined} onClick={() => acting.act('continue', scope === '*' ? undefined : scope)}>Continue {scope === '*' ? 'Run' : scope}</button>) : null}
         {active && acting.sessionId ? <button type='button' className="hima-button" data-hima-control='cancel' disabled={acting.inFlight === 'cancel'} onClick={() => acting.act('cancel')}>Stop Run</button> : null}
       </div>
-      {!owner ? <span className="hima-muted">Viewing this Run does not transfer execution ownership. You may pause or stop it as a human; enter its owning conversation to continue or perform node work.</span> : null}
+      {!owner ? <span className="hima-muted">{humanGuide ? 'Guide remains available. Your controls are delivered to this task; its execution conversation remains the owner.' : 'Viewing this Run does not transfer execution ownership. You may pause or stop it as a human; enter its owning conversation to continue or perform node work.'}</span> : null}
       {acting.notice ? <span role='status' data-hima-region='control-notification'>{acting.notice}</span> : null}
       {Object.values(control.executions).map((execution) => <div key={execution.id} data-hima-region='node-execution' data-hima-state-execution={execution.id} data-hima-state-phase={execution.phase}>
         {execution.nodeId} · {execution.phase} · generation {execution.generation} · attempt {execution.attempt}<br /><span className="hima-mono">{execution.id}</span>
@@ -598,6 +600,7 @@ export function WorkshopSection({ view, workshop }: { view: RunView; workshop: W
  * substitutes today's bytes for an old hash. The same component is used in chat and the workbench.
  */
 export function MaterialSection({ view }: { view: RunView }): ReactElement | null {
+  const viewer = useViewerSession();
   const [selected, setSelected] = useState<string>();
   const [answer, setAnswer] = useState<{ recordId: string; text?: string; error?: string; loading?: boolean }>();
   const request = useRef<AbortController | undefined>();
@@ -616,7 +619,7 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
     request.current?.abort();
     const own = new AbortController(); request.current = own;
     setSelected(record.recordId); setAnswer({ recordId: record.recordId, loading: true });
-    void fetchMaterial(view.run.id, record.recordId, own.signal).then((result) => {
+    void fetchMaterial(view.run.id, record.recordId, own.signal, viewer).then((result) => {
       if (own.signal.aborted) return;
       setAnswer(result.ok ? { recordId: record.recordId, text: result.value.text } : { recordId: record.recordId, error: result.error.message });
     });
@@ -652,6 +655,7 @@ export function MaterialSection({ view }: { view: RunView }): ReactElement | nul
 
 /** Pack-local delivered bytes, verified on explicit read; no Site polling on each UI refresh. */
 export function ArchiveSection({ view }: { view: RunView }): ReactElement | null {
+  const viewer = useViewerSession();
   const [manifest, setManifest] = useState<import('../experience-report.js').RunAssetManifest>();
   const [reading, setReading] = useState<{ path?: string; text?: string; error?: string; loading?: boolean }>({});
   const pending = useRef<AbortController | undefined>();
@@ -659,7 +663,7 @@ export function ArchiveSection({ view }: { view: RunView }): ReactElement | null
   const read = (material?: string) => {
     pending.current?.abort(); const controller = new AbortController(); pending.current = controller;
     setReading({ path: material, loading: true });
-    void fetchArchive(view.run.id, material, controller.signal).then(result => {
+    void fetchArchive(view.run.id, material, controller.signal, viewer).then(result => {
       if (controller.signal.aborted) return;
       if (!result.ok) { setReading({ path: material, error: result.error.message }); return; }
       setManifest(result.value.manifest); setReading({ path: material, text: result.value.text });
@@ -739,13 +743,14 @@ export function VerdictRow({ verdict }: { verdict: VerdictView }): ReactElement 
  * the link reads and verifies its original bytes. No Site read is implied by this preview.
  */
 export function ExperienceSection({ view, experience, onOpenSaved }: { view: RunView; experience: ExperienceView; onOpenSaved?: () => void }): ReactElement {
+  const viewer = useViewerSession();
   return (
     <Section title={EXPERIENCE_HEADING} region="run-experience" state={experienceState(experience)}>
       <div className="hima-block">
         <div className="hima-muted">{experienceWrittenSaid(experience)}</div>
         <div className="hima-muted hima-mono">{experienceFileSaid('markdown', experience.markdown)}</div>
         <div className="hima-muted hima-mono">{experienceFileSaid('json', experience.json)}</div>
-        <div><a href={experienceMarkdownHref(view.run.id)} onClick={onOpenSaved === undefined ? undefined : (event) => { event.preventDefault(); onOpenSaved(); }}>{EXPERIENCE_MARKDOWN_LINK}</a></div>
+        <div><a href={scoped(experienceMarkdownHref(view.run.id), viewer)} onClick={onOpenSaved === undefined ? undefined : (event) => { event.preventDefault(); onOpenSaved(); }}>{EXPERIENCE_MARKDOWN_LINK}</a></div>
       </div>
       <div className="hima-run-card-section">
         {reportBlocks(experienceReport(view, experience.writtenAt).markdown).map((entry, index) => (
@@ -910,19 +915,22 @@ function RunBody({ view, acting }: { view: RunView; acting: Acting }): ReactElem
  */
 export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: { block: ToolBlock; openRun?: (runId: string) => void; sessionId?: string; toolName?: string }): ReactElement {
   const runId = runIdOf(toolBlock);
-  const [state, setState] = useState<{ view?: RunView; error?: HimaFailure }>({});
+  const identity = JSON.stringify([sessionId, runId]);
+  const [stored, setStored] = useState<{ identity: string; view?: RunView; error?: HimaFailure }>({ identity });
+  const state: { view?: RunView; error?: HimaFailure } = stored.identity === identity ? stored : {};
+  const setState = (next: { view?: RunView; error?: HimaFailure }) => setStored({ identity, ...next });
   const acting = useRunActions(runId, (view) => setState({ view }), sessionId, state.view);
 
   useEffect(() => {
     if (runId === undefined) return;
     const controller = new AbortController();
     setState({});
-    void fetchRun(runId, controller.signal).then((result) => {
+    void fetchRun(runId, controller.signal, sessionId).then((result) => {
       if (controller.signal.aborted) return;
       setState(result.ok ? { view: result.value } : { error: result.error });
     });
     return () => { controller.abort(); };
-  }, [runId]);
+  }, [runId, sessionId]);
 
   if (runId === undefined) {
     // A failed call has something to say, and it is the tool's own words: saying "this call reported
@@ -978,7 +986,7 @@ export function HimaRunCard({ block: toolBlock, openRun, sessionId, toolName }: 
           <details data-hima-control="receipt-details" open>
             <summary>Run detail</summary>
             <div className="hima-receipt-body">
-              <RunBody view={state.view} acting={acting} />
+              <HimaViewerSession value={sessionId}><RunBody view={state.view} acting={acting} /></HimaViewerSession>
             </div>
           </details>
         </>

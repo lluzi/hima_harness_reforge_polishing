@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createHimaHome } from './support/dsh-home.ts';
 import { createRootAgent } from './support/boot-inprocess.ts';
 import { bootHimaHost } from './support/boot-host.ts';
-import { api, openSession } from './support/hima-api.ts';
+import { api, createLiveSession, openSession } from './support/hima-api.ts';
 import { installPack, timingProbePackId } from './support/pack.ts';
 import { writeLocalSite } from './support/site.ts';
 import { localFabric } from './support/fabric.ts';
@@ -54,12 +54,13 @@ test('start choices do not invent a Pack or Site selection and a concrete select
     const choices = await (await api(host, cookie, '/hima/api/start-options')).json() as Record<string, unknown>;
     assert.equal(choices.pack, undefined, 'an installed Pack is an option, not inferred user intent');
     assert.equal(choices.site, undefined, 'a saved Site is an option, not inferred user intent');
+    const sessionId = await createLiveSession(host, cookie, h.workspace);
     const selected = await (await api(host, cookie, `/hima/api/start-options?pack=${timingProbePackId}&site=local`)).json() as any;
     assert.equal(selected.proposal.ready, true, JSON.stringify(selected));
     assert.match(selected.proposal.id, /^[a-f0-9]{64}\.[a-f0-9]{32}\.[a-f0-9]{64}$/);
     assert.equal(selected.proposal.pack.id, timingProbePackId);
     assert.ok(selected.proposal.referenceGraph.nodes.length > 0);
-    assert.deepEqual((await (await api(host, cookie, '/hima/api/runs')).json() as { runs: unknown[] }).runs, []);
+    assert.deepEqual((await (await api(host, cookie, `/hima/api/runs?sessionId=${sessionId}`)).json() as { runs: unknown[] }).runs, []);
   } finally { assert.equal(await host.stop(), 0, host.stderr()); await h.dispose(); }
 });
 
@@ -124,6 +125,18 @@ test('HimaGuide preparation creates no facts, stale confirmation is refused, and
     }, agent, signal: AbortSignal.timeout(20_000) });
     const first = jsonOf(await start());
     assert.match(first.runId, /^run-/);
+    const assigned = host.ctx.hima.ledger.run(first.runId)!.control!;
+    assert.notEqual(assigned.owner, String(agent.id), 'Guide remains independent from the execution owner');
+    assert.equal(assigned.guideSessionId, String(agent.id));
+    const paused = await host.ctx.hima.executionAction({ runId: first.runId, actor: String(agent.id), origin: 'human',
+      expectedEpoch: assigned.epoch, expectedRevision: assigned.revision, requestId: 'guide-human-pause', action: 'pause' });
+    assert.equal(paused.kind, 'accepted');
+    const continuation = { runId: first.runId, actor: String(agent.id), expectedEpoch: assigned.epoch,
+      expectedRevision: paused.context.run.control!.revision, requestId: 'guide-human-continue', action: 'continue' as const };
+    assert.equal((await host.ctx.hima.executionAction({ ...continuation, origin: 'agent' })).kind, 'refused');
+    const continued = await host.ctx.hima.executionAction({ ...continuation, origin: 'human' });
+    assert.equal(continued.kind, 'accepted');
+    assert.equal(continued.context.run.control?.owner, assigned.owner);
     const secondAnswer = await start();
     assert.equal(secondAnswer.isError, false, textOf(secondAnswer));
     const second = jsonOf(secondAnswer);

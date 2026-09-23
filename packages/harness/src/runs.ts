@@ -19,8 +19,8 @@ const campaignIdFor = (now: Date): string => `probe-${now.toISOString().slice(0,
  * @returns the Run to record against.
  * @throws RunReferenceError when the named Run is unknown or belongs to another Site.
  */
-export function runFor(ledger: Ledger, site: Site, named: string | undefined): Promise<RunRecord> {
-  if (named === undefined) return ledger.createRun({ campaignId: campaignIdFor(new Date()), siteId: site.name });
+export function runFor(ledger: Ledger, site: Site, named: string | undefined, projectSessionId?: string): Promise<RunRecord> {
+  if (named === undefined) return ledger.createRun({ campaignId: campaignIdFor(new Date()), siteId: site.name, ...(projectSessionId ? { projectSessionId } : {}) });
   const run = ledger.run(named);
   if (!run) throw new RunReferenceError(`unknown run "${named}": the HimaLedger holds no such run`);
   if (run.siteId !== site.name) {

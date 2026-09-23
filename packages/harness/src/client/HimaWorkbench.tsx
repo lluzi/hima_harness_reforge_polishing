@@ -1,7 +1,8 @@
+import { HimaViewerSession } from './viewer-session.js';
 // The existing Hima Run projection, presented inside the native dsh document dock.
 // Local state is selection, drafts and the last HTTP response; the Agent requests work and Fabric validates its facts.
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { fetchExecutionContext, fetchRun, type HimaResult } from './api.js';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { fetchGuideContext, fetchExecutionContext, fetchRun, resolveReportAddress, type HimaResult } from './api.js';
 import { CampaignTab } from './CampaignTab.js';
 import { ConfigurationPage, draftToGuide } from './ConfigurationPage.js';
 import { Diagnostics } from './Diagnostics.js';
@@ -12,6 +13,7 @@ import { runPurposeMark } from '../card-labels.js';
 import { Glyph } from './glyphs.js';
 import { shortTime } from './time.js';
 import { HIMA_STYLE } from './workbench-style.js';
+import { runIdForWorkbenchAddress, workbenchAddressKey, workbenchAddressOf, type WorkbenchAddress } from './workbench-address.js';
 
 /** The public tab-info hook is supplied by the installed dsh sidebar slot; `tab.id` is the tab
  *  record's own stable identity, read here only to scope the `'diagnostics'` event (`owned-run.ts`)
@@ -20,6 +22,7 @@ export interface WorkbenchProps {
   sessionId: string;
   useSessions<T>(selector: (state: { current?: string }) => T): T;
   openOwner(id: string): void;
+  openChild(address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }): void;
   useTabInfo(): { tab: { id: string; visible: boolean; navigation: { revision: number; params: unknown } } };
   openFiles(): void;
   /** The shell's own composer, for "Ask HimaGuide" (#41 task 8); absent falls back to the native
@@ -58,12 +61,14 @@ function usePollingRead<T>(key: string, read: (signal: AbortSignal) => Promise<H
   return { ...current, refresh: useCallback(() => setRevision((n) => n + 1), []) };
 }
 
-export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, openOwner, inputActions, pickFolder }: WorkbenchProps): ReactElement {
+export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, openOwner, openChild, inputActions, pickFolder }: WorkbenchProps): ReactElement {
   const activeSessionId = useSessions((state) => state.current) ?? sessionId;
   const { tab } = useTabInfo();
-  const params = tab.navigation.params as { runId?: unknown } | undefined;
-  const requested = typeof params?.runId === 'string' ? params.runId : undefined;
-  const [selected, setSelected] = useState<string | undefined>(requested);
+  const requestedAddress = workbenchAddressOf(tab.navigation.params);
+  const [address, setAddress] = useState<WorkbenchAddress>(requestedAddress);
+  const lastCampaignAddress = useRef<WorkbenchAddress>(requestedAddress.kind === 'campaign' ? requestedAddress : { kind: 'campaign' });
+  const lastInsightAddress = useRef<WorkbenchAddress>(requestedAddress.kind === 'insight' ? requestedAddress : { kind: 'insight' });
+  const selected = runIdForWorkbenchAddress(address);
   const [managingPack, setManagingPack] = useState(false);
   const [managingPackLocation, setManagingPackLocation] = useState<string>();
   const [confirming, setConfirming] = useState(false);
@@ -74,18 +79,43 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
   // a stale readiness row only cleared through its own row-level "Retry". This is handed to
   // `ConfigurationPage` as `refreshSignal`, which its own poll effect re-runs on every change.
   const [configRefresh, setConfigRefresh] = useState(0);
-  const list = useRunsList();
-  const read = useCallback((signal: AbortSignal) => fetchRun(selected!, signal), [selected]);
-  const snapshot = usePollingRead(selected ?? '', read, selected !== undefined && tab.visible);
-  const readContext = useCallback((signal: AbortSignal) => fetchExecutionContext(selected!, signal), [selected]);
-  const execution = usePollingRead(selected ?? '', readContext, selected !== undefined && tab.visible);
+  const list = useRunsList(activeSessionId);
+  const read = useCallback((signal: AbortSignal) => fetchRun(selected!, signal, activeSessionId), [selected, activeSessionId]);
+  const runReadKey = JSON.stringify([activeSessionId, selected ?? '']);
+  const snapshot = usePollingRead(runReadKey, read, selected !== undefined && tab.visible);
+  const readContext = useCallback((signal: AbortSignal) => fetchExecutionContext(selected!, signal, activeSessionId), [selected, activeSessionId]);
+  const execution = usePollingRead(runReadKey, readContext, selected !== undefined && tab.visible);
   const view = snapshot.value;
   const acting = useRunActions(selected, () => { snapshot.refresh(); list.refresh(); }, activeSessionId, view);
   const isOwner = isOwnerOf(view?.run.control, activeSessionId);
+  const [childCheck, setChildCheck] = useState<{ key: string; ready: boolean; error?: string; nativeAddress?: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' } }>({ key: '', ready: false });
+  const [childRefresh, setChildRefresh] = useState(0);
+  const childKey = address.kind === 'child' ? JSON.stringify([activeSessionId, workbenchAddressKey(address)]) : '';
+  useEffect(() => {
+    if (address.kind !== 'child' || !tab.visible) return;
+    const controller = new AbortController();
+    setChildCheck({ key: childKey, ready: false });
+    void fetchGuideContext({ sessionId: activeSessionId, requestId: `child-${crypto.randomUUID()}`, target: { kind: 'child', parentSessionId: address.parentSessionId, childSessionId: address.childSessionId } }, controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      if (!result.ok || result.value.target.kind !== 'child' || result.value.target.parentSessionId !== address.parentSessionId || result.value.target.childSessionId !== address.childSessionId) {
+        setChildCheck({ key: childKey, ready: false, error: result.ok ? 'The Host returned a different child identity.' : result.error.message }); return;
+      }
+      const facts = result.value.facts as { nativeAddress?: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' } } | undefined;
+      setChildCheck({ key: childKey, ready: true, ...(facts?.nativeAddress === undefined ? {} : { nativeAddress: facts.nativeAddress }) });
+    });
+    return () => controller.abort();
+  }, [activeSessionId, address, childKey, childRefresh, tab.visible]);
 
   useEffect(() => {
-    if (requested !== undefined) setSelected(requested);
-  }, [requested, tab.navigation.revision]);
+    if (requestedAddress.kind === 'campaign') lastCampaignAddress.current = requestedAddress;
+    if (requestedAddress.kind === 'insight') lastInsightAddress.current = requestedAddress;
+    setAddress(requestedAddress);
+  }, [tab.navigation.revision, workbenchAddressKey(requestedAddress)]);
+
+  const chooseCampaign = (next: WorkbenchAddress) => {
+    lastCampaignAddress.current = next;
+    setAddress(next);
+  };
 
   // The tab's own menu (`open-diagnostics`, `index.ts`) dispatches this event with the tab's own id
   // rather than calling a prop directly: the menu item is a separate slot registration with no
@@ -110,7 +140,7 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
     inputActions.setDraft(existing === '' ? text : `${existing}\n${text}`);
   } : undefined;
 
-  return <div className='hima-studio hima-root' data-hima-region='studio' data-hima-state-session={activeSessionId} data-hima-state-run={selected ?? ''} data-stale={snapshot.error !== undefined}>
+  return <HimaViewerSession value={activeSessionId}><div className='hima-studio hima-root' data-hima-region='studio' data-hima-state-session={activeSessionId} data-hima-state-mode={address.kind} data-hima-state-run={selected ?? ''} data-stale={snapshot.error !== undefined}>
     {/* C8: this is `sidebar.right.pane.tab`'s own root mount, a separate tree from `CampaignChip`,
         `CampaignTabTitle` and `WorkbenchEntry`, each of which already carries its own `<style>` copy
         (`index.ts`) — this root carried `hima-root` but never the sheet itself, so no `--hima-*`
@@ -129,16 +159,17 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
         matches in the existing desktop suites — restyled compact (`.hima-icon-button`) here, never
         replaced with an icon-only control that text could not still match. */}
     <header className='hima-studio-header'>
-      <span className='hima-studio-eyebrow'>CAMPAIGN</span>
-      <select aria-label='Campaign on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { setSelected(e.target.value || undefined); }}>
+      <div className='hima-studio-modes' role='tablist' aria-label='Hima work mode'>
+        <button type='button' role='tab' aria-selected={address.kind === 'campaign'} data-hima-control='studio-mode-campaign' onClick={() => setAddress(lastCampaignAddress.current)}>Campaign</button>
+        <button type='button' role='tab' aria-selected={address.kind === 'insight'} data-hima-control='studio-mode-insight' onClick={() => setAddress(lastInsightAddress.current)}>Data Insight</button>
+      </div>
+      {address.kind !== 'campaign' ? null : <select aria-label='Campaign on this host' data-hima-control='studio-run' disabled={confirming} value={selected ?? ''} onChange={(e) => { chooseCampaign({ kind: 'campaign', ...(e.target.value === '' ? {} : { runId: e.target.value }) }); }}>
         <option value=''>Select a Campaign</option>
         {selected && !list.runs.some((run) => run.id === selected) ? <option value={selected}>{selected}</option> : null}
         {list.runs.map((run) => <option key={run.id} value={run.id}>{run.packId ?? run.campaignId}{runPurposeMark(run.purpose) ? ` · ${runPurposeMark(run.purpose)}` : ''} · {shortTime(run.createdAt)} · {run.id.slice(-6)}</option>)}
-      </select>
-      <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); setConfigRefresh((n) => n + 1); }}><Glyph name='retry' /></button>
-      {selected !== undefined
-        ? <button className='hima-button' data-hima-control='studio-configure' disabled={confirming} onClick={() => setSelected(undefined)}>Start another Campaign</button>
-        : null}
+      </select>}
+      {address.kind !== 'campaign' ? null : <button className='hima-icon-button' aria-label='Refresh Run data' onClick={() => { list.refresh(); snapshot.refresh(); setConfigRefresh((n) => n + 1); }}><Glyph name='retry' /></button>}
+      {address.kind === 'campaign' && selected !== undefined ? <button className='hima-button' data-hima-control='studio-configure' disabled={confirming} onClick={() => chooseCampaign({ kind: 'campaign' })}>Start another Campaign</button> : null}
       <div className='hima-studio-header-actions'>
         {/* C19: bordered `.hima-button`s, not the borderless `.hima-icon-button` this row's earlier
             compacting pass reached for — both read as text-only actions inside a row that already
@@ -157,14 +188,46 @@ export function HimaWorkbench({ sessionId, useSessions, useTabInfo, openFiles, o
       // found not to reliably tear down while a second, independently polling section stayed mounted
       // beside it. Mutually exclusive rendering removes the concurrent-mount case entirely.
       ? <PackOwnerPanel key={activeSessionId} sessionId={activeSessionId} initialPack={view?.run.packId ?? ''} initialLocation={managingPackLocation} pickFolder={pickFolder} />
-      : selected === undefined
+      : address.kind === 'invalid'
+        ? <InvalidAddress message={address.message} />
+        : address.kind === 'insight'
+        ? <InsightPreparation scope={address.scope} reportRef={address.reportRef} />
+        : address.kind === 'child'
+          ? <ChildUnavailable parentSessionId={address.parentSessionId} childSessionId={address.childSessionId} openChild={openChild} nativeAddress={childCheck.key === childKey ? childCheck.nativeAddress : undefined} checked={childCheck.key === childKey && childCheck.ready} error={childCheck.key === childKey ? childCheck.error : undefined} retry={() => setChildRefresh(value => value + 1)} />
+        : selected === undefined
         ? <ConfigurationPage key={activeSessionId} sessionId={activeSessionId}
             askGuide={askGuide} pickFolder={pickFolder}
             openPackOwner={(location) => { setManagingPackLocation(location); setManagingPack(true); }}
             onBusy={setConfirming} refreshSignal={configRefresh}
-            onStarted={(started) => { setSelected(started.run.id); list.refresh(); }} />
+            onStarted={(started) => { chooseCampaign({ kind: 'campaign', runId: started.run.id }); list.refresh(); }} />
         : <CampaignTab sessionId={activeSessionId} runId={selected} view={view} context={execution.value} acting={acting} stale={snapshot.error !== undefined} readAt={snapshot.at} openOwner={openOwner} openFiles={openFiles} />}
     {!diagnosticsOpen ? null : <Diagnostics view={view} isOwner={isOwner} acting={acting} readAt={snapshot.at} openOwner={openOwner} onClose={() => setDiagnosticsOpen(false)} />}
-  </div>;
+  </div></HimaViewerSession>;
 }
 
+function InsightPreparation({ scope, reportRef }: { scope?: string; reportRef?: string }): ReactElement {
+  return <section className='hima-insight-preparation' data-hima-region='insight-preparation' data-hima-state-report={reportRef ?? ''}>
+    <span className='hima-studio-eyebrow'>DATA INSIGHT</span>
+    <h2>{reportRef === undefined ? 'Choose data to inspect' : 'Report data is not available in this Host yet'}</h2>
+    <p>{reportRef === undefined ? 'Choose a Library report or data scope. Browsing this preparation page does not create a Campaign, start a Job, or call a model.' : `The selected report reference ${reportRef} still needs the Host’s typed, hash-bound report payload.`}</p>
+    {scope === undefined ? null : <p className='hima-small'>Requested scope: {scope}</p>}
+  </section>;
+}
+
+function InvalidAddress({ message }: { message: string }): ReactElement {
+  return <section className='hima-insight-preparation' data-hima-region='invalid-view-address' role='alert'>
+    <span className='hima-studio-eyebrow'>WORKBENCH ADDRESS</span>
+    <h2>hima/invalid-view-address</h2>
+    <p>{message}</p>
+  </section>;
+}
+
+function ChildUnavailable({ parentSessionId, childSessionId, openChild, nativeAddress, checked, error, retry }: { parentSessionId: string; childSessionId: string; openChild(address: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }): void; nativeAddress?: { parentSessionId: string; childSessionId: string; mode: 'one-shot' | 'continuable' }; checked: boolean; error?: string; retry(): void }): ReactElement {
+  return <section className='hima-insight-preparation' data-hima-region='child-unavailable'>
+    <span className='hima-studio-eyebrow'>AGENT TASK</span>
+    <h2>Child details need an authorized Host view</h2>
+    <p>{checked ? 'This shell keeps the original child identity and does not copy a transcript. Native transcript availability is owned by the session UI.' : error ?? 'Checking the child identity with the Host…'}</p>
+    {checked && nativeAddress ? <button type='button' className='hima-button' onClick={() => openChild(nativeAddress)}>Open child session</button> : checked ? <p className='hima-small'>Native catalog has no usable descriptor for this child.</p> : error ? <button type='button' className='hima-button' data-hima-control='child-retry' onClick={retry}>Retry</button> : null}
+    <p className='hima-small'>Parent: {parentSessionId}</p>
+  </section>;
+}

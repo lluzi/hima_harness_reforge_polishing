@@ -1,5 +1,10 @@
 {
   "local": [
+    "test/contract/native-session.host.test.ts",
+    "test/contract/guide-sessions.host.test.ts",
+    "test/contract/guide-context.host.test.ts",
+    "test/contract/terminal.host.test.ts",
+    "test/contract/workbench-address.test.ts",
     "test/contract/product-context.host.test.ts",
     "test/contract/site-discovery.test.ts",
     "test/contract/site-surface.host.test.ts",

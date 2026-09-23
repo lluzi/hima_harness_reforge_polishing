@@ -35,10 +35,10 @@ which knowledge file shaped it, by file name. A section no knowledge shaped says
 - `## Goal template` — the primary target and its parameters, each with its unit and what it means.
 - `## Constraints` — every constraint the Goal carries, typed and checkable, with the options the
   measurement was made under.
-- `## Run contract` — inputs, outputs, wrappers, tools: what a Site must bind and what it must allow
-  for this pack to run at all.
-- `## Semantics` — every typed value the readers will produce: name, unit, what it measures. One
-  entry per value, and no value the readers do not produce.
+- `## Run contract` — inputs, outputs, wrappers, tools and budget: what a Site must bind and allow,
+  which source identity each input has, and what bounds new attempts or generations.
+- `## Semantics` — every typed value the readers will produce: name, unit, source and what it
+  measures. One entry per value, its zero/absence meaning, and no value the readers do not produce.
 - `## Judge rules` — the rules over those values that decide how a node continues, and what each
   verdict cites.
 - `## Choosers` — each chooser, what it reads, what it sets, and the knowledge behind the move it
@@ -127,3 +127,6 @@ what is here, and what is here is theirs.
 - **The flow stays where it lies.** Pointers into it, never copies of it.
 - **Knowledge is cited, not summarized.** Name the file and say what it shaped. A section that
   restates a knowledge file instead of applying it has not applied it.
+- **Counterexamples are contractual.** Carry the intent record's source-linked zero, empty, missing
+  and multi-target cases into the reader/rule requirements. A reader may return a typed zero only
+  when the report proves zero; missing or ambiguous evidence has an explicit refusal or unknown path.

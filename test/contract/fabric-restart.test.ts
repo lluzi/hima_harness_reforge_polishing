@@ -976,71 +976,27 @@ test('a fault while the campaign workspace is being prepared is recorded against
   }
 });
 
-test('a campaign the site gives no workspace is blocked at once, in the words the refusal recorded, and the next host leaves it alone', async (t) => {
+test('a known missing workspace permission is refused before a Run, and reopening does not invent one', async (t) => {
   const local = await localHome(t, { sleepSeconds: 3 });
   if (!local) return;
   const { h, flow } = local;
   const after = cleanup(h);
   try {
-    // A site whose Permit allows no writes at all: the workspace is refused before anything is sent.
-    // The Run is opened with its Goal, its Budget and its pack, and it will never run — which is a
-    // thing to say on the record now, in the words the refusal itself used, not a thing to leave for
-    // some later host to re-stamp with a reason it has to invent.
     await writeLocalSite(h, {
-      allowedReadRoots: [h.workspace, flow.root],
-      allowedWriteRoots: [],
+      allowedReadRoots: [h.workspace, flow.root], allowedWriteRoots: [],
       bindings: { flowRoot: flow.root, design: flow.design, workspaceRoot: h.workspace },
     });
     const first = await after.boot();
-    const started = await himaCommand(first, h.workspace, runLine(), siteCommandTimeoutMs);
-    for (const line of started.text.split('\n')) t.diagnostic(line);
-    assert.equal(started.kind, 'error', started.text);
-    const runId = started.runId!;
-
-    const run = runOf(first, runId);
-    assert.equal(run.status, 'waiting', 'the run says where it stands from the moment its caller was told');
-    assert.equal(run.currentNode, 'synthesize', 'it stands at the node it never got to attempt');
-    assert.equal(run.packId, timingProbePackId, 'and the row says which pack it was for');
-    assert.deepEqual(
-      nodeRecords(first, runId).map((r) => [r.nodeId, r.state]),
-      [['synthesize', 'blocked']],
-      'one record, and it says the run is blocked at its entry node',
-    );
-    const blocked = nodeRecords(first, runId)[0]!;
-    assert.match(blocked.reason ?? '', /workspace could not be prepared/, `carrying why: ${blocked.reason}`);
-    assert.match(blocked.reason ?? '', /permit refused/, `and which path the permit stopped: ${blocked.reason}`);
-    assert.match(blocked.reason ?? '', /outside the permitted write roots/, `in the refusal's own words: ${blocked.reason}`);
-    assert.deepEqual(jobRecords(first, runId), [], 'nothing was launched');
-
-    const status = await himaCommand(first, h.workspace, `/hima status ${runId}`);
-    for (const line of status.text.split('\n')) t.diagnostic(line);
-    assert.match(status.text, /synthesize \(act\): blocked, attempt 1, .*permit refused/, status.text);
-
-    // Nor is it a Run a person can resume. It is waiting, which is the one status `/hima resume`
-    // takes, and it has no workspace to be re-entered in — the Campaign never got one, which is the
-    // whole reason it is blocked. Resuming it would drive a Run with no workspace, so it is refused
-    // in words, and refused before anything is written: a `resumed` record here would say a person
-    // cleared a blocker that is still exactly as it was.
-    const beforeResume = recordsOf(first, runId);
-    const refused = await himaCommand(first, h.workspace, `/hima resume ${runId}`, siteCommandTimeoutMs);
-    for (const line of refused.text.split('\n')) t.diagnostic(line);
+    const refused = await himaCommand(first, h.workspace, runLine(), siteCommandTimeoutMs);
     assert.equal(refused.kind, 'error', refused.text);
-    assert.match(refused.text, /has no workspace record/, `naming what it has not got: ${refused.text}`);
-    assert.match(refused.text, /nothing was written/, `and saying nothing was written: ${refused.text}`);
-    assert.deepEqual(recordsOf(first, runId), beforeResume, 'and nothing was');
-    assert.equal(runOf(first, runId).status, 'waiting', 'the run is where the refusal left it');
-
-    // And the next host has nothing to do with it: a Run already blocked and waiting is a person's,
-    // not a reconciliation's, so nothing is written over what the refusal already said.
-    const before = recordsOf(first, runId);
+    assert.match(refused.text, /workspaceRoot is outside its permitted write roots/);
+    assert.equal(refused.runId, undefined);
+    assert.deepEqual(first.ctx.hima.ledger.runs(), []);
     await after.drop(first);
     const second = await after.boot();
-    assert.deepEqual(await second.ctx.hima.reconciled, [], 'the next host finds nothing left in flight');
-    assert.deepEqual(recordsOf(second, runId), before, 'and wrote nothing on top of the refusal');
-    assert.equal(runOf(second, runId).status, 'waiting');
-  } finally {
-    await after.done();
-  }
+    assert.deepEqual(await second.ctx.hima.reconciled, []);
+    assert.deepEqual(second.ctx.hima.ledger.runs(), []);
+  } finally { await after.done(); }
 });
 
 test('a run left with no fabric state at all is still picked up by the next host, not left looking like a run no fabric ever touched', async (t) => {

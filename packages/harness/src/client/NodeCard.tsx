@@ -1,3 +1,4 @@
+import { useViewerSession } from './viewer-session.js';
 // The node card (#41 task 6): anchored to its own node inside the canvas, kind-specific tabs, the
 // owner/non-owner footer, and the compact tool receipt's sibling for what a person reads about one
 // node rather than the whole Run.
@@ -100,20 +101,21 @@ function FactsTab({ node, view, context }: { node: PlacedNode; view: RunView; co
 /** The running node's own last 40 lines, polled every 2 s while it stays the running node — the same
  *  bounded tail `FabricNode`'s own single-line poll reads, on the dark glass surface raw output gets. */
 function useNodeLog(runId: string, nodeId: string, active: boolean): { readonly lines: readonly string[]; readonly truncated?: boolean } {
+  const viewer = useViewerSession();
   const [state, setState] = useState<{ lines: readonly string[]; truncated?: boolean }>({ lines: [] });
   useEffect(() => {
     if (!active) { setState({ lines: [] }); return; }
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
-      const result = await fetchLogTail(runId, nodeId, 40, controller.signal);
+      const result = await fetchLogTail(runId, nodeId, 40, controller.signal, viewer);
       if (controller.signal.aborted) return;
       if (result.ok) setState({ lines: result.value.lines, truncated: result.value.truncated });
       timer = setTimeout(() => { void poll(); }, 2000);
     };
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [runId, nodeId, active]);
+  }, [runId, nodeId, active, viewer]);
   return state;
 }
 

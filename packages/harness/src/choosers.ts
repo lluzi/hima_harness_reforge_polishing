@@ -238,6 +238,8 @@ export interface ChooserInput {
   readonly goal: VerdictRecord;
   /** The observation both verdicts were read from. */
   readonly observation: ObservationRecord;
+  /** Every current required verdict; `goalMet` is refused unless they all passed. */
+  readonly verdicts?: readonly VerdictRecord[];
   /** What the Explore node declares convergence to be, when it declares any (D43). */
   readonly converge?: PackConverge;
   /**
@@ -350,7 +352,12 @@ export function choose(chooser: Chooser, input: ChooserInput): ChooserResult {
   if (!clause) {
     return { ok: false, reason: `chooser ${chooser.id} has no clause for a ${input.constraint.outcome} constraint (${input.constraint.ruleId}) with a ${input.goal.outcome} goal (${input.goal.ruleId})${undeterminedReason(input)}` };
   }
-  if (clause.goalMet) return { ok: true, chosen: { goalMet: true }, rationale };
+  if (clause.goalMet) {
+    const unmet = input.verdicts?.find((verdict) => verdict.outcome !== 'PASS');
+    if (unmet !== undefined) return { ok: false,
+      reason: `chooser ${chooser.id} cannot recommend goal-met because required verdict ${unmet.ruleId} is ${unmet.outcome}${unmet.reason === undefined ? '' : `: ${unmet.reason}`}` };
+    return { ok: true, chosen: { goalMet: true }, rationale };
+  }
   const converged = convergence(input, rationale);
   if (converged) return converged;
   return nextStrategy(chooser, clause, input, rationale);

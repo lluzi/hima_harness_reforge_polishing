@@ -91,9 +91,15 @@ export const HIMA_STYLE = `
 .hima-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .hima-studio{position:relative;height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--hima-paper);overflow:hidden}
-.hima-studio-header{display:flex;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-1) var(--hima-sp-4);min-height:40px;border-bottom:1px solid var(--hima-line);flex:none}
-.hima-studio-header select{flex:1;min-width:0}
-.hima-studio-header-actions{display:flex;gap:var(--hima-sp-2);margin-inline-start:auto}
+.hima-studio-header{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hima-sp-2);padding:var(--hima-sp-1) var(--hima-sp-4);min-height:40px;border-bottom:1px solid var(--hima-line);flex:none}
+.hima-studio-header select{flex:1 1 140px;min-width:0}
+.hima-studio-header-actions{display:flex;flex-wrap:wrap;min-width:0;gap:var(--hima-sp-2);margin-inline-start:auto}
+.hima-studio-modes{display:flex;align-items:center;gap:var(--hima-sp-1);flex:none}
+.hima-studio-modes button{appearance:none;border:0;border-radius:var(--hima-r-s);background:transparent;color:var(--hima-ink-2);padding:var(--hima-sp-2);font-size:var(--hima-fs-label);cursor:pointer;white-space:nowrap}
+.hima-studio-modes button[aria-selected=true]{background:var(--hima-soft);color:var(--hima-ink);font-weight:650}
+.hima-insight-preparation{flex:1;min-height:0;overflow:auto;padding:var(--hima-sp-6);display:flex;flex-direction:column;align-items:flex-start;gap:var(--hima-sp-3)}
+.hima-insight-preparation h2{margin:0;font-size:var(--hima-fs-title);font-weight:650}
+.hima-insight-preparation p{margin:0;max-width:520px;font-size:var(--hima-fs-label);color:var(--hima-ink-2);line-height:var(--hima-lh-body)}
 
 /* The Campaign tab (#41 task 5): masthead, view switch, and the HimaFabric canvas that makes the
    Live view. Every colour and every font-size is a token, SVG text included — an SVG user unit at

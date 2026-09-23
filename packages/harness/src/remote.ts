@@ -72,7 +72,7 @@ export type { ObservationView, NodeView, JobView, CodeView, KnowledgeView, Works
 import type { SemanticValue } from './semantics.js';
 import type { ObserveRequest, ObserveResult } from './observe.js';
 import type { ExperienceJson } from './experience-report.js';
-import type { ReadExperienceResult, ReadMaterialResult } from './experience.js';
+import type { ExperienceAdoptionRequest, ReadExperienceResult, ReadMaterialResult } from './experience.js';
 import type { ResumeResult, StartRunRequest, StartRunResult } from './fabric.js';
 import type { CancelResult } from './recovery.js';
 // Type-only, like every other shape here: `moments.ts` reaches dsh's agent seam, and this module is
@@ -101,7 +101,10 @@ import type { SiteDiscoveryRequest, SiteDiscoveryResult } from './sites.js';
 // schema) apart from every other fault. Safe beside the browser bundle for the same reason
 // `campaign-file.ts` already imports it there: `client/api.ts` takes only types from this module, so
 // esbuild never follows this import into the client (#41 task 4 review).
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
+import { SiteDiscoveryConflictError } from './sites.js';
+import { GuideContextError, type TargetAddress, type GuideContextView } from './guide-context.js';
+import { GuideSessionError } from './guide-sessions.js';
 
 // The one namespace and the one document, both from the leaf every face reads them from
 // (`paths.ts`): every Hima operation lives under `HIMA_API_PREFIX`, and the one thing Hima serves
@@ -159,7 +162,7 @@ export { HIMA_API_PREFIX, HIMA_WORKBENCH_PATH } from './paths.js';
  * (`startRunOperation` in this file states which).
  * A failure is never an empty answer: the client renders the code.
  */
-export type HimaErrorCode = 'hima/run-not-found' | 'hima/record-not-found' | 'hima/bad-request' | 'hima/run-not-in-state' | 'hima/run-not-stopped' | 'hima/run-running' | 'hima/workshop-node' | 'hima/experience-changed' | 'hima/material-changed' | 'hima/not-authorized' | 'hima/site-unreadable' | 'hima/moment-failed' | 'hima/campaign-file-changed' | 'hima/internal';
+export type HimaErrorCode = 'hima/invalid-view-address' | 'hima/not-found' | 'hima/context-stale' | 'hima/run-not-found' | 'hima/record-not-found' | 'hima/bad-request' | 'hima/run-not-in-state' | 'hima/run-not-stopped' | 'hima/run-running' | 'hima/workshop-node' | 'hima/experience-changed' | 'hima/material-changed' | 'hima/not-authorized' | 'hima/site-unreadable' | 'hima/site-changed' | 'hima/moment-failed' | 'hima/campaign-file-changed' | 'hima/internal';
 export interface HimaErrorBody {
   readonly error: {
     readonly code: HimaErrorCode;
@@ -668,6 +671,12 @@ export interface PackTransferBody {
 }
 
 export interface RemoteOperations {
+  authorizeRunAccess?(sessionId: string, runId: string): Promise<unknown>;
+  workMemory?(sessionId: string, request: { action: 'read' | 'save'; runId?: string; summary?: unknown }): Promise<object>;
+  correctExperience?(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>): Promise<object>;
+  readGuideContext?(request: { sessionId: string; requestId: string; target: unknown }): Promise<GuideContextView>;
+  resolveReportAddress?(sessionId: string, reportRef: string): Promise<Extract<TargetAddress, { kind: 'report' }>>;
+  listSessionChildren?(request: { viewerSessionId: string; parentSessionId: string }): Promise<{ readonly children: readonly { readonly childSessionId: string; readonly nativeOpen: boolean }[]; readonly hasMore: boolean }>;
   readRunAssets?(runId: string): Promise<import('./experience.js').ReadRunAssetsResult>;
   readArchivedMaterial?(runId: string, relative: string): Promise<import('./experience.js').ReadArchivedMaterialResult>;
   /** Browser-session owner review only; not an Agent confirmation tool. */
@@ -1138,6 +1147,8 @@ const failure = (status: number, code: HimaErrorCode, message: string): Answer =
 /** `POST /hima/api/observe`: read a file on a Site into the ledger and, when asked, judge the run. */
 async function observeOperation(ops: RemoteOperations, req: IncomingMessage): Promise<Answer> {
   const body = await readJsonBody(req);
+  const sessionId = optionalString(body, 'sessionId');
+  if (!legacyAutomaticAllowed() && (!sessionId || !ops.validateSession?.(sessionId))) return failure(403, 'hima/not-authorized', 'Select a live project conversation before reading a report.');
   const request: ObserveBody = {
     site: requiredString(body, 'site'),
     path: requiredString(body, 'path'),
@@ -1146,10 +1157,15 @@ async function observeOperation(ops: RemoteOperations, req: IncomingMessage): Pr
     judge: optionalStrings(body, 'judge'),
     params: optionalNumberRecord(body, 'params'),
   };
+  if (request.run && !legacyAutomaticAllowed()) {
+    if (!ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Project authorization is unavailable.');
+    try { await ops.authorizeRunAccess(sessionId!, request.run); }
+    catch { return failure(403, 'hima/not-authorized', 'This report belongs to another project.'); }
+  }
   if (request.run && ops.ledger.run(request.run)?.control) throw new BadRequest('Agent-owned Run observations require hima_execute with an admitted execution');
   let result: ObserveResult;
   try {
-    result = await ops.observe(request);
+    result = await ops.observe({ ...request, projectSessionId: sessionId });
   } catch (err) {
     // Only a fault the caller demonstrably caused — a site name with no site file, a `run` naming a
     // run this ledger does not hold or one of another site — is their mistake. Everything else the
@@ -1398,6 +1414,11 @@ async function controlOperation(ops: RemoteOperations, runId: string, req: Incom
   const body = await readJsonBody(req);
   const sessionId = requiredString(body, 'sessionId');
   if (!ops.validateSession?.(sessionId)) throw new BadRequest('the selected conversation is not live on this Host');
+  if (!legacyAutomaticAllowed()) {
+    if (!ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Project authorization is unavailable.');
+    try { await ops.authorizeRunAccess(sessionId, runId); }
+    catch { return failure(403, 'hima/not-authorized', 'This task is not available in the selected project.'); }
+  }
   const action = requiredString(body, 'action');
   if (action !== 'pause' && action !== 'continue' && action !== 'cancel') throw new BadRequest('native control permits pause, continue or cancel only; the conversational Agent owns node work');
   for (const field of ['expectedEpoch', 'expectedRevision'] as const) {
@@ -1586,12 +1607,13 @@ async function momentOperation(ops: RemoteOperations, runId: string, req: Incomi
  * certainty, while two drains simply do not overlap. The host reads and clears in one synchronous
  * step, with nothing awaited between them, so no command can slip in unrecorded between the two.
  *
- * Reading it is not privileged beyond the fence every other route sits behind: it says what this
- * host asked a Site to do, which is what the Permit already governs and what the Run's own records
- * already name, and one caller draining it takes it from the next — which `windowFilled` cannot warn
- * about, so a host is drained by one watcher at a time.
+ * This global command buffer belongs to the explicit legacy test profile. Production callers use
+ * scoped Run records and logs; exposing or draining this buffer would cross project boundaries.
  */
 function auditOperation(ops: RemoteOperations, drain: boolean): Answer {
+  // This global recorder is a test diagnostic, not a project data surface. Production viewers
+  // use the scoped Run records/log endpoints; they cannot read or drain other projects' commands.
+  if (!legacyAutomaticAllowed()) return failure(403, 'hima/not-authorized', 'Global command audit is available only in the explicit test diagnostic profile. Use this project’s Run records and logs.');
   return ok(drain ? ops.drainRemoteCommandAudit() : ops.remoteCommandAudit());
 }
 
@@ -1606,6 +1628,18 @@ function unpreparedReason(prepared: Extract<StartRunResult, { kind: 'unprepared'
 async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Promise<Answer> {
   const rest = url.pathname.slice(HIMA_API_PREFIX.length);
   const method = req.method ?? 'GET';
+  const authorize = async (runId: string): Promise<Answer | undefined> => {
+    if (legacyAutomaticAllowed()) return undefined;
+    const sessionId = url.searchParams.get('sessionId');
+    if (!sessionId || !ops.validateSession?.(sessionId) || !ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Select a live project conversation before reading a task.');
+    try { await ops.authorizeRunAccess(sessionId, runId); return undefined; }
+    catch { return failure(403, 'hima/not-authorized', 'This task is not available in the selected project.'); }
+  };
+  const scopedRun = /^\/runs\/([^/]+)(?:\/|$)/.exec(rest);
+  if (scopedRun && scopedRun[1] !== 'start' && !(method === 'POST' && rest.endsWith('/control'))) {
+    const denied = await authorize(decoded(scopedRun[1]!, 'run id'));
+    if (denied) return denied;
+  }
 
   if (rest === '/observe') {
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers POST`);
@@ -1613,7 +1647,15 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   }
 
   if (rest === '/runs') {
-    if (method === 'GET') return ok({ runs: ops.ledger.runs().reverse().map((run) => runHeadView(run)) });
+    if (method === 'GET') {
+      if (!legacyAutomaticAllowed()) {
+        const sessionId = url.searchParams.get('sessionId');
+        if (!sessionId || !ops.validateSession?.(sessionId) || !ops.authorizeRunAccess) return failure(403, 'hima/not-authorized', 'Select a live project conversation before listing tasks.');
+      }
+      const visible: RunRecord[] = [];
+      for (const run of ops.ledger.runs().reverse()) if (await authorize(run.id) === undefined) visible.push(run);
+      return ok({ runs: visible.map(run => runHeadView(run)) });
+    }
     if (method !== 'POST') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET or POST`);
     return startRunOperation(ops, req);
   }
@@ -1638,6 +1680,52 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
   if (rest === '/start-options') {
     if (method !== 'GET') return failure(405, 'hima/bad-request', `${method} ${url.pathname}; this route answers GET`);
     return ok(startChoices(ops, url.searchParams.get('pack'), url.searchParams.get('site')));
+  }
+
+  if (rest === '/context' || rest === '/context/report-address' || rest === '/context/children') {
+    if (method !== 'POST') return failure(405, 'hima/bad-request', 'Context reads require POST with a live viewer and exact target.');
+    const body = await readJsonBody(req);
+    const sessionId = requiredString(body, 'sessionId');
+    if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Select a live conversation to inspect its project.');
+    try {
+      if (rest === '/context/report-address' && ops.resolveReportAddress) return ok(await ops.resolveReportAddress(sessionId, requiredString(body, 'reportRef')));
+      if (rest === '/context/children' && ops.listSessionChildren) return ok(await ops.listSessionChildren({ viewerSessionId: sessionId, parentSessionId: requiredString(body, 'parentSessionId') }));
+      if (rest === '/context' && ops.readGuideContext) return ok(await ops.readGuideContext({ sessionId, requestId: requiredString(body, 'requestId'), target: body.target }));
+      return failure(503, 'hima/internal', 'This Host cannot provide that context view.');
+    } catch (error) {
+      if (error instanceof GuideContextError) return failure(error.code === 'hima/not-authorized' ? 403 : error.code === 'hima/not-found' ? 404 : error.code === 'hima/context-stale' ? 409 : 400, error.code, error.message);
+      if (error instanceof GuideSessionError) return failure(403, 'hima/not-authorized', error.message);
+      throw error;
+    }
+  }
+
+  if (rest === '/memory' || rest === '/experience/adoption') {
+    if (method !== 'POST') return failure(405, 'hima/bad-request', 'This operation requires POST and a live conversation.');
+    const body = await readJsonBody(req);
+    const sessionId = requiredString(body, 'sessionId');
+    if (!ops.validateSession?.(sessionId)) return failure(403, 'hima/not-authorized', 'Select a live conversation in this project.');
+    try {
+      if (rest === '/memory' && ops.workMemory) {
+        const request = z.strictObject({ sessionId: z.string(), action: z.enum(['read', 'save']), runId: z.string().optional(), summary: z.unknown().optional() }).parse(body);
+        return ok(await ops.workMemory(sessionId, request));
+      }
+      if (rest === '/experience/adoption' && ops.correctExperience) {
+        const hash = z.string().regex(/^[a-f0-9]{64}$/);
+        const request = z.strictObject({ sessionId: z.string(), runId: z.string().min(1), requestId: z.string().min(1),
+          event: z.enum(['disabled', 're-adopted']), reason: z.string().min(1), supersedes: z.string().optional(),
+          candidate: z.strictObject({ sourceRun: z.string().min(1), sourceManifestSha256: hash, sourceMaterialPath: z.literal('experience.json'), sourceMaterialSha256: hash }),
+          evidenceRefs: z.array(z.string().min(1)).min(1),
+          conditions: z.array(z.string().min(1).max(4000)).max(29).optional(),
+          correctionRef: z.strictObject({ kind: z.string().min(1), id: z.string().min(1), sha256: hash.optional() }).optional(),
+        }).parse(body);
+        return ok(await ops.correctExperience(sessionId, request));
+      }
+      return failure(503, 'hima/internal', 'This Host cannot provide that memory operation.');
+    } catch (error) {
+      if (error instanceof ZodError) throw new BadRequest(zodSentence(error));
+      if (error instanceof GuideContextError) return failure(error.code === 'hima/not-authorized' ? 403 : 404, error.code, error.message);
+      throw error;
+    }
   }
 
   if (rest === '/campaign') {
@@ -1758,6 +1846,8 @@ async function route(ops: RemoteOperations, req: IncomingMessage, url: URL): Pro
     const recordId = decoded(byId[1]!, 'record id');
     const record = ops.ledger.record(recordId);
     if (!record) return failure(404, 'hima/record-not-found', `no record ${recordId} in the HimaLedger`);
+    const denied = await authorize(record.runId);
+    if (denied) return denied;
     return ok({ record } satisfies RecordView);
   }
 
@@ -1924,6 +2014,7 @@ async function sitesDiscoverOperation(ops: RemoteOperations, req: IncomingMessag
     // dispatcher's own handling: 503 for a Site that could not be asked, and a logged, generic 500
     // for anything else, never a raw message that could carry a host path onto the wire.
     if (err instanceof ZodError) throw new BadRequest(zodSentence(err));
+    if (err instanceof SiteDiscoveryConflictError) return failure(409, 'hima/site-changed', err.message);
     throw err;
   }
 }
@@ -1975,6 +2066,7 @@ async function jobLogTailOperation(ops: RemoteOperations, runId: string, url: UR
  * hold is a 404 page saying so; a method other than GET a 405 page.
  */
 function workbenchPage(ops: RemoteOperations, req: IncomingMessage, url: URL): { readonly status: number; readonly html: string } {
+  if (!legacyAutomaticAllowed()) return { status: 200, html: messagePage('Open the native HimaHarness workspace to select a project and inspect its tasks.') };
   const method = req.method ?? 'GET';
   if (method !== 'GET') return { status: 405, html: messagePage(`${method} ${url.pathname}; this page answers GET`) };
   const runId = url.searchParams.get('run');

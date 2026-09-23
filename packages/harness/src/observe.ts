@@ -17,6 +17,7 @@ import { runFor } from './runs.js';
 import { retainRunMaterial } from './experience.js';
 
 export interface ObserveRequest {
+  readonly projectSessionId?: string;
   readonly site: string;
   readonly path: string;
   readonly reader?: string;
@@ -175,7 +176,7 @@ export async function observeForPack(deps: ObserveDeps, req: ObserveRequest, sem
 
 async function read(deps: ObserveDeps, req: ObserveRequest, semantics: Semantics): Promise<ObserveResult> {
   const site = loadSite(deps.sitesDir, req.site);
-  const run = await runFor(deps.ledger, site, req.run);
+  const run = await runFor(deps.ledger, site, req.run, req.projectSessionId);
   /** Every way this operation declines to read: one recorded refusal, never a silent empty result. */
   const refuse = async (reason: string, writer?: WriterRole): Promise<ObserveResult> => ({
     kind: 'refused',

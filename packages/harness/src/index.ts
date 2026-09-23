@@ -26,29 +26,39 @@ import z from '@deepseek-ai/schemastery';
 // stand on. What is registered is built in the two face modules, which face those seams themselves.
 import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-commands';
-import { hasEnded, Ledger, ledgerSpec } from './ledger.js';
+import { hasEnded, Ledger, ledgerSpec, type RunRecord } from './ledger.js';
 import { observe, type ObserveRequest, type ObserveResult } from './observe.js';
 import { convergeOf, newCampaignProposalId, resumeRun, startRun, type FabricDeps, type ResumeResult, type StartRunRequest, type StartRunResult } from './fabric.js';
 import { defaultGenerationLimit, defaultRetryAllowance, defaultTimeBoxMs } from './budget.js';
 import { drainExecutionObservers, reconcileExecutionIntents, executionAction, executionContext, type ExecutionActionRequest, type ExecutionActionResult, type ExecutionContext } from './fabric.js';
 import { cancelRun, reconcileRuns, type CancelResult, type ReconcileOutcome } from './recovery.js';
-import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
+import { readExperience, readMaterial, readRunAssets, readArchivedMaterial, readWorkMemorySummary, writeWorkMemorySummary,
+  recordExperienceAdoption, type ExperienceAdoptionRequest, type WorkMemoryScope, type ReadExperienceResult, type ReadMaterialResult } from './experience.js';
 import { handleHimaCommand, himaCommandDescription, versionLine } from './commands.js';
-import { agentWorkspaceOf, himaTools } from './tools.js';
+import { agentWorkspaceOf, himaTools, guideTools } from './tools.js';
 import { createJudge, type Judge } from './judge.js';
 import { registerHimaRoutes, BadRequest, type LogTailView, type SiteDiscoverBody, type SiteHeadView } from './remote.js';
 import { previewPackTransfer, applyPackTransfer } from './release.js';
 import { packId as validPackId } from './pack-folder.js';
 import { checkPack, loadPack, goalDeclarationOf, packWords, runPackWords, installedPacks, packOverview } from './packs.js';
 import { strategyValue, strategyFrom, allowsRunArgument, badRunArgument, allowsTimeBoxMs, timeBoxMsBounds } from './run-arguments.js';
-import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteDiscoveryRequestSchema, type Site, type SiteDiscoveryResult, type SshTarget } from './sites.js';
+import { discoverSshSite, installedSites, loadSite, saveDiscoveredSite, siteSaveIdentity, siteDiscoveryRequestSchema, type Site, type SiteDiscoveryResult, type SiteSaveIdentity, type SshTarget } from './sites.js';
 import { SshChannel, type Channel } from './channel.js';
 import { nodeLogTail } from './jobs.js';
 import { SiteUnreadableError } from './errors.js';
 import { momentOnCurrentNode, type MomentOnNode } from './moments.js';
 import { installedPackStages } from './packs.js';
 import { registerHimaSkills } from './skills.js';
-import { openAuthoringSession, registerAuthoringGuard } from './authoring.js';
+import { openAuthoringSession, registerAuthoringGuard, terminalDenial } from './authoring.js';
+export { TERMINAL_TOOLS, terminalDenial } from './authoring.js';
+import { prepareCampaignSession, readChildSessionView, listSessionChildren } from './guide-sessions.js';
+import { authorizeProjectRun, readGuideContext, resolveReportAddress, sessionProject } from './guide-context.js';
+export { readGuideContext, resolveReportAddress, targetAddress } from './guide-context.js';
+export type { TargetAddress, GuideContextView } from './guide-context.js';
+import { authenticCampaignProposalId, sameCampaignProposalFacts } from './fabric.js';
+import { legacyAutomaticAllowed } from './runs.js';
+export { prepareCampaignSession, readChildSessionView, listSessionChildren } from './guide-sessions.js';
+export type { PreparedCampaignSession } from './guide-sessions.js';
 import { campaignKnowledgeScope, currentKnowledgeDocumentCount } from './workshop.js';
 // The audit the routes answer with: the module-level pair every channel in this process records into.
 import { clearRemoteCommands, remoteCommands, remoteCommandWindowFilled } from './channel.js';
@@ -62,8 +72,11 @@ import {
 // and the commands it has run, and the contract suite reads both.
 export { channelFor, controlPathFor, remoteCommands, clearRemoteCommands, remoteCommandWindow, remoteCommandWindowFilled, readOnlyProbes, siteDiscoveryProbes, discoverSiteFacts, jobPlumbing, workspacePlumbing, quote, LocalChannel, SshChannel } from './channel.js';
 export type { Channel, ExecResult, ExecOptions, RemoteCommand, SiteDiscoveryFact } from './channel.js';
-export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale } from './sites.js';
-export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, SiteDiscoveryResult } from './sites.js';
+export { loadSite, installedSites, discoverSshSite, saveDiscoveredSite, discoveryIsStale, siteSaveIdentity, SiteDiscoveryConflictError } from './sites.js';
+export { WORK_MEMORY_SCHEMA, readWorkMemorySummary, writeWorkMemorySummary, recordExperienceAdoption } from './experience.js';
+export type { WorkMemoryScope, WorkMemorySummary, WorkMemoryRead, ExperienceAdoptionRequest } from './experience.js';
+export type { ExperienceAdoptionRecord } from './ledger.js';
+export type { Site, SshTarget, Permit, SiteDiscovery, SiteDiscoveryRequest, SiteDiscoveryResult, SiteSaveIdentity } from './sites.js';
 
 // A HimaPack is data, and reading it is part of the bundle's surface: an operator inspects a pack
 // against a Site before starting a Campaign, and the contract suite reads the same answer.
@@ -335,16 +348,20 @@ export const HIMA_PRODUCT_CONTEXT = [
   'A Campaign is the business task the user wants completed. One persistent Run records its execution. A HimaPack is a transparent, installable method capability: it declares purpose, required inputs and outputs, tools, knowledge, reference graph, limits and evidence rules; it must not be treated as one fixed design replay.',
   'A Site describes a reachable execution environment and its permit. HimaGuide helps inspect a Pack, discover a Site and prepare the required inputs before asking for one concrete Campaign confirmation.',
   'The visible Campaign Agent owns execution decisions. HimaFabric constrains the allowed graph, budget, dependencies, jobs, evidence and recovery; it does not replace the Agent with a hidden automatic executor.',
+  'HimaGuide is the independent human-facing entry point: collect the problem and inputs, arrange a separate execution conversation, and explain its sourced results. Starting a task never turns Guide into its owner. Keep execution, Guide and child contexts separate; selecting or reading an object grants no execution permission.',
+  'Campaign and Data Insight are peer workspace modes. Use Data Insight for library/data questions and existing reports; browsing and filtering do not create a Campaign. Explain missing data honestly. A long computation needs the existing controlled task and budget.',
+  'Lead with the engineering result, its conditions, what is missing, and the next useful action. Match the user language; use clear Chinese for Chinese requests. Preserve units, setup/hold, timing conditions and evidence precision. Internal ids and protocol names belong in expandable evidence, not default explanations.',
+  'A saved summary is a reading aid, never authority to continue. On recovery re-read current Run, Job, human pauses and budget. Never lift a human hold from an old summary or a model instruction. Use the same persistent Run; uncertainty is not permission to repeat a tool effect.',
   'When current Hima context offers independent branch nodes, admit their licence-free Jobs up to the Site job cap before waiting; licence seats still bound commercial EDA. Never duplicate a node already working.',
   'Answer product identity and installed-inventory questions from this context and the current Hima inventory below. Do not search source code, the filesystem or the web for those answers. Never claim readiness, a measured result or an installed item that the current inventory does not state.',
 ].join('\n');
 
 /** The small, current snapshot that accompanies ordinary root-Agent turns. No local path, YAML,
  * Run id or customer material is exposed. Read afresh for every prompt assembly. */
-export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: string): string {
+export function himaRuntimeContext(ledger: Ledger, packsDir: string, sitesDir: string, visibleRuns?: readonly RunRecord[]): string {
   const packs = installedPacks(packsDir);
   const sites = installedSites(sitesDir);
-  const active = ledger.runs().filter((run) => !hasEnded(run.status)).slice(-5);
+  const active = (visibleRuns ?? ledger.runs()).filter((run) => !hasEnded(run.status)).slice(-5);
   const packLine = packs.length === 0
     ? 'Installed HimaPacks: none. Offer to install or inspect a Pack before preparing a Campaign.'
     : `Installed HimaPacks: ${packs.map((id) => {
@@ -450,7 +467,7 @@ export default class Hima extends Service {
   private readonly factStop = new AbortController();
   /** Browser-only Site drafts awaiting the same person's explicit Save. The reviewed result stays
    *  on the Host, so saving cannot silently rerun probes and persist facts the person never saw. */
-  private readonly siteDiscoveryReviews = new Map<string, { readonly owner: string; readonly name: string; readonly result: SiteDiscoveryResult }>();
+  private readonly siteDiscoveryReviews = new Map<string, { readonly owner: string; readonly name: string; readonly result: SiteDiscoveryResult; readonly identity: SiteSaveIdentity }>();
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'hima');
@@ -470,7 +487,18 @@ export default class Hima extends Service {
     this.ctx.effect(() => this.ctx.systemPrompt.context({
       name: 'hima:inventory',
       order: this.ctx.systemPrompt.getContextOrder('SUBAGENT_DELEGATION') + 10,
-      text: () => himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir),
+      text: context => {
+        const agent = (context as { agent?: import('@deepseek-ai/dsh-agent').Agent }).agent;
+        if (!agent) return himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir);
+        const id = String(agent.id);
+        const linked = this.ledger.runs().filter(run => run.control?.owner === id || run.control?.guideSessionId === id);
+        return [himaRuntimeContext(this.ledger, this.config.packsDir, this.config.sitesDir, linked),
+          'This task inventory includes only this conversation\'s recorded assignments. Other selected targets must be inspected explicitly.',
+          JSON.stringify({ asOf: new Date().toISOString(), sessionId: id,
+            role: linked.some(run => run.control?.owner === id) ? 'execution-owner' : 'guide',
+            assignments: linked.slice(-5).map(run => ({ runId: run.id, source: 'Ledger RunControl', owner: run.control?.owner,
+              epoch: run.control?.epoch, revision: run.control?.revision, paused: run.control?.paused, status: run.status })) })].join('\n');
+      },
     }), 'hima: current product inventory');
     this.ctx.effect(() => { this.notificationsActive = true; return () => { this.notificationsActive = false; }; });
     // The judge takes the ledger's one verdict-writer capability here; nothing else can obtain it.
@@ -491,6 +519,12 @@ export default class Hima extends Service {
           ledger: this.ledger,
           validateSession: (id) => this.ctx.get('agents')?.list().some((agent) => String(agent.id) === id) === true,
           sessionWorkspace: (id) => this.sessionWorkspace(id),
+          authorizeRunAccess: (sessionId, runId) => authorizeProjectRun(this.guideDeps(), sessionId, runId),
+          readGuideContext: request => readGuideContext(this.guideDeps(), request),
+          resolveReportAddress: (sessionId, ref) => resolveReportAddress(this.guideDeps(), sessionId, ref),
+          listSessionChildren: request => listSessionChildren(this.ctx, request),
+          workMemory: (sessionId, request) => this.workMemory(sessionId, request),
+          correctExperience: (sessionId, request) => this.correctExperience(sessionId, request),
           readCampaignFile: (id) => this.readCampaignFileOf(id),
           writeCampaignFile: (id, file, expectedMtimeMs) => this.writeCampaignFileOf(id, file, expectedMtimeMs),
           sites: () => this.sites(),
@@ -510,7 +544,7 @@ export default class Hima extends Service {
           executionAction: (request) => this.executionAction(request),
           observe: (req) => this.observe(req),
           judge: (runId, ruleIds, params) => this.judge.evaluate({ runId, ruleIds, params }),
-          startRun: (req) => this.startRun(req),
+          startRun: (req) => this.startGuidedRun(req),
           resumeRun: (runId, who) => this.resumeRun(runId, who),
           cancelRun: (runId) => this.cancelRun(runId),
           readExperience: (runId) => this.readExperience(runId),
@@ -578,7 +612,12 @@ export default class Hima extends Service {
         return this.preparation(loadedPack, site === undefined ? undefined : loadSite(this.config.sitesDir, site), overrides);
       }, { root: this.config.knowledgeDir },
       { list: () => this.sites(), discover: (request) => this.discoverSite(request), rediscoverInput: (name) => this.rediscoverInput(name) },
+      (request) => this.startGuidedRun(request),
     )) this.ctx.effect(() => this.ctx.tools.register(tool));
+    for (const tool of guideTools({
+      inspect: (sessionId, requestId, target) => readGuideContext(this.guideDeps(), { sessionId, requestId, target }),
+      memory: (sessionId, request) => this.workMemory(sessionId, request),
+    })) this.ctx.effect(() => this.ctx.tools.register(tool));
     // And the pack authoring pipeline's five stages, from the bundle's own skills directory (#63).
     // A person invokes one by typing its name; the model never chooses one for itself, because a
     // stage is a person's decision about their own pack folder.
@@ -589,6 +628,7 @@ export default class Hima extends Service {
     // it unwinds with the plugin. `authoring.ts` says why this is a guard and not a longer skill
     // body, and why dsh's own file sandbox is not this rule.
     this.ctx.effect(() => registerAuthoringGuard(this.ctx, this.config.packsDir), 'hima: the pack authoring guard');
+    this.ctx.effect(() => this.ctx.tools.guard(execution => terminalDenial(execution, this.ledger)), 'hima: raw terminals stay outside Campaign execution');
     // Last, and deliberately not awaited: every Run the last process left in flight is picked up
     // again from the ledger and carried on. The host serves while that happens — a Run resumed here
     // may have an hour of synthesis still to wait for, and a workbench that would not answer until
@@ -621,6 +661,61 @@ export default class Hima extends Service {
 
   startRun(request: StartRunRequest): Promise<StartRunResult> {
     return startRun(this.deps(), request);
+  }
+
+  private guideDeps() {
+    return { ctx: this.ctx, ledger: this.ledger,
+      executionContext: (runId: string) => this.executionContext(runId),
+      readExperience: (runId: string) => this.readExperience(runId) };
+  }
+
+  async workMemory(sessionId: string, request: { action: 'read' | 'save'; runId?: string; summary?: unknown }): Promise<object> {
+    const workspaceRef = await sessionProject(this.ctx, sessionId, true);
+    if (request.runId) await authorizeProjectRun(this.guideDeps(), sessionId, request.runId);
+    const scope: WorkMemoryScope = request.runId ? { kind: 'campaign', workspaceRef, runId: request.runId }
+      : { kind: 'session', workspaceRef, sessionId };
+    const checkSources = async (summary: { sources: readonly { runId: string }[] }) => {
+      for (const source of summary.sources) await authorizeProjectRun(this.guideDeps(), sessionId, source.runId);
+    };
+    if (request.action === 'save') {
+      const packs = path.resolve(this.config.packsDir);
+      if (workspaceRef === packs || workspaceRef.startsWith(`${packs}${path.sep}`)) throw new BadRequest('working summaries do not modify an installed Pack; use the separate project workspace');
+      if (!request.summary || typeof request.summary !== 'object' || Array.isArray(request.summary)) throw new BadRequest('saving memory needs a source-linked summary');
+      const summary = request.summary as Record<string, unknown>;
+      if (!Array.isArray(summary.sources) || summary.sources.some(source => !source || typeof source !== 'object' || typeof source.runId !== 'string')) throw new BadRequest('summary sources must name recorded project Runs');
+      await checkSources(summary as { sources: { runId: string }[] });
+      await writeWorkMemorySummary(this.ledger, workspaceRef, { ...summary, scope, modelGenerated: true });
+    }
+    const result = await readWorkMemorySummary(this.ledger, workspaceRef, scope);
+    if ('summary' in result) await checkSources(result.summary);
+    return result;
+  }
+
+  async correctExperience(sessionId: string, request: Omit<ExperienceAdoptionRequest, 'workspaceRef' | 'changedBy'>) {
+    const workspaceRef = await authorizeProjectRun(this.guideDeps(), sessionId, request.runId);
+    await authorizeProjectRun(this.guideDeps(), sessionId, request.candidate.sourceRun);
+    return recordExperienceAdoption(this.deps(), { ...request, workspaceRef, changedBy: sessionId });
+  }
+
+  /** A confirmed Guide proposal starts in an independent native session. Fabric still owns Run admission. */
+  async startGuidedRun(request: StartRunRequest): Promise<StartRunResult> {
+    if (legacyAutomaticAllowed()) return this.startRun(request);
+    if (!request.ownerSessionId || !request.proposalId) {
+      throw new BadRequest('confirm a current Campaign proposal from a live Guide conversation before starting');
+    }
+    const prior = this.ledger.runs().find(run => run.proposalId === request.proposalId);
+    if (prior?.control && prior.control.guideSessionId !== request.ownerSessionId) {
+      if (prior.control.guideSessionId === undefined && prior.control.owner === request.ownerSessionId) return this.startRun(request);
+      throw new BadRequest('this proposal belongs to another Guide; open its existing Campaign');
+    }
+    if (!prior) {
+      if (!authenticCampaignProposalId(request.proposalId)) throw new BadRequest('the Campaign proposal is not an authenticated current confirmation');
+      const preparation = this.preparation(loadPack(this.config.packsDir, request.pack), loadSite(this.config.sitesDir, request.site), request.overrides);
+      if (!preparation.ready || !sameCampaignProposalFacts(preparation.id, request.proposalId)) throw new BadRequest('Campaign preparation changed; review the current proposal before starting');
+    }
+    const task = await prepareCampaignSession(this.ctx, { guideSessionId: request.ownerSessionId, proposalId: request.proposalId });
+    if (prior?.control && (prior.control.owner !== task.sessionId || prior.control.guideSessionId !== request.ownerSessionId)) throw new BadRequest('this proposal already belongs to another execution session; open the existing Campaign');
+    return this.startRun({ ...request, ownerSessionId: task.sessionId, guideSessionId: request.ownerSessionId, notifyOwnerOnOpen: true });
   }
 
   executionContext(runId: string): ExecutionContext { return executionContext(this.deps(), runId); }
@@ -741,13 +836,15 @@ export default class Hima extends Service {
         throw new BadRequest('the reviewed Site draft is absent or belongs to another conversation; rediscover and review it again');
       }
       this.siteDiscoveryReviews.delete(request.reviewId);
-      return { result: reviewed.result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, reviewed.result)) };
+      return { result: reviewed.result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, reviewed.result, reviewed.identity)) };
     }
     // Bug 2 fix: an omitted `ssh` rediscovers an already-saved ssh Site's own destination, jumps and
     // permitted roots — exactly the input `rediscoverInput` already computes for `hima_site
     // rediscover`'s tool call, now reachable from this route too so the Configuration page can offer
     // a person their own "Rediscover" button on a Site that already exists, not only a brand-new one.
     // A body naming neither `ssh` nor an existing Site of that name is still the caller's own mistake.
+    const identity = siteSaveIdentity(this.config.sitesDir, request.name);
+    const existing = identity.kind === 'existing' ? loadSite(this.config.sitesDir, request.name) : undefined;
     const reuse = request.ssh === undefined ? this.rediscoverInput(request.name) : undefined;
     if (request.ssh === undefined && reuse === undefined) {
       throw new BadRequest(`"ssh" is required to discover a new Site; no saved ssh Site named "${request.name}" exists to rediscover`);
@@ -790,18 +887,23 @@ export default class Hima extends Service {
         requiredLicences[licence] = Math.max(requiredLicences[licence] ?? 0, count);
       }
     }
-    const result = selectedPack === undefined ? withSavedBindings : { ...withSavedBindings, site: { ...withSavedBindings.site,
+    const draft = selectedPack === undefined ? withSavedBindings : { ...withSavedBindings, site: { ...withSavedBindings.site,
       capacity: { ...withSavedBindings.site.capacity, licences: requiredLicences } } };
+    // Rediscovery measures capabilities. It cannot offer policy changes as if they were discovered facts.
+    const result: SiteDiscoveryResult = existing === undefined ? draft : { ...draft,
+      site: { ...draft.site, workspaceRoot: existing.workspaceRoot, permit: existing.permit,
+        capacity: existing.capacity, bindings: existing.bindings }, permit: existing.permitRules,
+    };
     if (request.save !== true) {
       if (reviewOwner === undefined) return { result };
       const reviewId = randomUUID();
       for (const [id, draft] of this.siteDiscoveryReviews) {
         if (draft.owner === reviewOwner && draft.name === request.name) this.siteDiscoveryReviews.delete(id);
       }
-      this.siteDiscoveryReviews.set(reviewId, { owner: reviewOwner, name: request.name, result });
+      this.siteDiscoveryReviews.set(reviewId, { owner: reviewOwner, name: request.name, result, identity });
       return { result, reviewId };
     }
-    return { result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, result)) };
+    return { result, saved: siteHeadViewOf(saveDiscoveredSite(this.config.sitesDir, result, identity)) };
   }
 
   /** The `hima_site rediscover` input (#41 task 4 review, important 3, minor 9): a saved ssh Site's
@@ -846,6 +948,12 @@ export default class Hima extends Service {
   private deps(): FabricDeps {
     return {
       ledger: this.ledger,
+      projectOfRun: async runId => {
+        const run = this.ledger.run(runId);
+        const source = run?.projectSessionId ?? run?.control?.guideSessionId ?? run?.control?.owner;
+        if (!source) return undefined;
+        try { return await sessionProject(this.ctx, source); } catch { return undefined; }
+      },
       judge: this.judge,
       sitesDir: this.config.sitesDir,
       packsDir: this.config.packsDir,

@@ -1575,6 +1575,22 @@ def read_residual_ai_research(report, out, document):
     feedback = document["feedback_ab"]
     if not isinstance(feedback, dict) or not isinstance(feedback.get("interpretation"), str):
         raise ValueError("residual AI research feedback interpretation is absent")
+    effect = feedback.get("selection_effect")
+    if not isinstance(effect, dict) or set(effect) != {"kind", "added_proposal_keys", "removed_proposal_keys", "reason"}:
+        raise ValueError("residual AI research feedback selection effect is absent")
+    before = feedback.get("without_feedback_proposal_keys")
+    after = feedback.get("with_feedback_proposal_keys")
+    if not isinstance(before, list) or not isinstance(after, list) or any(not isinstance(key, str) for key in before + after):
+        raise ValueError("residual AI research feedback selection identities are malformed")
+    changed = before != after
+    expected_effect = {
+        "kind": "changed" if changed else "unchanged",
+        "added_proposal_keys": sorted(set(after) - set(before)),
+        "removed_proposal_keys": sorted(set(before) - set(after)),
+        "reason": ("commercial feedback changed candidate selection" if changed else "commercial feedback did not change candidate selection"),
+    }
+    if effect != expected_effect or feedback.get("selection_changed") != (changed if feedback.get("performed") is True else None):
+        raise ValueError("residual AI research feedback selection effect is inconsistent")
     normalized = validate_residual_research_proposal({
         "research_lenses": document["research_lenses"],
         "candidate_program": document["candidate_program"],

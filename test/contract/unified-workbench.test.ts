@@ -27,9 +27,12 @@ async function prepareSession(d: BootedDriver, browser: Inspector, modelReady = 
   await browser.markText('button', 'Continue', 'notice-continue');
   assert.ok((await d.click('notice-continue')).ok);
   if (!modelReady) {
-    await browser.wait(`document.body.innerText.includes('Configure later')`);
-    await browser.markText('button', 'Configure later', 'models-later');
-    assert.ok((await d.click('models-later')).ok);
+    // The keyless isolated home may already have its silent test model configured.
+    await browser.wait(`document.body.innerText.includes('Configure later') || document.body.innerText.includes('Choose a workspace to begin')`);
+    if (await browser.evaluate(`document.body.innerText.includes('Configure later')`)) {
+      await browser.markText('button', 'Configure later', 'models-later');
+      assert.ok((await d.click('models-later')).ok);
+    }
   }
   const host = await d.host(); assert.ok(host.ok);
   const cookie = await d.cookie();
@@ -110,12 +113,60 @@ async function finish(d: BootedDriver, browser?: Inspector) {
   const host = await d.host();
   if (host.ok) {
     const cookie = await d.cookie();
-    const listed = await api(host, cookie, '/hima/api/runs');
-    const { runs } = await listed.json() as { runs: RunView['run'][] };
-    for (const run of runs.filter((run) => run.status === 'running' || run.status === 'waiting')) await api(host, cookie, `/hima/api/runs/${run.id}/cancel`, { method: 'POST' });
+    const studio = await d.read('studio');
+    const sessionId = studio.ok ? studio.state.session : undefined;
+    const listed = await api(host, cookie, `/hima/api/runs?sessionId=${encodeURIComponent(sessionId ?? '')}`);
+    const { runs = [] } = await listed.json() as { runs?: RunView['run'][] };
+    for (const run of runs.filter((run) => run.status === 'running' || run.status === 'waiting')) await api(host, cookie, `/hima/api/runs/${run.id}/cancel?sessionId=${encodeURIComponent(sessionId ?? "")}`, { method: 'POST' });
   }
   await d.dispose();
 }
+
+test('Guide keeps its conversation while Campaign and Data Insight remain peer modes', async t => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  if (!home) return;
+  const port = await freePort();
+  const d = await bootDriver(t, { existing: home.h, remoteDebuggingPort: port,
+    window: { width: 1440, height: 960 }, env: { HIMA_TEST_LEGACY_AUTO_DRIVE: '0', HIMA_TEST_SILENT_AGENT: '1' } });
+  if (!d) { await home.h.dispose(); return; }
+  let browser: Inspector | undefined;
+  try {
+    browser = await inspectWindow(port);
+    const { host, cookie } = await prepareSession(d, browser);
+    const initial = await d.read('studio'); assert.ok(initial.ok);
+    const guide = initial.state.session;
+    assert.ok((await d.click('studio-mode-insight')).ok);
+    assert.ok((await d.wait('studio', 'Data Insight', 5000)).ok);
+    const insight = await d.read('studio'); assert.ok(insight.ok);
+    assert.equal(insight.state.mode, 'insight');
+    const before = await (await api(host, cookie, `/hima/api/runs?sessionId=${guide}`)).json() as { runs: unknown[] };
+    assert.equal(before.runs.length, 0, 'browsing Insight creates no empty Campaign');
+    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
+    await capture(d, browser, 'next-stage-insight-preparation');
+    assert.ok((await d.click('studio-mode-campaign')).ok);
+    await fillStart(d, browser);
+    assert.ok((await d.click('config-confirm')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="studio"]').getAttribute('data-hima-state-run')`, 15_000);
+    const runId = await currentRun(d);
+    const view = await (await api(host, cookie, `/hima/api/runs/${runId}?sessionId=${guide}`)).json() as RunView;
+    assert.equal(view.run.control?.guideSessionId, guide);
+    assert.notEqual(view.run.control?.owner, guide);
+    assert.equal(view.jobs.length, 0, 'silent mechanism test starts no business tool');
+    const running = await d.read('studio'); assert.ok(running.ok);
+    assert.equal(running.state.session, guide, 'dispatch never switches or occupies Guide');
+    assert.ok((await d.click('studio-mode-insight')).ok);
+    assert.ok((await d.click('studio-mode-campaign')).ok);
+    assert.equal(await currentRun(d), runId);
+    assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
+    assert.equal(await browser.evaluate(`(() => {
+      const pane=document.querySelector('[data-hima-region="studio"]').getBoundingClientRect();
+      return [...document.querySelectorAll('.hima-studio-header button')].every(button => {
+        const r=button.getBoundingClientRect(); return r.left >= pane.left && r.right <= pane.right + 1;
+      });
+    })()`), true, 'both mode and asset controls remain reachable in the narrow dock');
+    await capture(d, browser, 'next-stage-independent-guide');
+  } finally { await finish(d, browser); await home.h.dispose(); }
+});
 
 test('ordinary conversation opens the chosen Pack authoring session with native chat, files and Live Run together', async (t) => {
   const home = await localHome(t, { sleepSeconds: 0 });
@@ -189,7 +240,7 @@ test('conversation draft, native files and verified reports share one workspace 
     // alone, so neither claims identity for a Run this session merely happened to start. The
     // positive case (an agent-owned Run genuinely claiming both) is `campaign-graph.desktop.test.ts`.
     assert.equal(await browser.evaluate(`document.querySelector('[data-hima-region="campaign-chip"]') === null`), true);
-    assert.equal(await browser.evaluate('document.body.innerText.includes(\'Campaign · configure\')'), true);
+    assert.equal(await browser.evaluate('document.body.innerText.includes(\'Hima Workspace\')'), true);
     await capture(d, browser, 'light-complete');
     assert.equal(await browser.evaluate('location.href'), url, 'opening and running did not navigate the document');
     assert.equal(await browser.evaluate(`document.querySelector('[contenteditable="true"]').textContent`), draft);
@@ -197,7 +248,7 @@ test('conversation draft, native files and verified reports share one workspace 
     assert.ok((await d.wait('studio', 'clock-period-at-most@1', 10_000)).ok);
     assert.ok((await d.wait('studio', 'sha256', 10_000)).ok, 'failed judgment exposes original citations');
     assert.ok((await d.click('studio-report')).ok);
-    await browser.mark('.hima-studio a[href$="/experience.md"]', 'open-saved-report');
+    await browser.mark('.hima-studio a[href*="/experience.md?"]', 'open-saved-report');
     assert.ok((await d.click('open-saved-report')).ok);
     assert.ok((await d.wait('studio', 'original bytes verified by the Host', 12_000)).ok);
     await capture(d, browser, 'light-report');
@@ -209,7 +260,7 @@ test('conversation draft, native files and verified reports share one workspace 
       await writeFile(file, 'changed after publication');
       await browser.markText('button', 'Current ledger preview', 'current-preview');
       assert.ok((await d.click('current-preview')).ok);
-      await browser.mark('.hima-studio a[href$="/experience.md"]', 'open-saved-report');
+      await browser.mark('.hima-studio a[href*="/experience.md?"]', 'open-saved-report');
       assert.ok((await d.click('open-saved-report')).ok);
       assert.ok((await d.wait('studio', 'Saved file could not be verified', 12_000)).ok);
       const text = await d.read('studio'); assert.ok(text.ok);

@@ -18,7 +18,9 @@ harness computes them; you ask it to, and you report what it sealed.
 2. **Call `hima_pack_release`** with this pack. It seals the folder, or refuses and says why.
 3. **Report what was sealed**: the pack and the version its contract declares, how many files the
    seal covers, the run its test record rests on, and where the seal was written. Say whether this
-   replaced a seal the folder already carried.
+   replaced a seal the folder already carried. Distinguish this method-integrity seal from the
+   test Run's maturity: installable bytes mean the seal/check agree; they do not claim a new Site,
+   report shape or business result has been qualified.
 
 That is the whole stage.
 
@@ -67,3 +69,6 @@ Two things worth saying to the author when they come up:
   file, not this one. Tell the author which stage to run.
 - **This folder only.** Nothing outside the session's working directory is read for the seal or
   written by it.
+- **Resume from the check.** On a reopened or changed folder, `hima_pack_check` names the first
+  current rung and its actual method/test mismatch. Run that owner stage and obtain its new digest
+  before asking `hima_pack_release`; a prior seal, review or remembered version is never a repair.

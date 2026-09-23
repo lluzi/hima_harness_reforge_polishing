@@ -313,7 +313,7 @@ export async function adoptHistoricalRun(deps: FabricDeps, req: ExecutionActionR
     const lastResume = records.findLast((record) => record.type === 'resumed')?.seq ?? 0;
     const blocker = run.status === 'waiting' ? records.findLast((record) => record.type === 'blocker' && record.seq > lastResume) : undefined;
     const legacyWaitedMs = waitedMsOf(deps.ledger, run.id) + (blocker === undefined ? 0 : Math.max(0, Date.parse(at) - Date.parse(blocker.at)));
-    const receipt = { requestId: req.requestId, action: 'adopt', owner: req.actor, epoch: 1 };
+    const receipt = { requestId: req.requestId, action: 'adopt', owner: req.actor, epoch: 1, data: { scope: '*', newHold: true } };
     await advance(deps.ledger, run.id, {}, { status: 'running', control: {
       mode: 'agent', owner: req.actor, epoch: 1, revision: 1, paused: ['*'], executions: {}, siteDigest: identityOf(site),
       adoption: { at, workspaceSeq: prepared.seq, workspaceMetadataSha256: createHash('sha256').update(bytes).digest('hex'), methodDigest: run.packDigest, legacyWaitedMs },
