@@ -1,166 +1,204 @@
 # HimaHarness 下一阶段总体任务清单
 
-更新：2026-09-23。源码基线：`48bae4e0eecbfed7b4ec2e66bb2bcc800360e436`。
+更新：2026-09-23，第二次归并。源码基线：`bfa59f0f9b81b23bb4727419eaf2c2753e29a400`。
 
-本文当前部分是下一阶段的总体规划入口，汇总用户六项原始要求、生态研究，以及新增的交互式 EDA Operator、同级 Data Insight 和独立 Subagent 会话。**本轮只刷新清单；没有开始实现、安装依赖或恢复测试。** 本文保留历史 POL/PLS 工作单作为追溯材料；旧日期的“当前顺序”不再表示下一阶段前沿。
+本轮增加用户提出的两项要求：**提示词与上下文表达更符合人的直觉；Session/Campaign 的 memory 能支撑长时间任务。** 它们与 Guide、上下文、恢复、研究经验存在重叠，因此先合并职责，再具体化可并行的工作，不增加新的架构层。
 
-总跟踪：[下一阶段总体任务 #52](https://github.com/lluzi/hima_harness_reforge_polishing/issues/52)，关联 #49/#50/#51 的详细规格。
+总跟踪：[总体任务 #52](https://github.com/lluzi/hima_harness_reforge_polishing/issues/52)。需求以 [产品定义](product-definition.md) 与 accepted ADR 为准。本轮仅整理规划和依赖，没有派工实现、安装组件或恢复测试。
 
-需求权威仍为 [产品定义](product-definition.md) 与 accepted ADR。执行状态由 GitHub Issues 跟踪；此处的 `NXT-*` 是规划索引，不能据其存在或优先级视为已派工/已完成。进入实现前，每个切片都须补齐当前复现、精确代码范围、验收、测试层级、模型与回滚，不把总体任务直接当作可执行规格。
+**结果：原 10 条线、37 项规划，归并为 8 个工作包、29 个任务。** 10 个旧项合入已有任务，新增两个 memory 专项；原需求均保留，旧编号映射见文末。工作包只是开发分工，不对应 8 个新产品模块。这里是可拆分的总体清单，实施前仍需在 Issue 中补齐具体接口、复现、测试和回滚。
 
-## 一览：十条工作线
+## 一览：八个工作包
 
-| 工作线 | 下一阶段要交付什么 | 当前规划状态 |
+| 工作包 | 合并范围 | 用户最终得到什么 |
 | --- | --- | --- |
-| A. 可靠执行与人类控制 | 暂停/恢复、Site 政策、错误出口、正确判定与 best 结果 | 有审查证据；先局部复现和修复 |
-| B. 专用 HimaGuide | 理解业务、准确上下文、准备/恢复、研究解释、辅助编写 Pack | 复用既有接口，补角色与连续体验 |
-| C. Subagent 团队 | 独立上下文、专业分工、并行、可查看/跟进的子会话与真实 Coding | 先原生能力/只读对照，再开放获准写入和操作 |
-| D. 双模式 GUI | Start 和工作区的 Campaign / Data Insight 同级入口 | 需求与 ADR 已确认，界面尚未实现 |
-| E. Library Intelligence | 库健康、库性能、设计影响三类分析及可交互证据 | API qualification 是真实数据前置；#49 |
-| F. Interactive EDA Operator | 保留同一 EDA 进程，多轮输入输出、manual ECO、checkpoint 与恢复 | 方案/接口/验收已写；#50 |
-| G. Pack 开发体系 | SOP/脚本/报告 → 方法 → 校验/测试 → 发布/安装/复用 | 加深现有五阶段作者体系 |
-| H. 研究反馈与知识积累 | 每代解释变化、形成具体需求与下一策略、复用有条件经验 | 补反馈质量与晋级验证，不以代数替代收益 |
-| I. 生态复用与工程效率 | 原生 seam 优先，候选依赖有 pin、边界、资格与退出方案 | 研究已完成，POC 与集成未开始 |
-| J. 交付、真实验收与商业价值 | 可安装 App/Pack、陌生用户使用、业务闭环和成本对照 | 按受影响范围分层验证，不重开研究作发布门槛 |
+| 1. Guide、提示词与表达 | Guide、产品/Pack 术语、动态上下文、准备/解释 | 能听懂、能准确识别当前任务、能带用户做完工作 |
+| 2. 长期记忆与研究反馈 | Session/Campaign 连续性、上下文恢复、每代反馈、经验引用 | 长任务接续时不丢目标与关键决定，下一轮用得上有效经验 |
+| 3. Agent 协作与委派 | 角色、上下文、并行、Coding/研究/操作授权 | 专业分工和真实执行，主 Agent 不必包办所有工作 |
+| 4. 可靠执行与交互 EDA | 人类控制、Site、Job 恢复、结果有效性、Terminal/Operator | 可控制、可恢复、不会重复操作的实际 EDA 工作 |
+| 5. Pack 开发与发布 | SOP 转方法、Reader/规则、反例、作者恢复、安装/升级 | 第二位作者也能交付可用 Pack |
+| 6. 双模式工作区与子会话 | Campaign/Data Insight、可理解结果、Subagent transcript/context | 同一视觉体系中看数据、看执行、看各 Agent 的实际工作 |
+| 7. Library 数据分析 | 原生 API、数据语义、三类洞察、自定义算法 | 正确条件下的 Library 比较、风险与设计影响分析 |
+| 8. 验证、交付与客户价值 | 生态接入、回归、App/Pack、真人使用、成本/收益对照 | 可安装、可验证、可交接且有购买理由的产品 |
 
-## 基本边界
+## 不改变的架构与范围
 
-1. 一个 Campaign 保留唯一业务 owner；可以委派并行工作，但没有第二个 Run 主控。共享设计/终端保持单写者。
-2. 沿用 DSH、Pack、Fabric、Site、Job、Ledger、Workshop 与现有视觉体系。新增视图不建立新的执行/事实系统。
-3. Campaign 与 Data Insight 是同级产品工作模式；Live Run 留在 Campaign 内。Agent 依任务打开正确面板。
-4. Subagent 有真实可独立打开的会话；研究、Coding、EDA 操作都属于目标能力。只读角色是分期与权限配置，不是整个团队的能力上限。
-5. 原始输入、历史 Run/试用与 golden DB 保留；方法变更形成新版本。需要条件的权限或收益不能靠模型自述。
-6. 所有以下验收均是待实施标准。低成本检查、真实模型、真实 EDA、真人体验和业务效果分别记录，不能互相替代。
+- 沿用 DSH、Pack、Fabric、Site、Job、Ledger、Workshop、知识/归档及现有 Workbench；不新建 memory 服务、第二数据库、第二 Agent Loop 或图引擎。
+- 一个 Campaign 保留唯一业务 owner；局部工作可委派，独立任务可并行，设计/终端的改变状态操作保持单写者。
+- Campaign 与 Data Insight 同级；Subagent、代码、终端和证据是共享工作视图。只读是角色配置，不是整个团队的能力上限。
+- 新 memory 只帮助恢复理解和查找材料；目标、权限、暂停、作业是否执行及测量结果继续读取原权威。摘要不能替代执行事实。
+- 保留历史证据、golden 输入、旧方法版本和用户资产。固定 Pack 不被聊天或 memory 自动改写。
+- 下列测试均为将来验收计划，尚未运行。Liberty 原生 API 的阻塞与测试暂停状态没有被本清单解除。
 
-## A. 可靠执行与人类控制
+## 1. Guide、提示词与表达
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 默认归属 / 最低验收 |
+| 任务 / 优先级 | 具体交付与默认归属 | 完成证据 |
 | --- | --- | --- |
-| NXT-A1 / P0 | 人类暂停持久化；Job 结束、owner compact/restart 后不能由 Agent 自行清除 hold | 既有 `ledger.ts/fabric.ts`、控制入口；human-origin pause → Agent continue 拒绝 → 明确人类恢复，L2 + 关键 L3 |
-| NXT-A2 / P0 | Site 再发现完整保留管理员 policy、Permit 身份、容量和绑定；观察事实不覆盖政策 | `sites.ts/index.ts`、Site UI；原配置再发现对照与显式 diff，L2/L3 |
-| NXT-A3 / P0 | 可靠接续同一 Run；分清等工具/等模型/等人/失联；完成事件去重与恢复 | Job/recovery/owner inbox；忙碌/重复/乱序/重启反例，无重复商业 Job。#48 已修部分保留回归，不重复算新缺陷 |
-| NXT-A4 / P1 | 配置读写失败有字段、原因和修复/Retry 出口，不长期停在 Reading | `ConfigurationPage`、campaign-file routes；坏配置与有效恢复 L2/L3 |
-| NXT-A5 / P0（业务采用前） | 多目标建议与完成门一致；best DB 具有同代 timing、DRC/connectivity 与约束覆盖证据 | XTop chooser/Reader/compare + 既有完成门；setup/hold 四组合、物理退化反例。已有 all-verdict guard 保持，不能宣称已经发生 false goal-met |
-| NXT-A6 / P1 | 当前 App/Pack/方法/证据版本清楚；权威文档和实际路由对齐 | Guide inventory、README/文档、Pack words；观察性 proxy 旧定义与当前政策的漂移修正，旧版本仍可追溯 |
+| NXT-B1 / P1 | 统一 Guide、Pack、角色提示词的职责说明和面向用户的语言；整理产品/领域术语及别名；稳定角色说明、动态任务摘要、用户回复分别组织。沿用 `HIMA_PRODUCT_CONTEXT`、Pack 方法/技能和现有标签 | 用户能说出“在做什么、结果如何、哪里受阻、下一步需要什么”；当前版本/适用边界有依据；内部 ID/协议细节可下钻，不以其充当默认解释 |
+| NXT-B2 / P1，首批 | 同一套有来源的任务上下文：用户选中对象、owned Run、报告/节点/child、时间/版本、当前已知与缺项。由现有 Host/`himaRuntimeContext`/Preparation 投影，UI 与角色共同消费 | 不猜 Run ID、不全盘搜索；selected 不变成 owner；旧摘要/错对象/迟到响应不覆盖当前事实 |
+| NXT-B3 / P1 | Guide 主动发现 Pack/Site/输入/知识，研究问题并解释结果；给具体准备方案、缺项和恢复出口；把作者工作交给原作者会话 | 新用户与返回用户都能继续；不要求先懂 YAML，不重复 Campaign；研究解释引用当前证据，作者衔接由 G1/G3 完成 |
 
-根因与范围依据：[2026-09-22 产品评审](product-review/2026-09-22-next-stage/review.zh-CN.md)。这些不是本轮重新复现的全部 bug；实施前在当前源码做对应反例，防止修旧问题或重复修复。
+### 新要求：提示词与表达的具体范围
 
-## B. 专用 HimaGuide
+不是只改几句 UI 文案。要核对 HimaGuide、Pack Intent/Spec/Knowledge、节点/研究模板、交接摘要和错误说明是否使用一致的概念，并区分三类内容：
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 依赖 / 验收 |
+| 内容 | 应当怎样组织 | 不改变什么 |
 | --- | --- | --- |
-| NXT-B1 / P1 | 专用角色、稳定职责与小型能力清单；解释可做任务、适用输入、成熟度和未验证范围 | 复用 systemPrompt/context/Pack loader；无全盘搜索回答产品问题，L2 + 小型 L4 模型 |
-| NXT-B2 / P1，首批 | 准确理解用户当前选择的 Run/node/report/child；区分 selected 与 owned | 显式消息引用由 Host 复验；错 Run/旧版本/切会话反例，不改变 owner |
-| NXT-B3 / P1 | 主动发现 Site/输入/知识，给具体 proposal；重新进入后恢复同一工作 | A2/A4；用户无需先懂内部 YAML；不重复 Campaign，L2/L3 + 小型 L4 |
-| NXT-B4 / P1 | 研究问题、解释结果和引导 Pack 作者各有明确交接；缺少业务事实时准确追问 | 关联 G/H；有引用的结论、草案与实际执行分开；新用户与返回用户都能继续 |
+| 给 Agent 的角色与操作规则 | 职责、能做的事、输入输出、判断边界和升级条件清楚，按角色按需加载 | 精确的工具/schema/权限语义 |
+| 动态上下文 | 目标、当前对象、已完成与未完成、重要决定、最近证据、下一步，附精确来源引用 | 由 Host 决定的身份和运行事实 |
+| 给用户的解释 | 先说业务结果、原因、影响和下一步；需要时展开技术细节 | Liberty、setup/hold、单位/条件等必要 EDA 精度 |
 
-不通过新增一个同名聊天 prompt 宣称专用角色完成；也不要求 Guide 代替 owner 绕过执行接口。
+表达示例是待验证的产品文案，不是实测结果：`owner epoch stale` 的默认解释可为“这个会话已不负责该任务，请打开当前负责的会话”；缺 observation 应说明“还缺更新后的时序报告，暂时不能判断结果”，而不是让人先理解内部记录类型。Campaign/Data Insight 的稳定名称可以配中文说明，不为易读而随意改协议 ID。
 
-## C. Subagent 团队与独立会话
+验收同时检查可理解性与正确性：新用户能指出下一步，专家能找到原字段和证据；短文案不能隐去失败、未知或改变技术结论。Guide/B1 定义公共表达原则，Pack 作者和 UI 使用它；不各自维护一套相互矛盾的提示词。
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 依赖 / 验收 |
+## 2. 长期记忆与研究反馈
+
+| 任务 / 优先级 | 具体交付与默认归属 | 完成证据 |
 | --- | --- | --- |
-| NXT-C1 / P1，首批对照 | 核对当前 profile 的原生 subagent；给角色配置任务/上下文/工具/预算/结果合同 | B2，相关 A 控制门；当前 DSH pin、一次性 Analyst → Reviewer，owner-only 同输入 A/B；无净增益就不扩大 |
-| NXT-C2 / P1 | 团队列表和独立 child 视图，查看任务、实际保留上下文、transcript、工具轨迹与产物 | #51；复用原生 Session/catalog/query/navigation；运行/完成/归档可查，缺失不补写，接收者清晰 |
-| NXT-C3 / P1→P2 | Coding/Researcher 角色实际改算法、写文件、跑测试，独立复核并交付 | A1/A2/C1；分配 workspace 与工具范围，过期结果拒绝，测试按实际产物；不将只读永久化 |
-| NXT-C4 / P1→P2 | 独立工作并行；有依赖的复核顺序执行；跟进/中断/恢复不影响错任务 | C1/C2；任务/会话/输入身份绑定，聚合预算；Agent 并行与 CPU/EDA licence 并行分别管理 |
+| NXT-M1 / P1，首批先核查 | 对当前 DSH Session log、compaction、恢复、SessionQuery、context 注入及 Hima Run/Knowledge/Archive 做能力对照，明确哪些已持久化、哪些会丢、哪些可用公开接口读取/写入 | 一份来源/保留期/作用域/恢复路径表和最小反例；不得以“支持长上下文”推断长任务 memory 已成立 |
+| NXT-M2 / P1 | 在现有 Session/工作区/知识载体内形成有来源、可恢复的工作摘要；区分 Session-only、Campaign 和 child 范围；读取当前权威后再装配下一轮上下文 | compact、重开会话、owner handoff、Host 重启、子任务完成后的目标/决定/待办保持；不重复 Job、不突破暂停、不串 workspace；过时/冲突/未知可见 |
+| NXT-H1 / P1 | 合并每代变化展示与 Researcher 的反馈行动：保留原 demand/frontier 分母、fixed/remaining/entrant/regressed，记录假设、代码/动作差异、下一策略或具体 Cell Demand | 冻结 candidate pool 的反馈 A/B 可解释；研究实质变化与只改措辞区分；负结果/部分结果如实保留，真实收益单独验证 |
+| NXT-H3 / P1→P2 | 让有效经验跨任务可检索、有条件引用、可纠正/失效并经验证晋级；沿用 Knowledge/experience/Pack archive | 能追到来源和适用设计/工具/版本；历史建议不覆盖当前指令/测量；用户能查看并纠正“不再采用”的记忆，原审计事实仍可追溯；新方法经确认发布 |
 
-角色包括 Evidence Analyst、Strategy Researcher、Node/Pack Coder、Independent Reviewer 和 EDA Operator。Operator 委派写入的最后一段由 F4 负责；不得因为 child 有 Coding 能力就自动授予整个 Run 的操作权。
+### 新要求：memory 是待设计能力，不预设新系统
 
-## D. Campaign / Data Insight 双模式 GUI
+先区分用途，再决定已有载体怎样复用：
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 依赖 / 验收 |
+| 用途 | 要保留什么 | 首选已有来源 / 谁维护 |
 | --- | --- | --- |
-| NXT-D1 / P1 | Start 双入口与同级标签；Library 分析自动打开 Data Insight，执行任务打开 Campaign | #51/ADR-0013；已有报告无需空 Campaign；导航动作不启动计算/EDA |
-| NXT-D2 / P1 | 复用当前视觉；Live Run 阶段分组、搜索/定位、业务摘要、变化/best/未解决项易读 | 既有 Workbench/RunView；草稿、选择与缩放保持，键盘与窄窗口 L3，不重造 shell |
-| NXT-D3 / P1 | Insight↔执行详情↔child↔代码/终端/证据联动，后台更新不抢焦点 | B2/C2/E3/F；迟到 A 结果不能覆盖 B，点击 finding 只提出准确问题/行动 proposal |
+| Session 连续工作 | 当前目标、明确决定、偏好范围、未决问题、待办与相关材料引用 | DSH Session/实际可用恢复接口及获准工作区；M1 先核查，不默认写自定义 Session 事件 |
+| Campaign 接续 | 当前 Run/代际/方法/输入、最近有效结果、暂停/预算、已启动或已完成的动作 | Fabric/Ledger/Job 原记录；M2 只整理引用，A3 负责真正的执行恢复 |
+| Subagent 交接 | 委派任务、输入快照、工具范围、进度、结果/未知与 parent 关联 | 原生 child Session + 原有执行/产物记录；只继承获准范围，不全量复制所有父历史 |
+| 跨任务经验 | 成功/失败条件、验证证据、反例、可重用方法及失效条件 | 当前知识、experience 与 Pack archive；H1 产经验，H3 负责采用与晋级 |
 
-Data Insight 内的报告和可视化不属于 Live Run 子页；Subagent/Files/Terminal 是共享工作视图，不另立第三种产品运行模式。具体接口与验收：[双模式与 Subagent 规格](specs/workbench-modes-and-subagents/spec.zh-CN.md)。
+每项记忆需要可追溯的来源、所属范围、生成时间/版本及采用状态。模型生成的摘要/假设与确定性事实分开；检索只提供候选，恢复时重新读取当前 Run/Job/控制状态。忘记一项建议不等于删除它指向的原始试验记录。
 
-## E. Library Intelligence
+不要先选向量库或 memory 插件，也不要把整个 transcript 长期灌入 prompt。先看当前 DSH 哪些接口实际可用；若现成 Session 事件写入不被支持，使用已有获准文件/知识产物与引用，不能直接改 Session 文件或插入不可恢复的事件。确有检索质量/规模缺口再做隔离候选评估。
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 依赖 / 验收 |
+首组恢复样例应包含：没有 Campaign 的长对话；12 小时任务中途 compact；旧摘要说继续但人类已暂停；Job 实际完成但摘要滞后；同名不同版本报告；child 返回时输入已换代。它们是验收设计，不是本轮已完成的长时测试。
+
+## 3. Agent 协作与委派
+
+| 任务 / 优先级 | 具体交付与默认归属 | 完成证据 |
 | --- | --- | --- |
-| NXT-E1 / 前置阻塞 | 资格化 Empyrean Liberty API 的读取/查询与隔离失败处理 | #49；留存 `lib.name()` exit139、未有新资格证据。需可用厂商包/说明或另行授权诊断；本清单不启动 debug |
-| NXT-E2 / P1 | 保留版本、Cell/arc/when/PVT/单位/工作域/unknown/provenance 的 facts 与 semantic delta | E1 后接真实数据；先静态合同与已批准 fixture，缺失不当零、崩溃不产生半份事实 |
-| NXT-E3 / P1 | 三类分析：库健康与发布风险、库性能与竞争力、设计影响与行动 | D1/E2；同族 baseline/revision 首切片，load/filter、表图联动、证据下钻；设计缺项不能假定 |
-| NXT-E4 / P2 | 客户自定义规则/Python 分析、保存方法及有依据的验证建议 | E2/E3/G；typed 输入输出、版本/预算/权限/反例；不默认写 golden Library |
+| NXT-C1 / P1 | 合并角色/任务合同与并行调度：核查 pinned DSH 原生入口，配置专业角色、上下文、工具、预算、依赖、取消与结果回收 | 初始一次性 Analyst→Reviewer；独立 counter-analysis 可并行；owner-only 同输入 A/B；旧身份/重复结果/超预算拒绝；Agent 与 CPU/许可并发分开 |
+| NXT-C3 / P1→P2 | 编码、研究与 EDA 操作的有界委派：分配 workspace/工具，产物复核与可撤销节点级操作权 | 真实 Coding/测试可查；Operator 必须等 F2/F3 资格与单写者协议；不把普通 Coding 权限扩大为整个 Run owner 权限 |
 
-E1 阻塞真实数据接入与对应生产验收，不应阻塞无数据副作用的模式导航或明确标注的合同/视觉研究；仍遵守 [#49 首切片](package-development/library-intelligence-platform/first-slice-spec.md) 的真实接入门。图表库不能替代 native API 的资格证明。
+独立会话的显示、上下文与 transcript 由工作包 6 的 C2 实现，不再另造团队 UI。工作摘要/恢复来源由 M2 提供；对业务产物的研究评价由 H1/G2/J1 承担。
 
-## F. Terminal 与 Interactive EDA Operator
+## 4. 可靠执行与交互 EDA
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 依赖 / 验收 |
+| 任务 / 优先级 | 具体交付与默认归属 | 完成证据 |
 | --- | --- | --- |
-| NXT-F1 / P1 | 保留普通 Bash，补齐原生 terminal consumer 和局部 preset，支持同进程多轮输入输出 | #50 I0/I1；当前 pin 的 PTY service/backend 可借用，六工具 consumer 尚未安装；本地 REPL/owner/作者禁 shell 反例 |
-| NXT-F2 / P1 | 交互模式进入 Pack/Job/Channel/Fabric：启动、read/input/interrupt/close、持久 transcript | A1/A2/A3，#50 I2/I3；wait 不 kill，input 不盲重发，单写者、unknown、预算/许可和恢复 |
-| NXT-F3 / P1→P2 | XTop manual ECO Operator：加载一次 DB，查询→修改工作副本→检查→保存→独立验证 | F2 + 版本手册/工具环境资格；小型 L4，不改回 loadECO，不将看到 prompt 当完成 |
-| NXT-F4 / P2 | 将限定节点的实际操作安全委派给独立 EDA Operator child | C3/C4/F2；可撤销的节点/会话权限，防双写与旧 epoch；仍只有一个 Campaign 业务 owner |
+| NXT-A1 / P0 | 持久的人类暂停与明确恢复，现有控制记录/入口执法 | Job 完成、compact/重启后 Agent 不能自行解除 human hold，L2 + 关键 L3 |
+| NXT-A2 / P0 | Site 再发现保留全部管理员政策、Permit 身份、容量/绑定 | 探测事实与政策分开；显式 diff/确认；不静默放宽权限 |
+| NXT-A3 / P0 | 合并 Job/owner 接续、通知去重与必要诊断：显示谁在等什么、实际进度与最后有效事件 | 同 Run、无重复 Job；忙碌/断连/重启/乱序可解释；诊断指标不变成业务事实；已修 #48 保留回归 |
+| NXT-A5 / P0（业务采用前） | 多目标建议/完成门一致，best DB 有同代 timing、DRC/connectivity 和约束覆盖证据 | setup/hold 四组合与物理退化反例；保持已有 all-verdict guard；不虚构已发生 false completion |
+| NXT-F1 / P1 | 普通 Bash 保留，补精确版本 terminal consumer 与局部 preset，支持真实 PTY 多轮输入 | 本地 REPL、owner 隔离、作者禁 shell、等待/中断/关闭；保持无通用工具 preset 的边界 |
+| NXT-F2 / P1 | 交互 tool 纳入既有 Job/Channel/Fabric：会话、输入回执、transcript、超时、预算/许可与恢复 | wait 不 kill；发送失联不盲重发；单写者/unknown/人类控制正确；不建第二控制器 |
+| NXT-F3 / P1→P2 | XTop manual ECO Operator 的版本化 adapter 与小型真实资格验证 | 加载一次 DB，查询→修改工作副本→检查→保存→独立验证；保留两个保路 Tcl，禁止以 prompt/退出码单独认证业务成功 |
 
-第一阶段可由 owner 在节点内承担 Operator 角色；F4 明确列为目标能力，不以它尚未完成为由阻止先验证交互工具。普通 terminal、工具内部 Tcl 授权、受控 Campaign evidence 必须区分。[交互式 EDA 规格](specs/interactive-eda-v1/spec.zh-CN.md)
+依据：[执行问题评审](product-review/2026-09-22-next-stage/review.zh-CN.md)、[交互 EDA 规格 / #50](specs/interactive-eda-v1/spec.zh-CN.md)。A3 的运行事实恢复与 M2 的理解恢复分别负责、共同验证；记忆不能替代 tmux/进程/checkpoint 的实际核对。
 
-## G. Pack 开发、验证与发布体系
+## 5. Pack 开发与发布
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 依赖 / 验收 |
+| 任务 / 优先级 | 具体交付与默认归属 | 完成证据 |
 | --- | --- | --- |
-| NXT-G1 / P1 | Guide 帮第二位作者从 SOP/脚本/报告形成目标、数据合同、节点、工具和反馈 | B4；复用五阶段技能/checkPack；一项小业务的 obligation→artifact 可追踪 |
-| NXT-G2 / P1 | 建立工具/Reader/规则/失败恢复的可复用模板与真实反例库 | A5；零违例/截断、容器参数、二次保留、setup/hold、预算和恢复；已有测试先复用 |
-| NXT-G3 / P1 | packStage 恢复、测试范围展示、release/安装交接、升级回滚和资产保留 | B3/G1/G2；非原作者从入口完成，明确区分 publication integrity 与业务成熟度 |
+| NXT-G1 / P1 | Guide 的研究/作者交接并入现有五阶段：SOP/脚本/报告到明确目标、合同、节点、工具、反馈和人能读懂的方法说明 | 采用 B1 公共表达和 B2 上下文；第二位作者完成小 Pack，业务义务可追到产物 |
+| NXT-G2 / P1 | 工具/Reader/规则/失败恢复模板与反例库 | 真零值/空报告、容器参数、二次保留、多个目标、缺字段等先便宜验证；复用旧测试，不复制验证平台 |
+| NXT-G3 / P1 | 作者 packStage 恢复、测试范围、发布/安装交接、升级回滚和资产保留 | B3/M2 对接原会话；发布完整性与业务成熟度分开，实际版本明确，旧资产不丢 |
 
-当前研究/校验机制继续使用同一份有类型数据合同。每次有意义的流程改进进入候选版本，再验证/确认发布；不直接改活动 Pack。DSH plugin author 与 HimaPack author 是不同交付物。
+提示词的公共角色/语言由 B1 定义，Pack-specific 方法仍由 Pack 作者维护。已发布方法变更经过候选/测试/确认，memory 不直接改活动 Pack；DSH plugin 和 HimaPack 的开发验证不能互换。
 
-## H. 研究反馈、Cell Demand 与知识积累
+## 6. 双模式工作区与子会话
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 依赖 / 验收 |
+| 任务 / 优先级 | 具体交付与默认归属 | 完成证据 |
 | --- | --- | --- |
-| NXT-H1 / P1 | 每代展示 fixed/remaining/entrant/regressed、原始 demand/frontier 分母、策略/代码/动作变化 | 既有 Pack Reader/analysis/experience；需求删减不冒充解决，负结果/部分结果如实保留 |
-| NXT-H2 / P1 | Researcher 用实际反馈提出具体下一策略、算法或 Cell Demand，并解释选择 | C1/C3/G2；冻结 candidate pool 反馈 A/B；单独核对函数/drive/arc/endpoint 等实质变化；真实效果另测 |
-| NXT-H3 / P1→P2 | 条件化经验归档、跨任务引用、失效管理与方法晋级 | G3/H1；区分事实/假设/规则，保留失败和适用条件，模型建议不自动写入已发布方法 |
+| NXT-D1 / P1 | 合并 Start 双入口、同级 Campaign/Data Insight 和跨报告/执行/代码/终端导航，复用当前 dock/视觉 | Agent 按任务打开正确 panel；浏览报告不造空 Run；迟到结果不串对象；草稿/选择保持、后台不抢焦点 |
+| NXT-D2 / P1 | 合并用户结果摘要、图分组/搜索、best/未解决项和配置错误出口，使用 B1 的表达原则 | 用户理解状态和下一步；错误不困在 Reading；专家能下钻原字段/来源；键盘与窄窗口 L3 |
+| NXT-C2 / P1 | 独立 child Session 视图：任务、实际上下文/来源、transcript、工具调用、diff/测试/产物，以及明确接收者的跟进 | parent 不被误停/接管；缺失历史不补写；已完成/归档仍可查；M2 说明恢复摘要与历史快照区别 |
 
-保留真实研究自由度：专用角色可提出和编码新策略，不把研究退化为固定策略菜单。免费 proxy 仍是观察/指标来源，未验证的因子不能越权决定商业收益；mock Library 与真实 characterization/签核能力的边界保持。
+详细设计：[双模式与 Subagent / #51](specs/workbench-modes-and-subagents/spec.zh-CN.md)。Data Insight 的 Library renderer 由 E3 提供，任务导航由 D1 提供；subagent 生命周期由 C1/C3 提供，C2 只投影并调用获准操作，不维护另一份 Agent 状态。
 
-## I. 生态复用与开发效率
+## 7. Library 数据分析
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 依赖 / 验收 |
+| 任务 / 优先级 | 具体交付与默认归属 | 完成证据 |
 | --- | --- | --- |
-| NXT-I1 / 横向支撑 | 按最小消费者引入 native seam、窄协议/算法或 adapter；锁版本与必要许可/NOTICE | 参考 [32 项组件清单](product-review/2026-09-22-ecosystem-reuse/component-shortlist.zh-CN.md)；installed/mounted/verified 分列，无用户收益则不引入 |
-| NXT-I2 / P1，按问题触发 | 分清模型/工具/排队/上下文成本，轻量诊断和通知状态有用且不制造噪声 | 既有 trace/meters/coalescing 优先；组件开销、隐私/离线、去重和生命周期回归 |
+| NXT-E1 / 前置阻塞 | 原生 API 读取/查询与隔离失败处理资格化 | #49 留存 lib.name exit139；等待可用厂商包/说明或另行授权诊断；本清单不启动 debug |
+| NXT-E2 / P1 | Library 版本、Cell/arc/condition/PVT/单位/工作域、unknown/provenance 的 facts 和 delta | 真数据在 E1 后接；丢字段/崩溃不形成半份事实；库事实与设计证据分别定位 |
+| NXT-E3 / P1 | 三类分析的 typed report 与表图：库健康、库性能、设计影响 | 同族版本比较首切片，load/filter 联动并回到原证据；使用 D1 的 Data Insight 宿主，不重造 UI 外壳 |
+| NXT-E4 / P2 | 客户规则/Python 算法、保存分析方法及后续验证 proposal | typed I/O、fixture、版本/权限/预算，关联 G/H；不默认修改 golden Library |
 
-近期候选：原生 subagent/context/session/terminal、data-agent 的 typed report 思路、ECharts、小型可选评测/诊断。完整团队调度器、整套 BI/shell、自动进化 store 与新 runtime 默认不引入。当前 DSH pin 不因一个局部特性自动升级。
+E1 阻塞真实数据接入与对应验收，不阻塞无副作用的导航、合同/视觉研究；遵守 [#49 的真实接入门](package-development/library-intelligence-platform/first-slice-spec.md)。
 
-## J. 产品交付、客户使用和商业价值
+## 8. 验证、交付与客户价值
 
-| 索引 / 优先级 | 任务与用户可观察结果 | 依赖 / 验收 |
+| 任务 / 优先级 | 具体交付与默认归属 | 完成证据 |
 | --- | --- | --- |
-| NXT-J1 / 持续 | 为新接口建立低成本回归、实际模型小任务和分层证据 | L0/L1/L2 主力、L3 关键交互、L4 模型/工具分开；合成/重放与真实结果明确标记 |
-| NXT-J2 / 每次发布 | 可安装 App 与固定 Pack、版本兼容、资产迁移/回滚、当前手册和发布证据一致 | 受影响测试通过；不要求用户运行源码；运行时字节变化单独打 App；发布前验证不扩大为完整研究 |
-| NXT-J3 / 里程碑 | 陌生工程师通过 Guide 完成首次使用、双模式、子会话、控制和交付；再做代表业务闭环 | 先本地/小型依赖；恢复或新建商业试验须明确授权与预算，保留旧证据、禁止重复 Campaign |
-| NXT-J4 / 客户验证 | 在同输入/工具/预算下衡量人工干预、有效试验、工时、计算/许可及交接成本 | Timing Closure 验执行交付，Library 验洞察决定，DTCO 验研究上限；再扩大到第二设计/操作者/受支持 Site |
+| NXT-J1 / 持续 | 合并生态接入资格和低成本验证：原生接口优先，候选组件 pin/许可/消费契约/退出边界明确；按影响建立回归和小型真实模型测试 | [组件清单](product-review/2026-09-22-ecosystem-reuse/component-shortlist.zh-CN.md)只作候选；installed/mounted/verified 分列；重放/合成不冒充真实；无必要不升级 DSH |
+| NXT-J2 / 每次发布 | 可安装 App/固定 Pack、兼容/资产迁移/回滚、当前手册和发布证据 | runtime 字节变化单独打 App，用户无需跑源码；发布前验证不扩成完整商业研究 |
+| NXT-J3 / 里程碑 | 合并陌生用户使用、真实业务闭环与客户价值对照 | 能上手、查看/控制/恢复/交付；同输入/工具/预算比人工干预、工时、有效试验、计算/许可与交接；再扩大设计/人员/Site |
 
-竞争定位持续验证：工具的领域深度 + 经过验证的 Pack/经验资产形成客户留存；客户自有 Harness/coding agent 可作入口。数据可携带、可导出，不靠隐藏格式制造黏性。+5% Fmax 仍是明确 DTCO Campaign 的研究目标，不能变成所有 App/Pack 发布的阻塞门或跨设计承诺。
+Timing Closure 验执行交付，Library 验洞察决定，DTCO 验研究上限。+5% Fmax 仍属于具体研究目标，不是所有发布的前置。领域工具与合格 Pack/经验资产形成客户留存，允许客户自有 Harness/coding agent 接入，成果可携带。
 
-## 开发顺序与并行安排
+## 先明确四项共享约定，再解耦开发
 
-| 批次 | 重点 | 批次退出信号 |
+下表是现有接口的读写约定，不是四个新服务，也不在本轮锁定详细 schema。
+
+| 共享约定 | 提供方 | 消费方 | 必须先明确的内容 |
+| --- | --- | --- | --- |
+| 面向人的表达与角色说明 | B1 | Guide、Pack 模板、UI、Operator | 公共词汇/别名、默认摘要、展开细节、事实/假设/未知的表达 |
+| 任务上下文与恢复摘要 | B2 + M1/M2；A3 提供运行事实 | Guide、child、Pack 作者、工作区 | 精确对象/版本/来源、作用域、何时失效、缺项与重新读取；不以摘要授权 |
+| 委派与交互回执 | C1/C3 + A/F | 团队视图、Operator、memory | 任务/child/Job/command 身份、单写者、完成/未知、取消/暂停和采纳关系 |
+| 分析/产物的视图数据 | E2/E3、既有 Reader/Archive | Data Insight、报告、Guide | 数值/单位/条件、unknown、来源/版本、只读选择与行动 proposal 分界 |
+
+没有必要先设计一套万能数据协议。先以“继续一个暂停任务”“打开一个 child”“解释一个 Library finding”“完成一条交互命令”四个具体样例确定最小字段与失败例，再交给各线实现。
+
+## 可并行工作与文件所有权
+
+| 开发线 | 可以独立推进的部分 | 对接点与共享写入限制 |
 | --- | --- | --- |
-| 第一批：可靠入口与最小团队证据 | A 的可复现缺陷；B1/B2；D1；C1/C2 的本地原生能力和对照；G2 的既有反例对账；F1 装配设计 | 用户能正确定位任务/child，暂停与授权有效；不因切标签造 Run；团队有可审阅贡献而非只增加成本 |
-| 第二批：业务工具与深度交互 | B3/B4、C3/C4、D2/D3、E1→E2/E3、F2/F3、G1/G3、H1/H2 | 一项 Library 分析和一次有状态工具操作各有真实资格与独立结果；第二作者完成小 Pack |
-| 第三批：委派执行、经验复用与客户验收 | F4、E4、H3、J2/J3/J4 | 下一位工程师可查看、接续、复现和使用成果；成本/收益数据支持扩大 |
+| 表达与 Guide | B1 的语言/角色/示例，B3 的交互路径；对照现有 context | 消费 B2/M2；公共 `index.ts/tools.ts` 注册由集成者落地；不改 Run 状态机 |
+| Memory 与研究反馈 | M1 能力盘点、M2 恢复用例、H1/H3 的证据与经验逻辑 | 复用 Session/Knowledge/Archive；运行事实接口从 A3 读；不直接改原生 Session 存储 |
+| 工作区与子会话 UI | D1/D2/C2 的视觉/导航/错误/历史展示，可用冻结视图样例开发 | 消费 task/child/report 只读接口；UI 负责人统一 `HimaWorkbench/client/index`，不碰执行许可 |
+| Pack 与领域分析 | G1/G2/G3 的作者材料和测试；E1/E2/E3/E4 的隔离 adapter/report | Pack 路径分开；共享 `packs.ts/release.ts/workshop.ts` 每批指定一个 owner，UI 宿主归上一线 |
+| 执行与终端 | A1/A2/A3/A5，F1/F2/F3，C1/C3 的权限/派发适配 | `fabric.ts/ledger.ts/jobs.ts/channel.ts` 及共享 Host 接线单一集成者；terminal transport 与 Pack adapter 在合同冻结后分开 |
+| 验证与交付 | J1 用例/fixture/候选检查，J2 发布准备，J3 使用与成本基线 | 等相应实现后跑验收；不为补报告另开商业 Campaign |
 
-同批不等于全并行：依赖只约束需要它的动作。read-only 上下文/导航、Pack fixture、洞察合同、终端源码资格可以分别推进；A1/A2/A3 未闭合时不开放新的委派写入/商业操作；E1 未通过时不宣称真实 Library 可用，但不拖住 Guide/其他 UI。许可证、CPU、内存、IO 与 Agent 并发分别限额。
+逻辑并行不等于同时改同一文件。`index.ts/remote.ts/tools.ts/fabric.ts/ledger.ts` 等共享接线和状态定义由主集成者协调；其他开发线先交可独立验证的内容、局部实现和接口用例。常规实现 Terra/Medium，权限/恢复/证据关键复核 Sol/High；按现行政策一次主任务加最多三个 worker，以上六线可分波次，不机械开六个 Agent。
 
-`index.ts/remote.ts/fabric.ts/tools.ts` 等共享接线单一集成者；冻结小接口后才能并行 UI、传输、Pack 内容。常规实现 Terra/Medium，权限、恢复、证据与运行图关键审查 Sol/High。没有资源和实测基础前不承诺日历工期。
+## 建议推进波次
 
-## 已有 Issues、旧编号和当前状态
+1. **先归并与小接口核查。** B1/B2/M1 确认语言、上下文和 memory 实际载体；A 的已见问题建立最便宜反例；D1/C2 做导航/会话视图设计；G2 复用已有反例。不等待完整 memory 产品才做文案与 UI。
+2. **接口冻结后并行第一批。** Guide/表达线、Memory/恢复线、UI/子会话线可使用相同冻结样例各自推进；主集成者承担必要控制修复与接线。Pack 方法/报告可单独准备。此处是建议顺序，尚未派工。
+3. **接入实际能力。** C 的权限/协作、F 的交互 Job、E 的合格真实数据接入分别按前置推进；H 用真实反馈验证。A 的控制门未闭合不开放新的委派写入；E1 未通过不宣称真实 Library 已可用。
+4. **组合验收与交付。** 先 L0–L3，再分别小型 L4 模型/工具；最后在明确恢复/新测试授权和预算下做代表业务与真人验收。当前 trial30/Claude 测试继续暂停。
 
-- [#51 双模式/Subagent](https://github.com/lluzi/hima_harness_reforge_polishing/issues/51)：C2、D1/D3 的详细设计；目前为规格，不是已实现。
-- [#50 Interactive EDA](https://github.com/lluzi/hima_harness_reforge_polishing/issues/50)：F1–F4 的具体协议、边界和验收。
-- [#49 Library](https://github.com/lluzi/hima_harness_reforge_polishing/issues/49)：E1–E3 的真实数据前置与首切片。
-- [#41 既有 Campaign UI](https://github.com/lluzi/hima_harness_reforge_polishing/issues/41)：保留现有成果，D 系列补同级模式与新的体验，不重做旧界面。
-- #30、#38–44 及旧 POL/PLS：先核对已合入源码/证据/剩余范围再拆分或关闭；open 标签不证明全部仍未修。禁止盲目合并或重开一批重复实现。
-- #48：已修通知路径的相关回归继续保留，不作为本轮尚未修复的同一个 bug。
+## 合并映射与跟踪
 
-本轮“完成”的是需求、总体任务和依赖刷新。37 个 `NXT-*` 规划项尚未因此进入开发或通过验收；实际派工与完成逐项落到 Issue。本轮没有恢复 Claude 测试或 EDA。
+没有列在“被合入”一栏的旧 NXT 编号继续保留原身份。合并意味着同一个负责人和验收结果，不意味着原要求删除或已完成。
+
+| 旧编号 | 合并到 | 保留的要求 |
+| --- | --- | --- |
+| NXT-A6 | NXT-B1 | 版本/能力说明、权威概念对齐与用户易懂表达 |
+| NXT-B4 | NXT-G1（B1/B3 提供公共 Guide 能力） | 研究解释与作者连续交接，不新开另一套 Guide |
+| NXT-C4 | NXT-C1 | 并行、依赖、预算、跟进/中断/恢复与结果身份 |
+| NXT-F4 | NXT-C3（依赖 F2/F3） | 独立 Operator 的有界实际操作委派 |
+| NXT-A4 | NXT-D2 | 配置失败的错误、修复与 Retry 出口 |
+| NXT-D3 | NXT-D1 | 跨视图准确导航、草稿/选择保持、后台不抢焦点 |
+| NXT-H2 | NXT-H1 | 反馈落实为具体策略/算法/Cell Demand，冻结 A/B |
+| NXT-I1 | NXT-J1 | 生态 pin/资格/退出边界与接入验证 |
+| NXT-I2 | NXT-A3 | 必要诊断、运行等待解释和无噪声通知 |
+| NXT-J4 | NXT-J3 | 客户成本/收益、第二设计/人员/Site 对照 |
+| 新要求：提示词与人的直觉 | NXT-B1，并由 B2/G1/D2 使用 | 内部规则、动态上下文、用户表达分开设计，真实可理解性验收 |
+| 新要求：长期 memory | 新增 NXT-M1/NXT-M2，连接 H1/H3/A3 | Session/Campaign/child 的记忆、恢复、作用域与事实核对 |
+
+[#52](https://github.com/lluzi/hima_harness_reforge_polishing/issues/52) 更新同一清单，不另建重复总任务。#51 对应 D1/D2/C2；#50 对应 F1/F2/F3 与 C3 的 Operator 部分；#49 对应 E 系列。#41 既有 UI 成果继续复用；#30、#38–44 先核对源码/证据再处置；#48 已修内容只保留相关回归。
+
+本次 29 个任务仍为规划，不是“29 个已就绪实现票”或完成计数。后续逐项补规格与最小反例后再派工。原 [37 项清单快照](https://github.com/lluzi/hima_harness_reforge_polishing/blob/bfa59f0f9b81b23bb4727419eaf2c2753e29a400/docs/polishing-backlog.md) 与历史证据保持可查。
+
+本轮规划校验：原 37 项经 10 项合并与 2 项新增得到 29 个唯一任务，旧要求均有映射；GitHub #52 的 29 项与本文一致；75 个本地文档链接无缺失，`git diff --check` 通过。没有运行产品测试或更改运行时代码。
 
 ## 历史工作单（2026-09-11～14，非当前执行顺序）
 

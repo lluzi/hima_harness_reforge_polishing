@@ -1,6 +1,6 @@
 # HimaHarness Polishing
 
-2026-09-23：下一阶段总体任务以 [Polishing 总清单](docs/polishing-backlog.md) 当前部分为入口，已纳入 HimaGuide、专业 Subagent、同级 Data Insight、交互式 EDA Operator、Pack 作者与反馈闭环。当前仅刷新方案，测试保持暂停。
+2026-09-23：下一阶段以 [Polishing 总清单](docs/polishing-backlog.md) 当前部分为入口，已将提示词与人的表达、长期 memory 合入现有需求，归并为 **8 个工作包、29 个任务**，并明确共享约定和可并行范围。Guide、Subagent、双模式、Interactive EDA、Pack 与反馈闭环的原要求保留。当前只整理计划，测试保持暂停。
 
 已发布的 [**0.2.0-trial.1（macOS Apple Silicon）**](https://github.com/lluzi/hima_harness_reforge_polishing/releases/tag/v0.2.0-trial.1) 保留为历史工程预览。真人试用已否定其产品准入；它不代表当前可推荐的试用版、Fmax 提升或真人认可。此前升级前沿为[Product Upgrade v2](docs/specs/product-upgrade-v2/README.md)：在现有架构内修复产品入口、Pack/Site/知识/运行图，并用 `aes_cipher_top` 目标 reg2reg path 的 Matched Comparison 重新验收业务能力。
 
