@@ -80,7 +80,7 @@ DTCO 图继续定义 AI Workshop、F0–F3 因子门、Cell 生成、Layout、Ch
 
 21
 00:11:04,867 --> 00:11:26,867
-切换到 Timing Closure graph.yml：它从只读 Innovus checkpoint 建立基线，经 plan-fix、XTop、Innovus ECO、StarRC 与 PrimeTime 刷新时序。
+切换到冻结的 Desktop trial v27 工作区，其中保留的是 Timing Closure 1.0.2 源图：它从只读 Innovus checkpoint 建立基线，经 plan-fix、XTop、Innovus ECO、StarRC 与 PrimeTime 刷新时序。
 
 22
 00:11:26,867 --> 00:11:48,867
@@ -88,7 +88,7 @@ DTCO 图继续定义 AI Workshop、F0–F3 因子门、Cell 生成、Layout、Ch
 
 23
 00:11:48,867 --> 00:12:28,867
-工程师新建中文会话，要求 HimaGuide 只读取两套 Pack 的 INTENT 与 Graph。问题明确禁止运行 Campaign、EDA 作业或修改文件，并要求解释共同机制。
+工程师新建中文会话，要求 HimaGuide 读取当前 polishing 仓库的 DTCO 5.2.10 与 Timing Closure 1.0.5 INTENT、Graph。问题明确禁止运行 Campaign、EDA 作业或修改文件，并要求解释共同机制。
 
 24
 00:12:28,867 --> 00:13:00,000

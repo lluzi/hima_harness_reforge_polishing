@@ -37,6 +37,11 @@ DTCO 与 XTop 两套 Pack 的源码浏览。新增的 Live Run 深挖段真实�
 - HimaGuide 在一个新中文会话中实际读取四份 Pack 文件并解释上述关系，随后回到 Pack 配置和真实
   Live Run，展示声明式方法如何被 Fabric 投影为可观察的运行图。
 
+版本边界：Desktop App 的 Files 面板连接到冻结的 `hima_harness_agent_trial_fix_v27` 工作区，因此
+源码浏览画面中的 XTop 图标记为 `1.0.2`；随后 HimaGuide 按绝对路径读取当前 polishing 仓库的
+`1.0.5`，Campaign 配置也显示编译后的 `1.0.5`。两者核心 28 节点拓扑一致，后续版本增加的是经过
+试验验证的工具边界和 route-preservation 修正。视频没有把历史工作区源码冒充为当前发布版本。
+
 录制期间 Trial 30 保持 Run-wide pause，没有启动新 Campaign 或 EDA Job。
 
 ## 补充交付：讲解型视频
