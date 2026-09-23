@@ -4,6 +4,8 @@
 
 本轮增加用户提出的两项要求：**提示词与上下文表达更符合人的直觉；Session/Campaign 的 memory 能支撑长时间任务。** 它们与 Guide、上下文、恢复、研究经验存在重叠，因此先合并职责，再具体化可并行的工作，不增加新的架构层。
 
+需求澄清进行中：[决策树与访谈记录](specs/next-stage-clarification/interview.zh-CN.md)。下面清单仍是规划，未答问题的建议不视为已确认；共同理解由用户确认后再进入实施。
+
 总跟踪：[总体任务 #52](https://github.com/lluzi/hima_harness_reforge_polishing/issues/52)。需求以 [产品定义](product-definition.md) 与 accepted ADR 为准。本轮仅整理规划和依赖，没有派工实现、安装组件或恢复测试。
 
 **结果：原 10 条线、37 项规划，归并为 8 个工作包、29 个任务。** 10 个旧项合入已有任务，新增两个 memory 专项；原需求均保留，旧编号映射见文末。工作包只是开发分工，不对应 8 个新产品模块。这里是可拆分的总体清单，实施前仍需在 Issue 中补齐具体接口、复现、测试和回滚。
