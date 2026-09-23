@@ -30,6 +30,15 @@ let sourceFile: string;
 let original: Buffer;
 let runId: string;
 
+/** Project lineage was introduced by v28.  A historical fixture is a projection of current facts
+ * onto the source version's actual vocabulary, never a current row with only its version relabelled. */
+function beforeProjectLineage(current: Snapshot, version: 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27): Snapshot {
+  const historical = structuredClone(current);
+  historical.unit.version = version;
+  for (const run of Object.values(historical.tables.runs)) delete run.projectSessionId;
+  return historical;
+}
+
 before(async () => {
   temporary = await realpath(await mkdtemp(path.join(os.tmpdir(), 'hima-import-')));
   oldHome = await createHimaHome();
@@ -47,12 +56,13 @@ before(async () => {
     await host.ctx.hima.ledger.createRun({ campaignId: 'import-empty-history', siteId: 'local' });
     assert.equal(host.ctx.hima.ledger.records({ runId }).length, 2);
   } finally { await host.dispose(); }
-  snapshot = JSON.parse(await readFile(storedAt(oldHome.home), 'utf8')) as Snapshot;
-  assert.equal(snapshot.unit.version, 28);
-  assert.ok(Object.values(snapshot.tables.runs).every((run) => run.control === undefined));
+  const current = JSON.parse(await readFile(storedAt(oldHome.home), 'utf8')) as Snapshot;
+  assert.equal(current.unit.version, 28);
+  assert.ok(Object.values(current.tables.runs).every((run) => run.control === undefined));
   // v19 ad84d2f wrote these same observation/Run shapes. Only its storage stamp differs, exactly
-  // as ledger-version.test.ts generates the prior-version fixture from real persisted facts.
-  snapshot.unit.version = 19;
+  // as ledger-version.test.ts generates the prior-version fixture from real persisted facts. The
+  // current Probe's projectSessionId is v28 lineage, so the source projection explicitly omits it.
+  snapshot = beforeProjectLineage(current, 19);
   original = Buffer.from(`${JSON.stringify(snapshot, null, 2)}\n`);
   sourceFile = path.join(temporary, 'offline-v19.json');
   await writeFile(sourceFile, original);
@@ -213,6 +223,11 @@ test('wrong formats, future controls and unknown fields cannot be silently dropp
     const changed = structuredClone(snapshot);
     change(changed);
     await unchangedRefusal(JSON.stringify(changed), /Invalid|Unrecognized|unsupported/);
+  }
+  for (const version of [20, 27] as const) {
+    const future = beforeProjectLineage(snapshot, version);
+    future.tables.runs[runId]!.projectSessionId = 'future-project-session';
+    await unchangedRefusal(JSON.stringify(future), /Guide\/project lineage requires source v28/);
   }
 });
 
