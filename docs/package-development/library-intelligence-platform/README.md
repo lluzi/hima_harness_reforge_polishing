@@ -6,12 +6,13 @@ qualification.
 Start here:
 
 1. [Canonical competitive and Liberty strategy](competitive-liberty-strategy.zh-CN.md)
-2. [DeepSeek Harness BI/plugin reuse](deepseek-harness-bi-plugin-reuse.md)
-3. [Competitor capability atlas](research/competitor-capability-atlas.md)
-4. [Liberty semantic-to-chip-value map](research/liberty-semantic-value-map.md)
-5. [First falsifiable implementation slice](first-slice-spec.md)
-6. [Environment qualification](environment-qualification.md)
-7. [Research verification](research-verification.md)
+2. [Claude Code prototype execution brief](CLAUDE-CODE-PROTOTYPE-BRIEF.md)
+3. [DeepSeek Harness BI/plugin reuse](deepseek-harness-bi-plugin-reuse.md)
+4. [Competitor capability atlas](research/competitor-capability-atlas.md)
+5. [Liberty semantic-to-chip-value map](research/liberty-semantic-value-map.md)
+6. [First falsifiable implementation slice](first-slice-spec.md)
+7. [Environment qualification](environment-qualification.md)
+8. [Research verification](research-verification.md)
 
 Research control artifacts:
 
