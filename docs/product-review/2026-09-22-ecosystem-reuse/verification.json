@@ -1,0 +1,88 @@
+{
+  "schema": "hima.ecosystem-review-verification/1",
+  "scope": "research documents and static source evidence only",
+  "local_links_checked": 11,
+  "reference_links_checked": 19,
+  "component_records": 32,
+  "errors": [],
+  "primary_report_url_head_checks": [
+    {
+      "url": "https://deepseek.com/harness/en/",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/NanmiCoder/dsh-agent-teams/tree/87c95c94d7847e4a242cb589916adc519981175f",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/PerryLink/dsh-background-agents/tree/f2aea0460dcb1b3b03eaa13d1bdcba21650208a1",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/PerryLink/dsh-fast/blob/f0c3e8cfef5149844536c8dad808a77c5bdb5ff4/README.md",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/PerryLink/dsh-plugin-guide/blob/3ad707fb2c73658dd3e7c702b33bfaf469fb4f96/README.md",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/SihanTeng/awesome-deepseek-harness-plugins/tree/376aa1681939edca4064f4c25734751235bf0f50",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/ZK-Andy/dsh-continual-evolve/blob/981568450d9643bc481130294ce67543b4c54e15/README.md",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/Zhenyu98/dsh-context-doctor/blob/41d5c2e4bbe0611b7928c4007bb28545f7ace38f/README.md",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/bowenliang123/dsh-context/blob/2ae7cfa7f8f1e4b0ff0b31c9abdfa12ac803a9f7/README.md",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/deepseek-ai/deepseek-harness/tree/00102833dfaee1da9f48a3a8eae9d34005a75218",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/schedule/schedule",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/subagent/subagent",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/omdsh-dev/DSH-better-sidebar/tree/1fcf43ccbedd6e66370b7fb81df2b4dd0ef2604e",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/omdsh-dev/dsh-data-agent/tree/6657771b8b9e66b3c06d6a6ce3056e601e7ff1fe",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/omdsh-dev/dsh-mnemon/blob/84d469ffa838a36fa579295d94029fcac8ac058e/README.md",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/omdsh-dev/dsh-notification/blob/675aab9b43d5011738feb6185281596c0365ccba/README.md",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/promptfoo/promptfoo/blob/d59f045c4cda1193574380aae639d84380dbf5f2/README.md",
+      "status": 200
+    },
+    {
+      "url": "https://github.com/titanwings/dsh-automation/blob/0d73a4e03639d4f63d0771ae4490e2718b7e7aa0/README.md",
+      "status": 200
+    }
+  ],
+  "product_tests_run": false,
+  "dependency_installs": 0,
+  "campaigns_or_eda_jobs_started": 0,
+  "trial30_resumed": false,
+  "semantic_review": "root and independent Sol/High reader review; material corrections in verification.md",
+  "limits": "HEAD failures may coexist with successful browser/GitHub raw/API body reads; no integration/performance/security qualification"
+}

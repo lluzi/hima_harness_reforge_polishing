@@ -1,0 +1,751 @@
+{
+  "schema": "hima.ecosystem-component-review/1",
+  "date_local": "2026-09-22",
+  "timezone": "America/Los_Angeles",
+  "baseline": "47ce341a5a8b9891e8ca168ba3477cca1d0e154a",
+  "upstream_comparison": {
+    "version": "0.1.7-alpha.2",
+    "commit": "00102833dfaee1da9f48a3a8eae9d34005a75218",
+    "decision": "no upgrade in this task"
+  },
+  "license_scope": "root license metadata/files only; no complete transitive distribution audit",
+  "components": [
+    {
+      "id": "N1",
+      "name": "DSH Agent Registry / Session",
+      "category": "native",
+      "decision": "reuse existing interface",
+      "version": "0.1.5-alpha.1",
+      "source_pin": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/core/agent"
+      ],
+      "benefit": "agent identities, live sessions and lifecycle",
+      "hima_boundary": "live session is not Run owner authority",
+      "evidence_scope": "installed package README/types/source and official pinned source",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "N2",
+      "name": "DSH subagent spawn/fork/runtime/control/UI",
+      "category": "native",
+      "decision": "installed native candidate; verify profile first",
+      "version": "0.1.5-alpha.1",
+      "source_pin": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/subagent"
+      ],
+      "benefit": "worker context/persona/toolFilter/lifecycle and catalog",
+      "hima_boundary": "no second Run owner; direct imports need declared dependencies",
+      "evidence_scope": "installed package README/types/source and official pinned source",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "N3",
+      "name": "DSH systemPrompt section/context",
+      "category": "native",
+      "decision": "reuse existing interface",
+      "version": "0.1.5-alpha.1",
+      "source_pin": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/core/system-prompt"
+      ],
+      "benefit": "stable Guide role and per-turn scoped context",
+      "hima_boundary": "Host facts and explicit selection payload, no browser fact authority",
+      "evidence_scope": "installed package README/types/source and official pinned source",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "N4",
+      "name": "DSH session-query / SQLite FTS",
+      "category": "native",
+      "decision": "reuse installed API conditionally",
+      "version": "0.1.5-alpha.1",
+      "source_pin": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/session-query"
+      ],
+      "benefit": "find bounded prior discussion and provenance",
+      "hima_boundary": "chat search is not Ledger or Library facts",
+      "evidence_scope": "installed package README/types/source and official pinned source",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "N5",
+      "name": "DSH inbox followup/steer/inject",
+      "category": "native",
+      "decision": "reuse existing interface",
+      "version": "0.1.5-alpha.1",
+      "source_pin": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/core/agent"
+      ],
+      "benefit": "owner notification/communication without another loop",
+      "hima_boundary": "inbox acceptance is not execution completion",
+      "evidence_scope": "installed package README/types/source and official pinned source",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "N6",
+      "name": "DSH right-sidebar / Slots / tool-view",
+      "category": "native",
+      "decision": "reuse existing Hima composition",
+      "version": "0.1.5-alpha.1",
+      "source_pin": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/client"
+      ],
+      "benefit": "shared workbench and inline result views",
+      "hima_boundary": "display projection only, no new execution service",
+      "evidence_scope": "installed package README/types/source and official pinned source",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "N7",
+      "name": "DSH schedule",
+      "category": "native",
+      "decision": "optional same-session reminder only",
+      "version": "0.1.5-alpha.1",
+      "source_pin": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/schedule/schedule"
+      ],
+      "benefit": "durable reminders in the same live root",
+      "hima_boundary": "does not wake a closed root or certify Campaign completion",
+      "evidence_scope": "installed package README/types/source and official pinned source",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "N8",
+      "name": "DSH session-telemetry / OTel",
+      "category": "native",
+      "decision": "defer exporter; use existing local traces",
+      "version": "0.1.5-alpha.1",
+      "source_pin": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/tree/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/session/session-telemetry-otel"
+      ],
+      "benefit": "structured event inspection",
+      "hima_boundary": "no automatic trace export; model input and Site evidence remain authorized",
+      "evidence_scope": "installed package README/types/source and official pinned source",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "H1",
+      "name": "Hima five-stage authoring/check/release",
+      "category": "internal",
+      "decision": "extend existing",
+      "version": "47ce341",
+      "source_pin": "47ce341a5a8b9891e8ca168ba3477cca1d0e154a",
+      "license": "existing repository; no new dependency",
+      "sources": [
+        "../../../packages/harness/src/skills.ts",
+        "../../../packages/harness/src/packs.ts",
+        "../../../packages/harness/src/release.ts"
+      ],
+      "benefit": "SOP-to-Pack workflow, validation and version sealing",
+      "hima_boundary": "Pack lifecycle differs from DSH plugin lifecycle",
+      "evidence_scope": "current repository code",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "C1",
+      "name": "dsh-context",
+      "category": "community",
+      "decision": "conditional display extraction",
+      "version": "0.54.4",
+      "source_pin": "2ae7cfa7f8f1e4b0ff0b31c9abdfa12ac803a9f7",
+      "license": "Apache-2.0",
+      "sources": [
+        "https://github.com/bowenliang123/dsh-context/blob/2ae7cfa7f8f1e4b0ff0b31c9abdfa12ac803a9f7/README.md",
+        "https://github.com/bowenliang123/dsh-context/blob/2ae7cfa7f8f1e4b0ff0b31c9abdfa12ac803a9f7/package.json",
+        "https://github.com/bowenliang123/dsh-context/blob/2ae7cfa7f8f1e4b0ff0b31c9abdfa12ac803a9f7/LICENSE"
+      ],
+      "benefit": "request context diagnostics",
+      "hima_boundary": "disable/unbundle version and price network lookups for offline deployment",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "^4.0.2",
+        "@deepseek-ai/dsh-client-ui-primitives": ">=0.1.2-rc.1",
+        "@deepseek-ai/dsh-session": ">=0.1.2-rc.1",
+        "@deepseek-ai/dsh-settings": ">=0.1.2-rc.1",
+        "@deepseek-ai/schemastery": "^3.18.2",
+        "react": "^18.3.1"
+      },
+      "source_file_sha256": {
+        "README.md": "6b64a4185c7f009e8acb9fd6e4cefef4ec0b500f7a39143f2ddbe0b92dbb785e",
+        "package.json": "818cdb998c54ca0ca9f859d7a44df71f5d409474843cc9211b213b81484e9e22",
+        "LICENSE": "919857728c4e1d0f76be03af00437d9910c943f883d04c8c58a6a0cb1c3225b0"
+      }
+    },
+    {
+      "id": "C2",
+      "name": "dsh-context-doctor",
+      "category": "community",
+      "decision": "isolated diagnostic candidate",
+      "version": "0.7.2",
+      "source_pin": "41d5c2e4bbe0611b7928c4007bb28545f7ace38f",
+      "license": "BSD-3-Clause",
+      "sources": [
+        "https://github.com/Zhenyu98/dsh-context-doctor/blob/41d5c2e4bbe0611b7928c4007bb28545f7ace38f/README.md",
+        "https://github.com/Zhenyu98/dsh-context-doctor/blob/41d5c2e4bbe0611b7928c4007bb28545f7ace38f/package.json",
+        "https://github.com/Zhenyu98/dsh-context-doctor/blob/41d5c2e4bbe0611b7928c4007bb28545f7ace38f/LICENSE"
+      ],
+      "benefit": "instruction/skill/tool source duplication audit",
+      "hima_boundary": "heuristic tokens; never automatically trim authority",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "^4.0.1",
+        "@deepseek-ai/dsh-tools": "^0.1.2-rc.1"
+      },
+      "source_file_sha256": {
+        "README.md": "6d5fbcac3fec0d6392aefc4c9e35ecd40e0e042c44256687e85d8b1642054492",
+        "package.json": "f9ddebe6e5f9da71ea5c391b5ec929e272d3e90abcaff0732b7e2fa0a4eeeda6",
+        "LICENSE": "9d9a838ebad09d4a986e0cb962c064c4d1ff308eb728169e040a0295917e2cba"
+      }
+    },
+    {
+      "id": "C3",
+      "name": "dsh-fast",
+      "category": "community",
+      "decision": "isolated diagnostic candidate",
+      "version": "0.2.14",
+      "source_pin": "f0c3e8cfef5149844536c8dad808a77c5bdb5ff4",
+      "license": "Apache-2.0",
+      "sources": [
+        "https://github.com/PerryLink/dsh-fast/blob/f0c3e8cfef5149844536c8dad808a77c5bdb5ff4/README.md",
+        "https://github.com/PerryLink/dsh-fast/blob/f0c3e8cfef5149844536c8dad808a77c5bdb5ff4/package.json",
+        "https://github.com/PerryLink/dsh-fast/blob/f0c3e8cfef5149844536c8dad808a77c5bdb5ff4/LICENSE"
+      ],
+      "benefit": "latency/cache/compaction/spill metrics",
+      "hima_boundary": "derived metrics and suggestions only; not business state",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "^4.0.2",
+        "@deepseek-ai/dsh-commands": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0",
+        "@deepseek-ai/dsh-compaction": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0",
+        "@deepseek-ai/dsh-session": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0",
+        "@deepseek-ai/dsh-session-query": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0",
+        "@deepseek-ai/dsh-storage": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0",
+        "@deepseek-ai/dsh-storage-domain": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0",
+        "@deepseek-ai/dsh-storage-json": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0",
+        "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0",
+        "@deepseek-ai/schemastery": "^3.18.2"
+      },
+      "source_file_sha256": {
+        "README.md": "d914a7bdad5bd4f70441b03e6796d13ec218e11d949117b7a319f5f3f2c4bbf7",
+        "package.json": "cc30f0f3e90ccf44d1e1468808d56a7fb343dde742e3c42b6ef59b11a4b441bc",
+        "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+      }
+    },
+    {
+      "id": "C4",
+      "name": "@dsh-external/dsh-automation",
+      "category": "community",
+      "decision": "defer for Campaign; future standalone tasks",
+      "version": "0.1.7",
+      "source_pin": "0d73a4e03639d4f63d0771ae4490e2718b7e7aa0",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/titanwings/dsh-automation/blob/0d73a4e03639d4f63d0771ae4490e2718b7e7aa0/README.md",
+        "https://github.com/titanwings/dsh-automation/blob/0d73a4e03639d4f63d0771ae4490e2718b7e7aa0/package.json",
+        "https://github.com/titanwings/dsh-automation/blob/0d73a4e03639d4f63d0771ae4490e2718b7e7aa0/LICENSE"
+      ],
+      "benefit": "scheduled independent work with durable occurrence history",
+      "hima_boundary": "creates fresh root/Session; not persistent Run continuation",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
+      },
+      "source_file_sha256": {
+        "README.md": "03255da9b5e20dd93f28c6638e4108b754e5186b945163dbc525915bccf16835",
+        "package.json": "8a9d0c9fbba5800c8dbddc1a1a441b49e1f8b6ef4667a5e3295c37f6fff440b0",
+        "LICENSE": "06951b2bf3e23c4eec0820b937369bc91a0552ef2a85716388ffd040133faffb"
+      }
+    },
+    {
+      "id": "C5",
+      "name": "dsh-notification",
+      "category": "community",
+      "decision": "narrow presentation reuse",
+      "version": "0.1.4",
+      "source_pin": "675aab9b43d5011738feb6185281596c0365ccba",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/omdsh-dev/dsh-notification/blob/675aab9b43d5011738feb6185281596c0365ccba/README.md",
+        "https://github.com/omdsh-dev/dsh-notification/blob/675aab9b43d5011738feb6185281596c0365ccba/package.json",
+        "https://github.com/omdsh-dev/dsh-notification/blob/675aab9b43d5011738feb6185281596c0365ccba/LICENSE"
+      ],
+      "benefit": "notification preferences/reason filtering/dedup UX",
+      "hima_boundary": "turn completion not Campaign success; no reliable offline delivery",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "*",
+        "@deepseek-ai/dsh-session": "*",
+        "@deepseek-ai/dsh-session-projection": "*",
+        "@deepseek-ai/dsh-invariants": "*",
+        "@deepseek-ai/dsh-client-runtime": "*",
+        "@deepseek-ai/dsh-client-store": "*",
+        "@deepseek-ai/dsh-client-ui-slots": "*",
+        "@deepseek-ai/dsh-client-ui-settings": "*",
+        "@deepseek-ai/dsh-client-locale": "*",
+        "react": "^18.2.0"
+      },
+      "source_file_sha256": {
+        "README.md": "5f3e17a916c10ae706be88cb112d2a12e30e8f12e6ba49abac7fb93e5efd8094",
+        "package.json": "ffc70f827e695024f1a9ee70cbfea7382395736d5e29777715037c621f7859c1",
+        "LICENSE": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be"
+      }
+    },
+    {
+      "id": "C6",
+      "name": "dsh-automation-center",
+      "category": "community",
+      "decision": "defer alternative",
+      "version": "0.1.0-alpha.8",
+      "source_pin": "929f271aa40bd80b5b0906cf47ab151a57fd4525",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/usersx/dsh-automation-center/blob/929f271aa40bd80b5b0906cf47ab151a57fd4525/README.md",
+        "https://github.com/usersx/dsh-automation-center/blob/929f271aa40bd80b5b0906cf47ab151a57fd4525/package.json",
+        "https://github.com/usersx/dsh-automation-center/blob/929f271aa40bd80b5b0906cf47ab151a57fd4525/LICENSE"
+      ],
+      "benefit": "review/uncertain-occurrence handling patterns",
+      "hima_boundary": "separate scheduler/store/Run history; incompatible problem scope",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "react": "^18.2.0"
+      },
+      "source_file_sha256": {
+        "README.md": "1df43cfbd3a6ef3d65487e81ddca9d73230307c2edfe7be77e75b7d046d09c84",
+        "package.json": "248b229e96203ad5e91cad44e80db9457b2daad7fe95a31c0eb3bb72810bd936",
+        "LICENSE": "07b6e8fddfa89d0c96b89a0b7641c3280cc5ccc6d942af047db52f1e78a48b38"
+      }
+    },
+    {
+      "id": "C7",
+      "name": "dsh-mnemon",
+      "category": "community",
+      "decision": "pattern only",
+      "version": "0.5.13",
+      "source_pin": "84d469ffa838a36fa579295d94029fcac8ac058e",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/omdsh-dev/dsh-mnemon/blob/84d469ffa838a36fa579295d94029fcac8ac058e/README.md",
+        "https://github.com/omdsh-dev/dsh-mnemon/blob/84d469ffa838a36fa579295d94029fcac8ac058e/package.json",
+        "https://github.com/omdsh-dev/dsh-mnemon/blob/84d469ffa838a36fa579295d94029fcac8ac058e/LICENSE"
+      ],
+      "benefit": "immutable context View and source strategy separation",
+      "hima_boundary": "no duplicate Hima knowledge/memory authority",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "^4.0.1",
+        "@deepseek-ai/dsh-client-ui-primitives": "^0.1.5-rc.1 || ^0.1.6-alpha.2 || ^0.1.7-alpha.1",
+        "@deepseek-ai/dsh-typert-protocol": "^0.1.5-rc.1 || ^0.1.6-alpha.2 || ^0.1.7-alpha.1",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
+      },
+      "source_file_sha256": {
+        "README.md": "b17bac4bea0f0fc7e11cd4636134eb609ab84b23959f327df948caa5d037b36b",
+        "package.json": "6090fc1fb61f8597bb682c05fa4f6c60e1d4fbf4328ec64d82608f2882a72753",
+        "LICENSE": "0bc72d9f737802b30a7e43d1b59912e81698e75948759ba07c276732aba0c7a2"
+      }
+    },
+    {
+      "id": "C8",
+      "name": "dsh-continual-evolve",
+      "category": "community",
+      "decision": "pattern only",
+      "version": "0.6.1",
+      "source_pin": "981568450d9643bc481130294ce67543b4c54e15",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/ZK-Andy/dsh-continual-evolve/blob/981568450d9643bc481130294ce67543b4c54e15/README.md",
+        "https://github.com/ZK-Andy/dsh-continual-evolve/blob/981568450d9643bc481130294ce67543b4c54e15/package.json",
+        "https://github.com/ZK-Andy/dsh-continual-evolve/blob/981568450d9643bc481130294ce67543b4c54e15/LICENSE"
+      ],
+      "benefit": "candidate promotion/approval/eval/rollback",
+      "hima_boundary": "must not materialize live Pack/skills outside release boundary",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "^4.0.1",
+        "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.6 || ^0.1.7-alpha.1",
+        "@deepseek-ai/dsh-llm": "^0.1.0-rc.6 || ^0.1.7-alpha.1",
+        "@deepseek-ai/dsh-tools": "^0.1.0-rc.6 || ^0.1.7-alpha.1",
+        "@deepseek-ai/schemastery": "^3.18.1"
+      },
+      "source_file_sha256": {
+        "README.md": "83a93b392a08d16dca437580ba15ecaa60322d00e48806521dda5bad53f9d4af",
+        "package.json": "4ac543e14598f7ea16a22d6a3c462649a91b349c4aef1b6844285aa329540e11",
+        "LICENSE": "1fe6cbe11a84cb357645cf4acda03223f8bfafa6854bf898a87a2859be961abb"
+      }
+    },
+    {
+      "id": "C9",
+      "name": "dsh-plugin-guide",
+      "category": "community",
+      "decision": "maintainer reference candidate",
+      "version": "0.3.16",
+      "source_pin": "3ad707fb2c73658dd3e7c702b33bfaf469fb4f96",
+      "license": "Apache-2.0",
+      "sources": [
+        "https://github.com/PerryLink/dsh-plugin-guide/blob/3ad707fb2c73658dd3e7c702b33bfaf469fb4f96/README.md",
+        "https://github.com/PerryLink/dsh-plugin-guide/blob/3ad707fb2c73658dd3e7c702b33bfaf469fb4f96/package.json",
+        "https://github.com/PerryLink/dsh-plugin-guide/blob/3ad707fb2c73658dd3e7c702b33bfaf469fb4f96/LICENSE"
+      ],
+      "benefit": "on-demand DSH extension contracts and checks",
+      "hima_boundary": "DSH bundle checks do not prove HimaPack business correctness",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/dsh": ">=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0"
+      },
+      "source_file_sha256": {
+        "README.md": "347dc670162e609007e467e42cbdab7d9fed31664aabefc09b6fd9f35a5a5ef3",
+        "package.json": "a168d099d8fb1e1afac2e787a9b2c76397676a31f7ec4e13a05b3f16a9a80802",
+        "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+      }
+    },
+    {
+      "id": "O1",
+      "name": "promptfoo",
+      "category": "adjacent",
+      "decision": "isolated eval runner candidate",
+      "version": "0.123.1",
+      "source_pin": "d59f045c4cda1193574380aae639d84380dbf5f2",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/promptfoo/promptfoo/blob/d59f045c4cda1193574380aae639d84380dbf5f2/README.md",
+        "https://github.com/promptfoo/promptfoo/blob/d59f045c4cda1193574380aae639d84380dbf5f2/package.json",
+        "https://github.com/promptfoo/promptfoo/blob/d59f045c4cda1193574380aae639d84380dbf5f2/LICENSE"
+      ],
+      "benefit": "frozen Guide/author case matrices",
+      "hima_boundary": "provider data egress explicit; score is not EDA/Judge fact",
+      "evidence_scope": "pinned metadata/README/LICENSE; selected execution and client sources where available",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {},
+      "source_file_sha256": {
+        "README.md": "0b6031de6f2062786eb2dd858c80c6c0e4a2109f9c21a2ea02bea51343814d6a",
+        "package.json": "7cae75f749500433d0206da32f4e6e8d156d883e49b4c3167dcde1fb2fd5ff7e",
+        "LICENSE": "bf813686553f451e1b833fbd827488aee49b60b189626915bf3108d10b754e44"
+      }
+    },
+    {
+      "id": "C10",
+      "name": "@yejiming/dsh-data-agent",
+      "category": "community",
+      "decision": "narrow contract/replay extraction",
+      "version": "0.1.5",
+      "source_pin": "6657771b8b9e66b3c06d6a6ce3056e601e7ff1fe",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/omdsh-dev/dsh-data-agent/tree/6657771b8b9e66b3c06d6a6ce3056e601e7ff1fe",
+        "https://github.com/omdsh-dev/dsh-data-agent/blob/6657771b8b9e66b3c06d6a6ce3056e601e7ff1fe/LICENSE"
+      ],
+      "benefit": "strict frozen dataset/view reports",
+      "hima_boundary": "exclude SQL authority and write tools",
+      "evidence_scope": "fixed source package/license and selected implementation files; some candidates retain previous shortlist pins",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "^4.0.2",
+        "@deepseek-ai/dsh-agent": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-agent-presets": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-api-session-controller": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-client-locale": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-client-ui-agent-preset": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-client-ui-conversation": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-client-ui-primitives": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-client-ui-renderer": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-client-ui-session": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-client-ui-tool": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-client-ui-workspace": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-commands": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-credentials": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-host-webserver": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-invariants": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-llm": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-scope": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-session": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-storage": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-storage-domain": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-storage-json": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-subprocess": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-tools": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-user-questions": "^0.1.2-alpha.2",
+        "@deepseek-ai/dsh-util-values": "^0.1.2-alpha.2",
+        "react": "^18.2.0 || ^19.0.0"
+      }
+    },
+    {
+      "id": "C11",
+      "name": "@changfenhuang/dsh-genui",
+      "category": "community",
+      "decision": "pattern only",
+      "version": "0.11.1-preview.2",
+      "source_pin": "05aa8226409f6e9a585b2cb3a1ce57175a7331d7",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/omdsh-dev/dsh-genui/tree/05aa8226409f6e9a585b2cb3a1ce57175a7331d7",
+        "https://github.com/omdsh-dev/dsh-genui/blob/05aa8226409f6e9a585b2cb3a1ce57175a7331d7/LICENSE"
+      ],
+      "benefit": "bounded renderer and interaction prototypes",
+      "hima_boundary": "model-produced UI cannot be authoritative data/action",
+      "evidence_scope": "fixed source package/license and selected implementation files; some candidates retain previous shortlist pins",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "^4.0.1",
+        "@deepseek-ai/dsh-agent": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-api-session-controller": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-client-store": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-client-ui-chat": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-client-ui-conversation": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-client-ui-input-trigger": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-client-ui-primitives": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-client-ui-renderer": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-client-ui-session": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-client-ui-tool": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-invariants": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-llm": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-session": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-skill": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-system-prompt": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-tools": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "@deepseek-ai/dsh-util-values": "^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1",
+        "react": "^18.0.0 || ^19.0.0"
+      }
+    },
+    {
+      "id": "C12",
+      "name": "@deepseek-ai/dsh-tool-stat",
+      "category": "community",
+      "decision": "narrow numeric algorithms/tests",
+      "version": "0.0.1",
+      "source_pin": "23069a4344dcfebd98ea381a77d07091f039f357",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/omdsh-dev/dsh-tool-stat/tree/23069a4344dcfebd98ea381a77d07091f039f357",
+        "https://github.com/omdsh-dev/dsh-tool-stat/blob/23069a4344dcfebd98ea381a77d07091f039f357/LICENSE"
+      ],
+      "benefit": "stable descriptive statistics and numerical boundaries",
+      "hima_boundary": "compute on Host/Site, never send full numeric corpus through model args",
+      "evidence_scope": "fixed source package/license and selected implementation files; some candidates retain previous shortlist pins",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "^4.0.1",
+        "@deepseek-ai/dsh-invariants": ">=0.0.1-rc.1 <0.2.0",
+        "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1 <0.2.0"
+      }
+    },
+    {
+      "id": "C13",
+      "name": "papermachine",
+      "category": "community",
+      "decision": "pattern only",
+      "version": "0.1.2",
+      "source_pin": "b7f095ed665d3c0693006d20fbf0ad33f061cf82",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/SuperJJ007/papermachine/tree/b7f095ed665d3c0693006d20fbf0ad33f061cf82",
+        "https://github.com/SuperJJ007/papermachine/blob/b7f095ed665d3c0693006d20fbf0ad33f061cf82/LICENSE"
+      ],
+      "benefit": "artifact/code/environment/version linkage",
+      "hima_boundary": "full fork and Python/R runtime not imported",
+      "evidence_scope": "fixed source package/license and selected implementation files; some candidates retain previous shortlist pins",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {}
+    },
+    {
+      "id": "C14",
+      "name": "dsh-better-sidebar",
+      "category": "community",
+      "decision": "pattern only",
+      "version": "0.19.1",
+      "source_pin": "1fcf43ccbedd6e66370b7fb81df2b4dd0ef2604e",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/omdsh-dev/DSH-better-sidebar/tree/1fcf43ccbedd6e66370b7fb81df2b4dd0ef2604e",
+        "https://github.com/omdsh-dev/DSH-better-sidebar/blob/1fcf43ccbedd6e66370b7fb81df2b4dd0ef2604e/LICENSE"
+      ],
+      "benefit": "scoped lazy panes and subagent UX",
+      "hima_boundary": "no full shell, terminal/Git/runtime replacement",
+      "evidence_scope": "fixed source package/license and selected implementation files; some candidates retain previous shortlist pins",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "@deepseek-ai/cordis": "^4.0.2",
+        "@deepseek-ai/dsh-agent": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-client-locale": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-client-ui-conversation": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-client-ui-primitives": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-client-ui-settings": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-client-ui-sidebar-right": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-client-ui-slots": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-host-webserver": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-invariants": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-llm": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-session": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-settings": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-subagent": "^0.1.5-rc.1",
+        "@deepseek-ai/dsh-tools": "^0.1.5-rc.1",
+        "@huanlin/dsh-plugin-better-locale": "^0.1.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
+      }
+    },
+    {
+      "id": "C15",
+      "name": "NanmiCoder/dsh-agent-teams",
+      "category": "community",
+      "decision": "pattern only / defer",
+      "version": "0.1.20",
+      "source_pin": "87c95c94d7847e4a242cb589916adc519981175f",
+      "license": "MIT",
+      "sources": [
+        "https://github.com/NanmiCoder/dsh-agent-teams/tree/87c95c94d7847e4a242cb589916adc519981175f",
+        "https://github.com/NanmiCoder/dsh-agent-teams/blob/87c95c94d7847e4a242cb589916adc519981175f/package.json"
+      ],
+      "benefit": "task-dependency/member failure interaction patterns",
+      "hima_boundary": "captain/task/mailbox/scheduler duplicate business authority; exact alpha pin absent",
+      "evidence_scope": "reviewer pinned source/package/license; not installed",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "C16",
+      "name": "PerryLink/dsh-background-agents",
+      "category": "community",
+      "decision": "pattern only / defer",
+      "version": "0.9.9",
+      "source_pin": "f2aea0460dcb1b3b03eaa13d1bdcba21650208a1",
+      "license": "Apache-2.0",
+      "sources": [
+        "https://github.com/PerryLink/dsh-background-agents/tree/f2aea0460dcb1b3b03eaa13d1bdcba21650208a1",
+        "https://github.com/PerryLink/dsh-background-agents/blob/f2aea0460dcb1b3b03eaa13d1bdcba21650208a1/package.json"
+      ],
+      "benefit": "settled notices and progress throttling",
+      "hima_boundary": "custom session events/projection have compatibility constraints; do not adopt store/teams",
+      "evidence_scope": "reviewer pinned source/package/license; not installed",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "O2",
+      "name": "echarts",
+      "category": "adjacent",
+      "decision": "small chart adapter candidate",
+      "version": "6.1.0",
+      "source_pin": "sha512-q0yaFPggC9FUdsWH4blavRWFmxdrIodbkoKNAjJudAI6CA9gNPxHtV2RcZNEepZVlk4yvBYkOkbk6HIVpIyHZA==",
+      "license": "Apache-2.0",
+      "sources": [
+        "https://registry.npmjs.org/echarts/6.1.0",
+        "https://github.com/apache/echarts/tree/6.1.0"
+      ],
+      "benefit": "typed chart rendering",
+      "hima_boundary": "Hima owns data identity, typed schema and actions",
+      "evidence_scope": "registry exact package/integrity; ECharts 6.1.0 tag verified; Virtual lockfile and peer metadata",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {}
+    },
+    {
+      "id": "O3",
+      "name": "@tanstack/react-virtual",
+      "category": "adjacent",
+      "decision": "conditional reuse; explicit direct dependency required",
+      "version": "3.14.11",
+      "source_pin": "sha512-SStWf8bYdTgAquYqG4Pi2+d1XimQKoCIJ94H3jsm0D6UA0yqffvWuvUzrrQ4idewFWq8BSPpahnmLVosJIAs6g==",
+      "license": "MIT",
+      "sources": [
+        "https://registry.npmjs.org/@tanstack%2freact-virtual/3.14.11",
+        "https://github.com/TanStack/virtual"
+      ],
+      "benefit": "bounded table rendering",
+      "hima_boundary": "Hima owns data identity, typed schema and actions",
+      "evidence_scope": "registry exact package/integrity; ECharts 6.1.0 tag verified; Virtual lockfile and peer metadata",
+      "integration_tested_this_turn": false,
+      "peer_dependencies": {
+        "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
+        "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
+      }
+    },
+    {
+      "id": "O4",
+      "name": "TanStack Table",
+      "category": "adjacent",
+      "decision": "defer",
+      "version": null,
+      "source_pin": null,
+      "license": "not adoption-qualified in this review",
+      "sources": [
+        "https://github.com/TanStack/table/tree/v8.21.3"
+      ],
+      "benefit": "headless table models only if actual sorting/grouping friction warrants",
+      "hima_boundary": "no second fact authority; pin/peer/license/runtime footprint before POC",
+      "evidence_scope": "discovery or official docs only; not full source/dependency qualification",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "O5",
+      "name": "React Flow / ELK",
+      "category": "adjacent",
+      "decision": "defer",
+      "version": null,
+      "source_pin": null,
+      "license": "not adoption-qualified in this review",
+      "sources": [
+        "https://reactflow.dev/learn"
+      ],
+      "benefit": "graph UI/layout only after existing FabricCanvas gap measured",
+      "hima_boundary": "no second fact authority; pin/peer/license/runtime footprint before POC",
+      "evidence_scope": "discovery or official docs only; not full source/dependency qualification",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "O6",
+      "name": "DuckDB / Arrow",
+      "category": "adjacent",
+      "decision": "defer",
+      "version": null,
+      "source_pin": null,
+      "license": "not adoption-qualified in this review",
+      "sources": [
+        "https://duckdb.org/"
+      ],
+      "benefit": "derived columnar query cache only after actual scan bottleneck",
+      "hima_boundary": "no second fact authority; pin/peer/license/runtime footprint before POC",
+      "evidence_scope": "discovery or official docs only; not full source/dependency qualification",
+      "integration_tested_this_turn": false
+    },
+    {
+      "id": "O7",
+      "name": "Docling",
+      "category": "adjacent",
+      "decision": "defer",
+      "version": null,
+      "source_pin": null,
+      "license": "not adoption-qualified in this review",
+      "sources": [
+        "https://docling-project.github.io/docling/"
+      ],
+      "benefit": "document adapter only after representative unpdf failure",
+      "hima_boundary": "no second fact authority; pin/peer/license/runtime footprint before POC",
+      "evidence_scope": "discovery or official docs only; not full source/dependency qualification",
+      "integration_tested_this_turn": false
+    }
+  ]
+}
