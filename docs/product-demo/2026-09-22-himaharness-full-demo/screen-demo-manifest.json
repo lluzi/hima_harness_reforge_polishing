@@ -1,18 +1,14 @@
 {
-  "schema": "hima.human-screen-demo/1",
+  "schema": "hima.human-screen-demo/2",
   "recording": "HimaHarness-human-screen-demo.zh-CN.mp4",
   "subtitle": "HimaHarness-human-screen-demo.zh-CN.srt",
   "app": "HimaHarness 0.3.0-trial.16",
   "display": "Catsights / macOS display 3 / 1920x1200",
   "operator": "Codex Computer Use",
   "model": "DeepSeek-V4.1-Flash High",
-  "source_recording": {
-    "duration_seconds": 533.64,
-    "repository_included": false,
-    "reason": "raw capture retained locally; final edited screen recording is the deliverable"
-  },
   "edits": [
     {
+      "source": "main-human-session",
       "raw": [
         0,
         125
@@ -20,6 +16,7 @@
       "edited_start": 0
     },
     {
+      "source": "main-human-session",
       "raw": [
         175,
         225
@@ -27,65 +24,157 @@
       "edited_start": 125
     },
     {
+      "source": "main-human-session",
       "raw": [
         300,
         533.64
       ],
       "edited_start": 175
+    },
+    {
+      "source": "live-run-graph-detail",
+      "raw_ranges": [
+        [
+          0,
+          65
+        ],
+        [
+          70,
+          117
+        ],
+        [
+          122,
+          165
+        ],
+        [
+          170,
+          255
+        ],
+        [
+          300,
+          325.208333
+        ]
+      ],
+      "playback_speed": 1.25,
+      "edited_start": 408.666667,
+      "edited_duration_seconds": 212.2
     }
   ],
   "screenshots": [
     {
       "file": "screen-recording/01-startup.png",
       "raw_second": 25,
-      "description": "HimaHarness startup and restored workspace"
+      "description": "HimaHarness startup and restored workspace",
+      "source": "main-human-session"
     },
     {
       "file": "screen-recording/02-chinese-dialogue.png",
       "raw_second": 90,
-      "description": "Chinese HimaGuide response with Campaign configuration"
+      "description": "Chinese HimaGuide response with Campaign configuration",
+      "source": "main-human-session"
     },
     {
       "file": "screen-recording/03-live-graph.png",
       "raw_second": 120,
-      "description": "Live Fabric graph beside the conversation"
+      "description": "Live Fabric graph beside the conversation",
+      "source": "main-human-session"
     },
     {
       "file": "screen-recording/04-generations.png",
       "raw_second": 185,
-      "description": "Nine completed generations and generation ten boundary"
+      "description": "Nine completed generations and generation ten boundary",
+      "source": "main-human-session"
     },
     {
       "file": "screen-recording/05-evidence.png",
       "raw_second": 200,
-      "description": "Evidence and measured timing facts"
+      "description": "Evidence and measured timing facts",
+      "source": "main-human-session"
     },
     {
       "file": "screen-recording/06-dtco-prompt.png",
       "raw_second": 330,
-      "description": "User requests a bounded read-only DTCO Pack explanation"
+      "description": "User requests a bounded read-only DTCO Pack explanation",
+      "source": "main-human-session"
     },
     {
       "file": "screen-recording/07-dtco-response.png",
       "raw_second": 390,
-      "description": "Chinese DTCO Pack explanation from real files"
+      "description": "Chinese DTCO Pack explanation from real files",
+      "source": "main-human-session"
     },
     {
       "file": "screen-recording/08-files-and-code.png",
       "raw_second": 455,
-      "description": "Files and code panel with both Pack folders"
+      "description": "Files and code panel with both Pack folders",
+      "source": "main-human-session"
     },
     {
       "file": "screen-recording/09-dtco-intent.png",
       "raw_second": 485,
-      "description": "Custom Cell Fmax DTCO INTENT opened in product"
+      "description": "Custom Cell Fmax DTCO INTENT opened in product",
+      "source": "main-human-session"
     },
     {
       "file": "screen-recording/10-xtop-intent.png",
       "raw_second": 520,
-      "description": "XTop Timing Closure INTENT opened in product"
+      "description": "XTop Timing Closure INTENT opened in product",
+      "source": "main-human-session"
+    },
+    {
+      "file": "screen-recording/11-live-graph-fit.png",
+      "source": "live-run-graph-detail",
+      "raw_second": 5,
+      "description": "Full Live Run graph fitted in the viewport"
+    },
+    {
+      "file": "screen-recording/12-live-graph-zoom-pan.png",
+      "source": "live-run-graph-detail",
+      "raw_second": 45,
+      "description": "Zoomed and panned Live Run graph"
+    },
+    {
+      "file": "screen-recording/13-plan-fix-code.png",
+      "source": "live-run-graph-detail",
+      "raw_second": 70,
+      "description": "plan-fix Code tab with executed script identity"
+    },
+    {
+      "file": "screen-recording/14-apply-eco-job.png",
+      "source": "live-run-graph-detail",
+      "raw_second": 120,
+      "description": "apply-eco Job tab with Innovus execution facts"
+    },
+    {
+      "file": "screen-recording/15-evidence-gate-verdicts.png",
+      "source": "live-run-graph-detail",
+      "raw_second": 160,
+      "description": "evidence-gate Verdicts tab with measured PASS and FAIL outcomes"
+    },
+    {
+      "file": "screen-recording/16-evidence-provenance.png",
+      "source": "live-run-graph-detail",
+      "raw_second": 170,
+      "description": "evidence-gate Evidence tab with source path, hash and reader provenance"
     }
   ],
-  "truth_boundary": "All product screens, mouse clicks, typed Chinese prompts, model responses and campaign data are from the recorded HimaHarness session. Editing removes idle/search intervals only; no presentation frames are inserted.",
-  "campaign_safety": "Trial 30 remained Run-wide paused. No new Campaign or EDA Job was started for the demo."
+  "truth_boundary": "All product screens, mouse clicks, drag and zoom gestures, typed Chinese prompts, model responses and campaign data are from recorded HimaHarness sessions. Editing removes idle intervals and accelerates the graph detail segment to 1.25x; no presentation frames are inserted.",
+  "campaign_safety": "Trial 30 remained Run-wide paused. No new Campaign or EDA Job was started for the demo.",
+  "final_duration_seconds": 620.866667,
+  "source_recordings": [
+    {
+      "id": "main-human-session",
+      "path": ".hima-tmp/demo-recording/HimaHarness-human-demo-final-raw.mov",
+      "duration_seconds": 533.64,
+      "repository_included": false,
+      "reason": "raw capture retained locally; final edited screen recording is the deliverable"
+    },
+    {
+      "id": "live-run-graph-detail",
+      "path": ".hima-tmp/demo-recording/HimaHarness-live-graph-detail-raw.mov",
+      "duration_seconds": 325.208333,
+      "repository_included": false,
+      "reason": "raw graph interaction capture retained locally; only edited segment and key frames are versioned"
+    }
+  ]
 }

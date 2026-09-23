@@ -41,3 +41,31 @@ Files & code 面板直接浏览 Pack 的 choosers、flow、knowledge、readers�
 11
 00:06:20,000 --> 00:06:48,640
 最后查看 XTop Timing Closure Pack：Innovus 数据库输入、XTop/Innovus/StarRC/PrimeTime 闭环、endpoint 反馈与 best database 输出。
+
+12
+00:06:48,667 --> 00:07:10,640
+回到真实 XTop Live Run。先用 Fit 查看完整 Fabric 图，再连续放大，观察节点、依赖边、Judge 分支和当前执行边界。
+
+13
+00:07:10,640 --> 00:07:40,640
+运行图支持鼠标拖拽平移和缩放。工程师可以从全局方法图进入局部区域，同时保留节点在整条商业 EDA 闭环中的上下文。
+
+14
+00:07:40,640 --> 00:08:18,240
+打开 plan-fix：Facts 显示声明输入；Code 显示每代实际执行的脚本、SHA256 与大小；Knowledge 分代保存 closureState 和 closureExperience。
+
+15
+00:08:18,240 --> 00:08:52,640
+打开 apply-eco：Job 显示每代 Innovus 作业、执行 ID、开始与结束时间、退出码和工具席位。动作节点没有 Judge verdict 时，界面明确显示无裁决。
+
+16
+00:08:52,640 --> 00:09:25,000
+打开 evidence-gate：Rules 固定证据完整、setup clean、hold clean 三条规则；Verdicts 逐代给出 PASS/FAIL 与 WNS、TNS、违例数和 endpoint 变化。
+
+17
+00:09:25,000 --> 00:10:00,640
+Evidence 继续追溯每次裁决的 compare.json 路径、文件哈希、reader 脚本和读取时间；closure score 从 217.96 持续推进到 172.47，失败也完整保留。
+
+18
+00:10:00,640 --> 00:10:20,840
+最后演示定位当前节点、缩小和恢复全图。Live Run 图把方法、执行、知识、商业测量与证据链放在同一张可检查、可恢复的运行视图中。
