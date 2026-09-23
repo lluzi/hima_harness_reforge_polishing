@@ -1,0 +1,58 @@
+{
+  "scope": "documentation only",
+  "local_links_checked": 26,
+  "missing_local_links": 0,
+  "json_files_parsed": 3,
+  "duplicate_source_urls": 0,
+  "http_head_checks": [
+    {
+      "id": "W1",
+      "status": 200,
+      "url": "https://learn.chatgpt.com/docs/agent-configuration/subagents"
+    },
+    {
+      "id": "W2",
+      "status": 200,
+      "url": "https://code.claude.com/docs/en/sub-agents"
+    },
+    {
+      "id": "W3",
+      "status": 403,
+      "note": "HEAD failed; browser body reading remains separately recorded"
+    },
+    {
+      "id": "W4",
+      "status": 200,
+      "url": "https://news.synopsys.com/2026-07-26-Synopsys-Showcases-Comprehensive-Autonomous-Engineering-Workflows-from-Silicon-to-Systems,-Developed-with-NVIDIA-Technology"
+    },
+    {
+      "id": "W5",
+      "status": 200,
+      "url": "https://news.siemens.com/en-gb/siemens-fuse-eda-ai-agent/"
+    },
+    {
+      "id": "W6",
+      "status": 200,
+      "url": "https://www.siemens.com/en-us/products/ic/solido/characterization/"
+    },
+    {
+      "id": "W7",
+      "status": 200,
+      "url": "https://chipagents.ai/blogs/multi-agent-orchestration-ic-design-autonomy"
+    },
+    {
+      "id": "W8",
+      "status": 200,
+      "url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts/blob/master/docs/user/InstructionsForAutoTuner.md"
+    },
+    {
+      "id": "W9",
+      "status": 200,
+      "url": "https://news.synopsys.com/2026-03-11-Synopsys-Outlines-Vision-for-Engineering-the-Future"
+    }
+  ],
+  "browser_semantic_reading": "all 9 source bodies opened and inspected",
+  "product_tests": "not run",
+  "commercial_jobs_started": 0,
+  "trial_resumed": false
+}

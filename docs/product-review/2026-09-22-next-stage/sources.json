@@ -1,0 +1,123 @@
+{
+  "schema": "hima.product-review-sources/1",
+  "baseline": "b032bb031703cc4fd73f3a073e5d543035e17e99",
+  "sources": [
+    {
+      "id": "W1",
+      "title": "OpenAI Subagents",
+      "url": "https://learn.chatgpt.com/docs/agent-configuration/subagents",
+      "published": null,
+      "accessed": "2026-09-22",
+      "type": "primary official documentation",
+      "claim": "parallel specialized agents and configurable local agents; generic capability baseline",
+      "verification": "opened in ego-browser; body semantically inspected",
+      "local_capture": ".hima-tmp/product-review-20260922/web-openai-subagents.txt",
+      "capture_bytes": 15931,
+      "limits": "No independent runtime, comparative accuracy, ROI or availability verification."
+    },
+    {
+      "id": "W2",
+      "title": "Claude Code sub-agents",
+      "url": "https://code.claude.com/docs/en/sub-agents",
+      "published": null,
+      "accessed": "2026-09-22",
+      "type": "primary official documentation",
+      "claim": "separate contexts, system prompts, tools, permissions and resume",
+      "verification": "opened in ego-browser; body semantically inspected",
+      "local_capture": ".hima-tmp/product-review-20260922/web-claude-subagents.txt",
+      "capture_bytes": 92960,
+      "limits": "No independent runtime, comparative accuracy, ROI or availability verification."
+    },
+    {
+      "id": "W3",
+      "title": "Cadence ChipStack AI Super Agent launch",
+      "url": "https://www.cadence.com/en_US/home/company/newsroom/press-releases/pr/2026/cadence-unleashes-chipstack-ai-super-agent-pioneering-a-new.html",
+      "published": "2026-02-10",
+      "accessed": "2026-09-22",
+      "type": "vendor-owned capability claim",
+      "claim": "front-end design and verification, multiple virtual engineers, early access at publication",
+      "verification": "opened in ego-browser; body semantically inspected",
+      "local_capture": ".hima-tmp/product-review-20260922/web-cadence-chipstack.txt",
+      "capture_bytes": 7354,
+      "limits": "No independent runtime, comparative accuracy, ROI or availability verification."
+    },
+    {
+      "id": "W4",
+      "title": "Synopsys autonomous engineering workflows",
+      "url": "https://news.synopsys.com/2026-07-26-Synopsys-Showcases-Comprehensive-Autonomous-Engineering-Workflows-from-Silicon-to-Systems%2C-Developed-with-NVIDIA-Technology",
+      "published": "2026-07-26",
+      "accessed": "2026-09-22",
+      "type": "vendor-owned capability claim",
+      "claim": "long-running orchestrator and tool-specialized workflows; evaluation/planned availability at publication",
+      "verification": "opened in ego-browser; body semantically inspected",
+      "local_capture": ".hima-tmp/product-review-20260922/web-synopsys-july.txt",
+      "capture_bytes": 9892,
+      "limits": "No independent runtime, comparative accuracy, ROI or availability verification."
+    },
+    {
+      "id": "W5",
+      "title": "Siemens Fuse EDA AI Agent",
+      "url": "https://news.siemens.com/en-gb/siemens-fuse-eda-ai-agent/",
+      "published": "2026-03-16",
+      "accessed": "2026-09-22",
+      "type": "vendor-owned capability claim",
+      "claim": "multi-agent multi-tool orchestration and third-party integration",
+      "verification": "opened in ego-browser; body semantically inspected",
+      "local_capture": ".hima-tmp/product-review-20260922/web-siemens-fuse.txt",
+      "capture_bytes": 13676,
+      "limits": "No independent runtime, comparative accuracy, ROI or availability verification."
+    },
+    {
+      "id": "W6",
+      "title": "Solido Characterization Suite",
+      "url": "https://www.siemens.com/en-us/products/ic/solido/characterization/",
+      "published": null,
+      "accessed": "2026-09-22",
+      "type": "vendor-owned capability claim",
+      "claim": "library checks comparison plots and rule generation are existing vendor offerings",
+      "verification": "opened in ego-browser; body semantically inspected",
+      "local_capture": ".hima-tmp/product-review-20260922/web-solido.txt",
+      "capture_bytes": 3990,
+      "limits": "No independent runtime, comparative accuracy, ROI or availability verification."
+    },
+    {
+      "id": "W7",
+      "title": "ChipAgents Multi-Agent Orchestration",
+      "url": "https://chipagents.ai/blogs/multi-agent-orchestration-ic-design-autonomy",
+      "published": "2026-08-17",
+      "accessed": "2026-09-22",
+      "type": "vendor-owned capability claim",
+      "claim": "domain-agent vendor pursues engineering loop orchestration",
+      "verification": "opened in ego-browser; body semantically inspected",
+      "local_capture": ".hima-tmp/product-review-20260922/web-chipagents.txt",
+      "capture_bytes": 9160,
+      "limits": "No independent runtime, comparative accuracy, ROI or availability verification."
+    },
+    {
+      "id": "W8",
+      "title": "OpenROAD flow scripts AutoTuner",
+      "url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts/blob/master/docs/user/InstructionsForAutoTuner.md",
+      "published": null,
+      "accessed": "2026-09-22",
+      "type": "primary official documentation",
+      "claim": "open parameter tuning and parallel experiment scheduling are available DIY building blocks",
+      "verification": "opened in ego-browser; body semantically inspected",
+      "local_capture": ".hima-tmp/product-review-20260922/web-orfs.txt",
+      "capture_bytes": 10204,
+      "limits": "No independent runtime, comparative accuracy, ROI or availability verification."
+    },
+    {
+      "id": "W9",
+      "title": "Synopsys engineering future announcement",
+      "url": "https://news.synopsys.com/2026-03-11-Synopsys-Outlines-Vision-for-Engineering-the-Future",
+      "published": "2026-03-11",
+      "accessed": "2026-09-22",
+      "type": "vendor-owned capability claim",
+      "claim": "cross-check earlier multi-agent strategy; later July release used for main judgment",
+      "verification": "opened in ego-browser; body semantically inspected",
+      "local_capture": ".hima-tmp/product-review-20260922/web-synopsys-agentengineer.txt",
+      "capture_bytes": 12778,
+      "limits": "No independent runtime, comparative accuracy, ROI or availability verification."
+    }
+  ]
+}
