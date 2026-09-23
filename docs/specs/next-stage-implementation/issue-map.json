@@ -1,0 +1,157 @@
+{
+  "schema": "hima-next-stage-spec-index/1",
+  "purpose": "documentation index only; not runtime or execution scheduler",
+  "sourceBaseline": "1a79cb1514364aa049e775d7b18bbb063a223092",
+  "parentIssue": 52,
+  "specifications": [
+    {
+      "id": "S01",
+      "file": "S01-control-recovery.md",
+      "tasks": [
+        "NXT-A1",
+        "NXT-A3"
+      ],
+      "issue": 53,
+      "title": "人类控制、恢复与Desktop生命周期",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/53"
+    },
+    {
+      "id": "S02",
+      "file": "S02-site-policy.md",
+      "tasks": [
+        "NXT-A2"
+      ],
+      "issue": 54,
+      "title": "Site再发现保留管理员政策",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/54"
+    },
+    {
+      "id": "S03",
+      "file": "S03-result-validity.md",
+      "tasks": [
+        "NXT-A5"
+      ],
+      "issue": 55,
+      "title": "多目标建议与best数据库有效性",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/55"
+    },
+    {
+      "id": "S04",
+      "file": "S04-guide.md",
+      "tasks": [
+        "NXT-B1",
+        "NXT-B2",
+        "NXT-B3"
+      ],
+      "issue": 56,
+      "title": "独立Guide与有来源的任务上下文",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/56"
+    },
+    {
+      "id": "S05",
+      "file": "S05-memory.md",
+      "tasks": [
+        "NXT-M1",
+        "NXT-M2",
+        "NXT-H3"
+      ],
+      "issue": 57,
+      "title": "长期工作记忆与经验采用",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/57"
+    },
+    {
+      "id": "S06",
+      "file": "S06-team.md",
+      "tasks": [
+        "NXT-C1",
+        "NXT-C3"
+      ],
+      "issue": 58,
+      "title": "原生Agent团队与有界委派",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/58"
+    },
+    {
+      "id": "S07",
+      "file": "S07-feedback.md",
+      "tasks": [
+        "NXT-H1"
+      ],
+      "issue": 59,
+      "title": "代际差异与具体研究反馈",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/59"
+    },
+    {
+      "id": "S08",
+      "file": "S08-workbench.md",
+      "tasks": [
+        "NXT-D1",
+        "NXT-D2",
+        "NXT-C2"
+      ],
+      "issue": 51,
+      "title": "双模式工作区、运行图与子会话",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/51"
+    },
+    {
+      "id": "S09",
+      "file": "S09-interactive-eda.md",
+      "tasks": [
+        "NXT-F1",
+        "NXT-F2",
+        "NXT-F3"
+      ],
+      "issue": 50,
+      "title": "交互终端与受控EDA Operator",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/50"
+    },
+    {
+      "id": "S10",
+      "file": "S10-pack-authoring.md",
+      "tasks": [
+        "NXT-G1",
+        "NXT-G2",
+        "NXT-G3"
+      ],
+      "issue": 60,
+      "title": "Pack五阶段作者与可恢复发布",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/60"
+    },
+    {
+      "id": "S11",
+      "file": "S11-library.md",
+      "tasks": [
+        "NXT-E1",
+        "NXT-E2",
+        "NXT-E3",
+        "NXT-E4"
+      ],
+      "issue": 49,
+      "title": "Library洞察（原生API仍阻塞）",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/49"
+    },
+    {
+      "id": "S12",
+      "file": "S12-delivery.md",
+      "tasks": [
+        "NXT-J1",
+        "NXT-J2",
+        "NXT-J3"
+      ],
+      "issue": 61,
+      "title": "影响验证、分批交付与客户价值",
+      "readiness": "specified; obey per-slice dependencies and qualification gates",
+      "url": "https://github.com/lluzi/hima_harness_reforge_polishing/issues/61"
+    }
+  ]
+}

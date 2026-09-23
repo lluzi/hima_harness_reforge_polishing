@@ -4,7 +4,7 @@
 
 本轮增加用户提出的两项要求：**提示词与上下文表达更符合人的直觉；Session/Campaign 的 memory 能支撑长时间任务。** 它们与 Guide、上下文、恢复、研究经验存在重叠，因此先合并职责，再具体化可并行的工作，不增加新的架构层。
 
-需求澄清 Q1～Q19 已逐项确认，整体共同理解待最终确认：[决策树与访谈记录](specs/next-stage-clarification/interview.zh-CN.md)。下面清单仍是规划，尚未进入实施。
+需求澄清 Q1～Q19 已逐项确认，用户通过 `/to-spec` 授权进入具体规格阶段：[决策树与访谈记录](specs/next-stage-clarification/interview.zh-CN.md)。已形成 [12份实施规格](specs/next-stage-implementation/README.md)，覆盖下列29项并明确代码归属、合同、验收及并行依赖；代码实现尚未开始。
 
 总跟踪：[总体任务 #52](https://github.com/lluzi/hima_harness_reforge_polishing/issues/52)。需求以 [产品定义](product-definition.md) 与 accepted ADR 为准。本轮仅整理规划和依赖，没有派工实现、安装组件或恢复测试。
 
@@ -27,7 +27,7 @@
 - R3 EDA Operator 可在原授权工具、工作副本与预算内自由组合 manual 命令；真实隔离、单写者、轨迹、checkpoint 与独立验证是落实边界的条件。
 - R3 记忆被用户否定后停用，保留更正及原证据；重新采用须说明新依据。Insight 已加载数据的交互不调用模型，新增计算按原授权/预算运行、保留结果版本，扩大范围才确认。
 
-以上是用户已确认的产品选择。产品决策树已收束，等待最终共同理解确认；具体接口、源码证据及最低必要测试由后续实施规格补齐。当前 trial30/Claude 测试仍暂停。
+以上是用户已确认的产品选择。产品决策树已收束，现有源码核查、具体接口和最低必要测试已写入实施规格；资格/依赖未满足的子切片按索引保持阻塞。当前 trial30/Claude 测试仍暂停。
 
 ### R3 决定落到现有任务的验收
 
@@ -231,9 +231,9 @@ Timing Closure 验执行交付，Library 验洞察决定，DTCO 验研究上限�
 
 [#52](https://github.com/lluzi/hima_harness_reforge_polishing/issues/52) 更新同一清单，不另建重复总任务。#51 对应 D1/D2/C2；#50 对应 F1/F2/F3 与 C3 的 Operator 部分；#49 对应 E 系列。#41 既有 UI 成果继续复用；#30、#38–44 先核对源码/证据再处置；#48 已修内容只保留相关回归。
 
-本次 29 个任务仍为规划，不是“29 个已就绪实现票”或完成计数。后续逐项补规格与最小反例后再派工。原 [37 项清单快照](https://github.com/lluzi/hima_harness_reforge_polishing/blob/bfa59f0f9b81b23bb4727419eaf2c2753e29a400/docs/polishing-backlog.md) 与历史证据保持可查。
+原29项已映射到12份有界 spec 和对应 Issue；规格就绪不表示29项均可无前置开工，更不是完成计数。以实施规格的子切片依赖、文件所有权和资格门派工。原 [37 项清单快照](https://github.com/lluzi/hima_harness_reforge_polishing/blob/bfa59f0f9b81b23bb4727419eaf2c2753e29a400/docs/polishing-backlog.md) 与历史证据保持可查。
 
-本轮规划校验：原 37 项经 10 项合并与 2 项新增得到 29 个唯一任务，旧要求均有映射；GitHub #52 的 29 项与本文一致；75 个本地文档链接无缺失，`git diff --check` 通过。没有运行产品测试或更改运行时代码。
+此前归并校验：原 37 项经 10 项合并与 2 项新增得到 29 个唯一任务，旧要求均有映射；GitHub #52 的 29 项与本文一致；75 个本地文档链接无缺失，`git diff --check` 通过。没有运行产品测试或更改运行时代码。
 
 ## 历史工作单（2026-09-11～14，非当前执行顺序）
 
