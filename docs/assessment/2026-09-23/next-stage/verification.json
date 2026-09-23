@@ -1,0 +1,81 @@
+{
+  "schema": "hima-next-stage-qualification/1",
+  "producedAt": "2026-09-23T15:51:38.772758+00:00",
+  "validationSourceCommit": "2542720bf8416b7793050618fa69f8465ad3eacd",
+  "applicationSourceCommit": "2791aee5a288c96b21c2ae3704e96f2eb98c3cf3",
+  "appVersion": "0.3.0-trial.17",
+  "ledgerSchema": 28,
+  "result": "passed-for-declared-phase1-scope",
+  "local": {
+    "tests": 612,
+    "passed": 612,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 1011.277,
+    "hostProcesses": 73,
+    "inProcessHosts": 450,
+    "sshAttempts": 0
+  },
+  "desktop": {
+    "passed": 17,
+    "failedAfterCorrections": 0,
+    "scope": "5 selected files; 8 UI/lifecycle cases and 9 independent-owner/state cases; two final verification batches",
+    "sourceLogs": [
+      "desktop-final.log (cases 10-17)",
+      "desktop-owner-green.log (all 9 cases)"
+    ]
+  },
+  "packaging": [
+    "ad-hoc signature and manifest verified",
+    "isolated versioned home boots",
+    "relocated Host authenticates and creates native project session",
+    "unscoped Run inventory denied; scoped inventory responds",
+    "bundled DTCO and page-cited PDF knowledge load"
+  ],
+  "notQualified": [
+    "real model research quality",
+    "commercial EDA",
+    "full subagent team",
+    "complete session compaction lifecycle",
+    "F2/F3 EDA Operator",
+    "native Library analysis",
+    "current development Pack release seals"
+  ],
+  "evidence": [
+    {
+      "path": ".hima-tmp/next-stage-implementation/full-local-green.log",
+      "sha256": "5397ee1c27f4ba51fe705f6e047669f7c0d38f0c038e877d18a6c3aa89835c12",
+      "bytes": 314020
+    },
+    {
+      "path": ".hima-tmp/next-stage-implementation/desktop-final.log",
+      "sha256": "55528f7ad88e612da6345cc547b10fe56bf5f7ef26b0554f97c8a65f36fd3bb0",
+      "bytes": 27325
+    },
+    {
+      "path": ".hima-tmp/next-stage-implementation/desktop-owner-green.log",
+      "sha256": "fb64b61c786f406cd4b29a7efa7006e4cea301586668fa6fdf378693362e020c",
+      "bytes": 3428
+    },
+    {
+      "path": ".hima-tmp/next-stage-implementation/package-final-direct.log",
+      "sha256": "35a5c798f88296b31e7bb70e35859094fed2cb8227b9e943f3498f782f5c4479",
+      "bytes": 261
+    },
+    {
+      "path": ".hima-tmp/next-stage-implementation/ledger-import-final.log",
+      "sha256": "2fd2b18d8b2033c26ba32de5696b12a4b41ca208637edfc9789fb012dc309108",
+      "bytes": 3859
+    },
+    {
+      "path": ".hima-tmp/next-stage-implementation/checkpoint-cleanup-green.log",
+      "sha256": "94745e6beff19d97e4478675b8d76e00dbc40f8d9faa3b508a228782e04f564a",
+      "bytes": 1862
+    },
+    {
+      "path": ".hima-tmp/next-stage-implementation/typecheck-final-tests.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  ]
+}

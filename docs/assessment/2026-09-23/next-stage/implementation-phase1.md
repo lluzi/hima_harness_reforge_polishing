@@ -40,14 +40,16 @@ XTop 按用户确认执行：同口径完整物理检查，相对基线不新增
 | 项目入口反例及 standalone prepare | `project-scope-qualification.log`，3/3 | 一个 subprocess Host、两个 in-process Host |
 | Desktop / 双模式 / 草稿 /证据 | `desktop-qualification.log` 8/8；后续相同 8 项在 `desktop-final.log` 通过 | Catsights；窄面板按钮均可访问 |
 | 独立 owner / 本地 Job / handoff / 七种状态 | `desktop-owner-green.log`，9/9 | 16 个隔离 Electron；首次唤醒、暂停/Continue、旧 owner 隔离、原生文件；仅 replay、无真实模型 |
-| AES 夹具修正 | 11/11，加完整本地图 1/1 | 只修模拟输出与已声明读出阶段的一致性 |
+| AES / DTCO 共用夹具 | 37/37 | 分别支持旧 AES 单 checkpoint 与新 DTCO 双 checkpoint，仅生成 Tcl 声明的报告 |
+| 测试清理 / 历史导入夹具 | 4/4、13/13 | Host 先关闭再删目录；构造 v19–v27 来源时排除 v28 新字段，导入器保持严格 |
+| 最终完整 local 组 | 612/612，0 失败、0 跳过；1011.277 秒 | 73 subprocess Host、450 in-process Host、0 Electron、0 SSH |
 
 桌面集成的原失败也保留：原测试假定 Guide 就是 owner、静默测试中的空会话已有 header、以及跨会话共享 dock。现通过各自原生会话的正常输入、Campaign chip、节点确认操作验证，而非由测试脚本直接替代业务操作；清理回调确保失败时也退出测试窗口。
 
-第一次全量 local 为 606 项、594 通过、12 失败，原日志 `full-local2.log` 保留。失败分别定位为暂停来源、独立 Guide 后的旧身份断言、schema 28、已提前拒绝的配置、AES 旧夹具；没有删除失败测试或启动真实 P&R。最终全量结果以本次 commit 的 pre-push `check:local` 日志 `prepush-final.log` 为准，不将此前失败算作通过。
+第一次全量 local 为 606 项、594 通过、12 失败，原日志 `full-local2.log` 保留。失败分别定位为暂停来源、独立 Guide 后的旧身份断言、schema 28、已提前拒绝的配置、AES 旧夹具；没有删除失败测试或启动真实 P&R。后一次完整 `check:local` 保留于 `full-local-final.log`：611 项、593 通过、18 失败，定位为上述三个夹具问题（包括 teardown 竞态与错误模拟旧 schema），均已修复。最终全量 local 组重新执行于 `full-local-green.log`：612/612 通过，零失败、零跳过；额外数量差异来自前次失败的测试子进程未完整报告。当前 checkout 未配置 pre-push hook，实际采用显式检查；不将一次成功 push 冒充测试通过。构建、seam、boundary、TypeScript 也通过，最后测试专用改动再次通过类型检查。
 
 ## 后续边界
 
 保持 trial30 / Claude / 商业 EDA 暂停。后续仍需 Guide 内任务控制桥与回执、普通 subagent 团队与预算回执、真实 transcript/context 完整展示、graceful fence、纠偏 UI、session compaction 生命周期、F2/F3 交互 EDA 桥、Library E1 资格及真实分析。首批不承诺这些已交付。
 
-App 使用 `0.3.0-trial.17`、Ledger schema 28 的独立 home，避免旧 trial.16 静默打开新 schema。打包及安装资格单独记录；本记录本身不是 GitHub Release 或签名安装证明。
+App 使用 `0.3.0-trial.17`、Ledger schema 28 的独立 home，避免旧 trial.16 静默打开新 schema。本地候选已完成打包、ad-hoc 签名结构、隔离 home、搬迁 Host/API、DTCO 与 PDF 知识装载检查；没有 notarization 或 GitHub Release。App 源码身份 `2791aee5a288c96b21c2ae3704e96f2eb98c3cf3`，之后的提交只修测试/文档，未改应用字节。详见 [机器可读验收记录](verification.json)。旧 schema 显式导入保持原事实；缺少可靠项目归属的旧 Run 不会自动分配给当前 Guide。

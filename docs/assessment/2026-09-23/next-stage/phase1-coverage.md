@@ -17,7 +17,7 @@ This is an implementation-status record, not acceptance of all 29 tasks or produ
 | S09 Interactive EDA | F1 ordinary local terminal is qualified: owner isolation, input/read, background interrupt and close. | F2/F3 Site/Fabric Operator mutation are pending; F1 grants no EDA authority. | Qualified Site/Fabric bridge and Operator tests. |
 | S10 Pack authoring | Existing five stages now carry source-linked counterexamples and rung-based resume language. | No generic executable counterexample runner or new Pack release evidence in this phase. | Exercise authoring/release against a fresh current Pack method. |
 | S11 Library | Insight preparation/offline work may proceed. | E1 native Liberty API qualification is blocked; no native Library conclusion is available. | Resolve the API qualification blocker before real analysis claims. |
-| S12 Delivery | Runtime/profile dependency and local test evidence exist for affected changes. | App release, current Pack seals, installer rollback, and J3 value study are not completed by this record. | Separate App/Pack manifests, fresh seal evidence, then independently authorized value study. |
+| S12 Delivery | 612 local tests and 17 selected Desktop cases passed; App trial.17 candidate passed signature, isolated-home and relocated-Host smoke. | No notarization/GitHub Release, current Pack seals, installer rollback or J3 value study. | Complete the remaining delivery/qualification slices before promotion beyond this candidate. |
 
 ## Cross-cutting facts
 
