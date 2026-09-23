@@ -6,10 +6,13 @@
 
 ## 主交付：真人式操作录屏
 
+- `HimaHarness-human-screen-demo-narrated.zh-CN.mp4`：15 分 18 秒、1920×1200，中文配音与字幕均
+  直接进入成片。字幕已经烧录在画面中，文件只包含 H.264 视频流和中文 AAC 音轨，没有外挂或
+  可关闭的 subtitle stream；这是用于直接播放和展示的首选版本。
 - `HimaHarness-human-screen-demo.zh-CN.mp4`：15 分 18 秒、1920×1200。画面全部来自真实
   HimaHarness 窗口、真实点击、中文输入、DeepSeek-V4.1-Flash 响应和已保留的 Campaign 数据；
-  MP4 内含可开关的中文字幕轨。
-- `HimaHarness-human-screen-demo.zh-CN.srt`：独立中文字幕。
+  MP4 内含可开关的中文字幕轨，作为无配音的编辑母版保留。
+- `HimaHarness-human-screen-demo.zh-CN.srt`：配音文本与编辑母版的独立字幕源。
 - `screen-recording/`：从原始录屏直接提取的二十四张关键功能截图。
 - `screen-demo-manifest.json`：录制环境、剪辑区间、截图原始时间点和真实性边界。
 
@@ -65,11 +68,13 @@ DTCO 与 XTop 两套 Pack 的源码浏览。新增的 Live Run 深挖段真实�
    `manifest.json`。
    两套视频对应的桌面基线均为 HimaHarness `0.3.0-trial.16`。
 5. 补充讲解片中的中文对话是**演示脚本**；主录屏中的中文对话是真实模型调用。
-6. DTCO 数字来自 2026-09-21 Trial 24：研究跨七代推进 Cell Demand，但最终 matched Fmax 为
+6. 配音版使用 macOS `Tingting` 中文语音、185 语速；28 段语音逐段测量并对齐到对应字幕窗口。
+   中文字幕由同一份 SRT 渲染后直接合成到每帧画面，成片没有 subtitle stream。
+7. DTCO 数字来自 2026-09-21 Trial 24：研究跨七代推进 Cell Demand，但最终 matched Fmax 为
    `-2.93%`，没有把负结果写成成功。
-7. Timing Closure 曲线来自 Trial 30 已保留的 baseline 至 generation 8：closure score
+8. Timing Closure 曲线来自 Trial 30 已保留的 baseline 至 generation 8：closure score
    `243.58 → 175.62`。这证明连续 best-database retention 和整体改善，不表示 setup/hold 已 clean。
-8. 主录屏时 Trial 30 的最终控制状态为 `control.paused=['*']`；150 个 Job 全部完成、无 open Job。
+9. 主录屏时 Trial 30 的最终控制状态为 `control.paused=['*']`；150 个 Job 全部完成、无 open Job。
 
 ## 推荐展示顺序
 

@@ -1,5 +1,5 @@
 {
-  "schema": "hima.human-screen-demo/3",
+  "schema": "hima.human-screen-demo/4",
   "recording": "HimaHarness-human-screen-demo.zh-CN.mp4",
   "subtitle": "HimaHarness-human-screen-demo.zh-CN.srt",
   "app": "HimaHarness 0.3.0-trial.16",
@@ -264,5 +264,21 @@
       "reason": "raw dual-Pack source and read-only HimaGuide explanation retained locally; edited segment and key frames are versioned"
     }
   ],
-  "version_boundary": "The Desktop Files panel is the frozen hima_harness_agent_trial_fix_v27 workspace and visibly shows the XTop 1.0.2 source graph. The read-only HimaGuide comparison uses absolute paths in the current polishing repository, where XTop is 1.0.5; the active compiled Pack configuration also shows 1.0.5. The shared 28-node topology is the subject of the comparison."
+  "version_boundary": "The Desktop Files panel is the frozen hima_harness_agent_trial_fix_v27 workspace and visibly shows the XTop 1.0.2 source graph. The read-only HimaGuide comparison uses absolute paths in the current polishing repository, where XTop is 1.0.5; the active compiled Pack configuration also shows 1.0.5. The shared 28-node topology is the subject of the comparison.",
+  "narrated_recording": {
+    "file": "HimaHarness-human-screen-demo-narrated.zh-CN.mp4",
+    "duration_seconds": 918.3,
+    "resolution": "1920x1200",
+    "frame_rate": 30,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "audio_sample_rate_hz": 48000,
+    "audio_channels": 2,
+    "audio_language": "zho",
+    "voice": "macOS Tingting zh_CN, rate 185",
+    "narration_segments": 28,
+    "subtitle_mode": "burned into video frames",
+    "subtitle_streams": 0,
+    "subtitle_style": "Hiragino Sans GB, white, outlined, translucent dark background"
+  }
 }
