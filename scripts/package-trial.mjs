@@ -224,7 +224,7 @@ zsh ./launch-hima-trial.command
 \`\`\`
 
 Keep that shell running. When the window title is \`HimaHarness\`, bind Claude Code Computer Use to
-that app and follow \`Agent Trial Instructions.md\`. Do not open the inner \`.app\` directly through
+that app and follow the operation manual supplied for your assigned trial. Do not open the inner \`.app\` directly through
 Finder or LaunchServices; Gatekeeper will reject this non-notarized trial.
 `);
 }

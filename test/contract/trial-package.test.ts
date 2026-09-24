@@ -1,11 +1,18 @@
 // L0/L2 release seam: inspect the product artifact without opening an Electron window.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { repoRoot } from './support/dsh-home.ts';
+
+test('the generated Computer Use start guide does not point at an undelivered trial manual', async () => {
+  const packager = await readFile(path.join(repoRoot, 'scripts/package-trial.mjs'), 'utf8');
+  assert.equal(packager.includes('follow \\`Agent Trial Instructions.md\\`'), false,
+    'the release kit does not ship that file, so the generated guide must not tell a new tester to open it');
+  assert.match(packager, /follow the operation manual supplied for your assigned trial/);
+});
 
 test('trial packager help is inert and its public verifier fails closed for an incomplete app', async () => {
   const output = await mkdtemp(path.join(os.tmpdir(), 'hima-trial-'));
