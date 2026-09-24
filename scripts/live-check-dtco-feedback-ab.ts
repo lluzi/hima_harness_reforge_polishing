@@ -6,13 +6,10 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Agent } from '@deepseek-ai/dsh-agent';
 import { homePatchFile } from '../packages/desktop/src/hima-home.ts';
+import { HIMA_MOMENT_PRESET, openMoment, type Moment } from '@hima/harness';
 import {
   bootInProcess,
-  createRootAgent,
-  saidByModel,
-  toolCalls,
 } from '../test/contract/support/boot-inprocess.ts';
 import { createHimaHome, repoRoot } from '../test/contract/support/dsh-home.ts';
 import { runLive, type LiveCheck } from './live-check-workshop.ts';
@@ -246,7 +243,7 @@ function modelPrompt(context: Record<string, unknown>): string {
     'Return exactly one JSON object and no Markdown or commentary.',
     'You are qualifying one bounded DTCO residual-research decision. Use only the supplied verified context. Do not claim PPA, commercial adoption, causal endpoint improvement, or that EDA ran.',
     'The JSON object must contain exactly: research_lenses, candidate_program, feedback_interpretation, stop_reason.',
-    'research_lenses must contain 1..max_research_lenses distinct objects with exactly name, question, evidence_sha256, target_metric_layers. Include onsite-inspiration. Cite only hashes present in context.evidence; when commercial_response is present, onsite-inspiration must cite its sha256.',
+    'research_lenses must contain 1..max_research_lenses distinct objects with exactly name, question, evidence_sha256, target_metric_layers. evidence_sha256 is always a non-empty JSON array of strings, even when there is only one source: {"name":"onsite-inspiration","question":"...","evidence_sha256":["<64 lowercase hex chars>"],"target_metric_layers":["F3"]}. A scalar string is invalid. Include onsite-inspiration. Cite only hashes present in context.evidence; when commercial_response is present, onsite-inspiration must cite its sha256.',
     'candidate_program must contain language="python", entrypoint="propose_candidates", and source. Source must define only def propose_candidates(residual, budget), use no imports, comprehensions, while, helpers, recursion, file/process/dynamic code, dict.get, or private attributes, and use only statically bounded range loops. It must return a JSON array no longer than budget["max_candidate_proposals"].',
     'Each returned candidate must contain lens, transformation, rationale. If selecting from the non-empty candidate_pool, transformation must contain one exact proposal_key from candidate_pool.proposals, a positive required_delay_ns, a non-empty target_endpoints string array, and intervention in new-function, sizing, stack-optimization, alternative-topology, physical-fusion. Do not repeat a proposal_key.',
     'feedback_interpretation must state what the available commercial feedback did or did not justify. stop_reason must explain why the finite proposal set is enough for this qualification turn. Empty selection is allowed when evidence cannot justify a demand.',
@@ -266,18 +263,21 @@ function parseProposal(answer: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-async function runArm(check: LiveCheck, agent: Agent, context: Record<string, unknown>) {
+async function runArm(check: LiveCheck, moment: Moment, context: Record<string, unknown>) {
   const beforeSteps = check.steps;
-  await check.say(agent, modelPrompt(context));
-  const requestSteps = check.steps - beforeSteps;
-  const said = saidByModel(agent);
-  const answer = said.at(-1);
-  if (!answer) throw new Error(`session ${String(agent.id)} produced no visible answer`);
-  const proposal = parseProposal(answer);
-  return {
-    sessionId: String(agent.id), provider: agent.options.provider, model: agent.options.model,
-    requestSteps, toolCalls: toolCalls(agent), responseSha256: sha256(answer), proposal,
-  };
+  let outcome: 'completed' | 'failed' = 'failed';
+  try {
+    const answer = (await moment.ask(modelPrompt(context))).text;
+    const requestSteps = check.steps - beforeSteps;
+    const proposal = parseProposal(answer);
+    outcome = 'completed';
+    return {
+      sessionId: moment.sessionId, provider: EXPECTED_PROVIDER, model: moment.model,
+      requestSteps, tools: moment.tools, responseSha256: sha256(answer), proposal,
+    };
+  } finally {
+    await moment.close(outcome);
+  }
 }
 
 function markdown(prepared: PreparedInput, validated: ValidatedResult, sessions: readonly { sessionId: string; responseSha256: string }[]): string {
@@ -342,26 +342,35 @@ await runLive(NAME, 2, async (check: LiveCheck) => {
   const host = await bootInProcess(home);
   check.attach(host);
 
-  const qualificationSessions = new Set<string>();
-  host.ctx.tools.guard((execution) => qualificationSessions.has(String(execution.agent?.id))
-    ? `${NAME} is a response-only qualification; tools are not authorized in either arm`
-    : undefined);
+  // A minimal local ledger Run gives the two moments durable session records without preparing a
+  // Site or launching a business node. The A/B model turns are product Model moments: their preset
+  // removes every inherited tool before the sessions are announced, instead of merely rejecting
+  // tool execution after the model saw it.
+  const qualificationRun = await host.ctx.hima.ledger.createRun({
+    campaignId: `dtco-feedback-ab-${Date.now()}`, siteId: 'local', purpose: 'test',
+    status: 'running', packId: 'custom-cell-fmax-dtco', currentNode: 'research-candidates', generation: 1,
+  });
+  const openArm = (attempt: number, context: Record<string, unknown>) => openMoment(
+    { ctx: host.ctx, ledger: host.ctx.hima.ledger },
+    { runId: qualificationRun.id, nodeId: 'research-candidates', attempt, preset: HIMA_MOMENT_PRESET,
+      instructions: modelPrompt(context), tools: [], cwd: home.workspace },
+  );
+  const withoutMoment = await openArm(1, prepared.arms.withoutFeedback);
+  const withMoment = await openArm(2, prepared.arms.withFeedback);
+  check.require('both native sessions use the real configured DeepSeek-V4.1-Flash route with no tool schema',
+    [withoutMoment, withMoment].every((moment) => moment.model === EXPECTED_MODEL && moment.tools.length === 0),
+    [withoutMoment, withMoment].map((moment) => ({ sessionId: moment.sessionId, model: moment.model, tools: moment.tools })));
 
-  const withoutAgent = check.track(await createRootAgent(host.ctx, home.workspace));
-  const withAgent = check.track(await createRootAgent(host.ctx, home.workspace));
-  qualificationSessions.add(String(withoutAgent.id));
-  qualificationSessions.add(String(withAgent.id));
-  check.require('both native sessions use the real configured DeepSeek-V4.1-Flash route',
-    [withoutAgent, withAgent].every((agent) => agent.options.provider === EXPECTED_PROVIDER && agent.options.model === EXPECTED_MODEL),
-    [withoutAgent, withAgent].map((agent) => ({ sessionId: String(agent.id), options: agent.options })));
-
-  const without = await runArm(check, withoutAgent, prepared.arms.withoutFeedback);
-  const withFeedback = await runArm(check, withAgent, prepared.arms.withFeedback);
+  const without = await runArm(check, withoutMoment, prepared.arms.withoutFeedback);
+  const withFeedback = await runArm(check, withMoment, prepared.arms.withFeedback);
   const sessions = [without, withFeedback];
-  check.require('each A/B arm completed exactly one real model request step and called no tool',
-    sessions.every((arm) => arm.requestSteps === 1 && arm.toolCalls.length === 0)
-      && check.requestSessions.size === 2 && check.steps === 2,
-    sessions.map(({ sessionId, provider, model, requestSteps, toolCalls: calls }) => ({ sessionId, provider, model, requestSteps, toolCalls: calls })));
+  // One business turn is one ask and one visible answer in each isolated session. The native loop
+  // may consume an additional request step without a tool call (for example provider/loop recovery);
+  // retain that cost instead of misreporting it as another user turn or making qualification flaky.
+  check.require('each A/B arm completed one bounded response-only turn and called no tool',
+    sessions.every((arm) => arm.requestSteps >= 1 && arm.tools.length === 0)
+      && check.requestSessions.size === 2 && check.steps >= 2 && check.steps <= 4,
+    sessions.map(({ sessionId, provider, model, requestSteps, tools }) => ({ sessionId, provider, model, requestSteps, tools })));
 
   const validated = callPackRunner<ValidatedResult>('validate', {
     requestPath,

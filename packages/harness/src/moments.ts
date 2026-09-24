@@ -297,7 +297,11 @@ export async function openMoment(deps: MomentDeps, request: MomentRequest): Prom
       await agent.whenIdle();
       const answer = agent.session.deriveMessages().slice(before).findLast((message) => message.role === 'assistant');
       if (!answer) throw new MomentTurnError(`the model answered nothing in session ${head.sessionId}: ${whyNothingCame(agent)}`);
-      return { text: answer.content.map((block) => ('text' in block && typeof block.text === 'string' ? block.text : '')).join('') };
+      // A provider may return private reasoning beside the user-visible answer. Both block kinds
+      // carry a `text` field, so structural duck typing would disclose reasoning through the
+      // Model-moment API and would also corrupt strict JSON outputs. Match the canonical visible
+      // block tag exactly, as the normal conversation projection does.
+      return { text: answer.content.filter((block) => block.type === 'text').map((block) => block.text).join('') };
     },
     async close(outcome: MomentOutcome): Promise<void> {
       // Once, whatever a caller does: a moment closed twice would be two closes for one open, which

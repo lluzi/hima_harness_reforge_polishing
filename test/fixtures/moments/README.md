@@ -35,6 +35,7 @@ produces for a settled call: `block-start`, `block-end` carrying the finished bl
 | Scenario | Files | What it is for |
 |---|---|---|
 | `one-turn` | `session.jsonl`, `replay.override.json` | The model answers `READY`. One moment, one turn, one pair of `session` records. |
+| `reasoning-then-text` | `session.jsonl`, `replay.override.json` | The model emits a private reasoning block and then visible `READY`; the moment result must expose only the visible text. |
 | `refused` | `session.jsonl`, `replay.override.json` | The model route answers nothing. A zero-chunk `throw` entry is the one failure a durable settlement cannot express, which is exactly why the sidecar exists; it is how the suite reaches the route's `502 hima/moment-failed` and the `closed:failed` outcome without a key and without a network. |
 | `hang-then-answer` | `session.jsonl`, `replay.override.json`, `after-restart.override.json` | The moment that was interrupted. The first host's model call **hangs**: replay writes the `readyFile` and then waits for a cancellation that never comes, so the test knows the moment is open and can take the host away mid-turn. The second host boots on the same home with `after-restart.override.json` and answers. |
 

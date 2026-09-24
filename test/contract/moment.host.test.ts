@@ -101,7 +101,7 @@ test('through the Host with the replay stand-in: a moment opens on a stand-in no
   // to be inside it before the host that replays it starts.
   const home = await localHome(t, { sleepSeconds: 1 });
   if (!home) return;
-  const fixture = await writeMomentFixture(home.h, 'one-turn');
+  const fixture = await writeMomentFixture(home.h, 'reasoning-then-text');
   let d: BootedHost | undefined;
   try {
     d = await bootMomentHost(home.h, { file: fixture.file, overrideFile: fixture.override });
@@ -122,7 +122,8 @@ test('through the Host with the replay stand-in: a moment opens on a stand-in no
 
     const moment = await answer<MomentAnswer>(await openMoment(host, cookie, runId, `Answer with exactly the word ${ANSWER}.`), 200, 'the moment route answered');
 
-    assert.equal(moment.text, ANSWER, `the replayed turn is what the model said: ${JSON.stringify(moment)}`);
+    assert.equal(moment.text, ANSWER,
+      `the route returns only user-visible text, never the model's reasoning block: ${JSON.stringify(moment)}`);
     assert.equal(moment.model, MODEL, 'the model is the profile default, read off the session');
     assert.ok(moment.sessionId.startsWith('session-'), `the answer names dsh's own session: ${moment.sessionId}`);
     // The whole of criterion two, on dsh's own answer about that session's scope.

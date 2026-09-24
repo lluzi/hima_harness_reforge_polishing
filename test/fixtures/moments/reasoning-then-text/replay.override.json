@@ -1,0 +1,12 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "reasoning" },
+      { "type": "block-end", "index": 0, "block": { "type": "reasoning", "text": "We need answer with the requested word." } },
+      { "type": "block-start", "index": 1, "blockType": "text" },
+      { "type": "block-end", "index": 1, "block": { "type": "text", "text": "READY" } },
+      { "type": "finish", "reason": { "kind": "stop" } }
+    ]
+  }
+]

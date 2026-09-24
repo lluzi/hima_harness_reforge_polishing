@@ -72,5 +72,15 @@ test('DTCO feedback A/B live check delegates truth checks to the existing Pack r
   assert.match(source, /delete environment\[KEY_VARIABLE\]/, 'the Pack validator subprocess does not inherit the model credential');
   assert.match(source, /commercialEdaExecuted: false/);
   assert.match(source, /ppaClaimed: false/);
+  assert.match(source, /openMoment\(/, 'both live arms reuse the product response-only Model-moment seam');
+  assert.match(source, /preset: HIMA_MOMENT_PRESET/);
+  assert.match(source, /instructions: modelPrompt\(context\), tools: \[\]/,
+    'the model is composed without inherited tools rather than guarded after exposure');
+  assert.match(source, /evidence_sha256 is always a non-empty JSON array of strings/,
+    'the prompt disambiguates the Pack field whose singular name still carries a source list');
+  assert.match(source, /check\.steps >= 2 && check\.steps <= 4/,
+    'two business turns retain bounded native request-step cost instead of assuming one transport step per turn');
+  assert.doesNotMatch(source, /qualificationSessions|host\.ctx\.tools\.guard/,
+    'a runtime guard cannot substitute for removing tools from the model schema');
   assert.doesNotMatch(source, /writeReplayOverlay|dsh-llm-replay.*import/);
 });
