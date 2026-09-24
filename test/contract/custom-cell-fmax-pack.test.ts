@@ -48,7 +48,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.2.14');
+  assert.equal(graph.version, '5.2.15');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -802,6 +802,19 @@ test('a real Pack-sourced TSMC28 L4 profile materializes declared Site inputs wi
     assert.match(mismatchedCdl.stderr, /FOUNDRY_CDL_SHA256 does not match/);
     await assert.rejects(() => readFile(path.join(cdlWorkspace, 'flow/inputs.json')),
       `${source} cannot publish a Fabric binding for a mismatched physical source`);
+  }
+  await writeFile(physical, JSON.stringify(physicalProfile));
+  await writeFile(physical, JSON.stringify({ ...physicalProfile, FOUNDRY_DB_FILE: foundryLib }));
+  for (const source of ['flow/bind-inputs.py', 'tools/bind-inputs.py']) {
+    const libertyDbWorkspace = path.join(h.workspace, `liberty-as-explicit-db-${source.split('/')[0]}`);
+    await mkdir(path.join(libertyDbWorkspace, 'flow'), { recursive: true });
+    const libertyDb = spawnSync('/usr/bin/python3', [path.join(packDir, source), '--workspace', libertyDbWorkspace,
+      '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
+      '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+    assert.notEqual(libertyDb.status, 0, `${source} rejects a Liberty text file explicitly supplied as Design Compiler's DB`);
+    assert.match(libertyDb.stderr, /FOUNDRY_DB_FILE.*compiled.*\.db/);
+    await assert.rejects(() => readFile(path.join(libertyDbWorkspace, 'flow/inputs.json')),
+      `${source} cannot publish a DC binding with an explicit Liberty path`);
   }
   await writeFile(physical, JSON.stringify(physicalProfile));
   await writeFile(tools, JSON.stringify({ ...toolProfile, LFR_ABC_SHA256: '0'.repeat(64) }));
