@@ -293,6 +293,45 @@ test('native Workbench saves exact memory, corrects experience, controls and rea
     assert.match(draftText,/Inspect synthetic finding zero-delta/);
     assert.match(draftText,/Inspect generation feedback report/);
 
+    // A delayed response for report A must never replace report B after the
+    // person changes the exact report reference in this same Insight panel.
+    await browser.markText('button', 'Choose another report', 'remaining-race-choose-a');
+    assert.ok((await d.click('remaining-race-choose-a')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="insight-preparation"]')`);
+    assert.ok((await d.fill('insight-report-ref','race:a')).ok);
+    await enable(browser,['*/hima/api/context/report-address','*/hima/api/context']);
+    assert.ok((await d.click('insight-open-report')).ok);
+    const addressA=await next(browser,paused=>paused.request.url.endsWith('/context/report-address'));
+    const boundA={kind:'report',reportRef:'race:a',version:'a',sha256:hash('a')};
+    await fulfill(browser,addressA,boundA);
+    const contextA=await next(browser,paused=>paused.request.url.endsWith('/context'));
+    await browser.markText('button','Choose another report','remaining-race-choose-b');
+    assert.ok((await d.click('remaining-race-choose-b')).ok);
+    await browser.wait(`!!document.querySelector('[data-hima-region="insight-preparation"]')`);
+    assert.ok((await d.fill('insight-report-ref','race:b')).ok);
+    assert.ok((await d.click('insight-open-report')).ok);
+    const addressB=await next(browser,paused=>paused.request.url.endsWith('/context/report-address'));
+    const boundB={kind:'report',reportRef:'race:b',version:'b',sha256:hash('b')};
+    await fulfill(browser,addressB,boundB);
+    const contextB=await next(browser,paused=>paused.request.url.endsWith('/context'));
+    await fulfill(browser,contextB,{requestId:requestBody(contextB).requestId,target:boundB,
+      scope:{workspaceRef:home.h.workspace,sessionId},asOf:'2026-09-23T12:00:09.000Z',sourceRevision:45,
+      facts:{kind:'read',record:{id:'race:b'},markdown:'# Report B\n\nThe current report is B.\n',json:{schema:'hima-experience/4',runId}},
+      sources:['race:b'],missing:[]});
+    await browser.wait(`document.querySelector('[data-hima-region="insight-report"]')?.innerText.includes('The current report is B.')`);
+    // CDP may reject a fulfilment once AbortController has cancelled A. Either
+    // outcome is acceptable; displaying A again is not.
+    await fulfill(browser,contextA,{requestId:requestBody(contextA).requestId,target:boundA,
+      scope:{workspaceRef:home.h.workspace,sessionId},asOf:'2026-09-23T12:00:10.000Z',sourceRevision:43,
+      facts:{kind:'read',record:{id:'race:a'},markdown:'# Report A\n\nStale A must stay hidden.\n',json:{schema:'hima-experience/4',runId}},
+      sources:['race:a'],missing:[]}).catch(error => {
+      if (!(error instanceof Error) || !error.message.includes('Invalid InterceptionId')) throw error;
+    });
+    const visible=await browser.evaluate<string>(`document.querySelector('[data-hima-region="insight-report"]').innerText`);
+    assert.match(visible,/The current report is B\./);
+    assert.doesNotMatch(visible,/Stale A must stay hidden/);
+    await browser.send('Fetch.disable');
+
   } catch (error) {
     t.diagnostic(await browser.evaluate<string>('document.body.innerText')); t.diagnostic(d.stderr()); throw error;
   } finally {
