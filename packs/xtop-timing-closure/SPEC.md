@@ -19,6 +19,13 @@ PrimeTime analysis, Workshop planning, XTop fix, Innovus ECO, refreshed extracti
 comparison nodes. Output is the materialized `flow/output/best.enc` plus `best.enc.dat`, bound by
 `best-database.json`.
 
+Best-database adoption also requires comparable, complete full-chip DRC and connectivity counts
+from the same database state. An Innovus DRC `Total Violations` footer is readable only with its
+declared `verify_drc -limit 1000000` command and a count below that bound. A connectivity report
+that prints 1000 problems without proof of an untruncated count remains `unknown`; identical printed
+counts across generations do not prove no new error. Unknown physical coverage cannot authorize a
+new best database.
+
 ## Semantics
 
 The Pack emits setup/hold WNS, TNS and violation counts, unconstrained endpoints, endpoint delta
@@ -57,4 +64,3 @@ whitelist before any licensed tool starts.
 The Pack carries the verified source method and source manifest, its completion boundary, and the
 endpoint feedback vocabulary. Site paths and credentials remain outside the Pack. Campaign results
 remain in the Campaign workspace and do not silently modify Pack knowledge.
-

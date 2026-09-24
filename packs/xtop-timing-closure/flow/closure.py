@@ -556,8 +556,17 @@ def physical_count(path: Path, kind: str):
     if re.search(r"(?i)\b(?:truncated|limit reached|first\s+\d+\s+(?:errors|violations))\b", text):
         raise Rejected(f"{kind} report is truncated or limited")
     if kind == "drc":
-        matches = re.findall(r"(?im)^\s*Total number of DRC violations\s*=\s*(\d+)\s*$", text)
+        fixture = re.findall(r"(?im)^\s*Total number of DRC violations\s*=\s*(\d+)\s*$", text)
+        innovus = re.findall(r"(?im)^\s*Total Violations\s*:\s*(\d+)\s+Viols\.\s*$", text)
+        if innovus:
+            command = re.findall(r"(?im)^#\s*Command:\s*verify_drc\s+-limit\s+(\d+)\b[^\n]*$", text)
+            if len(command) != 1 or int(command[0]) != 1000000:
+                raise Rejected("cannot prove the Innovus DRC command used the declared complete-report limit")
+        matches = fixture + innovus
     else:
+        if (re.search(r"(?m)^\s*1000 Problem\(s\) \(IMPVFC-200\):", text)
+                and re.search(r"(?m)^\s*1000 total info\(s\) created\.\s*$", text)):
+            raise Rejected("connectivity report prints 1000 problems without a proven complete count")
         matches = re.findall(r"(?im)^\s*Total number of (?:connectivity|connectivity violations)\s*=\s*(\d+)\s*$", text)
     if len(matches) != 1:
         raise Rejected(f"cannot prove one complete {kind} count from {path}")
