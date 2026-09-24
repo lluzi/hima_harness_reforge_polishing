@@ -886,7 +886,10 @@ def _validate_candidate_ast(tree):
                          (type(rejected).__name__, getattr(rejected, "lineno", "?")))
     functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
     if len(functions) != 1:
-        raise ValueError("candidate_program cannot define nested helper functions")
+        if len(functions) > 1:
+            raise ValueError("candidate_program cannot define nested helper functions at line %d" %
+                             functions[1].lineno)
+        raise ValueError("candidate_program must define one propose_candidates function")
     function = functions[0]
     literal_lengths = {}
 
@@ -918,17 +921,17 @@ def _validate_candidate_ast(tree):
                 bound = _range_bound(node.iter, literal_lengths)
                 if (bound is None or bound < 0
                         or bound * enclosing > RESIDUAL_MAX_STATIC_ITERATIONS):
-                    raise ValueError("candidate_program loop is not statically bounded")
-                loop_bounds.append(bound)
+                    raise ValueError("candidate_program loop at line %d is not statically bounded" % node.lineno)
+                loop_bounds.append((bound, node.lineno))
                 inspect_loops(node.body, max(1, bound * enclosing))
                 inspect_loops(node.orelse, enclosing)
             else:
                 inspect_loops(list(ast.iter_child_nodes(node)), enclosing)
 
     inspect_loops(function.body)
-    if sum(loop_bounds) > RESIDUAL_MAX_STATIC_ITERATIONS * 4:
-        raise ValueError("candidate_program aggregate static loop budget exceeds %d" %
-                         (RESIDUAL_MAX_STATIC_ITERATIONS * 4))
+    if sum(bound for bound, _line in loop_bounds) > RESIDUAL_MAX_STATIC_ITERATIONS * 4:
+        raise ValueError("candidate_program aggregate static loop budget exceeds %d at line %d" %
+                         (RESIDUAL_MAX_STATIC_ITERATIONS * 4, loop_bounds[-1][1]))
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range":
             bound = _range_bound(node, literal_lengths)

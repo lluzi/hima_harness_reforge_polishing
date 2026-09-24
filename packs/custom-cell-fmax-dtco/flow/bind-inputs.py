@@ -253,6 +253,11 @@ def main():
     if physical.get("FOUNDRY_DB_FILE") not in (None, ""):
         foundry_db = Path(plain_file(physical["FOUNDRY_DB_FILE"], "FOUNDRY_DB_FILE"))
     else:
+        # The legacy single-file input remains usable only when it explicitly
+        # names a compiled DB. A Liberty text path cannot also satisfy DC's
+        # link_library; reject it here before publishing a misleading binding.
+        if foundry_library.suffix.lower() != ".db":
+            raise ValueError("physicalInputs.FOUNDRY_DB_FILE must name the compiled .db when foundryLibrary is Liberty text")
         foundry_db = foundry_library
     overlap = set(physical) & set(tools)
     if overlap:

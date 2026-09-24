@@ -48,7 +48,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.2.12');
+  assert.equal(graph.version, '5.2.13');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -798,6 +798,15 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
   assert.notEqual(rejectedAmbiguousDb.status, 0); assert.match(rejectedAmbiguousDb.stderr, /redefine Campaign identity: FOUNDRY_DB/);
   const legacyPhysicalProfile = { ...physicalProfile }; delete (legacyPhysicalProfile as Record<string, unknown>).FOUNDRY_DB_FILE;
   await writeFile(physical, JSON.stringify(legacyPhysicalProfile));
+  const libOnlyWorkspace = path.join(h.workspace, 'liberty-without-compiled-db');
+  await mkdir(path.join(libOnlyWorkspace, 'flow'), { recursive: true });
+  const libOnly = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', libOnlyWorkspace,
+    '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
+    '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+  assert.notEqual(libOnly.status, 0, 'a Liberty text file cannot double as Design Compiler’s compiled DB');
+  assert.match(libOnly.stderr, /FOUNDRY_DB_FILE.*compiled.*\.db/);
+  assert.rejects(() => readFile(path.join(libOnlyWorkspace, 'flow/inputs.json')),
+    'a rejected binding must not publish misleading DC inputs');
   const legacyWorkspace = path.join(h.workspace, 'legacy-single-library-bind');
   await mkdir(path.join(legacyWorkspace, 'flow'), { recursive: true });
   const legacy = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', legacyWorkspace,

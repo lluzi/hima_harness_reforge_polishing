@@ -2500,7 +2500,9 @@ async function actOnExecution(deps: FabricDeps, run: RunRecord, req: ExecutionAc
   const no = (reason: string) => executionAnswer(deps, run.id, 'refused', { reason });
   const control = run.control!;
   const execution = req.executionId === undefined ? undefined : control.executions[req.executionId];
-  if (execution === undefined) return no('name the execution identity returned by begin');
+  if (execution === undefined) return no(req.action === 'recommend'
+    ? 'this execution has not begun; call begin for this node first, then recommend using its execution identity'
+    : 'name the execution identity returned by begin');
   if (req.nodeId !== undefined && req.nodeId !== execution.nodeId) return no('node and execution identities disagree');
   if (req.action === 'read' && req.output === '@job-log') {
     if (execution.jobSession === undefined) return no('this execution has launched no Job whose log can be read');

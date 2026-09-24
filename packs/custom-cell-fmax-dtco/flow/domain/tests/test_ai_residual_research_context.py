@@ -787,6 +787,7 @@ class ResidualResearchContextTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             context = load_residual_research_context(_request(root), evidence_root=root)
+        context["candidate_pool"]["proposals"] = [{"proposal_key": "proposal:" + "1" * 64}]
         proposal = _proposal(context)
         proposal["candidate_program"]["source"] = (
             "def propose_candidates(residual, budget):\n"
@@ -802,12 +803,42 @@ class ResidualResearchContextTests(unittest.TestCase):
             "    output = []\n"
             "    for index in range(1):\n"
             "        output.append({'lens': 'reconvergent-cut',\n"
-            "                       'transformation': {'proposal_key': pool[0]['proposal_key']},\n"
-            "                       'rationale': 'bounded ranking score ' + str(total)})\n"
+            "                       'transformation': {'cut_kind': 'reconvergent', 'rank_score': scores[0]},\n"
+            "                       'rationale': 'bounded ranking score ' + str(total) + ' for ' + pool[0]['proposal_key']})\n"
             "    return output\n"
         )
         validated = validate_residual_research_proposal(proposal, context)
         self.assertRegex(validated["candidate_program"]["sha256"], r"^[0-9a-f]{64}$")
+        candidates, execution = execute_candidate_program(
+            validated["candidate_program"], context, allowed_lenses={"reconvergent-cut"})
+        self.assertEqual(1, len(candidates))
+        self.assertEqual(1, execution["proposal_count"])
+
+    def test_current_authoring_subset_names_the_violating_rule_and_source_line(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            context = load_residual_research_context(_request(root), evidence_root=root)
+        five_passes = (
+            "def propose_candidates(residual, budget):\n"
+            "    total = 0\n"
+            + "".join("    for index in range(128):\n        total = total + index\n" for _ in range(5))
+            + "    return []\n"
+        )
+        cases = (
+            (five_passes, r"aggregate static loop budget exceeds 512.*line 11"),
+            ("def propose_candidates(residual, budget):\n"
+             "    for row in residual['unbounded']:\n        pass\n"
+             "    return []\n", r"loop.*line 2.*statically bounded"),
+            ("def propose_candidates(residual, budget):\n"
+             "    def helper():\n        return []\n"
+             "    return helper()\n", r"nested helper functions.*line 2"),
+        )
+        for source, diagnosis in cases:
+            with self.subTest(diagnosis=diagnosis):
+                proposal = _proposal(context)
+                proposal["candidate_program"]["source"] = source
+                with self.assertRaisesRegex(ValueError, diagnosis):
+                    validate_residual_research_proposal(proposal, context)
 
     def test_large_round_evaluation_is_compacted_before_the_agent_context_bound(self):
         with tempfile.TemporaryDirectory() as folder:

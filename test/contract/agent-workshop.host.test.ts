@@ -37,6 +37,9 @@ test('an Agent-owned Workshop code failure stays in the coding loop without huma
       return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id), expectedEpoch: control.epoch,
         expectedRevision: control.revision, requestId: `authoring-retry-${++serial}`, action, ...fields });
     };
+    const beforeBegin = await act('recommend', { nodeId: 'analyze' });
+    assert.equal(beforeBegin.kind, 'refused');
+    assert.match(beforeBegin.reason ?? '', /not begun.*begin/i);
     const begun = await act('begin', { nodeId: 'analyze' });
     assert.equal(begun.kind, 'accepted', begun.reason);
     assert.deepEqual(begun.data, { nextAction: 'recommend', reason: 'read the admitted Workshop contract and inputs before writing or running code' });
@@ -55,6 +58,38 @@ test('an Agent-owned Workshop code failure stays in the coding loop without huma
     assert.equal(host.ctx.hima.ledger.records({ runId, type: 'blocker' }).length, 0);
     const revised = await act('begin', { nodeId: 'analyze' });
     assert.equal(revised.kind, 'accepted', revised.reason);
+  } finally {
+    if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
+    await host.dispose(); await home.h.dispose();
+  }
+});
+
+test('recommend distinguishes an unbegun execution from a begun act with no Workshop', async (t) => {
+  const home = await localHome(t, { sleepSeconds: 0 });
+  assert.ok(home);
+  const host = await bootInProcess(home.h);
+  let runId: string | undefined;
+  try {
+    const owner = await createRootAgent(host.ctx, home.h.workspace);
+    const started = await host.ctx.hima.startRun({ pack: 'opene902-timing-probe', site: 'local',
+      goal: { target_period_ns: 2 }, ownerSessionId: String(owner.id) });
+    assert.equal(started.kind, 'ran');
+    if (started.kind !== 'ran') return;
+    runId = started.run.id;
+    const before = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), action: 'recommend',
+      nodeId: 'synthesize', requestId: 'not-begun-probe', expectedEpoch: 1, expectedRevision: 0 });
+    assert.equal(before.kind, 'refused');
+    assert.match(before.reason ?? '', /not begun.*begin/i);
+    const begun = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), action: 'begin',
+      nodeId: 'synthesize', requestId: 'begin-probe', expectedEpoch: 1, expectedRevision: 0 });
+    assert.equal(begun.kind, 'accepted');
+    const executionId = begun.receipt?.executionId; assert.ok(executionId);
+    const control = host.ctx.hima.ledger.run(runId)!.control!;
+    const notWorkshop = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), action: 'recommend',
+      executionId, requestId: 'not-workshop-probe', expectedEpoch: control.epoch,
+      expectedRevision: control.revision });
+    assert.equal(notWorkshop.kind, 'refused');
+    assert.match(notWorkshop.reason ?? '', /no Workshop capability/);
   } finally {
     if (runId !== undefined) await host.ctx.hima.cancelRun(runId);
     await host.dispose(); await home.h.dispose();
