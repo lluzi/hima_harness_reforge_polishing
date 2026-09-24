@@ -80,8 +80,9 @@ test('one native owner drives the full AES graph and returns from an evidence re
     const started = await host.ctx.hima.startRun({ pack: 'aes-tsmc28-dtco', site: 'local', test: true,
       goal: { target_period_ns: 0.5 }, strategy: { periodNs: 0.5, algorithmRevision: 0 },
       // This checks graph/evidence coverage, not deadline behavior (covered by budget tests).
-      // Leave room for the 60-second closing reserve and slower complete-suite filesystem work.
-      generationLimit: 1, retryAllowance: 1, timeBoxMs: 300_000, ownerSessionId: String(native.id) });
+      // A full graph can take over four minutes under shared-host contention. Budget
+      // behavior has its own tests; this case must reach the later graph assertions.
+      generationLimit: 1, retryAllowance: 1, timeBoxMs: 600_000, ownerSessionId: String(native.id) });
     assert.equal(started.kind, 'ran', JSON.stringify(started));
     if (started.kind !== 'ran') return;
     runId = started.run.id;
