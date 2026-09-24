@@ -4,7 +4,7 @@
   "source": {
     "repository": "lluzi/hima_harness_reforge_polishing",
     "branch": "main",
-    "commit": "85372434b77fc0274a4463edda83f51fad0f6742",
+    "commit": "900aa4c86a99999052a1a36c78b87102e6189273",
     "remoteCommitVerified": true
   },
   "status": "blocked",
@@ -62,7 +62,7 @@
     "candidate": "not run; no best database adopted"
   },
   "issue59": {
-    "status": "qualified-pending-independent-review",
+    "status": "qualified-reviewed-ready-to-close",
     "pack": { "id": "custom-cell-fmax-dtco", "version": "5.2.16", "status": "development" },
     "input": {
       "requestSha256": "8f63a18e3a5aee1067a9cec16877dc69de02eba02aa5fdcff1f42b7e98dda1ec",
@@ -80,20 +80,23 @@
       "replayUsed": false,
       "providerObservedAtRuntime": true,
       "sampling": { "seed": "not-exposed", "temperature": "not-fixed", "repeatedAaBaseline": false, "causalAttribution": false },
-      "tools": []
+      "tools": [],
+      "nativeSessionsCreated": 2,
+      "modelSessions": 2,
+      "sessionRows": 2
     },
     "selection": {
       "withoutFeedbackCount": 6,
       "withFeedbackCount": 6,
-      "addedCount": 3,
-      "removedCount": 3,
+      "addedCount": 5,
+      "removedCount": 5,
       "changed": true,
       "reason": "with-feedback and without-feedback selections differ in this A/B sample; sampling is uncontrolled and causality is not established"
     },
     "evidence": {
-      "feedbackJsonSha256": "72f79d2e4ca5c2499f8bb1d426e98ab65df186887010b2ae83e33b97770f6bf1",
-      "feedbackMarkdownSha256": "1b0ebf61e6c5613ae82a55fe3c4be1ee578d62dcba32c56aa643f2dbeaf51302",
-      "liveCheckSha256": "f010febf79f79e1ba0b666d85eb4b82d1aefae0585884d152b48db01824026b6"
+      "feedbackJsonSha256": "e7a8a6c9301a8c892304904f14f9c417d2d0c7a24a688cc663aa8d9120f0904f",
+      "feedbackMarkdownSha256": "605fe4e75f867aaaf996403d07bfaa46b73f07188c1fc5fb448d7223a1434dd6",
+      "liveCheckSha256": "f76a9a26202ecb46b7fdb8cb12599b3d0b64f968bc7676fa4af2421309d1f470"
     },
     "claimLimits": [
       "no commercial EDA was run by the A/B check",
