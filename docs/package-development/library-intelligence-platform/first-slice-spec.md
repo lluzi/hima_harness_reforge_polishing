@@ -1,5 +1,8 @@
 # LIB-INT-01：Design-Conditioned Library Delta Triage
 
+> 2026-09-24 状态更新：旧环境的 `exit 139` 阻塞已由[有界 QuaLib 2026 资格验证](qualification/2026-09-24-qualib-2026.md)
+> 解除。以下原始规格保留历史上下文；产品内 E1 接线和 E2–E4 尚未实现，不能把接口探针视为 Pack 验收。
+
 状态：**blocked before implementation**。阻塞条件是 Empyrean Liberty API qualification fixture 在已声明
 运行环境中退出 139；用户已明确本轮不做 debug。解除阻塞需要厂商可用包/运行说明，或用户重新授权
 诊断。本文不把规格完成写成产品完成。

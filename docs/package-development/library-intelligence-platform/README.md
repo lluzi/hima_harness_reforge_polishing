@@ -1,7 +1,7 @@
 # Library Intelligence Platform development track
 
-Status: research and executable first-slice specification complete; implementation blocked by Liberty API runtime
-qualification.
+Status: research and executable first-slice specification complete. The earlier Liberty API runtime blocker was
+removed by a bounded QuaLib 2026 qualification on 2026-09-24; product E1 integration and E2–E4 remain open.
 
 Start here:
 
@@ -13,6 +13,7 @@ Start here:
 6. [First falsifiable implementation slice](first-slice-spec.md)
 7. [Environment qualification](environment-qualification.md)
 8. [Research verification](research-verification.md)
+9. [Current QuaLib 2026 bounded qualification](qualification/2026-09-24-qualib-2026.md)
 
 Research control artifacts:
 

@@ -1,5 +1,9 @@
 # Empyrean Liberty API environment qualification
 
+> Historical snapshot from 2026-09-22. The bounded QuaLib 2026 vendor/SAED14/TSMC28
+> qualification passed on 2026-09-24; see the [new receipt](qualification/2026-09-24-qualib-2026.md).
+> The original exit 139 evidence below is preserved, not a statement of the current API state.
+
 Date: 2026-09-22
 
 Site: `linglong`
