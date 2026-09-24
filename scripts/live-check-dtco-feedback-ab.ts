@@ -356,8 +356,8 @@ await runLive(NAME, 2, async (check: LiveCheck) => {
     { runId: qualificationRun.id, nodeId: 'research-candidates', attempt, preset: HIMA_MOMENT_PRESET,
       instructions: modelPrompt(context), tools: [], cwd: home.workspace },
   );
-  const withoutMoment = await openArm(1, prepared.arms.withoutFeedback);
-  const withMoment = await openArm(2, prepared.arms.withFeedback);
+  const withoutMoment = check.trackMoment(await openArm(1, prepared.arms.withoutFeedback));
+  const withMoment = check.trackMoment(await openArm(2, prepared.arms.withFeedback));
   check.require('both native sessions use the real configured DeepSeek-V4.1-Flash route with no tool schema',
     [withoutMoment, withMoment].every((moment) => moment.provider === EXPECTED_PROVIDER
       && moment.model === EXPECTED_MODEL && moment.tools.length === 0),

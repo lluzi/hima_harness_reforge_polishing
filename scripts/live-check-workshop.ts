@@ -8,7 +8,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import { loadPack } from '@hima/harness';
+import { loadPack, type Moment } from '@hima/harness';
 import { bootInProcess, cancelTestAgent, createRootAgent, injectedSkills, sayAsUser, saidByModel, steerAsUser, toolCalls, toolResults, type InProcessHost } from '../test/contract/support/boot-inprocess.ts';
 import { createHimaHome, repoRoot, type HimaHome } from '../test/contract/support/dsh-home.ts';
 import { digestTrees } from '../test/contract/support/pipeline.ts';
@@ -28,6 +28,7 @@ export class LiveCheck {
   readonly checks: Check[] = [];
   readonly observed: Record<string, unknown> = {};
   readonly agents: Agent[] = [];
+  readonly moments: Pick<Moment, 'sessionId' | 'provider' | 'model' | 'tools'>[] = [];
   readonly resumedSessions = new Set<string>();
   readonly toolSequence: unknown[] = [];
   readonly requestSessions = new Set<string>();
@@ -146,6 +147,14 @@ export class LiveCheck {
   check(claim: string, passed: boolean, saw: unknown): void { this.checks.push({ claim, passed, saw: this.clean(saw ?? null) }); this.checkpoint(); }
   require(claim: string, passed: boolean, saw: unknown): void { this.check(claim, passed, saw); if (!passed) throw new Error(claim); }
   track(agent: Agent): Agent { if (!this.agents.includes(agent)) this.agents.push(agent); return agent; }
+  trackMoment<T extends Pick<Moment, 'sessionId' | 'provider' | 'model' | 'tools'>>(moment: T): T {
+    if (!this.moments.some((candidate) => candidate.sessionId === moment.sessionId)) {
+      this.moments.push({ sessionId: moment.sessionId, provider: moment.provider,
+        model: moment.model, tools: [...moment.tools] });
+    }
+    this.checkpoint();
+    return moment;
+  }
   trackResumed(agent: Agent): Agent { this.resumedSessions.add(String(agent.id)); return this.track(agent); }
   beforeDispose(action: () => Promise<void>): void {
     if (this.beforeDisposeAction !== undefined) throw new Error('only one before-dispose cleanup may be registered');
@@ -206,10 +215,19 @@ export class LiveCheck {
       const runs = this.host?.ctx.hima.ledger.runs() ?? [];
       const record = this.clean({ check: this.name, startedAt: this.startedAt, checkpointAt: new Date().toISOString(), limits: this.limits,
         passed: false, status: this.failure ? 'failed' : 'in-progress', failure: this.failure ?? null,
-        costs: { hosts: this.host ? 1 : 0, electron: 0, nativeSessionsCreated: this.agents.length - this.resumedSessions.size, nativeSessionsResumed: this.resumedSessions.size, modelSessions: this.requestSessions.size,
+        costs: { hosts: this.host ? 1 : 0, electron: 0,
+          nativeSessionsCreated: this.agents.length - this.resumedSessions.size + this.moments.length,
+          nativeSessionsResumed: this.resumedSessions.size, modelSessions: this.requestSessions.size,
           modelRequestSteps: this.steps, apiRequests: 'unmeasured; request steps exclude adapter retries', tokens: 'unmeasured', userMessages: this.turns },
         observed: this.observed, userMessages: this.userMessages, toolSequence: this.toolSequence,
-        agents: this.agents.map((agent) => ({ id: agent.id, session: agent.session.id, cwd: agent.session.header.cwd, options: agent.options, skills: injectedSkills(agent), toolCalls: toolCalls(agent), toolResults: toolResults(agent), said: saidByModel(agent) })),
+        agents: [
+          ...this.agents.map((agent) => ({ id: agent.id, session: agent.session.id, kind: 'agent',
+            cwd: agent.session.header.cwd, options: agent.options, skills: injectedSkills(agent),
+            toolCalls: toolCalls(agent), toolResults: toolResults(agent), said: saidByModel(agent) })),
+          ...this.moments.map((moment) => ({ id: moment.sessionId, session: moment.sessionId, kind: 'moment',
+            options: { provider: moment.provider, model: moment.model }, tools: moment.tools,
+            toolCalls: [], toolResults: [], said: 'retained in the Model-moment session log' })),
+        ],
         runs: runs.map((run) => ({ run, records: this.host!.ctx.hima.ledger.records({ runId: run.id }) })), checks: this.checks });
       writeFileSync(path.join(this.out, 'evidence.json'), JSON.stringify(record, null, 2) + '\n');
     } catch { /* Preserve the preceding checkpoint if the Host has already disposed. */ }

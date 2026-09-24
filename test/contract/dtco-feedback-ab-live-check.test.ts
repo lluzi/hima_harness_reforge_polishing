@@ -84,6 +84,8 @@ test('DTCO feedback A/B live check delegates truth checks to the existing Pack r
     'provider identity is read from the composed moment rather than written as an expected constant');
   assert.match(source, /provider: sessions\[0\]!\.provider/,
     'durable evidence records the runtime provider fact');
+  assert.match(source, /check\.trackMoment\(await openArm/,
+    'LiveCheck accounts for response-only Model moments even though they expose no Agent handle');
   assert.match(source, /repeatedAaBaseline: false, causalAttribution: false/,
     'the one A/B sample cannot claim a controlled causal effect');
   assert.doesNotMatch(source, /qualificationSessions|host\.ctx\.tools\.guard/,
