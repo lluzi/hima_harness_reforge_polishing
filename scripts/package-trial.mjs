@@ -499,7 +499,7 @@ if (args.includes('--help') || args.includes('-h')) {
         bundledPacks: [trialPackId, timingPackId, demoPackId] },
       compatibility: { home: 'version-isolated; no automatic migration', oldLedger: 'explicit offline import only' },
       impactedChecks: ['local contracts', 'isolated Desktop workbench', 'packaged Host and Pack-read smoke'],
-      rollbackRef: 'v0.3.0-trial.16', status: 'building',
+      rollbackRef: 'v0.3.0-trial.18', status: 'building',
       source, files };
     writeFileSync(path.join(output, 'trial-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     verify(app, true);
