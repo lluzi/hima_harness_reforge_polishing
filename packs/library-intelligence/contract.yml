@@ -1,11 +1,13 @@
 id: library-intelligence
-version: "0.1.0"
+version: "0.2.0"
 title: Library Intelligence native API qualification
 status: development
 minimumHarnessVersion: 0.1.0
 inputs:
   - name: qualificationManifest
     description: Site-owned exact runtime, Permit and three-source qualification manifest.
+  - name: qualificationPython
+    description: Site-owned qualified Python executable, also pinned in the qualification manifest.
   - name: workspaceRoot
     description: Site-permitted Campaign private workspace root.
 outputs:
@@ -13,8 +15,20 @@ outputs:
     path: flow/qualification/receipt.json
     reader: library-qualification
     description: Typed per-input read/query/copy/re-read evidence; no Library facts.
+tools:
+  - id: qualify-api
+    file: tools/libapi_worker.py
+    description: Run the bounded, Host-attested three-source native API qualification.
+    inputs: [QUALIFICATION_MANIFEST, QUALIFICATION_PYTHON, WORKSPACE]
+    licences: { QuaLib-2026-new-59099: 1 }
+    argv:
+      - /usr/local/bin/edarun
+      - ${QUALIFICATION_PYTHON}
+      - ${WORKSPACE}/flow/tools/libapi_worker.py
+      - ${QUALIFICATION_MANIFEST}
+      - ${WORKSPACE}
 environment:
-  wrappers: [/usr/bin/python3]
+  wrappers: [/usr/local/bin/edarun, /usr/bin/python3]
 workspace:
   source: pack
   copy: []

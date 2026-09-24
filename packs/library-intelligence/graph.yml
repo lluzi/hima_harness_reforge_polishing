@@ -1,7 +1,14 @@
 id: library-intelligence
-version: "0.1.0"
-entry: blocked
+version: "0.2.0"
+entry: qualify-api
 nodes:
+  - id: qualify-api
+    kind: act
+    parameters:
+      tool: qualify-api
+      arguments:
+        QUALIFICATION_MANIFEST: { from: input, name: qualificationManifest }
+        QUALIFICATION_PYTHON: { from: input, name: qualificationPython }
   - id: read-qualification
     kind: act
     parameters: { observes: qualification }
@@ -14,6 +21,7 @@ nodes:
     kind: wait
     parameters: { blocker: hard-blocker }
 edges:
+  - { from: qualify-api, to: read-qualification }
   - { from: read-qualification, to: qualification-gate }
   - { from: qualification-gate, to: blocked, outcome: FAIL }
   - { from: qualification-gate, to: blocked, outcome: UNDETERMINED }

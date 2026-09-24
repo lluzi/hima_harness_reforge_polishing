@@ -120,10 +120,8 @@ def validate(report):
         refuse("receipt schema differs")
     if receipt.get("facts", "unexpected") is not None:
         refuse("E1 receipt includes facts")
-    if receipt.get("permitAttestation") != "unverified-site-binding":
-        refuse("Permit attestation is not the declared interim state")
-    if receipt.get("status") != "blocked":
-        refuse("unattested Permit cannot produce an admitted pass")
+    if receipt.get("permitAttestation") != "host-prelaunch":
+        refuse("Permit attestation is not Host prelaunch evidence")
     manifest_path = receipt.get("manifestPath")
     permit_path = receipt.get("permitPath")
     if not isinstance(manifest_path, str) or not isinstance(permit_path, str):
@@ -138,6 +136,11 @@ def validate(report):
         refuse("manifest schema differs")
     if manifest.get("permit") != {"path": permit_path, "sha256": receipt["permitSha256"]}:
         refuse("Permit does not match bound manifest")
+    license_selection = {"product": "QuaLib", "release": "2026", "selection": "new",
+                         "port": 59099, "claim": "QuaLib-2026-new-59099",
+                         "excludesClaim": "XTop"}
+    if manifest.get("license") != license_selection:
+        refuse("QuaLib 2026 new/59099 selection differs")
     runtime = manifest.get("runtime")
     producer = receipt.get("producer")
     if not isinstance(runtime, dict) or not isinstance(producer, dict):
@@ -145,8 +148,39 @@ def validate(report):
     if producer != {key: runtime.get(key) for key in
                     ("apiBuild", "python", "pythonSha256",
                      "nativeModuleSha256", "parserLibrarySha256",
-                     "adapterSha256", "wrapper")}:
+                     "adapterSha256", "wrapper", "wrapperRealpath",
+                     "wrapperSha256")}:
         refuse("producer identity differs from manifest")
+    workspace = os.path.dirname(os.path.dirname(os.path.dirname(report)))
+    expected_attestation_path = os.path.join(workspace, "hima-library-host-attestation.json")
+    attestation_path = receipt.get("hostAttestationPath")
+    if attestation_path != expected_attestation_path:
+        refuse("Host attestation is outside the exact Campaign workspace location")
+    if sha256(attestation_path) != receipt.get("hostAttestationSha256"):
+        refuse("Host prelaunch attestation bytes differ")
+    attestation = load(attestation_path)
+    launch = receipt.get("launch")
+    if (not isinstance(launch, dict)
+            or set(launch) != {"runId", "nodeId", "attempt", "jobSession"}
+            or not isinstance(launch.get("runId"), str) or not launch["runId"]
+            or launch.get("nodeId") != "qualify-api"
+            or not isinstance(launch.get("attempt"), int)
+            or isinstance(launch.get("attempt"), bool) or launch["attempt"] <= 0
+            or not isinstance(launch.get("jobSession"), str) or not launch["jobSession"]):
+        refuse("receipt launch identity is incomplete")
+    if attestation.get("launch") != launch:
+        refuse("receipt launch identity differs from Host attestation")
+    expected_attestation = {
+        "schema": "hima-library-host-attestation/1", "siteId": attestation.get("siteId"),
+        "manifestPath": manifest_path, "manifestSha256": receipt["manifestSha256"],
+        "permitPath": permit_path, "permitSha256": receipt["permitSha256"],
+        "workspace": workspace,
+        "wrapper": runtime.get("wrapper"), "wrapperRealpath": runtime.get("wrapperRealpath"),
+        "wrapperSha256": runtime.get("wrapperSha256"), "license": license_selection,
+        "licenseClaims": {"QuaLib-2026-new-59099": 1}, "launch": launch}
+    if (not isinstance(attestation.get("siteId"), str) or not attestation["siteId"]
+            or attestation != expected_attestation):
+        refuse("Host prelaunch attestation content differs")
     worker = os.path.join(os.path.dirname(os.path.dirname(report)), "tools", "libapi_worker.py")
     if sha256(worker) != runtime.get("adapterSha256"):
         refuse("worker bytes differ from receipt")
@@ -162,7 +196,6 @@ def validate(report):
         refuse("result roles differ")
     native_pass = True
     preflight_refused = receipt.get("reason") == "hima/library-preflight-refused"
-    workspace = os.path.dirname(os.path.dirname(os.path.dirname(report)))
     if any(item.get("status") == "passed" for item in results):
         api = runtime.get("apiRoot")
         if not isinstance(api, str):
@@ -252,11 +285,14 @@ def validate(report):
             refuse("unknown input status")
     if receipt.get("nativeStatus") != ("passed" if native_pass else "blocked"):
         refuse("native status differs from per-input results")
-    if native_pass and receipt.get("reason") != "hima/library-permit-unattested":
-        refuse("unattested native pass lacks block reason")
+    if native_pass and (receipt.get("status") != "passed" or receipt.get("reason") is not None):
+        refuse("complete native pass is not admitted")
     if not native_pass and not isinstance(receipt.get("reason"), str):
         refuse("blocked qualification lacks reason")
-    return {"values": [{"type": "library_qualification_ok", "unit": "count", "value": 0}]}
+    if not native_pass and receipt.get("status") != "blocked":
+        refuse("blocked native result has a non-blocked status")
+    return {"values": [{"type": "library_qualification_ok", "unit": "count",
+                        "value": 1 if native_pass else 0}]}
 
 
 def main():

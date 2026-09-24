@@ -1,5 +1,5 @@
 id: custom-cell-fmax-dtco
-version: "5.2.13"
+version: "5.2.14"
 title: V5 Active Frontier custom Cell Fmax reference Campaign
 status: development
 minimumHarnessVersion: 0.1.0
@@ -29,7 +29,7 @@ inputs:
       database declares FOUNDRY_DB_FILE in physicalInputs; legacy single-file Sites may still pass
       their compiled DB here."
   - name: physicalInputs
-    description: "Site-bound foundry CDL/Liberty pair, LEF, extraction, layer-map, row-site, tap/filler, DCCK clock-tree Cells and process
+    description: "Site-bound release-labelled and SHA-256-bound foundry CDL/Liberty pair, LEF, extraction, layer-map, row-site, tap/filler, DCCK clock-tree Cells and process
       profile plus the per-round and cumulative Library bounds used identically by both route arms.
       Every path and scalar consumed by the method is validated before the Campaign writes inputs.json."
   - name: toolStack

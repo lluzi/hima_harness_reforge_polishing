@@ -213,18 +213,25 @@ def child(source, output):
 
 
 def validate_manifest(value):
-    if not isinstance(value, dict) or set(value) != {"schema", "runtime", "permit", "sources"}:
+    if not isinstance(value, dict) or set(value) != {"schema", "runtime", "permit", "license", "sources"}:
         raise ValueError("qualification manifest keys differ")
     if value["schema"] != "hima-library-qualification-input/1":
         raise ValueError("qualification manifest schema differs")
     runtime, permit, sources = value["runtime"], value["permit"], value["sources"]
     if not isinstance(runtime, dict) or set(runtime) != {
-        "wrapper", "python", "pythonSha256", "pythonVersion", "apiRoot", "apiBuild",
+        "wrapper", "wrapperRealpath", "wrapperSha256",
+        "python", "pythonSha256", "pythonVersion", "apiRoot", "apiBuild",
         "apiMarker", "apiMarkerSha256", "nativeModule",
         "nativeModuleSha256", "parserLibrarySha256", "adapterSha256"}:
         raise ValueError("runtime identity is incomplete")
     if not isinstance(permit, dict) or set(permit) != {"path", "sha256"}:
         raise ValueError("Permit identity is incomplete")
+    license_selection = value["license"]
+    if license_selection != {"product": "QuaLib", "release": "2026",
+                             "selection": "new", "port": 59099,
+                             "claim": "QuaLib-2026-new-59099",
+                             "excludesClaim": "XTop"}:
+        raise ValueError("QuaLib 2026 new/59099 selection is not exact")
     if not isinstance(sources, list) or len(sources) != 3:
         raise ValueError("exactly three representative sources are required")
     if [item.get("role") for item in sources if isinstance(item, dict)] != list(ROLES):
@@ -234,7 +241,35 @@ def validate_manifest(value):
             raise ValueError("source identity is incomplete")
         if not isinstance(item["sha256"], str) or len(item["sha256"]) != 64:
             raise ValueError("source SHA-256 is invalid")
-    return runtime, permit, sources
+    return runtime, permit, license_selection, sources
+
+
+def host_attestation(workspace, manifest_path, manifest_sha, runtime, permit,
+                     license_selection):
+    path = plain(os.path.join(workspace, "hima-library-host-attestation.json"))
+    value = read_json(path)
+    launch = value.get("launch")
+    if (not isinstance(launch, dict)
+            or set(launch) != {"runId", "nodeId", "attempt", "jobSession"}
+            or not isinstance(launch["runId"], str) or not launch["runId"]
+            or launch["nodeId"] != "qualify-api"
+            or not isinstance(launch["attempt"], int) or isinstance(launch["attempt"], bool)
+            or launch["attempt"] <= 0
+            or not isinstance(launch["jobSession"], str) or not launch["jobSession"]):
+        raise ValueError("Host launch identity is incomplete")
+    expected = {"schema": "hima-library-host-attestation/1",
+                "siteId": value.get("siteId"),
+                "manifestPath": manifest_path, "manifestSha256": manifest_sha,
+                "permitPath": permit["path"], "permitSha256": permit["sha256"],
+                "workspace": workspace, "wrapper": runtime["wrapper"],
+                "wrapperRealpath": runtime["wrapperRealpath"],
+                "wrapperSha256": runtime["wrapperSha256"],
+                "license": license_selection,
+                "licenseClaims": {"QuaLib-2026-new-59099": 1},
+                "launch": launch}
+    if not isinstance(value.get("siteId"), str) or not value["siteId"] or value != expected:
+        raise ValueError("Host prelaunch attestation differs")
+    return path, sha256(path), launch
 
 
 def permit_preflight(runtime, permit, sources, workspace, manifest_path):
@@ -299,9 +334,11 @@ def run(manifest_path, workspace):
     if os.path.exists(output):
         raise ValueError("qualification output already exists; refusing overwrite")
     value = read_json(manifest_path)
-    runtime, permit, sources = validate_manifest(value)
+    runtime, permit, license_selection, sources = validate_manifest(value)
     records = [result(item["role"], item["path"], item["sha256"]) for item in sources]
     manifest_sha = sha256(manifest_path)
+    attestation_path, attestation_sha, launch_identity = host_attestation(
+        workspace, manifest_path, manifest_sha, runtime, permit, license_selection)
     # Even a preflight refusal has a typed receipt, with all native steps not-run.
     os.makedirs(output)
     receipt = {"schema": SCHEMA, "status": "blocked", "nativeStatus": "not-run",
@@ -313,9 +350,14 @@ def run(manifest_path, workspace):
                             "nativeModuleSha256": runtime["nativeModuleSha256"],
                             "parserLibrarySha256": runtime["parserLibrarySha256"],
                             "adapterSha256": runtime["adapterSha256"],
-                            "wrapper": runtime["wrapper"]},
+                            "wrapper": runtime["wrapper"],
+                            "wrapperRealpath": runtime["wrapperRealpath"],
+                            "wrapperSha256": runtime["wrapperSha256"]},
                "permitPath": permit["path"], "permitSha256": permit["sha256"],
-               "permitAttestation": "unverified-site-binding",
+               "permitAttestation": "host-prelaunch",
+               "hostAttestationPath": attestation_path,
+               "hostAttestationSha256": attestation_sha,
+               "launch": launch_identity,
                "results": records, "facts": None}
     try:
         read_roots = permit_preflight(runtime, permit, sources, workspace, manifest_path)
@@ -432,7 +474,8 @@ def run(manifest_path, workspace):
         record["reason"] = None
     if all(record["status"] == "passed" for record in records):
         receipt["nativeStatus"] = "passed"
-        receipt["reason"] = "hima/library-permit-unattested"
+        receipt["status"] = "passed"
+        receipt["reason"] = None
     else:
         receipt["nativeStatus"] = "blocked"
     write_json_once(os.path.join(output, "receipt.json"), receipt)

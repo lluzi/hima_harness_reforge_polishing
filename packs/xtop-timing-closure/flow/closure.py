@@ -819,17 +819,31 @@ def resolved_ref(workspace: Path, ref):
 def validate_snapshot_identity(workspace: Path, snapshot):
     if snapshot.get("schema") != STATE_SCHEMA:
         raise Rejected("candidate closure state has the wrong schema")
+    iteration = snapshot.get("iteration")
+    if isinstance(iteration, bool) or not isinstance(iteration, int) or iteration < 0:
+        raise Rejected("candidate closure state has an invalid generation")
+    generations = paths(workspace)["flow"] / "iterations"
+    generation_root = generations / f"g{iteration:03d}"
+    if generations.is_symlink() or generation_root.is_symlink():
+        raise Rejected("candidate generation directory is linked")
+    generation_root = generation_root.resolve()
+
+    def same_generation(path: Path, role: str):
+        if not path.is_relative_to(generation_root):
+            raise Rejected(f"candidate {role} is not from the same generation as its database")
+        return path
+
     database = snapshot.get("database")
     if not isinstance(database, dict) or set(database) != {"script", "data", "scriptIdentity", "tree"}:
         raise Rejected("candidate database identity is incomplete")
-    script = Path(database["script"])
-    data = Path(database["data"])
+    script = same_generation(Path(database["script"]).resolve(), "database restore script")
+    data = same_generation(Path(database["data"]).resolve(), "database tree")
     if script.is_symlink() or not script.is_file() or data.is_symlink() or not data.is_dir():
         raise Rejected("candidate database is absent or linked")
     if resolved_ref(workspace, database["scriptIdentity"]) != script.resolve() or tree_identity(data) != database["tree"]:
         raise Rejected("candidate database bytes changed after measurement")
     for ref in snapshot.get("reportFiles", []):
-        resolved_ref(workspace, ref)
+        same_generation(resolved_ref(workspace, ref), "STA report")
     if not snapshot.get("reportFiles"):
         raise Rejected("candidate has no STA report identities")
     measurement = snapshot.get("measurement")
@@ -839,11 +853,12 @@ def validate_snapshot_identity(workspace: Path, snapshot):
     resolved_ref(workspace, measurement["sourceManifest"])
     if not isinstance(measurement["scenariosSha256"], str) or not isinstance(measurement["spef"], dict) or not measurement["spef"]:
         raise Rejected("candidate constraints/scenario/extraction identity is malformed")
-    for ref in measurement["spef"].values(): resolved_ref(workspace, ref)
+    for ref in measurement["spef"].values():
+        same_generation(resolved_ref(workspace, ref), "SPEF extraction")
     scenarios = read_json(profile_path).get("scenarios")
     if not isinstance(scenarios, list) or sha_json(scenarios) != measurement["scenariosSha256"]:
         raise Rejected("candidate scenarios do not match the retained profile")
-    reports_root = Path(snapshot["reportsRoot"]).resolve()
+    reports_root = same_generation(Path(snapshot["reportsRoot"]).resolve(), "STA report root")
     expected_reports = {str(reports_root / row["name"] / name) for row in scenarios
                         for name in ("global_timing.rpt", "setup.rpt", "hold.rpt", "check_timing.rpt")}
     actual_reports = [str(resolved_ref(workspace, ref)) for ref in snapshot["reportFiles"]]
@@ -866,8 +881,8 @@ def validate_snapshot_identity(workspace: Path, snapshot):
             raise Rejected(f"candidate physical {key} count is malformed")
         if count is None and (physical["coverage"] == "complete" or row.get("status") != "unknown" or not isinstance(row.get("reason"), str)):
             raise Rejected(f"candidate physical {key} evidence has neither a qualified count nor an explicit unknown")
-        resolved_ref(workspace, row.get("report"))
-    manifest_path = resolved_ref(workspace, physical.get("manifest"))
+        same_generation(resolved_ref(workspace, row.get("report")), f"physical {key} report")
+    manifest_path = same_generation(resolved_ref(workspace, physical.get("manifest")), "physical completion manifest")
     if physical_evidence(workspace, manifest_path.parent) != physical:
         raise Rejected("candidate physical counts or coverage differ from retained report bytes")
     return {"databaseTree": tree_identity(data), "databaseScript": file_ref(script, workspace, "candidate restore script"),

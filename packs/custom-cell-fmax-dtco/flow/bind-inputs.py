@@ -118,7 +118,7 @@ def materialize_profile(document):
     directory_fields = ("BOOL2CMOS_CWD", "CCFMAX_CONTAINER_HOST_ROOT")
     line_fields = (
         "CLOCK_NAME", "BOOL2CMOS_CMD", "PROCESS_FAMILY", "CELL_ARCHITECTURE_REF",
-        "CHARACTERIZATION_PROFILE_REF", "DRIVE_STRENGTH", "VT_CLASS", "CCFMAX_CONTAINER_IMAGE",
+        "CHARACTERIZATION_PROFILE_REF", "FOUNDRY_CDL_VERSION", "DRIVE_STRENGTH", "VT_CLASS", "CCFMAX_CONTAINER_IMAGE",
         "CCFMAX_CONTAINER_MOUNT_POINT", "CCFMAX_LCLAYOUT_ACTIVATE",
         "CCFMAX_POWER_PIN", "CCFMAX_GROUND_PIN", "CCFMAX_POWER_TEMPLATE_BASE_CELL",
         "GENERATED_LIBRARY_NAME", "GENERATED_LIB_CELL_PATTERN", "CCFMAX_MAX_ROUTE_LAYER",
@@ -133,6 +133,8 @@ def materialize_profile(document):
     )
     for name in file_fields:
         document[name] = plain_file(document.get(name), name)
+    document["FOUNDRY_CDL_SHA256"] = sha256_identity(
+        document.get("FOUNDRY_CDL_SHA256"), document["FOUNDRY_CDL"], "FOUNDRY_CDL_SHA256")
     if document.get("FOUNDRY_DB_FILE") not in (None, ""):
         document["FOUNDRY_DB_FILE"] = plain_file(document["FOUNDRY_DB_FILE"], "FOUNDRY_DB_FILE")
     for name in directory_fields:

@@ -48,6 +48,7 @@ import { analysisProblems } from './experience-report.js';
 import { runView as analysisRunView } from './remote.js';
 import { jobStatus, jobTail, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
 import { channelFor } from './channel.js';
+import { attestLibraryQualificationPrelaunch } from './library-prelaunch.js';
 import { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, captureWorkshopInputs, readBack } from './workshop.js';
 import type {
   BlockerRecord,
@@ -2287,6 +2288,11 @@ export function executionDriving(deps: FabricDeps, run: RunRecord, execution: No
       revalidate();
       const intent = launchIntentSchema.parse(offered);
       if (intent.runId !== run.id || intent.siteId !== run.siteId || intent.nodeId !== execution.nodeId || intent.attempt !== execution.attempt || intent.branchId !== execution.branchId) throw new RunStartError('launch identity does not match the admitted node execution');
+      await attestLibraryQualificationPrelaunch({
+        packId: pack.id, site, bindings: boundInputs(pack, site), workspace: prepared.workspace,
+        intent, channel: channelFor(site),
+      });
+      revalidate();
       await updateExecution(deps, run.id, execution.id, { intent });
       // Site/Permit probes and the durable write can each outlive the deadline while this action
       // holds admission. Recheck here; the queued deadline task cannot run until this work returns.

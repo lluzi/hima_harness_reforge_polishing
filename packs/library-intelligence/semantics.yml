@@ -1,4 +1,4 @@
 values:
   library_qualification_ok:
     unit: count
-    description: One only when all three representative native API probes have complete passed receipts and unchanged sources; Host Permit identity still requires independent attestation.
+    description: One only when Host prelaunch attestation and all three representative native API probes have complete passed receipts and unchanged sources.

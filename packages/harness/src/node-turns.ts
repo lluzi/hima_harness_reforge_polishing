@@ -88,6 +88,7 @@ import type { JudgedBranch, Judge } from './judge.js';
 import type { ReaderRef } from './ledger.js';
 import { SiteUnreadableError } from './errors.js';
 import { materializeWorkshopRevision, type WorkspaceRevisionAsset } from './workspace.js';
+import { libraryQualificationObservationRefusal } from './library-prelaunch.js';
 
 /** What every fabric operation is given: the ledger a Run lives in, HimaJudge, and where the Sites
  *  and packs this machine holds are installed. Declared here, with the turn that is handed it, and
@@ -1594,6 +1595,11 @@ function readBackPackReader(launched: LaunchedReading): FinishJob {
     const retainedSource = await decideRead(ctx.site, report.path, channel);
     if (!retainedSource.ok) return refuse(`observed report can no longer be retained: ${retainedSource.reason}`);
     const retainedBytes = await channel.readFile(retainedSource.absPath);
+    const authorityRefusal = libraryQualificationObservationRefusal({
+      packId: ctx.pack.id, nodeId: node.id, runId: ctx.runId, receiptBytes: retainedBytes,
+      values: shaped.data.values, ledger: ctx.deps.ledger,
+    });
+    if (authorityRefusal !== undefined) return refuse(authorityRefusal);
     const appended = await appendReading(
       ctx.deps.ledger,
       ctx.runId,

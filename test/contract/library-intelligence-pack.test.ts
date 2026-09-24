@@ -2,21 +2,31 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkPack, loadPack, loadSite } from '@hima/harness';
+import { checkPack, claimSlotAndLaunch, launchJob, loadPack, loadSite } from '@hima/harness';
 import { repoRoot } from './support/dsh-home.ts';
 import { createHimaHome } from './support/dsh-home.ts';
 import { bootInProcess, createRootAgent } from './support/boot-inprocess.ts';
 import { installPack } from './support/pack.ts';
 import { writeLocalSite } from './support/site.ts';
 import { waitUntil } from './support/fabric.ts';
+import type { Channel, LaunchIntent } from '@hima/harness';
+
+const { attestLibraryQualificationPrelaunch } = await import(
+  new URL('../../packages/harness/lib/library-prelaunch.js', import.meta.url).href
+) as { attestLibraryQualificationPrelaunch(request: {
+  packId: string; site: ReturnType<typeof loadSite>; bindings: Readonly<Record<string, string>>;
+  workspace: string; intent: LaunchIntent; channel: Channel;
+}): Promise<void> };
 
 const packDir = path.join(repoRoot, 'packs/library-intelligence');
 const worker = path.join(packDir, 'tools/libapi_worker.py');
 const reader = path.join(packDir, 'tools/read-qualification.py');
 const sha = (bytes: string | Buffer): string => createHash('sha256').update(bytes).digest('hex');
+const wrapperBytes = Buffer.from('#!/bin/sh\nexec "$@"\n');
 
 const stub = `
 import os, signal, shutil
@@ -100,7 +110,7 @@ async function fixture(additionalRoot?: string): Promise<Fixture> {
   }));
   const permit = path.join(site, 'local.permit.yml');
   const permitText = [
-    'allowedReadRoots:', `  - ${root}`, `  - ${path.dirname(await realpath(python))}`,
+    'allowedReadRoots:', `  - ${root}`, `  - ${path.dirname(await realpath(python))}`, '  - /usr/local/bin', '  - /bin',
     ...(additionalRoot ? [`  - ${additionalRoot}`] : []),
     'allowedWriteRoots:', `  - ${root}`,
     ...(additionalRoot ? [`  - ${additionalRoot}`] : []),
@@ -111,7 +121,8 @@ async function fixture(additionalRoot?: string): Promise<Fixture> {
   const manifest = path.join(root, 'qualification.json');
   const manifestValue = {
     schema: 'hima-library-qualification-input/1',
-    runtime: { wrapper: '/usr/local/bin/edarun', python,
+    runtime: { wrapper: '/usr/local/bin/edarun', wrapperRealpath: '/usr/local/bin/edarun',
+      wrapperSha256: sha(wrapperBytes), python,
       pythonSha256: sha(await readFile(python)), pythonVersion,
       apiRoot: api, apiBuild: 'synthetic-test-only',
       apiMarker: 'tmlib.py', apiMarkerSha256: sha(stub),
@@ -119,6 +130,8 @@ async function fixture(additionalRoot?: string): Promise<Fixture> {
       parserLibrarySha256: sha('synthetic parser marker only\n'),
       adapterSha256: sha(await readFile(worker)) },
     permit: { path: permit, sha256: sha(permitText) },
+    license: { product: 'QuaLib', release: '2026', selection: 'new', port: 59099,
+      claim: 'QuaLib-2026-new-59099', excludesClaim: 'XTop' },
     sources: await Promise.all(sources.map(async (source, index) => ({
       role: ['vendor-fixture', 'saed14', 'tsmc28'][index],
       path: source, sha256: sha(await readFile(source)),
@@ -129,12 +142,24 @@ async function fixture(additionalRoot?: string): Promise<Fixture> {
     'name: local', 'kind: local', `workspaceRoot: ${workspace}`,
     'permit: ./local.permit.yml', 'bindings:',
     `  qualificationManifest: ${manifest}`,
+    `  qualificationPython: ${python}`,
     `  workspaceRoot: ${workspace}`,
     'capacity: { cores: 2, memoryGiB: 2, parallelJobs: 1, licences: {} }', '',
   ].join('\n'));
   return {
     root, workspace, manifest, permit, python, sources,
     run() {
+      const value = JSON.parse(readFileSync(manifest, 'utf8'));
+      writeFileSync(path.join(workspace, 'hima-library-host-attestation.json'), JSON.stringify({
+        schema: 'hima-library-host-attestation/1', siteId: 'local', manifestPath: manifest,
+        manifestSha256: sha(readFileSync(manifest)), permitPath: permit,
+        permitSha256: value.permit.sha256, workspace,
+        wrapper: '/usr/local/bin/edarun', wrapperRealpath: '/usr/local/bin/edarun',
+        wrapperSha256: sha(wrapperBytes), license: value.license,
+        licenseClaims: { 'QuaLib-2026-new-59099': 1 },
+        launch: { runId: 'run-library-e1', nodeId: 'qualify-api', attempt: 1,
+          jobSession: 'hima-library-e1' },
+      }) + '\n');
       const run = spawnSync(python, [path.join(flow, 'tools/libapi_worker.py'), manifest, workspace], { encoding: 'utf8' });
       return { status: run.status, stderr: run.stderr };
     },
@@ -176,25 +201,185 @@ test('loaded Site retains the Permit byte identity despite a forged Pack claim o
   } finally { await f.dispose(); }
 });
 
-test('development Pack loads and actual checkPack refuses a missing Reader wrapper', async () => {
+test('Host prelaunch attests Permit, nested roots, pinned edarun, exact QuaLib claim and one-Job XTop exclusion', async () => {
   const f = await fixture();
   try {
-    const pack = loadPack(path.join(repoRoot, 'packs'), 'library-intelligence');
-    assert.equal(pack.contract.tools.length, 0, 'development Pack must expose no native launch tool');
-    assert.equal(pack.graph.entry, 'blocked', 'default graph must enter the hard wait');
-    assert.ok(pack.graph.nodes.every((node) => node.kind !== 'act' || node.parameters.tool === undefined));
     const site = loadSite(path.join(f.root, 'sites'), 'local');
-    const fit = checkPack(pack, site);
-    assert.equal(fit.fit, true, fit.errors.join('\n'));
-    const permitText = (await readFile(f.permit, 'utf8')).replace('  - /usr/bin/python3\n', '');
-    await writeFile(f.permit, permitText);
-    const refused = checkPack(pack, loadSite(path.join(f.root, 'sites'), 'local'));
-    assert.equal(refused.fit, false);
-    assert.match(refused.errors.join('\n'), /reader.*\/usr\/bin\/python3.*not an allowed wrapper/);
+    const manifest = JSON.parse(await readFile(f.manifest, 'utf8'));
+    await writeFile(f.manifest, JSON.stringify(manifest));
+    const channel: Channel = {
+      siteName: site.name,
+      readFile: (target) => target === '/usr/local/bin/edarun' ? Promise.resolve(wrapperBytes) : readFile(target),
+      realpath: (target) => target === '/usr/local/bin/edarun' ? Promise.resolve(target) : realpath(target),
+      absent: async (target) => { try { await lstat(target); return false; } catch { return true; } },
+      exec: async (argv, options) => {
+        assert.deepEqual(argv.slice(0, 2), ['tee', '--']);
+        assert.ok(options?.stdin);
+        await writeFile(argv[2]!, options!.stdin!);
+        return { code: 0, stdout: options!.stdin!, stderr: '' };
+      },
+    };
+    const intent: LaunchIntent = {
+      runId: 'run-library-e1', siteId: site.name, nodeId: 'qualify-api', attempt: 1,
+      licences: { 'QuaLib-2026-new-59099': 1 },
+      job: { session: 'hima-library-e1', workspace: f.workspace, name: 'qualify-api',
+        startedAt: '2026-09-24T00:00:00.000Z', wire: 'bounded fixture only' },
+    };
+    const qualifiedSite = { ...site, permitFile: '/host-only/loaded-site-policy.yml', capacity: { ...site.capacity,
+      licences: { 'QuaLib-2026-new-59099': 1 } } };
+    const request = { packId: 'library-intelligence', site: qualifiedSite, bindings: site.bindings,
+      workspace: f.workspace, intent, channel };
+
+    await assert.doesNotReject(attestLibraryQualificationPrelaunch(request));
+    const attestation = JSON.parse(await readFile(path.join(f.workspace, 'hima-library-host-attestation.json'), 'utf8'));
+    assert.deepEqual(attestation.licenseClaims, { 'QuaLib-2026-new-59099': 1 });
+    assert.equal(attestation.permitSha256, site.permitSha256);
+    assert.equal(attestation.wrapperSha256, sha(wrapperBytes));
+    assert.deepEqual(attestation.launch, { runId: intent.runId, nodeId: intent.nodeId,
+      attempt: intent.attempt, jobSession: intent.job.session });
+
+    await assert.rejects(attestLibraryQualificationPrelaunch({ ...request,
+      bindings: { ...request.bindings, qualificationPython: '/bin/sh' } }),
+    /qualificationPython.*manifest runtime Python/i);
+
+    await assert.rejects(attestLibraryQualificationPrelaunch({ ...request,
+      intent: { ...intent, licences: {} } }), /exact QuaLib 2026 new\/59099 claim/i);
+    await assert.rejects(attestLibraryQualificationPrelaunch({ ...request,
+      site: { ...qualifiedSite, capacity: { ...qualifiedSite.capacity, parallelJobs: 2 } } }),
+    /one-Job Site.*cannot overlap/i);
+    const resolvedWrapper = path.join(f.root, 'resolved-edarun');
+    await writeFile(resolvedWrapper, wrapperBytes);
+    await assert.rejects(attestLibraryQualificationPrelaunch({ ...request,
+      channel: { ...channel, realpath: (target) => target === '/usr/local/bin/edarun'
+        ? Promise.resolve(resolvedWrapper) : realpath(target) } }), /resolved edarun target.*not an allowed wrapper/i);
+    await assert.rejects(attestLibraryQualificationPrelaunch({ ...request, workspace: '/',
+      intent: { ...intent, job: { ...intent.job, workspace: '/' } } }), /private workspace.*not authorized/i);
+
+    const originalSource = manifest.sources[0];
+    manifest.sources[0] = { ...originalSource, path: '/etc/hosts', sha256: sha(await readFile('/etc/hosts')) };
+    await writeFile(f.manifest, JSON.stringify(manifest));
+    await assert.rejects(attestLibraryQualificationPrelaunch(request), /vendor-fixture source.*not authorized/i);
+    manifest.sources[0] = originalSource;
+
+    await writeFile(f.manifest, JSON.stringify(manifest));
+    await assert.rejects(attestLibraryQualificationPrelaunch({ ...request,
+      intent: { ...intent, job: { ...intent.job, session: 'hima-library-replay' } } }),
+    /different Host attestation/i);
+
+    const secondIntent = { ...intent, attempt: 2,
+      job: { ...intent.job, session: 'hima-library-e1-attempt2' } };
+    await assert.doesNotReject(attestLibraryQualificationPrelaunch({ ...request, intent: secondIntent }));
+    assert.deepEqual(JSON.parse(await readFile(path.join(f.workspace, 'hima-library-host-attestation.json'), 'utf8')).launch,
+      { runId: intent.runId, nodeId: 'qualify-api', attempt: 2, jobSession: 'hima-library-e1-attempt2' });
+    await mkdir(path.join(f.workspace, 'flow/qualification'));
+    await assert.rejects(attestLibraryQualificationPrelaunch({ ...request,
+      intent: { ...secondIntent, attempt: 3, job: { ...secondIntent.job, session: 'hima-library-e1-attempt3' } } }),
+    /retained output.*safe in-place retry is unavailable/i);
+
+    manifest.permit.sha256 = '0'.repeat(64);
+    await writeFile(f.manifest, JSON.stringify(manifest));
+    await assert.rejects(attestLibraryQualificationPrelaunch(request), /loaded Site Permit identity/i);
   } finally { await f.dispose(); }
 });
 
-test('isolated synthetic API probes yield three native passes but no product qualification without Host Permit attestation', async () => {
+test('real Host vetoes a Site-bound Python that differs from the manifest before recording a Job', async () => {
+  const h = await createHimaHome();
+  const f = await fixture(h.workspace);
+  let runId: string | undefined;
+  try {
+    await installPack(h, 'library-intelligence');
+    const installedSite = await writeLocalSite(h, {
+      bindings: { qualificationManifest: f.manifest, qualificationPython: f.sources[0]!, workspaceRoot: h.workspace },
+      allowedReadRoots: [h.workspace, f.root, path.dirname(await realpath(f.python)), path.join(h.home, 'hima/sites'), '/usr/local/bin'], allowedWriteRoots: [h.workspace],
+      allowedWrappers: ['/usr/local/bin/edarun', '/usr/bin/python3'],
+      licences: { 'QuaLib-2026-new-59099': 1 },
+    });
+    const manifest = JSON.parse(await readFile(f.manifest, 'utf8'));
+    const loadedPermit = await readFile(installedSite.permitPath);
+    manifest.permit = { path: installedSite.permitPath, sha256: sha(loadedPermit) };
+    await writeFile(f.manifest, JSON.stringify(manifest));
+    const host = await bootInProcess(h);
+    try {
+      const owner = await createRootAgent(host.ctx, h.workspace);
+      const started = await host.ctx.hima.startRun({ pack: 'library-intelligence', site: 'local',
+        goal: { qualification_required: 1 }, strategy: { qualificationRevision: 0 }, ownerSessionId: String(owner.id) });
+      assert.equal(started.kind, 'ran', JSON.stringify(started));
+      if (started.kind !== 'ran') return;
+      runId = started.run.id;
+      assert.equal(started.run.currentNode, 'qualify-api');
+      const begin = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1,
+        expectedRevision: 0, requestId: 'attest-begin', action: 'begin', nodeId: 'qualify-api' });
+      const executionId = begin.receipt?.executionId;
+      assert.ok(executionId);
+      const work = await host.ctx.hima.executionAction({ runId, actor: String(owner.id), expectedEpoch: 1,
+        expectedRevision: 1, requestId: 'attest-work', action: 'work', executionId });
+      assert.match(work.reason ?? '', /qualificationPython.*manifest runtime Python/i);
+      assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).length, 0);
+      assert.equal(host.ctx.hima.executionContext(runId).executions.find((item) => item.id === executionId)?.phase, 'failed');
+    } finally {
+      if (runId) await host.ctx.hima.cancelRun(runId);
+      await host.dispose();
+    }
+  } finally { await f.dispose(); await h.dispose(); }
+});
+
+test('eligible E1 Pack exposes only the attested native tool and actual checkPack refuses a missing wrapper or licence claim', async () => {
+  const f = await fixture();
+  try {
+    const pack = loadPack(path.join(repoRoot, 'packs'), 'library-intelligence');
+    assert.deepEqual(pack.contract.tools.map((tool) => tool.id), ['qualify-api']);
+    assert.equal(pack.graph.entry, 'qualify-api');
+    assert.deepEqual(pack.contract.tools[0]!.licences, { 'QuaLib-2026-new-59099': 1 });
+    const loaded = loadSite(path.join(f.root, 'sites'), 'local');
+    const site = { ...loaded, capacity: { ...loaded.capacity,
+      licences: { 'QuaLib-2026-new-59099': 1 } } };
+    const fit = checkPack(pack, site);
+    assert.equal(fit.fit, true, fit.errors.join('\n'));
+    const permitText = (await readFile(f.permit, 'utf8')).replace('  - /usr/local/bin/edarun\n', '');
+    await writeFile(f.permit, permitText);
+    const refusedLoaded = loadSite(path.join(f.root, 'sites'), 'local');
+    const refused = checkPack(pack, { ...refusedLoaded, capacity: { ...refusedLoaded.capacity,
+      licences: { 'QuaLib-2026-new-59099': 1 } } });
+    assert.equal(refused.fit, false);
+    assert.match(refused.errors.join('\n'), /tool.*\/usr\/local\/bin\/edarun.*not an allowed wrapper/);
+  } finally { await f.dispose(); }
+});
+
+test('one-Job Site cap excludes Hima-managed Library and XTop jobs in both launch orders', async () => {
+  for (const [firstName, firstLicences, secondName, secondLicences] of [
+    ['Library', { 'QuaLib-2026-new-59099': 1 }, 'XTop', { XTop: 1 }],
+    ['XTop', { XTop: 1 }, 'Library', { 'QuaLib-2026-new-59099': 1 }],
+  ] as const) {
+    const h = await createHimaHome();
+    const siteFiles = await writeLocalSite(h, { parallelJobs: 1,
+      licences: { 'QuaLib-2026-new-59099': 1, XTop: 1 } });
+    const script = path.join(h.workspace, 'hold-site-slot.sh');
+    await writeFile(script, 'sleep 5\n');
+    const host = await bootInProcess(h);
+    try {
+      const deps = { ledger: host.ctx.hima.ledger, sitesDir: siteFiles.sitesDir };
+      const first = await launchJob(deps, { site: 'local', workspace: h.workspace,
+        argv: ['sh', script], name: firstName, licences: firstLicences });
+      assert.equal(first.kind, 'launched');
+      const second = await claimSlotAndLaunch(deps, { site: loadSite(siteFiles.sitesDir, 'local'),
+        run: first.run, workspace: h.workspace, node: { id: secondName, kind: 'act' }, attempt: 1,
+        argv: ['sh', script], licences: secondLicences, waitedMs: 0, nonblocking: true });
+      assert.equal(second.kind, 'at-cap', `${firstName} must exclude a later ${secondName} Hima Job`);
+      assert.equal(host.ctx.hima.ledger.records({ runId: first.run.id, type: 'job' })
+        .filter((record) => record.type === 'job' && record.event === 'launched').length, 1);
+    } finally {
+      for (const record of host.ctx.hima.ledger.runs().flatMap((run) =>
+        host.ctx.hima.ledger.records({ runId: run.id, type: 'job' }))) {
+        if (record.type === 'job' && record.event === 'launched') {
+          spawnSync('tmux', ['kill-session', '-t', `=${record.job.session}`]);
+        }
+      }
+      await host.dispose(); await h.dispose();
+    }
+  }
+});
+
+test('Host-attested isolated synthetic API probes yield three native passes and one eligible E1 indicator', async () => {
   const f = await fixture();
   try {
     const original = await Promise.all(f.sources.map((source) => readFile(source)));
@@ -202,9 +387,9 @@ test('isolated synthetic API probes yield three native passes but no product qua
     assert.equal(run.status, 0, run.stderr);
     const receipt = await f.receipt();
     assert.equal(receipt.nativeStatus, 'passed');
-    assert.equal(receipt.status, 'blocked');
-    assert.equal(receipt.reason, 'hima/library-permit-unattested');
-    assert.equal(receipt.permitAttestation, 'unverified-site-binding');
+    assert.equal(receipt.status, 'passed');
+    assert.equal(receipt.reason, null);
+    assert.equal(receipt.permitAttestation, 'host-prelaunch');
     assert.equal(receipt.facts, null);
     assert.deepEqual(receipt.results.map((item: any) => item.status), ['passed', 'passed', 'passed']);
     for (const [index, item] of receipt.results.entries()) {
@@ -219,7 +404,7 @@ test('isolated synthetic API probes yield three native passes but no product qua
     const reading = f.read();
     assert.equal(reading.status, 0, reading.stderr);
     assert.deepEqual(JSON.parse(await readFile(reading.output, 'utf8')),
-      { values: [{ type: 'library_qualification_ok', unit: 'count', value: 0 }] });
+      { values: [{ type: 'library_qualification_ok', unit: 'count', value: 1 }] });
   } finally { await f.dispose(); }
 });
 
@@ -334,45 +519,38 @@ test('Reader refuses queryEvidence edited without changing the hashed child resu
   } finally { await f.dispose(); }
 });
 
-test('default real Host Run stays at blocked wait and cannot launch native tool from a forged manifest', async () => {
-  const h = await createHimaHome();
-  const f = await fixture(h.workspace);
-  let runId: string | undefined;
+test('Reader refuses a Host attestation path outside the exact Campaign workspace location', async () => {
+  const f = await fixture();
   try {
-    await installPack(h, 'library-intelligence');
-    await writeFile(f.manifest, JSON.stringify({ forged: true,
-      allowedReadRoots: ['/'], allowedWriteRoots: ['/'], wrapper: '/usr/local/bin/edarun' }));
-    await writeLocalSite(h, {
-      bindings: { qualificationManifest: f.manifest, workspaceRoot: h.workspace },
-      allowedReadRoots: [h.workspace, f.root], allowedWriteRoots: [h.workspace],
-      allowedWrappers: ['/usr/bin/python3'],
-    });
-    const host = await bootInProcess(h);
-    try {
-      const owner = await createRootAgent(host.ctx, h.workspace);
-      const started = await host.ctx.hima.startRun({
-        pack: 'library-intelligence', site: 'local', goal: { qualification_required: 1 },
-        strategy: { qualificationRevision: 0 }, ownerSessionId: String(owner.id),
-      });
-      assert.equal(started.kind, 'ran', JSON.stringify(started));
-      if (started.kind !== 'ran') return;
-      runId = started.run.id;
-      assert.equal(started.run.currentNode, 'blocked');
-      assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).length, 0);
-      const refused = await host.ctx.hima.executionAction({
-        runId, actor: String(owner.id), expectedEpoch: 1, expectedRevision: 0,
-        requestId: 'forged-native-launch', action: 'begin', nodeId: 'qualify-api',
-      });
-      assert.equal(refused.kind, 'refused');
-      assert.equal(host.ctx.hima.ledger.records({ runId, type: 'job' }).length, 0);
-    } finally {
-      if (runId) await host.ctx.hima.cancelRun(runId);
-      await host.dispose();
-    }
-  } finally { await f.dispose(); await h.dispose(); }
+    assert.equal(f.run().status, 0);
+    const receiptPath = path.join(f.workspace, 'flow/qualification/receipt.json');
+    const receipt = await f.receipt();
+    const replay = path.join(f.root, 'replayed-host-attestation.json');
+    await cp(path.join(f.workspace, 'hima-library-host-attestation.json'), replay);
+    receipt.hostAttestationPath = replay;
+    receipt.hostAttestationSha256 = sha(await readFile(replay));
+    await writeFile(receiptPath, JSON.stringify(receipt));
+    const reading = f.read();
+    assert.notEqual(reading.status, 0);
+    assert.match(reading.stderr, /exact Campaign workspace location/i);
+  } finally { await f.dispose(); }
 });
 
-test('real local Host materializes the blocked Pack Reader as zero and never reaches a PASS verdict', async () => {
+test('Reader refuses launch identity tampered independently of the Host attestation', async () => {
+  const f = await fixture();
+  try {
+    assert.equal(f.run().status, 0);
+    const receiptPath = path.join(f.workspace, 'flow/qualification/receipt.json');
+    const receipt = await f.receipt();
+    receipt.launch.jobSession = 'hima-library-tampered';
+    await writeFile(receiptPath, JSON.stringify(receipt));
+    const reading = f.read();
+    assert.notEqual(reading.status, 0);
+    assert.match(reading.stderr, /launch identity differs/i);
+  } finally { await f.dispose(); }
+});
+
+test('real local Host refuses a self-consistent positive receipt with no matching qualification Job', async () => {
   const h = await createHimaHome();
   const f = await fixture(h.workspace);
   let runId: string | undefined;
@@ -380,12 +558,13 @@ test('real local Host materializes the blocked Pack Reader as zero and never rea
     const installed = await installPack(h, 'library-intelligence');
     const graphPath = path.join(installed.dir, 'graph.yml');
     const graph = await readFile(graphPath, 'utf8');
-    await writeFile(graphPath, graph.replace('entry: blocked', 'entry: read-qualification'));
+    await writeFile(graphPath, graph.replace('entry: qualify-api', 'entry: read-qualification'));
     await writeLocalSite(h, {
-      bindings: { qualificationManifest: f.manifest, workspaceRoot: h.workspace },
+      bindings: { qualificationManifest: f.manifest, qualificationPython: f.python, workspaceRoot: h.workspace },
       allowedReadRoots: [h.workspace, f.root],
       allowedWriteRoots: [h.workspace],
       allowedWrappers: ['/usr/local/bin/edarun', '/usr/bin/python3'],
+      licences: { 'QuaLib-2026-new-59099': 1 },
     });
     const run = f.run();
     assert.equal(run.status, 0, run.stderr);
@@ -404,6 +583,18 @@ test('real local Host materializes the blocked Pack Reader as zero and never rea
       await cp(worker, path.join(started.workspace, 'flow/tools/libapi_worker.py'));
       await cp(path.join(f.workspace, 'flow/qualification'),
         path.join(started.workspace, 'flow/qualification'), { recursive: true });
+      const launch = { runId, nodeId: 'qualify-api', attempt: 1, jobSession: 'forged-no-job' };
+      const attestation = JSON.parse(await readFile(path.join(f.workspace, 'hima-library-host-attestation.json'), 'utf8'));
+      attestation.workspace = started.workspace;
+      attestation.launch = launch;
+      const attestationPath = path.join(started.workspace, 'hima-library-host-attestation.json');
+      await writeFile(attestationPath, JSON.stringify(attestation) + '\n');
+      const receiptPath = path.join(started.workspace, 'flow/qualification/receipt.json');
+      const receipt = JSON.parse(await readFile(receiptPath, 'utf8'));
+      receipt.hostAttestationPath = attestationPath;
+      receipt.hostAttestationSha256 = sha(await readFile(attestationPath));
+      receipt.launch = launch;
+      await writeFile(receiptPath, JSON.stringify(receipt));
       const act = (action: 'begin' | 'work' | 'complete', executionId?: string, nodeId?: string) => {
         const control = host.ctx.hima.ledger.run(runId!)!.control!;
         return host.ctx.hima.executionAction({ runId: runId!, actor: String(owner.id),
@@ -414,19 +605,15 @@ test('real local Host materializes the blocked Pack Reader as zero and never rea
       const id = begin.receipt?.executionId;
       assert.ok(id);
       assert.equal((await act('work', id)).kind, 'accepted');
-      await waitUntil('Library Reader Job settles', () =>
-        host.ctx.hima.executionContext(runId!).executions.some((item) => item.id === id && item.phase === 'ready'));
-      assert.equal((await act('complete', id)).kind, 'accepted');
+      await waitUntil('Library Host refuses positive evidence without its qualification Job', () =>
+        host.ctx.hima.executionContext(runId!).executions.some((item) => item.id === id && item.phase !== 'working'));
+      assert.equal(host.ctx.hima.executionContext(runId).executions.find((item) => item.id === id)?.phase, 'failed');
       const observations = host.ctx.hima.ledger.records({ runId, type: 'observation' });
-      assert.equal(observations.length, 1);
-      const observation = observations[0]!;
-      assert.equal(observation.type, 'observation');
-      if (observation.type === 'observation') {
-        assert.deepEqual(observation.values, [{ type: 'library_qualification_ok', unit: 'count', value: 0 }]);
-        assert.equal(observation.reader.id, 'library-qualification');
-      }
-      assert.equal(host.ctx.hima.ledger.records({ runId, type: 'verdict' })
-        .filter((item) => item.type === 'verdict' && item.outcome === 'PASS').length, 0);
+      assert.equal(observations.length, 0);
+      const refusal = host.ctx.hima.ledger.records({ runId, type: 'refusal' }).at(-1);
+      assert.equal(refusal?.type, 'refusal');
+      if (refusal?.type === 'refusal') assert.match(refusal.reason,
+        /no matching launched and successfully finished Host Job record/i);
     } finally {
       if (runId) await host.ctx.hima.cancelRun(runId);
       await host.dispose();

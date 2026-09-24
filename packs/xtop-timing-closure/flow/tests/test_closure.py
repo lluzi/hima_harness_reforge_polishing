@@ -463,6 +463,70 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(best["iteration"], 1)
         self.assertTrue(closure.read_json(self.workspace / "flow" / "records" / "compare.json")["evidence_valid"])
 
+    def test_cross_generation_measurement_evidence_cannot_adopt_a_newer_database(self):
+        self.write_database(0)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2),
+                               "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]})
+        self.save_runtime(); closure.summarize(self.workspace)
+
+        self.runtime = closure.load_runtime(self.workspace); self.runtime["iteration"] = 1
+        self.write_database(1)
+        self.write_reports(1, {"global": (-0.04, -0.08, 2, -0.03, -0.06, 2),
+                               "setup": [("A/D", -0.04)], "hold": [("H/D", -0.03)]})
+        self.save_runtime(); closure.summarize(self.workspace)
+        measured = closure.read_json(self.workspace / "flow" / "iterations" / "g001" / "closure-state.json")
+
+        self.runtime = closure.load_runtime(self.workspace); self.runtime["iteration"] = 2
+        self.write_database(2)
+        self.write_reports(2, {"global": (-0.01, -0.02, 1, -0.01, -0.02, 1),
+                               "setup": [("A/D", -0.01)], "hold": [("H/D", -0.01)]})
+        self.save_runtime(); closure.summarize(self.workspace)
+        candidate_path = self.workspace / "flow" / "iterations" / "g002" / "closure-state.json"
+        candidate = closure.read_json(candidate_path)
+        for key in ("metrics", "endpointSlackNs", "reportsRoot", "reportFiles", "measurement", "physical"):
+            candidate[key] = copy.deepcopy(measured[key])
+        closure.atomic_json(candidate_path, candidate)
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+            "schema": closure.PLAN_SCHEMA, "iteration": 2, "diagnosis": "test", "hypotheses": ["test"],
+            "endpointGroups": ["core_clock"], "actions": [], "avoid": [], "reasoning": "test",
+        }))
+
+        with self.assertRaisesRegex(closure.Rejected, "same generation"):
+            closure.compare(self.workspace)
+        self.assertFalse((self.workspace / "flow" / "output" / "best-database.json").exists())
+
+    def test_linked_generation_directory_cannot_publish_another_generations_database(self):
+        self.write_database(0)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2),
+                               "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]})
+        self.save_runtime(); closure.summarize(self.workspace)
+
+        self.runtime = closure.load_runtime(self.workspace); self.runtime["iteration"] = 1
+        self.write_database(1)
+        self.write_reports(1, {"global": (-0.01, -0.02, 1, -0.01, -0.02, 1),
+                               "setup": [("A/D", -0.01)], "hold": [("H/D", -0.01)]})
+        self.save_runtime(); closure.summarize(self.workspace)
+
+        original = self.workspace / "flow" / "iterations" / "g001"
+        linked = self.workspace / "flow" / "iterations" / "g002"
+        linked.symlink_to(original, target_is_directory=True)
+        candidate_path = linked / "closure-state.json"
+        candidate = closure.read_json(candidate_path)
+        candidate["iteration"] = 2
+        closure.atomic_json(original / "closure-state.json", candidate)
+        self.runtime = closure.load_runtime(self.workspace)
+        self.runtime["iteration"] = 2
+        self.runtime["latestSnapshot"] = str(candidate_path)
+        self.save_runtime()
+        (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+            "schema": closure.PLAN_SCHEMA, "iteration": 2, "diagnosis": "test", "hypotheses": ["test"],
+            "endpointGroups": ["core_clock"], "actions": [], "avoid": [], "reasoning": "test",
+        }))
+
+        with self.assertRaisesRegex(closure.Rejected, "generation directory is linked"):
+            closure.compare(self.workspace)
+        self.assertFalse((self.workspace / "flow" / "output" / "best-database.json").exists())
+
     def test_physical_regression_or_incomplete_coverage_cannot_adopt(self):
         self.write_database(0)
         self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)],}, drc=10, connectivity=20)

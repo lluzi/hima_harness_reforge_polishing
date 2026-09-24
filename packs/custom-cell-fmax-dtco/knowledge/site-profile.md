@@ -23,7 +23,7 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `BOOL2CMOS_PDK_PROFILE` | plain file | Generator PDK profile used to build candidate transistor netlists. |
 | `PROCESS_FAMILY`, `CELL_ARCHITECTURE_REF`, `CHARACTERIZATION_PROFILE_REF` | one-line text | Provenance labels for the selected PDK/library/method profiles. |
 | `DRIVE_STRENGTH`, `VT_CLASS` | one-line text | Legacy Site naming hint and VT class. V5.2 owns the physical D1/D2/D4/D6/D8 family. |
-| `FOUNDRY_CDL` | regular file | CDL/SPICE deck matching `FOUNDRY_LIB`; used read-only to derive topology-depth anchors for Mock Liberty. |
+| `FOUNDRY_CDL`, `FOUNDRY_CDL_VERSION`, `FOUNDRY_CDL_SHA256` | regular file, one-line release label, lowercase SHA-256 | CDL/SPICE deck matching `FOUNDRY_LIB`; `FOUNDRY_CDL_VERSION` retains the Site's foundry release label (for example, a TSMC28 `110a` deck) and the SHA-256 locks the exact bytes. `bind-inputs` rejects a missing or mismatched identity before it creates a Fabric input record. The deck is used read-only to derive topology-depth anchors for Mock Liberty. |
 | `PLACE_SITE` | one-line text | Innovus row/site name from the technology LEF. It is never assumed to be `core`. |
 | `CCFMAX_POWER_PIN`, `CCFMAX_GROUND_PIN` | one-line text | Power and ground rail names from the library/technology profile. |
 | `CCFMAX_TAP_CELL`, `CCFMAX_FILLER_CELLS` | one-line text | Site-valid tap master and legacy filler declaration. V5 does not insert ordinary filler; the retained filler field preserves profile compatibility. |

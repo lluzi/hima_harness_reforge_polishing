@@ -48,7 +48,7 @@ test('the LFR Pack declares one fixed multi-index graph before the preserved com
   };
   assert.deepEqual(Object.keys(graph).sort(), ['edges', 'entry', 'id', 'loops', 'nodes', 'version']);
   assert.equal(graph.id, 'custom-cell-fmax-dtco');
-  assert.equal(graph.version, '5.2.13');
+  assert.equal(graph.version, '5.2.14');
   assert.ok(graph.nodes.every((item) => item.id && item.kind && item.parameters));
   assert.ok(graph.edges.every((item) => item.from && item.to));
   const node = new Map(graph.nodes.map((item) => [item.id, item]));
@@ -712,7 +712,7 @@ test('probe reader preserves precise reg2reg WNS while accepting only the timing
   for (const result of await run('-0.09')) assert.notEqual(result.status, 0);
 });
 
-test('a real Pack-sourced workspace materializes declared Site inputs without a Golden Flow or legacy object', async (t) => {
+test('a real Pack-sourced TSMC28 L4 profile materializes declared Site inputs without a Golden Flow or legacy object', async (t) => {
   const h = await createHimaHome(); t.after(() => h.dispose());
   const designRoot = path.join(h.home, 'held-out-design'); await mkdir(designRoot);
   const rtl = path.join(designRoot, 'top.v'), constraints = path.join(designRoot, 'constraints.tcl');
@@ -727,8 +727,11 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     'skeleton.lib', 'tech.py', 'rules.json', 'timing.json', 'power.json', 'area.json', 'map'];
   await Promise.all(profileFiles.map((name) => writeFile(path.join(profile, name), `fixture ${name}\n`)));
   const proxyToolSha256 = sha256(await readFile('/usr/bin/true'));
+  const foundryCdl = path.join(profile, 'foundry.spi');
+  const foundryCdlSha256 = sha256(await readFile(foundryCdl));
   const physicalProfile = {
-    CLOCK_NAME: 'clk', FOUNDRY_LIB: foundryLib, FOUNDRY_CDL: path.join(profile, 'foundry.spi'),
+    CLOCK_NAME: 'clk', FOUNDRY_LIB: foundryLib, FOUNDRY_CDL: foundryCdl,
+    FOUNDRY_CDL_VERSION: 'tsmc28-hpcplus-110a-fixture', FOUNDRY_CDL_SHA256: foundryCdlSha256,
     FOUNDRY_DB_FILE: foundryDb,
     FOUNDRY_LEF: path.join(profile, 'foundry.lef'),
     FOUNDRY_QRC_TECH: path.join(profile, 'qrc'), FOUNDRY_GDS: path.join(profile, 'foundry.gds'), TECH_LEF: path.join(profile, 'tech.lef'),
@@ -737,12 +740,12 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     GEOMETRY_RULE_DECK: path.join(profile, 'rules.json'), CHARMODEL_TIMING_MODEL: path.join(profile, 'timing.json'),
     CHARMODEL_POWER_MODEL: path.join(profile, 'power.json'), CHARMODEL_AREA_MODEL: path.join(profile, 'area.json'),
     CCFMAX_GDS_MAP: path.join(profile, 'map'), CCFMAX_CHARMODEL_HELPER_DIR: helper,
-    PROCESS_FAMILY: 'fixture', CELL_ARCHITECTURE_REF: 'fixture://architecture', CHARACTERIZATION_PROFILE_REF: 'fixture://characterization',
+    PROCESS_FAMILY: 'TSMC28-HPCPLUS', CELL_ARCHITECTURE_REF: 'fixture://architecture', CHARACTERIZATION_PROFILE_REF: 'fixture://characterization',
     DRIVE_STRENGTH: 'fixture', VT_CLASS: 'fixture', CCFMAX_CONTAINER_RUNTIME: '/usr/bin/true', CCFMAX_CONTAINER_IMAGE: 'fixture-image',
     CCFMAX_CONTAINER_HOST_ROOT: h.workspace, CCFMAX_CONTAINER_MOUNT_POINT: '/workspace', CCFMAX_LCLAYOUT_ACTIVATE: '/opt/fixture/activate',
     CCFMAX_POWER_PIN: 'vdd', CCFMAX_GROUND_PIN: 'gnd', CCFMAX_POWER_TEMPLATE_BASE_CELL: 'FIXTURE_CELL',
     GENERATED_LIBRARY_NAME: 'fixture_generated', GENERATED_LIB_CELL_PATTERN: 'XS_*', CLOCK_NS: 1, CCFMAX_RC_TEMPERATURE: 25,
-    CCFMAX_PROCESS_NODE: 12, CCFMAX_MAX_ROUTE_LAYER: 'M8', CCFMAX_TAP_CELL: 'TAP', CCFMAX_TAP_INTERVAL: 10,
+    CCFMAX_PROCESS_NODE: 28, CCFMAX_MAX_ROUTE_LAYER: 'M8', CCFMAX_TAP_CELL: 'TAP', CCFMAX_TAP_INTERVAL: 10,
     CCFMAX_CLOCK_BUFFER_CELLS: 'DCCKBD4FIXTURE', CCFMAX_CLOCK_INVERTER_CELLS: 'DCCKND4FIXTURE',
     CCFMAX_FILLER_CELLS: 'FILL', CCFMAX_SWITCHING_ACTIVITY: 0.2, PLACE_SITE: 'core',
     CCFMAX_DCAP_CELL: 'DCAP', CCFMAX_DCAP_ROW_STRIDE: 4,
@@ -752,7 +755,10 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     CCFMAX_PG_RING_WIDTH_UM: 0.4, CCFMAX_PG_RING_SPACING_UM: 0.4,
     CCFMAX_PG_STRIPE_WIDTH_UM: 0.2, CCFMAX_PG_STRIPE_SPACING_UM: 0.2,
     CCFMAX_PG_STRIPE_SET_DISTANCE_UM: 20, CCFMAX_PG_STRIPE_START_OFFSET_UM: 4,
-    MAX_NEW_CELLS: 50, MAX_CELLS: 400, MAX_ROUTE_CANDIDATES: 40,
+    // This is the exact bounded capacity in the 2026-09-24 TSMC28 L4 evidence:
+    // 8 Campaign generations times 40 newly admitted Cells. It does not change
+    // the Pack-wide 50-per-round reference profile.
+    MAX_NEW_CELLS: 40, MAX_CELLS: 320, MAX_ROUTE_CANDIDATES: 40,
     GENERATION_TIMEOUT_SEC: 30, ABSTRACT_TIMEOUT_SEC: 30, CHARACTERIZE_TIMEOUT_SEC: 30, LC_TIMEOUT_SEC: 30, MULTI_CPU: 1,
     PNR_TIMEOUT_SEC: 30, DRC_LIMIT: 1000, VERIFY_TIMEOUT_SEC: 30,
   };
@@ -783,7 +789,20 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
     '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
   assert.notEqual(rejectedCumulativeCapacity.status, 0);
-  assert.match(rejectedCumulativeCapacity.stderr, /MAX_CELLS.*at least 400.*8-generation/);
+  assert.match(rejectedCumulativeCapacity.stderr, /MAX_CELLS.*at least 320.*8-generation/);
+  const mismatchedCdlProfile = { ...physicalProfile, FOUNDRY_CDL_SHA256: '0'.repeat(64) };
+  await writeFile(physical, JSON.stringify(mismatchedCdlProfile));
+  for (const source of ['flow/bind-inputs.py', 'tools/bind-inputs.py']) {
+    const cdlWorkspace = path.join(h.workspace, `mismatched-cdl-${source.split('/')[0]}`);
+    await mkdir(path.join(cdlWorkspace, 'flow'), { recursive: true });
+    const mismatchedCdl = spawnSync('/usr/bin/python3', [path.join(packDir, source), '--workspace', cdlWorkspace,
+      '--design-root', designRoot, '--rtl-glob', rtl, '--design-top', 'held_out', '--constraints', constraints,
+      '--foundry-library', foundryLib, '--physical-inputs', physical, '--tool-stack', tools], { encoding: 'utf8' });
+    assert.notEqual(mismatchedCdl.status, 0, `${source} rejects a physical CDL whose byte identity differs from its Site profile`);
+    assert.match(mismatchedCdl.stderr, /FOUNDRY_CDL_SHA256 does not match/);
+    await assert.rejects(() => readFile(path.join(cdlWorkspace, 'flow/inputs.json')),
+      `${source} cannot publish a Fabric binding for a mismatched physical source`);
+  }
   await writeFile(physical, JSON.stringify(physicalProfile));
   await writeFile(tools, JSON.stringify({ ...toolProfile, LFR_ABC_SHA256: '0'.repeat(64) }));
   const rejectedProxyIdentity = spawnSync('/usr/bin/python3', [path.join(packDir, 'flow/bind-inputs.py'), '--workspace', rejectedWorkspace,
@@ -844,9 +863,12 @@ test('a real Pack-sourced workspace materializes declared Site inputs without a 
     assert.equal(materialized.designTop, 'held_out'); assert.equal(materialized.DESIGN_TOP, 'held_out');
     assert.equal(materialized.edaWrapper, '/usr/bin/true');
     assert.equal(materialized.FOUNDRY_LIB, await realpath(foundryLib));
+    assert.equal(materialized.FOUNDRY_CDL, await realpath(foundryCdl));
+    assert.equal(materialized.FOUNDRY_CDL_VERSION, 'tsmc28-hpcplus-110a-fixture');
+    assert.equal(materialized.FOUNDRY_CDL_SHA256, foundryCdlSha256);
     assert.equal(materialized.FOUNDRY_DB, await realpath(foundryDb));
     assert.equal(materialized.foundryDb, await realpath(foundryDb));
-    assert.equal(materialized.MAX_NEW_CELLS, 50); assert.equal(materialized.MAX_CELLS, 400);
+    assert.equal(materialized.MAX_NEW_CELLS, 40); assert.equal(materialized.MAX_CELLS, 320);
     assert.equal(materialized.MAX_ROUTE_CANDIDATES, 40);
     assert.equal(materialized.GENERATION_TIMEOUT_SEC, 3600);
     assert.equal(materialized.GENERATION_TIMEOUT_SEC_REQUESTED, 30);
