@@ -82,19 +82,19 @@ symptom but cannot replace the click/type path.
 
 Checkpoint: screenshot Start/modes, Guide reply, and each Pack explanation.
 
-### B. Data Insight as a peer mode
+### B. Data Insight empty state before retained data exists
 
-1. Open Data Insight from the visible product UI and inspect the bundled
-   synthetic Library fixture.
-2. Verify the UI labels the fixture as synthetic, keeps unknown values unknown,
-   shows provenance/evidence references, and does not imply that QuaLib API or a
-   customer library was analysed.
-3. Filter or select one finding and inspect its detail. Navigation must remain
-   inside the same visual workbench; it must not silently start a Campaign.
-4. Return to HimaGuide and confirm the conversation is still usable and has not
+1. Open Data Insight from the visible product UI before any Campaign exists.
+   The released App does not bundle a pre-installed Library report. Verify that
+   the panel honestly shows no retained candidate and asks for an exact report
+   or observation reference instead of inventing one.
+2. Verify that browsing the empty panel creates no Campaign, Job, analysis or
+   model call. Do not paste a fabricated record identity and do not treat a
+   repository test fixture as a shipped product result.
+3. Return to HimaGuide and confirm the conversation is still usable and has not
    become the owner of a Run.
 
-Checkpoint: screenshot Data Insight, one finding detail, and the unchanged Guide.
+Checkpoint: screenshot the Data Insight empty state and the unchanged Guide.
 
 ### C. One local stand-in Campaign and independent task context
 
@@ -115,9 +115,15 @@ Checkpoint: screenshot Data Insight, one finding detail, and the unchanged Guide
    and candidate result. Do not create a child merely to satisfy this step when
    the packaged scenario does not offer one; record `not reached` with the
    visible reason.
+7. If the completed local Run exposes a retained report or observation, use its
+   visible **Open in Data Insight** path and inspect the exact source identity,
+   provenance, missing fields and evidence class. If this stand-in produces no
+   inspectable record, record `not reached`; do not inject the repository's
+   synthetic Library test fixture into the released Home.
 
 Checkpoint: screenshot the proposal, independent Guide/Campaign identities,
-graph overview, zoomed selected node, and child session if present.
+graph overview, zoomed selected node, child session if present, and any retained
+Data Insight record actually produced by this Run.
 
 ### D. Memory, recovery and control honesty
 
