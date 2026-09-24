@@ -7,6 +7,7 @@ import math
 import hashlib
 import os
 from pathlib import Path
+import re
 import sys
 
 
@@ -51,6 +52,38 @@ def verify_ref(ref, workspace: Path):
     return path
 
 
+def verified_physical_count(path: Path, kind: str):
+    """Independently verify the fixed Innovus check, its count and every listed error.
+
+    A Pack reader is shipped as one pinned script into the Campaign workspace.
+    It must not import a mutable flow copy just to reuse the producer's parser.
+    """
+    lines = path.read_text(errors="replace").splitlines()
+    commands = [match.group(1) for line in lines
+                if (match := re.fullmatch(r"#\s*Command:\s*(.*)", line.strip()))]
+    if len(commands) != 1:
+        raise ValueError(f"{kind} has no single Innovus command identity")
+    report_path = r'(?:/\S+|\{[^}\n]+\}|"[^"\n]+")'
+    if kind == "drc":
+        if re.fullmatch(r"verify_drc\s+-limit\s+1000000\s+-report\s+" + report_path, commands[0]) is None:
+            raise ValueError("DRC check scope or limit differs from the Pack template")
+        counts = [int(match.group(1)) for line in lines if (match := re.fullmatch(r"\s*Total Violations\s*:\s*(\d+)\s+Viols\.\s*", line))]
+        listed = sum(line.startswith("Bounds :") for line in lines)
+    else:
+        if re.fullmatch(r"verifyConnectivity\s+-noAntenna\s+-error\s+1000000\s+-report\s+" + report_path, commands[0]) is None:
+            raise ValueError("connectivity check scope or limit differs from the Pack template")
+        if lines.count("Begin Summary") != 1 or lines.count("End Summary") != 1:
+            raise ValueError("connectivity check has no single complete summary")
+        counts = [int(match.group(1)) for line in lines if (match := re.fullmatch(r"\s*(\d+) total info\(s\) created\.\s*", line))]
+        categories = [int(match.group(1)) for line in lines if (match := re.fullmatch(r"\s*(\d+) Problem\(s\) \([^\n]+\):[^\n]*", line))]
+        if not categories or len(counts) != 1 or sum(categories) != counts[0]:
+            raise ValueError("connectivity summary categories differ from the total")
+        listed = sum(line.startswith("Net ") for line in lines)
+    if len(counts) != 1 or counts[0] >= 1000000 or listed != counts[0]:
+        raise ValueError(f"{kind} report count is missing, capped or does not cover every listed error")
+    return counts[0]
+
+
 def verify_state(data, workspace: Path):
     if data.get("schema") != "xtop-timing-closure-state/1":
         raise ValueError("closure state has the wrong schema")
@@ -72,7 +105,19 @@ def verify_state(data, workspace: Path):
         if count is None and (physical["coverage"] == "complete" or row.get("status") != "unknown" or not isinstance(row.get("reason"), str)):
             raise ValueError(f"closure state has neither a qualified physical {kind} count nor an explicit unknown")
         verify_ref(row.get("report"), workspace)
-    verify_ref(physical.get("manifest"), workspace)
+    manifest_path = verify_ref(physical.get("manifest"), workspace)
+    manifest = load(manifest_path)
+    if (set(manifest) != {"schema", "coverage", "drcLimit", "connectivityLimit", "drcReport", "connectivityReport"}
+            or manifest["schema"] != physical["schema"] or manifest["drcLimit"] != 1000000
+            or manifest["connectivityLimit"] != 1000000):
+        raise ValueError("closure state physical manifest differs from the retained check contract")
+    if physical["coverage"] == "complete":
+        if manifest["coverage"] != "complete":
+            raise ValueError("closure state claims complete physical coverage without a complete check")
+        for kind, name in (("drc", "drcReport"), ("connectivity", "connectivityReport")):
+            report = verify_ref(physical[kind]["report"], workspace)
+            if report.parent != manifest_path.parent or report.name != manifest[name] or physical[kind].get("count") != verified_physical_count(report, kind):
+                raise ValueError("closure state physical counts or coverage differ from retained report bytes")
     measurement = data.get("measurement")
     if not isinstance(measurement, dict) or not isinstance(measurement.get("scenariosSha256"), str) or not isinstance(measurement.get("spef"), dict):
         raise ValueError("closure state has no measurement coverage identity")

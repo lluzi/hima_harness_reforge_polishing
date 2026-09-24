@@ -555,35 +555,29 @@ def physical_count(path: Path, kind: str):
     text = path.read_text(errors="replace")
     if re.search(r"(?i)\b(?:truncated|limit reached|first\s+\d+\s+(?:errors|violations))\b", text):
         raise Rejected(f"{kind} report is truncated or limited")
+    report_path = r'(?:/\S+|\{[^}\n]+\}|"[^"\n]+")'
     if kind == "drc":
-        fixture = re.findall(r"(?im)^\s*Total number of DRC violations\s*=\s*(\d+)\s*$", text)
-        innovus = re.findall(r"(?im)^\s*Total Violations\s*:\s*(\d+)\s+Viols\.\s*$", text)
-        if innovus:
-            command = re.findall(r"(?im)^#\s*Command:\s*verify_drc\s+-limit\s+(\d+)\b[^\n]*$", text)
-            if len(command) != 1 or int(command[0]) != 1000000:
-                raise Rejected("cannot prove the Innovus DRC command used the declared complete-report limit")
-        matches = fixture + innovus
+        command = re.findall(r"(?im)^#\s*Command:\s*verify_drc\s+([^\n]+)$", text)
+        if len(command) != 1 or re.fullmatch(r"-limit\s+1000000\s+-report\s+" + report_path, command[0].strip()) is None:
+            raise Rejected("cannot prove Innovus DRC used the complete same-scope check template")
+        matches = re.findall(r"(?im)^\s*Total Violations\s*:\s*(\d+)\s+Viols\.\s*$", text)
     else:
-        if (re.search(r"(?m)^\s*1000 Problem\(s\) \(IMPVFC-200\):", text)
-                and re.search(r"(?m)^\s*1000 total info\(s\) created\.\s*$", text)
-                and not re.search(r"(?im)^#\s*Command:\s*verifyConnectivity\b[^\n]*-error\s+1000000\b", text)):
-            raise Rejected("connectivity report prints 1000 problems without a proven complete count")
         commands = re.findall(r"(?im)^#\s*Command:\s*verifyConnectivity\b([^\n]*)$", text)
-        if commands:
-            limit = re.findall(r"(?:^|\s)-error\s+(\d+)(?:\s|$)", commands[0])
-            if len(commands) != 1 or limit != ["1000000"]:
-                raise Rejected("connectivity report has no matching explicit complete-report error limit")
-            summary = re.findall(r"(?ims)^\s*Begin Summary\s*\n(.*?)^\s*End Summary\s*$", text)
-            if len(summary) != 1:
-                raise Rejected("connectivity report has no single complete summary")
-            problems = [int(value) for value in re.findall(r"(?im)^\s*(\d+) Problem\(s\) \([^\n]+\):[^\n]*$", summary[0])]
-            totals = re.findall(r"(?im)^\s*(\d+) total info\(s\) created\.\s*$", summary[0])
-            if len(totals) != 1 or not problems or sum(problems) != int(totals[0]):
-                raise Rejected("connectivity summary categories do not prove the complete error count")
-            if int(totals[0]) >= 1000000:
-                raise Rejected("connectivity report reached its explicit 1000000-error limit")
-            return int(totals[0])
-        matches = re.findall(r"(?im)^\s*Total number of (?:connectivity|connectivity violations)\s*=\s*(\d+)\s*$", text)
+        if len(commands) != 1 or re.fullmatch(r"-noAntenna\s+-error\s+1000000\s+-report\s+" + report_path, commands[0].strip()) is None:
+            if (re.search(r"(?m)^\s*1000 Problem\(s\) \(IMPVFC-200\):", text)
+                    and re.search(r"(?m)^\s*1000 total info\(s\) created\.\s*$", text)):
+                raise Rejected("connectivity report prints 1000 problems without a proven complete count")
+            raise Rejected("connectivity report has no matching same-scope explicit error limit")
+        summary = re.findall(r"(?ims)^\s*Begin Summary\s*\n(.*?)^\s*End Summary\s*$", text)
+        if len(summary) != 1:
+            raise Rejected("connectivity report has no single complete summary")
+        problems = [int(value) for value in re.findall(r"(?im)^\s*(\d+) Problem\(s\) \([^\n]+\):[^\n]*$", summary[0])]
+        totals = re.findall(r"(?im)^\s*(\d+) total info\(s\) created\.\s*$", summary[0])
+        if len(totals) != 1 or not problems or sum(problems) != int(totals[0]):
+            raise Rejected("connectivity summary categories do not prove the complete error count")
+        if int(totals[0]) >= 1000000:
+            raise Rejected("connectivity report reached its explicit 1000000-error limit")
+        return int(totals[0])
     if len(matches) != 1:
         raise Rejected(f"cannot prove one complete {kind} count from {path}")
     return int(matches[0])
@@ -1037,7 +1031,12 @@ def compare(workspace: Path):
         previous_best = read_json(paths(workspace)["best"]) if paths(workspace)["best"].is_file() else None
         if previous_best is not None:
             validate_best(workspace, previous_best)
-        previous_snapshot = read_json(Path(previous_best["snapshot"])) if previous_best else before
+        # Endpoint movement is incremental, but physical adoption is anchored
+        # to the original g000 baseline and to the retained best. A rejected
+        # generation must never become the next one's physical reference.
+        original_snapshot = read_json(paths(workspace)["flow"] / "iterations" / "g000" / "closure-state.json")
+        previous_snapshot = read_json(Path(previous_best["snapshot"])) if previous_best else original_snapshot
+        original_identity = validate_snapshot_identity(workspace, original_snapshot)
         baseline_identity = validate_snapshot_identity(workspace, before)
         candidate_identity = validate_snapshot_identity(workspace, after)
         delta["comparability"] = "comparable"
@@ -1046,9 +1045,17 @@ def compare(workspace: Path):
                      "originalFrontierCount": len(b_bad), "measuredOriginalCount": 0,
                      "fixed": [], "remaining": [], "entrants": [], "regressed": [],
                      "missing": sorted(b_bad - set(a))}
-        qualification = physical_qualification(baseline_identity, candidate_identity, workspace)
+        qualification = physical_qualification(original_identity, candidate_identity, workspace)
+        if qualification["status"] != "eligible":
+            qualification = {**qualification, "reference": "original-baseline"}
+        elif previous_best is not None:
+            retained_identity = validate_snapshot_identity(workspace, previous_snapshot)
+            against_best = physical_qualification(retained_identity, candidate_identity, workspace)
+            qualification = {**against_best, "reference": "retained-best"}
+        else:
+            qualification = {**qualification, "reference": "original-baseline"}
         selected = after if qualification["status"] == "eligible" and rank(after) < rank(previous_snapshot) else previous_snapshot
-        if qualification["status"] == "eligible" and (previous_best is None or selected is after):
+        if qualification["status"] == "eligible" and selected is after:
             script, data, identity = copy_database_alias(workspace, selected)
             best = {
                 "schema": BEST_SCHEMA, "ready": True, "iteration": selected["iteration"],

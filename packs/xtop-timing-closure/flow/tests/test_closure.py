@@ -188,7 +188,7 @@ class ClosureContractTest(unittest.TestCase):
         self.assertIn("1000", evidence["connectivity"]["reason"])
         self.assertEqual(evidence["coverage"], "unknown")
 
-    def test_explicit_innovus_connectivity_limit_proves_a_complete_count_below_the_bound(self):
+    def test_explicit_innovus_limit_parses_counts_but_does_not_prove_all_error_identities(self):
         physical = self.workspace / "flow" / "iterations" / "g002" / "PHYSICAL"
         physical.mkdir(parents=True)
         (physical / "verify_drc.rpt").write_text(
@@ -210,6 +210,37 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(evidence["coverage"], "complete")
         self.assertEqual(evidence["drc"]["count"], 10)
         self.assertEqual(evidence["connectivity"]["count"], 20)
+        shared = {"profile": {"sha256": "1"}, "sourceManifest": {"sha256": "2"},
+                  "scenariosSha256": "3", "spef": {"worst": {"sha256": "4"}}, "physical": evidence}
+        qualified = closure.physical_qualification(shared, shared, self.workspace)
+        self.assertEqual(qualified["status"], "unknown", "one printed identity cannot prove ten DRC errors")
+
+    def test_command_free_or_scope_changed_zero_reports_cannot_claim_complete_coverage(self):
+        physical = self.workspace / "flow" / "iterations" / "g004" / "PHYSICAL"
+        physical.mkdir(parents=True)
+        drc = physical / "verify_drc.rpt"
+        conn = physical / "verify_connectivity.rpt"
+        (physical / "physical-check.json").write_text(json.dumps({
+            "schema": "xtop-timing-closure-physical-check/2", "coverage": "complete",
+            "drcLimit": 1000000, "connectivityLimit": 1000000,
+            "drcReport": drc.name, "connectivityReport": conn.name,
+        }))
+        drc.write_text("Total number of DRC violations = 0\n")
+        conn.write_text("Total number of connectivity = 0\n")
+        no_command = closure.physical_evidence(self.workspace, physical)
+        self.assertEqual(no_command["coverage"], "unknown")
+        self.assertEqual(no_command["drc"]["status"], "unknown")
+        self.assertEqual(no_command["connectivity"]["status"], "unknown")
+
+        drc.write_text("#  Command: verify_drc -limit 1000000 -layer_range {M1 M8} -report /site/drc.rpt\n"
+                       "  Total Violations : 0 Viols.\n")
+        conn.write_text("#  Command: verifyConnectivity -type regular -noAntenna -error 1000000 -report /site/conn.rpt\n"
+                        "Begin Summary\n    0 Problem(s) (IMPVFC-200): Special Wires.\n"
+                        "    0 total info(s) created.\nEnd Summary\n")
+        changed_scope = closure.physical_evidence(self.workspace, physical)
+        self.assertEqual(changed_scope["coverage"], "unknown")
+        self.assertEqual(changed_scope["drc"]["status"], "unknown")
+        self.assertEqual(changed_scope["connectivity"]["status"], "unknown")
 
     def test_state_reader_preserves_timing_when_physical_qualification_is_unknown(self):
         self.write_database(0)
@@ -308,6 +339,32 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(result["status"], "ineligible")
         self.assertEqual(result["newErrors"], {"drc": 1})
 
+    def test_equal_connectivity_counts_do_not_hide_a_new_open(self):
+        def physical_at(generation, x):
+            root = self.workspace / "flow" / "iterations" / f"g{generation:03d}" / "PHYSICAL"
+            root.mkdir(parents=True)
+            (root / "verify_drc.rpt").write_text(
+                "#  Command: verify_drc -limit 1000000 -report /site/drc.rpt\n"
+                "  Total Violations : 0 Viols.\n")
+            (root / "verify_connectivity.rpt").write_text(
+                "#  Command: verifyConnectivity -noAntenna -error 1000000 -report /site/conn.rpt\n"
+                f"Net VDD: has special routes with opens at ({x}.000, 0.000) ({x}.100, 0.100)\n"
+                "Begin Summary\n    1 Problem(s) (IMPVFC-200): Special Wires.\n"
+                "    1 total info(s) created.\nEnd Summary\n")
+            (root / "physical-check.json").write_text(json.dumps({
+                "schema": "xtop-timing-closure-physical-check/2", "coverage": "complete",
+                "drcLimit": 1000000, "connectivityLimit": 1000000,
+                "drcReport": "verify_drc.rpt", "connectivityReport": "verify_connectivity.rpt",
+            }))
+            return closure.physical_evidence(self.workspace, root)
+        shared = {"profile": {"sha256": "1"}, "sourceManifest": {"sha256": "2"},
+                  "scenariosSha256": "3", "spef": {"worst": {"sha256": "4"}}}
+        before = {**shared, "physical": physical_at(0, 0)}
+        after = {**shared, "physical": physical_at(1, 9)}
+        result = closure.physical_qualification(before, after, self.workspace)
+        self.assertEqual(result["status"], "ineligible")
+        self.assertEqual(result["newErrors"], {"connectivity": 1})
+
     def test_snapshot_values_and_database_are_bound_to_retained_bytes(self):
         self.write_database(0)
         self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2), "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]})
@@ -317,6 +374,10 @@ class ClosureContractTest(unittest.TestCase):
         changed = copy.deepcopy(original); changed["physical"]["drc"]["count"] = 0
         with self.assertRaisesRegex(closure.Rejected, "physical counts"):
             closure.validate_snapshot_identity(self.workspace, changed)
+        tampered = self.workspace / "flow" / "state" / "tampered.json"
+        tampered.write_text(json.dumps(changed))
+        with self.assertRaisesRegex(ValueError, "physical counts or coverage differ"):
+            reader.read(tampered, "state")
         changed = copy.deepcopy(original); changed["metrics"]["closure_score"] = 0
         with self.assertRaisesRegex(closure.Rejected, "timing values"):
             closure.validate_snapshot_identity(self.workspace, changed)
@@ -419,6 +480,55 @@ class ClosureContractTest(unittest.TestCase):
         (self.workspace / "flow" / "iterations" / "g001" / "PHYSICAL" / "physical-check.json").unlink()
         with self.assertRaises(closure.Rejected):
             closure.physical_evidence(self.workspace, self.workspace / "flow" / "iterations" / "g001" / "PHYSICAL")
+
+    def test_rejected_generation_cannot_launder_a_new_error_into_later_best(self):
+        self.write_database(0)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2),
+                               "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]}, drc=1, connectivity=1)
+        self.save_runtime(); closure.summarize(self.workspace)
+        for generation, slack in ((1, -0.06), (2, -0.01)):
+            self.runtime = closure.load_runtime(self.workspace)
+            self.runtime["iteration"] = generation
+            self.write_database(generation)
+            self.write_reports(generation, {"global": (slack, slack, 1, slack, slack, 1),
+                                            "setup": [("A/D", slack)], "hold": [("H/D", slack)]},
+                               drc=2, connectivity=1)
+            self.save_runtime(); closure.summarize(self.workspace)
+            (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+                "schema": closure.PLAN_SCHEMA, "iteration": generation, "diagnosis": "test",
+                "hypotheses": ["test"], "endpointGroups": ["core_clock"],
+                "actions": [], "avoid": [], "reasoning": "test",
+            }))
+            closure.compare(self.workspace)
+            result = closure.read_json(self.workspace / "flow" / "records" / "compare.json")
+            self.assertEqual(result["bestQualification"]["status"], "ineligible")
+            self.assertFalse(result["evidence_valid"])
+            self.assertFalse((self.workspace / "flow" / "output" / "best-database.json").exists())
+
+    def test_eligible_but_slower_candidate_cannot_adopt_a_preceding_rejected_database(self):
+        self.write_database(0)
+        self.write_reports(0, {"global": (-0.10, -0.30, 3, -0.08, -0.20, 2),
+                               "setup": [("A/D", -0.10)], "hold": [("H/D", -0.08)]}, drc=1, connectivity=1)
+        self.save_runtime(); closure.summarize(self.workspace)
+        for generation, slack, drc, violations, tns in ((1, -0.01, 2, 1, -0.01),
+                                                         (2, -0.12, 1, 20, -10.0)):
+            self.runtime = closure.load_runtime(self.workspace)
+            self.runtime["iteration"] = generation
+            self.write_database(generation)
+            self.write_reports(generation, {"global": (slack, tns, violations, slack, tns, violations),
+                                            "setup": [("A/D", slack)], "hold": [("H/D", slack)]},
+                               drc=drc, connectivity=1)
+            self.save_runtime(); closure.summarize(self.workspace)
+            (self.workspace / "flow" / "research" / "fix-plan.json").write_text(json.dumps({
+                "schema": closure.PLAN_SCHEMA, "iteration": generation, "diagnosis": "test",
+                "hypotheses": ["test"], "endpointGroups": ["core_clock"],
+                "actions": [], "avoid": [], "reasoning": "test",
+            }))
+            closure.compare(self.workspace)
+        result = closure.read_json(self.workspace / "flow" / "records" / "compare.json")
+        self.assertEqual(result["bestQualification"]["status"], "eligible", "g002 is physically no worse than g000")
+        self.assertFalse(result["evidence_valid"], "worse timing must not turn g001's rejected DB into best")
+        self.assertFalse((self.workspace / "flow" / "output" / "best-database.json").exists())
 
     def test_unknown_physical_coverage_preserves_comparison_but_never_creates_best(self):
         self.write_database(0)
