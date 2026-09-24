@@ -107,10 +107,20 @@ class ClosureContractTest(unittest.TestCase):
         self.runtime["currentAnalysis"] = {"reports": str(root)}
         physical = self.workspace / "flow" / "iterations" / f"g{generation:03d}" / "PHYSICAL"
         physical.mkdir(parents=True, exist_ok=True)
-        (physical / "verify_drc.rpt").write_text(f"Total number of DRC violations = {drc}\n")
-        (physical / "verify_connectivity.rpt").write_text(f"Total number of connectivity = {connectivity}\n")
+        (physical / "verify_drc.rpt").write_text(
+            "#  Command: verify_drc -limit 1000000 -report /site/verify_drc.rpt\n"
+            + "".join(f"SPACING: Special Wire of Net VDD\nBounds : ( {index}.000, 0.000 ) ( {index}.100, 0.100 )\n"
+                      for index in range(drc))
+            + f"  Total Violations : {drc} Viols.\n")
+        (physical / "verify_connectivity.rpt").write_text(
+            "#  Command: verifyConnectivity -noAntenna -error 1000000 -report /site/verify_connectivity.rpt\n"
+            + "".join(f"Net VDD: has special routes with opens at ({index}.000, 0.000) ({index}.100, 0.100)\n"
+                      for index in range(connectivity))
+            + f"Begin Summary\n    {connectivity} Problem(s) (IMPVFC-200): Special Wires: Pieces are not connected.\n"
+            + f"    {connectivity} total info(s) created.\nEnd Summary\n")
         (physical / "physical-check.json").write_text(json.dumps({
-            "schema": "xtop-timing-closure-physical-check/1", "coverage": coverage, "drcLimit": 1000000,
+            "schema": "xtop-timing-closure-physical-check/2", "coverage": coverage, "drcLimit": 1000000,
+            "connectivityLimit": 1000000,
             "drcReport": "verify_drc.rpt", "connectivityReport": "verify_connectivity.rpt",
         }))
         self.runtime["currentPhysical"] = closure.physical_evidence(self.workspace, physical)
@@ -119,15 +129,17 @@ class ClosureContractTest(unittest.TestCase):
     def save_runtime(self):
         closure.atomic_json(self.workspace / "flow" / "state" / "runtime.json", self.runtime)
 
-    def test_actual_tcl_manifest_is_valid_json_and_does_not_claim_full_coverage(self):
+    def test_actual_tcl_manifest_declares_the_explicit_reader_checked_limits(self):
         for name in ("export.tcl", "apply-eco.tcl"):
             template = (SOURCE.parent / "templates" / name).read_text()
             line = next(row for row in template.splitlines() if row.startswith("puts $physical "))
             result = subprocess.run(["tclsh"], input="set physical stdout\n" + line + "\n", text=True, capture_output=True, check=True)
             manifest = json.loads(result.stdout)
-            self.assertEqual(manifest["schema"], "xtop-timing-closure-physical-check/1")
-            self.assertEqual(manifest["coverage"], "unknown")
+            self.assertEqual(manifest["schema"], "xtop-timing-closure-physical-check/2")
+            self.assertEqual(manifest["coverage"], "complete")
             self.assertEqual(manifest["drcLimit"], 1000000)
+            self.assertEqual(manifest["connectivityLimit"], 1000000)
+            self.assertIn("verifyConnectivity -noAntenna -error 1000000", template)
 
     def test_unknown_physical_report_grammar_is_retained_without_inventing_counts(self):
         physical = self.workspace / "flow" / "iterations" / "g000" / "PHYSICAL"
@@ -135,7 +147,8 @@ class ClosureContractTest(unittest.TestCase):
         (physical / "verify_drc.rpt").write_text("Innovus physical verification format not yet qualified\n")
         (physical / "verify_connectivity.rpt").write_text("Innovus connectivity format not yet qualified\n")
         (physical / "physical-check.json").write_text(json.dumps({
-            "schema": "xtop-timing-closure-physical-check/1", "coverage": "unknown", "drcLimit": 1000000,
+            "schema": "xtop-timing-closure-physical-check/2", "coverage": "unknown", "drcLimit": 1000000,
+            "connectivityLimit": 1000000,
             "drcReport": "verify_drc.rpt", "connectivityReport": "verify_connectivity.rpt",
         }))
 
@@ -165,7 +178,8 @@ class ClosureContractTest(unittest.TestCase):
             "    1000 total info(s) created.\n"
             "End Summary\n")
         (physical / "physical-check.json").write_text(json.dumps({
-            "schema": "xtop-timing-closure-physical-check/1", "coverage": "unknown", "drcLimit": 1000000,
+            "schema": "xtop-timing-closure-physical-check/2", "coverage": "unknown", "drcLimit": 1000000,
+            "connectivityLimit": 1000000,
             "drcReport": "verify_drc.rpt", "connectivityReport": "verify_connectivity.rpt",
         }))
         evidence = closure.physical_evidence(self.workspace, physical)
@@ -173,6 +187,29 @@ class ClosureContractTest(unittest.TestCase):
         self.assertEqual(evidence["connectivity"]["status"], "unknown")
         self.assertIn("1000", evidence["connectivity"]["reason"])
         self.assertEqual(evidence["coverage"], "unknown")
+
+    def test_explicit_innovus_connectivity_limit_proves_a_complete_count_below_the_bound(self):
+        physical = self.workspace / "flow" / "iterations" / "g002" / "PHYSICAL"
+        physical.mkdir(parents=True)
+        (physical / "verify_drc.rpt").write_text(
+            "#  Command: verify_drc -limit 1000000 -report /site/verify_drc.rpt\n"
+            "  Total Violations : 10 Viols.\n")
+        (physical / "verify_connectivity.rpt").write_text(
+            "#  Command: verifyConnectivity -noAntenna -error 1000000 -report /site/verify_connectivity.rpt\n"
+            "Net VDD: has special routes with opens\n"
+            "Begin Summary\n"
+            "    20 Problem(s) (IMPVFC-200): Special Wires: Pieces are not connected.\n"
+            "    20 total info(s) created.\n"
+            "End Summary\n")
+        (physical / "physical-check.json").write_text(json.dumps({
+            "schema": "xtop-timing-closure-physical-check/2", "coverage": "complete",
+            "drcLimit": 1000000, "connectivityLimit": 1000000,
+            "drcReport": "verify_drc.rpt", "connectivityReport": "verify_connectivity.rpt",
+        }))
+        evidence = closure.physical_evidence(self.workspace, physical)
+        self.assertEqual(evidence["coverage"], "complete")
+        self.assertEqual(evidence["drc"]["count"], 10)
+        self.assertEqual(evidence["connectivity"]["count"], 20)
 
     def test_state_reader_preserves_timing_when_physical_qualification_is_unknown(self):
         self.write_database(0)
@@ -242,6 +279,34 @@ class ClosureContractTest(unittest.TestCase):
         after = {"profile": {"sha256": "1"}, "sourceManifest": {"sha256": "2"},
                  "scenariosSha256": "3", "spef": {"worst": {"sha256": "candidate"}}, "physical": physical}
         self.assertEqual(closure.physical_qualification(before, after)["status"], "eligible")
+
+    def test_equal_physical_counts_do_not_hide_a_new_drc_location(self):
+        def physical_at(generation, x):
+            root = self.workspace / "flow" / "iterations" / f"g{generation:03d}" / "PHYSICAL"
+            root.mkdir(parents=True)
+            (root / "verify_drc.rpt").write_text(
+                "#  Command: verify_drc -limit 1000000 -report /site/verify_drc.rpt\n"
+                f"SPACING: Special Wire of Net VDD\nBounds : ( {x}.000, 0.000 ) ( {x}.100, 0.100 )\n"
+                "  Total Violations : 1 Viols.\n")
+            (root / "verify_connectivity.rpt").write_text(
+                "#  Command: verifyConnectivity -noAntenna -error 1000000 -report /site/verify_connectivity.rpt\n"
+                "Net VDD: has special routes with opens at (0.000, 0.000) (1.000, 1.000)\n"
+                "Begin Summary\n    1 Problem(s) (IMPVFC-200): Special Wires: Pieces are not connected.\n"
+                "    1 total info(s) created.\nEnd Summary\n")
+            (root / "physical-check.json").write_text(json.dumps({
+                "schema": "xtop-timing-closure-physical-check/2", "coverage": "complete",
+                "drcLimit": 1000000, "connectivityLimit": 1000000,
+                "drcReport": "verify_drc.rpt", "connectivityReport": "verify_connectivity.rpt",
+            }))
+            return closure.physical_evidence(self.workspace, root)
+        shared = {"profile": {"sha256": "1"}, "sourceManifest": {"sha256": "2"},
+                  "scenariosSha256": "3", "spef": {"worst": {"sha256": "4"}}}
+        before = {**shared, "physical": physical_at(0, 0)}
+        after = {**shared, "physical": physical_at(1, 9)}
+        self.assertEqual(before["physical"]["drc"]["count"], after["physical"]["drc"]["count"])
+        result = closure.physical_qualification(before, after, self.workspace)
+        self.assertEqual(result["status"], "ineligible")
+        self.assertEqual(result["newErrors"], {"drc": 1})
 
     def test_snapshot_values_and_database_are_bound_to_retained_bytes(self):
         self.write_database(0)

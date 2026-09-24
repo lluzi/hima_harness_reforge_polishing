@@ -60,7 +60,7 @@ def verify_state(data, workspace: Path):
     for ref in refs:
         verify_ref(ref, workspace)
     physical = data.get("physical")
-    if not isinstance(physical, dict) or physical.get("schema") != "xtop-timing-closure-physical-check/1" or physical.get("coverage") not in {"complete", "unknown"}:
+    if not isinstance(physical, dict) or physical.get("schema") != "xtop-timing-closure-physical-check/2" or physical.get("coverage") not in {"complete", "unknown"}:
         raise ValueError("closure state has malformed physical evidence")
     for kind in ("drc", "connectivity"):
         row = physical.get(kind)

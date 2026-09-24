@@ -19,12 +19,14 @@ PrimeTime analysis, Workshop planning, XTop fix, Innovus ECO, refreshed extracti
 comparison nodes. Output is the materialized `flow/output/best.enc` plus `best.enc.dat`, bound by
 `best-database.json`.
 
-Best-database adoption also requires comparable, complete full-chip DRC and connectivity counts
-from the same database state. An Innovus DRC `Total Violations` footer is readable only with its
-declared `verify_drc -limit 1000000` command and a count below that bound. A connectivity report
-that prints 1000 problems without proof of an untruncated count remains `unknown`; identical printed
-counts across generations do not prove no new error. Unknown physical coverage cannot authorize a
-new best database.
+Best-database adoption also requires comparable, complete full-chip DRC and connectivity checks
+from the same database state. The Pack now runs `verify_drc -limit 1000000` and
+`verifyConnectivity -noAntenna -error 1000000`; the Reader independently requires one footer,
+the matching command and counts below both explicit bounds. It compares the identified violation
+locations, not just totals: a new error makes the candidate ineligible even when another error
+disappears. A historical connectivity report capped at its default 1000 problems remains
+`unknown`; missing identities or unknown coverage cannot authorize a new best database. Absolute
+pre-existing physical violations are retained and reported, not misrepresented as clean signoff.
 
 ## Semantics
 

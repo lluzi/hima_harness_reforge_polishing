@@ -565,8 +565,24 @@ def physical_count(path: Path, kind: str):
         matches = fixture + innovus
     else:
         if (re.search(r"(?m)^\s*1000 Problem\(s\) \(IMPVFC-200\):", text)
-                and re.search(r"(?m)^\s*1000 total info\(s\) created\.\s*$", text)):
+                and re.search(r"(?m)^\s*1000 total info\(s\) created\.\s*$", text)
+                and not re.search(r"(?im)^#\s*Command:\s*verifyConnectivity\b[^\n]*-error\s+1000000\b", text)):
             raise Rejected("connectivity report prints 1000 problems without a proven complete count")
+        commands = re.findall(r"(?im)^#\s*Command:\s*verifyConnectivity\b([^\n]*)$", text)
+        if commands:
+            limit = re.findall(r"(?:^|\s)-error\s+(\d+)(?:\s|$)", commands[0])
+            if len(commands) != 1 or limit != ["1000000"]:
+                raise Rejected("connectivity report has no matching explicit complete-report error limit")
+            summary = re.findall(r"(?ims)^\s*Begin Summary\s*\n(.*?)^\s*End Summary\s*$", text)
+            if len(summary) != 1:
+                raise Rejected("connectivity report has no single complete summary")
+            problems = [int(value) for value in re.findall(r"(?im)^\s*(\d+) Problem\(s\) \([^\n]+\):[^\n]*$", summary[0])]
+            totals = re.findall(r"(?im)^\s*(\d+) total info\(s\) created\.\s*$", summary[0])
+            if len(totals) != 1 or not problems or sum(problems) != int(totals[0]):
+                raise Rejected("connectivity summary categories do not prove the complete error count")
+            if int(totals[0]) >= 1000000:
+                raise Rejected("connectivity report reached its explicit 1000000-error limit")
+            return int(totals[0])
         matches = re.findall(r"(?im)^\s*Total number of (?:connectivity|connectivity violations)\s*=\s*(\d+)\s*$", text)
     if len(matches) != 1:
         raise Rejected(f"cannot prove one complete {kind} count from {path}")
@@ -575,8 +591,8 @@ def physical_count(path: Path, kind: str):
 
 def physical_evidence(workspace: Path, reports: Path):
     manifest = read_json(reports / "physical-check.json")
-    required = {"schema", "coverage", "drcLimit", "drcReport", "connectivityReport"}
-    if set(manifest) != required or manifest["schema"] != "xtop-timing-closure-physical-check/1" or manifest["coverage"] not in {"complete", "unknown"} or manifest["drcLimit"] != 1000000:
+    required = {"schema", "coverage", "drcLimit", "connectivityLimit", "drcReport", "connectivityReport"}
+    if set(manifest) != required or manifest["schema"] != "xtop-timing-closure-physical-check/2" or manifest["coverage"] not in {"complete", "unknown"} or manifest["drcLimit"] != 1000000 or manifest["connectivityLimit"] != 1000000:
         raise Rejected("physical check manifest is malformed")
     drc = reports / manifest["drcReport"]
     connectivity = reports / manifest["connectivityReport"]
@@ -589,13 +605,13 @@ def physical_evidence(workspace: Path, reports: Path):
         try:
             count = physical_count(report, kind)
             rows[kind] = {"count": count, "report": held}
-            if kind == "drc" and count >= manifest["drcLimit"]:
+            if count >= manifest["drcLimit" if kind == "drc" else "connectivityLimit"]:
                 coverage = "unknown"
         except Rejected as error:
             coverage = "unknown"
             rows[kind] = {"status": "unknown", "reason": str(error), "report": held}
     return {
-        "schema": manifest["schema"], "coverage": coverage, "drcLimit": manifest["drcLimit"],
+        "schema": manifest["schema"], "coverage": coverage, "drcLimit": manifest["drcLimit"], "connectivityLimit": manifest["connectivityLimit"],
         "drc": rows["drc"], "connectivity": rows["connectivity"],
         "manifest": file_ref(reports / "physical-check.json", workspace, "physical-check-manifest"),
     }
@@ -845,7 +861,7 @@ def validate_snapshot_identity(workspace: Path, snapshot):
     if snapshot.get("metrics") != measured_metrics or snapshot.get("endpointSlackNs") != measured_endpoints:
         raise Rejected("candidate timing values do not match the retained reports")
     physical = snapshot.get("physical")
-    if not isinstance(physical, dict) or physical.get("schema") != "xtop-timing-closure-physical-check/1" or physical.get("coverage") not in {"complete", "unknown"} or physical.get("drcLimit") != 1000000:
+    if not isinstance(physical, dict) or physical.get("schema") != "xtop-timing-closure-physical-check/2" or physical.get("coverage") not in {"complete", "unknown"} or physical.get("drcLimit") != 1000000 or physical.get("connectivityLimit") != 1000000:
         raise Rejected("candidate physical evidence is malformed")
     for key in ("drc", "connectivity"):
         row = physical.get(key)
@@ -865,7 +881,21 @@ def validate_snapshot_identity(workspace: Path, snapshot):
       "scenariosSha256": measurement["scenariosSha256"], "spef": measurement["spef"], "physical": physical}
 
 
-def physical_qualification(before_identity, after_identity):
+def physical_violation_ids(path: Path, kind: str, expected_count: int):
+    """Return full error identities, or refuse an incomplete report grammar."""
+    text = path.read_text(errors="replace")
+    if kind == "drc":
+        rows = re.findall(r"(?m)^([A-Z][A-Z0-9_]*:[^\n]*)\nBounds[ \t]*:[ \t]*([^\n]*)$", text)
+        values = [(" ".join(rule.split()), " ".join(bounds.split())) for rule, bounds in rows]
+    else:
+        values = [(" ".join(line.split()),) for line in re.findall(r"(?m)^(Net [^\n]+)$", text)]
+    if len(values) != expected_count:
+        raise Rejected(f"{kind} report lists {len(values)} identified errors, not its declared {expected_count}")
+    from collections import Counter
+    return Counter(values)
+
+
+def physical_qualification(before_identity, after_identity, workspace: Path | None = None):
     if before_identity["physical"]["coverage"] != "complete" or after_identity["physical"]["coverage"] != "complete":
         return {"status": "unknown", "reason": "physical report coverage is not independently qualified"}
     for key in ("profile", "sourceManifest", "scenariosSha256"):
@@ -879,6 +909,23 @@ def physical_qualification(before_identity, after_identity):
     increased = {kind: count for kind, count in regressions.items() if count > 0}
     if increased:
         return {"status": "ineligible", "reason": "physical DRC/connectivity errors increased", "regressions": increased}
+    if any(before_physical[kind]["count"] or after_physical[kind]["count"] for kind in ("drc", "connectivity")):
+        if workspace is None:
+            return {"status": "unknown", "reason": "physical violation identities were not compared"}
+        entrants = {}
+        try:
+            for kind in ("drc", "connectivity"):
+                before_report = resolved_ref(workspace, before_physical[kind]["report"])
+                after_report = resolved_ref(workspace, after_physical[kind]["report"])
+                old = physical_violation_ids(before_report, kind, before_physical[kind]["count"])
+                new = physical_violation_ids(after_report, kind, after_physical[kind]["count"])
+                extra = sum((new - old).values())
+                if extra:
+                    entrants[kind] = extra
+        except Rejected as error:
+            return {"status": "unknown", "reason": str(error)}
+        if entrants:
+            return {"status": "ineligible", "reason": "new physical DRC/connectivity errors appeared", "newErrors": entrants}
     return {"status": "eligible", "baseline": {kind: before_physical[kind]["count"] for kind in ("drc", "connectivity")},
       "candidate": {kind: after_physical[kind]["count"] for kind in ("drc", "connectivity")}}
 
@@ -898,7 +945,7 @@ def validate_best(workspace: Path, best):
     if not snapshot_path.is_relative_to(workspace.resolve()) or not snapshot_path.is_file():
         raise Rejected("stored best snapshot is unavailable or outside this workspace")
     identity = validate_snapshot_identity(workspace, read_json(snapshot_path))
-    if physical_qualification(identity, identity)["status"] != "eligible":
+    if physical_qualification(identity, identity, workspace)["status"] != "eligible":
         raise Rejected("stored best lacks complete physical qualification")
     if identity["databaseTree"] != best["tree"] or identity["databaseScript"]["sha256"] != best["restoreScript"]["sha256"]:
         raise Rejected("stored best database does not belong to its measurement snapshot")
@@ -999,7 +1046,7 @@ def compare(workspace: Path):
                      "originalFrontierCount": len(b_bad), "measuredOriginalCount": 0,
                      "fixed": [], "remaining": [], "entrants": [], "regressed": [],
                      "missing": sorted(b_bad - set(a))}
-        qualification = physical_qualification(baseline_identity, candidate_identity)
+        qualification = physical_qualification(baseline_identity, candidate_identity, workspace)
         selected = after if qualification["status"] == "eligible" and rank(after) < rank(previous_snapshot) else previous_snapshot
         if qualification["status"] == "eligible" and (previous_best is None or selected is after):
             script, data, identity = copy_database_alias(workspace, selected)

@@ -1,6 +1,6 @@
-# #55：trial30 物理检查报告的只读资格切片
+# #55：trial30 物理检查的只读核查与有界 Innovus 资格
 
-本次没有恢复 trial30 的暂停 Run，也没有调用 Innovus、XTop、QuaLib 或模型。通过只读 SSH 将 trial30 的 g001/g010 报告复制到忽略提交的 `.hima-tmp/issue-audit-2026-09-24/`，核对远端与本地 SHA-256，然后以开发版 XTop 1.0.8 的 Reader 解析完整文件。原始报告不提交到 GitHub。
+第一步没有恢复 trial30 的暂停 Run，也没有调用 EDA/模型。通过只读 SSH 将 trial30 的 g001/g010 报告复制到忽略提交的 `.hima-tmp/issue-audit-2026-09-24/`，核对远端与本地 SHA-256，然后以开发版 XTop 1.0.8 的 Reader 解析完整文件。原始报告不提交到 GitHub。第二步根据安装在 Site 的 Innovus 23.14 `innovusTCR/verifyConnectivity.html`，确认 `-error` 默认上限为 1000、达到上限即停止报告；在**独立**资格目录中用 `-error 1000000` 和相同的 `-noAntenna` 重新检查原输入及 g009 数据库。原 trial30 Run、DB 与报告未被修改。
 
 | 保留报告 | g001 SHA-256 | g010 SHA-256 | Reader 结论 |
 | --- | --- | --- | --- |
@@ -9,4 +9,17 @@
 
 不能从“g001 与 g010 均打印 1000 条”推出没有新增连通性错误，因为两份输出均可能被同一个上限截断。也不能从 DRC 数相同推出全部物理质量相同。当前 `physical-check` manifest 仍声明 `coverage: unknown`，因此即使 DRC 可计数，best-DB 资格仍不得晋级。Reader 的红色反例为无法识别实际 DRC footer；修正后 XTop Python 23/23 与 Pack contract 2/2 通过，并在两份完整实际文件上独立得到以上结果。
 
-下一门槛是独立于暂停 Run 的一次有界 Innovus 连通性报告资格：先确定该版本命令能否输出**有明确上限且未触及上限**的完整同口径错误计数，再在隔离工作副本中取得 baseline/candidate 报告。没有覆盖证据则继续不采用。当前 Empyrean 许可证状态为 `selected=new`；本切片未切换它，也没有并发使用 XTop 与 QuaLib API。
+## 有界真实工具结果
+
+第一次、第二次资格脚本在设计恢复阶段分别因错误使用 `.enc` 内部相对路径和把 `.enc` 脚本当作数据库目录而失败，没有执行检查；各自 console/log 保留。第三次改为 manifest 中确有的 `input.enc.dat`，只读恢复成功。独立 Innovus 命令均以 30 分钟超时限制，实际成功的单次运行约 6–8 分钟；不进行 ECO、route 或 `saveDesign`。
+
+| 数据库 | 检查 | 完整报告 SHA-256 | 结果 |
+| --- | --- | --- | --- |
+| 原输入 `input.enc.dat`（脚本 SHA `9bd8c465…fc38`） | `verifyConnectivity -noAntenna -error 1000000` | `17f23c6c1c993437bdb696b8fd57bc8fb6e1afd3e5c2a9228fbb4c23d3dc97c3` | 3,465 条，低于显式上限；脚本 SHA `7ee1d78a…7176`。 |
+| g009 `closed.enc.dat`（脚本 SHA `fa712ec1…0d5`） | 同一连通性命令 | `f5cf602b4f313a34081c5b68e83ed1d8ccf01e6af8130c066ffc6e6fdfd27b91` | 3,465 条，逐项比较新增 0、消失 0；脚本 SHA `cb782f74…e81e`。 |
+| 原输入 `input.enc.dat` | `verify_drc -limit 1000000` | `a1cd503c476e8ecf15b10c9554cb77180867b6c8a95469cc28de3d6b5fe989cc` | 72,799 条，低于显式上限；脚本 SHA `ade4380f…c9`。 |
+| g009 `closed.enc.dat` | 原 Run 同一 DRC 检查 | `a652120c1a908372473f3ed750759dcf7c5ee1e9fa79dafb1368c5978ab1c93d` | 72,799 条，逐项比较新增 0、消失 0。 |
+
+新 XTop 1.0.9 开发方法用 `physical-check/2` 声明显式双上限；Reader 逐项核对命令、摘要、实际错误条数和报告 SHA，并以违规类型/网络/坐标的完整身份集合证明无新增错误。即使总数不变，只要出现新坐标，候选仍被拒绝；这个反例先红后绿。只有两份报告均未触限且来源、时序情景与数据库身份满足原门槛时，新 best 才有资格采用。XTop Python 25/25、Pack contract 2/2 通过；实际文件的本地 Reader 复核得到表中数值。
+
+**边界：** 原设计本身有 72,799 个 DRC 和 3,465 个连通性问题；这是相对基线无新增的资格证据，绝不是 clean signoff。我们未用新 Pack 重跑 trial30 Campaign，也未改变它保留的 best DB。Empyrean 许可证执行前后均为 `selected=new`，没有启动 XTop/QuaLib API，也没有切换到 `old`。#55 尚需新方法的完整数据库/PrimeTime 证据组合验收；真实工具阶段不等同完整业务 Campaign。
