@@ -25,6 +25,7 @@
     "test/contract/dc-reader.test.ts",
     "test/contract/delegation-run.host.test.ts",
     "test/contract/delegation.host.test.ts",
+    "test/contract/dtco-feedback-ab-live-check.test.ts",
     "test/contract/experience-files.test.ts",
     "test/contract/experience-report.test.ts",
     "test/contract/experience.host.test.ts",
