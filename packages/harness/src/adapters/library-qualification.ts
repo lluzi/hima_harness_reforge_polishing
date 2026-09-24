@@ -1,16 +1,14 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
-import type { Channel } from './channel.js';
-import type { LaunchIntent } from './jobs.js';
-import type { Ledger } from './ledger.js';
-import { decideLaunch, decideRead, decideWrite } from './shell.js';
-import { pathsOf, type Site } from './sites.js';
-import { permitsWrapper, refusedWrapper } from './shell.js';
+import type { Channel } from '../channel.js';
+import type { LaunchIntent } from '../jobs.js';
+import type { Ledger } from '../ledger.js';
+import { decideLaunch, decideRead, decideWrite, permitsWrapper, refusedWrapper } from '../shell.js';
+import { pathsOf, type Site } from '../sites.js';
 
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const absolute = z.string().regex(/^\//);
-const qualificationRole = z.enum(['vendor-fixture', 'saed14', ['tsmc', '28'].join('')]);
 
 const qualificationManifest = z.strictObject({
   schema: z.literal('hima-library-qualification-input/1'),
@@ -40,7 +38,9 @@ const qualificationManifest = z.strictObject({
     excludesClaim: z.literal('XTop'),
   }),
   sources: z.array(z.strictObject({
-    role: qualificationRole,
+    // Business roles and their order remain Pack/worker policy. The Host adapter only needs
+    // a named source whose path and bytes can be checked against the loaded Permit.
+    role: z.string().min(1),
     path: absolute,
     sha256,
   })).length(3),

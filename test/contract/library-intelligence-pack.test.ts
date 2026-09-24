@@ -16,7 +16,7 @@ import { waitUntil } from './support/fabric.ts';
 import type { Channel, LaunchIntent } from '@hima/harness';
 
 const { attestLibraryQualificationPrelaunch } = await import(
-  new URL('../../packages/harness/lib/library-prelaunch.js', import.meta.url).href
+  new URL('../../packages/harness/lib/adapters/library-qualification.js', import.meta.url).href
 ) as { attestLibraryQualificationPrelaunch(request: {
   packId: string; site: ReturnType<typeof loadSite>; bindings: Readonly<Record<string, string>>;
   workspace: string; intent: LaunchIntent; channel: Channel;

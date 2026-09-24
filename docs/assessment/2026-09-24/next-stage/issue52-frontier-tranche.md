@@ -6,6 +6,23 @@ This tranche advances three previously open qualification boundaries without res
 Desktop trial or a commercial EDA Campaign. It changes existing Pack, Fabric, Job-history and
 Reader seams only. It adds no scheduler, licence daemon, memory service or second execution path.
 
+### Module placement
+
+The Library method, source roles, native sequence and result schema remain in
+`packs/library-intelligence`. A small external Host adapter lives under
+`packages/harness/src/adapters/` because two required facts cannot be proven by Pack code: which
+Permit bytes `loadSite` actually retained, and whether the same Run has a matching durable Job
+history. The adapter only translates those existing Site/Permit/Channel/Job/Ledger authorities at
+the existing `beforeLaunch` and Reader-admission seams; it owns no process, persistent lifecycle,
+route, schema store or second truth source. This is the adapter/helper case described by
+`docs/agents/polishing-discipline.md`, not a new product module.
+
+A generic prelaunch-attestation framework was deliberately not introduced: this is its only real
+consumer, and generalizing manifest pointers, executable identities and retry policy now would be
+speculative. A Pack-only check was also rejected because a Pack-provided file cannot attest which
+Permit the Host loaded or which Job the Host recorded. If a second Pack needs the same security
+envelope, this adapter is the evidence for extracting a generic contract at that time.
+
 ## Library E1 Host admission
 
 `library-intelligence@0.2.0` now has one runnable `qualify-api` node. The ordinary Fabric
@@ -30,11 +47,15 @@ SAED14 and TSMC28 read/query/copy/re-read checks.
 
 ## DTCO continuous-chain readiness
 
-`custom-cell-fmax-dtco@5.2.14` now requires a release label and SHA-256 for `FOUNDRY_CDL` before it
+`custom-cell-fmax-dtco@5.2.15` now requires a release label and SHA-256 for `FOUNDRY_CDL` before it
 writes `flow/inputs.json`. The Fabric and shipped authoring copies of `bind-inputs.py` are identical.
 The TSMC28 L4-shaped fixture records the already demonstrated 40 new Cells per generation and
 320 cumulative Cells for eight generations; 160 is rejected. The Pack-wide 50/400 reference profile
 is unchanged.
+
+An explicitly supplied `FOUNDRY_DB_FILE` must also be a `.db`; pointing it at the same textual
+Liberty file is rejected before input publication. This closes the alternate path that could have
+reintroduced the observed DC `DB-1` failure after the fallback path was already fixed.
 
 The graph already contains `compile -> read-compile -> foundry-synth`. This tranche closes the
 input-admission gap; it does not claim the continuous commercial chain ran. Focused evidence is
@@ -61,7 +82,9 @@ remain relative-baseline evidence, not clean signoff.
 - No commercial EDA or model was launched and no Empyrean licence selection changed in this tranche.
 - Interactive XTop mutation remains unavailable; the production confinement gate in #50 is unchanged.
 - E2-E4 Library facts and analysis, a positive matched PPA result, and customer-value J3 remain open.
-- The final local regression passed 648/648, with 0 failures, 0 skips, 0 Electron launches and
+- The final pre-review local regression passed 648/648, with 0 failures, 0 skips, 0 Electron launches and
   0 SSH subprocess attempts. It covered 95 local contract files in 1,107.743 seconds. Desktop and
-  live-Site groups were not run. App packaging and a later human trial are delivery/qualification
-  steps, not substitutes for the three remaining real-tool gates above.
+  live-Site groups were not run. The subsequent review-only module placement and explicit-DB fixes
+  use the affected focused suites and build/static checks rather than repeating the full run. App
+  packaging and a later human trial are delivery/qualification steps, not substitutes for the
+  three remaining real-tool gates above.

@@ -12,7 +12,7 @@ Paths remain on the Site. Both comparison arms use the same values.
 | `CLOCK_NAME` | one-line text | Clock constrained by the supplied design constraints. Read from the SDC or ask only if ambiguous. |
 | `CLOCK_NS` | positive number | Common physical comparison clock in ns, derived from the supplied SDC. |
 | `FOUNDRY_LIB` | plain file | Baseline Liberty used for mining, characterization scaffolding and PnR. Discover beside the selected library view. |
-| `FOUNDRY_DB_FILE` | plain file when `foundryLibrary` is Liberty text | Compiled baseline library used by Design Compiler. HimaGuide discovers the matching `.db`; without it, `bind-inputs` rejects a text `foundryLibrary` before DC is launched. A legacy Site that explicitly passes a `.db` as `foundryLibrary` may omit this field, but that compatibility path does not qualify the upstream Liberty consumers. |
+| `FOUNDRY_DB_FILE` | plain compiled `.db` file when `foundryLibrary` is Liberty text | Compiled baseline library used by Design Compiler. HimaGuide discovers the matching `.db`; `bind-inputs` rejects a missing or textual `.lib` value before DC is launched. A legacy Site that explicitly passes a `.db` as `foundryLibrary` may omit this field, but that compatibility path does not qualify the upstream Liberty consumers. |
 | `FOUNDRY_LEF`, `TECH_LEF` | plain files | Cell and technology LEF used by both PnR arms. Discover from the Site flow or PDK setup. |
 | `FOUNDRY_QRC_TECH` | plain file | QRC extraction technology used by both arms. |
 | `FOUNDRY_GDS` | plain file | Foundry library GDS merged identically into both stream-outs. |

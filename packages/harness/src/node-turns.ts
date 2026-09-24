@@ -88,7 +88,7 @@ import type { JudgedBranch, Judge } from './judge.js';
 import type { ReaderRef } from './ledger.js';
 import { SiteUnreadableError } from './errors.js';
 import { materializeWorkshopRevision, type WorkspaceRevisionAsset } from './workspace.js';
-import { libraryQualificationObservationRefusal } from './library-prelaunch.js';
+import { libraryQualificationObservationRefusal } from './adapters/library-qualification.js';
 
 /** What every fabric operation is given: the ledger a Run lives in, HimaJudge, and where the Sites
  *  and packs this machine holds are installed. Declared here, with the turn that is handed it, and

@@ -48,7 +48,7 @@ import { analysisProblems } from './experience-report.js';
 import { runView as analysisRunView } from './remote.js';
 import { jobStatus, jobTail, reconcileLaunchIntent, type LaunchIntent } from './jobs.js';
 import { channelFor } from './channel.js';
-import { attestLibraryQualificationPrelaunch } from './library-prelaunch.js';
+import { attestLibraryQualificationPrelaunch } from './adapters/library-qualification.js';
 import { writeIntoWorkshop, readForWorkshop, knowledgeForWorkshop, captureWorkshopInputs, readBack } from './workshop.js';
 import type {
   BlockerRecord,

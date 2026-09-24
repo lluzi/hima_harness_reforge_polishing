@@ -40,6 +40,13 @@ def plain_file(value, label):
     return str(at)
 
 
+def compiled_db_file(value, label):
+    at = Path(plain_file(value, label))
+    if at.suffix.lower() != ".db":
+        raise ValueError(f"{label} must name one compiled .db file: {at}")
+    return str(at)
+
+
 def plain_dir(value, label):
     if not isinstance(value, str) or not value:
         raise ValueError(f"{label} must be a nonempty directory path")
@@ -253,7 +260,7 @@ def main():
     physical = plain_json(ns.physical_inputs, "physicalInputs")
     tools = plain_json(ns.tool_stack, "toolStack")
     if physical.get("FOUNDRY_DB_FILE") not in (None, ""):
-        foundry_db = Path(plain_file(physical["FOUNDRY_DB_FILE"], "FOUNDRY_DB_FILE"))
+        foundry_db = Path(compiled_db_file(physical["FOUNDRY_DB_FILE"], "FOUNDRY_DB_FILE"))
     else:
         # The legacy single-file input remains usable only when it explicitly
         # names a compiled DB. A Liberty text path cannot also satisfy DC's
