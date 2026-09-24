@@ -150,7 +150,7 @@ export const siteSchema = z
     error: 'a site of kind ssh needs an ssh section naming its destination',
     path: ['ssh'],
   });
-export interface Site extends z.infer<typeof siteSchema> { readonly file: string; readonly permitFile: string; readonly permitRules: Permit }
+export interface Site extends z.infer<typeof siteSchema> { readonly file: string; readonly permitFile: string; readonly permitSha256: string; readonly permitRules: Permit }
 
 export interface SiteDiscoveryResult {
   readonly site: Omit<z.input<typeof siteSchema>, 'discovery'> & { readonly discovery: SiteDiscovery };
@@ -512,7 +512,7 @@ export function loadSite(sitesDir: string, name: string): Site {
   const identity = { kind: 'existing' as const, siteSha256: sha256(raw), permitSha256: sha256(permitBytes) };
   const discovery = projectedDiscovery(site, identity, readDiscoveryCache(sitesDir, name));
   const { discovery: _inlineDiscovery, ...policy } = site;
-  return { ...policy, ...(discovery === undefined ? {} : { discovery }), file, permitFile, permitRules };
+  return { ...policy, ...(discovery === undefined ? {} : { discovery }), file, permitFile, permitSha256: identity.permitSha256, permitRules };
 }
 
 /**

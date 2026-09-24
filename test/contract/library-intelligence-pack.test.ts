@@ -151,6 +151,31 @@ async function fixture(additionalRoot?: string): Promise<Fixture> {
   };
 }
 
+test('loaded Site retains the Permit byte identity despite a forged Pack claim or later file edit', async () => {
+  const f = await fixture();
+  try {
+    const sitesDir = path.join(f.root, 'sites');
+    const originalBytes = await readFile(f.permit);
+    const original = loadSite(sitesDir, 'local');
+    assert.equal(original.permitFile, f.permit);
+    assert.equal(original.permitSha256, sha(originalBytes));
+
+    const manifest = JSON.parse(await readFile(f.manifest, 'utf8'));
+    manifest.permit.sha256 = '0'.repeat(64);
+    await writeFile(f.manifest, JSON.stringify(manifest));
+    assert.equal(loadSite(sitesDir, 'local').permitSha256, sha(originalBytes),
+      'the Pack manifest cannot assert the Host Site Permit identity');
+
+    const editedBytes = Buffer.concat([originalBytes, Buffer.from('# owner comment changes the bytes only\n')]);
+    await writeFile(f.permit, editedBytes);
+    const reloaded = loadSite(sitesDir, 'local');
+    assert.deepEqual(reloaded.permitRules, original.permitRules, 'a comment leaves the parsed policy unchanged');
+    assert.equal(original.permitSha256, sha(originalBytes), 'the loaded Site keeps its read-time identity');
+    assert.equal(reloaded.permitSha256, sha(editedBytes), 'a fresh load binds the edited Permit bytes');
+    assert.notEqual(reloaded.permitSha256, original.permitSha256);
+  } finally { await f.dispose(); }
+});
+
 test('development Pack loads and actual checkPack refuses a missing Reader wrapper', async () => {
   const f = await fixture();
   try {
